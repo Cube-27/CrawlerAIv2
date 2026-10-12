@@ -5,10 +5,9 @@ list (pinned in `backend/data/manifest.json`). Hosts in `tools/site_literal_allo
 paths pass. Tests are not exempt (C9).
 
 Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
-- in source code only string literals and comments are scanned;
+- in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
 - a two-label token whose last label is the extension of a tracked file is a file name;
-- a token that is the dotted path of a tracked Python module, or that a line imports (`from <token> import`), is
-  a module name.
+- a token that is the dotted path of a tracked Python module is a module name.
 URL hosts are always checked.
 
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
@@ -39,11 +38,12 @@ JS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 
 # Escapes such as backslash-n in a source literal separate words; they are not part of the token that follows.
 ESCAPE = re.compile(r"\\[nrtfv]")
-# An import statement at the start of a line; prose such as "copied from <host>" is not one.
-IMPORT = re.compile(r"^\s*(?:from|import)\s+$")
 URL = re.compile(r"(?i)\bhttps?://(?:[^\s/@?#]*@)?(\[[^\]\s]*\]|[^\s/:?#'\"<>()\[\]{}\\,;`]+)")
-# String literals, line comments and block-comment openers in JS/TS, matched left to right on one line.
-JS_PIECE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|//.*|/\*")
+# A whole dotted token; the lookarounds stop a token that does not end in a TLD from yielding its leading labels.
+DOTTED = re.compile(r"(?i)(?<![\w.-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![\w-]|\.[\w-])")
+# JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
+# holding a quote cannot swallow the rest of the file; template literals and block comments may span lines.
+JS_PIECE = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|//[^\n]*|/\*.*?\*/", re.DOTALL)
 
 Segment = tuple[int, str]
 
@@ -104,15 +104,12 @@ class RepoNames:
         return (len(labels) == 2 and labels[1] in self.extensions) or token in self.modules
 
 
-def hostname_pattern(tld_list: Path) -> re.Pattern[str]:
-    tlds = [line.strip().lower() for line in tld_list.read_text(encoding="ascii").splitlines()]
-    tlds = sorted((tld for tld in tlds if tld and not tld.startswith("#")), key=len, reverse=True)
+def load_tlds(tld_list: Path) -> frozenset[str]:
+    lines = (line.strip().lower() for line in tld_list.read_text(encoding="ascii").splitlines())
+    tlds = frozenset(line for line in lines if line and not line.startswith("#"))
     if not tlds:
         raise UsageError(f"{tld_list} lists no TLDs")
-    # The lookarounds keep the match to a whole dotted token: a token that does not end in a TLD yields nothing,
-    # rather than its leading labels.
-    alternatives = "|".join(map(re.escape, tlds))
-    return re.compile(r"(?i)(?<![\w.-])(?:[a-z0-9-]+\.)+(?:" + alternatives + r")(?![\w-]|\.[\w-])")
+    return tlds
 
 
 def is_exempt(path: str) -> bool:
@@ -140,9 +137,8 @@ def tracked_files(root: Path) -> list[str]:
     return [name for name in listing.stdout.decode("utf-8").split("\0") if name]
 
 
-def split_lines(first_line: int, text: str) -> Iterator[Segment]:
-    for offset, line in enumerate(text.splitlines()):
-        yield first_line + offset, line
+def lines_from(first_line: int, text: str) -> list[Segment]:
+    return list(enumerate(text.splitlines(), start=first_line))
 
 
 def python_segments(text: str) -> list[Segment]:
@@ -151,54 +147,42 @@ def python_segments(text: str) -> list[Segment]:
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     except (tokenize.TokenError, SyntaxError):
-        return list(split_lines(1, text))
-    return [segment for token in tokens if token.type in kept for segment in split_lines(token.start[0], token.string)]
+        return lines_from(1, text)
+    return [segment for token in tokens if token.type in kept for segment in lines_from(token.start[0], token.string)]
 
 
 def js_segments(text: str) -> list[Segment]:
-    """String literals and comments, read line by line (a template literal spanning lines is read as code)."""
+    """String literals and comments."""
     segments: list[Segment] = []
-    in_block = False
-    for number, line in split_lines(1, text):
-        rest = line
-        while rest:
-            if in_block:
-                comment, closed, rest = rest.partition("*/")
-                segments.append((number, comment))
-                in_block = not closed
-                continue
-            match = JS_PIECE.search(rest)
-            if match is None:
-                break
-            if match.group(0) == "/*":
-                in_block = True
-            else:
-                segments.append((number, match.group(0)))
-            rest = rest[match.end() :]
+    line, position = 1, 0
+    for match in JS_PIECE.finditer(text):
+        line += text.count("\n", position, match.start())
+        position = match.start()
+        segments.extend(lines_from(line, match.group(0)))
     return segments
 
 
 def segments_of(path: str, text: str) -> list[Segment]:
-    if path.endswith(".py"):
+    if ".py" in PurePosixPath(path).suffixes:
         return python_segments(text)
     if path.endswith(JS_SUFFIXES):
         return js_segments(text)
-    return list(split_lines(1, text))
+    return lines_from(1, text)
 
 
-def hosts_in(text: str, hostnames: re.Pattern[str], repo_names: RepoNames) -> Iterator[str]:
+def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator[str]:
     text = ESCAPE.sub(" ", text)
     for match in URL.finditer(text):
         host = match.group(1).lower().rstrip(".")
         if not names_no_public_site(host):
             yield host
-    for match in hostnames.finditer(text):
+    for match in DOTTED.finditer(text):
         token = match.group(0).lower()
-        if not (repo_names.names(token) or IMPORT.search(text, 0, match.start())):
+        if token.rsplit(".", 1)[1] in tlds and not repo_names.names(token):
             yield token
 
 
-def scan(root: Path, allowlist: Allowlist, hostnames: re.Pattern[str]) -> tuple[list[str], int]:
+def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str]) -> tuple[list[str], int]:
     """Return the findings and the number of files scanned."""
     paths = tracked_files(root)
     repo_names = RepoNames.of(paths)
@@ -214,7 +198,7 @@ def scan(root: Path, allowlist: Allowlist, hostnames: re.Pattern[str]) -> tuple[
         scanned += 1
         reported: set[tuple[int, str]] = set()
         for number, text in segments_of(path, data.decode("utf-8", errors="replace")):
-            for host in hosts_in(text, hostnames, repo_names):
+            for host in hosts_in(text, tlds, repo_names):
                 if (number, host) not in reported and not allowlist.allows(host):
                     reported.add((number, host))
                     findings.append(f"{path}:{number}: {host}")
@@ -223,6 +207,7 @@ def scan(root: Path, allowlist: Allowlist, hostnames: re.Pattern[str]) -> tuple[
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # The only mode for now; required so the spec's command line stays explicit beside the protected mode (PR 8).
     parser.add_argument("--public", action="store_true", required=True, help="scan with exemptions (CI, hooks)")
     parser.add_argument("--root", type=Path, default=REPO, help="repository to scan")
     parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST)
@@ -230,12 +215,12 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         allowlist = Allowlist.load(args.allowlist)
-        hostnames = hostname_pattern(TLD_LIST)
+        tlds = load_tlds(TLD_LIST)
     except (OSError, UsageError) as error:
         print(f"site-literals: {error}", file=sys.stderr)
         return 2
 
-    findings, scanned = scan(args.root, allowlist, hostnames)
+    findings, scanned = scan(args.root, allowlist, tlds)
     for finding in findings:
         print(finding)
     if findings:

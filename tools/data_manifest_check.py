@@ -65,8 +65,10 @@ def check(root: Path) -> tuple[list[str], int]:
     for path, sha256 in sorted(pinned.items()):
         if path not in present:
             problems.append(f"{DATA_DIR / path}: listed in the manifest but missing")
-        elif hashlib.sha256((data_dir / path).read_bytes()).hexdigest() != sha256:
-            problems.append(f"{DATA_DIR / path}: sha256 does not match the manifest")
+        else:
+            with (data_dir / path).open("rb") as file:
+                if hashlib.file_digest(file, "sha256").hexdigest() != sha256:
+                    problems.append(f"{DATA_DIR / path}: sha256 does not match the manifest")
     return problems, len(pinned)
 
 

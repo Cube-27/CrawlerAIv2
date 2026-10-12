@@ -18,10 +18,7 @@ def make_repo(root: Path, files: dict[str, str | bytes]) -> Path:
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            path.write_bytes(content)
-        else:
-            path.write_text(content, encoding="utf-8")
+        path.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)  # noqa: S603, S607
     return root
 
@@ -245,6 +242,8 @@ def test_typescript_code_is_read_only_in_strings_and_comments(tmp_path: Path, em
         'const base = "https://api.example.com/v1";\n'
         "const t = `${base}/x`; // see shop.example.net\n"
         "/* a block comment\n   naming www.example.org\n*/ const z = 1;\n"
+        'const quote = /"/;\n'
+        "const page = `first line\n  https://cdn.example.com/a`;\n"
     )
     repo = make_repo(tmp_path / "repo", {"frontend/src/a.tsx": source})
 
@@ -254,6 +253,7 @@ def test_typescript_code_is_read_only_in_strings_and_comments(tmp_path: Path, em
         "frontend/src/a.tsx:2: api.example.com",
         "frontend/src/a.tsx:3: shop.example.net",
         "frontend/src/a.tsx:5: www.example.org",
+        "frontend/src/a.tsx:9: cdn.example.com",
     ]
 
 
@@ -282,7 +282,7 @@ def test_url_hosts_are_checked_even_when_they_look_like_file_names(tmp_path: Pat
     assert result.stdout.splitlines() == ["notes.txt:1: readme.example"]
 
 
-def test_imported_module_paths_are_not_hosts(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_python_templates_are_read_as_python(tmp_path: Path, empty_allowlist: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {"migrations/script.py.mako": f"from {STDLIB_MODULE} import Sequence\n# mail: email.example.com\n"},
