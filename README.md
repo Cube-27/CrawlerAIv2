@@ -42,6 +42,8 @@ around a [generalization contract](docs/ARCHITECTURE.md#2-generalization-contrac
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Log of decisions made during implementation |
 | [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md) | Current implementation state |
 | [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo |
+| [docs/ENGINEERING.md](docs/ENGINEERING.md) | Engineering principles for agents |
+| [.claude/skills/](.claude/skills/) | Agent procedures: `run-plan`, `implement-pr`, `review-pr`, `pickup` |
 
 ## Planned stack
 

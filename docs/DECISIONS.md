@@ -3,6 +3,8 @@
 Agents log the decisions they make while writing specs and implementing them. Owner decisions belong in
 ARCHITECTURE Appendix A; open owner questions belong in OPEN_QUESTIONS.md. What goes here and when to escalate:
 `CLAUDE.md` §4–§5.
+While an orchestrator runs, workers put decisions in their PR body and only the orchestrator writes this file
+(`CLAUDE.md` §3).
 
 **Statuses:**
 - `decided`: made by an agent within its authority. Stands unless the owner overrides it.

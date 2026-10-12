@@ -7,7 +7,7 @@ Status: design, rev 5, 2026-10-12. No code exists.
 - `specs/`: implementation specs derived from this document.
 - `DECISIONS.md`: the log of decisions agents make during implementation.
 - `plans/ACTIVE.md`: current implementation state.
-- `../CLAUDE.md`: rules for coding agents.
+- `../CLAUDE.md`, `ENGINEERING.md` and `../.claude/skills/`: rules, principles and procedures for coding agents.
 - `INVARIANTS.md` and `DESIGN.md` (created by SPEC-00): the enforced invariants and the UI design guide. Both are
   derived from this document and never extend it.
 

@@ -1,6 +1,7 @@
 # Implementation tracker
 
-The live state of implementation. The orchestrator and the worker agents keep it current (`CLAUDE.md` §3). One row
+The live state of implementation. The orchestrator (`/run-plan`) is its only writer; a solo agent with no orchestrator updates it in its PR
+(`CLAUDE.md` §3). One row
 is one PR from a spec's PR plan. Spec dependencies are listed in `specs/README.md`. A row can start once every row
 it depends on is `done`. Within a spec, rows run in order unless the spec says otherwise.
 

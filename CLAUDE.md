@@ -12,6 +12,7 @@ before doing anything.
 3. The `docs/ARCHITECTURE.md` sections that spec cites. **§2 (generalization contract C1–C13) is binding on every
    change.** Read it once per session.
 4. `docs/DECISIONS.md`: earlier decisions you must stay consistent with.
+5. `docs/ENGINEERING.md`: how to write code here (verification, tests, structure). Read it once per session.
 
 `ARCHITECTURE.md` is the single source of truth. Where a spec and the architecture disagree, stop and escalate
 (§5).
@@ -48,28 +49,28 @@ These come from the generalization contract. Breaking one is a defect, even when
 - **Dependency licenses.** Don't add dependencies under AGPL, GPL, SSPL or non-commercial licenses. LGPL is
   allowed but avoided. CI enforces this.
 
-## 3. How to do one unit of work
+## 3. How work runs
 
-One unit is **one row of a spec's PR plan**: one branch, one PR.
+One unit is **one row of a spec's PR plan**: one branch, one worktree, one PR. Project skills in `.claude/skills/`
+hold the procedures:
 
-1. In `docs/plans/ACTIVE.md`, set the row to `in-progress` and add your branch name. Branch:
-   `spec-NN/pr-M-short-name`.
-2. Implement exactly that row's scope. If you find work outside it, add a row or a note to ACTIVE.md instead of
-   doing it.
-3. Write tests first where the spec's testing section defines them: property tests for normalizers, replay tests
-   for extraction.
-4. Run the local checks (`make check` once SPEC-00 has created it) until they pass. Don't skip hooks or weaken
-   checks.
-5. Log any decision the spec didn't make in `docs/DECISIONS.md` (§4).
-6. Open a PR using the template. Link the spec row, list the acceptance criteria you met, and paste the dev eval
-   delta when extraction behaviour changed.
-7. After review and green CI, merge, then mark the row `done` in ACTIVE.md with the PR number.
+| Skill | Who runs it | Does |
+|---|---|---|
+| `/run-plan` | The orchestrator | Assigns ready rows to workers (max 2 at a time), reviews, merges on green CI, keeps the tracker and log current, escalates. |
+| `/implement-pr` | A worker | Takes one row from `todo` to an open, verified PR: tests first, then code, self-review, PR body. |
+| `/review-pr` | A fresh reviewer agent | Verdict against the spec row, §2 and `docs/ENGINEERING.md`: `MERGE`, `FIX` or `ESCALATE`. |
+| `/pickup` | Anyone starting a session | Resumes in-flight rows from the trail, or pauses cleanly. |
 
-Before merging, a reviewer agent (or `/code-review`) checks the diff against the spec and §2 of this file.
+**Shared files have one writer.** With an orchestrator running, only the orchestrator edits `ACTIVE.md` and
+`DECISIONS.md`. Workers put their decisions in the PR body (`## Decisions`), and the orchestrator copies them
+across on merge. A solo agent with no orchestrator updates both files itself, in its PR.
+
+Never merge without a `MERGE` verdict from someone other than the author and green CI. Never skip hooks or weaken
+checks.
 
 ## 4. Decisions: decide and log, or escalate
 
-**Decide yourself and log it** (`DECISIONS.md`, status `decided`): implementation choices within one spec's
+**Decide yourself and record it** (status `decided`, through the PR body or `DECISIONS.md` per §3): implementation choices within one spec's
 scope that don't change ARCHITECTURE, a public API shape, a DB schema other specs rely on, or a §2 rule. Examples:
 - internal module structure;
 - library choice among licence-clean equivalents;
@@ -90,10 +91,10 @@ Don't log trivial choices.
 
 ## 5. Escalation procedure
 
-1. Add a `DECISIONS.md` entry with status `needs-owner`. Give the question, the options, your recommendation and
-   what is blocked.
-2. Mark the row `blocked` in ACTIVE.md and link the entry.
-3. Move on to the next unblocked row whose dependencies are done. Don't wait idle.
+1. Record a `needs-owner` decision: the question, the options, your recommendation, and what is blocked.
+2. The row becomes `blocked`, linked to the `DECISIONS.md` entry. The orchestrator writes both; working solo, you
+   do.
+3. Move on to the next ready row. Don't wait idle; the owner answers asynchronously.
 
 ## 6. Editing documents
 
