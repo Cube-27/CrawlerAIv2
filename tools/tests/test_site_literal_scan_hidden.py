@@ -95,7 +95,7 @@ def test_subdomains_and_case_variants_match_but_longer_labels_do_not(tmp_path: P
                 "cdn.retailer.test\n"
                 "myretailer.test\n"
                 "retailer.testing\n"
-                "retailer-two.test\n"
+                "other-retailer.test\n"
                 "line\\nretailer.test\n"
             )
         },

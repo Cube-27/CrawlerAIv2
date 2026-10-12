@@ -12,11 +12,18 @@ URL hosts are always checked.
 
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
 allowlist or the TLD list cannot be used.
+
+`--hidden-hosts-from-env VAR` (the protected job, INV-04) reads hidden hosts from the environment variable VAR,
+separated by whitespace or commas, and scans every tracked file, with no path exemption and no allowlist. A host
+matches itself and its subdomains, case-insensitively, anywhere in a file. The job log is public, so it prints only
+`path:line` per finding (`path:0` when the path itself names a host, shown with the host replaced by `[hidden]`),
+never a host. An unset or empty VAR passes: the environment holding the list may not exist yet (SPEC-00 §4.6).
 """
 
 import argparse
 import io
 import ipaddress
+import os
 import re
 import subprocess
 import sys
@@ -45,6 +52,8 @@ DOTTED = re.compile(r"(?i)(?<![\w-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![\w-]|\.[\w-])
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
 # holding a quote cannot swallow the rest of the file; template literals and block comments may span lines.
 JS_PIECE = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|//[^\n]*|/\*.*?\*/", re.DOTALL)
+
+HIDDEN = "[hidden]"
 
 Segment = tuple[int, str]
 
@@ -206,13 +215,61 @@ def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str]) -> tuple[list[s
     return findings, scanned
 
 
+def hidden_host_pattern(value: str) -> re.Pattern[str] | None:
+    hosts = {host for raw in re.split(r"[\s,]+", value) if (host := raw.strip(".").lower())}
+    if not hosts:
+        return None
+    alternatives = "|".join(re.escape(host) for host in sorted(hosts, key=len, reverse=True))
+    return re.compile(rf"(?i)(?<![\w-])(?:{alternatives})(?![\w-])")
+
+
+def scan_hidden(root: Path, pattern: re.Pattern[str]) -> tuple[list[str], int]:
+    """Return `path:line` findings, with hosts withheld from paths, and the number of files scanned."""
+    findings: list[str] = []
+    scanned = 0
+    for path in tracked_files(root):
+        file = root / path
+        if not file.is_file():
+            continue
+        scanned += 1
+        shown = pattern.sub(HIDDEN, path)
+        if shown != path:
+            findings.append(f"{shown}:0")
+        text = file.read_bytes().decode("utf-8", errors="replace")
+        findings.extend(
+            f"{shown}:{number}"
+            for number, line in enumerate(text.splitlines(), start=1)
+            if pattern.search(ESCAPE.sub(" ", line))
+        )
+    return findings, scanned
+
+
+def run_hidden(root: Path, variable: str) -> int:
+    pattern = hidden_host_pattern(os.environ.get(variable, ""))
+    if pattern is None:
+        print("hidden-hosts: pass, no host list configured")
+        return 0
+    findings, scanned = scan_hidden(root, pattern)
+    for finding in findings:
+        print(finding)
+    if findings:
+        print(f"hidden-hosts: fail, {len(findings)} match(es)", file=sys.stderr)
+        return 1
+    print(f"hidden-hosts: pass, {scanned} files scanned")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    # The only mode for now; required so the spec's command line stays explicit beside the protected mode (PR 8).
-    parser.add_argument("--public", action="store_true", required=True, help="scan with exemptions (CI, hooks)")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--public", action="store_true", help="scan with exemptions (CI, hooks)")
+    mode.add_argument("--hidden-hosts-from-env", metavar="VAR", help="scan everything for the hosts listed in VAR")
     parser.add_argument("--root", type=Path, default=REPO, help="repository to scan")
-    parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST)
+    parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST, help="public mode only")
     args = parser.parse_args(argv)
+
+    if args.hidden_hosts_from_env is not None:
+        return run_hidden(args.root.resolve(), args.hidden_hosts_from_env)
 
     try:
         allowlist = Allowlist.load(args.allowlist)
