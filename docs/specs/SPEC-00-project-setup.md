@@ -126,7 +126,7 @@ Commands (all via `uv run`): `ruff check .`, `ruff format --check .`, `mypy src 
 | Tool | Choice | License | Why |
 |---|---|---|---|
 | Build | Vite 6+, React 19, TypeScript 5 | MIT, MIT, Apache-2.0 | Owner choice. |
-| UI library | **HeroUI v3** — `@heroui/react@3.2.2` + `@heroui/styles@3.2.2` **[verified 2026-10-12]** | Apache-2.0 **[verified]** | v3 is the stable major (out of beta March 2026; 3.2.2 released 2026-06-19). It is built on React Aria Components and Tailwind CSS v4. Use the latest 3.x patch at setup time. |
+| UI library | **HeroUI v3** — `@heroui/react@3.2.6` + `@heroui/styles@3.2.6` **[verified 2026-10-12]** | MIT **[verified from the published packages; D-0051]** | v3 is the stable major (out of beta March 2026). It is built on React Aria Components and Tailwind CSS v4. Use the latest 3.x patch at setup time. |
 | CSS | Tailwind CSS v4 via `@tailwindcss/vite` | MIT | Required by HeroUI v3 **[verified]**. Setup is two CSS imports: `@import "tailwindcss"; @import "@heroui/styles";`. No provider component is needed **[verified]**. |
 | Package manager | `pnpm` | MIT | Strict node_modules, fast, lockfile. |
 | Lint/format | ESLint 9 (flat config) + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-jsx-a11y`; Prettier | MIT | a11y lint supports the React Aria accessibility goal (DESIGN.md). |
