@@ -149,14 +149,13 @@ def git(root: Path, *args: str) -> bytes:
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, check=True).stdout  # noqa: S603, S607
 
 
+def git_paths(root: Path, *args: str) -> list[str]:
+    """The paths a `-z` git listing prints."""
+    return [name for name in git(root, *args).decode("utf-8").split("\0") if name]
+
+
 def tracked_files(root: Path) -> list[str]:
-    return [name for name in git(root, "ls-files", "-z").decode("utf-8").split("\0") if name]
-
-
-def staged_files(root: Path) -> list[str]:
-    """Files added, copied, modified or renamed in the index; a deletion leaves nothing to scan."""
-    listing = git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
-    return [name for name in listing.decode("utf-8").split("\0") if name]
+    return git_paths(root, "ls-files", "-z")
 
 
 def lines_from(first_line: int, text: str) -> list[Segment]:
@@ -208,13 +207,17 @@ def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool
     """Return the findings and the number of files scanned."""
     tracked = tracked_files(root)
     repo_names = RepoNames.of(tracked)
+    if staged:
+        # Added, copied, modified or renamed in the index; a deletion leaves nothing to scan.
+        paths = git_paths(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
+    else:
+        paths = [path for path in tracked if (root / path).is_file()]
     findings: list[str] = []
     scanned = 0
-    for path in staged_files(root) if staged else tracked:
-        file = root / path
-        if is_exempt(path) or not (staged or file.is_file()):
+    for path in paths:
+        if is_exempt(path):
             continue
-        data = git(root, "show", f":{path}") if staged else file.read_bytes()
+        data = git(root, "show", f":{path}") if staged else (root / path).read_bytes()
         if b"\0" in data:
             continue
         scanned += 1

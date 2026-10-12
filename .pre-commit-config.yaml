@@ -45,3 +45,5 @@ repos:
         entry: node frontend/node_modules/eslint/bin/eslint.js --flag v10_config_lookup_from_file
         language: system
         files: ^frontend/.*\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$
+        # Each eslint process builds the whole TypeScript program, so one process beats parallel chunks.
+        require_serial: true
