@@ -15,19 +15,16 @@ out="${1:-$root/license-report}"
 mkdir -p "$out"
 out="$(cd "$out" && { pwd -W 2>/dev/null || pwd; })"
 
-cd "$root/backend"
-# The scan needs the dependencies, not the project, so nothing is built (SonarCloud S8541).
-uv sync --frozen --all-groups --no-build --no-install-project
-# The project itself is AGPL-3.0 (LICENSE); the deny-list applies to its dependencies.
-uv run --no-sync --no-build pip-licenses --from=all --format=json --ignore-packages crawlerai \
-  >"$out/python-licenses.json"
-uv run --no-sync --no-build cyclonedx-py environment --pyproject pyproject.toml --output-reproducible .venv \
-  >"$out/python-sbom.cdx.json"
-
 cd "$root/frontend"
 pnpm licenses list --json >"$out/node-licenses.json"
 pnpm sbom --sbom-format cyclonedx >"$out/node-sbom.cdx.json"
 
 cd "$root/backend"
+# Dependencies only, so nothing is built (SonarCloud S8541) and the project itself (AGPL-3.0, LICENSE) is not
+# installed: the deny-list applies to what it depends on.
+uv sync --frozen --all-groups --no-build --no-install-project
+uv run --no-sync --no-build pip-licenses --from=all --format=json >"$out/python-licenses.json"
+uv run --no-sync --no-build cyclonedx-py environment --pyproject pyproject.toml --output-reproducible .venv \
+  >"$out/python-sbom.cdx.json"
 uv run --no-sync --no-build python "$root/tools/license_policy.py" \
   --python "$out/python-licenses.json" --node "$out/node-licenses.json"

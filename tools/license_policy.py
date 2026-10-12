@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -62,13 +63,12 @@ def denied_name(name: str) -> set[str]:
 
 
 def tokenize(expression: str) -> list[str]:
+    expression = expression.strip()
     tokens: list[str] = []
     position = 0
     while position < len(expression):
         match = TOKEN.match(expression, position)
         if match is None:
-            if expression[position:].isspace():
-                break
             raise ExpressionError(expression)
         tokens.append(match.group(1))
         position = match.end()
@@ -87,12 +87,16 @@ class Parser:
 
     def parse(self) -> set[str]:
         denied = self.or_expression()
-        if self.position != len(self.tokens):
+        if self.current() is not None:
             raise ExpressionError(self.tokens[self.position])
         return denied
 
+    def current(self) -> str | None:
+        return self.tokens[self.position] if self.position < len(self.tokens) else None
+
     def peek_operator(self, operator: str) -> bool:
-        return self.position < len(self.tokens) and self.tokens[self.position].upper() == operator
+        token = self.current()
+        return token is not None and token.upper() == operator
 
     def or_expression(self) -> set[str]:
         branches = [self.and_expression()]
@@ -117,19 +121,19 @@ class Parser:
         return denied
 
     def primary(self) -> set[str]:
-        if self.position < len(self.tokens) and self.tokens[self.position] == "(":
+        if self.current() == "(":
             self.position += 1
             denied = self.or_expression()
-            if self.position >= len(self.tokens) or self.tokens[self.position] != ")":
+            if self.current() != ")":
                 raise ExpressionError("unbalanced parentheses")
             self.position += 1
             return denied
         return denied_name(self.identifier().removesuffix("+"))  # `+` is SPDX "or later"
 
     def identifier(self) -> str:
-        if self.position >= len(self.tokens):
+        token = self.current()
+        if token is None:
             raise ExpressionError("expected a license identifier")
-        token = self.tokens[self.position]
         if token in ("(", ")") or token.upper() in ("AND", "OR", "WITH"):
             raise ExpressionError(token)
         self.position += 1
@@ -159,18 +163,21 @@ def violation(ecosystem: str, package: str, declared: str) -> str | None:
     return f"denied license: {ecosystem} {package}: {', '.join(sorted(denied))} (declared {declared!r})"
 
 
+def node_packages(node: dict[str, list[dict[str, Any]]]) -> Iterator[tuple[str, str]]:
+    """(`name version`, declared license) for every installed version in a `pnpm licenses list --json` report."""
+    for group in node.values():
+        for package in group:
+            for version in package["versions"]:
+                yield f"{package['name']} {version}", package["license"]
+
+
 def violations(python: list[dict[str, str]], node: dict[str, list[dict[str, Any]]]) -> list[str]:
     found = [
         violation("python", f"{package['Name']} {package['Version']}", declared)
         for package in python
         for declared in python_declarations(package)
     ]
-    found += [
-        violation("node", f"{package['name']} {version}", package["license"])
-        for group in node.values()
-        for package in group
-        for version in package["versions"]
-    ]
+    found += [violation("node", package, declared) for package, declared in node_packages(node)]
     return [line for line in found if line is not None]
 
 
@@ -187,8 +194,7 @@ def main() -> int:
         print(line, file=sys.stderr)
     if found:
         return 1
-    node_count = sum(len(package["versions"]) for group in node.values() for package in group)
-    print(f"licenses ok: {len(python)} python and {node_count} node packages checked")
+    print(f"licenses ok: {len(python)} python and {sum(1 for _ in node_packages(node))} node packages checked")
     return 0
 
 
