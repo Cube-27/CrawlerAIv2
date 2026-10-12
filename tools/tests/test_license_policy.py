@@ -63,6 +63,8 @@ def run_policy(
         ("GPL-2.0+", "GPL-2.0"),
         # An exception narrows a license but leaves it copyleft.
         ("GPL-2.0-only WITH Classpath-exception-2.0", "GPL-2.0-only"),
+        # Commons Clause is usually attached to a permissive license as a WITH term.
+        ("Apache-2.0 WITH Commons-Clause", "Commons-Clause"),
         # AND means every license applies.
         ("MIT AND GPL-3.0-only", "GPL-3.0-only"),
         ("(MIT OR Apache-2.0) AND AGPL-3.0-or-later", "AGPL-3.0-or-later"),
