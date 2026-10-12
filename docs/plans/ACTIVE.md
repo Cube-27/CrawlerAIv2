@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 9 (#12); SPEC-01 PR 5 (in progress), then SPEC-01 PR 2.
+- Next: SPEC-00 PR 9 (#12, fixing review), SPEC-01 PR 2 (#14, in review); then SPEC-01 PR 3 and SPEC-02 PR 1.
 - Follow-up (class, not yet a row): the C3 scan reads dotted `table.column` strings whose last label is a TLD (`.id`) as hosts. D-0093 avoided it; if it recurs, fix the class in `tools/site_literal_scan.py`.
 - Blocked: none.
 
@@ -59,7 +59,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 2 | Job, url_task, job_event tables and state machine | todo | |
 | 3 | Queue claim/lease/retry + worker loop skeleton | todo | |
 | 4 | Scheduler loop + lease release | todo | |
-| 5 | Object store (fs, s3) + capture bundle format | todo | |
+| 5 | Object store (fs, s3) + capture bundle format | done (#13) | |
 | 6 | capture, extraction, candidate, record, url_state, progressive_state, extraction_config tables | todo | |
 | 7 | usage_event + budgets + engine_version | todo | |
 | 8 | Retention jobs | todo | |
