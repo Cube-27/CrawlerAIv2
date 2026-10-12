@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-02 PR 2 (in progress); SPEC-01 PR 4; then SPEC-01 PR 6/7.
+- Next: SPEC-01 PR 4 and PR 6 (in progress); SPEC-02 PR 3; then SPEC-01 PR 7/8.
+- Follow-ups for SPEC-02 PR 3 (from #18's review): (1) the cross-host pin test pins both hosts to 127.0.0.1, so it can't fail; pin the second to an address with no listener and assert `network_error: curl 7`; (2) DNS resolution in `connector.check`/`redirect` is outside the `timeout_s` budget, so bound it by the remaining time; (3) raise `curl-cffi` to `>=0.16`; (4) optional: compare `CURLINFO_PRIMARY_IP` with the checked address, and set `CURLOPT_PROTOCOLS_STR="http,https"`.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
 - Follow-ups for SPEC-01 PR 4 (from #17's review): (1) make the lease fence unique per claim (add `lease_until` to `ClaimedTask` and the fence) or correct the `db/queue.py` docstring, and pin release → reclaim → stale finish with a test; (2) `tests/db/conftest.py` deletes every job in `CRAWLERAI_DATABASE_URL`: scope cleanup to the test's own jobs or require a dedicated test DB; (3) a DB error inside `_run`'s except branch exits the worker, leaving claims to the 10-minute lease: note it, or handle it. Index on `job_event (job_id, id)` comes with SPEC-10's SSE query.
 - Blocked: none.
@@ -70,7 +71,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Acquisition types, classify, SSRF guard | done (#16) | Ran ahead of SPEC-01 PRs 3–8; it needs no SPEC-01 table. |
-| 2 | HTTP fetch (curl_cffi) with manual redirects and caps | todo | |
+| 2 | HTTP fetch (curl_cffi) with manual redirects and caps | done (#18) | |
 | 3 | Persist capture + `crawlerai fetch` CLI | todo | |
 | 4 | Politeness + robots + backoff via requeue | todo | |
 | 5 | Rung selection + fetch_method memory + re-check scheduler task | todo | |
