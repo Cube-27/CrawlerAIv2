@@ -7,9 +7,7 @@ it depends on is `done`. Within a spec, rows run in order unless the spec says o
 
 **Statuses:**
 - `todo`
-- `in-progress`: the branch name is in Notes.
-- `review`: the PR is open.
-- `done`: merged, with the PR number.
+- `done (#n)`: merged, with the PR number.
 - `blocked`: the Notes link a `DECISIONS.md` entry.
 - `human`: waits on a human-only task (below).
 

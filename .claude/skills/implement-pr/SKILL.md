@@ -81,7 +81,8 @@ Review your own diff as a hostile reviewer, then fix what you find:
     relevant.
   - `## Decisions`: each decision in the DECISIONS.md template's fields (no ID), marked `decided` or
     `needs-owner`; or "none".
-- Open it ready, not as a draft, with `gh pr create`. Working solo, also set the row to `review` in ACTIVE.md.
+- Open it ready, not as a draft, with `gh pr create`. Working solo, also set the row to `done (#n)` and add your
+  decisions to DECISIONS.md in a last commit on this PR, before it merges.
 
 ## 6. Hand back
 

@@ -65,8 +65,9 @@ hold the procedures:
 `DECISIONS.md`. Workers put their decisions in the PR body (`## Decisions`), and the orchestrator copies them
 across on merge. A solo agent with no orchestrator updates both files itself, in its PR.
 
-Never merge without a `MERGE` verdict from someone other than the author and green CI. Never skip hooks or weaken
-checks.
+`main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
+`spec-*` branches, not from ACTIVE.md. Never use an admin bypass of the branch rules. Never merge without a `MERGE`
+verdict from someone other than the author and green CI. Never skip hooks or weaken checks.
 
 ## 4. Decisions: decide and log, or escalate
 

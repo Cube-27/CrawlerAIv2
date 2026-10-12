@@ -1,6 +1,6 @@
 ---
 name: pickup
-description: Resume implementation work left by an earlier session or agent, or pause cleanly so another can resume. Use at the start of a session when ACTIVE.md shows rows in-progress or review, when taking over a branch, or when asked to pause or hand off.
+description: Resume implementation work left by an earlier session or agent, or pause cleanly so another can resume. Use at the start of a session when open PRs or spec-* branches exist, when taking over a branch, or when asked to pause or hand off.
 ---
 
 # Pick up or pause
@@ -12,8 +12,9 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
 **The trail is authoritative. Read it; don't redo it.**
 
 1. **Locate the trail.**
-   - `docs/plans/ACTIVE.md`: rows `in-progress` or `review`, with their branch names.
-   - `git worktree list`, `git log origin/main..<branch>`, `gh pr list --state open`.
+   - In-flight work lives in GitHub, not ACTIVE.md: `gh pr list --state open`, remote `spec-*` branches,
+     `git worktree list`, `git log origin/main..<branch>`.
+   - `docs/plans/ACTIVE.md`: rows that are `todo` but have one of these branches.
    - A resume note at `.worktrees/<name>/RESUME.md`, if the earlier agent paused.
 2. **Rebuild the state** for each in-flight row:
    - what is committed on the branch;
@@ -26,13 +27,12 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
    | Open PR, CI green, no review | `/review-pr` |
    | Open PR with a `FIX` verdict | A worker addresses the Act-on list |
    | Branch with commits, no PR | A worker continues `/implement-pr` from §3 Verify |
-   | Branch with no commits, or abandoned for more than 7 days with no PR | Reset the row to `todo`, remove the worktree, delete the branch |
+   | Branch with no commits, or abandoned for more than 7 days with no PR | Remove the worktree and delete the branch; the row is `todo` again |
 
    Don't re-run checks that already passed in CI on the same head SHA.
 4. **Verify inherited claims against the real thing.** Check the PR's CI status on its current head SHA, not a
    self-report in a note.
-5. Update ACTIVE.md to match reality. Only the orchestrator does this; working solo, you do it. Then continue with
-   `/run-plan` or `/implement-pr`.
+5. Continue with `/run-plan` or `/implement-pr`. ACTIVE.md changes only in tracker commits on PRs (`/run-plan`).
 
 **Report:** where the earlier agent stopped, what you inherited, what you reset, and the resume point.
 
@@ -51,6 +51,6 @@ Only on an explicit request ("pause", "stop for now", "hand off"). "Keep going" 
    - the next step;
    - key files;
    - gotchas.
-5. Leave the row `in-progress` in ACTIVE.md, with "paused, see RESUME.md" in Notes.
+5. The pushed branch and its `RESUME.md` are the record. Don't edit ACTIVE.md to pause.
 
 **Report:** the commits made, whether the tree is clean, and the first action on resume.
