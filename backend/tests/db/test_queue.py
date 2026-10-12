@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -8,12 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import (
     LEASE,
+    MAX_ATTEMPTS,
     ClaimedTask,
     LeaseLost,
     cancel_task,
     claim_tasks,
     complete_task,
     fail_task,
+    release_expired_leases,
     release_task,
 )
 
@@ -55,6 +58,17 @@ async def _now(conn: AsyncConnection) -> Any:
     return (await conn.execute(select(func.now()))).scalar_one()
 
 
+async def _clock(conn: AsyncConnection) -> Any:
+    return (await conn.execute(select(func.clock_timestamp()))).scalar_one()
+
+
+async def _expire(conn: AsyncConnection, task: ClaimedTask) -> ClaimedTask:
+    """Let `task`'s lease run out, as it would after `LEASE` with no word from its worker."""
+    expired = await _now(conn) - timedelta(seconds=1)
+    await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(lease_until=expired))
+    return replace(task, lease_until=expired)
+
+
 async def test_claim_takes_due_queued_tasks_by_priority_then_age(conn: AsyncConnection) -> None:
     job_id = await _job(conn)
     old, new, urgent = await _tasks(conn, job_id, 3)
@@ -78,12 +92,7 @@ async def test_claim_leases_the_task_to_the_worker_and_counts_the_attempt(conn: 
     task = await _claim_one(conn, "worker-a")
 
     row = await _row(conn, task_id)
-    assert (row.status, row.claimed_by, row.attempts, row.lease_until) == (
-        "claimed",
-        "worker-a",
-        2,
-        await _now(conn) + LEASE,
-    )
+    assert (row.status, row.claimed_by, row.attempts, row.lease_until) == ("claimed", "worker-a", 2, task.lease_until)
     assert (task.id, task.job_id, task.url, task.attempts, task.claimed_by) == (
         task_id,
         job_id,
@@ -91,6 +100,7 @@ async def test_claim_leases_the_task_to_the_worker_and_counts_the_attempt(conn: 
         2,
         "worker-a",
     )
+    assert await _now(conn) + LEASE <= task.lease_until <= await _clock(conn) + LEASE
 
 
 async def test_claim_takes_at_most_n_and_never_the_same_task_twice(conn: AsyncConnection) -> None:
@@ -268,3 +278,72 @@ async def test_releasing_an_unstarted_task_returns_it_without_spending_an_attemp
     row = await _row(conn, task_id)
     assert (row.status, row.attempts, row.claimed_by, row.lease_until) == ("queued", 0, None, None)
     assert (await _claim_one(conn)).id == task_id
+
+
+async def test_after_a_release_and_a_reclaim_by_the_same_worker_the_old_claim_cannot_finish(
+    conn: AsyncConnection,
+) -> None:
+    job_id = await _job(conn)
+    [task_id] = await _tasks(conn, job_id, 1)
+    stale = await _claim_one(conn, "w1")
+    await release_task(conn, stale)
+    current = await _claim_one(conn, "w1")
+    # Same worker, same attempt count: only the lease tells the two claims apart.
+    assert (current.claimed_by, current.attempts) == (stale.claimed_by, stale.attempts)
+
+    with pytest.raises(LeaseLost):
+        await complete_task(conn, stale, "extracted")
+
+    await complete_task(conn, current, "extracted")
+    assert (await _row(conn, task_id)).status == "done"
+
+
+async def test_an_expired_lease_is_requeued_with_backoff_and_the_old_claim_is_fenced_out(
+    conn: AsyncConnection,
+) -> None:
+    job_id = await _job(conn)
+    expired_id, live_id = await _tasks(conn, job_id, 2)
+    expiring, live = await claim_tasks(conn, "w1", 2)
+    stale = await _expire(conn, expiring)
+
+    released = await release_expired_leases(conn)
+
+    assert released == 1
+    row = await _row(conn, expired_id)
+    assert (row.status, row.claimed_by, row.lease_until, row.attempts, row.last_error) == (
+        "queued",
+        None,
+        None,
+        1,
+        "lease expired",
+    )
+    assert row.next_attempt_at == await _now(conn) + timedelta(seconds=30)
+    assert (await _row(conn, live_id)).status == "claimed"
+    with pytest.raises(LeaseLost):
+        await complete_task(conn, stale, "extracted")
+    await complete_task(conn, live, "extracted")
+    assert await _job_state(conn, job_id) == ("running", [])
+
+
+async def test_an_expired_lease_on_the_last_attempt_fails_the_task_and_settles_the_job(
+    conn: AsyncConnection,
+) -> None:
+    job_id = await _job(conn)
+    [task_id] = await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
+    await _expire(conn, await _claim_one(conn))
+
+    assert await release_expired_leases(conn) == 1
+
+    row = await _row(conn, task_id)
+    assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 3, "lease expired")
+    assert await _job_state(conn, job_id) == ("failed", ["failed"])
+
+
+async def test_releasing_with_no_expired_lease_changes_nothing(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    [task_id, _] = await _tasks(conn, job_id, 2)
+    await _claim_one(conn)
+
+    assert await release_expired_leases(conn) == 0
+
+    assert (await _row(conn, task_id)).status == "claimed"

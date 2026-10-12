@@ -1,9 +1,14 @@
 """The task queue (SPEC-01 §4.3): `url_task` rows claimed with `FOR UPDATE SKIP LOCKED`, leased, retried with
 backoff, and settled into their job's status.
 
-A claim is fenced by `(claimed_by, attempts)`: every claim increments `attempts`, so once a lease is lost (the task
-was requeued, and maybe claimed again, even by the same worker) the old `ClaimedTask` can no longer finish the task,
-and `LeaseLost` makes the caller roll back whatever it wrote for it.
+A claim is fenced by its `(claimed_by, lease_until)`. Each claim sets `lease_until` from `clock_timestamp()`, which,
+unlike `now()`, advances within a transaction, so no two claims of a task share it; `attempts` would not do, as
+`release_task` gives one back. Once a lease is lost (the task was requeued, and maybe claimed again, even by the same
+worker) the old `ClaimedTask` can no longer finish the task, and `LeaseLost` makes the caller roll back whatever it
+wrote for it.
+
+A lease runs out when its worker died or hung; `release_expired_leases` (the scheduler, every minute) counts that as
+a transient failure of the attempt.
 
 Finishing a task settles its job in the same transaction. The job row is locked first, so of two workers finishing
 a job's last two tasks, the second one waits, then sees the first one's task as finished and ends the job.
@@ -11,10 +16,10 @@ a job's last two tasks, the second one waits, then sees the first one's task as 
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Executable, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import (
@@ -47,6 +52,10 @@ class ClaimedTask:
     depth: int
     parent_task_id: UrlTaskId | None
     claimed_by: str
+    lease_until: datetime
+
+
+_CLAIMED_COLUMNS: Final = tuple(getattr(UrlTask, field) for field in ClaimedTask.__dataclass_fields__)
 
 
 class LeaseLost(Exception):
@@ -66,10 +75,15 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     claim = (
         update(UrlTask)
         .where(UrlTask.id.in_(due))
-        .values(status="claimed", claimed_by=worker, lease_until=func.now() + LEASE, attempts=UrlTask.attempts + 1)
-        .returning(*(getattr(UrlTask, field) for field in ClaimedTask.__dataclass_fields__))
+        .values(
+            status="claimed",
+            claimed_by=worker,
+            lease_until=func.clock_timestamp() + LEASE,
+            attempts=UrlTask.attempts + 1,
+        )
+        .returning(*_CLAIMED_COLUMNS)
     )
-    tasks = [ClaimedTask(**row._mapping) for row in await conn.execute(claim)]
+    tasks = await _claimed(conn, claim)
     if tasks:
         await start_jobs(conn, {task.job_id for task in tasks})
     # UPDATE ... RETURNING does not keep the subquery's order.
@@ -101,6 +115,27 @@ async def release_task(conn: AsyncConnection, task: ClaimedTask) -> None:
     await _move(conn, task, "queued", attempts=UrlTask.attempts - 1)
 
 
+async def release_expired_leases(conn: AsyncConnection) -> int:
+    """Requeue, after the usual backoff, or fail on the last attempt, every claimed task whose lease has run out
+    (§4.3), and return how many there were. Tasks a worker is finishing right now are skipped; the next run sees them.
+    """
+    expired = (
+        select(*_CLAIMED_COLUMNS)
+        .where(UrlTask.status == "claimed", UrlTask.lease_until < func.now())
+        # Job by job, so that two schedulers lock job rows in the same order.
+        .order_by(UrlTask.job_id, UrlTask.id)
+        .with_for_update(skip_locked=True)
+    )
+    tasks = await _claimed(conn, expired)
+    for task in tasks:
+        await fail_task(conn, task, "lease expired", transient=True)
+    return len(tasks)
+
+
+async def _claimed(conn: AsyncConnection, statement: Executable) -> list[ClaimedTask]:
+    return [ClaimedTask(**row._mapping) for row in await conn.execute(statement)]
+
+
 async def _finish(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
     await _move(conn, task, target, **values)
     await _settle_job(conn, task.job_id)
@@ -108,7 +143,7 @@ async def _finish(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, 
 
 async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
     """Move a claimed task along the state machine, if the claim still holds the lease."""
-    fence = (UrlTask.claimed_by == task.claimed_by, UrlTask.attempts == task.attempts)
+    fence = (UrlTask.claimed_by == task.claimed_by, UrlTask.lease_until == task.lease_until)
     try:
         await transition_task(conn, task.id, target, fence=fence, **values)
     except InvalidTransition as lost:
