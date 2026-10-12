@@ -16,13 +16,8 @@ crawlerai = "crawlerai.cli:main"
 requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/crawlerai"]
-
 [tool.ruff]
 line-length = 120
-target-version = "py312"
-src = ["src", "tests"]
 
 [tool.ruff.lint]
 # S102 (exec) and S307 (eval) come with "S": LLM output is never executed (ARCHITECTURE §18).
