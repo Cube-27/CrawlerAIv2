@@ -43,9 +43,11 @@ SchemaStatus = Literal["active", "retired"]
 JobKind = Literal["scrape", "batch_scrape", "map", "crawl", "extract", "learn"]
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 TaskStatus = Literal["queued", "claimed", "done", "failed", "cancelled"]
-TaskOutcome = Literal[
-    "extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match", "failed"
+# The outcomes of a task that ran to the end (status `done`); `failed` is the outcome of a `failed` task.
+FinishedOutcome = Literal[
+    "extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match"
 ]
+TaskOutcome = Literal[FinishedOutcome, "failed"]
 
 
 def _one_of(column: str, values: Any) -> str:
@@ -163,6 +165,11 @@ class UrlTask(Base):
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint("depth >= 0", name="depth_non_negative"),
         Index(None, "status", "next_attempt_at", "priority"),
+        # A crawl enqueues each canonical URL once per job (SPEC-10 §4). Its index, led by `job_id`, also serves the
+        # per-job task counts that settle a job (`crawlerai.db.queue`).
+        UniqueConstraint("job_id", "canonical_url"),
+        # Settling a job first asks whether any of its tasks is still open (`crawlerai.db.queue`).
+        Index(None, "job_id", postgresql_where=text("status IN ('queued', 'claimed')")),
     )
 
     id: Mapped[UrlTaskId] = mapped_column(primary_key=True, default=uuid7)

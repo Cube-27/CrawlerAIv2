@@ -32,9 +32,9 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-01 PR 3 (in progress); SPEC-02 PR 2; then SPEC-01 PR 4/6/7.
+- Next: SPEC-02 PR 2 (in progress); SPEC-01 PR 4; then SPEC-01 PR 6/7.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
-- Follow-up: `url_task` UNIQUE (`job_id`, `canonical_url`) is needed by SPEC-10 §4 but not listed in SPEC-01 §4.2; SPEC-01 PR 3 or SPEC-10 adds it. Indexes on `url_task.job_id` and `job_event (job_id, id)` come with the rows that add those queries (SPEC-01 PR 3, SPEC-10), each justified by its query.
+- Follow-ups for SPEC-01 PR 4 (from #17's review): (1) make the lease fence unique per claim (add `lease_until` to `ClaimedTask` and the fence) or correct the `db/queue.py` docstring, and pin release → reclaim → stale finish with a test; (2) `tests/db/conftest.py` deletes every job in `CRAWLERAI_DATABASE_URL`: scope cleanup to the test's own jobs or require a dedicated test DB; (3) a DB error inside `_run`'s except branch exits the worker, leaving claims to the 10-minute lease: note it, or handle it. Index on `job_event (job_id, id)` comes with SPEC-10's SSE query.
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
@@ -58,7 +58,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | Core tables: project, api_key, site, schema_def | done (#11) | |
 | 2 | Job, url_task, job_event tables and state machine | done (#14) | |
-| 3 | Queue claim/lease/retry + worker loop skeleton | todo | |
+| 3 | Queue claim/lease/retry + worker loop skeleton | done (#17) | Adds `url_task` UNIQUE (`job_id`, `canonical_url`) (migration 0004). |
 | 4 | Scheduler loop + lease release | todo | |
 | 5 | Object store (fs, s3) + capture bundle format | done (#13) | |
 | 6 | capture, extraction, candidate, record, url_state, progressive_state, extraction_config tables | todo | |

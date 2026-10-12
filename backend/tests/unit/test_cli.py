@@ -1,3 +1,4 @@
+import asyncio
 import json
 import shutil
 import subprocess
@@ -5,7 +6,9 @@ import sysconfig
 
 import pytest
 
+from crawlerai import cli
 from crawlerai.cli import main
+from crawlerai.core.settings import Settings
 
 
 def test_version_flag_prints_package_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -48,3 +51,18 @@ def test_installed_console_script_writes_identical_lf_only_openapi_on_every_run(
     assert runs[0] == runs[1]
     assert b"\r" not in runs[0]
     assert runs[0].endswith(b"}\n")
+
+
+def test_worker_runs_the_worker_loop_with_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
+    calls: list[tuple[str, dict[str, object], bool]] = []
+
+    async def run_worker(settings: Settings, handlers: dict[str, object], stop: asyncio.Event) -> None:
+        calls.append((settings.database_url.get_secret_value(), handlers, stop.is_set()))
+
+    monkeypatch.setattr(cli, "run_worker", run_worker)
+
+    main(["worker"])
+
+    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", {}, False)]

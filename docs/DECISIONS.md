@@ -623,3 +623,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: stdlib `html.parser` (no HTML5 tree building).
 - Why: ARCHITECTURE §19 names it for HTML.
 - Reversible: yes
+
+### D-0119 — Handlers take a `ClaimedTask` snapshot and an `AsyncConnection`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: `TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]`; `ClaimedTask` is a frozen dataclass of the claimed row.
+- Alternatives: The ORM `UrlTask` and an `AsyncSession`, as §4.3 sketches.
+- Why: `db.jobs` works on `AsyncConnection`; an ORM instance expires on rollback, exactly when the worker needs it to record the failure.
+- Reversible: yes, until handlers exist
+
+### D-0120 — Task status follows outcome
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: `Finished(outcome)` with any outcome but `failed` ends the task `done`; `Failed` ends it `failed` or requeues it. `TaskOutcome = Literal[FinishedOutcome, "failed"]`.
+- Alternatives: `blocked`/`not_found` as status `failed`.
+- Why: D-0006 counts tasks that errored, not pages that were blocked or missing (§4.3).
+- Reversible: yes
+
+### D-0121 — Handler exceptions are transient
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: An uncaught exception requeues the task with backoff (at most 3 attempts); a missing handler for a job kind fails the task at once.
+- Alternatives: Treat exceptions as permanent.
+- Why: DB blips and network errors surface as exceptions; retrying a bug costs at most two attempts.
+- Reversible: yes
+
+### D-0122 — Claims are fenced by (`claimed_by`, `attempts`); one transaction per task
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: Finishing updates require the claim's worker and attempt count; a mismatch raises `LeaseLost` and the handler's writes roll back. A release gives back the attempt, so the fence holds only while released snapshots are discarded (follow-up in ACTIVE.md).
+- Alternatives: Fence on `claimed_by` only; commit handler writes separately.
+- Why: A lost lease must not let two runs both record a result (§4.3).
+- Reversible: yes
+
+### D-0123 — The claim starts the job; settling locks the job row
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: `claim_tasks` moves claimed tasks' `queued` jobs to `running`. Finishing a task locks its job row (`FOR UPDATE`), skips settling while an open task remains, then applies `settled_status`; a job no longer `running` is left alone.
+- Alternatives: Settle without a lock.
+- Why: Exactly one worker ends each job (§4.3).
+- Reversible: yes
+
+### D-0124 — Worker constants
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: Claim batch 10; idle poll 1 s; `last_error` cut to 2048 UTF-8 bytes on a character boundary; URLs (RFC 3986 scheme + `://`) become `<url>` when `log_redact_urls` is set. On stop, unstarted claimed tasks are requeued with their attempt given back.
+- Alternatives: Batch 1; leave unstarted tasks to lease expiry.
+- Why: §19 sizing makes batch size uncritical; a clean stop shouldn't strand tasks.
+- Reversible: yes
+
+### D-0125 — `url_task` UNIQUE (`job_id`, `canonical_url`) and a partial index on open tasks
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 3 (#17) · Status: decided
+- Decision: Migration 0004 adds both; no separate `job_id` index, since the UNIQUE's index leads with it.
+- Alternatives: Leave the UNIQUE to SPEC-10.
+- Why: SPEC-10 §4 needs the UNIQUE; the partial index keeps settling O(log n) per task (10k test: 268 s → ~80 s).
+- Reversible: yes

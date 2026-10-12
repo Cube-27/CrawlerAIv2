@@ -5,10 +5,10 @@ its table, with a compare-and-set update, so two workers racing on one row canno
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any, Final
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import ColumnElement, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
@@ -36,18 +36,21 @@ class InvalidTransition(Exception):
         super().__init__(f"{table} {row_id}: {current} -> {target}")
 
 
+def blocking_statuses(*, cancel_requested: bool) -> tuple[TaskStatus, ...]:
+    """The task statuses that keep a running job from ending: a cancelled job waits only for its claimed tasks, and
+    its queued tasks are not run (SPEC-10 §4.2); any other job also waits for its queued tasks (§4.3)."""
+    return ("claimed",) if cancel_requested else ("claimed", "queued")
+
+
 def settled_status(counts: Mapping[TaskStatus, int], *, cancel_requested: bool) -> JobStatus | None:
     """The status a running job ends in, given how many of its tasks are in each status; `None` while it continues.
 
-    A cancelled job ends once no task is claimed, and its queued tasks are not run (SPEC-10 §4.2). Otherwise a job
-    ends when no task is queued or claimed, and fails only when every task failed (§4.3, D-0006).
+    A job fails only when every task failed (§4.3, D-0006).
     """
-    if counts.get("claimed", 0):
+    if any(counts.get(status, 0) for status in blocking_statuses(cancel_requested=cancel_requested)):
         return None
     if cancel_requested:
         return "cancelled"
-    if counts.get("queued", 0):
-        return None
     failed = counts.get("failed", 0)
     return "failed" if failed and failed == sum(counts.values()) else "completed"
 
@@ -65,11 +68,13 @@ async def _move[S: str](
     transitions: Mapping[S, frozenset[S]],
     target: S,
     values: Mapping[str, Any],
+    fence: Sequence[ColumnElement[bool]] = (),
 ) -> None:
-    """Compare-and-set `row_id` to `target` from any status with an edge to it, or raise `InvalidTransition`."""
+    """Compare-and-set `row_id` to `target` from any status with an edge to it, or raise `InvalidTransition`.
+    `fence` adds conditions the row must also meet."""
     sources = [status for status, targets in transitions.items() if target in targets]
     moved = await conn.execute(
-        update(model).where(model.id == row_id, model.status.in_(sources)).values(status=target, **values)
+        update(model).where(model.id == row_id, model.status.in_(sources), *fence).values(status=target, **values)
     )
     if moved.rowcount == 0:
         current = (await conn.execute(select(model.status).where(model.id == row_id))).scalar_one()
@@ -90,7 +95,23 @@ async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus
         await record_event(conn, job_id, target)
 
 
-async def transition_task(conn: AsyncConnection, task_id: UrlTaskId, target: TaskStatus) -> None:
-    """Move a url_task to `target`. A requeued task gives up its lease, so it looks like any other queued task."""
-    values = {"claimed_by": None, "lease_until": None} if target == "queued" else {}
-    await _move(conn, UrlTask, task_id, TASK_TRANSITIONS, target, values)
+async def start_jobs(conn: AsyncConnection, job_ids: Collection[JobId]) -> None:
+    """Move those of `job_ids` that are still queued to `running`; a job that has started is left as it is."""
+    await conn.execute(
+        update(Job).where(Job.id.in_(job_ids), Job.status == "queued").values(status="running", started_at=func.now())
+    )
+
+
+async def transition_task(
+    conn: AsyncConnection,
+    task_id: UrlTaskId,
+    target: TaskStatus,
+    *,
+    fence: Sequence[ColumnElement[bool]] = (),
+    **values: Any,
+) -> None:
+    """Move a url_task to `target`, setting `values` too. A requeued task gives up its lease, so it looks like any
+    other queued task."""
+    if target == "queued":
+        values |= {"claimed_by": None, "lease_until": None}
+    await _move(conn, UrlTask, task_id, TASK_TRANSITIONS, target, values, fence)
