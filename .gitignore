@@ -12,6 +12,8 @@ secrets/
 /captures/
 /eval-private/
 /var/
+# Local filesystem object store used by `make dev` (SPEC-00 §4.4).
+.data/
 *.zst
 eval-aggregate.json
 hidden_hosts*.txt
