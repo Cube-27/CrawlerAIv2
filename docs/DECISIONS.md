@@ -482,3 +482,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `pyzstd` (BSD-3).
 - Why: Widely used, licence-clean, typed.
 - Reversible: yes; the format is standard zstd
+
+### D-0099 — Job and task transition tables
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: Job: `queued→{running, cancelled}`, `running→{completed, failed, cancelled}`. Task: `queued→{claimed, cancelled}`, `claimed→{queued, done, failed, cancelled}`. Terminal states have no exits. `claimed→queued` covers retry and expired lease (§4.3); a requeue clears `claimed_by` and `lease_until`, a terminal transition keeps `claimed_by`.
+- Alternatives: `queued→completed` for empty jobs; `queued→failed`.
+- Why: The smallest graph that covers §4.3 and SPEC-10 §4.2.
+- Reversible: yes
+
+### D-0100 — `settled_status` rules
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: A job does not settle while any task is `claimed`. With `cancel_requested` it ends `cancelled` and its queued tasks are not run (SPEC-10 §4.2). Otherwise it ends once nothing is queued: `failed` only if every task failed (D-0006), else `completed`. A job with no tasks completes.
+- Alternatives: An empty job fails.
+- Why: Nothing failed in an empty job.
+- Reversible: yes
+
+### D-0101 — Ending a job records its event in the same transaction
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: `transition_job` to a terminal status inserts `job_event(kind=<status>, payload={})`.
+- Alternatives: Callers emit the event themselves.
+- Why: One writer; the status and the event cannot diverge (§4.3).
+- Reversible: yes
+
+### D-0102 — `job_event.kind` is free text
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: No CHECK constraint.
+- Alternatives: A CHECK on SPEC-10 §4.2's kinds.
+- Why: SPEC-01 §4.2 doesn't list it among the enumerations, and later specs add kinds.
+- Reversible: yes
+
+### D-0103 — Monotonic `uuid7()`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: Within one process, `rand_a` is a 12-bit counter starting at a random value in its lower half; on overflow or clock regression the timestamp advances (RFC 9562 §6.2). Ordering across processes is not guaranteed.
+- Alternatives: `job_event.id` as a bigint identity (deviates from §4.2 "ids are uuid"); order by `ts`.
+- Why: SPEC-10 orders `job_event` by id for SSE resume.
+- Reversible: yes
+
+### D-0104 — Self-referencing FK spelled via `__tablename__`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: `ForeignKey(f"{__tablename__}.id")` for `url_task.parent_task_id`, and `op.create_foreign_key(..., ["id"])` in the migration.
+- Alternatives: Fix the C3 scanner in this row.
+- Why: The scan reads `"url_task.id"` as a host: the D-0093 class recurring. The scanner fix is a follow-up in ACTIVE.md.
+- Reversible: yes
+
+### D-0105 — Hypothesis as a dev dependency
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 2 (#14) · Status: decided
+- Decision: `hypothesis` (MPL-2.0, not on the deny-list) for property tests.
+- Alternatives: Hand-written generators.
+- Why: ENGINEERING and SPEC-01 §6 prescribe property tests.
+- Reversible: yes

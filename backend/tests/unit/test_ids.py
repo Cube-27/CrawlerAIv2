@@ -27,7 +27,7 @@ def test_uuid7_values_created_in_later_milliseconds_sort_after_earlier_ones() ->
     assert first < second
 
 
-def test_uuid7_values_are_distinct_within_one_millisecond() -> None:
-    values = {uuid7() for _ in range(10_000)}
+def test_uuid7_values_from_one_process_strictly_increase() -> None:
+    values = [uuid7() for _ in range(10_000)]
 
-    assert len(values) == 10_000
+    assert values == sorted(set(values))
