@@ -405,3 +405,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: none.
 - Why: Matches the published packages; no architecture change.
 - Reversible: yes
+
+### D-0088 — UUIDv7 generated in-repo
+- Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided
+- Decision: `crawlerai.core.ids.uuid7()` implements RFC 9562 §5.7, because Python 3.12 has no `uuid.uuid7`.
+- Alternatives: a third-party UUIDv7 package.
+- Why: About ten tested lines and no dependency. Switch to the stdlib on Python 3.14.
+- Reversible: yes
+
+### D-0089 — `project.name` is UNIQUE
+- Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided
+- Decision: The `default` project is found by name; its ID is a v7 generated in the migration.
+- Alternatives: a fixed well-known UUID.
+- Why: Keeps SPEC-01 §4.2's v7 IDs.
+- Reversible: yes
+
+### D-0090 — `site.fetch_method` defaults to `http`
+- Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided
+- Decision: A new site starts at the `http` rung (server default).
+- Alternatives: no default.
+- Why: ARCHITECTURE §7.1: HTTP is the default rung, and `fetch_method` is then recorded from evidence.
+- Reversible: yes
+
+### D-0091 — Column shapes left open by ARCHITECTURE §6
+- Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided
+- Decision: `site.robots_snapshot` is nullable text; `site.crawl_delay_ms` is a nullable int ≥ 0; `api_key.hashed_key` is unique text; `api_key.webhook_secret` is NOT NULL; `schema_def` has UNIQUE (`name`, `version`), `version >= 1`, and `required_groups` defaults to `[]`.
+- Alternatives: a jsonb robots snapshot; a nullable webhook secret.
+- Why: The most conservative reading. SPEC-02 can add parsed robots columns.
+- Reversible: yes
+
+### D-0092 — DB tests skip without a database URL; CI always runs them
+- Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided
+- Decision: `tests/db` skips when `CRAWLERAI_DATABASE_URL` is unset. CI sets it and runs pytest after the migration round trip, using the `anyio` plugin.
+- Alternatives: pytest-asyncio; fail without a DB.
+- Why: No new dependency, and the tests always run in CI.
+- Reversible: yes
+
+### D-0093 — Foreign keys reference columns, not `"table.column"` strings
+- Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided
+- Decision: `ForeignKey(Project.id)` and `project.c.id`.
+- Alternatives: allowlist `project.id` in the C3 scanner.
+- Why: The scan reads `"project.id"` as a host (`.id` is a TLD). See the follow-up in ACTIVE.md.
+- Reversible: yes
