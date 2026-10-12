@@ -40,6 +40,11 @@ _NON_PUBLIC = [
     "::ffff:127.0.0.1",  # IPv4-mapped loopback, RFC 4291
     "::ffff:10.0.0.1",  # IPv4-mapped private
     "::ffff:169.254.169.254",  # IPv4-mapped metadata
+    "::127.0.0.1",  # IPv4-compatible (deprecated, RFC 4291 §2.5.5.1), inside the IETF-reserved ::/8
+    "::10.0.0.1",
+    "::169.254.169.254",
+    "::93.184.215.14",  # IPv4-compatible is rejected even when the embedded address is public
+    "4000::1",  # outside 2000::/3, the only IPv6 global unicast allocation (IANA IPv6 address space)
     "64:ff9b::7f00:1",  # NAT64 well-known prefix embedding 127.0.0.1, RFC 6052
     "64:ff9b::a9fe:a9fe",  # NAT64 embedding 169.254.169.254
     "2002:7f00:1::1",  # 6to4 embedding 127.0.0.1, RFC 3056
@@ -87,6 +92,12 @@ def test_literal_reserved_ip_is_rejected_without_dns(address: str) -> None:
     host = f"[{address}]" if ":" in address else address
     assert _reason(SafeConnector(resolver), f"http://{host}/") == "private_address"
     assert resolver.calls == []
+
+
+def test_host_that_cannot_be_idna_encoded_is_rejected_as_host() -> None:
+    # The system resolver encodes the host (IDNA, RFC 5891) before any lookup; a label over 63 octets
+    # (RFC 1035 §2.3.4) fails there, so no query leaves the process.
+    assert _reason(SafeConnector(), f"https://{'a' * 64}.example.com/") == "host"
 
 
 def test_any_reserved_address_among_several_rejects() -> None:
