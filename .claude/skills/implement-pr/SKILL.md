@@ -12,7 +12,8 @@ You own one row of `docs/plans/ACTIVE.md`, from `todo` to an open, verified PR. 
 
 1. Read `CLAUDE.md`, then `docs/plans/ACTIVE.md`. Pick the assigned row, or the first `todo` row whose spec
    dependencies (`docs/specs/README.md`) and earlier rows in the same spec are `done`.
-2. Create a worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
+2. If an orchestrator assigned you the row, your cwd is already the row's worktree: use it. Otherwise, create a
+   worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
    `spec-NN/pr-M-<short-name>`. `<main>` is the main checkout (the first entry of `git worktree list`), so the
    worktree sits beside the repo, never inside it. Never work in the main checkout. In Git Bash, give git
    Windows-style paths (`C:/Projects/...`); `/c/...` is mangled to `C:/c/...`.

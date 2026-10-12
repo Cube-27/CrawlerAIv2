@@ -33,7 +33,8 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
    workers and reviewers together) alive at any time. Count them with `git worktree list` (not counting the main
    checkout) and `herdr agent list` before starting either. Within those limits, run as many ready rows in parallel
    as can proceed independently. Two workers never run rows that edit the same migration. For each assignment:
-   - create the worktree at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, and start the worker as a herdr agent
+   - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
+     `spec-NN/pr-M-<short-name>`, and start the worker as a herdr agent
      in its own pane, with the worktree as its cwd. Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator
      assigned you this row. Report the PR URL when done."
 3. **On a worker report.** Run `/review-pr <n>` in a fresh reviewer agent, never the worker itself.
