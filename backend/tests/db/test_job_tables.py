@@ -2,7 +2,7 @@ import uuid
 from typing import Any, get_args
 
 import pytest
-from sqlalchemy import Insert, insert, select
+from sqlalchemy import Insert, func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -67,7 +67,12 @@ async def test_a_task_links_to_its_parent(conn: AsyncConnection) -> None:
     job_id = await _job_id(conn)
     parent = (await conn.execute(_task(job_id).returning(UrlTask.id))).scalar_one()
 
-    child = (await conn.execute(_task(job_id, parent_task_id=parent, depth=1).returning(UrlTask.id))).scalar_one()
+    child_url = "https://example.test/p/2"
+    child = (
+        await conn.execute(
+            _task(job_id, url=child_url, canonical_url=child_url, parent_task_id=parent, depth=1).returning(UrlTask.id)
+        )
+    ).scalar_one()
 
     assert (await conn.execute(select(UrlTask.parent_task_id).where(UrlTask.id == child))).scalar_one() == parent
 
@@ -120,6 +125,21 @@ async def test_task_rejects_values_outside_its_domain(
 
     with pytest.raises(IntegrityError, match=constraint):
         await conn.execute(_task(job_id, **columns))
+
+
+async def test_a_job_holds_each_canonical_url_once(conn: AsyncConnection) -> None:
+    job_id = await _job_id(conn)
+    await conn.execute(_task(job_id, url="https://example.test/p/1?ref=a"))
+
+    with pytest.raises(IntegrityError, match="uq_url_task_job_id_canonical_url"):
+        await conn.execute(_task(job_id, url="https://example.test/p/1?ref=b"))
+
+
+async def test_two_jobs_may_hold_the_same_canonical_url(conn: AsyncConnection) -> None:
+    await conn.execute(_task(await _job_id(conn)))
+    await conn.execute(_task(await _job_id(conn)))
+
+    assert (await conn.execute(select(func.count()).select_from(UrlTask))).scalar_one() == 2
 
 
 async def test_task_requires_an_existing_job(conn: AsyncConnection) -> None:
