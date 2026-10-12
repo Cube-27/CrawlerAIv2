@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # SPEC-00 §4.6. Later SPEC-00 rows add lint-imports, the replay split, alembic and the other jobs.
+  backend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.28"
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check
+      - run: uv run --frozen ruff format --check
+      - run: uv run --frozen mypy src tests
+      - run: uv run --frozen pytest

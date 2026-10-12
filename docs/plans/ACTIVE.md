@@ -11,7 +11,7 @@ it depends on is `done`. Within a spec, rows run in order unless the spec says o
 - `blocked`: the Notes link a `DECISIONS.md` entry.
 - `human`: waits on a human-only task (below).
 
-Updated: 2026-10-12. No work has started.
+Updated: 2026-10-12.
 
 ## Human-only tasks
 
@@ -31,15 +31,15 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- Next: SPEC-00 PR 1.
-- In progress: none.
+- Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
+- Next: SPEC-00 PR 2.
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Repo skeleton and backend toolchain | todo | |
+| 1 | Repo skeleton and backend toolchain | done (#1) | Includes the CI backend job (owner request). |
 | 2 | Postgres via compose, alembic baseline, `make dev` | todo | |
 | 3 | Frontend skeleton with HeroUI v3 | todo | |
 | 4 | OpenAPI → TS client pipeline | todo | |
