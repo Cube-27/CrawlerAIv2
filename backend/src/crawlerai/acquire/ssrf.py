@@ -53,11 +53,15 @@ def is_public(ip: IPAddress) -> bool:
     loopback, link-local (including the 169.254.169.254 metadata address), unique-local (RFC 4193), unspecified,
     shared, documentation and reserved ranges. Multicast (RFC 5771, RFC 4291 §2.7) is excluded on top. An IPv6
     address that embeds an IPv4 address (RFC 4291 §2.5.5.2 mapped, RFC 6052 NAT64) is public only if that IPv4
-    address is."""
+    address is. Any other IPv6 address must also be outside the IANA IPv6 address space's reserved blocks:
+    `is_global` accepts `::/96` (IPv4-compatible, deprecated by RFC 4291 §2.5.5.1, inside the IETF-reserved
+    `::/8`), which some stacks route to the embedded IPv4 address."""
     if isinstance(ip, IPv6Address):
         embedded = ip.ipv4_mapped or (IPv4Address(int(ip) & 0xFFFFFFFF) if ip in _NAT64 else None)
         if embedded is not None:
             return is_public(embedded)
+        if ip.is_reserved:
+            return False
     return ip.is_global and not ip.is_multicast
 
 
@@ -71,6 +75,9 @@ async def resolve_public(host: str, resolver: Resolver = system_resolver) -> IPA
     """Resolve once and return the address to pin; reject if resolution fails or any address is not public."""
     try:
         addresses = await resolver(host)
+    except UnicodeError as e:
+        # The host can't be IDNA-encoded (RFC 5891), e.g. a label over 63 octets: no lookup was made.
+        raise SsrfRejected("host") from e
     except OSError as e:
         raise SsrfRejected("dns") from e
     if not addresses:
