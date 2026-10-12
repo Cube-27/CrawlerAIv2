@@ -43,6 +43,7 @@ addopts = ["--import-mode=importlib", "--strict-markers"]
 
 [dependency-groups]
 dev = [
+    "import-linter>=2,<3",
     "mypy>=1,<2",
     "pytest>=8,<10",
     "ruff>=0.17,<1",
