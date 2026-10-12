@@ -243,3 +243,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: put them under `backend/tests/`.
 - Why: The tools run as CI runs them (subprocess) and need no package of their own.
 - Reversible: yes
+
+### D-0065 — Minimal `/healthz` lands with `make dev`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Decision: `crawlerai/api/app.py` has `create_app()` with `GET /healthz` → 200 `{"status":"ok"}`. SPEC-07 PR 1 extends the factory and adds the DB ping.
+- Alternatives: wait for SPEC-07; add the DB ping now.
+- Why: SPEC-00 PR 2's done-when needs an API answering `/healthz`; this is the smallest shape that does.
+- Reversible: yes
+
+### D-0066 — `make dev` starts only what exists
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Decision: compose up `--wait` → `uv sync` → `alembic upgrade head` → `uvicorn --reload`. The rows that add the worker, scheduler and `pnpm dev` also add a process runner.
+- Alternatives: honcho now, with placeholders.
+- Why: There's nothing else to run yet.
+- Reversible: yes
+
+### D-0067 — Local credentials and the `custodian` role
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Decision: Compose uses throwaway passwords bound to `127.0.0.1`. `custodian` is `NOLOGIN` locally, and `.env.example` leaves `EVAL_PRIVATE_*` empty. `make dev` copies `.env.example` to `.env` if missing and exports it (Settings doesn't read `.env`, D-0047).
+- Alternatives: a custodian password in the repo; `.env` loading in Settings.
+- Why: No custodian credential ever exists in the repo (C1).
+- Reversible: yes
+
+### D-0068 — Alembic layout
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Decision: `backend/alembic.ini` + `backend/migrations/`. The URL comes from `DatabaseSettings` (the `database_url`-only base of `Settings`). Offline mode is refused. Revision IDs are sequential (`0001`). `target_metadata` stays `None` until SPEC-01.
+- Alternatives: read the env var in `env.py`; full Settings; hex revision IDs.
+- Why: One settings boundary; sequential IDs make review order obvious.
+- Reversible: yes
+
+### D-0069 — Backend Dockerfile in `infra/`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Decision: `infra/Dockerfile`, built from `backend/`: `python:3.12-slim` + uv 0.11.28, runs as non-root `crawlerai`, copies only what it runs, and its default command runs the API.
+- Alternatives: leave it to a later row.
+- Why: SPEC-00 §2 asks for one backend image, and the row's scope is `infra/*`.
+- Reversible: yes
+
+### D-0070 — CI and the image install dependencies from wheels only
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Decision: `uv sync --frozen --no-build --no-install-project`, then `uv build --wheel` + `uv pip install --no-build --no-deps` for the project. Later steps use `uv run --no-sync --no-build`. Local dev keeps the editable sync. SonarCloud S8544 on the wheel install is a false positive (it resolves nothing).
+- Alternatives: `uv sync --frozen` (builds sdist dependencies; S8541).
+- Why: No third-party build script runs in CI or the image.
+- Reversible: yes
