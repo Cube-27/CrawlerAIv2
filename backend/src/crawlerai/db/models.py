@@ -168,6 +168,8 @@ class UrlTask(Base):
         # A crawl enqueues each canonical URL once per job (SPEC-10 §4). Its index, led by `job_id`, also serves the
         # per-job task counts that settle a job (`crawlerai.db.queue`).
         UniqueConstraint("job_id", "canonical_url"),
+        # Settling a job first asks whether any of its tasks is still open (`crawlerai.db.queue`).
+        Index(None, "job_id", postgresql_where=text("status IN ('queued', 'claimed')")),
     )
 
     id: Mapped[UrlTaskId] = mapped_column(primary_key=True, default=uuid7)

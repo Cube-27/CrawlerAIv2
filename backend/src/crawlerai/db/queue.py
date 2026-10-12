@@ -127,6 +127,12 @@ async def _settle_job(conn: AsyncConnection, job_id: JobId) -> None:
     job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == job_id).with_for_update())).one()
     if job.status != "running":
         return
+    # Most finished tasks leave others open. The partial index on open tasks answers that without counting every
+    # task of the job, which is linear in the job's size and would run once per task.
+    blocking = ["claimed"] if job.cancel_requested else ["claimed", "queued"]
+    open_task = select(UrlTask.id).where(UrlTask.job_id == job_id, UrlTask.status.in_(blocking)).limit(1)
+    if (await conn.execute(open_task)).first() is not None:
+        return
     counts = await conn.execute(
         select(UrlTask.status, func.count()).where(UrlTask.job_id == job_id).group_by(UrlTask.status)
     )
