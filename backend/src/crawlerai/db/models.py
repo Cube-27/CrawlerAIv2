@@ -87,7 +87,7 @@ class Site(Base):
     )
 
     id: Mapped[SiteId] = mapped_column(primary_key=True, default=uuid7)
-    project_id: Mapped[ProjectId] = mapped_column(ForeignKey("project.id"))
+    project_id: Mapped[ProjectId] = mapped_column(ForeignKey(Project.id))
     host: Mapped[str] = mapped_column(Text, unique=True)
     platform: Mapped[str | None] = mapped_column(Text)
     fetch_method: Mapped[FetchMethod] = mapped_column(Text, server_default=text("'http'"))

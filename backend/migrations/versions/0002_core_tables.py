@@ -58,7 +58,7 @@ def upgrade() -> None:
         _created_at(),
         sa.Column("fetch_method_checked_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id", name="pk_site"),
-        sa.ForeignKeyConstraint(["project_id"], ["project.id"], name="fk_site_project_id_project"),
+        sa.ForeignKeyConstraint(["project_id"], [project.c.id], name="fk_site_project_id_project"),
         sa.UniqueConstraint("host", name="uq_site_host"),
         sa.CheckConstraint("host = lower(host)", name="ck_site_host_lowercase"),
         sa.CheckConstraint("fetch_method IN ('http', 'browser')", name="ck_site_fetch_method"),
