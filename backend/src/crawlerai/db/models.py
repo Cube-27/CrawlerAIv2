@@ -163,6 +163,9 @@ class UrlTask(Base):
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint("depth >= 0", name="depth_non_negative"),
         Index(None, "status", "next_attempt_at", "priority"),
+        # A crawl enqueues each canonical URL once per job (SPEC-10 §4). Its index, led by `job_id`, also serves the
+        # per-job task counts that settle a job (`crawlerai.db.queue`).
+        UniqueConstraint("job_id", "canonical_url"),
     )
 
     id: Mapped[UrlTaskId] = mapped_column(primary_key=True, default=uuid7)
