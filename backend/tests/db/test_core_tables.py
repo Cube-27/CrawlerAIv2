@@ -30,13 +30,10 @@ def _diff(connection: Connection) -> list[Any]:
     return diff
 
 
-async def _default_project_id(conn: AsyncConnection) -> ProjectId:
-    project_id: ProjectId = (await conn.execute(select(Project.id).where(Project.name == "default"))).scalar_one()
-    return project_id
-
-
-def _site(project_id: ProjectId, host: str, **columns: Any) -> Insert:
-    return insert(Site).values(project_id=project_id, host=host, **columns)
+def _site(host: str, **columns: Any) -> Insert:
+    """An insert of a site in the `default` project, unless `project_id` is given."""
+    default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
+    return insert(Site).values(**{"project_id": default_project, "host": host, **columns})
 
 
 def _schema(**columns: Any) -> Insert:
@@ -55,17 +52,14 @@ async def test_migration_creates_exactly_one_default_project(conn: AsyncConnecti
 
 
 async def test_new_rows_get_uuid7_ids_and_utc_creation_times(conn: AsyncConnection) -> None:
-    project_id = await _default_project_id(conn)
-
-    row = (await conn.execute(_site(project_id, "example.test").returning(Site.id, Site.created_at))).one()
+    row = (await conn.execute(_site("example.test").returning(Site.id, Site.created_at))).one()
 
     assert row.id.version == 7
     assert row.created_at.utcoffset().total_seconds() == 0
 
 
 async def test_site_defaults_to_http_fetch_method_with_no_overrides(conn: AsyncConnection) -> None:
-    project_id = await _default_project_id(conn)
-    await conn.execute(_site(project_id, "example.test"))
+    await conn.execute(_site("example.test"))
 
     site = (await conn.execute(select(Site).where(Site.host == "example.test"))).one()
 
@@ -79,17 +73,15 @@ async def test_site_defaults_to_http_fetch_method_with_no_overrides(conn: AsyncC
 
 
 async def test_site_host_is_unique(conn: AsyncConnection) -> None:
-    project_id = await _default_project_id(conn)
-    await conn.execute(_site(project_id, "example.test"))
+    await conn.execute(_site("example.test"))
 
     with pytest.raises(IntegrityError, match="uq_site_host"):
-        await conn.execute(_site(project_id, "example.test"))
+        await conn.execute(_site("example.test"))
 
 
 async def test_hosts_differing_only_by_a_www_label_are_two_sites(conn: AsyncConnection) -> None:
-    project_id = await _default_project_id(conn)
-    await conn.execute(_site(project_id, "example.test"))
-    await conn.execute(_site(project_id, "www.example.test"))
+    await conn.execute(_site("example.test"))
+    await conn.execute(_site("www.example.test"))
 
     count = (await conn.execute(select(func.count()).select_from(Site))).scalar_one()
 
@@ -97,21 +89,20 @@ async def test_hosts_differing_only_by_a_www_label_are_two_sites(conn: AsyncConn
 
 
 async def test_site_host_must_be_lowercase(conn: AsyncConnection) -> None:
-    project_id = await _default_project_id(conn)
-
     with pytest.raises(IntegrityError, match="ck_site_host_lowercase"):
-        await conn.execute(_site(project_id, "Example.test"))
+        await conn.execute(_site("Example.test"))
 
 
 async def test_site_requires_an_existing_project(conn: AsyncConnection) -> None:
     with pytest.raises(IntegrityError, match="fk_site_project_id_project"):
-        await conn.execute(_site(ProjectId(uuid.UUID("00000000-0000-7000-8000-000000000000")), "example.test"))
+        await conn.execute(
+            _site("example.test", project_id=ProjectId(uuid.UUID("00000000-0000-7000-8000-000000000000")))
+        )
 
 
 @pytest.mark.parametrize("fetch_method", get_args(FetchMethod))
 async def test_site_accepts_every_fetch_method(conn: AsyncConnection, fetch_method: str) -> None:
-    project_id = await _default_project_id(conn)
-    await conn.execute(_site(project_id, "example.test", fetch_method=fetch_method))
+    await conn.execute(_site("example.test", fetch_method=fetch_method))
 
     stored = (await conn.execute(select(Site.fetch_method))).scalar_one()
 
@@ -128,10 +119,8 @@ async def test_site_accepts_every_fetch_method(conn: AsyncConnection, fetch_meth
 async def test_site_rejects_values_outside_its_domain(
     conn: AsyncConnection, columns: dict[str, Any], constraint: str
 ) -> None:
-    project_id = await _default_project_id(conn)
-
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(_site(project_id, "example.test", **columns))
+        await conn.execute(_site("example.test", **columns))
 
 
 async def test_schema_def_name_and_version_are_unique(conn: AsyncConnection) -> None:

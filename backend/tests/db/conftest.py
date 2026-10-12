@@ -3,14 +3,16 @@
 The database is migrated to head once per session. Each test runs in a transaction that is rolled back.
 """
 
-import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+
+from crawlerai.core.settings import DatabaseSettings
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
@@ -21,15 +23,18 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(scope="session")
-def migrated() -> None:
-    if not os.environ.get("CRAWLERAI_DATABASE_URL"):
+def database_url() -> str:
+    try:
+        settings = DatabaseSettings()
+    except ValidationError:
         pytest.skip("CRAWLERAI_DATABASE_URL is not set")
     command.upgrade(Config(ALEMBIC_INI), "head")
+    return settings.database_url.get_secret_value()
 
 
 @pytest.fixture
-async def conn(migrated: None) -> AsyncIterator[AsyncConnection]:
-    engine = create_async_engine(os.environ["CRAWLERAI_DATABASE_URL"])
+async def conn(database_url: str) -> AsyncIterator[AsyncConnection]:
+    engine = create_async_engine(database_url)
     async with engine.connect() as connection:
         transaction = await connection.begin()
         yield connection
