@@ -4,6 +4,7 @@ Every host here is reserved by RFC 2606 or RFC 6761. Detection tests pass an exp
 reserved names are not exempted.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -314,3 +315,72 @@ def test_hosts_joined_to_underscores_are_found(tmp_path: Path, empty_allowlist: 
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["a.txt:1: shop.example.com", "b.py:1: jobs.example.net"]
+
+
+IDENTITY = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.com",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.com",
+}
+
+
+def git(root: Path, *args: str) -> None:
+    env = {**os.environ, **IDENTITY}
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, env=env)  # noqa: S603, S607
+
+
+def commit_all(root: Path) -> None:
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "--no-verify", "-m", "c")
+
+
+def test_staged_mode_scans_only_staged_files(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"old.txt": "shop.example.com\n", "new.txt": "clean\n"})
+    commit_all(repo)
+    (repo / "new.txt").write_text("clean\njobs.example.net\n", encoding="utf-8")
+    git(repo, "add", "new.txt")
+
+    result = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["new.txt:2: jobs.example.net"]
+
+
+def test_staged_mode_reads_the_index_not_the_working_tree(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"a.txt": "shop.example.com\n", "b.txt": "clean\n"})
+    (repo / "a.txt").write_text("clean now\n", encoding="utf-8")
+    (repo / "b.txt").write_text("jobs.example.net\n", encoding="utf-8")
+
+    result = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["a.txt:1: shop.example.com"]
+
+
+def test_staged_mode_passes_with_nothing_staged_or_only_deletions(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"old.txt": "shop.example.com\n"})
+    commit_all(repo)
+
+    nothing = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+    git(repo, "rm", "-q", "old.txt")
+    deletion = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+
+    assert (nothing.returncode, nothing.stdout) == (0, "site-literals: ok, 0 files scanned\n")
+    assert (deletion.returncode, deletion.stdout) == (0, "site-literals: ok, 0 files scanned\n")
+
+
+def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/collect/hosts.py": "X = 1\n"})
+    commit_all(repo)
+    make_repo(
+        repo,
+        {
+            "docs/notes.md": "https://shop.example.com/\n",
+            "backend/src/crawlerai/collect/use.py": '"""See crawlerai.collect.hosts."""\n',
+        },
+    )
+
+    result = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+
+    assert (result.returncode, result.stdout) == (0, "site-literals: ok, 1 files scanned\n")
