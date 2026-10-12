@@ -145,3 +145,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: wait for later SPEC-00 rows to add CI.
 - Why: The owner asked for the first PR to carry the setup, so CI gates every later row.
 - Reversible: yes
+
+### D-0051 — HeroUI is MIT-licensed, not Apache-2.0
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 3 (#4) · Status: decided
+- Decision: `@heroui/react` and `@heroui/styles` 3.2.6 declare MIT. SPEC-00 §4.3 says Apache-2.0; both are permissive, so nothing changes. The spec table is corrected in SPEC-00 PR 10.
+- Alternatives: none.
+- Why: Verified from the published packages.
+- Reversible: yes
+
+### D-0052 — Frontend versions pinned exactly
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 3 (#4) · Status: decided
+- Decision: Exact pins: HeroUI 3.2.6, React 19.3.0, Vite 8.3.4, Tailwind 4.3.3, react-router 8.4.0, Vitest 5.0.3, TypeScript 5.9.3, ESLint 9.39.5. TypeScript stays on 5.x and ESLint on 9 for the spec's toolchain (typescript-eslint, jsx-a11y peers). Bump ESLint once jsx-a11y supports 10.
+- Alternatives: `^` ranges; ESLint 10 without jsx-a11y.
+- Why: Reproducible installs and the SPEC-00 §4.3 tool list.
+- Reversible: yes
+
+### D-0053 — Node 24 in CI; pnpm pinned by `packageManager`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 3 (#4) · Status: decided
+- Decision: CI uses Node 24 LTS; `packageManager: pnpm@11.22.0`; `engines.node >= 22`.
+- Alternatives: Node 26.
+- Why: The LTS line, and pnpm pinned in one place.
+- Reversible: yes
+
+### D-0054 — Theme: only an explicit choice is persisted
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 3 (#4) · Status: decided
+- Decision: `localStorage["crawlerai.theme"]` is written only when the viewer toggles, so a viewer who never chose follows `prefers-color-scheme`. Applied before paint. The control is a HeroUI `Switch`, "Dark theme".
+- Alternatives: persist the resolved theme on first load.
+- Why: The most conservative reading of SPEC-00 §4.9.
+- Reversible: yes
