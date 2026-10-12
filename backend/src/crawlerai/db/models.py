@@ -43,9 +43,11 @@ SchemaStatus = Literal["active", "retired"]
 JobKind = Literal["scrape", "batch_scrape", "map", "crawl", "extract", "learn"]
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 TaskStatus = Literal["queued", "claimed", "done", "failed", "cancelled"]
-TaskOutcome = Literal[
-    "extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match", "failed"
+# The outcomes of a task that ran to the end (status `done`); `failed` is the outcome of a `failed` task.
+FinishedOutcome = Literal[
+    "extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match"
 ]
+TaskOutcome = Literal[FinishedOutcome, "failed"]
 
 
 def _one_of(column: str, values: Any) -> str:
