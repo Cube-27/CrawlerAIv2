@@ -4,15 +4,34 @@ The standard library gains `uuid.uuid7` only in Python 3.14; this project runs o
 """
 
 import os
+import threading
 import time
 import uuid
 
+_lock = threading.Lock()
+_last = (0, 0)  # (unix_ms, rand_a) of the previous value
+
 
 def uuid7() -> uuid.UUID:
-    """48-bit Unix time in milliseconds, then the version, 12 random bits, the variant and 62 random bits."""
-    unix_ms = time.time_ns() // 1_000_000
+    """48-bit Unix time in milliseconds, then the version, 12 bits of `rand_a`, the variant and 62 random bits.
+
+    Values from one process strictly increase, so rows sort by id in creation order (SPEC-10 orders `job_event` by
+    id). Within one millisecond `rand_a` is a counter (RFC 9562 §6.2, method 1) that starts at a random value in its
+    lower half; when it overflows, or the clock goes back, the timestamp advances past the previous one (§6.2).
+    """
+    global _last
     rand = int.from_bytes(os.urandom(10))
+    with _lock:
+        unix_ms = time.time_ns() // 1_000_000
+        last_ms, last_counter = _last
+        if unix_ms > last_ms:
+            counter = rand >> 62 & 0x7FF
+        elif last_counter < 0xFFF:
+            unix_ms, counter = last_ms, last_counter + 1
+        else:
+            unix_ms, counter = last_ms + 1, rand >> 62 & 0x7FF
+        _last = (unix_ms, counter)
     value = (unix_ms & (1 << 48) - 1) << 80
-    value |= 0x7 << 76 | (rand >> 62 & 0xFFF) << 64
+    value |= 0x7 << 76 | counter << 64
     value |= 0b10 << 62 | rand & (1 << 62) - 1
     return uuid.UUID(int=value)
