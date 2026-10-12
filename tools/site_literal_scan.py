@@ -111,14 +111,18 @@ def string_arg(node: ast.expr) -> str | None:
     return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
 
 
-def schema_columns(tree: ast.Module) -> Iterator[tuple[str, str]]:
-    """The `(table, column)` pairs a Python module's schema definitions declare."""
+def schema_columns(file: Path) -> Iterator[tuple[str, str]]:
+    """The `(table, column)` pairs a Python file's schema definitions declare; none when it does not parse."""
+    try:
+        tree = ast.parse(file.read_bytes())
+    except (OSError, SyntaxError, ValueError):
+        return
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and call_name(node) in {"create_table", "Table", "add_column"}:
-            table = string_arg(node)
-            for argument in node.args[1:]:
-                if table and call_name(argument) == "Column" and (column := string_arg(argument)):
-                    yield table, column
+            if table := string_arg(node):
+                for argument in node.args[1:]:
+                    if call_name(argument) == "Column" and (column := string_arg(argument)):
+                        yield table, column
         elif isinstance(node, ast.ClassDef):
             yield from declarative_columns(node)
 
@@ -171,29 +175,19 @@ class RepoNames:
             if pure.suffix == ".py":
                 parts = [*pure.parent.parts, pure.stem] if pure.stem != "__init__" else list(pure.parent.parts)
                 modules.update(".".join(parts[start:]).lower() for start in range(len(parts)))
-                columns.update((table.lower(), column.lower()) for table, column in parsed_columns(root / path))
+                columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
         return cls(frozenset(extensions), frozenset(modules), frozenset(columns))
 
     def names(self, token: str) -> bool:
         labels = token.split(".")
         return (len(labels) == 2 and labels[1] in self.extensions) or token in self.modules
 
-    def column_references(self, text: str) -> list[tuple[int, int]]:
-        """The spans of `table.column` references to columns the schema defines."""
-        return [
-            match.span()
-            for match in COLUMN_REF.finditer(text)
-            if (match.group(1).lower(), match.group(2).lower()) in self.columns
-        ]
-
-
-def parsed_columns(file: Path) -> Iterator[tuple[str, str]]:
-    """The schema columns a tracked Python file declares; none when it cannot be read or parsed."""
-    try:
-        tree = ast.parse(file.read_bytes())
-    except (OSError, SyntaxError, ValueError):
-        return
-    yield from schema_columns(tree)
+    def without_column_references(self, text: str) -> str:
+        """The text with each `table.column` reference to a column the schema defines blanked out."""
+        return COLUMN_REF.sub(
+            lambda match: " " * len(match[0]) if (match[1].lower(), match[2].lower()) in self.columns else match[0],
+            text,
+        )
 
 
 def load_tlds(tld_list: Path) -> frozenset[str]:
@@ -268,11 +262,9 @@ def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator
         host = match.group(1).lower().rstrip(".")
         if not names_no_public_site(host):
             yield host
-    references = repo_names.column_references(text)
-    for match in DOTTED.finditer(text):
+    for match in DOTTED.finditer(repo_names.without_column_references(text)):
         token = match.group(0).lower()
-        in_reference = any(start <= match.start() and match.end() <= end for start, end in references)
-        if token.rsplit(".", 1)[1] in tlds and not in_reference and not repo_names.names(token):
+        if token.rsplit(".", 1)[1] in tlds and not repo_names.names(token):
             yield token
 
 
