@@ -61,7 +61,7 @@ async def _run_until(
     stop = asyncio.Event()
     loops = [asyncio.create_task(run_worker(_settings(engine, **settings), handlers, stop)) for _ in range(workers)]
     async with asyncio.timeout(300):
-        while not await done() and not stop.is_set():
+        while not await done():
             await asyncio.sleep(0.1)
         stop.set()
         await asyncio.gather(*loops)
@@ -72,10 +72,6 @@ def _job_ended(engine: AsyncEngine, job_id: JobId) -> Callable[[], Awaitable[boo
         return (await _job_state(engine, job_id))[0] in ("completed", "failed", "cancelled")
 
     return ended
-
-
-async def _never() -> bool:
-    return False
 
 
 async def test_8_claimers_take_1000_tasks_each_exactly_once(engine: AsyncEngine) -> None:

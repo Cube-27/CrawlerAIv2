@@ -17,7 +17,14 @@ from typing import Any, Final
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.jobs import settled_status, transition_job
+from crawlerai.db.jobs import (
+    InvalidTransition,
+    blocking_statuses,
+    settled_status,
+    start_jobs,
+    transition_job,
+    transition_task,
+)
 from crawlerai.db.models import FinishedOutcome, Job, JobId, PageKind, TaskStatus, UrlTask, UrlTaskId
 
 LEASE: Final = timedelta(minutes=10)
@@ -64,12 +71,7 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     )
     tasks = [ClaimedTask(**row._mapping) for row in await conn.execute(claim)]
     if tasks:
-        # The `queued -> running` edge of the job state machine; a job that is already running is left as it is.
-        await conn.execute(
-            update(Job)
-            .where(Job.id.in_({task.job_id for task in tasks}), Job.status == "queued")
-            .values(status="running", started_at=func.now())
-        )
+        await start_jobs(conn, {task.job_id for task in tasks})
     # UPDATE ... RETURNING does not keep the subquery's order.
     return sorted(tasks, key=lambda task: (-task.priority, task.id))
 
@@ -105,21 +107,12 @@ async def _finish(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, 
 
 
 async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
-    """Move a claimed task along an edge of `TASK_TRANSITIONS`, if the claim still holds the lease."""
-    if target == "queued":
-        values |= {"claimed_by": None, "lease_until": None}
-    moved = await conn.execute(
-        update(UrlTask)
-        .where(
-            UrlTask.id == task.id,
-            UrlTask.status == "claimed",
-            UrlTask.claimed_by == task.claimed_by,
-            UrlTask.attempts == task.attempts,
-        )
-        .values(status=target, **values)
-    )
-    if moved.rowcount == 0:
-        raise LeaseLost(task.id)
+    """Move a claimed task along the state machine, if the claim still holds the lease."""
+    fence = (UrlTask.claimed_by == task.claimed_by, UrlTask.attempts == task.attempts)
+    try:
+        await transition_task(conn, task.id, target, fence=fence, **values)
+    except InvalidTransition as lost:
+        raise LeaseLost(task.id) from lost
 
 
 async def _settle_job(conn: AsyncConnection, job_id: JobId) -> None:
@@ -129,7 +122,7 @@ async def _settle_job(conn: AsyncConnection, job_id: JobId) -> None:
         return
     # Most finished tasks leave others open. The partial index on open tasks answers that without counting every
     # task of the job, which is linear in the job's size and would run once per task.
-    blocking = ["claimed"] if job.cancel_requested else ["claimed", "queued"]
+    blocking = blocking_statuses(cancel_requested=job.cancel_requested)
     open_task = select(UrlTask.id).where(UrlTask.job_id == job_id, UrlTask.status.in_(blocking)).limit(1)
     if (await conn.execute(open_task)).first() is not None:
         return
