@@ -11,7 +11,10 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-bui
 
 # The project itself is built from this repo's source and installed as a wheel.
 COPY src ./src
-RUN --mount=type=cache,target=/root/.cache/uv     uv build --wheel --out-dir /tmp/dist     && uv pip install --no-build --no-deps /tmp/dist/*.whl     && rm -rf /tmp/dist
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv build --wheel --out-dir /tmp/dist \
+    && uv pip install --no-build --no-deps /tmp/dist/*.whl \
+    && rm -rf /tmp/dist
 COPY alembic.ini ./
 COPY migrations ./migrations
 
