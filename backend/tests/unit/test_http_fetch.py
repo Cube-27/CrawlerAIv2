@@ -21,6 +21,7 @@ import pytest
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.storage.capture_bundle import decode, encode
 
 _LOOPBACK = IPv4Address("127.0.0.1")
@@ -108,7 +109,11 @@ _DNS = {"internal.example.com": "10.0.0.1", "public.example.com": "93.184.215.14
 
 def fetch(server: Server, url: str, policy: FetchPolicy | None = None) -> FetchResult:
     connector = LoopbackConnector(server.port, _DNS)
-    return asyncio.run(fetch_http(url, policy or FetchPolicy(), engine_version="test", connector=connector))
+    return asyncio.run(
+        fetch_http(
+            url, policy or FetchPolicy(), engine_version="test", impersonate=IMPERSONATE_DEFAULT, connector=connector
+        )
+    )
 
 
 def outcome(result: FetchResult) -> tuple[int, str, str | None]:
@@ -316,11 +321,9 @@ def test_the_time_budget_covers_every_hop(server: Server) -> None:
     assert outcome(fetch(server, server.url("/a"), FetchPolicy(timeout_s=0.6)))[1:] == ("error", "timeout")
 
 
-def test_a_refused_connection_is_a_network_error(server: Server) -> None:
+def test_a_refused_connection_is_a_network_error() -> None:
     closed = Server(port=_closed_port())
-    result = asyncio.run(
-        fetch_http(closed.url("/p"), FetchPolicy(), engine_version="test", connector=LoopbackConnector(closed.port, {}))
-    )
+    result = fetch(closed, closed.url("/p"))
     assert outcome(result) == (0, "error", "network_error: curl 7")
     assert result.attempts[0].status is None
 

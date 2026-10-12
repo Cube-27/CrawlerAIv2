@@ -5,7 +5,7 @@ address the guard checked. Every failure becomes an `error` outcome with a short
 """
 
 import asyncio
-import hashlib
+import io
 import time
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -20,8 +20,7 @@ from crawlerai.acquire.classify import classify
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.ids import uuid7
-from crawlerai.core.settings import IMPERSONATE_DEFAULT
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 
 # RFC 9110 §15.4: the redirect status codes that carry a Location to follow (300 and 304 do not redirect by
 # themselves, 305 and 306 are deprecated).
@@ -57,7 +56,7 @@ async def fetch_http(
     policy: FetchPolicy,
     *,
     engine_version: str,
-    impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT,
+    impersonate: BrowserTypeLiteral,
     connector: SafeConnector | None = None,
 ) -> FetchResult:
     fetched_at = datetime.now(UTC)
@@ -84,7 +83,7 @@ async def fetch_http(
         block_class=block_class,
         headers=Headers(request=final.request_headers, response=final.response_headers),
         timings_ms={"total": duration_ms},
-        html_sha256=_sha256(final.body),
+        html_sha256=sha256_hex(final.body),
         network_bodies=(),
         fetch_policy=policy.model_dump(mode="json"),
         engine_version=engine_version,
@@ -111,17 +110,17 @@ async def _follow(
     # bypass the checked address.
     async with AsyncSession(impersonate=impersonate, trust_env=False) as session:
         response = await _get(session, target, policy, deadline)
-        for _ in range(_MAX_REDIRECTS):
+        for hop in range(_MAX_REDIRECTS + 1):
             location = _location(response)
             if location is None:
-                return response
+                break
+            if hop == _MAX_REDIRECTS:
+                raise _Failed("too_many_redirects", response)
             try:
                 target = await connector.redirect(target, location)
             except SsrfRejected as e:
                 raise _Failed(str(e), response) from e
             response = await _get(session, target, policy, deadline)
-    if _location(response) is not None:
-        raise _Failed("too_many_redirects", response)
     return response
 
 
@@ -130,20 +129,17 @@ async def _get(session: AsyncSession[Response], target: Target, policy: FetchPol
     if remaining <= 0:
         raise _Failed("timeout", None)
 
-    chunks: list[bytes] = []
+    body = io.BytesIO()
     received = 0
-    capped = False
 
     def on_body(chunk: bytes) -> int:
         # curl hands over the body after content decoding, so this counts decompressed bytes: a compression bomb
         # stops here, holding at most the cap in memory.
-        nonlocal received, capped
+        nonlocal received
         received += len(chunk)
         if received > policy.max_decompressed_bytes:
-            capped = True
             return CURL_WRITEFUNC_ERROR
-        chunks.append(chunk)
-        return len(chunk)
+        return body.write(chunk)
 
     sent: list[bytes] = []
 
@@ -158,7 +154,9 @@ async def _get(session: AsyncSession[Response], target: Target, policy: FetchPol
         CurlOpt.RESOLVE: [f"*:{target.port}:{ip}"],
         CurlOpt.PROXY: "",  # an empty proxy disables proxies, including the environment's (CURLOPT_PROXY)
         CurlOpt.MAXFILESIZE_LARGE: policy.max_body_bytes,  # counts body bytes as received, before decoding
-        CurlOpt.VERBOSE: 1,  # the debug callback is how curl reports the request headers it sent
+        # The debug callback is the only place curl reports the request headers it sent (impersonation sets them in
+        # C). It also sees every other debug event, a cost accepted for recording what was sent.
+        CurlOpt.VERBOSE: 1,
         CurlOpt.DEBUGFUNCTION: on_debug,
     }
     # curl_cffi types option values as str, but passes each to curl_easy_setopt with the option's own type.
@@ -166,11 +164,12 @@ async def _get(session: AsyncSession[Response], target: Target, policy: FetchPol
     try:
         response = await session.get(target.url, allow_redirects=False, timeout=remaining, content_callback=on_body)
     except RequestException as e:
+        capped = received > policy.max_decompressed_bytes
         error = "body_cap" if capped else _CURL_ERRORS.get(e.code, f"network_error: curl {int(e.code)}")
         # The exception carries what arrived before the failure: the status and headers, if any.
         partial: Response | None = e.response
         raise _Failed(error, None if partial is None else _response(target, partial, sent, b"")) from e
-    return _response(target, response, sent, b"".join(chunks))
+    return _response(target, response, sent, body.getvalue())
 
 
 def _response(target: Target, response: Response, sent: list[bytes], body: bytes) -> _Response:
@@ -201,7 +200,3 @@ def _location(response: _Response) -> str | None:
     # RFC 9110 §10.2.2: one Location value; when repeated, the last one received is used.
     values = [value for name, value in response.response_headers if name.lower() == "location"]
     return values[-1] if values else None
-
-
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
