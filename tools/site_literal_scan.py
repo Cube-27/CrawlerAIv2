@@ -76,7 +76,7 @@ class Allowlist:
 
     def allows(self, host: str) -> bool:
         """A plain entry matches only itself; an entry starting with '.' matches that name and its subdomains."""
-        return host in self.exact or any(host == suffix[1:] or host.endswith(suffix) for suffix in self.suffixes)
+        return host in self.exact or host.endswith(self.suffixes) or f".{host}" in self.suffixes
 
 
 @dataclass(frozen=True)
