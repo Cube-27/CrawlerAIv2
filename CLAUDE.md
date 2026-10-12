@@ -59,7 +59,7 @@ These come from the generalization contract. Breaking one is a defect, even when
     evaluation section). Until milestone M (ARCHITECTURE §21) the gate reports `no_baseline`, and acceptance
     rests on tests, replays and review.
 - **No size gates (C11).** Don't split files to satisfy a size number, and don't add LOC, complexity or coverage
-  gates. The `no-size-gates` CI job enforces this.
+  gates or ratchets. The `no-size-gates` CI job enforces this.
 - **Nothing from the earlier versions (C12).** Don't read, copy or port code, lists, config, tests or prompts from
   the sibling `Invoro` or `CrawlerAI` (v1) projects. When a §22 candidate is admitted, its design may *read* them,
   as ARCHITECTURE §20 allows, but nothing is copied.
