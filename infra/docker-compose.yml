@@ -13,8 +13,9 @@ services:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      # Checks the app database, which exists only once init.sql has run.
-      test: ["CMD", "pg_isready", "-U", "app", "-d", "crawlerai"]
+      # Healthy only once the final server accepts TCP. On a fresh volume the entrypoint first runs init.sql on a
+      # temporary socket-only server, which a socket check would already count as ready.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "crawlerai"]
       interval: 2s
       timeout: 5s
       retries: 30

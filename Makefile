@@ -6,6 +6,7 @@ COMPOSE := docker compose -f infra/docker-compose.yml
 .env:
 	cp .env.example .env
 
+# `.env` assignments override variables exported in the shell; command-line variables (`make dev VAR=...`) win.
 -include .env
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs://$(CURDIR)/.data/objects)
 export
