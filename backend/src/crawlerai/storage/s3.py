@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 _MISSING = {"NoSuchKey", "404"}
 
 
+def _is_missing(e: ClientError) -> bool:
+    return e.response.get("Error", {}).get("Code") in _MISSING
+
+
 class S3Store:
     def __init__(self, client: "S3Client", bucket: str, prefix: str) -> None:
         """`prefix` is prepended to every key; `""` or a path ending in `/`."""
@@ -36,7 +40,7 @@ class S3Store:
         try:
             return self._client.get_object(Bucket=self._bucket, Key=self._key(key))["Body"].read()
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") in _MISSING:
+            if _is_missing(e):
                 raise ObjectNotFound(key) from None
             raise
 
@@ -44,7 +48,7 @@ class S3Store:
         try:
             self._client.head_object(Bucket=self._bucket, Key=self._key(key))
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") in _MISSING:
+            if _is_missing(e):
                 return False
             raise
         return True

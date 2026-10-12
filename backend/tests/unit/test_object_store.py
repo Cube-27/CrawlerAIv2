@@ -14,6 +14,10 @@ from crawlerai.storage.base import ObjectNotFound, ObjectStore
 _BUCKET = "objects"
 
 
+def _fs_url(path: Path) -> str:
+    return path.as_uri().replace("file:", "fs:", 1)
+
+
 @pytest.fixture
 def aws(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
@@ -29,7 +33,7 @@ def aws(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 @pytest.fixture(params=["fs", "s3"])
 def store(request: pytest.FixtureRequest, tmp_path: Path) -> ObjectStore:
     if request.param == "fs":
-        return open_store(tmp_path.as_uri().replace("file:", "fs:", 1))
+        return open_store(_fs_url(tmp_path))
     request.getfixturevalue("aws")
     return open_store(f"s3://{_BUCKET}/main")
 
@@ -96,7 +100,7 @@ def test_rejects_keys_that_are_not_relative_slash_separated_paths(store: ObjectS
 
 
 def test_fs_store_writes_the_key_as_a_relative_path_under_its_root(tmp_path: Path) -> None:
-    store = open_store(tmp_path.as_uri().replace("file:", "fs:", 1))
+    store = open_store(_fs_url(tmp_path))
 
     store.put("captures/2026/10/a.bundle.zst", b"payload")
 

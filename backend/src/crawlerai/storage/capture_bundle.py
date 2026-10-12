@@ -104,7 +104,7 @@ def encode(bundle: CaptureBundle) -> bytes:
             info = tarfile.TarInfo(name)
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
-    return zstandard.ZstdCompressor().compress(raw.getvalue())
+    return zstandard.ZstdCompressor().compress(raw.getbuffer())
 
 
 def decode(blob: bytes) -> CaptureBundle:
