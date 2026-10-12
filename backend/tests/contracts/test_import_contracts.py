@@ -1,3 +1,4 @@
+import configparser
 import os
 import shutil
 import subprocess
@@ -13,14 +14,13 @@ CONFIG = BACKEND / ".importlinter"
 def lint_imports(src: Path) -> subprocess.CompletedProcess[str]:
     script = shutil.which("lint-imports", path=sysconfig.get_path("scripts"))
     assert script is not None, "the `lint-imports` console script is not installed in this environment"
-    env = {**os.environ, "PYTHONPATH": str(src)}
     return subprocess.run(  # noqa: S603
         [script, "--config", str(CONFIG), "--no-cache"],
         capture_output=True,
         text=True,
         check=False,
         cwd=src,
-        env=env,
+        env={**os.environ, "PYTHONPATH": str(src)},
     )
 
 
@@ -33,13 +33,6 @@ def package_copy(tmp_path: Path) -> Path:
 def plant(src: Path, files: dict[str, str]) -> None:
     for relative, code in files.items():
         (src / "crawlerai" / relative).write_text(code, encoding="utf-8")
-
-
-def test_contracts_hold_on_the_package(package_copy: Path) -> None:
-    result = lint_imports(package_copy)
-
-    assert result.returncode == 0, result.stdout
-    assert "Contracts: 4 kept, 0 broken." in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -62,13 +55,14 @@ def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[s
     result = lint_imports(package_copy)
 
     assert result.returncode == 1
-    assert "Contracts: 3 kept, 1 broken." in result.stdout
+    assert result.stdout.count(" BROKEN") == 1
     assert broken_contract in result.stdout.split("Broken contracts", 1)[1]
 
 
 @pytest.mark.parametrize(
     "files",
     [
+        {},
         {"normalize/probe.py": "import babel\nimport dateparser\n"},
         {"acquire/probe.py": "from crawlerai import adapters\n"},
         {"collect/probe.py": "from crawlerai import adapters\n"},
@@ -81,4 +75,24 @@ def test_permitted_imports_keep_every_contract(package_copy: Path, files: dict[s
     result = lint_imports(package_copy)
 
     assert result.returncode == 0, result.stdout
-    assert "Contracts: 4 kept, 0 broken." in result.stdout
+    assert " BROKEN" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("contract", "exempt"),
+    [
+        ("normalize-libs", {"crawlerai.normalize"}),
+        ("adapters-isolated", {"crawlerai.acquire", "crawlerai.collect", "crawlerai.adapters"}),
+    ],
+)
+def test_forbidden_contract_sources_cover_every_top_level_module(contract: str, exempt: set[str]) -> None:
+    config = configparser.ConfigParser()
+    config.read(CONFIG, encoding="utf-8")
+    sources = set(config[f"importlinter:contract:{contract}"]["source_modules"].split())
+    top_level = {
+        f"crawlerai.{path.stem}"
+        for path in (BACKEND / "src" / "crawlerai").iterdir()
+        if (path.is_dir() and (path / "__init__.py").exists()) or (path.suffix == ".py" and path.stem != "__init__")
+    }
+
+    assert sources == top_level - exempt

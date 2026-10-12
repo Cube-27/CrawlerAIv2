@@ -28,7 +28,8 @@ jobs:
       - run: uv run --frozen ruff check
       - run: uv run --frozen ruff format --check
       - run: uv run --frozen mypy src tests
-      # The environment comes from `uv sync --frozen` above; nothing is synced or built here.
+      # --no-build satisfies SonarCloud S8541; --no-sync is needed with it because the editable project has no wheel.
+      # The environment is already installed by `uv sync --frozen` above.
       - run: uv run --no-sync --no-build lint-imports
       - run: uv run --frozen pytest
 
