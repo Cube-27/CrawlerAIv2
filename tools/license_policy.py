@@ -55,6 +55,12 @@ class ExpressionError(ValueError):
     pass
 
 
+def denied_name(name: str) -> set[str]:
+    """Whole-name match, ignoring case; returns the deny-list spelling."""
+    key = name.strip().casefold()
+    return {DENIED[key]} if key in DENIED else set()
+
+
 def tokenize(expression: str) -> list[str]:
     tokens: list[str] = []
     position = 0
@@ -106,7 +112,8 @@ class Parser:
         denied = self.primary()
         if self.peek_operator("WITH"):
             self.position += 1
-            self.identifier()  # the exception never makes a denied license acceptable
+            # An exception never makes a denied license acceptable, and Commons-Clause is itself written as one.
+            denied |= denied_name(self.identifier())
         return denied
 
     def primary(self) -> set[str]:
@@ -117,8 +124,7 @@ class Parser:
                 raise ExpressionError("unbalanced parentheses")
             self.position += 1
             return denied
-        name = self.identifier().removesuffix("+")  # `+` is SPDX "or later"
-        return {DENIED[name.casefold()]} if name.casefold() in DENIED else set()
+        return denied_name(self.identifier().removesuffix("+"))  # `+` is SPDX "or later"
 
     def identifier(self) -> str:
         if self.position >= len(self.tokens):
@@ -134,8 +140,7 @@ def denied_licenses(declared: str) -> set[str]:
     try:
         return Parser(declared).parse()
     except ExpressionError:
-        name = declared.strip().casefold()
-        return {DENIED[name]} if name in DENIED else set()
+        return denied_name(declared)
 
 
 def python_declarations(package: dict[str, str]) -> list[str]:
