@@ -9,10 +9,12 @@ from datetime import datetime
 from typing import Any, ClassVar, Literal, NewType, get_args
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -25,6 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 
 ProjectId = NewType("ProjectId", uuid.UUID)
@@ -35,6 +38,10 @@ JobId = NewType("JobId", uuid.UUID)
 UrlTaskId = NewType("UrlTaskId", uuid.UUID)
 JobEventId = NewType("JobEventId", uuid.UUID)
 CaptureId = NewType("CaptureId", uuid.UUID)
+ExtractionId = NewType("ExtractionId", uuid.UUID)
+CandidateId = NewType("CandidateId", uuid.UUID)
+RecordId = NewType("RecordId", uuid.UUID)
+ExtractionConfigId = NewType("ExtractionConfigId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
@@ -48,6 +55,12 @@ FinishedOutcome = Literal[
     "extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match"
 ]
 TaskOutcome = Literal[FinishedOutcome, "failed"]
+ExtractionMode = Literal["adhoc", "config"]
+NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
+SourceKind = Literal["adapter", "api", "jsonld", "microdata", "og", "js_state", "xhr", "config", "llm"]
+ConfigStatus = Literal["draft", "active", "suspended"]
+ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
+ProgressiveMode = Literal["cold", "learning", "active"]
 
 
 def _one_of(column: str, values: Any) -> str:
@@ -57,7 +70,21 @@ def _one_of(column: str, values: Any) -> str:
 
 class Base(DeclarativeBase):
     type_annotation_map: ClassVar[dict[Any, Any]] = {
-        id_type: Uuid for id_type in (ProjectId, ApiKeyId, SiteId, SchemaId, JobId, UrlTaskId, JobEventId, CaptureId)
+        id_type: Uuid
+        for id_type in (
+            ProjectId,
+            ApiKeyId,
+            SiteId,
+            SchemaId,
+            JobId,
+            UrlTaskId,
+            JobEventId,
+            CaptureId,
+            ExtractionId,
+            CandidateId,
+            RecordId,
+            ExtractionConfigId,
+        )
     }
     metadata = MetaData(
         naming_convention={
@@ -118,6 +145,9 @@ class SchemaDef(Base):
     __tablename__ = "schema_def"
     __table_args__ = (
         UniqueConstraint("name", "version"),
+        # The target of the (`schema_id`, `schema_version`) foreign keys below: a row naming a schema version names
+        # the version that `schema_id` is (ARCHITECTURE §5.2).
+        UniqueConstraint("id", "version"),
         CheckConstraint("version >= 1", name="version_positive"),
         CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(_one_of("origin", SchemaOrigin), name="origin"),
@@ -132,6 +162,112 @@ class SchemaDef(Base):
     required_groups: Mapped[list[list[str]]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     origin: Mapped[SchemaOrigin] = mapped_column(Text)
     status: Mapped[SchemaStatus] = mapped_column(Text)
+
+
+def _schema_version_fk() -> ForeignKeyConstraint:
+    """(`schema_id`, `schema_version`) names an existing schema_def row and its version (ARCHITECTURE §5.2)."""
+    return ForeignKeyConstraint(["schema_id", "schema_version"], [SchemaDef.id, SchemaDef.version])
+
+
+class Capture(Base):
+    """A fetched page, whose bytes are the bundle at `object_key` (ARCHITECTURE §15). Production and dev captures
+    only: hidden and fresh captures never enter the main database (C1)."""
+
+    __tablename__ = "capture"
+    __table_args__ = (
+        CheckConstraint(_one_of("method", CaptureMethod), name="method"),
+        CheckConstraint(_one_of("block_class", BlockClass), name="block_class"),
+        CheckConstraint("size_bytes >= 0", name="size_bytes_non_negative"),
+        CheckConstraint("duration_ms >= 0", name="duration_ms_non_negative"),
+        # `expire_captures` deletes rows past `expires_at`; dev captures never expire and stay out of the index.
+        Index(None, "expires_at", postgresql_where=text("expires_at IS NOT NULL")),
+    )
+
+    id: Mapped[CaptureId] = mapped_column(primary_key=True, default=uuid7)
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id))
+    url: Mapped[str] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    method: Mapped[CaptureMethod] = mapped_column(Text)
+    status_code: Mapped[int] = mapped_column(Integer)
+    final_url: Mapped[str] = mapped_column(Text)
+    block_class: Mapped[BlockClass] = mapped_column(Text)
+    object_key: Mapped[str] = mapped_column(Text, unique=True)
+    html_sha256: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    fetch_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class ExtractionConfig(Base):
+    __tablename__ = "extraction_config"
+    __table_args__ = (
+        _schema_version_fk(),
+        UniqueConstraint("site_id", "schema_id", "page_kind", "version"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(_one_of("status", ConfigStatus), name="status"),
+        CheckConstraint(_one_of("origin", ConfigOrigin), name="origin"),
+        # ARCHITECTURE §6: one `active` config per (site, schema, page_kind).
+        Index(
+            "uq_extraction_config_active",
+            "site_id",
+            "schema_id",
+            "page_kind",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[ExtractionConfigId] = mapped_column(primary_key=True, default=uuid7)
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id))
+    schema_id: Mapped[SchemaId] = mapped_column()
+    schema_version: Mapped[int] = mapped_column(Integer)
+    page_kind: Mapped[PageKind] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[ConfigStatus] = mapped_column(Text, server_default=text("'draft'"))
+    ir: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    origin: Mapped[ConfigOrigin] = mapped_column(Text)
+    field_status: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    validation_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class ProgressiveState(Base):
+    """How far a (site, schema version, page kind) is on the way to an active config (ARCHITECTURE §8.4)."""
+
+    __tablename__ = "progressive_state"
+    __table_args__ = (
+        _schema_version_fk(),
+        CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(_one_of("mode", ProgressiveMode), name="mode"),
+        CheckConstraint("pages_extracted >= 0", name="pages_extracted_non_negative"),
+    )
+
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
+    schema_id: Mapped[SchemaId] = mapped_column(primary_key=True)
+    schema_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
+    mode: Mapped[ProgressiveMode] = mapped_column(Text, server_default=text("'cold'"))
+    pages_extracted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class UrlState(Base):
+    """What recurring runs last saw at a URL of a site (ARCHITECTURE §14)."""
+
+    __tablename__ = "url_state"
+    __table_args__ = (CheckConstraint("missing_runs >= 0", name="missing_runs_non_negative"),)
+
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
+    canonical_url: Mapped[str] = mapped_column(Text, primary_key=True)
+    etag: Mapped[str | None] = mapped_column(Text)
+    # The header value as received: If-Modified-Since sends it back unchanged (RFC 9110 §13.1.3).
+    last_modified: Mapped[str | None] = mapped_column(Text)
+    content_fingerprint: Mapped[str | None] = mapped_column(Text)
+    record_fingerprint: Mapped[str | None] = mapped_column(Text)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    missing_runs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Job(Base):
@@ -179,8 +315,8 @@ class UrlTask(Base):
     page_kind: Mapped[PageKind | None] = mapped_column(Text)
     status: Mapped[TaskStatus] = mapped_column(Text, server_default=text("'queued'"))
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
-    # The `capture` table arrives in SPEC-01 PR 6, which adds the foreign key.
-    capture_id: Mapped[CaptureId | None] = mapped_column()
+    # Captures expire after 30 days (ARCHITECTURE §15) and the task outlives its capture. Indexed for that delete.
+    capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete="SET NULL"), index=True)
     outcome: Mapped[TaskOutcome | None] = mapped_column(Text)
     last_error: Mapped[str | None] = mapped_column(Text)
     claimed_by: Mapped[str | None] = mapped_column(Text)
@@ -201,3 +337,80 @@ class JobEvent(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     kind: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class Extraction(Base):
+    """One resolver run over a capture (ARCHITECTURE §6)."""
+
+    __tablename__ = "extraction"
+    __table_args__ = (
+        CheckConstraint(_one_of("mode", ExtractionMode), name="mode"),
+        CheckConstraint("llm_calls >= 0", name="llm_calls_non_negative"),
+    )
+
+    id: Mapped[ExtractionId] = mapped_column(primary_key=True, default=uuid7)
+    url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id))
+    # Captures expire after 30 days (ARCHITECTURE §15) and the extraction, which records cite, stays. Indexed for
+    # that delete.
+    capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete="SET NULL"), index=True)
+    engine_version: Mapped[str] = mapped_column(Text)
+    config_version: Mapped[int | None] = mapped_column(Integer)
+    mode: Mapped[ExtractionMode] = mapped_column(Text)
+    llm_calls: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class Candidate(Base):
+    """One value a collector proposed for a field (ARCHITECTURE §6, §8.1). Kept 30 days."""
+
+    __tablename__ = "candidate"
+    __table_args__ = (
+        CheckConstraint(_one_of("normalize_status", NormalizeStatus), name="normalize_status"),
+        CheckConstraint(_one_of("source_kind", SourceKind), name="source_kind"),
+        # `expire_candidates` deletes rows older than 30 days.
+        Index(None, "created_at"),
+    )
+
+    id: Mapped[CandidateId] = mapped_column(primary_key=True, default=uuid7)
+    extraction_id: Mapped[ExtractionId] = mapped_column(ForeignKey(Extraction.id), index=True)
+    entity_ref: Mapped[str] = mapped_column(Text)
+    field: Mapped[str] = mapped_column(Text)
+    raw_value: Mapped[Any] = mapped_column(JSONB)
+    normalized_value: Mapped[Any | None] = mapped_column(JSONB)
+    normalize_status: Mapped[NormalizeStatus] = mapped_column(Text)
+    source_kind: Mapped[SourceKind] = mapped_column(Text)
+    independent: Mapped[bool] = mapped_column(Boolean)
+    locator: Mapped[str] = mapped_column(Text)
+    chosen: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    reject_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Record(Base):
+    """A published entity: `data` holds published fields only (ARCHITECTURE §6). A new version points at the one it
+    replaces through `supersedes_record_id` (§14)."""
+
+    __tablename__ = "record"
+    __table_args__ = (
+        _schema_version_fk(),
+        CheckConstraint(_one_of("mode", ExtractionMode), name="mode"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4).
+        Index(None, "site_id", "entity_key", "schema_id"),
+    )
+
+    id: Mapped[RecordId] = mapped_column(primary_key=True, default=uuid7)
+    extraction_id: Mapped[ExtractionId] = mapped_column(ForeignKey(Extraction.id))
+    job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id))
+    schema_id: Mapped[SchemaId] = mapped_column()
+    schema_version: Mapped[int] = mapped_column(Integer)
+    entity_key: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    field_meta: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    complete: Mapped[bool] = mapped_column(Boolean)
+    changed_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    mode: Mapped[ExtractionMode] = mapped_column(Text)
+    fingerprint: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    supersedes_record_id: Mapped[RecordId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
