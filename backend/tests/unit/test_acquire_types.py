@@ -8,28 +8,26 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers
+from crawlerai.storage.capture_bundle import BlockClass, CaptureBundle, CaptureManifest, CaptureMethod, Headers
 
 
-def _bundle(method: str = "http", block_class: str = "shell") -> CaptureBundle:
+def _bundle(method: CaptureMethod = "http", block_class: BlockClass = "shell") -> CaptureBundle:
     body = b"<html></html>"
     return CaptureBundle(
-        manifest=CaptureManifest.model_validate(
-            {
-                "capture_id": uuid.UUID("0192f0c8-7b1e-7000-8000-000000000002"),
-                "url": "https://www.example.com/p",
-                "final_url": "https://www.example.com/p",
-                "fetched_at": datetime(2026, 10, 13, tzinfo=UTC),
-                "method": method,
-                "status_code": 200,
-                "block_class": block_class,
-                "headers": Headers(request=(), response=()),
-                "timings_ms": {"total": 120},
-                "html_sha256": hashlib.sha256(body).hexdigest(),
-                "network_bodies": (),
-                "fetch_policy": FetchPolicy().model_dump(mode="json"),
-                "engine_version": "test",
-            }
+        manifest=CaptureManifest(
+            capture_id=uuid.UUID("0192f0c8-7b1e-7000-8000-000000000002"),
+            url="https://www.example.com/p",
+            final_url="https://www.example.com/p",
+            fetched_at=datetime(2026, 10, 13, tzinfo=UTC),
+            method=method,
+            status_code=200,
+            block_class=block_class,
+            headers=Headers(request=(), response=()),
+            timings_ms={"total": 120},
+            html_sha256=hashlib.sha256(body).hexdigest(),
+            network_bodies=(),
+            fetch_policy=FetchPolicy().model_dump(mode="json"),
+            engine_version="test",
         ),
         body=body,
         network=(),

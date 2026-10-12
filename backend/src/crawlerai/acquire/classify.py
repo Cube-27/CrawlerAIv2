@@ -45,9 +45,10 @@ def _is_html(headers: HeaderList) -> bool:
 def _is_shell(body: bytes) -> bool:
     tree = LexborHTMLParser(body)
     tree.strip_tags(_INVISIBLE)
+    # Links first: most pages have enough of them, and then the body text need not be built.
+    if len(tree.css("a[href]")) >= _SHELL_MAX_LINKS:
+        return False
     # Visible text is counted in non-whitespace characters: HTML rendering collapses whitespace, and counting
     # only non-whitespace makes the count independent of how text nodes are joined.
     text = tree.body.text() if tree.body is not None else ""
-    visible = sum(1 for ch in text if not ch.isspace())
-    links = len(tree.css("a[href]"))
-    return visible < _SHELL_MAX_TEXT_CHARS and links < _SHELL_MAX_LINKS
+    return len("".join(text.split())) < _SHELL_MAX_TEXT_CHARS
