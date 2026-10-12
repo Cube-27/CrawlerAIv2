@@ -53,8 +53,6 @@ These come from the generalization contract. Breaking one is a defect, even when
     with cells under 10 labeled fields suppressed; PR comments carry only the pass/fail per field type.
   - Hidden regresses on a precision drop of more than 0.5 pt on any required field type, or on any wrong-product
     value (that count stays 0). A dev improvement with a hidden drop is a regression, not a win.
-  - Never claim an improvement from hidden results; claims come only from fresh. Never try to infer which sites
-    are in hidden from aggregates.
   - A PR that changes extraction behaviour includes the aggregate report in its description (the PR template's
     evaluation section). Until milestone M (ARCHITECTURE §21) the gate reports `no_baseline`, and acceptance
     rests on tests, replays and review.

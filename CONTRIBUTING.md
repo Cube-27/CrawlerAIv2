@@ -13,9 +13,9 @@ binding on every change, and breaking it is a defect even when it fixes a site.
 
 ## Setup and checks
 
-You need Docker, `uv`, `pnpm` and GNU make. `make dev` starts Postgres, applies the migrations and runs the API on
-port 8000. Every command, including the checks CI runs, is listed in `CLAUDE.md` §7. Run the checks for the parts
-you changed before you open a PR. CI runs all of them on every PR, and every job must pass before merge.
+Setup is in `README.md`, and every command, including the checks CI runs, is in `CLAUDE.md` §7. Run the checks
+for the parts you changed before you open a PR. CI runs all of them on every PR, and every job must pass before
+merge.
 
 There are no line-count, complexity or coverage-percentage gates, and none may be added (C11). The `no-size-gates`
 CI job fails if one appears in a workflow, a hook or a tool config.
@@ -60,11 +60,7 @@ Implementation choices within a spec's scope are decided and logged in `docs/DEC
 under `## Decisions` while an orchestrator runs). Changes to `docs/ARCHITECTURE.md` or `docs/OPEN_QUESTIONS.md`,
 §22 candidates, evaluation access and secrets are escalated to the owner. `CLAUDE.md` §4–§5 has the procedure.
 
-## Licensing
+## Licensing and the public repo
 
-The project is AGPL-3.0 (`LICENSE`). Don't add dependencies under AGPL, GPL, SSPL or non-commercial licenses; LGPL
-is allowed but avoided. The CI `licenses` job enforces the deny-list. Don't read, copy or port anything from the
-earlier `Invoro` or CrawlerAI v1 projects (C12).
-
-The repo is public: commit no customer, prospect or company names, business terms, secrets, captures or
-evaluation data.
+The project is AGPL-3.0 (`LICENSE`). The dependency-license deny-list, the ban on anything from the earlier projects
+(C12) and what may never be committed to this public repo are in `CLAUDE.md` §2.
