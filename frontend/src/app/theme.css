@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/*
+ * Project theme overrides (DESIGN.md): HeroUI CSS variables only, under `:root` and `[data-theme="dark"]`.
+ * None yet; the HeroUI default theme applies.
+ */
