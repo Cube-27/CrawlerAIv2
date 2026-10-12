@@ -1,0 +1,2 @@
+# Prettier checks LF endings; keep checkouts LF on every platform.
+* text=auto eol=lf

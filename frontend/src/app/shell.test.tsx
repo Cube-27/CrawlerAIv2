@@ -2,16 +2,15 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import { prefersDark } from "../test/setup";
+import { prefersDark } from "../test/media";
 import { routes } from "./router";
 
 function renderApp() {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
+  render(<RouterProvider router={createMemoryRouter(routes)} />);
 }
 
 describe("app shell", () => {
   it("renders the top bar, the navigation and the placeholder screen", () => {
-    prefersDark(false);
     renderApp();
 
     expect(screen.getByRole("banner")).toHaveTextContent("CrawlerAI");
@@ -32,7 +31,6 @@ describe("theme", () => {
   });
 
   it("uses the light theme when the system prefers light", () => {
-    prefersDark(false);
     renderApp();
 
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
@@ -40,7 +38,6 @@ describe("theme", () => {
   });
 
   it("sets data-theme on <html> and remembers the choice when toggled", async () => {
-    prefersDark(false);
     renderApp();
 
     await userEvent.click(screen.getByRole("switch", { name: "Dark theme" }));

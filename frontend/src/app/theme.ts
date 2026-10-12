@@ -30,7 +30,7 @@ function systemTheme(): Theme {
 export function useTheme(): [Theme, (theme: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(() => rememberedTheme() ?? systemTheme());
 
-  // Before paint, so a dark-theme viewer never sees a light frame.
+  // Before paint, so a theme change never shows a frame in the old theme.
   useLayoutEffect(() => {
     document.documentElement.dataset["theme"] = theme;
   }, [theme]);
