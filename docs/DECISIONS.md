@@ -447,3 +447,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: allowlist `project.id` in the C3 scanner.
 - Why: The scan reads `"project.id"` as a host (`.id` is a TLD). See the follow-up in ACTIVE.md.
 - Reversible: yes
+
+### D-0094 — `ObjectStore` methods are synchronous
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 5 (#13) · Status: decided
+- Decision: `ObjectStore` methods are plain sync calls; async callers run them in a thread (`asyncio.to_thread`).
+- Alternatives: An async protocol over aioboto3/aiofiles.
+- Why: boto3 is sync; an async S3 client adds a dependency for 10k pages/day (§19 sizing).
+- Reversible: yes, before SPEC-02 PR 3 has callers
+
+### D-0095 — S3 endpoint and credentials come from boto3's standard configuration
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 5 (#13) · Status: decided
+- Decision: No `CRAWLERAI_*` S3 settings; `AWS_ENDPOINT_URL`, credentials and region come from the AWS environment/config chain, which covers S3-compatible stores (§15).
+- Alternatives: `CRAWLERAI_S3_ENDPOINT` and similar settings.
+- Why: boto3 already reads them.
+- Reversible: yes
+
+### D-0096 — Object key rules
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 5 (#13) · Status: decided
+- Decision: Keys are relative `/`-separated paths with non-empty segments that don't start with `.` and contain no `\` or NUL; otherwise `ValueError`. `list(prefix)` is a string-prefix match returning sorted keys; deleting a missing key is a no-op.
+- Alternatives: Backend-specific rules; raising on a missing delete.
+- Why: One key means one object on both backends (no `..` escape from an `fs` root; dot-files reserved for in-progress `fs` writes); retention stays idempotent.
+- Reversible: yes
+
+### D-0097 — Bundle manifest shapes the spec leaves open
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 5 (#13) · Status: decided
+- Decision: Headers are ordered `[name, value]` lists (RFC 9110 §5.3 allows repeats); `timings_ms` is `dict[str, int]`; `fetch_policy` is a JSON object; `content_type` may be null; models forbid extra keys. `CaptureBundle.network` is a tuple of bytes aligned by index with `manifest.network_bodies`. The bundle validates `html_sha256`, per-body `sha256`, `network/NNNN.json` naming, and that only browser captures carry network bodies; `decode` turns any mismatch into `CorruptBundle`.
+- Alternatives: Header dicts (lose repeats); `NetworkBody` carrying its bytes.
+- Why: Most conservative reading of §4.5 "as received" and "round-trip exactly"; inconsistent bundles can't be represented.
+- Reversible: before captures exist; after, needs `bundle_version: 2`
+
+### D-0098 — `zstandard` for zstd
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 5 (#13) · Status: decided
+- Decision: `zstandard` (BSD-3). Python 3.12 has no stdlib zstd.
+- Alternatives: `pyzstd` (BSD-3).
+- Why: Widely used, licence-clean, typed.
+- Reversible: yes; the format is standard zstd
