@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 7 (in progress); PR 4, 8, 9, 10.
+- Next: SPEC-00 PR 7 (#7) and PR 8 (#8) in review; then PR 9, 10.
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
@@ -42,7 +42,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | Repo skeleton and backend toolchain | done (#1) | Includes the CI backend job (owner request). |
 | 2 | Postgres via compose, alembic baseline, `make dev` | done (#3) | Also adds the minimal `/healthz` app and `infra/Dockerfile`. |
 | 3 | Frontend skeleton with HeroUI v3 | done (#4) | Follow-ups: theme should track live OS changes (SPEC-12); fix SPEC-00 §4.3's HeroUI licence and version in PR 10. |
-| 4 | OpenAPI → TS client pipeline | todo | |
+| 4 | OpenAPI → TS client pipeline | done (#9) | |
 | 5 | C3 site-literal scan + data manifest check | done (#5) | |
 | 6 | import-linter contracts (C8) | done (#6) | |
 | 7 | License deny-list + SBOM | todo | |

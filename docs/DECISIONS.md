@@ -285,3 +285,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `uv sync --frozen` (builds sdist dependencies; S8541).
 - Why: No third-party build script runs in CI or the image.
 - Reversible: yes
+
+### D-0071 — `crawlerai openapi` output is byte-stable JSON
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 4 (#9) · Status: decided
+- Decision: `indent=2`, `sort_keys=True`, a trailing newline, written as UTF-8 bytes to stdout (no CRLF on Windows).
+- Alternatives: FastAPI insertion order; an `--output` flag.
+- Why: The freshness check (SPEC-00 §4.5) compares bytes; stdout keeps the spec's `> frontend/openapi.json` form.
+- Reversible: yes
+
+### D-0072 — Generated API files are excluded from Prettier
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 4 (#9) · Status: decided
+- Decision: `openapi.json` and `src/api/schema.d.ts` are in `.prettierignore`.
+- Alternatives: run Prettier inside `gen:api`.
+- Why: One source of formatting keeps the freshness diff simple.
+- Reversible: yes
+
+### D-0073 — API key is optional in `createApiClient`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 4 (#9) · Status: decided
+- Decision: `createApiClient({ baseUrl, apiKey? })` sends `Authorization: Bearer` only when a key is given; there is no default base URL.
+- Alternatives: require a key; a base URL from the Vite env.
+- Why: `/healthz` is unauthenticated; the UI holds the key in memory (ARCHITECTURE §18, SPEC-07 §4.2).
+- Reversible: yes
