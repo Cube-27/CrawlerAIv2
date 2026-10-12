@@ -86,10 +86,13 @@ jobs:
           uv sync --frozen --no-build --no-install-project
           uv build --wheel --out-dir dist && uv pip install --no-build --no-deps dist/*.whl
       - name: API client freshness
+        working-directory: .
         run: |
-          (cd ../backend && uv run --no-sync --no-build crawlerai openapi) > openapi.json
-          pnpm gen:api
-          git diff --exit-code -- openapi.json src/api/schema.d.ts             || { echo "::error::API client out of date: run 'make api-client' and commit the result."; exit 1; }
+          make api-client UV_RUN="uv run --no-sync --no-build"
+          git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts || {
+            echo "::error::API client out of date: run 'make api-client' and commit the result."
+            exit 1
+          }
 
   # SPEC-00 §4.6 job 4: no site literals outside adapters/ (C3, INV-03). Also lints and tests the repo tools.
   site-literals:

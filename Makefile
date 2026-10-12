@@ -2,6 +2,8 @@
 
 .DEFAULT_GOAL := dev
 COMPOSE := docker compose -f infra/docker-compose.yml
+# CI overrides this to run against an environment it has already installed.
+UV_RUN ?= uv run
 
 .env:
 	cp .env.example .env
@@ -32,5 +34,5 @@ api:
 ## Regenerate frontend/openapi.json and the TS client types from the backend (SPEC-00 §4.5). CI fails when the
 ## committed files differ from a fresh run.
 api-client:
-	cd backend && uv run crawlerai openapi > ../frontend/openapi.json
+	cd backend && $(UV_RUN) crawlerai openapi > ../frontend/openapi.json
 	cd frontend && pnpm gen:api
