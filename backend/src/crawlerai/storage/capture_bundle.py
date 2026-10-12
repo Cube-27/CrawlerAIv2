@@ -19,8 +19,8 @@ from uuid import UUID
 import zstandard
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, ValidationError, model_validator
 
-CaptureMethod = Literal["http", "browser", "api"]
-BlockClass = Literal["ok", "blocked", "shell", "not_found", "error"]  # ARCHITECTURE §7.1
+from crawlerai.core.capture import BlockClass, CaptureMethod
+
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 # A header list, not a mapping: HTTP allows a field name to repeat (RFC 9110 §5.3, e.g. Set-Cookie), and the
 # bundle keeps headers as received.
