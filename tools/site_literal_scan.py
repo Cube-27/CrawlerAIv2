@@ -7,7 +7,10 @@ paths pass. Tests are not exempt (C9).
 Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
 - a two-label token whose last label is the extension of a tracked file is a file name;
-- a token that is the dotted path of a tracked Python module is a module name.
+- a token that is the dotted path of a tracked Python module is a module name;
+- a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
+  reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
+  Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes.
 URL hosts are always checked.
 
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
@@ -22,6 +25,7 @@ empty VAR passes: the environment holding the list may not exist yet (SPEC-00 §
 """
 
 import argparse
+import ast
 import io
 import ipaddress
 import os
@@ -51,6 +55,9 @@ URL = re.compile(r"(?i)\bhttps?://(?:[^\s/@?#]*@)?(\[[^\]\s]*\]|[^\s/:?#'\"<>()\
 # A leading dot is not part of the token, so `.shop.example.com` and `{sub}.shop.example.com` are still hosts. Only
 # host characters bound a token, so `_` separates it from a neighbouring word (`cache_shop.example.com`).
 DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|\.[a-z0-9-])")
+# A qualified column reference: two SQL identifiers (letters, digits, `_`) joined by one dot, bounded by characters
+# that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
+COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
 # Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.
 HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
@@ -93,17 +100,63 @@ class Allowlist:
         return host in self.exact or host.endswith(self.suffixes) or f".{host}" in self.suffixes
 
 
+def call_name(node: ast.expr) -> str | None:
+    if not isinstance(node, ast.Call):
+        return None
+    return node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+
+
+def string_arg(node: ast.expr) -> str | None:
+    first = node.args[0] if isinstance(node, ast.Call) and node.args else None
+    return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
+
+
+def schema_columns(tree: ast.Module) -> Iterator[tuple[str, str]]:
+    """The `(table, column)` pairs a Python module's schema definitions declare."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and call_name(node) in {"create_table", "Table", "add_column"}:
+            table = string_arg(node)
+            for argument in node.args[1:]:
+                if table and call_name(argument) == "Column" and (column := string_arg(argument)):
+                    yield table, column
+        elif isinstance(node, ast.ClassDef):
+            yield from declarative_columns(node)
+
+
+def declarative_columns(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
+    table = next(
+        (
+            statement.value.value
+            for statement in node.body
+            if isinstance(statement, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "__tablename__" for target in statement.targets)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        ),
+        None,
+    )
+    if table is None:
+        return
+    for statement in node.body:
+        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value:
+            value = statement.value
+            if isinstance(value, ast.Call) and call_name(value) in {"mapped_column", "Column"}:
+                yield table, string_arg(value) or statement.target.id
+
+
 @dataclass(frozen=True)
 class RepoNames:
     """Names the repository itself defines, which dotted tokens may refer to instead of a host."""
 
     extensions: frozenset[str]
     modules: frozenset[str]
+    columns: frozenset[tuple[str, str]]
 
     @classmethod
-    def of(cls, paths: list[str]) -> "RepoNames":
+    def of(cls, root: Path, paths: list[str]) -> "RepoNames":
         extensions: set[str] = set()
         modules: set[str] = set()
+        columns: set[tuple[str, str]] = set()
         for path in paths:
             pure = PurePosixPath(path)
             if pure.suffix:
@@ -111,11 +164,29 @@ class RepoNames:
             if pure.suffix == ".py":
                 parts = [*pure.parent.parts, pure.stem] if pure.stem != "__init__" else list(pure.parent.parts)
                 modules.update(".".join(parts[start:]).lower() for start in range(len(parts)))
-        return cls(frozenset(extensions), frozenset(modules))
+                columns.update((table.lower(), column.lower()) for table, column in parsed_columns(root / path))
+        return cls(frozenset(extensions), frozenset(modules), frozenset(columns))
 
     def names(self, token: str) -> bool:
         labels = token.split(".")
         return (len(labels) == 2 and labels[1] in self.extensions) or token in self.modules
+
+    def column_references(self, text: str) -> list[tuple[int, int]]:
+        """The spans of `table.column` references to columns the schema defines."""
+        return [
+            match.span()
+            for match in COLUMN_REF.finditer(text)
+            if (match.group(1).lower(), match.group(2).lower()) in self.columns
+        ]
+
+
+def parsed_columns(file: Path) -> Iterator[tuple[str, str]]:
+    """The schema columns a tracked Python file declares; none when it cannot be read or parsed."""
+    try:
+        tree = ast.parse(file.read_bytes())
+    except (OSError, SyntaxError, ValueError):
+        return
+    yield from schema_columns(tree)
 
 
 def load_tlds(tld_list: Path) -> frozenset[str]:
@@ -190,16 +261,18 @@ def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator
         host = match.group(1).lower().rstrip(".")
         if not names_no_public_site(host):
             yield host
+    references = repo_names.column_references(text)
     for match in DOTTED.finditer(text):
         token = match.group(0).lower()
-        if token.rsplit(".", 1)[1] in tlds and not repo_names.names(token):
+        in_reference = any(start <= match.start() and match.end() <= end for start, end in references)
+        if token.rsplit(".", 1)[1] in tlds and not in_reference and not repo_names.names(token):
             yield token
 
 
 def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str]) -> tuple[list[str], int]:
     """Return the findings and the number of files scanned."""
     paths = tracked_files(root)
-    repo_names = RepoNames.of(paths)
+    repo_names = RepoNames.of(root, paths)
     findings: list[str] = []
     scanned = 0
     for path in paths:
