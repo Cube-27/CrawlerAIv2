@@ -7,6 +7,7 @@ An empty value counts as unset, so unset CI secrets (which arrive as "") behave 
 
 from typing import Annotated, Literal
 
+from curl_cffi.requests import BrowserTypeLiteral
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,9 @@ OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
 ObjectStoreUrl = Annotated[str, Field(pattern=OBJECT_STORE_URL_PATTERN)]
 
 Role = Literal["api", "worker", "scheduler"]
+
+# The newest Chrome profile curl_cffi supports at lock time (SPEC-02 §4.7).
+IMPERSONATE_DEFAULT: BrowserTypeLiteral = "chrome150"
 
 
 class DatabaseSettings(BaseSettings):
@@ -31,3 +35,4 @@ class Settings(DatabaseSettings):
     eval_private_object_store: ObjectStoreUrl | None = None
     log_redact_urls: bool = False
     role: Role | None = None
+    impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
