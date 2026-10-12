@@ -15,7 +15,7 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
    - In-flight work lives in GitHub, not ACTIVE.md: `gh pr list --state open`, remote `spec-*` branches,
      `git worktree list`, `git log origin/main..<branch>`.
    - `docs/plans/ACTIVE.md`: rows that are `todo` but have one of these branches.
-   - A resume note at `../CrawlerAIv2-worktrees/<name>/RESUME.md`, if the earlier agent paused.
+   - A resume note at `<main>/../CrawlerAIv2-worktrees/<name>/RESUME.md` (`<main>` = the main checkout, first in `git worktree list`), if the earlier agent paused.
 2. **Rebuild the state** for each in-flight row:
    - what is committed on the branch;
    - whether a PR is open and what CI says;
@@ -44,7 +44,7 @@ Only on an explicit request ("pause", "stop for now", "hand off"). "Keep going" 
 2. Take no irreversible action to pause: no merge, and no new PR.
 3. Make the work durable: commit the uncommitted edits as one `wip:` commit on the branch, and push the branch.
    If the tree is broken, say so in one line of the commit body.
-4. Write `RESUME.md` at the worktree root (`../CrawlerAIv2-worktrees/<name>/`). Never commit it. It contains:
+4. Write `RESUME.md` at the worktree root (`<main>/../CrawlerAIv2-worktrees/<name>/`). Never commit it. It contains:
    - intent;
    - what is done and verified;
    - the current state;

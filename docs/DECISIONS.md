@@ -106,7 +106,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 
 ### D-0045 — Agent worktrees live outside the repo
 - Date: 2026-10-12 · Spec/PR: tooling (skills `implement-pr`, `pickup`) · Status: decided (owner direction)
-- Decision: Worktrees go in a sibling directory, `../CrawlerAIv2-worktrees/<name>`, never inside the repo. Supersedes D-0044.
+- Decision: Worktrees go in `CrawlerAIv2-worktrees/<name>`, a directory beside the main checkout (the first entry of `git worktree list`), never inside the repo. Supersedes D-0044.
 - Alternatives: `.worktrees/` inside the repo, ignored by git (D-0044).
 - Why: The owner ruled that worktrees cannot be inside the repo.
 - Reversible: yes. Change the path in the two skills.
