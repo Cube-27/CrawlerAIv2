@@ -291,3 +291,26 @@ def test_python_templates_are_read_as_python(tmp_path: Path, empty_allowlist: Pa
     result = run_scan(repo, "--allowlist", str(empty_allowlist))
 
     assert result.stdout.splitlines() == ["migrations/script.py.mako:2: email.example.com"]
+
+
+def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path, empty_allowlist: Path) -> None:
+    source = (
+        'SUFFIX = ".shop.example.com"\n'
+        'URL = f"https://{sub}.jobs.example.net/"\n'
+        'OK = host.endswith(".www.example.org")\n'
+        'TAIL = f"{sub}.cdn.example.com"\n'
+    )
+    repo = make_repo(
+        tmp_path / "repo",
+        {"backend/src/crawlerai/collect/hosts.py": source, "infra/config.yml": "host: .api.example.com\n"},
+    )
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert sorted(result.stdout.splitlines()) == [
+        "backend/src/crawlerai/collect/hosts.py:1: shop.example.com",
+        "backend/src/crawlerai/collect/hosts.py:2: jobs.example.net",
+        "backend/src/crawlerai/collect/hosts.py:3: www.example.org",
+        "backend/src/crawlerai/collect/hosts.py:4: cdn.example.com",
+        "infra/config.yml:1: api.example.com",
+    ]
