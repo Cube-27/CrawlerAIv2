@@ -7,7 +7,7 @@ from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.core.settings import Settings
+from crawlerai.core.settings import DatabaseSettings
 
 if context.config.config_file_name is not None:
     fileConfig(context.config.config_file_name)
@@ -23,7 +23,7 @@ def _run(connection: Connection) -> None:
 
 
 async def _run_online() -> None:
-    engine = create_async_engine(Settings().database_url.get_secret_value(), poolclass=pool.NullPool)
+    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value(), poolclass=pool.NullPool)
     async with engine.connect() as connection:
         await connection.run_sync(_run)
     await engine.dispose()

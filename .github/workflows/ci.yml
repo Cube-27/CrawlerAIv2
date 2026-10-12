@@ -54,7 +54,6 @@ jobs:
           uv run --no-sync --no-build alembic upgrade head
         env:
           CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
-          CRAWLERAI_OBJECT_STORE: fs:///tmp/crawlerai-objects
 
   # SPEC-00 §4.6. SPEC-00 PR 4 adds the API client freshness check.
   frontend:

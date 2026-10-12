@@ -3,7 +3,7 @@ import os
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.core.settings import Settings
+from crawlerai.core.settings import DatabaseSettings, Settings
 
 _REQUIRED = {
     "CRAWLERAI_DATABASE_URL": "postgresql+asyncpg://app:pw@localhost:5432/crawlerai",
@@ -90,3 +90,12 @@ def test_unknown_role_is_rejected(env: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_database_settings_need_only_the_database_url(env: pytest.MonkeyPatch) -> None:
+    # Migrations read only the database URL; they must not require the object store.
+    env.delenv("CRAWLERAI_OBJECT_STORE")
+
+    url = DatabaseSettings().database_url.get_secret_value()
+
+    assert url == "postgresql+asyncpg://app:pw@localhost:5432/crawlerai"

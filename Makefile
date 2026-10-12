@@ -23,7 +23,7 @@ db-down:
 	$(COMPOSE) down
 
 migrate:
-	cd backend && uv sync && uv run alembic upgrade head
+	cd backend && uv run alembic upgrade head
 
 api:
 	cd backend && CRAWLERAI_ROLE=api uv run uvicorn --factory crawlerai.api.app:create_app --reload --port 8000
