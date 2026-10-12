@@ -218,3 +218,17 @@ def test_modes_are_mutually_exclusive_and_one_is_required(tmp_path: Path) -> Non
 
     assert both.returncode == 2
     assert neither.returncode == 2
+
+
+def test_schema_column_references_do_not_exempt_hidden_hosts(tmp_path: Path) -> None:
+    migration = 'op.create_table("shop", sa.Column("test", sa.Text()))\n'
+    repo = make_repo(
+        tmp_path / "repo",
+        {"migrations/0001.py": migration, "a.py": 'FK = "shop.test"\n'},
+    )
+
+    result = run_hidden(repo, "shop.test")
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["a.py:1"]
+    assert_no_host_in(result, "shop.test")

@@ -316,6 +316,97 @@ def test_hosts_joined_to_underscores_are_found(tmp_path: Path, empty_allowlist: 
     assert result.stdout.splitlines() == ["a.txt:1: shop.example.com", "b.py:1: jobs.example.net"]
 
 
+# `table.column` references, joined at run time like the names above: `.id` and `.io` are TLDs.
+WIDGET_ID = ".".join(["widget", "id"])
+WIDGET_IO = ".".join(["widget", "io"])
+WIDGET_PART_ID = ".".join(["widget_part", "id"])
+GADGET_ID = ".".join(["gadget", "id"])
+MIGRATION = (
+    "import sqlalchemy as sa\n"
+    "from alembic import op\n"
+    "def upgrade():\n"
+    '    op.create_table("widget", sa.Column("id", sa.Uuid()), sa.Column("name", sa.Text()))\n'
+    '    op.create_table("widget_part", sa.Column("id", sa.Uuid()))\n'
+)
+
+
+def test_references_to_columns_the_schema_defines_are_not_hosts(tmp_path: Path, empty_allowlist: Path) -> None:
+    models = (
+        "from sqlalchemy import ForeignKey\n"
+        f'A = ForeignKey("{WIDGET_ID}")\n'
+        f'B = ForeignKey("{WIDGET_PART_ID}")\n'
+        f"# joins on {WIDGET_ID} = {WIDGET_PART_ID}\n"
+    )
+    repo = make_repo(
+        tmp_path / "repo",
+        {"backend/migrations/versions/0001_widgets.py": MIGRATION, "backend/src/crawlerai/db/models.py": models},
+    )
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_declarative_models_and_added_columns_define_the_schema(tmp_path: Path, empty_allowlist: Path) -> None:
+    models = (
+        "class Gadget(Base):\n"
+        '    __tablename__ = "gadget"\n'
+        "    id: Mapped[int] = mapped_column(primary_key=True)\n"
+        "class WidgetPart(Base):\n"
+        '    __tablename__ = "widget_part"\n'
+        "    id = Column(Uuid)\n"
+        "def upgrade():\n"
+        '    op.add_column("widget", sa.Column("io", sa.Text()))\n'
+    )
+    notes = f"{GADGET_ID}, {WIDGET_PART_ID} and {WIDGET_IO}\n"
+    repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/db/models.py": models, "notes.txt": notes})
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_table_column_shapes_the_schema_does_not_define_are_hosts(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo",
+        {
+            "backend/migrations/versions/0001_widgets.py": MIGRATION,
+            "backend/src/crawlerai/db/refs.py": f'A = "{GADGET_ID}"\nB = "{WIDGET_IO}"\n',
+        },
+    )
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        f"backend/src/crawlerai/db/refs.py:1: {GADGET_ID}",
+        f"backend/src/crawlerai/db/refs.py:2: {WIDGET_IO}",
+    ]
+
+
+def test_hosts_that_start_with_a_table_name_are_still_found(tmp_path: Path, empty_allowlist: Path) -> None:
+    hosts = (
+        'A = "widget.example.com"\n'
+        f'B = "https://{WIDGET_ID}/p"\n'
+        f'C = "shop.{WIDGET_ID}"\n'
+        f'D = "{WIDGET_ID}.example.net"\n'
+    )
+    repo = make_repo(
+        tmp_path / "repo",
+        {"backend/migrations/versions/0001_widgets.py": MIGRATION, "backend/src/crawlerai/collect/hosts.py": hosts},
+    )
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        "backend/src/crawlerai/collect/hosts.py:1: widget.example.com",
+        f"backend/src/crawlerai/collect/hosts.py:2: {WIDGET_ID}",
+        f"backend/src/crawlerai/collect/hosts.py:3: shop.{WIDGET_ID}",
+        f"backend/src/crawlerai/collect/hosts.py:4: {WIDGET_ID}.example.net",
+    ]
+
+
 def test_staged_mode_scans_only_staged_files(tmp_path: Path, empty_allowlist: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"old.txt": "shop.example.com\n", "new.txt": "clean\n"})
     commit(repo)

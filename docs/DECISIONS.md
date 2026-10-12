@@ -567,3 +567,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Options: (a) keep type-aware eslint in the hook and accept the Windows overage; (b) drop type-aware rules from the hook, keeping the full lint in `make check` and CI; (c) revisit the frontend lint config (`projectService`, HeroUI type depth) in a frontend row.
 - Recommendation: (a) now, since hooks are not weakened; consider (c) later.
 - Blocked: nothing. Python-file commits take about 2 s.
+
+### D-0111 — The C3 scan reads schema-defined `table.column` strings as columns
+- Date: 2026-10-13 · Spec/PR: SPEC-00 §4.7 follow-up (#15) · Status: decided
+- Decision: `table.column` is a column reference, not a host, only when the repository's schema (Alembic ops, `Table`, declarative models in tracked Python files) defines both the table and the column.
+- Alternatives: allowlist table names (C4); exempt any `identifier.identifier` in Python strings (hides real two-label hosts); treat `_`-adjacent tokens as identifiers.
+- Why: structural and derived from the repo, like the file-extension and module-path rules; a host escapes only if a table and column with exactly its two labels exist in the schema.
+- Reversible: yes

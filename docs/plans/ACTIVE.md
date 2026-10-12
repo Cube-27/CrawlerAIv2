@@ -32,8 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-01 PR 3 (in progress); C3 scanner fix (in progress); then SPEC-01 PR 4/6/7 and SPEC-02 PR 1.
-- Follow-up (due): the C3 scan reads dotted `table.column` strings whose last label is a TLD (`.id`) as hosts. Second occurrence in #14 (D-0093, D-0104), so fix the class in `tools/site_literal_scan.py` as a tooling PR.
+- Next: SPEC-01 PR 3 (in progress); SPEC-02 PR 1 (in progress); then SPEC-01 PR 4/6/7.
+- Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
 - Follow-up: `url_task` UNIQUE (`job_id`, `canonical_url`) is needed by SPEC-10 §4 but not listed in SPEC-01 §4.2; SPEC-01 PR 3 or SPEC-10 adds it. Indexes on `url_task.job_id` and `job_event (job_id, id)` come with the rows that add those queries (SPEC-01 PR 3, SPEC-10), each justified by its query.
 - Blocked: none.
 
