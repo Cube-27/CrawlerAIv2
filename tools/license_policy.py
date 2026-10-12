@@ -1,0 +1,191 @@
+"""Fail when a dependency's declared license is on the deny-list (SPEC-00 §4.6 job 3, ARCHITECTURE §18).
+
+Reads the reports that `tools/license_scan.sh` collects: `pip-licenses --from=all --format=json` for the Python
+environment and `pnpm licenses list --json` for the frontend. A declaration is matched as an SPDX license
+expression, by whole identifier and never by substring, so LGPL does not match GPL (D-0001). `OR` passes when any
+branch is clean, `AND` needs every operand clean, and `WITH` judges the license it modifies. A declaration that is
+not a valid expression (a trove classifier, free text) is matched by its whole name.
+
+Exit status: 0 when no package is denied, 1 otherwise, with one stderr line per denied package.
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+# SPEC-00 §4.6, verbatim.
+DENIED_SPDX = [
+    "AGPL-3.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    "GPL-2.0",
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "SSPL-1.0",
+    "CC-BY-NC-4.0",
+    "CC-BY-NC-SA-4.0",
+    "CC-BY-NC-ND-4.0",
+    "PolyForm-Noncommercial-1.0.0",
+    "Commons-Clause",
+]
+# The PyPI trove classifiers (https://pypi.org/classifiers/) that name the same denied licenses. Packages that
+# predate PEP 639 declare their license only this way.
+DENIED_TROVE = [
+    "GNU Affero General Public License v3",
+    "GNU Affero General Public License v3 or later (AGPLv3+)",
+    "GNU General Public License (GPL)",
+    "GNU General Public License v2 (GPLv2)",
+    "GNU General Public License v2 or later (GPLv2+)",
+    "GNU General Public License v3 (GPLv3)",
+    "GNU General Public License v3 or later (GPLv3+)",
+]
+DENIED = {name.casefold(): name for name in DENIED_SPDX + DENIED_TROVE}
+UNKNOWN = "UNKNOWN"  # pip-licenses' value for a field the package does not declare
+
+TOKEN = re.compile(r"\s*(\(|\)|[A-Za-z0-9.+:-]+)")
+
+
+class ExpressionError(ValueError):
+    pass
+
+
+def tokenize(expression: str) -> list[str]:
+    tokens: list[str] = []
+    position = 0
+    while position < len(expression):
+        match = TOKEN.match(expression, position)
+        if match is None:
+            if expression[position:].isspace():
+                break
+            raise ExpressionError(expression)
+        tokens.append(match.group(1))
+        position = match.end()
+    return tokens
+
+
+class Parser:
+    """SPDX license expression (SPDX spec Annex D); precedence WITH > AND > OR.
+
+    Each parse method returns the denied licenses the expression cannot avoid.
+    """
+
+    def __init__(self, expression: str) -> None:
+        self.tokens = tokenize(expression)
+        self.position = 0
+
+    def parse(self) -> set[str]:
+        denied = self.or_expression()
+        if self.position != len(self.tokens):
+            raise ExpressionError(self.tokens[self.position])
+        return denied
+
+    def peek_operator(self, operator: str) -> bool:
+        return self.position < len(self.tokens) and self.tokens[self.position].upper() == operator
+
+    def or_expression(self) -> set[str]:
+        branches = [self.and_expression()]
+        while self.peek_operator("OR"):
+            self.position += 1
+            branches.append(self.and_expression())
+        return set() if not all(branches) else set().union(*branches)
+
+    def and_expression(self) -> set[str]:
+        denied = self.with_expression()
+        while self.peek_operator("AND"):
+            self.position += 1
+            denied |= self.with_expression()
+        return denied
+
+    def with_expression(self) -> set[str]:
+        denied = self.primary()
+        if self.peek_operator("WITH"):
+            self.position += 1
+            self.identifier()  # the exception never makes a denied license acceptable
+        return denied
+
+    def primary(self) -> set[str]:
+        if self.position < len(self.tokens) and self.tokens[self.position] == "(":
+            self.position += 1
+            denied = self.or_expression()
+            if self.position >= len(self.tokens) or self.tokens[self.position] != ")":
+                raise ExpressionError("unbalanced parentheses")
+            self.position += 1
+            return denied
+        name = self.identifier().removesuffix("+")  # `+` is SPDX "or later"
+        return {DENIED[name.casefold()]} if name.casefold() in DENIED else set()
+
+    def identifier(self) -> str:
+        if self.position >= len(self.tokens):
+            raise ExpressionError("expected a license identifier")
+        token = self.tokens[self.position]
+        if token in ("(", ")") or token.upper() in ("AND", "OR", "WITH"):
+            raise ExpressionError(token)
+        self.position += 1
+        return token
+
+
+def denied_licenses(declared: str) -> set[str]:
+    try:
+        return Parser(declared).parse()
+    except ExpressionError:
+        name = declared.strip().casefold()
+        return {DENIED[name]} if name in DENIED else set()
+
+
+def python_declarations(package: dict[str, str]) -> list[str]:
+    """The declaration that governs: License-Expression (PEP 639), else every classifier, else License metadata."""
+    if package["License-Expression"] != UNKNOWN:
+        return [package["License-Expression"]]
+    if package["License-Classifier"] != UNKNOWN:
+        return package["License-Classifier"].split("; ")
+    return [package["License-Metadata"]]
+
+
+def violation(ecosystem: str, package: str, declared: str) -> str | None:
+    denied = denied_licenses(declared)
+    if not denied:
+        return None
+    return f"denied license: {ecosystem} {package}: {', '.join(sorted(denied))} (declared {declared!r})"
+
+
+def violations(python: list[dict[str, str]], node: dict[str, list[dict[str, Any]]]) -> list[str]:
+    found = [
+        violation("python", f"{package['Name']} {package['Version']}", declared)
+        for package in python
+        for declared in python_declarations(package)
+    ]
+    found += [
+        violation("node", f"{package['name']} {version}", package["license"])
+        for group in node.values()
+        for package in group
+        for version in package["versions"]
+    ]
+    return [line for line in found if line is not None]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--python", type=Path, required=True, help="pip-licenses --from=all --format=json output")
+    parser.add_argument("--node", type=Path, required=True, help="pnpm licenses list --json output")
+    args = parser.parse_args()
+    python = json.loads(args.python.read_text(encoding="utf-8"))
+    node = json.loads(args.node.read_text(encoding="utf-8"))
+
+    found = violations(python, node)
+    for line in found:
+        print(line, file=sys.stderr)
+    if found:
+        return 1
+    node_count = sum(len(package["versions"]) for group in node.values() for package in group)
+    print(f"licenses ok: {len(python)} python and {node_count} node packages checked")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
