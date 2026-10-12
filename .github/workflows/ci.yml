@@ -41,7 +41,6 @@ jobs:
       - run: uv run --no-sync --no-build ruff format --check
       - run: uv run --no-sync --no-build mypy src tests migrations
       - run: uv run --no-sync --no-build lint-imports
-      - run: uv run --no-sync --no-build pytest
       - name: Create databases and roles
         working-directory: .
         run: psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql
@@ -52,6 +51,10 @@ jobs:
           uv run --no-sync --no-build alembic upgrade head
           uv run --no-sync --no-build alembic downgrade base
           uv run --no-sync --no-build alembic upgrade head
+        env:
+          CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
+      # tests/db run against the migrated database; they are skipped only where no database URL is set.
+      - run: uv run --no-sync --no-build pytest
         env:
           CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
 
