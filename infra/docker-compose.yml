@@ -1,0 +1,23 @@
+# Local development only (SPEC-00 §4.4). Objects use the filesystem store under ./.data/objects; there is no
+# object store container.
+name: crawlerai
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Checks the app database, which exists only once init.sql has run.
+      test: ["CMD", "pg_isready", "-U", "app", "-d", "crawlerai"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pgdata:
