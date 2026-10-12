@@ -27,10 +27,15 @@ PRs, and work in flight is read from GitHub, not from ACTIVE.md: open PRs and `s
 records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
 
 1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, its spec's dependencies are `done`, and the earlier rows in its
-   spec are `done` (unless the spec says the rows are independent). Rows that are `human` or `blocked` are skipped.
-2. **Assign.** Keep at most **2 workers in flight** (cost cap; the owner may raise it). Two workers never run rows
-   of the same spec, or rows that touch the same files or migrations. For each assignment:
-   - start the worker (a herdr pane or a subagent) with: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator
+   spec are `done`, unless the rows don't really depend on each other (the earlier row's output isn't an input to the
+   later one). Rows that are `human` or `blocked` are skipped.
+2. **Assign.** Hard limits, set by the owner: at most **3 worktrees** and at most **8 agents** (the orchestrator,
+   workers and reviewers together) alive at any time. Count them with `git worktree list` (not counting the main
+   checkout) and `herdr agent list` before starting either. Within those limits, run as many ready rows in parallel
+   as can proceed independently. Two workers never run rows that edit the same migration. For each assignment:
+   - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
+     `spec-NN/pr-M-<short-name>`, and start the worker as a herdr agent
+     in its own pane, with the worktree as its cwd. Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator
      assigned you this row. Report the PR URL when done."
 3. **On a worker report.** Run `/review-pr <n>` in a fresh reviewer agent, never the worker itself.
    - `FIX`: send the Act-on list back to the same worker. After 3 FIX rounds on one PR, escalate.
@@ -39,8 +44,10 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      - copies the PR's `## Decisions` into DECISIONS.md with the next IDs, with `needs-owner` entries also listed
        in the index.
 
-     Push it, wait for green CI, then run `gh pr merge <n> --squash --delete-branch` and remove the worktree. If
-     two PRs are ready together, merge one, then rebase the other before its tracker commit, so IDs never clash.
+     Push it, wait for green CI, then run `gh pr merge <n> --squash --delete-branch`. Close the PR's herdr panes,
+     then remove the worktree.
+   - **Merge strictly one at a time.** Merge one PR. Rebase the next one onto the new `main`, add its tracker commit,
+     wait for green CI, then merge it, and so on. IDs never clash, and every merge is tested against the real `main`.
    - `ESCALATE`: follow §2.
 4. **CI on main.** Before every merge and after it, check that `main` is green. If `main` turns red, fixing it
    comes before any new assignment. Assign a fix row to one worker, and stop other merges until it is green.
@@ -82,6 +89,6 @@ a merged PR to reach the predicate.
 
 ## Cost discipline
 
-- Default 2 workers and 1 reviewer per PR. No multi-agent panels, no parallel attempts at the same row.
+- Within the hard limits above, 1 reviewer per PR. No multi-agent panels, no parallel attempts at the same row.
 - Workers get one row each. Start a fresh worker per row rather than reusing a long, compacted one.
 - Don't re-verify work a merged PR already proved. Trust the CI record (pickup rules).
