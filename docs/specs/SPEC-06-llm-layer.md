@@ -165,8 +165,8 @@ site names), INV-10 (deterministic request hashing for replay).
 
 ## 7. Acceptance criteria (§21 L1 share)
 
-- Dev report includes `text|llm_grounded`, `money|llm_grounded` etc. with n and precision; LLM calls per 1k
-  pages reported by mode.
+- The report includes `llm_grounded` buckets per field type (n and precision when labels exist) and LLM calls
+  per 1k pages by mode. **Milestone M (§21; not required to mark this spec done):** the dev numbers are published.
 - Two replays of the same dev split with the recorded cache make zero provider calls and produce identical
   output.
 - A prompt submitted twice yields one `schema_def` row.

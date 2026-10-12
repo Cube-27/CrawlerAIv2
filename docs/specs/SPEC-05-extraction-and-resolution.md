@@ -288,8 +288,9 @@ INV-02 (calibration file source split), INV-03 (no literals in `collect/` and `r
 
 ## 7. Acceptance criteria (§21 L1 done-when, this spec's share)
 
-- Dev report shows precision and coverage per field type and per evidence bucket for the structured path;
-  wrong-product = 0 on dev and hidden.
+- The report computes precision and coverage per field type and per evidence bucket from labels (tested on
+  synthetic labeled fixtures); unlabeled pages report coverage only, and every field is `calibrated=false`.
+- **Milestone M (§21; not required to mark this spec done):** published dev and hidden numbers; wrong-product = 0 on dev and hidden.
 - All §8.2 rules and §10 stages have tests that fail if the rule is removed.
 - `extract_page` is the single function used by the worker and by `replay_split`.
 

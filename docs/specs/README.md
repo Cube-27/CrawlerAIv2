@@ -68,7 +68,7 @@ L2 = 08, 09, 12 (PR 6). L3 = 10, 12 (PR 7). L4 = 11, 12 (PR 8).
 2. SPEC-00 (toolchain, CI, invariants, the agent rules in `CLAUDE.md`) — everyone.
 3. SPEC-01 → SPEC-02 → SPEC-03 (the L0 measurement layer; nothing in L1 may start before SPEC-03's acceptance
    criteria are met).
-4. SPEC-04 → SPEC-05 → SPEC-06 → SPEC-07 (first honest numbers).
+4. SPEC-04 → SPEC-05 → SPEC-06 → SPEC-07 (end-to-end extraction; accuracy numbers wait for milestone M, §21).
 5. SPEC-08 → SPEC-09 (configs and progressive mode).
 6. SPEC-10 → SPEC-11.
 7. SPEC-12 alongside the API specs its screens depend on.

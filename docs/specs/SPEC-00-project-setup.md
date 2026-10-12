@@ -191,7 +191,8 @@ Jobs (all required for merge, all run on every PR):
   (`EVAL_PRIVATE_DATABASE_URL`, `EVAL_PRIVATE_OBJECT_STORE` credentials, `HIDDEN_HOSTS`) are available only to
   that environment and whose required reviewers are the custodians (OPEN_QUESTIONS #6). Workflows from forks never
   see the secrets. Coding agents never get the environment's approval rights.
-- In this spec the job only verifies the secrets are present and posts a placeholder pass line; the C3
+- In this spec the job posts a placeholder pass line (`no_baseline`). Until milestone M (ARCHITECTURE §21) the
+  environment and its secrets may not exist; the job must then pass, not fail; the C3
   hidden-host scan (`tools/site_literal_scan.py --hidden-hosts-from-env HIDDEN_HOSTS`, reporting file:line only)
   is wired now because it needs nothing else.
 - The job uploads **no** artifacts (public repo: artifacts and logs are public), writes `eval-aggregate.json` only to

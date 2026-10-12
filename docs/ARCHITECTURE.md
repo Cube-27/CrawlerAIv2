@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 5, 2026-10-12. No code exists.
+Status: design, rev 6, 2026-10-12. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -100,7 +100,7 @@ on every site.
 | C7 | **Normalizers decline rather than guess** (§9). No defaults, no host tables, no values from URL codes. Derived values fill only empty fields and carry `derived_by`. | Property tests. |
 | C8 | **One module per field type.** | Import-linter independence and forbidden-import contracts, plus review. |
 | C9 | **Tests check type properties and replays, not specific sites.** No test is named after a site or asserts one site's output. | C3 scan; review. |
-| C10 | **How changes are accepted.** A change is accepted when it **improves dev** and **does not regress hidden** (§16.4). Claims that something *improved* are made only from **fresh** results, never from hidden. Accepting on "hidden improved" would fit hidden slowly through repeated selection. PR comments carry dev deltas and only the hidden pass/fail per field type. Numeric hidden aggregates go only to the custodian. | CI; PR template. |
+| C10 | **How changes are accepted.** A change is accepted when it **improves dev** and **does not regress hidden** (§16.4). Claims that something *improved* are made only from **fresh** results, never from hidden. Accepting on "hidden improved" would fit hidden slowly through repeated selection. PR comments carry dev deltas and only the hidden pass/fail per field type. Numeric hidden aggregates go only to the custodian. Until labels exist (§21, milestone M), the gate reports `no_baseline` and acceptance rests on tests, replays and review. | CI; PR template. |
 | C11 | **No size gates.** No LOC or complexity ratchets. | CI meta-check. |
 | C12 | **Nothing is copied or ported from Invoro or v1:** code, lists, config, tests, prompts or data (Appendix A #24). | License scan; C3 scan. |
 | C13 | **Mechanisms are admitted by evidence.** A mechanism outside core is added only when evaluation results or production outcomes show a class of failures it fixes, and its effect is measured. "It makes sense" and "v1 had it" are not evidence. | §22 register; PR report. |
@@ -650,7 +650,7 @@ Adaptive scheduling and API delta fetches are candidates (§22).
 
 ## 16. Evaluation
 
-This is the defence against repeating §2.1, and it is built first (L0).
+This is the defence against repeating §2.1. The machinery is built first (L0); labels arrive at milestone M (§21).
 
 ### 16.1 Splits
 
@@ -784,16 +784,35 @@ re-derived from standards and evidence; nothing is copied.
 
 ## 21. Build order (core only)
 
+Labeling is deferred until the crawler works end to end (Appendix A #29). Layers L0–L4 are built and accepted on
+**functional** criteria: tests, property tests, replays of stored captures, and spec acceptance criteria. Every
+claim about accuracy waits for milestone **M**. The measurement machinery itself is still built first, so M only
+needs labels, not code.
+
 | Layer | Builds | Done when |
 |---|---|---|
-| **L0 Measurement** | Repo foundations (SPEC-00); persistence and storage including the private eval store; eval splits with custodian access; labeling tool; replay; metric report and protected job; CI checks; HTTP fetch | Dev and hidden sets labeled; baseline report reproducible from stored captures |
-| **L1 First honest numbers** | Schema registry and presets; type normalizers for preset types; Patchright browser on evidence; Greenhouse + Lever adapters; structured collectors; resolver with evidence buckets; role C cold extraction; role S; `scrape` endpoint with records and markdown | Precision and coverage per field type and evidence bucket published for dev, hidden and the first fresh sample; wrong-product = 0 |
-| **L2 Configs and progressive mode** | Config IR and executors; induction; role A synthesis; validation and corroboration status; progressive state; drift suspension; API-backed pages with role D; `json` and `platform_draft` exporters | Config field precision measured per status on hidden and fresh; release check passes |
-| **L3 API and MCP** | `map`, `crawl`, `extract`, batch, jobs, SSE, webhooks; MCP server | Every endpoint works through REST and MCP on dev; SSRF tests pass |
+| **L0 Foundations and measurement machinery** | Repo foundations (SPEC-00); persistence and storage including the private eval store; eval splits with custodian access; labeling tool; replay; metric report and protected job (a placeholder until M); CI checks; HTTP fetch | Replay is deterministic on stored captures; the labeling tool works; the private store is unreadable with app credentials |
+| **L1 Extraction** | Schema registry and presets; type normalizers for preset types; Patchright browser on evidence; Greenhouse + Lever adapters; structured collectors; resolver with evidence buckets; role C cold extraction; role S; `scrape` endpoint with records and markdown | Spec acceptance criteria pass on synthetic fixtures and unlabeled dev captures; every published field carries evidence and `calibrated=false` |
+| **L2 Configs and progressive mode** | Config IR and executors; induction; role A synthesis; validation and corroboration status; progressive state; drift suspension; API-backed pages with role D; `json` and `platform_draft` exporters | A dev-capture site reaches `active` with a validated config; release check passes |
+| **L3 API and MCP** | `map`, `crawl`, `extract`, batch, jobs, SSE, webhooks; MCP server | Every endpoint works through REST and MCP on dev captures; SSRF tests pass |
 | **L4 Recurring** | Conditional GET, content and record fingerprints, listing diff | Unchanged pages skip extraction; record versions carry `changed_fields` |
+| **M Measurement** (owner-led, once the crawler is usable) | Dev labels from the owner's review of crawler output; hidden and fresh drawn under the rule below; first calibration and `source_precedence` fit on dev; protected gate switched on | Precision and coverage per field type, evidence bucket and config status published for dev, hidden and the first fresh sample; wrong-product = 0 |
 
-There are no pre-planned hardening layers. After L4, work comes from §22 candidates admitted by evidence. The
-specs in `specs/` follow this order.
+**Keeping a hidden set possible (C1).** Every site that development touches (in the main DB `site` table, in dev
+captures, or in debugging) is dev. When M starts, hidden and fresh sites are drawn only from hosts in none of
+those places. Sites the owner reviews and corrects while building dev labels are dev too, never hidden. This is
+the one rule that stops the deferral from repeating §2.1.
+
+**Before M:**
+- confidence is `calibrated=false` everywhere (§10);
+- precedence uses the spec's initial order;
+- drift margins use their defaults;
+- the protected job passes as `no_baseline`.
+
+The engine works, but accuracy is unknown. Nothing claims otherwise, in docs, PRs or UI.
+
+There are no pre-planned hardening layers. After M, work comes from §22 candidates admitted by evidence. The specs
+in `specs/` follow this order.
 
 ---
 
@@ -873,6 +892,7 @@ implementation go in `DECISIONS.md`, not here.
 | 26 | License and visibility (2026-10-12) | The repo is **public**, licensed **AGPL-3.0**. Documents name no customer or prospective buyer and contain no business terms. |
 | 27 | Frontend (2026-10-12) | Vite + React + TypeScript + HeroUI (open source, React Aria based). |
 | 28 | Autonomous implementation (2026-10-12) | Implementation runs through orchestrated coding agents with minimal owner involvement. Agents record their decisions in `DECISIONS.md` and state in `plans/ACTIVE.md`. Changes to this document are escalated to the owner. |
+| 29 | Labeling deferred (2026-10-12) | No labeled sets before the crawler works. L0–L4 are accepted on functional criteria; measurement is milestone M (§21), started by the owner from reviewing crawler output. Hidden and fresh are later drawn only from sites development never touched. |
 
 ---
 
@@ -945,3 +965,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 3 | 2026-10-12 | Consolidation: generalization contract, schemas as data, type normalizers, per-site learning, progressive mode, API + MCP, three eval splits. |
 | 4 | 2026-10-12 | Core/candidate pass (C13); acquisition cut to core; no porting from v1; review fixes (fitting on dev only, protected scan, sample sizes, evidence buckets). |
 | 5 | 2026-10-12 | **Spec review folded in, repo made public.** <br>• Hidden and fresh data live only in a private DB and store (C1, §6, §15). <br>• Acceptance is dev improvement plus hidden non-regression; improvement claims come from fresh only (C10); small-cell suppression. <br>• Locator defined (§8.1); `required_groups` and `scope` (§5.2); `independent` flag so `agreed` can't count a value agreeing with itself (§8.1, §10). <br>• Block classification by status and structure only (§7.1); SSRF behaviour through proxies stated. <br>• Partial records for caller-supplied URLs, `no_match` for crawl-discovered ones (§10). <br>• Grounding scoped to role C (§11). <br>• Learning counts extracted pages; small-n thresholds (§8.3, §12.3). <br>• Plumbing named: `learn` job kind, `links_only`/`partial` outcomes, record versions, `gone_at`, stored run events. <br>• UI auth by bearer API key, no CSRF (§18). <br>• Repo public under AGPL-3.0: customer names and business terms removed; Appendix B rewritten as anonymized user requirements; eval categories renamed to generic ones; the platform exporter renamed `platform_draft`. <br>• Appendix A #26–#28 added. <br>• Consistency pass: comparable-page rule and floor of 3 for corroboration; `suspended` field status; `schema_version` on `progressive_state`; `operator` fields use the `config_uncorroborated` bucket; glob-expanded `extract` URLs count as caller-supplied; `error` class and robots outcome defined; role C also fills fields an active config doesn't cover; hidden numbers stay with the custodian (PR comments show pass/fail only); PHP-only code hints. |
+| 6 | 2026-10-12 | **Labeling deferred** (Appendix A #29). §21 rewritten: L0–L4 accepted on functional criteria, accuracy claims moved to milestone M; rule for drawing hidden and fresh from untouched sites; C10 notes the `no_baseline` period. |

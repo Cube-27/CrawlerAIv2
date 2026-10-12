@@ -9,7 +9,7 @@ The defence against §2.1. Three splits with physically separated storage and cr
 a replay harness that is the only path from captures to metrics, a metric report whose hidden/fresh parts are
 aggregates computed in the protected CI job, and the merge gate (§16.4). A change is accepted when it improves
 dev and does not regress hidden; improvement claims are made only from fresh (C10). It is built before any
-extraction so the first extraction PR already has a baseline (§21 L0 done-when).
+extraction; labels arrive at milestone M (§21), and until then the gate reports `no_baseline`.
 
 **Where the labeling tool lives.** In this spec, not in SPEC-12. L0 must finish before L1 starts, the tool is
 inseparable from the eval store's access model, and the custodian runs it against the private database on their
@@ -291,11 +291,13 @@ INV-10 (double-run diff), INV-19 (PR comment), INV-21 (gate), INV-09 (no site na
 
 ## 7. Acceptance criteria (§21 L0 done-when)
 
-- Dev and hidden sets labeled: ≥ 300 checked pages across both, stratified per §16.1 (~70% detail, 30% listing;
+- **Milestone M (§21; not required to mark this spec done):** dev and hidden sets labeled: ≥ 300 checked pages across both, stratified per §16.1 (~70% detail, 30% listing;
   all five categories; DOM-only sites included). This is custodian/labeler work enabled by the tool; the spec is
   done when the tool supports it and the custodian confirms.
-- Baseline report reproducible: `crawlerai eval run --split dev` twice gives identical `report.json`; the
-  protected job produces `eval-aggregate.json` for hidden on a PR and posts the comment.
+- Report reproducible: `crawlerai eval run --split dev` twice gives identical `report.json` (on synthetic and
+  unlabeled dev captures before M). The protected job passes as `no_baseline` while no hidden labels exist;
+  **Milestone M (§21; not required to mark this spec done):** it computes the hidden gate on a PR and posts pass/fail.
+- The labeling tool can create, check and export labels for a dev capture (test on a synthetic page).
 - `calibrate`/`fit-precedence` exit non-zero on `--split hidden`.
 - `app` credentials cannot read any private table or object (test).
 

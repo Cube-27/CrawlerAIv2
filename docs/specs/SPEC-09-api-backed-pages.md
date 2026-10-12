@@ -156,8 +156,8 @@ on a stored replay response, not by fetching), INV-22.
 
 ## 7. Acceptance criteria (§21 L2 "API-backed pages with role D")
 
-- On the dev set, sites in the `api_backed` category with learnable endpoints are served with `method=api`
-  and zero browser seconds after learning; their field precision is reported per config status.
+- On dev captures, `api_backed` sites with learnable endpoints are served with `method=api` and zero browser
+  seconds after learning. **Milestone M (§21; not required to mark this spec done):** their field precision is reported per config status.
 - Recipes in exported configs pass the release check or are marked `manual`.
 
 ## 8. PR plan

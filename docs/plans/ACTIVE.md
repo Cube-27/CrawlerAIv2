@@ -17,16 +17,18 @@ Updated: 2026-10-12. No work has started.
 
 ## Human-only tasks
 
-Agents can't do these. Rows that depend on them are marked `human` until they're finished.
+Agents can't do these. Rows that depend on them are marked `human` until they're finished. Tasks marked
+**M** belong to milestone M (ARCHITECTURE §21). Labeling is deferred until the crawler works, so they block no row:
+the protected eval job stays a `no_baseline` placeholder, and tests run against local throwaway databases.
 
 | # | Task | Needed by | Status |
 |---|---|---|---|
-| H1 | Choose the custodian(s) of the hidden and fresh sets (OPEN_QUESTIONS #6). Create the private eval database role and credentials, and store them only in the protected GitHub environment. | SPEC-03 PR 1, PR 7 | todo |
-| H2 | Create the GitHub protected environment for the eval job, with required reviewers and the secret hidden-host list. | SPEC-00 PR 8, SPEC-03 PR 7 | todo |
-| H3 | Label the dev and hidden sets (~300 pages, two passes: labeler and checker) with the labeling tool. | First honest numbers (end of L0) | todo |
+| H1 (M) | Choose the custodian(s) of the hidden and fresh sets (OPEN_QUESTIONS #6). Create the private eval database role and credentials, and store them only in the protected GitHub environment. | Milestone M (CI uses throwaway credentials before then) | deferred |
+| H2 (M) | Create the GitHub protected environment for the eval job, with required reviewers and the secret hidden-host list. | Milestone M (the placeholder job runs without it) | deferred |
+| H3 (M) | Label dev from a review of crawler output, then draw and label hidden from sites development never touched (§21 rule). | Milestone M | deferred |
 | H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | SPEC-06 PR 2 | todo |
 | H5 | Answer the `needs-owner` entries in `DECISIONS.md`, and confirm or override the `pending-owner` entries. | As they come up | todo |
-| H6 | Monthly: sample and label 20–30 fresh sites (OPEN_QUESTIONS #7). | After L1 | todo |
+| H6 (M) | Monthly: sample and label 20–30 fresh sites (OPEN_QUESTIONS #7). | After M | deferred |
 | H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | SPEC-02 PR 7 (can be tested with a stub) | todo |
 
 ## Current focus

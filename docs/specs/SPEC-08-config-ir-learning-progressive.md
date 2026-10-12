@@ -222,10 +222,10 @@ none), INV-22.
 
 ## 7. Acceptance criteria (§21 L2 done-when)
 
-- Config field precision measured per status (`corroborated`, `uncorroborated`, `operator`) on hidden and fresh
-  in the aggregate report.
+- The report breaks precision out per config field status (`corroborated`, `uncorroborated`, `operator`),
+  tested on synthetic labeled fixtures. **Milestone M (§21; not required to mark this spec done):** measured on hidden and fresh.
 - Release check passes (§12.3 small-n rule) on exported dev configs, or fields are marked `manual`.
-- A site that reaches 8 extracted pages (`extracted` or `partial`) on dev enters `active` with a validated
+- A site that reaches 8 extracted pages (`extracted` or `partial`) on dev captures enters `active` with a validated
   config without human input;
   repeat pages are served with `mode=config` and zero LLM calls for covered fields.
 - Drift suspension triggers on a synthetic layout change and re-learning restores the field.

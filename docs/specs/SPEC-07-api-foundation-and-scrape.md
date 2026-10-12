@@ -6,8 +6,8 @@ response shape), §8.5 (content outputs), §18 (access, secrets), §17 (usage), 
 ## 1. Summary
 
 The FastAPI application, API-key authentication, the service layer that REST, MCP and the UI all call (§3), the
-generic page-content formats (§8.5), and the synchronous `POST /v1/scrape` with `records` for L1's "first honest
-numbers" (§21). Async jobs, map/crawl/extract, SSE, webhooks and MCP are SPEC-10; configs endpoints are SPEC-08.
+generic page-content formats (§8.5), and the synchronous `POST /v1/scrape` with `records` for L1's end-to-end
+extraction (§21). Async jobs, map/crawl/extract, SSE, webhooks and MCP are SPEC-10; configs endpoints are SPEC-08.
 
 ## 2. Scope
 
