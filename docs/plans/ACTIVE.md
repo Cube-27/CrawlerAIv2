@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-01 PR 3 (in progress); SPEC-02 PR 1 (in progress); then SPEC-01 PR 4/6/7.
+- Next: SPEC-01 PR 3 (in progress); SPEC-02 PR 2; then SPEC-01 PR 4/6/7.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
 - Follow-up: `url_task` UNIQUE (`job_id`, `canonical_url`) is needed by SPEC-10 §4 but not listed in SPEC-01 §4.2; SPEC-01 PR 3 or SPEC-10 adds it. Indexes on `url_task.job_id` and `job_event (job_id, id)` come with the rows that add those queries (SPEC-01 PR 3, SPEC-10), each justified by its query.
 - Blocked: none.
@@ -69,7 +69,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Acquisition types, classify, SSRF guard | todo | |
+| 1 | Acquisition types, classify, SSRF guard | done (#16) | Ran ahead of SPEC-01 PRs 3–8; it needs no SPEC-01 table. |
 | 2 | HTTP fetch (curl_cffi) with manual redirects and caps | todo | |
 | 3 | Persist capture + `crawlerai fetch` CLI | todo | |
 | 4 | Politeness + robots + backoff via requeue | todo | |

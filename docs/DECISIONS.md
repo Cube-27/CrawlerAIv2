@@ -574,3 +574,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: allowlist table names (C4); exempt any `identifier.identifier` in Python strings (hides real two-label hosts); treat `_`-adjacent tokens as identifiers.
 - Why: structural and derived from the repo, like the file-extension and module-path rules; a host escapes only if a table and column with exactly its two labels exist in the schema.
 - Reversible: yes
+
+### D-0112 — Visible text counts non-whitespace characters of `<body>`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: Count non-whitespace code points in the body text after stripping the four excluded elements; `<title>` is not counted.
+- Alternatives: Collapsed-whitespace length including separators.
+- Why: §4.3 says "< 200 characters of visible text" without defining characters; this count doesn't depend on how text nodes are joined.
+- Reversible: yes
+
+### D-0113 — The shell rule applies only to HTML responses
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: Shell applies when the last `Content-Type` is `text/html` or `application/xhtml+xml`, or absent (browsers sniff).
+- Alternatives: Apply to every 2xx body.
+- Why: A small JSON body is complete, not an unrendered page.
+- Reversible: yes
+
+### D-0114 — A 3xx reaching `classify` is `ok`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: Redirects are followed by the fetcher, which sets too many redirects as `error`.
+- Alternatives: Classify 3xx as an error.
+- Why: The classify table covers final responses only.
+- Reversible: yes
+
+### D-0115 — `is_public` follows the IANA special-purpose registries and rejects reserved IPv6
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: `ipaddress.is_global` and not multicast, recursing into IPv4-mapped and NAT64 (RFC 6052) embedded IPv4. Any other IPv6 in an IANA-reserved block (`is_reserved`, e.g. `::/8` holding the deprecated IPv4-compatible `::/96`, RFC 4291 §2.5.5.1) is rejected.
+- Alternatives: Unwrap `::/96` like mapped addresses.
+- Why: `is_global` (RFC 6890) is a superset of §4.5's ranges, and some stacks route `::/96` to the embedded IPv4. Fails closed.
+- Reversible: yes
+
+### D-0116 — A host that can't be IDNA-encoded is rejected as `host`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: `UnicodeError` from resolution maps to `SsrfRejected("host")`.
+- Alternatives: Let it surface as a generic exception.
+- Why: Keeps the §4.11 error `ssrf_rejected`.
+- Reversible: yes
+
+### D-0117 — Non-dotted-quad IPv4 host forms are rejected
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: Hosts that WHATWG parses as IPv4 but aren't dotted quads (`2130706433`, `0x7f.1`, `127.1`) are rejected as `host`.
+- Alternatives: Normalize them to an address and check it.
+- Why: curl and browsers resolve them to loopback but a stub resolver doesn't; rejecting keeps the checked address equal to the connected one.
+- Reversible: yes
+
+### D-0118 — HTML parser: selectolax (lexbor)
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided
+- Decision: `selectolax` (MIT).
+- Alternatives: stdlib `html.parser` (no HTML5 tree building).
+- Why: ARCHITECTURE §19 names it for HTML.
+- Reversible: yes
