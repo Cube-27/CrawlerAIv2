@@ -201,3 +201,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `uv run --frozen` (SonarCloud S8541); `--frozen --no-build` (fails on the editable package).
 - Why: Nothing needs to be resolved or built at that step.
 - Reversible: yes
+
+### D-0059 — Site-literal scan excludes non-host dotted tokens by class
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 5 (#5) · Status: decided
+- Decision: In Python (via `tokenize`, including `*.py.*` templates) and JS/TS files, only string literals and comments are scanned. A two-label token whose last label is a tracked file's extension is a file name. A token equal to a tracked Python module path is a module name. URL hosts are always checked.
+- Alternatives: exclude TLDs that are also file extensions (drops `.ai`, `.me`, `.br`); an inline ignore pragma.
+- Why: The spec's bare regex gave 95 false findings (file names, attribute access). Each rule handles a class using repo data, with no lists (C4).
+- Reversible: yes
+
+### D-0060 — Allowlist matching and justification
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 5 (#5) · Status: decided
+- Decision: Entries starting with `.` cover the name and its subdomains; plain entries match exactly. Every entry needs a `# justification`, or the scan exits 2. RFC 2606 `.example` is included.
+- Alternatives: suffix-match every entry.
+- Why: The most conservative reading that still lets fixtures use any RFC 2606 subdomain.
+- Reversible: yes
+
+### D-0061 — `ghcr.io` allowlisted as a tooling host
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 5 (#5) · Status: decided
+- Decision: GitHub's container registry is on the allowlist, like `pypi.org` and `registry.npmjs.org`.
+- Alternatives: leave it for SPEC-00 PR 2 to add.
+- Why: PR 2 pins a tool image from it.
+- Reversible: yes
+
+### D-0062 — Single-label URL hosts and non-global IPs are not findings
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 5 (#5) · Status: decided
+- Decision: `localhost`, compose service names and non-global IP literals in URLs are not flagged.
+- Alternatives: flag every URL host not on the allowlist.
+- Why: They can't name a public site, and compose and `.env` files need them.
+- Reversible: yes
+
+### D-0063 — Data manifest schema
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 5 (#5) · Status: decided
+- Decision: `{"entries": [{path, url, version, sha256, license, justification, …}]}`, `path` relative to `backend/data/`. A listed file that is missing fails the check. The IANA TLD list is committed (about 10 KB).
+- Alternatives: fetch the TLD list in CI (needs the network, non-deterministic).
+- Why: The most conservative reading of SPEC-00 §4.1. SPEC-04 PR 7 can extend it for fetched snapshots.
+- Reversible: yes
+
+### D-0064 — Tool tests live in `tools/tests/`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 5 (#5) · Status: decided
+- Decision: They run through the backend uv environment; `tools/ruff.toml` extends the backend config.
+- Alternatives: put them under `backend/tests/`.
+- Why: The tools run as CI runs them (subprocess) and need no package of their own.
+- Reversible: yes

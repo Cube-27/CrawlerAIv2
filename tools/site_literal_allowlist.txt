@@ -1,0 +1,27 @@
+# Hosts the public site-literal scan accepts (SPEC-00 §4.7, ARCHITECTURE §2 C3).
+# One host per line, then '#' and a justification. A plain entry matches only that host; an entry starting with
+# '.' matches that name and all of its subdomains.
+# Only standards bodies, tooling hosts and reserved names belong here. Adding a commercial site, a retailer or a
+# job board is a C3 violation.
+
+# Standards bodies and the data sources they publish.
+schema.org  # schema.org vocabulary, used by the structured-data collectors
+www.w3.org  # W3C specifications and namespaces
+.iana.org  # IANA registries, including the root-zone TLD list this scan uses
+.unicode.org  # Unicode and CLDR
+.geonames.org  # GeoNames, the location vocabulary (ARCHITECTURE §9)
+
+# Tooling hosts.
+github.com  # source hosting and GitHub Actions
+pypi.org  # Python package registry
+registry.npmjs.org  # npm package registry
+ghcr.io  # GitHub container registry, for pinned tool images
+
+# Reserved names (RFC 2606, RFC 6761). Synthetic test fixtures use only these.
+.example.com  # RFC 2606
+.example.net  # RFC 2606
+.example.org  # RFC 2606
+.example  # RFC 2606
+.test  # RFC 2606
+.invalid  # RFC 2606
+.localhost  # RFC 2606, RFC 6761

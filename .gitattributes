@@ -1,0 +1,2 @@
+# Pinned external data is verified by sha256 (tools/data_manifest_check.py); keep its bytes exact.
+backend/data/** -text

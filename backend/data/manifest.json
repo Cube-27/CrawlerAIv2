@@ -1,0 +1,13 @@
+{
+  "entries": [
+    {
+      "path": "iana/tlds-alpha-by-domain.txt",
+      "url": "https://data.iana.org/TLD/tlds-alpha-by-domain.txt",
+      "version": "2026101200",
+      "retrieved": "2026-10-12",
+      "sha256": "45d9f126c1f5af44e41a40bbf84feafd38ca16806cb094618fa0ef6371cbdd16",
+      "license": "No license stated by IANA; public registry data",
+      "justification": "Top-level domains for the C3 site-literal scan hostname pattern (SPEC-00 §4.7)."
+    }
+  ]
+}
