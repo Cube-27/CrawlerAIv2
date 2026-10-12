@@ -33,11 +33,13 @@ async def _task(conn: AsyncConnection, status: TaskStatus = "queued") -> UrlTask
 
 
 async def _events(conn: AsyncConnection, job_id: JobId) -> list[tuple[str, dict[str, object]]]:
-    rows = await conn.execute(select(JobEvent.kind, JobEvent.payload).where(JobEvent.job_id == job_id))
+    rows = await conn.execute(
+        select(JobEvent.kind, JobEvent.payload).where(JobEvent.job_id == job_id).order_by(JobEvent.id)
+    )
     return [(row.kind, row.payload) for row in rows]
 
 
-@pytest.mark.parametrize(("current", "target"), itertools.product(get_args(JobStatus), repeat=2))
+@pytest.mark.parametrize(("current", "target"), list(itertools.product(get_args(JobStatus), repeat=2)))
 async def test_job_moves_only_along_the_state_machine(
     conn: AsyncConnection, current: JobStatus, target: JobStatus
 ) -> None:
@@ -53,7 +55,7 @@ async def test_job_moves_only_along_the_state_machine(
     assert (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one() == expected
 
 
-@pytest.mark.parametrize(("current", "target"), itertools.product(get_args(TaskStatus), repeat=2))
+@pytest.mark.parametrize(("current", "target"), list(itertools.product(get_args(TaskStatus), repeat=2)))
 async def test_task_moves_only_along_the_state_machine(
     conn: AsyncConnection, current: TaskStatus, target: TaskStatus
 ) -> None:
