@@ -17,6 +17,12 @@ before doing anything.
 `ARCHITECTURE.md` is the single source of truth. Where a spec and the architecture disagree, stop and escalate
 (§5).
 
+You may read every project document: `docs/ARCHITECTURE.md`, `docs/OPEN_QUESTIONS.md`, `docs/specs/*`,
+`docs/DECISIONS.md`, `docs/plans/ACTIVE.md`, `docs/INVARIANTS.md` (the testable invariants, each with what enforces
+it) and `docs/DESIGN.md` (frontend conventions). You may never read or request hidden or fresh evaluation cases,
+the `HIDDEN_HOSTS` list, the values of `CRAWLERAI_EVAL_PRIVATE_*`, or the `Invoro` and CrawlerAI v1 repositories
+(C1, C12).
+
 ## 2. Hard rules
 
 These come from the generalization contract. Breaking one is a defect, even when it fixes a site.
@@ -24,24 +30,42 @@ These come from the generalization contract. Breaking one is a defect, even when
 - **Never touch hidden or fresh evaluation data (C1).** Don't request or use custodian credentials
   (`CRAWLERAI_EVAL_PRIVATE_*`), and don't try to read the private eval database or object root. Work only with
   the aggregate pass/fail the protected CI job reports, and never try to infer individual hidden cases from it.
-- **No site literals in generic code (C3).** Hostnames, retailer and brand names, and strings copied from real
-  pages are allowed only under `backend/src/crawlerai/adapters/` and in database rows. Test fixtures are
+- **Generic rules name their justification (C2).** Every generic rule names its standard (schema.org, ISO, CLDR,
+  RFC, HTML) or the structural property it uses, in a comment next to it. "Site X does Y" is never a
+  justification.
+- **No site literals in generic code (C3).** Hostnames, site, retailer and brand names, and strings copied from
+  real pages are allowed only under `backend/src/crawlerai/adapters/` and in database rows. Test fixtures are
   synthetic and use RFC 2606 names (`example.com`, `.test`).
 - **No lists that grow one incident at a time (C4).** Vocabularies come from versioned external data listed in
-  `backend/data/manifest.json`.
+  `backend/data/manifest.json`. Never add a word, phrase, token, class name, selector or regex because one page
+  failed.
 - **Fix sites with data, not code (C5).** If one site fails, the fix is a config, a learning re-run or an operator
-  correction. Change generic code only for a *class* of failures, and show the class with dev results.
-- **Normalizers decline rather than guess (C7).** No defaults, no host tables, no values taken from URL codes.
-- **One module per field type (C8).**
-- **Tests check type properties and replays (C9).** No test is named after a site or asserts one site's output.
-- **Gate (C10).** A change must improve dev and must not regress hidden. Claim improvements only from fresh
+  correction through the API. Change generic code only for a *class* of failures, and show the class with dev
   results.
-- **No size gates (C11).** Don't split files to satisfy line counts, and don't add LOC or complexity ratchets.
+- **Normalizers decline rather than guess (C7).** No defaults, no fallback currency, no host tables, no values
+  taken from URL codes.
+- **One module per field type (C8).** If you need the same logic twice, you are in the wrong module.
+- **Tests check type properties and replays (C9).** No test is named after a site or asserts one site's output.
+  Write property tests and replay tests.
+- **Gate (C10).** A change must improve dev and must not regress hidden. Claim improvements only from fresh
+  results. How to read the results:
+  - The dev report is full. The hidden report is pass/fail plus aggregates per field type and evidence bucket,
+    with cells under 10 labeled fields suppressed; PR comments carry only the pass/fail per field type.
+  - Hidden regresses on a precision drop of more than 0.5 pt on any required field type, or on any wrong-product
+    value (that count stays 0). A dev improvement with a hidden drop is a regression, not a win.
+  - Never claim an improvement from hidden results; claims come only from fresh. Never try to infer which sites
+    are in hidden from aggregates.
+  - A PR that changes extraction behaviour includes the aggregate report in its description (the PR template's
+    evaluation section). Until milestone M (ARCHITECTURE §21) the gate reports `no_baseline`, and acceptance
+    rests on tests, replays and review.
+- **No size gates (C11).** Don't split files to satisfy a size number, and don't add LOC, complexity or coverage
+  gates. The `no-size-gates` CI job enforces this.
 - **Nothing from the earlier versions (C12).** Don't read, copy or port code, lists, config, tests or prompts from
   the sibling `Invoro` or `CrawlerAI` (v1) projects. When a §22 candidate is admitted, its design may *read* them,
   as ARCHITECTURE §20 allows, but nothing is copied.
 - **Build only core (C13).** Anything in ARCHITECTURE §22 is not built until the owner admits it based on
-  evidence. If you think a candidate is needed, log the evidence in `DECISIONS.md` as `needs-owner`.
+  evidence. If a task asks for one, stop and point at C13. If you think a candidate is needed, log the evidence in
+  `DECISIONS.md` as `needs-owner`.
 - **Never `exec` or `eval` LLM output.** Generated selectors, recipes and schemas are data run by our
   interpreters.
 - **Public repo.** No customer, prospect or company names (except as adapter platform names), no business terms,
@@ -92,7 +116,9 @@ Don't log trivial choices.
 
 ## 5. Escalation procedure
 
-1. Record a `needs-owner` decision: the question, the options, your recommendation, and what is blocked.
+1. Record a `needs-owner` decision: the question, the options, your recommendation, and what is blocked. Copy it
+   as a row to `OPEN_QUESTIONS.md`, as that file directs. This copy is the only change an agent makes to that file
+   without owner approval (§6).
 2. The row becomes `blocked`, linked to the `DECISIONS.md` entry. The orchestrator writes both; working solo, you
    do.
 3. Move on to the next ready row. Don't wait idle; the owner answers asynchronously.
@@ -101,10 +127,51 @@ Don't log trivial choices.
 
 - `ARCHITECTURE.md` and `OPEN_QUESTIONS.md` change only with owner approval. When approved, update the revision
   log, and keep the specs consistent in the same change.
-- Specs may get clarifying edits that don't change the architecture. Log those in DECISIONS.md.
+- Specs follow one template: summary, scope and out of scope, dependencies, design, invariants, testing strategy,
+  acceptance criteria, PR plan, open issues (`docs/specs/README.md`).
+- Specs may get clarifying edits that don't change the architecture. Log those in DECISIONS.md. A spec change that
+  alters a decision also updates `ARCHITECTURE.md` in the same change, and so is escalated to the owner first.
+- A spec that adds an invariant appends its row to `docs/INVARIANTS.md`. Invariants are never removed.
 - `ACTIVE.md` and `DECISIONS.md` are working documents. Keep them current, short and factual.
 - Write plainly. No marketing language, and no claims that aren't backed by a test or eval result.
 
 ## 7. Commands
 
-SPEC-00 adds the real commands here. Until then, there is nothing to run.
+Needs Docker, `uv`, `pnpm` and GNU make. Run from the repo root unless a block says otherwise.
+
+```sh
+make dev             # Postgres (compose), migrations, API on http://localhost:8000 (GET /healthz)
+make db              # start Postgres only; `make db-down` stops it
+make migrate         # alembic upgrade head
+make api-client      # regenerate frontend/openapi.json and src/api/schema.d.ts; commit both
+```
+
+The checks CI runs, by job. Every job must pass before merge.
+
+```sh
+# backend (cd backend)
+uv sync --frozen
+uv run ruff check && uv run ruff format --check
+uv run mypy src tests migrations
+uv run lint-imports                 # C8 import contracts
+uv run pytest
+uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
+# (needs `make db`, and CRAWLERAI_DATABASE_URL set as in .env.example)
+
+# frontend (cd frontend); CI also runs `make api-client` and fails on a diff
+pnpm install --frozen-lockfile
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+
+# site-literals (cd backend): lint and test the repo tools, then the C3 scan
+uv run ruff check ../tools && uv run ruff format --check ../tools && uv run mypy --strict ../tools
+uv run pytest ../tools/tests
+uv run python ../tools/site_literal_scan.py --public
+
+# data-manifest, no-size-gates, licenses (repo root)
+python3 tools/data_manifest_check.py
+python3 tools/no_size_gates.py
+tools/license_scan.sh               # after `pnpm install` in frontend/; writes license-report/
+```
+
+Other commands: `uv run crawlerai --version`, `uv run crawlerai openapi` (backend); `pnpm dev`, `pnpm format`
+(frontend).

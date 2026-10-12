@@ -3,8 +3,11 @@
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
 
-> **Status: design.** No code exists yet. The architecture and the implementation specs are complete, and
-> implementation starts with [SPEC-00](docs/specs/SPEC-00-project-setup.md).
+> **Status: early implementation.** The project foundations ([SPEC-00](docs/specs/SPEC-00-project-setup.md)) are
+> in place: toolchains, CI, a database baseline, an API with only `GET /healthz`, and a frontend shell. Nothing
+> extracts anything yet. Progress is tracked in [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md).
+
+**Agents: read CLAUDE.md before changing anything.**
 
 ## What it does
 
@@ -41,11 +44,14 @@ around a [generalization contract](docs/ARCHITECTURE.md#2-generalization-contrac
 | [docs/specs/](docs/specs/README.md) | Implementation specs in build order, each with a PR plan |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Log of decisions made during implementation |
 | [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md) | Current implementation state |
-| [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo |
+| [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, and every command |
 | [docs/ENGINEERING.md](docs/ENGINEERING.md) | Engineering principles for agents |
+| [docs/INVARIANTS.md](docs/INVARIANTS.md) | The testable invariants, each with what enforces it |
+| [docs/DESIGN.md](docs/DESIGN.md) | Frontend conventions (HeroUI v3, theming, accessibility) |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
 | [.claude/skills/](.claude/skills/) | Agent procedures: `run-plan`, `implement-pr`, `review-pr`, `pickup` |
 
-## Planned stack
+## Stack
 
 | Part | Stack |
 |---|---|
@@ -53,7 +59,37 @@ around a [generalization contract](docs/ARCHITECTURE.md#2-generalization-contrac
 | Frontend | Vite, React, TypeScript, HeroUI |
 | Deployment | One Docker image running three roles (api, worker, scheduler), with S3-compatible object storage |
 
-Setup and development commands will be added here by SPEC-00.
+## Getting started
+
+You need Docker, [uv](https://github.com/astral-sh/uv), [pnpm](https://github.com/pnpm/pnpm) and GNU make.
+
+```sh
+make dev
+```
+
+This copies `.env.example` to `.env` if there is none, starts Postgres in Docker, applies the migrations and runs
+the API on port 8000 (`GET /healthz`). The frontend runs separately: `cd frontend && pnpm install && pnpm dev`.
+Every other command, including the checks CI runs, is in [CLAUDE.md §7](CLAUDE.md#7-commands).
+
+## Repository layout
+
+```
+backend/                Python package `crawlerai` (src/crawlerai/), tests, alembic migrations
+  src/crawlerai/adapters/   the only source directory allowed to contain hostnames (C3)
+  data/manifest.json        pinned external data; every file under data/ is listed here (C4)
+  .importlinter             one-module-per-field-type and layering contracts (C8)
+frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
+infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
+tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates
+docs/                   architecture, open questions, specs, decisions, tracker, invariants, design
+.github/                CI workflows (ci.yml, eval-protected.yml) and the pull request template
+.claude/skills/         agent procedures
+```
+
+The backend packages follow the pipeline: `acquire`, `collect`, `normalize`, `resolve`, `llm`, `config_ir`,
+`content`, `crawl`, `recurring`, `eval`, `api`, `mcp_server`, `worker`, `scheduler`, on top of `core`, `db`,
+`storage` and `schemas`. Most are still empty; [SPEC-00 §4.1](docs/specs/SPEC-00-project-setup.md#41-repo-layout)
+describes each.
 
 ## License
 
