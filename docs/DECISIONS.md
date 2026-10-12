@@ -103,3 +103,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0042 | SPEC-12 §2 | Screen set derived from §13.1 + C5; `/healthz.eval_ui` flag. | Other screens. | yes |
 | D-0043 | SPEC-03 §4.9, SPEC-00 §4.6 | The protected eval job uploads no artifacts and prints only pass/fail; the numeric aggregate is written to the private store (public repo). | Upload the aggregate as an artifact (public in a public repo). | yes |
 | D-0044 | `.gitignore`, CLAUDE.md | Agent worktrees live under `.worktrees/` or `.claude/worktrees/`, ignored by git. | Elsewhere. | yes |
+
+### D-0046 — CLI uses stdlib `argparse`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided
+- Decision: `crawlerai` is built on `argparse`, not Typer or Click.
+- Alternatives: Typer (MIT), Click (BSD).
+- Why: There is one flag today. No dependency until subcommands need one.
+- Reversible: yes
+
+### D-0047 — Settings shape
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided
+- Decision: `database_url` and `object_store` are required. The two database URLs are `SecretStr`. Object stores must match `fs:///<abs>` or `s3://<bucket>[/<prefix>]`. `eval_private_*` are unset by default, `log_redact_urls` defaults to false, and `role` is optional. An empty value counts as unset (`env_ignore_empty`). No `.env` loading yet.
+- Alternatives: a required `role`; plain `str` URLs; empty string as a value.
+- Why: The most conservative reading of SPEC-00 §4.4. Unset CI secrets arrive as `""`.
+- Reversible: yes
+
+### D-0048 — Build backend hatchling, Python `>=3.12,<3.13`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided
+- Decision: hatchling builds the package, and Python is pinned to `>=3.12,<3.13`.
+- Alternatives: `uv_build` or setuptools; `>=3.12`.
+- Why: ARCHITECTURE §19 fixes Python 3.12, and hatchling is MIT-licensed.
+- Reversible: yes
+
+### D-0049 — `NOTICE` unchanged
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided
+- Decision: No attributions are added. Nothing third-party is vendored, and dependency attribution comes from the SBOM in SPEC-00 PR 7.
+- Alternatives: list the dependencies in `NOTICE` now.
+- Why: Installed dependencies are not bundled.
+- Reversible: yes
+
+### D-0050 — CI backend job lands in SPEC-00 PR 1
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided (owner direction)
+- Decision: `ci.yml` runs `uv sync --frozen`, ruff (lint and format check), `mypy src tests` and `pytest`. Actions are pinned to commit SHAs and uv to 0.11.28. Later SPEC-00 rows add `lint-imports`, the replay split, alembic and the other jobs.
+- Alternatives: wait for later SPEC-00 rows to add CI.
+- Why: The owner asked for the first PR to carry the setup, so CI gates every later row.
+- Reversible: yes
