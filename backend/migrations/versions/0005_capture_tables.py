@@ -17,7 +17,7 @@ down_revision: str | None = "0004"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# CHECK constraints take the short name: the naming convention of the target metadata adds `ck_<table>_`.
+# `op.f()` marks a CHECK name as final; without it the metadata naming convention prefixes `ck_<table>_` again.
 _PAGE_KIND = "page_kind IN ('detail', 'listing')"
 _MODE = "mode IN ('adhoc', 'config')"
 
@@ -50,10 +50,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_capture"),
         sa.ForeignKeyConstraint(["site_id"], [site.c.id], name="fk_capture_site_id_site"),
         sa.UniqueConstraint("object_key", name="uq_capture_object_key"),
-        sa.CheckConstraint("method IN ('http', 'browser', 'api')", name="method"),
-        sa.CheckConstraint("block_class IN ('ok', 'blocked', 'shell', 'not_found', 'error')", name="block_class"),
-        sa.CheckConstraint("size_bytes >= 0", name="size_bytes_non_negative"),
-        sa.CheckConstraint("duration_ms >= 0", name="duration_ms_non_negative"),
+        sa.CheckConstraint("method IN ('http', 'browser', 'api')", name=op.f("ck_capture_method")),
+        sa.CheckConstraint(
+            "block_class IN ('ok', 'blocked', 'shell', 'not_found', 'error')", name=op.f("ck_capture_block_class")
+        ),
+        sa.CheckConstraint("size_bytes >= 0", name=op.f("ck_capture_size_bytes_non_negative")),
+        sa.CheckConstraint("duration_ms >= 0", name=op.f("ck_capture_duration_ms_non_negative")),
     )
     # `expire_captures` deletes rows past `expires_at`; dev captures never expire and stay out of the index.
     op.create_index(
@@ -80,8 +82,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["capture_id"], [capture.c.id], name="fk_extraction_capture_id_capture", ondelete="SET NULL"
         ),
-        sa.CheckConstraint(_MODE, name="mode"),
-        sa.CheckConstraint("llm_calls >= 0", name="llm_calls_non_negative"),
+        sa.CheckConstraint(_MODE, name=op.f("ck_extraction_mode")),
+        sa.CheckConstraint("llm_calls >= 0", name=op.f("ck_extraction_llm_calls_non_negative")),
     )
     op.create_index("ix_extraction_capture_id", "extraction", ["capture_id"])
 
@@ -102,10 +104,12 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_candidate"),
         sa.ForeignKeyConstraint(["extraction_id"], [extraction.c.id], name="fk_candidate_extraction_id_extraction"),
-        sa.CheckConstraint("normalize_status IN ('ok', 'ambiguous', 'invalid')", name="normalize_status"),
+        sa.CheckConstraint(
+            "normalize_status IN ('ok', 'ambiguous', 'invalid')", name=op.f("ck_candidate_normalize_status")
+        ),
         sa.CheckConstraint(
             "source_kind IN ('adapter', 'api', 'jsonld', 'microdata', 'og', 'js_state', 'xhr', 'config', 'llm')",
-            name="source_kind",
+            name=op.f("ck_candidate_source_kind"),
         ),
     )
     op.create_index("ix_candidate_extraction_id", "candidate", ["extraction_id"])
@@ -139,8 +143,8 @@ def upgrade() -> None:
             [schema_def.c.id, schema_def.c.version],
             name="fk_record_schema_id_schema_def",
         ),
-        sa.CheckConstraint(_MODE, name="mode"),
-        sa.CheckConstraint("version >= 1", name="version_positive"),
+        sa.CheckConstraint(_MODE, name=op.f("ck_record_mode")),
+        sa.CheckConstraint("version >= 1", name=op.f("ck_record_version_positive")),
     )
     op.create_foreign_key("fk_record_supersedes_record_id_record", "record", "record", ["supersedes_record_id"], ["id"])
     # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4).
@@ -160,7 +164,7 @@ def upgrade() -> None:
         sa.Column("gone_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("site_id", "canonical_url", name="pk_url_state"),
         sa.ForeignKeyConstraint(["site_id"], [site.c.id], name="fk_url_state_site_id_site"),
-        sa.CheckConstraint("missing_runs >= 0", name="missing_runs_non_negative"),
+        sa.CheckConstraint("missing_runs >= 0", name=op.f("ck_url_state_missing_runs_non_negative")),
     )
 
     op.create_table(
@@ -178,9 +182,9 @@ def upgrade() -> None:
             [schema_def.c.id, schema_def.c.version],
             name="fk_progressive_state_schema_id_schema_def",
         ),
-        sa.CheckConstraint(_PAGE_KIND, name="page_kind"),
-        sa.CheckConstraint("mode IN ('cold', 'learning', 'active')", name="mode"),
-        sa.CheckConstraint("pages_extracted >= 0", name="pages_extracted_non_negative"),
+        sa.CheckConstraint(_PAGE_KIND, name=op.f("ck_progressive_state_page_kind")),
+        sa.CheckConstraint("mode IN ('cold', 'learning', 'active')", name=op.f("ck_progressive_state_mode")),
+        sa.CheckConstraint("pages_extracted >= 0", name=op.f("ck_progressive_state_pages_extracted_non_negative")),
     )
 
     op.create_table(
@@ -210,10 +214,12 @@ def upgrade() -> None:
             "version",
             name="uq_extraction_config_site_id_schema_id_page_kind_version",
         ),
-        sa.CheckConstraint("version >= 1", name="version_positive"),
-        sa.CheckConstraint(_PAGE_KIND, name="page_kind"),
-        sa.CheckConstraint("status IN ('draft', 'active', 'suspended')", name="status"),
-        sa.CheckConstraint("origin IN ('adapter', 'induced', 'llm_synth', 'operator')", name="origin"),
+        sa.CheckConstraint("version >= 1", name=op.f("ck_extraction_config_version_positive")),
+        sa.CheckConstraint(_PAGE_KIND, name=op.f("ck_extraction_config_page_kind")),
+        sa.CheckConstraint("status IN ('draft', 'active', 'suspended')", name=op.f("ck_extraction_config_status")),
+        sa.CheckConstraint(
+            "origin IN ('adapter', 'induced', 'llm_synth', 'operator')", name=op.f("ck_extraction_config_origin")
+        ),
     )
     # ARCHITECTURE §6: one `active` config per (site, schema, page_kind).
     op.create_index(

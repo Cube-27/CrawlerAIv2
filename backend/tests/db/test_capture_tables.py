@@ -72,7 +72,7 @@ async def _task(conn: AsyncConnection) -> UrlTaskId:
     return task_id
 
 
-def _capture_values(site_id: SiteId, /, **columns: Any) -> dict[str, Any]:
+async def _capture(conn: AsyncConnection, site_id: SiteId, /, **columns: Any) -> CaptureId:
     url = "https://example.test/p/1"
     values = {
         "site_id": site_id,
@@ -87,12 +87,8 @@ def _capture_values(site_id: SiteId, /, **columns: Any) -> dict[str, Any]:
         "size_bytes": 10,
         "duration_ms": 5,
     }
-    return {**values, **columns}
-
-
-async def _capture(conn: AsyncConnection, site_id: SiteId, /, **columns: Any) -> CaptureId:
     capture_id: CaptureId = (
-        await conn.execute(insert(Capture).values(**_capture_values(site_id, **columns)).returning(Capture.id))
+        await conn.execute(insert(Capture).values(**{**values, **columns}).returning(Capture.id))
     ).scalar_one()
     return capture_id
 
@@ -118,6 +114,10 @@ def _candidate_values(extraction_id: ExtractionId, /, **columns: Any) -> dict[st
         "locator": "jsonld:0:$.name",
     }
     return {**values, **columns}
+
+
+def _progressive_values(site_id: SiteId, schema_id: SchemaId, /, **columns: Any) -> dict[str, Any]:
+    return {"site_id": site_id, "schema_id": schema_id, "schema_version": 1, "page_kind": "detail", **columns}
 
 
 def _config_values(site_id: SiteId, schema_id: SchemaId, /, **columns: Any) -> dict[str, Any]:
@@ -217,17 +217,25 @@ async def test_the_expiry_index_leaves_out_captures_that_never_expire(conn: Asyn
     assert definition.endswith("WHERE (expires_at IS NOT NULL)")
 
 
-@pytest.mark.parametrize("method", get_args(CaptureMethod))
-@pytest.mark.parametrize("block_class", get_args(BlockClass))
-async def test_capture_accepts_every_method_and_block_class(
-    conn: AsyncConnection, method: str, block_class: str
-) -> None:
-    capture_id = await _capture(conn, await _site(conn), method=method, block_class=block_class)
+async def test_a_new_capture_never_expires_and_has_an_empty_fetch_policy(conn: AsyncConnection) -> None:
+    capture_id = await _capture(conn, await _site(conn))
 
     row = (await conn.execute(select(Capture).where(Capture.id == capture_id))).one()
 
-    assert (row.method, row.block_class, row.fetch_policy, row.expires_at) == (method, block_class, {}, None)
-    assert row.id.version == 7
+    assert (row.fetch_policy, row.expires_at, row.id.version) == ({}, None, 7)
+
+
+async def test_capture_accepts_every_method_and_block_class(conn: AsyncConnection) -> None:
+    site_id = await _site(conn)
+    for method in get_args(CaptureMethod):
+        await _capture(conn, site_id, method=method)
+    for block_class in get_args(BlockClass):
+        await _capture(conn, site_id, block_class=block_class)
+
+    rows = (await conn.execute(select(Capture.method, Capture.block_class))).all()
+
+    assert {row.method for row in rows} == set(get_args(CaptureMethod))
+    assert {row.block_class for row in rows} == set(get_args(BlockClass))
 
 
 @pytest.mark.parametrize(
@@ -299,23 +307,25 @@ async def test_extraction_rejects_values_outside_its_domain(
         await _extraction(conn, **columns)
 
 
-@pytest.mark.parametrize("source_kind", get_args(SourceKind))
-@pytest.mark.parametrize("normalize_status", get_args(NormalizeStatus))
-async def test_candidate_accepts_every_source_kind_and_normalize_status(
-    conn: AsyncConnection, source_kind: str, normalize_status: str
-) -> None:
-    values = _candidate_values(await _extraction(conn), source_kind=source_kind, normalize_status=normalize_status)
-
-    await conn.execute(insert(Candidate).values(**values))
+async def test_a_new_candidate_is_not_chosen_and_has_a_utc_creation_time(conn: AsyncConnection) -> None:
+    await conn.execute(insert(Candidate).values(**_candidate_values(await _extraction(conn))))
 
     row = (await conn.execute(select(Candidate))).one()
-    assert (row.source_kind, row.normalize_status, row.chosen, row.reject_reason) == (
-        source_kind,
-        normalize_status,
-        False,
-        None,
-    )
+
+    assert (row.chosen, row.reject_reason) == (False, None)
     assert row.created_at.utcoffset().total_seconds() == 0
+
+
+async def test_candidate_accepts_every_source_kind_and_normalize_status(conn: AsyncConnection) -> None:
+    extraction_id = await _extraction(conn)
+    rows = [_candidate_values(extraction_id, source_kind=kind) for kind in get_args(SourceKind)]
+    rows += [_candidate_values(extraction_id, normalize_status=status) for status in get_args(NormalizeStatus)]
+
+    await conn.execute(insert(Candidate), rows)
+
+    stored = (await conn.execute(select(Candidate.source_kind, Candidate.normalize_status))).all()
+    assert {row.source_kind for row in stored} == set(get_args(SourceKind))
+    assert {row.normalize_status for row in stored} == set(get_args(NormalizeStatus))
 
 
 async def test_candidate_keeps_structured_raw_values_and_a_missing_normalized_value(conn: AsyncConnection) -> None:
@@ -427,17 +437,15 @@ async def test_url_state_rejects_negative_missing_runs(conn: AsyncConnection) ->
 
 @pytest.mark.parametrize("mode", get_args(ProgressiveMode))
 async def test_progressive_state_accepts_every_mode(conn: AsyncConnection, mode: str) -> None:
-    values = {"site_id": await _site(conn), "schema_id": await _schema(conn), "schema_version": 1}
+    values = _progressive_values(await _site(conn), await _schema(conn), mode=mode)
 
-    await conn.execute(insert(ProgressiveState).values(**values, page_kind="detail", mode=mode))
+    await conn.execute(insert(ProgressiveState).values(**values))
 
     assert (await conn.execute(select(ProgressiveState.mode))).scalar_one() == mode
 
 
 async def test_a_new_progressive_state_starts_cold_with_no_pages(conn: AsyncConnection) -> None:
-    values = {"site_id": await _site(conn), "schema_id": await _schema(conn), "schema_version": 1}
-
-    await conn.execute(insert(ProgressiveState).values(**values, page_kind="detail"))
+    await conn.execute(insert(ProgressiveState).values(**_progressive_values(await _site(conn), await _schema(conn))))
 
     assert (await conn.execute(select(ProgressiveState.mode, ProgressiveState.pages_extracted))).one() == ("cold", 0)
 
@@ -445,20 +453,12 @@ async def test_a_new_progressive_state_starts_cold_with_no_pages(conn: AsyncConn
 async def test_progressive_state_is_one_row_per_site_schema_version_and_page_kind(conn: AsyncConnection) -> None:
     site_id = await _site(conn)
     v1, v2 = await _schema(conn, version=1), await _schema(conn, version=2)
-    await conn.execute(
-        insert(ProgressiveState).values(site_id=site_id, schema_id=v1, schema_version=1, page_kind="detail")
-    )
-    await conn.execute(
-        insert(ProgressiveState).values(site_id=site_id, schema_id=v1, schema_version=1, page_kind="listing")
-    )
-    await conn.execute(
-        insert(ProgressiveState).values(site_id=site_id, schema_id=v2, schema_version=2, page_kind="detail")
-    )
+    await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v1)))
+    await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v1, page_kind="listing")))
+    await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v2, schema_version=2)))
 
     with pytest.raises(IntegrityError, match="pk_progressive_state"):
-        await conn.execute(
-            insert(ProgressiveState).values(site_id=site_id, schema_id=v1, schema_version=1, page_kind="detail")
-        )
+        await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v1)))
 
 
 @pytest.mark.parametrize(
@@ -474,15 +474,10 @@ async def test_progressive_state_is_one_row_per_site_schema_version_and_page_kin
 async def test_progressive_state_rejects_values_outside_its_domain(
     conn: AsyncConnection, columns: dict[str, Any], constraint: str
 ) -> None:
-    values = {
-        "site_id": await _site(conn),
-        "schema_id": await _schema(conn),
-        "schema_version": 1,
-        "page_kind": "detail",
-    }
+    values = _progressive_values(await _site(conn), await _schema(conn), **columns)
 
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(insert(ProgressiveState).values(**{**values, **columns}))
+        await conn.execute(insert(ProgressiveState).values(**values))
 
 
 @pytest.mark.parametrize("origin", get_args(ConfigOrigin))
