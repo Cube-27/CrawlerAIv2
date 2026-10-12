@@ -43,7 +43,7 @@ class Headers(_Frozen):
 
 
 class NetworkBody(_Frozen):
-    """Manifest entry for one captured network body; the bytes are `CaptureBundle.network` at the same index."""
+    """Manifest entry for one captured network body; the bytes sit at the same index of the bundle's `network`."""
 
     url: str
     status: int
