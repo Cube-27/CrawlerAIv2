@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 7 (#7) and PR 8 (#8) in review; then PR 9, 10.
+- Next: SPEC-00 PR 8 (#8) in review, PR 9 in progress; then PR 10.
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
@@ -45,7 +45,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | OpenAPI → TS client pipeline | done (#9) | |
 | 5 | C3 site-literal scan + data manifest check | done (#5) | |
 | 6 | import-linter contracts (C8) | done (#6) | |
-| 7 | License deny-list + SBOM | todo | |
+| 7 | License deny-list + SBOM | done (#7) | |
 | 8 | Protected eval job placeholder + hidden-host scan mode | todo | |
 | 9 | Pre-commit hooks and `make check` | todo | |
 | 10 | Root documents | todo | |
