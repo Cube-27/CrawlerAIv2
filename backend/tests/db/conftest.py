@@ -1,22 +1,26 @@
-"""Tests against a real Postgres. They need `CRAWLERAI_DATABASE_URL`; CI provides one, and locally `make db` does.
+"""Tests against a real Postgres, in a database of their own: `CRAWLERAI_TEST_DATABASE_URL`. CI provides one, and
+`make check` recreates one each run. Without it these tests are skipped.
+
+The tests own that database: they delete every job and task in it, and the queue tests claim and run every due task
+in it, not only their own, which is why they never use `CRAWLERAI_DATABASE_URL`. Never point it at data you want.
 
 The database is migrated to head once per session. Each test runs in a transaction that is rolled back (`conn`),
 or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
 """
 
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from pydantic import ValidationError
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.core.settings import DatabaseSettings
 from crawlerai.db.models import Job, JobEvent, UrlTask
 
+TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
@@ -27,12 +31,13 @@ def anyio_backend() -> str:
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    try:
-        settings = DatabaseSettings()
-    except ValidationError:
-        pytest.skip("CRAWLERAI_DATABASE_URL is not set")
-    command.upgrade(Config(ALEMBIC_INI), "head")
-    return settings.database_url.get_secret_value()
+    url = os.environ.get(TEST_DATABASE_URL)
+    if not url:
+        pytest.skip(f"{TEST_DATABASE_URL} is not set")
+    config = Config(ALEMBIC_INI)
+    config.attributes["database_url"] = url
+    command.upgrade(config, "head")
+    return url
 
 
 @pytest.fixture

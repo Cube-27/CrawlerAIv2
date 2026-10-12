@@ -3,6 +3,11 @@ result. Handlers are registered by later specs.
 
 Each task runs in one transaction: the handler's writes and the task's result commit together, or not at all (a lost
 lease, an exception). An exception is recorded on the task as a transient failure, and the loop continues.
+
+Database errors outside a handler propagate (§4.8), including one raised while recording a handler's exception, which
+usually means the connection is gone: `run_worker` raises and the process exits. Nothing is lost: the tasks it still
+had claimed, the one that failed included, go back to the queue when the scheduler finds their leases expired
+(`release_expired_leases`), each counted as a transient failure.
 """
 
 import asyncio

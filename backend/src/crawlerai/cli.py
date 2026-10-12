@@ -11,6 +11,7 @@ from importlib.metadata import version
 
 from crawlerai.api.app import create_app
 from crawlerai.core.settings import Settings
+from crawlerai.scheduler.loop import PERIODIC, run_scheduler
 from crawlerai.worker.loop import run_worker
 
 
@@ -21,15 +22,24 @@ def _print_openapi() -> None:
     sys.stdout.buffer.write(text.encode())
 
 
-async def _work() -> None:
+def _stop_on_signals() -> asyncio.Event:
+    """An event set on SIGINT or SIGTERM, for a process to stop cleanly."""
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for stop_signal in (signal.SIGINT, signal.SIGTERM):
-        # Not available on Windows, where Ctrl+C interrupts the worker and its leases expire instead.
+        # Not available on Windows, where Ctrl+C interrupts the process instead, and a worker's leases then expire.
         with suppress(NotImplementedError):
             loop.add_signal_handler(stop_signal, stop.set)
+    return stop
+
+
+async def _work() -> None:
     # Later specs register a handler for each job kind here.
-    await run_worker(Settings(), {}, stop)
+    await run_worker(Settings(), {}, _stop_on_signals())
+
+
+async def _schedule() -> None:
+    await run_scheduler(Settings(), PERIODIC, _stop_on_signals())
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -38,8 +48,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("openapi", help="print the API's OpenAPI document as JSON")
     commands.add_parser("worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM")
+    commands.add_parser("scheduler", help="run the scheduler: periodic upkeep, such as releasing expired leases")
     args = parser.parse_args(argv)
     if args.command == "openapi":
         _print_openapi()
     elif args.command == "worker":
         asyncio.run(_work())
+    elif args.command == "scheduler":
+        asyncio.run(_schedule())

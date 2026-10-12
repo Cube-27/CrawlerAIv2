@@ -1,4 +1,5 @@
-"""Alembic environment: runs migrations online over the async engine, against `CRAWLERAI_DATABASE_URL`."""
+"""Alembic environment: runs migrations online over the async engine, against `CRAWLERAI_DATABASE_URL` unless the
+caller's Config names another database (`attributes["database_url"]`)."""
 
 import asyncio
 from logging.config import fileConfig
@@ -23,7 +24,9 @@ def _run(connection: Connection) -> None:
 
 
 async def _run_online() -> None:
-    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value(), poolclass=pool.NullPool)
+    # A caller may name the database on the Config (the DB tests do); otherwise it is the app's.
+    url = context.config.attributes.get("database_url") or DatabaseSettings().database_url.get_secret_value()
+    engine = create_async_engine(url, poolclass=pool.NullPool)
     async with engine.connect() as connection:
         await connection.run_sync(_run)
     await engine.dispose()

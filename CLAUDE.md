@@ -156,7 +156,8 @@ uv run mypy src tests migrations
 uv run lint-imports                 # C8 import contracts
 uv run pytest
 uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
-# (needs `make db`, and CRAWLERAI_DATABASE_URL set as in .env.example)
+# (needs `make db`, and CRAWLERAI_DATABASE_URL set as in .env.example; tests/db also need
+#  CRAWLERAI_TEST_DATABASE_URL, a database they own: never the dev one)
 
 # frontend (cd frontend); CI also runs `make api-client` and fails on a diff
 pnpm install --frozen-lockfile
