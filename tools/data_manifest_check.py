@@ -1,0 +1,88 @@
+"""Fail when `backend/data/` holds a file that the manifest does not pin (SPEC-00 §4.1, INV-05, C4).
+
+Vocabularies come from versioned external data. Each file under `backend/data/` must be listed in
+`backend/data/manifest.json` with its source URL, version, sha256, license and justification, and its bytes must
+match the pinned hash. Prints one line per problem and exits 1, or prints one summary line and exits 0.
+"""
+
+import argparse
+import hashlib
+import json
+import sys
+from pathlib import Path, PurePosixPath
+
+DATA_DIR = PurePosixPath("backend/data")
+MANIFEST = DATA_DIR / "manifest.json"
+REQUIRED_FIELDS = ("path", "url", "version", "sha256", "license", "justification")
+
+
+def valid_entry_path(path: str) -> bool:
+    pure = PurePosixPath(path)
+    inside = not pure.is_absolute() and ".." not in pure.parts and "\\" not in path
+    return inside and pure != PurePosixPath("manifest.json")
+
+
+def check(root: Path) -> tuple[list[str], int]:
+    """Return the problems found and the number of pinned files."""
+    manifest_path = root / MANIFEST
+    if not manifest_path.is_file():
+        return [f"{MANIFEST}: missing"], 0
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        return [f"{MANIFEST}: not valid JSON ({error})"], 0
+    entries = manifest.get("entries") if isinstance(manifest, dict) else None
+    if not isinstance(entries, list):
+        return [f"{MANIFEST}: needs an 'entries' list"], 0
+
+    problems: list[str] = []
+    # Paths of entries that are incomplete are still claimed, so their file is not also reported as unlisted.
+    claimed: set[str] = set()
+    pinned: dict[str, str] = {}
+    for index, item in enumerate(entries):
+        if not isinstance(item, dict):
+            problems.append(f"{MANIFEST}: entry {index} is not an object")
+            continue
+        missing = [field for field in REQUIRED_FIELDS if not str(item.get(field) or "").strip()]
+        problems.extend(f"{MANIFEST}: entry {index} has no '{field}'" for field in missing)
+        if "path" in missing:
+            continue
+        path = str(item["path"])
+        if not valid_entry_path(path):
+            problems.append(f"{MANIFEST}: entry {index} has an invalid path {path!r}")
+        elif path in claimed:
+            problems.append(f"{MANIFEST}: entry {index} repeats path {path!r}")
+        else:
+            claimed.add(path)
+            if not missing:
+                pinned[path] = str(item["sha256"]).lower()
+
+    data_dir = root / DATA_DIR
+    files = (file for file in data_dir.rglob("*") if file.is_file() and file != manifest_path)
+    present = {file.relative_to(data_dir).as_posix() for file in files}
+    for path in sorted(present - claimed):
+        problems.append(f"{DATA_DIR / path}: not listed in {MANIFEST}")
+    for path, sha256 in sorted(pinned.items()):
+        if path not in present:
+            problems.append(f"{DATA_DIR / path}: listed in the manifest but missing")
+        elif hashlib.sha256((data_dir / path).read_bytes()).hexdigest() != sha256:
+            problems.append(f"{DATA_DIR / path}: sha256 does not match the manifest")
+    return problems, len(pinned)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1], help="repository root")
+    args = parser.parse_args(argv)
+
+    problems, pinned = check(args.root)
+    for problem in problems:
+        print(problem)
+    if problems:
+        return 1
+    print(f"data-manifest: ok, {pinned} files")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
