@@ -173,3 +173,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: persist the resolved theme on first load.
 - Why: The most conservative reading of SPEC-00 §4.9.
 - Reversible: yes
+
+### D-0055 — Normalize independence contract uses `crawlerai.normalize.*`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 6 (#6) · Status: decided
+- Decision: The independence contract matches every module under `crawlerai.normalize` with a wildcard, not SPEC-00 §5's concrete list.
+- Alternatives: the concrete list, extended as modules land.
+- Why: import-linter errors on modules that don't exist yet. The wildcard covers new type modules automatically. A shared dispatcher inside `normalize` would need the contract narrowed in its PR.
+- Reversible: yes
+
+### D-0056 — Layers: `acquire : adapters`, all other siblings independent
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 6 (#6) · Status: decided
+- Decision: SPEC-00 §5's `|` siblings stay independent, except acquire and adapters (`:`), because the adapters-isolated contract lets acquire import adapters. `normalize | schemas` forbids normalize→schemas; SPEC-04 relaxes it with a logged decision if needed.
+- Alternatives: `|` everywhere; `:` everywhere.
+- Why: The strictest reading that is consistent with the adapters contract.
+- Reversible: yes
+
+### D-0057 — Forbidden-import contracts check direct imports only
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 6 (#6) · Status: decided
+- Decision: The normalize-libs and adapters-isolated contracts set `allow_indirect_imports = True`.
+- Alternatives: check indirect chains.
+- Why: With indirect checking, collect couldn't call a normalizer that uses Babel. The layers contract still covers the chains.
+- Reversible: yes
+
+### D-0058 — CI tool steps run with `uv run --no-sync --no-build`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 6 (#6) · Status: decided
+- Decision: `lint-imports` runs without syncing or building, because `uv sync --frozen` earlier in the job already installed the environment.
+- Alternatives: `uv run --frozen` (SonarCloud S8541); `--frozen --no-build` (fails on the editable package).
+- Why: Nothing needs to be resolved or built at that step.
+- Reversible: yes
