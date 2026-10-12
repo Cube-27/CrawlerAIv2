@@ -8,12 +8,12 @@ from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.core.settings import DatabaseSettings
+from crawlerai.db.models import Base
 
 if context.config.config_file_name is not None:
     fileConfig(context.config.config_file_name)
 
-# SPEC-01 sets this to the models' metadata when the first table lands.
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def _run(connection: Connection) -> None:
