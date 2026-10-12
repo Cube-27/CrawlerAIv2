@@ -355,3 +355,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: scan the project too.
 - Why: The project is AGPL-3.0 (LICENSE); the deny-list applies to dependencies.
 - Reversible: yes
+
+### D-0081 — A missing hidden-host list passes visibly
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 8 (#8) · Status: decided
+- Decision: An unset or empty list prints `hidden-hosts: pass, no host list configured`. SPEC-03 can make a missing list fail once H2 is done.
+- Alternatives: fail when the secret is missing.
+- Why: SPEC-00 §4.6: the job must pass until milestone M; the line makes the skip visible.
+- Reversible: yes
+
+### D-0082 — Hidden-host scan tokenizes on `[a-z0-9.-]` and redacts by substring
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 8 (#8) · Status: decided
+- Decision: Each `[a-z0-9.-]` run in a file or path is looked up case-insensitively against the host set, by every run of its labels, so `_` and every other character separate tokens. A path naming a host is reported as `path:0`. Printed paths have every case-insensitive occurrence of every host replaced with `[hidden]`, independent of tokenizing.
+- Alternatives: a regex alternation over all hosts for content (7.2 s/MB at 3,000 hosts vs 0.25 s/MB); `DOTTED`'s `\w` boundaries (leaked a host through `_` in review round 1).
+- Why: The most conservative reading of C1/C3: redaction by substring can't leak through a tokenizing gap.
+- Reversible: yes
+
+### D-0083 — The hidden-host list is split leniently
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 8 (#8) · Status: decided
+- Decision: The secret is split on whitespace and commas, lowercased, with leading and trailing dots stripped.
+- Alternatives: one host per line only.
+- Why: Tolerant of how the custodian pastes it; it doesn't change what is printed.
+- Reversible: yes

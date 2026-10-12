@@ -22,7 +22,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | # | Task | Needed by | Status |
 |---|---|---|---|
 | H1 (M) | Choose the custodian(s) of the hidden and fresh sets (OPEN_QUESTIONS #6). Create the private eval database role and credentials, and store them only in the protected GitHub environment. | Milestone M (CI uses throwaway credentials before then) | deferred |
-| H2 (M) | Create the GitHub protected environment for the eval job, with required reviewers and the secret hidden-host list. | Milestone M (the placeholder job runs without it) | deferred |
+| H2 (M) | Create the GitHub protected environment for the eval job, with required reviewers and the secret hidden-host list. GitHub auto-created `eval-protected` on the first run with no protection rules, so add the custodians as required reviewers and set the secrets. | Milestone M (the placeholder job runs without it) | deferred |
 | H3 (M) | Label dev from a review of crawler output, then draw and label hidden from sites development never touched (§21 rule). | Milestone M | deferred |
 | H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | SPEC-06 PR 2 | todo |
 | H5 | Answer the `needs-owner` entries in `DECISIONS.md`, and confirm or override the `pending-owner` entries. | As they come up | todo |
@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 8 (#8) in review, PR 9 in progress; then PR 10.
+- Next: SPEC-00 PR 9 (in progress), then PR 10.
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
@@ -46,7 +46,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | C3 site-literal scan + data manifest check | done (#5) | |
 | 6 | import-linter contracts (C8) | done (#6) | |
 | 7 | License deny-list + SBOM | done (#7) | |
-| 8 | Protected eval job placeholder + hidden-host scan mode | todo | |
+| 8 | Protected eval job placeholder + hidden-host scan mode | done (#8) | |
 | 9 | Pre-commit hooks and `make check` | todo | |
 | 10 | Root documents | todo | |
 
