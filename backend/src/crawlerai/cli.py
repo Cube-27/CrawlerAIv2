@@ -27,7 +27,7 @@ def _stop_on_signals() -> asyncio.Event:
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for stop_signal in (signal.SIGINT, signal.SIGTERM):
-        # Not available on Windows, where Ctrl+C interrupts the process and its leases expire instead.
+        # Not available on Windows, where Ctrl+C interrupts the process instead, and a worker's leases then expire.
         with suppress(NotImplementedError):
             loop.add_signal_handler(stop_signal, stop.set)
     return stop
