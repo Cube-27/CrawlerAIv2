@@ -11,7 +11,8 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]` (SPEC-00 §4.4).
-ObjectStoreUrl = Annotated[str, Field(pattern=r"^(fs:///.+|s3://[^/]+(/.*)?)$")]
+OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
+ObjectStoreUrl = Annotated[str, Field(pattern=OBJECT_STORE_URL_PATTERN)]
 
 Role = Literal["api", "worker", "scheduler"]
 
