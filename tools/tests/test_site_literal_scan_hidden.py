@@ -10,18 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCAN = Path(__file__).resolve().parents[1] / "site_literal_scan.py"
+from scan_repo import SCAN, make_repo
+
 VAR = "SCAN_TEST_HIDDEN_HOSTS"
-
-
-def make_repo(root: Path, files: dict[str, str | bytes]) -> Path:
-    subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S603, S607
-    for name, content in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)  # noqa: S603, S607
-    return root
 
 
 def run_hidden(root: Path, hosts: str | None) -> subprocess.CompletedProcess[str]:

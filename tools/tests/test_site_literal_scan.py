@@ -9,18 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-
-SCAN = Path(__file__).resolve().parents[1] / "site_literal_scan.py"
-
-
-def make_repo(root: Path, files: dict[str, str | bytes]) -> Path:
-    subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S603, S607
-    for name, content in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)  # noqa: S603, S607
-    return root
+from scan_repo import SCAN, make_repo
 
 
 def write_allowlist(path: Path, lines: list[str]) -> Path:

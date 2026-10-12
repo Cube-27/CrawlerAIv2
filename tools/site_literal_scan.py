@@ -215,16 +215,21 @@ def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str]) -> tuple[list[s
     return findings, scanned
 
 
-def hidden_host_pattern(value: str) -> re.Pattern[str] | None:
-    hosts = {host for raw in re.split(r"[\s,]+", value) if (host := raw.strip(".").lower())}
-    if not hosts:
-        return None
-    alternatives = "|".join(re.escape(host) for host in sorted(hosts, key=len, reverse=True))
-    return re.compile(rf"(?i)(?<![\w-])(?:{alternatives})(?![\w-])")
+def names_hidden(token: str, hosts: frozenset[str]) -> bool:
+    """Whether any run of the dotted token's labels is a hidden host: the host itself, a subdomain, or a prefix."""
+    labels = token.lower().split(".")
+    return any(
+        ".".join(labels[start:end]) in hosts
+        for start in range(len(labels))
+        for end in range(start + 1, len(labels) + 1)
+    )
 
 
-def scan_hidden(root: Path, pattern: re.Pattern[str]) -> tuple[list[str], int]:
-    """Return `path:line` findings, with hosts withheld from paths, and the number of files scanned."""
+def scan_hidden(root: Path, hosts: frozenset[str]) -> tuple[list[str], int]:
+    """Return `path:line` findings, with hidden tokens withheld from paths, and the number of files scanned.
+
+    Dotted tokens are looked up in the host set, so the cost does not grow with the number of hosts.
+    """
     findings: list[str] = []
     scanned = 0
     for path in tracked_files(root):
@@ -232,24 +237,24 @@ def scan_hidden(root: Path, pattern: re.Pattern[str]) -> tuple[list[str], int]:
         if not file.is_file():
             continue
         scanned += 1
-        shown = pattern.sub(HIDDEN, path)
+        shown = DOTTED.sub(lambda match: HIDDEN if names_hidden(match.group(0), hosts) else match.group(0), path)
         if shown != path:
             findings.append(f"{shown}:0")
-        text = file.read_bytes().decode("utf-8", errors="replace")
         findings.extend(
             f"{shown}:{number}"
-            for number, line in enumerate(text.splitlines(), start=1)
-            if pattern.search(ESCAPE.sub(" ", line))
+            for number, line in lines_from(1, file.read_text(encoding="utf-8", errors="replace"))
+            if any(names_hidden(match.group(0), hosts) for match in DOTTED.finditer(ESCAPE.sub(" ", line)))
         )
     return findings, scanned
 
 
 def run_hidden(root: Path, variable: str) -> int:
-    pattern = hidden_host_pattern(os.environ.get(variable, ""))
-    if pattern is None:
+    value = os.environ.get(variable, "")
+    hosts = frozenset(host for raw in re.split(r"[\s,]+", value) if (host := raw.strip(".").lower()))
+    if not hosts:
         print("hidden-hosts: pass, no host list configured")
         return 0
-    findings, scanned = scan_hidden(root, pattern)
+    findings, scanned = scan_hidden(root, hosts)
     for finding in findings:
         print(finding)
     if findings:
