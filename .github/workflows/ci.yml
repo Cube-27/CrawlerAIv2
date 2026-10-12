@@ -33,14 +33,15 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.28"
-      - run: uv sync --frozen
-      - run: uv run --frozen ruff check
-      - run: uv run --frozen ruff format --check
-      - run: uv run --frozen mypy src tests migrations
-      # --no-build satisfies SonarCloud S8541; --no-sync is needed with it because the editable project has no wheel.
-      # The environment is already installed by `uv sync --frozen` above.
+      # Dependencies install from wheels only, so no third-party build script runs. The project itself is built
+      # from this repo's source and installed as a wheel, and every later step runs without re-syncing.
+      - run: uv sync --frozen --no-build --no-install-project
+      - run: uv build --wheel --out-dir dist && uv pip install --no-build --no-deps dist/*.whl
+      - run: uv run --no-sync --no-build ruff check
+      - run: uv run --no-sync --no-build ruff format --check
+      - run: uv run --no-sync --no-build mypy src tests migrations
       - run: uv run --no-sync --no-build lint-imports
-      - run: uv run --frozen pytest
+      - run: uv run --no-sync --no-build pytest
       - name: Create databases and roles
         working-directory: .
         run: psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql
@@ -48,9 +49,9 @@ jobs:
           PGPASSWORD: postgres
       - name: Alembic upgrade, downgrade, upgrade
         run: |
-          uv run --no-sync alembic upgrade head
-          uv run --no-sync alembic downgrade base
-          uv run --no-sync alembic upgrade head
+          uv run --no-sync --no-build alembic upgrade head
+          uv run --no-sync --no-build alembic downgrade base
+          uv run --no-sync --no-build alembic upgrade head
         env:
           CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
           CRAWLERAI_OBJECT_STORE: fs:///tmp/crawlerai-objects
