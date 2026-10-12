@@ -71,7 +71,7 @@ check-backend: db
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic downgrade base
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
-	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest
+	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest
 
 check-frontend:
 	cd frontend && pnpm lint
