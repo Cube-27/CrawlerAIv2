@@ -54,3 +54,7 @@ dev = [
     "pytest>=8,<10",
     "ruff>=0.17,<1",
 ]
+licenses = [
+    "cyclonedx-bom>=7,<8",
+    "pip-licenses>=5,<6",
+]

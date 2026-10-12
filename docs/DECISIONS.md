@@ -306,3 +306,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: require a key; a base URL from the Vite env.
 - Why: `/healthz` is unauthenticated; the UI holds the key in memory (ARCHITECTURE §18, SPEC-07 §4.2).
 - Reversible: yes
+
+### D-0074 — License policy script instead of `--fail-on`
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: `pip-licenses` and `pnpm licenses` only collect data. `tools/license_policy.py` decides with SPDX expression semantics (OR: any clean branch; AND: all; WITH checks the exception; `+` maps to the base ID), using the same matcher for both ecosystems.
+- Alternatives: `pip-licenses --fail-on` and `license-checker-rseidelsohn --failOn` as SPEC-00 §4.6 names them.
+- Why: `--fail-on` matches whole strings: `MIT AND GPL-3.0-only` passes it, and trove names never match SPDX IDs.
+- Reversible: yes
+
+### D-0075 — Denied licenses also matched as trove classifiers
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: The seven PyPI trove classifiers for AGPL/GPL v2/v3, matched as whole names. LGPL is not included.
+- Alternatives: SPDX IDs only (misses packages from before PEP 639); substring matching (forbidden).
+- Why: The same deny-list in the standard classifier vocabulary, so not a list that grows per incident (C4).
+- Reversible: yes
+
+### D-0076 — Python license declaration precedence
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: Use `License-Expression` (PEP 639) if present. Otherwise fail if any classifier is denied. Otherwise use the `License` field.
+- Alternatives: check all three; require every classifier to be denied.
+- Why: PEP 639 is authoritative, and failing on any denied classifier is conservative.
+- Reversible: yes
+
+### D-0077 — Undeclared or unknown licenses don't fail the scan
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: `UNKNOWN` declarations are reported in the JSON artifacts but pass.
+- Alternatives: fail on unknown.
+- Why: SPEC-00 defines a deny-list, not an allow-list.
+- Reversible: yes
+
+### D-0078 — Frontend licenses and SBOM come from pnpm's built-ins
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: `pnpm licenses list` and `pnpm sbom --sbom-format cyclonedx`, with no new frontend dependency.
+- Alternatives: `license-checker-rseidelsohn` plus `@cyclonedx/cyclonedx-npm` or `cdxgen`.
+- Why: Fewer dependencies, and pnpm reads its own lockfile.
+- Reversible: yes
+
+### D-0079 — `licenses` uv dependency group
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: `pip-licenses>=5,<6` (MIT) and `cyclonedx-bom>=7,<8` (Apache-2.0, verified) live in their own group. The scan syncs `--all-groups` and runs `pip-licenses --with-system`, so the scan tools are checked too.
+- Alternatives: put them in `dev`.
+- Why: The backend job doesn't install about 30 extra packages.
+- Reversible: yes
+
+### D-0080 — The project itself is excluded from the license scan
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 7 (#7) · Status: decided
+- Decision: The scan syncs with `--no-install-project`.
+- Alternatives: scan the project too.
+- Why: The project is AGPL-3.0 (LICENSE); the deny-list applies to dependencies.
+- Reversible: yes
