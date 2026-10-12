@@ -138,10 +138,17 @@ def declarative_columns(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
     if table is None:
         return
     for statement in node.body:
-        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value:
+        if isinstance(statement, ast.AnnAssign) and statement.value:
+            targets: list[ast.expr] = [statement.target]
             value = statement.value
-            if isinstance(value, ast.Call) and call_name(value) in {"mapped_column", "Column"}:
-                yield table, string_arg(value) or statement.target.id
+        elif isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        else:
+            continue
+        if call_name(value) in {"mapped_column", "Column"}:
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    yield table, string_arg(value) or target.id
 
 
 @dataclass(frozen=True)

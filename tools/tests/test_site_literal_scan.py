@@ -352,13 +352,14 @@ def test_declarative_models_and_added_columns_define_the_schema(tmp_path: Path, 
         "class Gadget(Base):\n"
         '    __tablename__ = "gadget"\n'
         "    id: Mapped[int] = mapped_column(primary_key=True)\n"
+        "class WidgetPart(Base):\n"
+        '    __tablename__ = "widget_part"\n'
+        "    id = Column(Uuid)\n"
         "def upgrade():\n"
         '    op.add_column("widget", sa.Column("io", sa.Text()))\n'
     )
-    repo = make_repo(
-        tmp_path / "repo",
-        {"backend/src/crawlerai/db/models.py": models, "notes.txt": f"{GADGET_ID} and {WIDGET_IO}\n"},
-    )
+    notes = f"{GADGET_ID}, {WIDGET_PART_ID} and {WIDGET_IO}\n"
+    repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/db/models.py": models, "notes.txt": notes})
 
     result = run_scan(repo, "--allowlist", str(empty_allowlist))
 
