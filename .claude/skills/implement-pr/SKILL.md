@@ -12,8 +12,9 @@ You own one row of `docs/plans/ACTIVE.md`, from `todo` to an open, verified PR. 
 
 1. Read `CLAUDE.md`, then `docs/plans/ACTIVE.md`. Pick the assigned row, or the first `todo` row whose spec
    dependencies (`docs/specs/README.md`) and earlier rows in the same spec are `done`.
-2. Create a worktree off fresh `origin/main` at `.worktrees/spec-NN-pr-M`, on branch `spec-NN/pr-M-<short-name>`.
-   Never work in the main checkout.
+2. Create a worktree off fresh `origin/main` at `../CrawlerAIv2-worktrees/spec-NN-pr-M` (a sibling of the repo,
+   never inside it), on branch `spec-NN/pr-M-<short-name>`. Never work in the main checkout. In Git Bash, give git
+   Windows-style paths (`C:/Projects/...`); `/c/...` is mangled to `C:/c/...`.
 3. **Shared files have one writer.** If an orchestrator assigned you the row, don't edit `ACTIVE.md` or
    `DECISIONS.md`. Your decisions go in the PR body, and the orchestrator records them. Working solo, you update
    both files yourself in your PR.

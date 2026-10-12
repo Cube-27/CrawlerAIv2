@@ -102,7 +102,14 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0041 | SPEC-12 §4.1 | SSE read via `fetch` streaming; downloads via authenticated fetch; the API key is lost on reload (§18). | Key in sessionStorage (contradicts §18). | yes |
 | D-0042 | SPEC-12 §2 | Screen set derived from §13.1 + C5; `/healthz.eval_ui` flag. | Other screens. | yes |
 | D-0043 | SPEC-03 §4.9, SPEC-00 §4.6 | The protected eval job uploads no artifacts and prints only pass/fail; the numeric aggregate is written to the private store (public repo). | Upload the aggregate as an artifact (public in a public repo). | yes |
-| D-0044 | `.gitignore`, CLAUDE.md | Agent worktrees live under `.worktrees/` or `.claude/worktrees/`, ignored by git. | Elsewhere. | yes |
+| D-0044 | `.gitignore`, CLAUDE.md | Agent worktrees live under `.worktrees/` or `.claude/worktrees/`, ignored by git. Superseded by D-0045. | Elsewhere. | yes |
+
+### D-0045 — Agent worktrees live outside the repo
+- Date: 2026-10-12 · Spec/PR: tooling (skills `implement-pr`, `pickup`) · Status: decided (owner direction)
+- Decision: Worktrees go in a sibling directory, `../CrawlerAIv2-worktrees/<name>`, never inside the repo. Supersedes D-0044.
+- Alternatives: `.worktrees/` inside the repo, ignored by git (D-0044).
+- Why: The owner ruled that worktrees cannot be inside the repo.
+- Reversible: yes. Change the path in the two skills.
 
 ### D-0046 — CLI uses stdlib `argparse`
 - Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided
