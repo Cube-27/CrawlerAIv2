@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # SPEC-00 §4.6. Later SPEC-00 rows add lint-imports, the replay split, alembic and the other jobs.
+  # SPEC-00 §4.6. Later SPEC-00 rows add the replay split, alembic and the other jobs.
   backend:
     runs-on: ubuntu-24.04
     defaults:
@@ -28,6 +28,9 @@ jobs:
       - run: uv run --frozen ruff check
       - run: uv run --frozen ruff format --check
       - run: uv run --frozen mypy src tests
+      # --no-build satisfies SonarCloud S8541; --no-sync is needed with it because the editable project has no wheel.
+      # The environment is already installed by `uv sync --frozen` above.
+      - run: uv run --no-sync --no-build lint-imports
       - run: uv run --frozen pytest
 
   # SPEC-00 §4.6. SPEC-00 PR 4 adds the API client freshness check.

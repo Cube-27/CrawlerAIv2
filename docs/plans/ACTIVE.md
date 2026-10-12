@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 2 (#3, in review), PR 5 (in progress), then PR 4 and PR 6.
+- Next: SPEC-00 PR 2 (#3) and PR 5 (#5) in FIX rounds; then PR 4, 7, 8, 9, 10.
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
@@ -44,7 +44,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 3 | Frontend skeleton with HeroUI v3 | done (#4) | Follow-ups: theme should track live OS changes (SPEC-12); fix SPEC-00 §4.3's HeroUI licence and version in PR 10. |
 | 4 | OpenAPI → TS client pipeline | todo | |
 | 5 | C3 site-literal scan + data manifest check | todo | |
-| 6 | import-linter contracts (C8) | todo | |
+| 6 | import-linter contracts (C8) | done (#6) | |
 | 7 | License deny-list + SBOM | todo | |
 | 8 | Protected eval job placeholder + hidden-host scan mode | todo | |
 | 9 | Pre-commit hooks and `make check` | todo | |

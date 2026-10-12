@@ -1,0 +1,84 @@
+# Import contracts (ARCHITECTURE C8, SPEC-00 §5, INV-08). Run with `uv run lint-imports` from backend/.
+
+[importlinter]
+root_package = crawlerai
+include_external_packages = True
+
+# Every module directly under crawlerai.normalize is one field type's normalizer. The wildcard covers each new
+# type as soon as its module exists.
+[importlinter:contract:normalize-independence]
+name = One module per field type
+type = independence
+modules =
+    crawlerai.normalize.*
+
+# Indirect imports are allowed: callers use the normalizers, which use these libraries.
+[importlinter:contract:normalize-libs]
+name = Only normalizers import normalization libraries
+type = forbidden
+source_modules =
+    crawlerai.acquire
+    crawlerai.adapters
+    crawlerai.api
+    crawlerai.cli
+    crawlerai.collect
+    crawlerai.config_ir
+    crawlerai.content
+    crawlerai.core
+    crawlerai.crawl
+    crawlerai.db
+    crawlerai.eval
+    crawlerai.llm
+    crawlerai.mcp_server
+    crawlerai.recurring
+    crawlerai.resolve
+    crawlerai.scheduler
+    crawlerai.schemas
+    crawlerai.storage
+    crawlerai.worker
+forbidden_modules =
+    babel
+    price_parser
+    dateparser
+allow_indirect_imports = True
+
+[importlinter:contract:adapters-isolated]
+name = Nothing outside adapters imports adapters except acquire and collect
+type = forbidden
+source_modules =
+    crawlerai.api
+    crawlerai.cli
+    crawlerai.config_ir
+    crawlerai.content
+    crawlerai.core
+    crawlerai.crawl
+    crawlerai.db
+    crawlerai.eval
+    crawlerai.llm
+    crawlerai.mcp_server
+    crawlerai.normalize
+    crawlerai.recurring
+    crawlerai.resolve
+    crawlerai.scheduler
+    crawlerai.schemas
+    crawlerai.storage
+    crawlerai.worker
+forbidden_modules =
+    crawlerai.adapters
+allow_indirect_imports = True
+
+# `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
+# contract lets acquire import adapters.
+[importlinter:contract:layers]
+name = Layering
+type = layers
+layers =
+    crawlerai.api | crawlerai.mcp_server
+    crawlerai.crawl | crawlerai.recurring | crawlerai.eval
+    crawlerai.config_ir
+    crawlerai.resolve | crawlerai.llm
+    crawlerai.collect | crawlerai.content
+    crawlerai.normalize | crawlerai.schemas
+    crawlerai.acquire : crawlerai.adapters
+    crawlerai.db | crawlerai.storage
+    crawlerai.core
