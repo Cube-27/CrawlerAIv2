@@ -1,0 +1,7 @@
+# Keeps local environments and caches out of the build context; the Dockerfile copies explicit paths.
+.venv
+dist
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
