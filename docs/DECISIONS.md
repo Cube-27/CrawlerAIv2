@@ -707,3 +707,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A free string.
 - Why: An unknown profile fails when settings load, not on the first fetch.
 - Reversible: yes
+
+### D-0131 — An expired lease is a transient failure of its attempt
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 4 (#19) · Status: decided
+- Decision: `release_expired_leases` runs `fail_task(..., "lease expired", transient=True)` on each expired claim: requeued with backoff while `attempts < MAX_ATTEMPTS`, else failed and the job settled.
+- Alternatives: Requeue unconditionally and immediately (the spec's literal "requeues").
+- Why: A task that kills or hangs its worker every time would otherwise be requeued forever; §4.3 caps transient retries at 3.
+- Reversible: yes
+
+### D-0132 — Claims are fenced by (`claimed_by`, `lease_until`), with `lease_until` from `clock_timestamp()`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 4 (#19) · Status: decided
+- Decision: `ClaimedTask` carries `lease_until`; finishing requires both to match. The claim sets `lease_until = clock_timestamp() + LEASE`, so two claims of a task never share it. Supersedes the fence in D-0122. SPEC-01 §4.3's claim SQL is updated to match (clarifying edit).
+- Alternatives: A claim-token column (needs a migration); stop `release_task` giving the attempt back (changes D-0124).
+- Why: (`claimed_by`, `attempts`) was not unique once `release_task` decrements `attempts`. A future lease heartbeat must update the holder's `ClaimedTask` too.
+- Reversible: yes
+
+### D-0133 — DB tests use a dedicated `CRAWLERAI_TEST_DATABASE_URL`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 4 (#19) · Status: decided
+- Decision: `tests/db` reads only `CRAWLERAI_TEST_DATABASE_URL` (skipped when unset) and migrates it; CI sets it to its service DB, `make check` to `crawlerai_check`. Updates D-0092.
+- Alternatives: Scope the cleanup to the test's own jobs.
+- Why: `claim_tasks` and the worker loop take every due task in the database, so tests against a dev DB would run its tasks. Test-only, not a `Settings` field.
+- Reversible: yes
+
+### D-0134 — The scheduler logs and survives a failing entry
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 4 (#19) · Status: decided
+- Decision: Each entry runs in its own transaction; an exception rolls back, is logged with its traceback, and the entry runs again at its next interval. Next run = end of previous run + interval.
+- Alternatives: Let the error end the process (§4.8), relying on a restart policy.
+- Why: One entry's failure shouldn't stop the others; a fresh pooled connection per run recovers from a dropped connection.
+- Reversible: yes
+
+### D-0135 — A DB error while recording a task failure ends the worker
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 4 (#19) · Status: decided
+- Decision: Documented in `worker/loop.py`: `run_worker` raises and the process exits; its claimed tasks return through `release_expired_leases`.
+- Alternatives: Catch and continue (the connection is usually gone).
+- Why: §4.8; the scheduler recovers the tasks.
+- Reversible: yes

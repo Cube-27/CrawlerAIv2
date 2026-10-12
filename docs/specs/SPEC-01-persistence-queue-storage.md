@@ -101,7 +101,7 @@ role covers periodic work, so no queue library is added.
 Claim (one statement):
 
 ```sql
-UPDATE url_task SET status='claimed', claimed_by=:worker, lease_until=now()+:lease, attempts=attempts+1
+UPDATE url_task SET status='claimed', claimed_by=:worker, lease_until=clock_timestamp()+:lease, attempts=attempts+1
 WHERE id IN (SELECT id FROM url_task
              WHERE status='queued' AND next_attempt_at <= now()
              ORDER BY priority DESC, id
