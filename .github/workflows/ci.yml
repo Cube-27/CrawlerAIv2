@@ -48,9 +48,9 @@ jobs:
           PGPASSWORD: postgres
       - name: Alembic upgrade, downgrade, upgrade
         run: |
-          uv run --frozen alembic upgrade head
-          uv run --frozen alembic downgrade base
-          uv run --frozen alembic upgrade head
+          uv run --no-sync alembic upgrade head
+          uv run --no-sync alembic downgrade base
+          uv run --no-sync alembic upgrade head
         env:
           CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
           CRAWLERAI_OBJECT_STORE: fs:///tmp/crawlerai-objects

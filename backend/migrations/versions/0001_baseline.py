@@ -14,8 +14,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    pass
+    pass  # The baseline creates nothing; it is the root every later revision builds on.
 
 
 def downgrade() -> None:
-    pass
+    pass  # Nothing to undo.
