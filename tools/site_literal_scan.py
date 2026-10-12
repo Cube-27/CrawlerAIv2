@@ -220,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"site-literals: {error}", file=sys.stderr)
         return 2
 
-    findings, scanned = scan(args.root, allowlist, tlds)
+    findings, scanned = scan(args.root.resolve(), allowlist, tlds)
     for finding in findings:
         print(finding)
     if findings:

@@ -22,21 +22,26 @@ def valid_entry_path(path: str) -> bool:
     return inside and pure != PurePosixPath("manifest.json")
 
 
-def check(root: Path) -> tuple[list[str], int]:
-    """Return the problems found and the number of pinned files."""
-    manifest_path = root / MANIFEST
+def read_entries(manifest_path: Path) -> list[object] | str:
+    """The manifest's entries, or the one problem that stops them being read."""
     if not manifest_path.is_file():
-        return [f"{MANIFEST}: missing"], 0
+        return f"{MANIFEST}: missing"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        return [f"{MANIFEST}: not valid JSON ({error})"], 0
+        return f"{MANIFEST}: not valid JSON ({error})"
     entries = manifest.get("entries") if isinstance(manifest, dict) else None
     if not isinstance(entries, list):
-        return [f"{MANIFEST}: needs an 'entries' list"], 0
+        return f"{MANIFEST}: needs an 'entries' list"
+    return entries
 
+
+def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str, str]]:
+    """Return the problems, the claimed paths and the sha256 of each complete entry, by path.
+
+    Paths of entries that are incomplete are still claimed, so their file is not also reported as unlisted.
+    """
     problems: list[str] = []
-    # Paths of entries that are incomplete are still claimed, so their file is not also reported as unlisted.
     claimed: set[str] = set()
     pinned: dict[str, str] = {}
     for index, item in enumerate(entries):
@@ -56,6 +61,16 @@ def check(root: Path) -> tuple[list[str], int]:
             claimed.add(path)
             if not missing:
                 pinned[path] = str(item["sha256"]).lower()
+    return problems, claimed, pinned
+
+
+def check(root: Path) -> tuple[list[str], int]:
+    """Return the problems found and the number of pinned files."""
+    manifest_path = root / MANIFEST
+    entries = read_entries(manifest_path)
+    if isinstance(entries, str):
+        return [entries], 0
+    problems, claimed, pinned = check_entries(entries)
 
     data_dir = root / DATA_DIR
     files = (file for file in data_dir.rglob("*") if file.is_file() and file != manifest_path)
