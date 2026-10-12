@@ -10,6 +10,9 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - a token that is the dotted path of a tracked Python module is a module name.
 URL hosts are always checked.
 
+With `--public`, `--staged` (the pre-commit hook) scans only the files staged for commit, as the index holds
+them. Names of tracked files and modules still come from the whole repository.
+
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
 allowlist or the TLD list cannot be used.
 
@@ -142,13 +145,17 @@ def names_no_public_site(url_host: str) -> bool:
         return "." not in host
 
 
+def git(root: Path, *args: str) -> bytes:
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, check=True).stdout  # noqa: S603, S607
+
+
+def git_paths(root: Path, *args: str) -> list[str]:
+    """The paths a `-z` git listing prints."""
+    return [name for name in git(root, *args).decode("utf-8").split("\0") if name]
+
+
 def tracked_files(root: Path) -> list[str]:
-    listing = subprocess.run(  # noqa: S603
-        ["git", "-C", str(root), "ls-files", "-z"],  # noqa: S607
-        capture_output=True,
-        check=True,
-    )
-    return [name for name in listing.stdout.decode("utf-8").split("\0") if name]
+    return git_paths(root, "ls-files", "-z")
 
 
 def lines_from(first_line: int, text: str) -> list[Segment]:
@@ -196,17 +203,21 @@ def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator
             yield token
 
 
-def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str]) -> tuple[list[str], int]:
+def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool) -> tuple[list[str], int]:
     """Return the findings and the number of files scanned."""
-    paths = tracked_files(root)
-    repo_names = RepoNames.of(paths)
+    tracked = tracked_files(root)
+    repo_names = RepoNames.of(tracked)
+    if staged:
+        # Added, copied, modified or renamed in the index; a deletion leaves nothing to scan.
+        paths = git_paths(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
+    else:
+        paths = [path for path in tracked if (root / path).is_file()]
     findings: list[str] = []
     scanned = 0
     for path in paths:
-        file = root / path
-        if is_exempt(path) or not file.is_file():
+        if is_exempt(path):
             continue
-        data = file.read_bytes()
+        data = git(root, "show", f":{path}") if staged else (root / path).read_bytes()
         if b"\0" in data:
             continue
         scanned += 1
@@ -290,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--public", action="store_true", help="scan with exemptions (CI, hooks)")
     mode.add_argument("--hidden-hosts-from-env", metavar="VAR", help="scan everything for the hosts listed in VAR")
+    parser.add_argument("--staged", action="store_true", help="public mode only: scan staged files (hooks)")
     parser.add_argument("--root", type=Path, default=REPO, help="repository to scan")
     parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST, help="public mode only")
     args = parser.parse_args(argv)
@@ -304,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"site-literals: {error}", file=sys.stderr)
         return 2
 
-    findings, scanned = scan(args.root.resolve(), allowlist, tlds)
+    findings, scanned = scan(args.root.resolve(), allowlist, tlds, staged=args.staged)
     for finding in findings:
         print(finding)
     if findings:

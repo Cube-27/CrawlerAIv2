@@ -30,3 +30,4 @@ owner is copied here.
 | 12 | **[User] Which language for code hints?** | Affects the API-backed site deliverable. | An API recipe as data, plus a PHP snippet rendered from a template. |
 | 13 | **[Owner] Which region, and how long do we retain data?** | Object storage and LLM provider region. | One US region. Production captures kept 30 days; eval captures kept forever, privately. |
 | 14 | **[Owner] Confirm the agent decisions marked "pending owner confirmation" in `DECISIONS.md`.** | They were made while writing the specs, and implementation proceeds on them. | Accept them as written unless one is overridden. |
+| 15 | **[Owner] Pre-commit eslint hook over its 10 s budget on Windows: keep type-aware rules or speed the hook?** (D-0110) | SPEC-00 §4.8 sets < 10 s per one-file commit; the hook takes 10.6–17.4 s on Windows for frontend files. | Keep type-aware eslint in the hook for now; revisit the lint config in a frontend row. |

@@ -13,7 +13,8 @@ UV_RUN ?= uv run
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs://$(CURDIR)/.data/objects)
 export
 
-.PHONY: dev db db-down migrate api api-client
+.PHONY: dev db db-down migrate api api-client check check-data check-tools check-backend \
+	check-frontend check-api-client check-licenses check-size-gates
 
 ## Start Postgres, apply migrations and run the API on http://localhost:8000. Later rows add the worker, the
 ## scheduler and the frontend here.
@@ -36,3 +37,52 @@ api:
 api-client:
 	cd backend && $(UV_RUN) crawlerai openapi > ../frontend/openapi.json
 	cd frontend && pnpm gen:api
+
+## Everything CI runs (SPEC-00 §4.4, §4.6), in the same order per job, failing at the first error. Needs Docker for
+## the backend's database steps and `pnpm install` in frontend/. The fast staged-file hooks are in
+## .pre-commit-config.yaml.
+check: check-data check-size-gates check-tools check-backend check-frontend check-api-client check-licenses
+
+check-data:
+	cd backend && $(UV_RUN) python ../tools/data_manifest_check.py
+
+check-size-gates:
+	cd backend && $(UV_RUN) python ../tools/no_size_gates.py
+
+check-tools:
+	cd backend && $(UV_RUN) ruff check ../tools
+	cd backend && $(UV_RUN) ruff format --check ../tools
+	cd backend && $(UV_RUN) mypy --strict ../tools
+	cd backend && $(UV_RUN) pytest ../tools/tests
+	cd backend && $(UV_RUN) python ../tools/site_literal_scan.py --public
+
+# Same steps and order as CI's backend job. The migration round trip and the tests (tests/db needs a live Postgres)
+# run against a scratch database recreated each run, so the dev database keeps its data. 127.0.0.1, not localhost:
+# asyncpg can hang resolving localhost on Windows.
+CHECK_DATABASE_URL := postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check
+
+check-backend: db
+	cd backend && $(UV_RUN) ruff check
+	cd backend && $(UV_RUN) ruff format --check
+	cd backend && $(UV_RUN) mypy src tests migrations
+	cd backend && $(UV_RUN) lint-imports
+	$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -q -U postgres \
+		-c 'DROP DATABASE IF EXISTS crawlerai_check' -c 'CREATE DATABASE crawlerai_check OWNER app'
+	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
+	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic downgrade base
+	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
+	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest
+
+check-frontend:
+	cd frontend && pnpm lint
+	cd frontend && pnpm typecheck
+	cd frontend && pnpm test
+	cd frontend && pnpm build
+
+check-api-client: api-client
+	git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts || { \
+		echo "API client out of date: run 'make api-client' and commit the result."; exit 1; }
+
+# Writes the reports and SBOMs to license-report/ (gitignored), as CI does.
+check-licenses:
+	tools/license_scan.sh license-report
