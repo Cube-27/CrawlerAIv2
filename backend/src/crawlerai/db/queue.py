@@ -5,7 +5,8 @@ A claim is fenced by its `(claimed_by, lease_until)`. Each claim sets `lease_unt
 unlike `now()`, advances within a transaction, so no two claims of a task share it; `attempts` would not do, as
 `release_task` gives one back. Once a lease is lost (the task was requeued, and maybe claimed again, even by the same
 worker) the old `ClaimedTask` can no longer finish the task, and `LeaseLost` makes the caller roll back whatever it
-wrote for it.
+wrote for it. `lease_until` is thus the claim's identity too: anything that extends a lease must hand its holder the
+new value, or the holder fences itself out.
 
 A lease runs out when its worker died or hung; `release_expired_leases` (the scheduler, every minute) counts that as
 a transient failure of the attempt.

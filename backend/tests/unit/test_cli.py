@@ -55,34 +55,25 @@ def test_installed_console_script_writes_identical_lf_only_openapi_on_every_run(
     assert runs[0].endswith(b"}\n")
 
 
-def test_worker_runs_the_worker_loop_with_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
-    calls: list[tuple[str, dict[str, object], bool]] = []
-
-    async def run_worker(settings: Settings, handlers: dict[str, object], stop: asyncio.Event) -> None:
-        calls.append((settings.database_url.get_secret_value(), handlers, stop.is_set()))
-
-    monkeypatch.setattr(cli, "run_worker", run_worker)
-
-    main(["worker"])
-
-    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", {}, False)]
-
-
-def test_scheduler_runs_the_scheduler_loop_with_its_periodic_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("command", "loop", "table"),
+    [("worker", "run_worker", {}), ("scheduler", "run_scheduler", PERIODIC)],
+)
+def test_a_process_command_runs_its_loop_with_settings_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, command: str, loop: str, table: object
+) -> None:
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
     calls: list[tuple[str, object, bool]] = []
 
-    async def run_scheduler(settings: Settings, entries: object, stop: asyncio.Event) -> None:
-        calls.append((settings.database_url.get_secret_value(), entries, stop.is_set()))
+    async def run(settings: Settings, handlers_or_entries: object, stop: asyncio.Event) -> None:
+        calls.append((settings.database_url.get_secret_value(), handlers_or_entries, stop.is_set()))
 
-    monkeypatch.setattr(cli, "run_scheduler", run_scheduler)
+    monkeypatch.setattr(cli, loop, run)
 
-    main(["scheduler"])
+    main([command])
 
-    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", PERIODIC, False)]
+    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", table, False)]
 
 
 def test_the_scheduler_releases_expired_leases_every_minute() -> None:

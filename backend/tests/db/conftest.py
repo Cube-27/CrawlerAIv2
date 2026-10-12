@@ -34,10 +34,9 @@ def database_url() -> str:
     url = os.environ.get(TEST_DATABASE_URL)
     if not url:
         pytest.skip(f"{TEST_DATABASE_URL} is not set")
-    # Alembic's env.py migrates the database the app is configured with.
-    with pytest.MonkeyPatch.context() as env:
-        env.setenv("CRAWLERAI_DATABASE_URL", url)
-        command.upgrade(Config(ALEMBIC_INI), "head")
+    config = Config(ALEMBIC_INI)
+    config.attributes["database_url"] = url
+    command.upgrade(config, "head")
     return url
 
 

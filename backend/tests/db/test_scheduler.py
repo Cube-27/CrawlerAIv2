@@ -39,12 +39,12 @@ def _settings(engine: AsyncEngine) -> Settings:
 
 
 async def _scheduler_until(
-    engine: AsyncEngine, entries: Sequence[Periodic], done: Callable[[], Awaitable[bool]]
+    engine: AsyncEngine, entries: Sequence[Periodic], done: Callable[[], Awaitable[bool]], *, timeout: float = 60
 ) -> None:
-    """Run the scheduler until `done()` holds, then stop it and wait for it to exit."""
+    """Run the scheduler until `done()` holds, then stop it and wait for it to exit, all within `timeout` seconds."""
     stop = asyncio.Event()
     loop = asyncio.create_task(run_scheduler(_settings(engine), entries, stop))
-    async with asyncio.timeout(60):
+    async with asyncio.timeout(timeout):
         while not await done():
             await asyncio.sleep(0.05)
         stop.set()
@@ -112,5 +112,4 @@ async def test_stopping_ends_the_scheduler_while_it_waits(engine: AsyncEngine) -
     async def started() -> bool:
         return ran.is_set()
 
-    async with asyncio.timeout(10):
-        await _scheduler_until(engine, [Periodic("hourly", timedelta(hours=1), hourly)], started)
+    await _scheduler_until(engine, [Periodic("hourly", timedelta(hours=1), hourly)], started, timeout=10)
