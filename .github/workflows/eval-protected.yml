@@ -1,0 +1,37 @@
+name: eval-protected
+
+# SPEC-00 §4.6 placeholder; SPEC-03 adds the hidden evaluation. The repo and its logs are public (C1, INV-01):
+# this workflow uploads no artifacts and prints only pass/fail lines. Until milestone M (ARCHITECTURE §21) the
+# environment's secrets may not exist, and every step then passes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-protected-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protected:
+    runs-on: ubuntu-24.04
+    # Its secrets are visible only to this environment, and its required reviewers are the custodians.
+    environment: eval-protected
+    env:
+      CRAWLERAI_LOG_REDACT_URLS: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # C3 for hidden hosts (INV-04): prints path:line per match, never a host. The scan needs only the stdlib.
+      - name: Hidden-host scan
+        run: python3 tools/site_literal_scan.py --hidden-hosts-from-env HIDDEN_HOSTS
+        env:
+          HIDDEN_HOSTS: ${{ secrets.HIDDEN_HOSTS }}
+      - name: Hidden eval
+        run: |
+          echo 'eval-protected: pass, no_baseline'

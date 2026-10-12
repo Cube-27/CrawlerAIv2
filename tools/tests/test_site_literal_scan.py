@@ -9,18 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-
-SCAN = Path(__file__).resolve().parents[1] / "site_literal_scan.py"
-
-
-def make_repo(root: Path, files: dict[str, str | bytes]) -> Path:
-    subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S603, S607
-    for name, content in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)  # noqa: S603, S607
-    return root
+from scan_repo import SCAN, make_repo
 
 
 def write_allowlist(path: Path, lines: list[str]) -> Path:
@@ -314,3 +303,14 @@ def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path, empty_allowl
         "backend/src/crawlerai/collect/hosts.py:4: cdn.example.com",
         "infra/config.yml:1: api.example.com",
     ]
+
+
+def test_hosts_joined_to_underscores_are_found(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo", {"a.txt": "foo_shop.example.com_v2\n", "b.py": 'NAME = "cache_jobs.example.net"\n'}
+    )
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["a.txt:1: shop.example.com", "b.py:1: jobs.example.net"]
