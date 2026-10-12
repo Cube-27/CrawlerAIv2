@@ -45,6 +45,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0024 | Role C offsets corrected by exact-match search, never fuzzy | pending-owner |
 | D-0037 | `map`/`crawl` scope is the exact host | pending-owner |
 | D-0086 | Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md | pending-owner |
+| D-0110 | eslint pre-commit hook exceeds the 10 s budget on Windows | needs-owner |
 
 ---
 
@@ -531,3 +532,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Hand-written generators.
 - Why: ENGINEERING and SPEC-01 §6 prescribe property tests.
 - Reversible: yes
+
+### D-0106 — Pre-commit tool hooks are `repo: local`
+- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: decided
+- Decision: The ruff, prettier and eslint hooks run the versions pinned in `backend/uv.lock` and `frontend/pnpm-lock.yaml`.
+- Alternatives: `ruff-pre-commit` and `mirrors-prettier` pinned in the config.
+- Why: One version source per tool, so hooks can't drift from CI.
+- Reversible: yes
+
+### D-0107 — `--staged` scans the index
+- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: decided
+- Decision: `--staged` is a flag of the scanner's public mode and reads index content (`git show :path`), not a list of file paths.
+- Alternatives: Pass filenames and read the working tree.
+- Why: §4.8 names `--staged`; reading the index scans exactly what gets committed.
+- Reversible: yes
+
+### D-0108 — `make check` round-trips migrations on a scratch database
+- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: decided
+- Decision: `check-migrations` runs upgrade, downgrade, upgrade on a scratch `crawlerai_check` database recreated each run, and backend tests run against it, not the dev database.
+- Alternatives: Use `crawlerai`, as CI does on its throwaway service.
+- Why: `downgrade base` would wipe local dev data on every `make check`.
+- Reversible: yes
+
+### D-0109 — `make check` leaves out the protected hidden-host scan
+- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: decided
+- Decision: The hidden-host scan runs only in the protected CI job.
+- Alternatives: Run it with an empty `HIDDEN_HOSTS`.
+- Why: C1: its input exists only in the custodian environment; without it the scan is a pass-through.
+- Reversible: yes
+
+### D-0110 — eslint pre-commit hook exceeds the 10 s budget on Windows
+- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: needs-owner
+- Question: the eslint hook takes 10.6–17.4 s for a one-file frontend change on the Windows dev host (5–6 s warm on Linux), against SPEC-00 §4.8's < 10 s budget. Which wins?
+- Options: (a) keep type-aware eslint in the hook and accept the Windows overage; (b) drop type-aware rules from the hook, keeping the full lint in `make check` and CI; (c) revisit the frontend lint config (`projectService`, HeroUI type depth) in a frontend row.
+- Recommendation: (a) now, since hooks are not weakened; consider (c) later.
+- Blocked: nothing. Python-file commits take about 2 s.

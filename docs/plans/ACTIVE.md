@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 9 (#12, re-review); SPEC-01 PR 3; SPEC-02 PR 1; the C3 scanner fix below.
+- Next: SPEC-01 PR 3 (in progress); C3 scanner fix (in progress); then SPEC-01 PR 4/6/7 and SPEC-02 PR 1.
 - Follow-up (due): the C3 scan reads dotted `table.column` strings whose last label is a TLD (`.id`) as hosts. Second occurrence in #14 (D-0093, D-0104), so fix the class in `tools/site_literal_scan.py` as a tooling PR.
 - Follow-up: `url_task` UNIQUE (`job_id`, `canonical_url`) is needed by SPEC-10 §4 but not listed in SPEC-01 §4.2; SPEC-01 PR 3 or SPEC-10 adds it. Indexes on `url_task.job_id` and `job_event (job_id, id)` come with the rows that add those queries (SPEC-01 PR 3, SPEC-10), each justified by its query.
 - Blocked: none.
@@ -49,7 +49,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 6 | import-linter contracts (C8) | done (#6) | |
 | 7 | License deny-list + SBOM | done (#7) | |
 | 8 | Protected eval job placeholder + hidden-host scan mode | done (#8) | |
-| 9 | Pre-commit hooks and `make check` | todo | |
+| 9 | Pre-commit hooks and `make check` | done (#12) | Windows eslint hook timing: D-0110 (needs-owner, not blocking). |
 | 10 | Root documents | done (#10) | |
 
 ## [SPEC-01 — Persistence, job queue and capture storage](../specs/SPEC-01-persistence-queue-storage.md)
