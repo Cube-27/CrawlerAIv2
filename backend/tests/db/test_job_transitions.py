@@ -45,14 +45,16 @@ async def test_job_moves_only_along_the_state_machine(
 ) -> None:
     job_id = await _job(conn, current)
 
-    if target in JOB_TRANSITIONS[current]:
+    allowed = target in JOB_TRANSITIONS[current]
+
+    if allowed:
         await transition_job(conn, job_id, target)
     else:
         with pytest.raises(InvalidTransition, match=f"job {job_id}: {current} -> {target}"):
             await transition_job(conn, job_id, target)
 
-    expected = target if target in JOB_TRANSITIONS[current] else current
-    assert (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one() == expected
+    stored = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
+    assert stored == (target if allowed else current)
 
 
 @pytest.mark.parametrize(("current", "target"), list(itertools.product(get_args(TaskStatus), repeat=2)))
@@ -61,28 +63,16 @@ async def test_task_moves_only_along_the_state_machine(
 ) -> None:
     task_id = await _task(conn, current)
 
-    if target in TASK_TRANSITIONS[current]:
+    allowed = target in TASK_TRANSITIONS[current]
+
+    if allowed:
         await transition_task(conn, task_id, target)
     else:
         with pytest.raises(InvalidTransition, match=f"url_task {task_id}: {current} -> {target}"):
             await transition_task(conn, task_id, target)
 
-    expected = target if target in TASK_TRANSITIONS[current] else current
-    assert (await conn.execute(select(UrlTask.status).where(UrlTask.id == task_id))).scalar_one() == expected
-
-
-async def test_a_completed_job_cannot_be_restarted(conn: AsyncConnection) -> None:
-    job_id = await _job(conn, "completed")
-
-    with pytest.raises(InvalidTransition):
-        await transition_job(conn, job_id, "running")
-
-
-async def test_a_queued_job_cannot_complete_without_running(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-
-    with pytest.raises(InvalidTransition):
-        await transition_job(conn, job_id, "completed")
+    stored = (await conn.execute(select(UrlTask.status).where(UrlTask.id == task_id))).scalar_one()
+    assert stored == (target if allowed else current)
 
 
 async def test_starting_a_job_stamps_started_at_only(conn: AsyncConnection) -> None:

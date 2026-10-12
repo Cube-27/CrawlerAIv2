@@ -21,15 +21,16 @@ def uuid7() -> uuid.UUID:
     """
     global _last
     rand = int.from_bytes(os.urandom(10))
+    seed = rand >> 62 & 0x7FF
     with _lock:
         unix_ms = time.time_ns() // 1_000_000
         last_ms, last_counter = _last
         if unix_ms > last_ms:
-            counter = rand >> 62 & 0x7FF
+            counter = seed
         elif last_counter < 0xFFF:
             unix_ms, counter = last_ms, last_counter + 1
         else:
-            unix_ms, counter = last_ms + 1, rand >> 62 & 0x7FF
+            unix_ms, counter = last_ms + 1, seed
         _last = (unix_ms, counter)
     value = (unix_ms & (1 << 48) - 1) << 80
     value |= 0x7 << 76 | counter << 64

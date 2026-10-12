@@ -173,7 +173,7 @@ class UrlTask(Base):
     status: Mapped[TaskStatus] = mapped_column(Text, server_default=text("'queued'"))
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     # The `capture` table arrives in SPEC-01 PR 6, which adds the foreign key.
-    capture_id: Mapped[CaptureId | None] = mapped_column(Uuid)
+    capture_id: Mapped[CaptureId | None] = mapped_column()
     outcome: Mapped[TaskOutcome | None] = mapped_column(Text)
     last_error: Mapped[str | None] = mapped_column(Text)
     claimed_by: Mapped[str | None] = mapped_column(Text)

@@ -10,6 +10,8 @@ from crawlerai.db.models import Job, JobEvent, JobId, JobKind, Project, TaskOutc
 
 pytestmark = pytest.mark.anyio
 
+MISSING_ID = uuid.UUID("00000000-0000-7000-8000-000000000000")
+
 
 def _job(**columns: Any) -> Insert:
     """An insert of a job in the `default` project."""
@@ -89,8 +91,8 @@ async def test_task_accepts_every_outcome(conn: AsyncConnection, outcome: str) -
     [
         ({"kind": "index"}, "ck_job_kind"),
         ({"status": "paused"}, "ck_job_status"),
-        ({"project_id": uuid.UUID("00000000-0000-7000-8000-000000000000")}, "fk_job_project_id_project"),
-        ({"schema_id": uuid.UUID("00000000-0000-7000-8000-000000000000")}, "fk_job_schema_id_schema_def"),
+        ({"project_id": MISSING_ID}, "fk_job_project_id_project"),
+        ({"schema_id": MISSING_ID}, "fk_job_schema_id_schema_def"),
     ],
 )
 async def test_job_rejects_values_outside_its_domain(
@@ -108,7 +110,7 @@ async def test_job_rejects_values_outside_its_domain(
         ({"page_kind": "index"}, "ck_url_task_page_kind"),
         ({"attempts": -1}, "ck_url_task_attempts_non_negative"),
         ({"depth": -1}, "ck_url_task_depth_non_negative"),
-        ({"parent_task_id": uuid.UUID("00000000-0000-7000-8000-000000000000")}, "fk_url_task_parent_task_id_url_task"),
+        ({"parent_task_id": MISSING_ID}, "fk_url_task_parent_task_id_url_task"),
     ],
 )
 async def test_task_rejects_values_outside_its_domain(
@@ -122,7 +124,7 @@ async def test_task_rejects_values_outside_its_domain(
 
 async def test_task_requires_an_existing_job(conn: AsyncConnection) -> None:
     with pytest.raises(IntegrityError, match="fk_url_task_job_id_job"):
-        await conn.execute(_task(JobId(uuid.UUID("00000000-0000-7000-8000-000000000000"))))
+        await conn.execute(_task(JobId(MISSING_ID)))
 
 
 async def test_job_event_defaults_to_an_empty_payload_and_requires_its_job(conn: AsyncConnection) -> None:
@@ -132,4 +134,4 @@ async def test_job_event_defaults_to_an_empty_payload_and_requires_its_job(conn:
 
     assert (await conn.execute(select(JobEvent.kind, JobEvent.payload))).one() == ("progress", {})
     with pytest.raises(IntegrityError, match="fk_job_event_job_id_job"):
-        await conn.execute(insert(JobEvent).values(job_id=uuid.UUID(int=0), kind="progress"))
+        await conn.execute(insert(JobEvent).values(job_id=MISSING_ID, kind="progress"))

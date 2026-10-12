@@ -4,13 +4,14 @@ The transition tables are the authority: `transition_job` and `transition_task` 
 its table, with a compare-and-set update, so two workers racing on one row cannot both win.
 """
 
+import uuid
 from collections.abc import Mapping
 from typing import Any, Final
 
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Job, JobEvent, JobEventId, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
 
 JOB_TRANSITIONS: Final[Mapping[JobStatus, frozenset[JobStatus]]] = {
     "queued": frozenset({"running", "cancelled"}),
@@ -35,10 +36,6 @@ class InvalidTransition(Exception):
         super().__init__(f"{table} {row_id}: {current} -> {target}")
 
 
-def _sources[S: str](transitions: Mapping[S, frozenset[S]], target: S) -> list[S]:
-    return [status for status, targets in transitions.items() if target in targets]
-
-
 def settled_status(counts: Mapping[TaskStatus, int], *, cancel_requested: bool) -> JobStatus | None:
     """The status a running job ends in, given how many of its tasks are in each status; `None` while it continues.
 
@@ -57,47 +54,43 @@ def settled_status(counts: Mapping[TaskStatus, int], *, cancel_requested: bool) 
 
 async def record_event(
     conn: AsyncConnection, job_id: JobId, kind: str, payload: Mapping[str, Any] | None = None
-) -> JobEventId:
-    event_id: JobEventId = (
-        await conn.execute(
-            insert(JobEvent).values(job_id=job_id, kind=kind, payload=dict(payload or {})).returning(JobEvent.id)
-        )
-    ).scalar_one()
-    return event_id
+) -> None:
+    await conn.execute(insert(JobEvent).values(job_id=job_id, kind=kind, payload=dict(payload or {})))
+
+
+async def _move[S: str](
+    conn: AsyncConnection,
+    model: type[Job] | type[UrlTask],
+    row_id: uuid.UUID,
+    transitions: Mapping[S, frozenset[S]],
+    target: S,
+    values: Mapping[str, Any],
+) -> None:
+    """Compare-and-set `row_id` to `target` from any status with an edge to it, or raise `InvalidTransition`."""
+    sources = [status for status, targets in transitions.items() if target in targets]
+    moved = await conn.execute(
+        update(model).where(model.id == row_id, model.status.in_(sources)).values(status=target, **values)
+    )
+    if moved.rowcount == 0:
+        current = (await conn.execute(select(model.status).where(model.id == row_id))).scalar_one()
+        raise InvalidTransition(model.__tablename__, row_id, current, target)
 
 
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
     """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at` and records an event of
     the same kind, which SSE and webhooks report (SPEC-10 §4.2)."""
-    values: dict[str, Any] = {"status": target}
+    ending = not JOB_TRANSITIONS[target]
+    values: dict[str, Any] = {}
     if target == "running":
         values["started_at"] = func.now()
-    if not JOB_TRANSITIONS[target]:
+    if ending:
         values["finished_at"] = func.now()
-    moved = await conn.execute(
-        update(Job)
-        .where(Job.id == job_id, Job.status.in_(_sources(JOB_TRANSITIONS, target)))
-        .values(values)
-        .returning(Job.id)
-    )
-    if moved.first() is None:
-        current = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
-        raise InvalidTransition("job", job_id, current, target)
-    if not JOB_TRANSITIONS[target]:
+    await _move(conn, Job, job_id, JOB_TRANSITIONS, target, values)
+    if ending:
         await record_event(conn, job_id, target)
 
 
 async def transition_task(conn: AsyncConnection, task_id: UrlTaskId, target: TaskStatus) -> None:
     """Move a url_task to `target`. A requeued task gives up its lease, so it looks like any other queued task."""
-    values: dict[str, Any] = {"status": target}
-    if target == "queued":
-        values.update(claimed_by=None, lease_until=None)
-    moved = await conn.execute(
-        update(UrlTask)
-        .where(UrlTask.id == task_id, UrlTask.status.in_(_sources(TASK_TRANSITIONS, target)))
-        .values(values)
-        .returning(UrlTask.id)
-    )
-    if moved.first() is None:
-        current = (await conn.execute(select(UrlTask.status).where(UrlTask.id == task_id))).scalar_one()
-        raise InvalidTransition("url_task", task_id, current, target)
+    values = {"claimed_by": None, "lease_until": None} if target == "queued" else {}
+    await _move(conn, UrlTask, task_id, TASK_TRANSITIONS, target, values)

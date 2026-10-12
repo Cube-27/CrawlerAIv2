@@ -46,20 +46,23 @@ def test_every_status_can_still_end(transitions: Mapping[str, frozenset[str]], s
 
 
 def test_job_lifecycle() -> None:
-    assert {status for status, targets in JOB_TRANSITIONS.items() if not targets} == {
-        "completed",
-        "failed",
-        "cancelled",
+    assert dict(JOB_TRANSITIONS) == {
+        "queued": {"running", "cancelled"},
+        "running": {"completed", "failed", "cancelled"},
+        "completed": set(),
+        "failed": set(),
+        "cancelled": set(),
     }
-    assert JOB_TRANSITIONS["queued"] == {"running", "cancelled"}
-    assert JOB_TRANSITIONS["running"] == {"completed", "failed", "cancelled"}
 
 
 def test_task_lifecycle() -> None:
-    assert {status for status, targets in TASK_TRANSITIONS.items() if not targets} == {"done", "failed", "cancelled"}
-    assert TASK_TRANSITIONS["queued"] == {"claimed", "cancelled"}
-    # Back to `queued`: a retry after a transient failure, or a lease that expired (SPEC-01 §4.3).
-    assert TASK_TRANSITIONS["claimed"] == {"queued", "done", "failed", "cancelled"}
+    assert dict(TASK_TRANSITIONS) == {
+        "queued": {"claimed", "cancelled"},
+        "claimed": {"queued", "done", "failed", "cancelled"},
+        "done": set(),
+        "failed": set(),
+        "cancelled": set(),
+    }
 
 
 counts = st.fixed_dictionaries({status: st.integers(min_value=0, max_value=50) for status in get_args(TaskStatus)})
