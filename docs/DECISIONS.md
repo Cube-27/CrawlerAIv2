@@ -672,3 +672,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Leave the UNIQUE to SPEC-10.
 - Why: SPEC-10 §4 needs the UNIQUE; the partial index keeps settling O(log n) per task (10k test: 268 s → ~80 s).
 - Reversible: yes
+
+### D-0126 — `fetch_http` takes the engine version and browser profile from the caller
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 2 (#18) · Status: decided
+- Decision: `fetch_http(url, policy, *, engine_version, impersonate, connector=None)`.
+- Alternatives: Read `core.engine_version`; give `impersonate` a default.
+- Why: `ENGINE_VERSION` arrives in SPEC-01 PR 7; with no default, `settings.impersonate` stays the only source of the profile.
+- Reversible: yes
+
+### D-0127 — Outcomes without a status line, and error bodies
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 2 (#18) · Status: decided
+- Decision: No response status line (SSRF rejection of the first URL, connection failure, budget spent) gives manifest `status_code=0` and `AttemptRecord.status=None`. Every `error` outcome stores an empty body but keeps the last response's status and headers.
+- Alternatives: Make `status_code` optional in the bundle format; keep partial bodies.
+- Why: Leaves the SPEC-01 bundle format unchanged; an error yields no records (INV-11), and a truncated body would mislead replays.
+- Reversible: yes
+
+### D-0128 — Fetch error reasons never include the URL
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 2 (#18) · Status: decided
+- Decision: Reasons are `timeout`, `body_cap`, `decode_error`, `too_many_redirects`, `ssrf_rejected: <reason>` and `network_error: curl <code>`.
+- Alternatives: curl's message text.
+- Why: curl messages contain host names; §4.11 redaction.
+- Reversible: yes
+
+### D-0129 — Connections are pinned with a wildcard `CURLOPT_RESOLVE`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 2 (#18) · Status: decided
+- Decision: `CURLOPT_RESOLVE "*:<port>:<ip>"`.
+- Alternatives: A per-host entry; `CURLOPT_CONNECT_TO`.
+- Why: A per-host entry silently falls back to DNS when curl's form of the host (IDNA, percent-decoding, trailing dot) differs from the guard's.
+- Reversible: yes
+
+### D-0130 — `CRAWLERAI_IMPERSONATE` is typed as curl_cffi's `BrowserTypeLiteral`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 2 (#18) · Status: decided
+- Decision: Default `chrome150`.
+- Alternatives: A free string.
+- Why: An unknown profile fails when settings load, not on the first fetch.
+- Reversible: yes

@@ -14,6 +14,7 @@ _OPTIONAL = [
     "CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE",
     "CRAWLERAI_LOG_REDACT_URLS",
     "CRAWLERAI_ROLE",
+    "CRAWLERAI_IMPERSONATE",
 ]
 
 
@@ -52,6 +53,7 @@ def test_optional_settings_unset_or_empty_take_their_unset_values(env: pytest.Mo
     assert settings.eval_private_object_store is None
     assert settings.log_redact_urls is False
     assert settings.role is None
+    assert settings.impersonate == "chrome150"
 
 
 def test_database_url_is_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
@@ -99,3 +101,12 @@ def test_database_settings_need_only_the_database_url(env: pytest.MonkeyPatch) -
     url = DatabaseSettings().database_url.get_secret_value()
 
     assert url == "postgresql+asyncpg://app:pw@localhost:5432/crawlerai"
+
+
+def test_impersonate_names_a_curl_cffi_browser_profile(env: pytest.MonkeyPatch) -> None:
+    env.setenv("CRAWLERAI_IMPERSONATE", "chrome146")
+    assert Settings().impersonate == "chrome146"
+
+    env.setenv("CRAWLERAI_IMPERSONATE", "chrome9999")
+    with pytest.raises(ValidationError, match="impersonate"):
+        Settings()

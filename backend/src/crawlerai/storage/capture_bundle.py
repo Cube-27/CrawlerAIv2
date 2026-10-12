@@ -77,7 +77,7 @@ class CaptureBundle(_Frozen):
     @model_validator(mode="after")
     def _matches_manifest(self) -> Self:
         entries = self.manifest.network_bodies
-        if _sha256(self.body) != self.manifest.html_sha256:
+        if sha256_hex(self.body) != self.manifest.html_sha256:
             raise ValueError("body does not match manifest html_sha256")
         if entries and self.manifest.method != "browser":
             raise ValueError(f"network bodies are captured by the browser only, not by method {self.manifest.method}")
@@ -86,7 +86,7 @@ class CaptureBundle(_Frozen):
         for i, (data, entry) in enumerate(zip(self.network, entries, strict=True)):
             if entry.file != _network_file(i):
                 raise ValueError(f"network_bodies[{i}].file is {entry.file!r}, expected {_network_file(i)!r}")
-            if _sha256(data) != entry.sha256:
+            if sha256_hex(data) != entry.sha256:
                 raise ValueError(f"network[{i}] does not match network_bodies[{i}].sha256")
         return self
 
@@ -154,7 +154,7 @@ def dev_eval_capture_key(capture_id: UUID) -> str:
     return f"eval/dev/{capture_id}.bundle.zst"
 
 
-def _sha256(data: bytes) -> str:
+def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
