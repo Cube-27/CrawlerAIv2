@@ -55,7 +55,7 @@ jobs:
         env:
           CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
 
-  # SPEC-00 §4.6. SPEC-00 PR 4 adds the API client freshness check.
+  # SPEC-00 §4.6, including the API client freshness check (§4.5).
   frontend:
     runs-on: ubuntu-24.04
     defaults:
@@ -76,6 +76,23 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.28"
+      # Installed as in the backend job: dependency wheels only, the project built from this repo's source.
+      - name: Install backend
+        working-directory: backend
+        run: |
+          uv sync --frozen --no-build --no-install-project
+          uv build --wheel --out-dir dist && uv pip install --no-build --no-deps dist/*.whl
+      - name: API client freshness
+        working-directory: .
+        run: |
+          make api-client UV_RUN="uv run --no-sync --no-build"
+          git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts || {
+            echo "::error::API client out of date: run 'make api-client' and commit the result."
+            exit 1
+          }
 
   # SPEC-00 §4.6 job 4: no site literals outside adapters/ (C3, INV-03). Also lints and tests the repo tools.
   site-literals:

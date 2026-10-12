@@ -2,6 +2,8 @@
 
 .DEFAULT_GOAL := dev
 COMPOSE := docker compose -f infra/docker-compose.yml
+# CI overrides this to run against an environment it has already installed.
+UV_RUN ?= uv run
 
 .env:
 	cp .env.example .env
@@ -11,7 +13,7 @@ COMPOSE := docker compose -f infra/docker-compose.yml
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs://$(CURDIR)/.data/objects)
 export
 
-.PHONY: dev db db-down migrate api
+.PHONY: dev db db-down migrate api api-client
 
 ## Start Postgres, apply migrations and run the API on http://localhost:8000. Later rows add the worker, the
 ## scheduler and the frontend here.
@@ -28,3 +30,9 @@ migrate:
 
 api:
 	cd backend && CRAWLERAI_ROLE=api uv run uvicorn --factory crawlerai.api.app:create_app --reload --port 8000
+
+## Regenerate frontend/openapi.json and the TS client types from the backend (SPEC-00 §4.5). CI fails when the
+## committed files differ from a fresh run.
+api-client:
+	cd backend && $(UV_RUN) crawlerai openapi > ../frontend/openapi.json
+	cd frontend && pnpm gen:api

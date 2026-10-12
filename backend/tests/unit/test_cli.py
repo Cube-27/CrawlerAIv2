@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 import sysconfig
@@ -23,3 +24,27 @@ def test_installed_console_script_reports_version() -> None:
 
     assert result.returncode == 0
     assert result.stdout == "crawlerai 0.1.0\n"
+
+
+def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main(["openapi"])
+
+    out = capsys.readouterr().out
+    document = json.loads(out)
+    assert document["openapi"].startswith("3.")
+    assert document["info"]["title"] == "CrawlerAI"
+    assert list(document["paths"]) == ["/healthz"]
+    assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
+def test_installed_console_script_writes_identical_lf_only_openapi_on_every_run() -> None:
+    script = shutil.which("crawlerai", path=sysconfig.get_path("scripts"))
+    assert script is not None, "the `crawlerai` console script is not installed in this environment"
+
+    runs = [subprocess.run([script, "openapi"], capture_output=True, check=True).stdout for _ in range(2)]  # noqa: S603
+
+    assert runs[0] == runs[1]
+    assert b"\r" not in runs[0]
+    assert runs[0].endswith(b"}\n")
