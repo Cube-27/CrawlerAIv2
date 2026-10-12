@@ -39,8 +39,9 @@ JS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 # Escapes such as backslash-n in a source literal separate words; they are not part of the token that follows.
 ESCAPE = re.compile(r"\\[nrtfv]")
 URL = re.compile(r"(?i)\bhttps?://(?:[^\s/@?#]*@)?(\[[^\]\s]*\]|[^\s/:?#'\"<>()\[\]{}\\,;`]+)")
-# A whole dotted token; the lookarounds stop a token that does not end in a TLD from yielding its leading labels.
-DOTTED = re.compile(r"(?i)(?<![\w.-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![\w-]|\.[\w-])")
+# A whole dotted token; the lookahead stops a token that does not end in a TLD from yielding its leading labels.
+# A leading dot is not part of the token, so `.shop.example.com` and `{sub}.shop.example.com` are still hosts.
+DOTTED = re.compile(r"(?i)(?<![\w-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![\w-]|\.[\w-])")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
 # holding a quote cannot swallow the rest of the file; template literals and block comments may span lines.
 JS_PIECE = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|//[^\n]*|/\*.*?\*/", re.DOTALL)
