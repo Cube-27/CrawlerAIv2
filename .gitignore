@@ -1,0 +1,69 @@
+# --- Secrets and local config ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Evaluation data and captures (C1: hidden/fresh never enter the repo) ---
+# Captures, eval stores and recorded LLM responses live in object storage, never in git.
+/data/
+/captures/
+/eval-private/
+/var/
+*.zst
+eval-aggregate.json
+hidden_hosts*.txt
+sites*.txt
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+.vite/
+*.tsbuildinfo
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
+
+# --- Browsers / test artifacts ---
+playwright-report/
+test-results/
+.cache/ms-playwright/
+
+# --- SBOM and generated reports ---
+sbom*.json
+reports/
+
+# --- Editors and OS ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Agent tooling (local state, worktrees) ---
+.claude/settings.local.json
+.claude/worktrees/
+.worktrees/
+worktrees/
+.herdr/
