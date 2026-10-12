@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-00 PR 9 (in progress), then PR 10.
+- Next: SPEC-00 PR 9 (in progress); SPEC-01 PR 1 (#11).
 - Blocked: none.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
@@ -48,7 +48,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | License deny-list + SBOM | done (#7) | |
 | 8 | Protected eval job placeholder + hidden-host scan mode | done (#8) | |
 | 9 | Pre-commit hooks and `make check` | todo | |
-| 10 | Root documents | todo | |
+| 10 | Root documents | done (#10) | |
 
 ## [SPEC-01 — Persistence, job queue and capture storage](../specs/SPEC-01-persistence-queue-storage.md)
 

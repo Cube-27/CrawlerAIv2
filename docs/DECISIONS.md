@@ -44,6 +44,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0019 | Only derivations: canonical/final URL → `url`, absolutize | pending-owner |
 | D-0024 | Role C offsets corrected by exact-match search, never fuzzy | pending-owner |
 | D-0037 | `map`/`crawl` scope is the exact host | pending-owner |
+| D-0086 | Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md | pending-owner |
 
 ---
 
@@ -375,4 +376,32 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The secret is split on whitespace and commas, lowercased, with leading and trailing dots stripped.
 - Alternatives: one host per line only.
 - Why: Tolerant of how the custodian pastes it; it doesn't change what is printed.
+- Reversible: yes
+
+### D-0084 — No-size-gates is a tested script covering tool configs
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: decided
+- Decision: `tools/no_size_gates.py` (stdlib) scans workflows, `.pre-commit-config.yaml`, `Makefile` and the configs of the tools they run (pyproject, ruff, package.json, ESLint/Vite/Vitest) for line-count tools, size or complexity limits (mccabe/`C901`, pylint `PLR09`, ESLint `max-*`/`complexity`) and coverage thresholds.
+- Alternatives: the spec's one-line grep over workflows and hooks.
+- Why: An inline grep matches its own patterns, and a gate can be switched on in a tool config just as easily (C11).
+- Reversible: yes
+
+### D-0085 — INVARIANTS.md has a Status column
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: decided
+- Decision: Each invariant says whether its enforcement runs today (`active`) or which spec adds it.
+- Alternatives: the four spec columns only.
+- Why: Docs make no claim a check doesn't back (CLAUDE.md §6).
+- Reversible: yes
+
+### D-0086 — Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: pending-owner
+- Decision: CLAUDE.md §5 step 1: the escalation writer copies the `needs-owner` entry as a row in `OPEN_QUESTIONS.md`. This is the only agent edit to that file without owner approval.
+- Alternatives: the owner copies them.
+- Why: SPEC-00 §4.9 item 13 and OPEN_QUESTIONS.md's own text require the copy; CLAUDE.md §6 otherwise reserves the file to the owner.
+- Reversible: yes
+
+### D-0087 — SPEC-00 §4.3 HeroUI row corrected (clarifying edit)
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: decided
+- Decision: `@heroui/react` and `@heroui/styles` 3.2.6, MIT, per D-0051.
+- Alternatives: none.
+- Why: Matches the published packages; no architecture change.
 - Reversible: yes
