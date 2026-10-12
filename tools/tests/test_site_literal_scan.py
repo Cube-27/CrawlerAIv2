@@ -303,3 +303,14 @@ def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path, empty_allowl
         "backend/src/crawlerai/collect/hosts.py:4: cdn.example.com",
         "infra/config.yml:1: api.example.com",
     ]
+
+
+def test_hosts_joined_to_underscores_are_found(tmp_path: Path, empty_allowlist: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo", {"a.txt": "foo_shop.example.com_v2\n", "b.py": 'NAME = "cache_jobs.example.net"\n'}
+    )
+
+    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["a.txt:1: shop.example.com", "b.py:1: jobs.example.net"]

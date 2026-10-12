@@ -123,6 +123,49 @@ def test_path_naming_a_hidden_host_is_reported_with_the_host_withheld(tmp_path: 
     assert_no_host_in(result, "shop.hidden.test", "hidden.test")
 
 
+def test_host_joined_to_underscores_in_a_path_is_withheld_and_reported(tmp_path: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo",
+        {"caps/shop.hidden.test_2024.html": "see shop.hidden.test\n", "foo_shop.hidden.test.txt": "none\n"},
+    )
+
+    result = run_hidden(repo, "shop.hidden.test")
+
+    assert result.returncode == 1
+    assert sorted(result.stdout.splitlines()) == [
+        "caps/[hidden]_2024.html:0",
+        "caps/[hidden]_2024.html:1",
+        "foo_[hidden].txt:0",
+    ]
+    assert_no_host_in(result, "shop.hidden.test", "hidden.test")
+
+
+def test_path_redaction_withholds_every_case_variant_and_partial_label_match(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"a/MyShop.Hidden.Test-x/page.txt": "shop.hidden.test\n"})
+
+    result = run_hidden(repo, "shop.hidden.test")
+
+    assert result.stdout.splitlines() == ["a/My[hidden]-x/page.txt:1"]
+    assert_no_host_in(result, "shop.hidden.test", "hidden.test")
+
+
+def test_overlapping_hosts_in_a_path_are_both_withheld(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"one.hidden.test.two/a.txt": "none\n"})
+
+    result = run_hidden(repo, "one.hidden hidden.test.two")
+
+    assert result.stdout.splitlines() == ["[hidden]/a.txt:0"]
+    assert_no_host_in(result, "one.hidden", "hidden.test.two", "test.two")
+
+
+def test_host_joined_to_underscores_in_content_is_reported(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {"a.txt": "clean\nfoo_shop.hidden.test_v2\nx_cdn.shop.hidden.test\n"})
+
+    result = run_hidden(repo, "shop.hidden.test")
+
+    assert result.stdout.splitlines() == ["a.txt:2", "a.txt:3"]
+
+
 def test_binary_files_are_scanned(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"blob.bin": b"\x00\x01\nshop.hidden.test\x00"})
 
