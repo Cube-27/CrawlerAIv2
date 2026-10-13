@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PR 4 and PR 8 (in progress); SPEC-03 PRs 9–11. SPEC-03 PR 7 waits on H1/H2, so the exit predicate can't fully hold until then.
+- Next: SPEC-03 PRs 4 (#33) and 10 (#34) in review; workflow self-improvement PR; Vite+ toolchain PR (owner request); SPEC-03 PRs 9, 11.
+- Follow-ups for SPEC-03 PR 9 (from #35): guard `PUT labels` against a labeler/checker race (`WHERE labels = <read>` or a version); compare labeler names casefolded, as `parse_labels` does; the `javascript:` strip should drop tab and newline characters first (WHATWG URL parsing). For SPEC-07 PR 1: map `ObjectNotFound`/`CorruptBundle` from `get_bundle` to a problem response.
 - Follow-ups for SPEC-10's page-fetching handler (from #31): pass `fetch_politely` the HTTP rung for robots.txt and `acquire` for the page (a robots.txt classifies as `shell` and would trigger a browser retry); admit the browser retry through `HostLimiter`, or log that one immediate retry per fetch is accepted; check every attempt, not only the kept result, for `SLOW_DOWN`.
 - Follow-ups for SPEC-03 PR 7 (from #32): run the gate (baseline lookup) before `put_run` on a push to `main`, or exclude the candidate's sha, since otherwise the candidate's own run becomes its baseline; store the unsuppressed report as the run's `metrics` (an exported aggregate makes `gate` raise `GateInputInvalid`); check out with `fetch-depth: 0`.
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
@@ -100,7 +101,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | Metrics + aggregate report + min-cell suppression | done (#29) | Secondary suppression: D-0187 (needs-owner, not blocking). |
 | 6 | Gate + baseline lookup | done (#32) | |
 | 7 | Protected job wired (replace placeholder) + dev report in `backend` job | human (H1, H2) | Needs the private eval credentials and the protected environment; changes the protected job (CLAUDE.md §4). Follow-ups from #32 below. |
-| 8 | Labeling API | todo | |
+| 8 | Labeling API | done (#35) | Dev split only (D-0207); hidden/fresh labeling at M is D-0214. |
 | 9 | Labeling screen | todo | |
 | 10 | Promote/rotate commands | todo | |
 | 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | todo | |
