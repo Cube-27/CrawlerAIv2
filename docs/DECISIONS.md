@@ -2857,3 +2857,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Always show the buttons.
 - Why: Fewer dead ends; DESIGN.md "Status display".
 - Reversible: yes
+
+### D-0437 — Preference returns `Chosen` or `Unpublished`
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: Preference returns `Chosen(chosen, agreeing, rejected)` or `Unpublished(missing|conflict, reason, rejected)`. Evidence, confidence and `FieldOutcome` come in PR 8. For an exact-match type the chosen candidate is the first kept one, in the order the collectors give.
+- Alternatives: Return `FieldOutcome` now, with placeholder evidence.
+- Why: INV-22 forbids a published outcome without evidence. `agreeing` is what PR 8 needs for the `agreed` bucket.
+- Reversible: yes
+
+### D-0438 — A missing field states the furthest screening stage
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: A `missing` field's reason is the furthest screening stage a candidate reached (`invalid` < `ambiguous` < `not_owned` < `url_param`), or `no_candidates` when the field has none. Every rejected candidate keeps its own reason.
+- Alternatives: A generic `no_valid_candidates`.
+- Why: It names the stage that blocked the field.
+- Reversible: yes
+
+### D-0439 — Unranked kinds never win; a split winning kind is a conflict
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: In precedence types, a source kind absent from the type's order never wins: if only such candidates exist, the field is `missing` with reason `unranked`. Equal values still count as agreeing. Two candidates of the winning kind that disagree make the field `conflict`/`disagree`. A `list` field follows its item type's rule; an `object` field publishes on agreement.
+- Alternatives: Unranked kinds rank last; the first candidate of the winning kind wins.
+- Why: The order is fitted on dev (INV-02), and an unranked kind has no dev measurement. When two values tie, nothing settles which is right (C7).
+- Reversible: yes
+
+### D-0440 — Atomic offers anchor on one Offer
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: The anchor Offer is the one holding kept candidates for the most Offer-rooted fields; on a tie, the first one seen. Candidates from two different Offers that disagree make the field `offers_disagree`. An Offer field with no kept candidate from the anchor is `offer_split`, which includes an Open Graph price beside a JSON-LD Offer that states only availability. Page-level values that agree with the anchor's value count as agreeing.
+- Alternatives: Per-field agreement only, which can take price and availability from different Offers.
+- Why: INV-15 says one source object; this is the conservative reading.
+- Reversible: yes
+
+### D-0441 — The URL-parameter rule compares every scalar of the raw value
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: INV-13 compares every string and number inside the raw value (including inside objects and arrays, such as `priceCurrency`), in the SPEC-04 text form, against the request URL's query values decoded as application/x-www-form-urlencoded (WHATWG). Empty values are ignored. A match is kept only when `visible` finds it on the page.
+- Alternatives: Compare only top-level strings.
+- Why: A currency or code copied from the URL is a value taken from a URL code (C7).
+- Reversible: yes
+
+### D-0442 — Derivations fill only missing fields, in a fixed order
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: Derivations fill only `missing` fields, never `conflict`. The order is `absolutize` (the field's own relative candidate, put through preference again), then `canonical_link`, then `final_url`. The page-URL field is the url field of a detail schema whose path is `T.url`, for a primary type T. Derived page URLs pass through the url normalizer.
+- Alternatives: Fill conflicts too, or put the canonical link first.
+- Why: A conflict is a field whose values disagree; filling it would hide that. A candidate's own value is closer to the field than a page-level URL.
+- Reversible: yes
+
+### D-0443 — `source_precedence.yaml` has one reader
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: decided
+- Decision: `load_precedence` requires `source_split: dev`, an order for each of text, long_text, url and image_url, known source kinds, and no other types. `parse_orders` is shared with `eval/calibrate`, and a test checks that its stamp keys match the `Precedence` model.
+- Alternatives: Let `long_text` fall back to `text`'s order.
+- Why: INV-02, and no defaults (C7).
+- Reversible: yes
+
+### D-0444 — Dev-fitted files under `backend/data/` and INV-05
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: needs-owner
+- Decision: Question: INV-05 says every file under `backend/data/` comes from a pinned external source listed in `manifest.json`. SPEC-05 puts the dev-fitted `source_precedence.yaml` (§4.7) and `calibration.json` (PR 8) there, and the fit commands rewrite them, which would break a pinned sha256. Options: (a) `data_manifest_check` exempts the two fitted, stamped artifacts and checks their `source_split: dev` stamp instead, with INV-05 reworded to "external data"; (b) a manifest entry per fitted file, whose url names the eval run and whose sha256 the fit commands rewrite; (c) move fitted files out of `backend/data/`. Recommendation: (a). Blocked: committing the initial order (D-0020), which PR 9 needs to run `extract_page`, and PR 8's empty `calibration.json`. Copied to OPEN_QUESTIONS #19.
+- Alternatives: See options.
+- Why: The specs contradict each other (CLAUDE.md §4).
+- Reversible: yes
