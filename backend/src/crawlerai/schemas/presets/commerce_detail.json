@@ -1,0 +1,57 @@
+{
+  "name": "commerce_detail",
+  "version": 1,
+  "page_kind": "detail",
+  "required_groups": [["sku", "gtin"]],
+  "fields": {
+    "title": {
+      "type": "text",
+      "required": true,
+      "description": "Product name shown to the buyer, without the store name",
+      "schema_org": "Product.name"
+    },
+    "price": {
+      "type": "money",
+      "required": true,
+      "description": "Current price of the selected or default variant, with its currency",
+      "schema_org": "Offer.price+priceCurrency"
+    },
+    "availability": {
+      "type": "enum",
+      "vocab": "schema:ItemAvailability",
+      "required": true,
+      "description": "Whether the selected or default variant can be bought now",
+      "schema_org": "Offer.availability"
+    },
+    "url": {
+      "type": "url",
+      "required": true,
+      "description": "Canonical URL of the product page",
+      "schema_org": "Product.url"
+    },
+    "image_url": {
+      "type": "image_url",
+      "required": true,
+      "description": "URL of the main product image",
+      "schema_org": "Product.image"
+    },
+    "brand": {
+      "type": "text",
+      "required": true,
+      "description": "Brand or manufacturer name of the product",
+      "schema_org": "Product.brand.name"
+    },
+    "sku": {
+      "type": "identifier",
+      "scheme": "sku",
+      "description": "The seller's stock keeping unit for the selected or default variant",
+      "schema_org": "Product.sku"
+    },
+    "gtin": {
+      "type": "identifier",
+      "scheme": "gtin",
+      "description": "GS1 trade item number (GTIN-8, -12, -13 or -14) of the selected or default variant",
+      "schema_org": "Product.gtin"
+    }
+  }
+}

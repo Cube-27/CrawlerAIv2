@@ -13,12 +13,14 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import get_args
 
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
-from crawlerai.core.settings import AcquireSettings, Settings
+from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
 from crawlerai.eval import calibrate, promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
@@ -30,6 +32,7 @@ from crawlerai.eval.store import (
     private_store,
 )
 from crawlerai.scheduler.loop import periodic, run_scheduler
+from crawlerai.schemas.registry import PresetConflict, sync_presets
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.loop import run_worker
@@ -118,6 +121,18 @@ async def _eval_rotate_hidden(fraction: float) -> None:
         aclosing(dev_store(settings)) as dev,
     ):
         sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, fresh, dev, fraction)))
+
+
+async def _sync_presets() -> None:
+    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
+    try:
+        async with engine.begin() as conn:
+            inserted = await sync_presets(conn)
+    finally:
+        await engine.dispose()
+    for schema in inserted:
+        print(f"inserted preset {schema.name} version {schema.version}")
+    print(f"{len(inserted)} preset version(s) inserted")
 
 
 def _data_dir() -> Path:
@@ -210,6 +225,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     fetch.add_argument(
         "--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar), under this directory"
     )
+    schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
+        dest="schemas_command", required=True
+    )
+    schemas.add_parser("sync", help="insert the preset schema versions the database lacks (after migrating)")
     _add_eval_commands(commands)
     args = parser.parse_args(argv)
     if args.command == "openapi":
@@ -225,6 +244,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         if not out.is_relative_to(cwd):
             parser.error(f"--out must be under the working directory {cwd}")
         asyncio.run(_fetch(args.url, out))
+    elif args.command == "schemas":
+        try:
+            asyncio.run(_sync_presets())
+        except PresetConflict as e:
+            parser.exit(2, f"crawlerai schemas sync: {e}\n")
     elif args.command == "eval":
         try:
             if args.eval_command == "capture":

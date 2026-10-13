@@ -140,7 +140,7 @@ Needs Docker, `uv`, `pnpm` and GNU make. Run from the repo root unless a block s
 ```sh
 make dev             # Postgres (compose), migrations, API on http://localhost:8000 (GET /healthz)
 make db              # start Postgres only; `make db-down` stops it
-make migrate         # alembic upgrade head
+make migrate         # alembic upgrade head, then `crawlerai schemas sync` (presets)
 make api-client      # regenerate frontend/openapi.json and src/api/schema.d.ts; commit both
 make check           # every check below, locally; stops at the first failure. One job: make check-backend, ...
 uvx pre-commit install   # once per clone: the fast hooks on staged files (.pre-commit-config.yaml)
