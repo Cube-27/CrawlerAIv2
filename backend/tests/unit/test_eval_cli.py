@@ -1,6 +1,7 @@
 """`crawlerai eval capture` and `crawlerai eval import-sites` without a database: the site list, the report, and how
 the commands hand their arguments on (SPEC-03 §4.4). Synthetic `.test` URLs only."""
 
+import asyncio
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,6 +13,7 @@ from crawlerai import cli
 from crawlerai.cli import main
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalPageId, PageKind, Split
+from crawlerai.eval import cli as eval_cli
 from crawlerai.eval.cli import (
     Captured,
     EvalCliError,
@@ -19,6 +21,8 @@ from crawlerai.eval.cli import (
     PageRequest,
     SiteList,
     Skipped,
+    check_hosts,
+    hosts_elsewhere,
     parse_site_list,
     report,
 )
@@ -79,6 +83,39 @@ def test_every_error_in_a_site_list_is_reported_by_line_without_its_content() ->
         "line 7: expected `<category> <schema> <url>`",
     ]
     assert "example.test" not in str(error.value)
+
+
+def _request(n: int, url: str) -> PageRequest:
+    return PageRequest(n, url, "commerce_detail", "mixed")
+
+
+def test_hosts_with_pages_in_another_split_are_refused_by_count_only() -> None:
+    requests = [
+        _request(1, f"{A}/p/1"),
+        _request(2, f"{A.upper()}/p/2"),
+        _request(3, f"{B}/p/1"),
+        _request(4, "https://c.example.test/p/1"),
+    ]
+    taken: dict[Split, set[str]] = {
+        "hidden": {"a.example.test", "d.example.test"},
+        "dev": {"a.example.test", "b.example.test"},
+    }
+
+    with pytest.raises(EvalCliError) as error:
+        check_hosts(requests, taken)
+
+    # A host listed twice counts once; one in two other splits counts in each.
+    assert str(error.value) == (
+        "2 host(s) of the input already have pages in another split (dev: 2, hidden: 1); a host belongs to one"
+        " split (ARCHITECTURE §16.1), so nothing was fetched"
+    )
+    assert "example.test" not in str(error.value)
+
+
+def test_hosts_absent_from_every_other_split_pass() -> None:
+    taken: dict[Split, set[str]] = {"hidden": {"b.example.test"}, "fresh": set()}
+
+    check_hosts([_request(1, f"{A}/p/1"), _request(2, f"{A}/p/2")], taken)
 
 
 def test_the_report_has_one_json_line_per_page_in_input_order() -> None:
@@ -209,6 +246,28 @@ def test_a_private_split_without_custodian_settings_exits_with_the_reason(
 
     assert exit_info.value.code == 2
     assert capsys.readouterr().err == "crawlerai eval: expected on any other machine\n"
+
+
+def test_a_dev_capture_without_custodian_settings_reads_no_other_split(settings_env: None) -> None:
+    assert asyncio.run(hosts_elsewhere(Settings(), "dev")) == {}
+
+
+class _FailingStore:
+    async def hosts(self) -> set[str]:
+        raise RuntimeError(f"connection to {A} refused")
+
+    async def aclose(self) -> None:
+        pass
+
+
+def test_a_failed_host_lookup_is_reported_by_its_type_only(monkeypatch: pytest.MonkeyPatch, settings_env: None) -> None:
+    monkeypatch.setattr(eval_cli, "get_store", lambda split, settings: _FailingStore())
+    lookup = hosts_elsewhere(Settings(), "fresh")
+
+    with pytest.raises(EvalCliError) as error:
+        asyncio.run(lookup)
+
+    assert str(error.value) == "reading the hosts of the dev split failed with RuntimeError"
 
 
 @pytest.mark.parametrize("relative", [True, False])

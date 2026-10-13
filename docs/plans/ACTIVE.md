@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
-- Next: SPEC-04 PR 2 (#47) in review; then SPEC-04 PR 3, SPEC-02 PR 7; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
+- Next: SPEC-04 PR 2 (#47) in review, then SPEC-04 PRs 3–8 in parallel; SPEC-02 PRs 7, 8 in progress, then 9; SPEC-05 after SPEC-04.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
