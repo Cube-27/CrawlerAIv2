@@ -30,3 +30,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ------------------------------------------------------------------------
+
+This project uses third-party data, fetched by `crawlerai data fetch` and not
+redistributed in this repository (pinned in backend/data/manifest.json):
+
+------------------------------------------------------------------------
+GeoNames — https://www.geonames.org/
+Files: cities15000.zip, admin1CodesASCII.txt, countryInfo.txt
+Used in: backend/src/crawlerai/normalize/location.py (location normalizer)
+
+Licensed under the Creative Commons Attribution 4.0 License
+(https://creativecommons.org/licenses/by/4.0/). Data by GeoNames; used
+unmodified as a lookup table.
+------------------------------------------------------------------------
+schema.org — https://schema.org/
+File: schemaorg-all-https.jsonld (release 30.1)
+Used as a vocabulary file only.
+
+Licensed under the Creative Commons Attribution-ShareAlike 3.0 License
+(https://creativecommons.org/licenses/by-sa/3.0/).
+------------------------------------------------------------------------

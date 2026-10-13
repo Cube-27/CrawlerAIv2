@@ -84,7 +84,7 @@ def test_listed_but_missing_file_fails(tmp_path: Path) -> None:
 
 def test_fetched_entry_may_be_absent(tmp_path: Path) -> None:
     # SPEC-04 §4.6: a fetched file is downloaded by `crawlerai data fetch` and never committed.
-    root = make_root(tmp_path, {}, {"entries": [entry("geo/cities.zip") | {"fetched": True}]})
+    root = make_root(tmp_path, {}, {"entries": [entry("geo/cities.txt") | {"fetched": True}]})
 
     result = run_check(root)
 
@@ -93,12 +93,12 @@ def test_fetched_entry_may_be_absent(tmp_path: Path) -> None:
 
 
 def test_fetched_entry_that_is_present_must_match_its_hash(tmp_path: Path) -> None:
-    root = make_root(tmp_path, {"geo/cities.zip": b"other"}, {"entries": [entry("geo/cities.zip") | {"fetched": True}]})
+    root = make_root(tmp_path, {"geo/cities.txt": b"other"}, {"entries": [entry("geo/cities.txt") | {"fetched": True}]})
 
     result = run_check(root)
 
     assert result.returncode == 1
-    assert result.stdout.splitlines() == ["backend/data/geo/cities.zip: sha256 does not match the manifest"]
+    assert result.stdout.splitlines() == ["backend/data/geo/cities.txt: sha256 does not match the manifest"]
 
 
 @pytest.mark.parametrize("value", ["true", 1, None])
