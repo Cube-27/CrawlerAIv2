@@ -24,5 +24,9 @@ if [ "$cwd" != "$path" ]; then
   echo "ERROR $name cwd is '$cwd', expected '$path'; closing pane $pane"
   herdr pane close "$pane" >/dev/null 2>&1; exit 1
 fi
-herdr agent prompt "$name" "$prompt" --wait --timeout 15000 >/dev/null 2>&1
-echo "$pane $(herdr agent get "$name" | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent']['agent_status'])")"
+if ! herdr agent prompt "$name" "$prompt" >/dev/null 2>&1; then
+  echo "ERROR prompt to $name failed; closing pane $pane"; herdr pane close "$pane" >/dev/null 2>&1; exit 1
+fi
+status() { herdr agent get "$name" | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent']['agent_status'])"; }
+for _ in 1 2 3 4 5 6 7 8 9 10; do case $(status) in working|blocked) break;; esac; sleep 1; done
+echo "$pane $(status)"

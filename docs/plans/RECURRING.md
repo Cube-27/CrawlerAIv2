@@ -14,3 +14,4 @@ step); a **skill rule** only where no check can. Workers read this list before o
 | A herdr pane starts in the home folder because the cwd string was built inline (`"...\$wt"` drops the variable). | orchestrator, twice | `tools/orchestrator/start_agent.sh` builds the path and checks the agent's cwd. |
 | An orchestrator tracker commit written early conflicts with a PR that merged first. | #26 | Skill rule (`/run-plan` §1): write a tracker commit early only for the PR that merges next. |
 | A wait loop reads the previous commit's CI results. | orchestrator | `tools/orchestrator/wait_ci.sh` waits on the head SHA. |
+| A merge ran after a failed CI wait (`wait_ci.sh ... ; gh pr merge`), so #38's last commit merged before its CI ran. Main stayed green. | orchestrator (#38) | `tools/orchestrator/merge_pr.sh`: merges only on a passing wait, pinned to the head commit; `wait_ci.sh` tolerates the old head right after a push and exits 1 on a failed check. |
