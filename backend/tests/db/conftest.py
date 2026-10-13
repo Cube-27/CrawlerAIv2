@@ -24,7 +24,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.core.capture import BlockClass
+from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Job, JobEvent, UrlTask, UsageEvent
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
@@ -83,7 +83,7 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
 
 @pytest.fixture
 def fetch_result() -> Callable[..., FetchResult]:
-    """A factory for the result of one HTTP fetch of `url`, as `fetch_http` reports it."""
+    """A factory for the result of one fetch of `url` by one rung, as `fetch_http` reports it."""
 
     def make(
         url: str,
@@ -93,13 +93,14 @@ def fetch_result() -> Callable[..., FetchResult]:
         *,
         block_class: BlockClass = "ok",
         error: str | None = None,
+        method: CaptureMethod = "http",
     ) -> FetchResult:
         manifest = CaptureManifest(
             capture_id=uuid7(),
             url=url,
             final_url=url,
             fetched_at=datetime.now(UTC),
-            method="http",
+            method=method,
             status_code=status,
             block_class=block_class,
             headers=Headers(request=(), response=headers),
@@ -110,7 +111,7 @@ def fetch_result() -> Callable[..., FetchResult]:
             engine_version="test",
         )
         attempt = AttemptRecord(
-            method="http", status=status or None, block_class=block_class, duration_ms=1, error=error
+            method=method, status=status or None, block_class=block_class, duration_ms=1, error=error
         )
         return FetchResult(
             bundle=CaptureBundle(manifest=manifest, body=body, network=()), duration_ms=1, attempts=(attempt,)
