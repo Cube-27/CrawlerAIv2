@@ -3534,3 +3534,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Rebuild the set from reject reasons (a deny-list that counts any new reason as kept), or from `ExtractionResult.candidates` (ambiguous across listing rows).
 - Why: The resolver is the one place that knows which candidates were screened out.
 - Reversible: yes
+
+### D-0534 — Role C listing call only when structured data gives no rows
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 5 (#111) · Status: decided
+- Decision: A cold listing calls role C once when `listing_rows` finds no row and the schema has row fields, asking every row field and the page fields still `missing`. With structured rows there is no call; their gaps stay missing (D-0516).
+- Alternatives: Also call for gaps in structured rows or page fields.
+- Why: ARCHITECTURE §8.6, rows come from structured data *or* role C; merging LLM rows into structured ones needs a matching rule the spec doesn't define.
+- Reversible: yes
+
+### D-0535 — LLM row entities
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 5 (#111) · Status: decided
+- Decision: A role C row is `Entity(id="llm:rows[<position in reply>]", kind="page", parent=None)`; a row whose every value is null or ungrounded is no row. Page fields' candidates are owned by the page entity.
+- Alternatives: Kind = the schema's primary type; keep empty rows.
+- Why: The model states no schema.org type (`Entity.kind` falls back to `page`); an empty row would be a record without values.
+- Reversible: yes
+
+### D-0536 — `RoleC` is a protocol with `detail` and `listing`
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 5 (#111) · Status: decided
+- Decision: `RoleC.detail(GapRequest) -> GapReply` and `RoleC.listing(ListingGapRequest) -> ListingGapReply` (adds `rows`); `config_ir.role_c` returns one object with both. `c_extract.Filled.reply` is `LLMResponse | LLMFailure`; c_extract functions take the requested `FieldSpec`s, not the schema.
+- Alternatives: A second hook argument to `extract_page`; one callable over a union.
+- Why: A listing reply has a different shape (rows); the pre-fill has field specs, not a `SchemaDef`.
+- Reversible: yes
+
+### D-0537 — Role C listing limits and prompt
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 5 (#111) · Status: decided
+- Decision: `LISTING_MAX_CHARS = 80_000`, `LISTING_MAX_ROWS = 200` are constants (D-0025, D-0522). The row cap is in the prompt and applied to the reply (cut, with a diagnostic), not a schema `maxItems`. `max_output_tokens = 16_384`. The listing system prompt is `c_extract.txt` + `c_extract_listing.txt`, so the detail request hash is unchanged.
+- Alternatives: `maxItems` (an over-long reply becomes a retry); settings.
+- Why: As D-0522; provider support for `maxItems` is unverified. Review (#111) noted 16,384 tokens may not hold 200 rows on wide schemas.
+- Reversible: yes
+
+### D-0538 — Pre-fill draft content and API
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 5 (#111) · Status: decided
+- Decision: Only grounded values whose normalizer returns `Ok` become field labels (normalized value + `text:` locator); null, ungrounded and declined values stay unlabeled, never `absent`. The draft has no labeler (`put_labels` takes `who: str | None`). `POST prefill` returns the stored `Labels` with an `ETag`, replaces a draft (honouring `If-Match`), answers 409 on a labeled or checked page, and stores nothing on an LLM failure (503/502).
+- Alternatives: Mark nulls absent; require a labeler in the body; overwrite any labels.
+- Why: `absent` is the labeler's claim (G2); a pre-fill never counts as ground truth and must not erase a human pass.
+- Reversible: yes
