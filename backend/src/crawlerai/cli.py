@@ -5,6 +5,7 @@ import asyncio
 import json
 import signal
 import sys
+import uuid
 from collections.abc import Sequence
 from contextlib import aclosing, suppress
 from functools import partial
@@ -16,12 +17,14 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
-from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core import engine_version
+from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir
 from crawlerai.core.settings import AcquireSettings, Settings
-from crawlerai.db.models import EvalCategory, PageKind, Split
-from crawlerai.eval import promote
+from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
+from crawlerai.eval import calibrate, promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
 from crawlerai.eval.store import (
+    EvalNotFound,
     PrivateCredentialsMissing,
     PrivateStoreNotSeparate,
     dev_store,
@@ -118,6 +121,30 @@ async def _eval_rotate_hidden(fraction: float) -> None:
         sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, fresh, dev, fraction)))
 
 
+def _data_dir() -> Path:
+    """`backend/data/` of the source tree this package runs from, where SPEC-05 reads its calibration and precedence."""
+    backend = backend_dir(Path(engine_version.__file__))
+    if backend is None:
+        raise EvalCliError("no backend source tree: calibration and precedence are written to backend/data/")
+    return backend / "data"
+
+
+async def _eval_calibrate(run_id: EvalRunId) -> None:
+    async with aclosing(dev_store(Settings())) as dev:
+        run = await dev.get_run(run_id)
+    path = calibrate.write_calibration(calibrate.calibrate(run), _data_dir())
+    print(json.dumps({"written": str(path), "eval_run_id": str(run.id), "source_split": run.split}))
+
+
+async def _eval_fit_precedence(run_id: EvalRunId) -> None:
+    data_dir = _data_dir()
+    current = calibrate.read_precedence(data_dir)
+    async with aclosing(dev_store(Settings())) as dev:
+        run = await dev.get_run(run_id)
+    path = calibrate.write_precedence(calibrate.fit_precedence(run, current), data_dir)
+    print(json.dumps({"written": str(path), "eval_run_id": str(run.id), "source_split": run.split}))
+
+
 def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     eval_commands = commands.add_parser("eval", help="evaluation: capture pages, move them into dev").add_subparsers(
         dest="eval_command", required=True
@@ -148,6 +175,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
         "rotate-hidden", help="move a fraction of the hidden sites, chosen per category, into dev"
     )
     rotate.add_argument("--fraction", type=_fraction, required=True)
+    for name, help_ in (
+        ("calibrate", "write backend/data/calibration.json from a dev eval run"),
+        ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval run"),
+    ):
+        fit = eval_commands.add_parser(name, help=help_)
+        # Every split is accepted here so that the refusal is the command's own, stated and tested (INV-02).
+        fit.add_argument("--split", choices=splits, required=True, help="dev; any other split is refused")
+        fit.add_argument("--run", type=uuid.UUID, required=True, help="the id of the dev eval run to fit on")
 
 
 def _positive_int(value: str) -> int:
@@ -201,6 +236,11 @@ def main(argv: Sequence[str] | None = None) -> None:
                 asyncio.run(_eval_promote(args.all))
             elif args.eval_command == "rotate-hidden":
                 asyncio.run(_eval_rotate_hidden(args.fraction))
+            elif args.eval_command in ("calibrate", "fit-precedence"):
+                # Refused before any store is opened: a private split's run is never read here (C1).
+                calibrate.require_dev(args.split)
+                fit = _eval_calibrate if args.eval_command == "calibrate" else _eval_fit_precedence
+                asyncio.run(fit(EvalRunId(args.run)))
             else:
                 # The site list is read only from under the working directory, as `fetch --out` is written there.
                 cwd = Path.cwd().resolve()
@@ -208,7 +248,14 @@ def main(argv: Sequence[str] | None = None) -> None:
                 if not sites.is_relative_to(cwd):
                     parser.error(f"--file must be under the working directory {cwd}")
                 asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
-        except (EvalCliError, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
+        except (
+            EvalCliError,
+            EvalNotFound,
+            PrivateCredentialsMissing,
+            PrivateStoreNotSeparate,
+            calibrate.NotDev,
+            calibrate.PrecedenceMissing,
+        ) as e:
             parser.exit(2, f"crawlerai eval: {e}\n")
         except Exception as e:
             # Only a dev command shows its failure; `promote` and `rotate-hidden` read private splits and have none.
