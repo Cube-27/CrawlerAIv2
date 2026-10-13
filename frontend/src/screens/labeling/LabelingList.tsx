@@ -1,4 +1,5 @@
 import { Chip, Table } from "@heroui/react";
+import { PageHeader } from "../../components/PageHeader";
 import { useLoaderData } from "react-router";
 import { EvalUiOff } from "./EvalUiOff";
 import type { listLoader, PageSummary } from "./loaders";
@@ -62,10 +63,9 @@ export function LabelingList() {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Labeling</h1>
+      <PageHeader title="Labeling">
         <SplitBadge split="dev" />
-      </div>
+      </PageHeader>
       {data.kind === "off" ? <EvalUiOff /> : <PageList pages={data.pages} />}
     </section>
   );
