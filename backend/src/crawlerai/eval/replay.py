@@ -14,9 +14,9 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
-from crawlerai.db.models import ExtractionMode
+from crawlerai.db.models import ExtractionMode, FieldStatus
 from crawlerai.eval.labels import from_pydantic, parse_labels
-from crawlerai.eval.metrics import ConfigFieldStatus, EvalCase, PageOutput, ReplayFailed, SchemaFields
+from crawlerai.eval.metrics import EvalCase, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.storage.base import ObjectNotFound
@@ -57,7 +57,7 @@ class ConfigSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
     ir: dict[str, JsonValue]
-    field_status: dict[str, ConfigFieldStatus] = {}
+    field_status: dict[str, FieldStatus] = {}
 
 
 class Engine(Protocol):
@@ -110,7 +110,7 @@ async def replay_split(
 
 async def _replay(
     store: EvalStore, engine: Engine, llm: LLMClient, page: EvalPageRow, schema: SchemaFields
-) -> tuple[PageOutput | ReplayFailed, dict[str, ConfigFieldStatus]]:
+) -> tuple[PageOutput | ReplayFailed, dict[str, FieldStatus]]:
     try:
         bundle = await store.get_bundle(page.capture_id)
     except (EvalNotFound, ObjectNotFound, CorruptBundle) as e:

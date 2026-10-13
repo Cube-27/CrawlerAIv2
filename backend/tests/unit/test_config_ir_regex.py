@@ -1,0 +1,113 @@
+"""The portable regex subset (SPEC-08 §4.2, D-0034): patterns and replacements that Python `re` and PCRE read the
+same way pass; constructs only one of them has, or that they read differently, are refused."""
+
+import re
+
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from crawlerai.config_ir.portable_regex import RegexError, check_pattern, check_replacement
+
+ACCEPTED = [
+    r"price:\s*([0-9.,]+)",
+    r"^\d{3}-\d{2,}$",
+    r"(?i)sku\s*[:#]\s*([A-Z0-9\-]+)",
+    r"(?P<amount>\d+)(?:\.\d{2})?",
+    r"(?P<q>['\"]).*?(?P=q)",
+    r"(?<=\$)\d+|(?<!x)y(?=z)(?!w)",
+    r"[^\]\\]+\.\x41",
+    r"(a)(b)\2\1",
+    r"\bword\B\W\S\D\n\t\r\f\A",
+    r"a{2}b{1,3}c{0,}d*?e+?f??",
+    r"(?s:.+)(?m-i:^x$)",
+    "ünïcödé",
+]
+
+# Each is accepted by Python `re` (or compiles there with a different meaning) but is outside the shared subset.
+REFUSED = [
+    (r"\d+\Z", r"\\Z"),  # Python: end of string; PCRE: end or before a final newline
+    ("\\u" + "0041", r"\\u"),  # Python only; PCRE writes \x{41}
+    (r"\N{EM DASH}", r"\\N"),
+    (r"a\vb", r"\\v"),  # PCRE: any vertical whitespace
+    (r"\0", r"\\0"),
+    (r"(a)\10", r"\\10"),
+    (r"(?a)\w", r"\(\?a"),  # ASCII flag: Python only
+    (r"(?x) a b", r"\(\?x"),
+    (r"(?<name>x)", r"\(\?<n"),
+    (r"(?>ab)", r"\(\?>"),
+    (r"x{,3}", r"\{,3\}"),
+    (r"x{a}", r"\{a\}"),
+    (r"[[:alpha:]]", r"\["),
+    (r"[a&&b]", r"&&"),
+    (r"[a--b]", r"--"),
+    (r"[]a]", r"\]"),
+    (r"[\b]", r"\\b"),
+    (r"(?P<n" + "x" * 32 + r">a)", r"\(\?P<"),  # PCRE2 group names are at most 32 characters
+]
+
+
+@pytest.mark.parametrize("pattern", ACCEPTED)
+def test_portable_patterns_pass(pattern: str) -> None:
+    assert check_pattern(pattern) == pattern
+
+
+@pytest.mark.parametrize(("pattern", "construct"), REFUSED)
+def test_constructs_outside_the_subset_are_refused(pattern: str, construct: str) -> None:
+    with pytest.raises(RegexError, match=construct):
+        check_pattern(pattern)
+
+
+@pytest.mark.parametrize("pattern", [r"(?<=a+)b", r"(a", r"a)", r"[z-a]", r"*a"])
+def test_patterns_python_cannot_compile_are_refused(pattern: str) -> None:
+    with pytest.raises(RegexError):
+        check_pattern(pattern)
+
+
+# A grammar of the shared subset: literals, escapes both engines read alike, classes, groups and quantifiers.
+_atom = st.one_of(
+    st.from_regex(r"[A-Za-z0-9 _,:;]", fullmatch=True),
+    st.sampled_from([r"\d", r"\w", r"\s", r"\.", r"\-", r"\$", ".", "[a-z0-9]", r"[^\s<>]", r"\x2F"]),
+)
+_quantifier = st.sampled_from(["", "*", "+", "?", "*?", "{2}", "{1,4}", "{3,}"])
+_piece = st.tuples(_atom, _quantifier).map("".join)
+_sequence = st.lists(_piece, min_size=1, max_size=6).map("".join)
+_portable = st.recursive(
+    _sequence,
+    lambda inner: st.one_of(
+        st.tuples(inner, inner).map(lambda pair: f"{pair[0]}|{pair[1]}"),
+        inner.map(lambda body: f"({body})"),
+        inner.map(lambda body: f"(?:{body})"),
+        st.tuples(inner, inner).map(lambda pair: f"{pair[0]}(?={pair[1]})"),
+    ),
+    max_leaves=6,
+)
+
+
+@given(_portable)
+def test_patterns_from_the_subset_grammar_pass(pattern: str) -> None:
+    assert check_pattern(pattern) == pattern
+
+
+@pytest.mark.parametrize(("replacement", "groups"), [("", 0), (r"\1-\2", 2), ("$ and {} and \\9x", 9), ("x\\1", 1)])
+def test_portable_replacements_pass(replacement: str, groups: int) -> None:
+    pattern = re.compile("(a)" * groups)
+    assert check_replacement(replacement, pattern) == replacement
+
+
+@pytest.mark.parametrize(
+    ("replacement", "groups", "construct"),
+    [
+        (r"\g<1>", 1, r"\\g"),  # Python only
+        (r"\n", 0, r"\\n"),  # Python turns it into a newline, PHP keeps it
+        ("$1", 1, r"\$1"),  # PHP group reference, Python literal
+        ("${1}", 1, r"\$\{"),
+        (r"\12", 12, r"\\12"),
+        (r"\2", 1, "group 2"),
+        ("x\\", 0, "trailing"),
+    ],
+)
+def test_replacements_outside_the_subset_are_refused(replacement: str, groups: int, construct: str) -> None:
+    pattern = re.compile("(a)" * groups)
+    with pytest.raises(RegexError, match=construct):
+        check_replacement(replacement, pattern)

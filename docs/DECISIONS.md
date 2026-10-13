@@ -3018,3 +3018,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A separator between the parts.
 - Why: A UUID string has one length, so the concatenation is unambiguous.
 - Reversible: yes, until records are stored
+
+### D-0460 — IR `attr` step is its own selector key
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided
+- Decision: `attr` is a selector key of its own (an attribute of the context node, e.g. a listing row), not a modifier on `xpath`/`css`; XPath reads attributes with `@name`. `when_type` goes only with `jsonld`; `source` is required with `jsonpath`.
+- Alternatives: `attr` as a modifier on `css`/`xpath` steps.
+- Why: SPEC-08 §4.2 lists `attr` among the exactly-one selector keys and §4.3 runs it on the tree beside `xpath`/`css`; the literal reading.
+- Reversible: yes
+
+### D-0461 — CSS translation is authoritative
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided
+- Decision: `css` is translated with cssselect's `HTMLTranslator` at validation and stored as `xpath`; an IR whose stored `xpath` differs from the translation of its `css` is refused. Pseudo-elements are refused.
+- Alternatives: Keep a supplied `xpath` as is; overwrite it silently.
+- Why: Executors run the `xpath`; a hand-edited mismatch would export something other than the readable `css` says. A cssselect upgrade that changes translations is handled by the loader rows (review follow-up).
+- Reversible: yes
+
+### D-0462 — `api_recipe` waits for SPEC-09
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided
+- Decision: The IR model has no `api_recipe` field yet (`extra="forbid"` refuses one); SPEC-09 adds it with `ApiRecipe`.
+- Alternatives: An untyped `dict` placeholder.
+- Why: SPEC-09 owns the shape; a placeholder would let unvalidated recipes into stored IRs.
+- Reversible: yes
+
+### D-0463 — Portable regex subset
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided
+- Decision: Patterns allow literals, `\d\D\s\S\w\W\b\B\n\t\r\f\A`, punctuation escapes, `\xhh`, `\1` to `\9`, classes without nesting, POSIX classes or set-operation doubles, counted quantifiers `{n}`/`{n,}`/`{n,m}`, `(?:`, lookarounds, `(?P<name>`/`(?P=name)` (names up to 32 characters) and the `i`/`m`/`s` flags. Replacements allow only `\1` to `\9` naming existing groups. Python compiles with `re.ASCII` (`PCRE_FLAGS`).
+- Alternatives: Translating between dialects; a PCRE binding in tests.
+- Why: D-0034 asks for a conservative check; refusing is safer than translating. Non-ASCII under PHP `/u` is settled on the PR 11 row (review follow-up).
+- Reversible: yes
+
+### D-0464 — XPath 1.0 check refuses variables and namespace prefixes
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided
+- Decision: Besides the D-0034 function allowlist, variable references and namespace prefixes are refused.
+- Alternatives: Allow them and fail at run time.
+- Why: A config carries no bindings for them; libxml2 compiles both and fails only on evaluation.
+- Reversible: yes
+
+### D-0465 — IR field and post-op shape
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided
+- Decision: A field has at least one step; a field without steps is absent from `fields`. Normalizer post ops exist for every field type except `list`/`object` and take `{}`. `FieldStatus` moves to `db.models` beside the other `extraction_config` enums.
+- Alternatives: Empty step lists; a second `FieldStatus` copy in `eval`.
+- Why: An empty step list carries a status for nothing; C8, one definition.
+- Reversible: yes
