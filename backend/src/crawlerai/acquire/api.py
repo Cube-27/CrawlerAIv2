@@ -11,6 +11,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 
 import httpx
 
@@ -97,12 +98,19 @@ async def _follow(
     url: str, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
 ) -> tuple[Exchange, bytes]:
     target = await _checked(connector.check(url), None)
+    # Cookies live for this fetch only (INV-29), matched on each hop's host name (RFC 6265 §5.4). httpx's own jar
+    # refuses every cookie: it would match them against the request URL, which holds the checked address, so a
+    # cookie would follow the address to every host behind it. Host-only cookies stay on their host (§5.3 step 6).
+    cookies = httpx.Cookies(CookieJar(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain)))
+    refused = CookieJar(DefaultCookiePolicy(allowed_domains=[]))
     # `trust_env=False` ignores proxy environment variables: a proxy resolves the host itself, which would bypass the
-    # checked address. One client per fetch keeps no cookies across fetches.
-    async with httpx.AsyncClient(transport=transport, trust_env=False, timeout=policy.timeout_s) as client:
+    # checked address.
+    async with httpx.AsyncClient(
+        transport=transport, trust_env=False, timeout=policy.timeout_s, cookies=refused
+    ) as client:
         hops = 0
         while True:
-            exchange, response = await _send(client, target)
+            exchange, response = await _send(client, target, cookies)
             try:
                 location = redirect_location(exchange.status, exchange.response_headers)
                 if location is None:
@@ -122,20 +130,23 @@ async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
         raise _Failed(str(e), last) from e
 
 
-async def _send(client: httpx.AsyncClient, target: Target) -> tuple[Exchange, httpx.Response]:
+async def _send(client: httpx.AsyncClient, target: Target, cookies: httpx.Cookies) -> tuple[Exchange, httpx.Response]:
     url = httpx.URL(target.url)
+    named = httpx.Request("GET", url)  # the hop as cookie matching sees it: by host name, not by address
+    cookies.set_cookie_header(named)
     # The request goes to the checked address; the Host header (RFC 9110 §7.2) and the TLS server name (RFC 6066 §3,
     # httpx's `sni_hostname` extension) keep the name, so virtual hosting and certificate checks see the real host.
+    headers = {"Host": url.netloc.decode("ascii"), "Accept": _ACCEPT}
+    if "Cookie" in named.headers:
+        headers["Cookie"] = named.headers["Cookie"]
     request = client.build_request(
-        "GET",
-        url.copy_with(host=str(target.ip)),
-        headers={"Host": url.netloc.decode("ascii"), "Accept": _ACCEPT},
-        extensions={"sni_hostname": target.host},
+        "GET", url.copy_with(host=str(target.ip)), headers=headers, extensions={"sni_hostname": target.host}
     )
     try:
         response = await client.send(request, stream=True)
     except httpx.HTTPError as e:
         raise _Failed(_reason(e), None) from e
+    cookies.extract_cookies(httpx.Response(response.status_code, headers=response.headers, request=named))
     exchange = Exchange(
         url=target.url,
         status=response.status_code,
