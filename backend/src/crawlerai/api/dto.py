@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.services.records import ExtractedRecord
 
 
 class Model(BaseModel):
@@ -42,3 +43,12 @@ class Health(Model):
 
 class SchemaList(Model):
     items: list[SchemaDef]  # by name, then version
+
+
+class ReplayRequest(Model):
+    # SPEC-07 §4.6: a replay calls an LLM only when asked. None does yet: role C is bound with SPEC-06 PR 4.
+    allow_llm: bool = False
+
+
+class ReplayResult(Model):
+    records: list[ExtractedRecord]  # not stored (ARCHITECTURE §13.1)

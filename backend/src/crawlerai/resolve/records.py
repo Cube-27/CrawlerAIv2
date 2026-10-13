@@ -9,7 +9,7 @@ resolution published (INV-27).
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Literal
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
@@ -67,7 +67,18 @@ def is_complete(schema: SchemaDef, fields: Mapping[str, FieldOutcome]) -> bool:
     return required and all(published.intersection(group) for group in schema.required_groups)
 
 
-def record_confidence(schema: SchemaDef, fields: Mapping[str, FieldOutcome]) -> float | None:
+class Assessed(Protocol):
+    """What a record's confidence reads of a field: a `FieldOutcome`, or the `FieldMeta` a stored record keeps."""
+
+    @property
+    def status(self) -> FieldStatus: ...
+    @property
+    def confidence(self) -> float | None: ...
+    @property
+    def calibrated(self) -> bool: ...
+
+
+def record_confidence(schema: SchemaDef, fields: Mapping[str, Assessed]) -> float | None:
     """§10: the minimum confidence over the required fields that published, and `None` if any of them is
     uncalibrated (or none published)."""
     needed = required_fields(schema)
