@@ -1502,7 +1502,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0244 — The C3 scan reads `schema_org` paths from schema documents as non-hosts
-- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: superseded by D-0248
 - Decision: A dotted token is a schema.org path, not a host, when a tracked JSON schema document maps a field to it (up to any `+`). Extends D-0111.
 - Alternatives: A shape test on any `schema_org`-like value; an allowlist of paths (C4).
 - Why: Derived from the repo, as D-0111's columns are. A tightening is a follow-up (ACTIVE, SPEC-04 PR 1).
@@ -1527,4 +1527,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: A group with one suppressed cell gets no complement; among equal-`n` candidates the first key is suppressed.
 - Alternatives: Suppress the group total too.
 - Why: A one-cell group equals its total, which §16.3 reports at its own size; key order keeps exports deterministic.
+- Reversible: yes
+
+### D-0248 — The C3 scan reads `schema_org` paths only from schema document fields
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 follow-up (#48) · Status: decided
+- Decision: Paths come only from the field specs of JSON schema documents (`name`, integer `version`, `page_kind`, `fields`), only when they follow schema.org naming (UpperCamelCase type, lowerCamelCase properties), and match case-sensitively. Supersedes D-0244.
+- Alternatives: restrict to `schemas/presets/` (a path rule); reject values ending in an IANA TLD (rejects `Product.name`, since `name` is a TLD); validate against the schema.org vocabulary (new manifest data).
+- Why: Structural, derived from the schema document shape, as D-0111's columns are. Residual: a reviewed schema document could map a host spelled `Upper.lower.tld`; vocabulary validation would close it if needed.
 - Reversible: yes

@@ -114,7 +114,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Schema models, registry, presets, sync | done (#43) | Follow-up: the C3 scan exempts any tracked JSON `schema_org` value repo-wide; limit it to schema documents under `schemas/presets/` or reject values ending in an IANA TLD. |
+| 1 | Schema models, registry, presets, sync | done (#43) | C3 `schema_org` exemption tightened in #48 (D-0248). |
 | 2 | Normalizer base, dispatcher, text, url | todo | |
 | 3 | money (CLDR via Babel + price-parser) | todo | |
 | 4 | enum + vocab framework + availability `en` | todo | |
