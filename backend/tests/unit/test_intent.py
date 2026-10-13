@@ -12,7 +12,7 @@ from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
+from crawlerai.db.models import PageKind, SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.ownership import EntityGraph
@@ -27,14 +27,14 @@ def _field(path: str | None, *, required: bool = True) -> FieldSpec:
     return FieldSpec(type=FieldType.TEXT, description="d", required=required, schema_org=path)
 
 
-def _schema(**fields: FieldSpec) -> SchemaDef:
+def _schema(page_kind: PageKind = "detail", **fields: FieldSpec) -> SchemaDef:
     return SchemaDef(
         id=SchemaId(uuid7()),
         origin="user",
         status="active",
         name="synthetic",
         version=1,
-        page_kind="detail",
+        page_kind=page_kind,
         fields=fields,
     )
 
@@ -69,6 +69,13 @@ def test_primary_types_are_the_required_fields_roots_except_offer() -> None:
 def test_a_schema_whose_required_fields_are_all_offers_targets_the_offer() -> None:
     schema = _schema(price=_field("Offer.price+priceCurrency"), title=_field("Product.name", required=False))
     assert primary_types(schema, VOCABULARY) == frozenset({"Offer"})
+
+
+def test_a_listings_page_fields_name_no_primary_type() -> None:
+    # §5.2: a page field describes the listing page, so its path's type is not what the rows are.
+    heading = FieldSpec(type=FieldType.TEXT, description="d", required=True, scope="page", schema_org="Product.name")
+    schema = _schema("listing", title=_field("JobPosting.title"), heading=heading)
+    assert primary_types(schema, VOCABULARY) == frozenset({"JobPosting"})
 
 
 def test_required_fields_without_a_path_name_no_type() -> None:
