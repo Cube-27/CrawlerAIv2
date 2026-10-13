@@ -32,8 +32,12 @@ _ASSIGNMENT = re.compile(rf"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+){_IDENT}\
 class JsStateCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted:
         diagnostics: list[str] = []
-        documents = [Document(data, s.xpath) for s in page.scripts for data in _documents(s, diagnostics)]
-        return admit("js_state", documents, diagnostics, page, schema, ctx, others)
+        return admit("js_state", state_documents(page, diagnostics), diagnostics, page, schema, ctx, others)
+
+
+def state_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
+    """The page's state documents, each addressed by its script's XPath."""
+    return [Document(data, s.xpath) for s in page.scripts for data in _documents(s, diagnostics)]
 
 
 def _documents(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonValue]:

@@ -16,11 +16,16 @@ from crawlerai.schemas.types import SchemaDef
 
 class XhrCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted:
-        documents: list[Document] = []
         diagnostics: list[str] = []
-        for index, body in enumerate(page.network):
-            try:
-                documents.append(Document(parse(body.decode("utf-8")), str(index)))
-            except ValueError as e:  # UnicodeDecodeError is a ValueError
-                diagnostics.append(f"xhr:{index}: not UTF-8 JSON ({e})")
-        return admit("xhr", documents, diagnostics, page, schema, ctx, others)
+        return admit("xhr", network_documents(page, diagnostics), diagnostics, page, schema, ctx, others)
+
+
+def network_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
+    """The page's captured network bodies that are UTF-8 JSON, each addressed by its index in the bundle."""
+    documents: list[Document] = []
+    for index, body in enumerate(page.network):
+        try:
+            documents.append(Document(parse(body.decode("utf-8")), str(index)))
+        except ValueError as e:  # UnicodeDecodeError is a ValueError
+            diagnostics.append(f"xhr:{index}: not UTF-8 JSON ({e})")
+    return documents
