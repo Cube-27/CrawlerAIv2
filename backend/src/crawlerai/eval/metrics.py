@@ -18,6 +18,7 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, PageKind, Split
 from crawlerai.eval.labels import FieldLabel, LabelRow, Labels, parse_labels
 from crawlerai.normalize.dispatch import equal
+from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # §4.6: listing rows match by their canonicalized `url`.
@@ -25,8 +26,7 @@ _URL = FieldSpec(type=FieldType.URL)
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
 MIN_CELL = 10
 
-# ARCHITECTURE §10 evidence buckets and §6 `extraction_config.field_status`.
-Evidence = Literal["adapter", "structured", "agreed", "config_corroborated", "config_uncorroborated", "llm_grounded"]
+# ARCHITECTURE §6 `extraction_config.field_status`.
 CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
 ConfigFieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
 Cell = Literal["TP", "FP", "FN", "TN"]

@@ -1,0 +1,242 @@
+"""The candidate, entity and outcome models (SPEC-05 §4.2) and INV-22: every candidate carries a locator; every
+published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and `locator`."""
+
+from typing import Any
+
+import pytest
+from pydantic import ValidationError
+
+from crawlerai.collect.base import Candidate, CollectResult, Entity
+from crawlerai.normalize.base import Invalid, Ok
+from crawlerai.resolve.types import ExtractionResult, FieldOutcome, LLMCallRecord
+
+PRODUCT = Entity(id="jsonld:0:$['@graph'][0]", kind="Product", urls=("https://shop.example.test/p/1",), parent=None)
+OFFER = Entity(id="jsonld:0:$['@graph'][0]['offers']", kind="Offer", urls=(), parent=PRODUCT.id)
+
+
+def _candidate(**changes: Any) -> Candidate:
+    values: dict[str, Any] = {
+        "field": "name",
+        "entity_id": PRODUCT.id,
+        "source_kind": "jsonld",
+        "raw": "Widget 9",
+        "normalized": Ok("Widget 9"),
+        "locator": "jsonld:0:$['@graph'][0]['name']",
+        "independent": True,
+    }
+    return Candidate(**(values | changes))
+
+
+def _published(**changes: Any) -> dict[str, Any]:
+    chosen = _candidate()
+    values: dict[str, Any] = {
+        "status": "published",
+        "reason": None,
+        "value": "Widget 9",
+        "evidence": "structured",
+        "confidence": 0.98,
+        "calibrated": True,
+        "source_kind": "jsonld",
+        "locator": chosen.locator,
+        "derived_by": None,
+        "chosen": chosen,
+        "rejected": (),
+    }
+    return values | changes
+
+
+def _missing(**changes: Any) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "status": "missing",
+        "reason": "no_candidates",
+        "value": None,
+        "evidence": None,
+        "confidence": None,
+        "calibrated": False,
+        "source_kind": None,
+        "locator": None,
+        "derived_by": None,
+        "chosen": None,
+        "rejected": (),
+    }
+    return values | changes
+
+
+# Candidates
+
+
+def test_a_candidate_keeps_its_raw_and_normalized_values() -> None:
+    candidate = _candidate(raw={"@type": "Offer", "price": 19.5}, normalized=Invalid("not_money"))
+    assert candidate.raw == {"@type": "Offer", "price": 19.5}
+    assert candidate.normalized == Invalid("not_money")
+
+
+@pytest.mark.parametrize("locator", ["", "jsonld:0", "css:span.price", "text:4-4"])
+def test_a_candidate_without_a_valid_locator_is_refused(locator: str) -> None:
+    with pytest.raises(ValidationError, match="locator"):
+        _candidate(locator=locator)
+
+
+def test_a_candidate_source_kind_comes_from_the_section_6_enum() -> None:
+    with pytest.raises(ValidationError, match="source_kind"):
+        _candidate(source_kind="dom")
+
+
+def test_candidates_are_frozen() -> None:
+    candidate = _candidate()
+    with pytest.raises(ValidationError):
+        candidate.field = "price"  # type: ignore[misc]
+
+
+# Collect results
+
+
+def test_a_collect_result_holds_entities_and_their_candidates() -> None:
+    price = _candidate(field="price", entity_id=OFFER.id, raw="19.50", normalized=Ok({"amount": "19.50"}))
+    result = CollectResult(entities=(PRODUCT, OFFER), candidates=(_candidate(), price))
+    assert [c.entity_id for c in result.candidates] == [PRODUCT.id, OFFER.id]
+
+
+def test_a_candidate_of_an_unknown_entity_is_refused() -> None:
+    orphan_offer, product_name = OFFER.model_copy(update={"parent": None}), _candidate()
+    with pytest.raises(ValidationError, match="unknown entity"):
+        CollectResult(entities=(orphan_offer,), candidates=(product_name,))
+
+
+def test_an_entity_whose_parent_is_unknown_is_refused() -> None:
+    with pytest.raises(ValidationError, match="unknown parent"):
+        CollectResult(entities=(OFFER,), candidates=())
+
+
+def test_entity_ids_are_unique_within_a_result() -> None:
+    with pytest.raises(ValidationError, match="duplicate entity"):
+        CollectResult(entities=(PRODUCT, PRODUCT), candidates=())
+
+
+# Field outcomes (INV-22)
+
+
+def test_a_published_field_carries_its_value_and_evidence() -> None:
+    outcome = FieldOutcome(**_published())
+    assert (outcome.value, outcome.evidence, outcome.confidence, outcome.calibrated) == (
+        "Widget 9",
+        "structured",
+        0.98,
+        True,
+    )
+    assert (outcome.source_kind, outcome.locator) == ("jsonld", "jsonld:0:$['@graph'][0]['name']")
+
+
+@pytest.mark.parametrize("attribute", ["evidence", "confidence", "source_kind", "locator", "value"])
+def test_a_published_field_without_a_required_attribute_is_refused(attribute: str) -> None:
+    values = _published(**{attribute: None})
+    with pytest.raises(ValidationError, match=attribute):
+        FieldOutcome(**values)
+
+
+def test_an_uncalibrated_published_field_still_carries_a_confidence() -> None:
+    outcome = FieldOutcome(**_published(calibrated=False, confidence=0.5))
+    assert (outcome.calibrated, outcome.confidence) == (False, 0.5)
+
+
+def test_a_published_field_locator_must_parse() -> None:
+    values = _published(locator="jsonld:x:$")
+    with pytest.raises(ValidationError, match="locator"):
+        FieldOutcome(**values)
+
+
+@pytest.mark.parametrize("confidence", [-0.01, 1.01])
+def test_confidence_is_a_probability(confidence: float) -> None:
+    values = _published(confidence=confidence)
+    with pytest.raises(ValidationError, match="confidence"):
+        FieldOutcome(**values)
+
+
+@pytest.mark.parametrize("status", ["missing", "conflict", "abstained"])
+def test_an_unpublished_field_holds_no_value(status: str) -> None:
+    values = _missing(status=status, value="Widget 9")
+    with pytest.raises(ValidationError, match="value"):
+        FieldOutcome(**values)
+
+
+@pytest.mark.parametrize("status", ["missing", "conflict", "abstained"])
+def test_an_unpublished_field_says_why(status: str) -> None:
+    values = _missing(status=status, reason=None)
+    with pytest.raises(ValidationError, match="reason"):
+        FieldOutcome(**values)
+
+
+def test_an_abstained_field_keeps_its_bucket_and_confidence() -> None:
+    outcome = FieldOutcome(
+        **_missing(status="abstained", reason="below_tau", evidence="structured", confidence=0.9, calibrated=True)
+    )
+    assert (outcome.evidence, outcome.confidence, outcome.value) == ("structured", 0.9, None)
+
+
+def test_a_calibrated_field_has_a_confidence() -> None:
+    values = _missing(calibrated=True)
+    with pytest.raises(ValidationError, match="calibrated"):
+        FieldOutcome(**values)
+
+
+def test_derived_by_names_a_core_derivation() -> None:
+    values = _published(derived_by="guessed")
+    with pytest.raises(ValidationError, match="derived_by"):
+        FieldOutcome(**values)
+
+
+def test_rejected_candidates_keep_their_reason() -> None:
+    rejected = _candidate(raw="7", locator="meta:og:title")
+    outcome = FieldOutcome(**_published(rejected=((rejected, "url_param"),)))
+    assert outcome.rejected == ((rejected, "url_param"),)
+
+
+# Extraction results
+
+
+def _result(**changes: Any) -> ExtractionResult:
+    values: dict[str, Any] = {
+        "outcome": "extracted",
+        "entity": {"name": FieldOutcome(**_published())},
+        "rows": (),
+        "candidates": (_candidate(),),
+        "llm_calls": (),
+        "mode": "adhoc",
+        "record_confidence": 0.98,
+    }
+    return ExtractionResult(**(values | changes))
+
+
+def test_an_extracted_result_holds_its_fields() -> None:
+    result = _result()
+    assert result.entity is not None
+    assert result.entity["name"].value == "Widget 9"
+
+
+@pytest.mark.parametrize("outcome", ["blocked", "shell", "not_found"])
+def test_a_page_that_was_not_served_has_no_candidates_and_no_fields(outcome: str) -> None:
+    candidates = (_candidate(),)
+    with pytest.raises(ValidationError, match="candidates"):
+        _result(outcome=outcome, entity=None, rows=(), candidates=candidates)
+    with pytest.raises(ValidationError, match="fields"):
+        _result(outcome=outcome, candidates=())
+    assert _result(outcome=outcome, entity=None, candidates=(), record_confidence=None).outcome == outcome
+
+
+def test_an_error_publishes_nothing() -> None:
+    with pytest.raises(ValidationError, match="fields"):
+        _result(outcome="error", record_confidence=None)
+    result = _result(outcome="error", entity=None, record_confidence=None)
+    assert result.candidates == (_candidate(),)  # kept for diagnostics
+
+
+def test_record_confidence_is_a_probability() -> None:
+    with pytest.raises(ValidationError, match="record_confidence"):
+        _result(record_confidence=1.5)
+
+
+def test_llm_calls_are_recorded_in_the_spec_06_shape() -> None:
+    call = LLMCallRecord(
+        prompt_kind="gap_fill", provider="fake", model="fake-1", request_hash="ab" * 32, tokens_in=10, tokens_out=3
+    )
+    assert _result(llm_calls=(call,)).llm_calls == (call,)
