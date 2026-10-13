@@ -300,16 +300,33 @@ def _placeholder_or(name: str | None, literal: str) -> str:
 
 
 def _reproduces(spec: RequestSpec, sample: Sample) -> bool:
-    params = resolve_params(spec, sample.page_url, sample.page_data)
-    if params is None or render_url(spec.url, params) != sample.request.url:
-        return False
-    if spec.body is None or sample.request.body is None:
-        return spec.body is None and sample.request.body is None
+    return mismatch(spec, sample) is None
+
+
+def mismatch(spec: RequestSpec, sample: Sample) -> str | None:
+    """Why `spec` does not reproduce the endpoint request of `sample` (its method, URL and JSON body), or `None` when
+    it does: `method_mismatch(got, want)`, `no_value(<param>)`, `url_mismatch(got, want)` or `body_mismatch(...)`."""
+    if spec.method != sample.request.method.upper():
+        return f"method_mismatch({spec.method}, {sample.request.method})"
+    params: dict[str, str] = {}
+    for name, binder in spec.binders.items():
+        if (value := resolve(binder, sample.page_url, sample.page_data)) is None:
+            return f"no_value({name})"
+        params[name] = value
+    if (url := render_url(spec.url, params)) != sample.request.url:
+        return f"url_mismatch({url}, {sample.request.url})"
+    return _body_mismatch(spec, params, sample.request.body)
+
+
+def _body_mismatch(spec: RequestSpec, params: Mapping[str, str], captured: str | None) -> str | None:
+    if spec.body is None or captured is None:
+        return None if spec.body is None and captured is None else "body_mismatch(a body on one side only)"
     rendered = render_body(spec.body.template, params)
     try:
-        return _canonical(json_doc.parse(rendered)) == _canonical(json_doc.parse(sample.request.body))
+        same = _canonical(json_doc.parse(rendered)) == _canonical(json_doc.parse(captured))
     except ValueError:  # a value that is not a JSON number filled a number's place
-        return False
+        return "body_mismatch(a body is not JSON)"
+    return None if same else f"body_mismatch({rendered}, {captured})"
 
 
 def _canonical(document: JsonValue) -> str:
