@@ -7,6 +7,7 @@ between leaves an unreferenced object, which nothing reads. Writing the same cap
 """
 
 import asyncio
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Literal, Protocol, assert_never
 from urllib.parse import urlsplit
@@ -38,7 +39,14 @@ from crawlerai.db.models import (
 from crawlerai.db.private_models import EvalCapture, EvalLlmCache, PrivateBase, PrivateEvalPage, PrivateEvalRun
 from crawlerai.storage import open_store
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
-from crawlerai.storage.capture_bundle import CaptureBundle, decode, dev_eval_capture_key, encode
+from crawlerai.storage.capture_bundle import (
+    SHA256_PATTERN,
+    CaptureBundle,
+    decode,
+    dev_eval_capture_key,
+    encode,
+    private_eval_capture_key,
+)
 
 # The label document of SPEC-03 §4.3, stored as given; SPEC-03 PR 2 adds its model and validation.
 Labels = dict[str, JsonValue]
@@ -128,7 +136,9 @@ def get_store(split: Split, settings: Settings) -> EvalStore:
                     " CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE. They are set only for custodians (C1), so this is"
                     " expected on any other machine."
                 )
-            _check_separate(settings.database_url.get_secret_value(), database_url.get_secret_value())
+            # A sanity check against misconfiguration; what keeps `app` out is the role grant (init.sql).
+            if _same_database(settings.database_url.get_secret_value(), database_url.get_secret_value()):
+                raise PrivateStoreNotSeparate("the private eval database is the main database")
             if _nested(settings.object_store, object_store):
                 raise PrivateStoreNotSeparate("the private object store overlaps the main one")
             return PrivateEvalStore(
@@ -138,10 +148,9 @@ def get_store(split: Split, settings: Settings) -> EvalStore:
             assert_never(split)
 
 
-def _check_separate(main_url: str, private_url: str) -> None:
-    main, private = make_url(main_url), make_url(private_url)
-    if (main.host, main.port, main.database) == (private.host, private.port, private.database):
-        raise PrivateStoreNotSeparate("the private eval database is the main database")
+def _same_database(a_url: str, b_url: str) -> bool:
+    a, b = make_url(a_url), make_url(b_url)
+    return (a.host, a.port, a.database) == (b.host, b.port, b.database)
 
 
 def _nested(a: str, b: str) -> bool:
@@ -152,7 +161,7 @@ def _nested(a: str, b: str) -> bool:
 
 def _check_llm_key(key: str) -> str:
     # sha256(role, model, prompt, schema) in hex (SPEC-03 §4.5); the key becomes part of an object key.
-    if len(key) != 64 or any(c not in "0123456789abcdef" for c in key):
+    if not re.fullmatch(SHA256_PATTERN, key):
         raise ValueError(f"invalid LLM cache key {key!r}: expected a lowercase hex sha256")
     return key
 
@@ -199,6 +208,16 @@ class _SqlEvalStore(ABC):
     def split(self) -> Split:
         return self._split
 
+    async def _put_bundle(self, key: str, bundle: CaptureBundle) -> int:
+        """Encode and write the bundle off the event loop (it compresses, and the store is synchronous); its size."""
+
+        def write() -> int:
+            blob = encode(bundle)
+            self._objects.put(key, blob)
+            return len(blob)
+
+        return await asyncio.to_thread(write)
+
     @abstractmethod
     async def _capture_key(self, conn: AsyncConnection, capture_id: CaptureId) -> str | None:
         """The object key of this store's capture `capture_id`, if it has one."""
@@ -212,7 +231,7 @@ class _SqlEvalStore(ABC):
             query = query.where(page.labels["status"].astext == status)
         async with self._engine.connect() as conn:
             rows = (await conn.execute(query)).mappings().all()
-        return [_page_row(row) for row in rows]
+        return [_row(EvalPageRow, row) for row in rows]
 
     async def get_page(self, page_id: EvalPageId) -> EvalPageRow:
         query = select(self._page).where(self._page.c.id == page_id, self._page.c.split == self._split)
@@ -220,7 +239,7 @@ class _SqlEvalStore(ABC):
             row = (await conn.execute(query)).mappings().one_or_none()
         if row is None:
             raise EvalNotFound(f"no {self._split} eval page {page_id}")
-        return _page_row(row)
+        return _row(EvalPageRow, row)
 
     async def get_bundle(self, capture_id: CaptureId) -> CaptureBundle:
         """Raise `EvalNotFound` for an unknown capture, `ObjectNotFound` for a missing bundle and `CorruptBundle`
@@ -229,8 +248,7 @@ class _SqlEvalStore(ABC):
             key = await self._capture_key(conn, capture_id)
         if key is None:
             raise EvalNotFound(f"no {self._split} eval capture {capture_id}")
-        blob = await asyncio.to_thread(self._objects.get, key)
-        return await asyncio.to_thread(decode, blob)
+        return await asyncio.to_thread(lambda: decode(self._objects.get(key)))
 
     async def put_page(self, page: EvalPageRow) -> EvalPageId:
         if page.split != self._split:
@@ -276,11 +294,12 @@ class _SqlEvalStore(ABC):
             row = (await conn.execute(query.limit(1))).mappings().one_or_none()
         if row is None:
             return None
-        return EvalRunRow.model_validate({name: row[name] for name in EvalRunRow.model_fields})
+        return _row(EvalRunRow, row)
 
 
-def _page_row(row: Any) -> EvalPageRow:
-    return EvalPageRow.model_validate({name: row[name] for name in EvalPageRow.model_fields})
+def _row[R: _Row](model: type[R], row: Any) -> R:
+    """`model` from a table row, which may have columns the model leaves out (`created_at`)."""
+    return model.model_validate({name: row[name] for name in model.model_fields})
 
 
 class DevEvalStore(_SqlEvalStore):
@@ -301,8 +320,7 @@ class DevEvalStore(_SqlEvalStore):
     async def put_capture(self, bundle: CaptureBundle, category: EvalCategory) -> CaptureId:
         """`category` is kept on the page (`put_page`); the main database records sites without one."""
         key = dev_eval_capture_key(bundle.manifest.capture_id)
-        blob = await asyncio.to_thread(encode, bundle)
-        await asyncio.to_thread(self._objects.put, key, blob)
+        size_bytes = await self._put_bundle(key, bundle)
         host = _host(bundle)
         async with self._engine.begin() as conn:
             default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
@@ -314,7 +332,7 @@ class DevEvalStore(_SqlEvalStore):
             site_id = (await conn.execute(select(Site.id).where(Site.host == host))).scalar_one()
             await conn.execute(
                 pg_insert(Capture)
-                .values(site_id=site_id, expires_at=None, **_capture_columns(bundle, key, len(blob)))
+                .values(site_id=site_id, expires_at=None, **_capture_columns(bundle, key, size_bytes))
                 .on_conflict_do_nothing(index_elements=[Capture.id])
             )
         return CaptureId(bundle.manifest.capture_id)
@@ -343,20 +361,23 @@ class PrivateEvalStore(_SqlEvalStore):
 
     def __init__(self, split: PrivateSplit, engine: AsyncEngine, objects: ObjectStore) -> None:
         super().__init__(split, engine, objects)
+        self._private_split = split
 
     async def _capture_key(self, conn: AsyncConnection, capture_id: CaptureId) -> str | None:
         query = select(EvalCapture.object_key).where(EvalCapture.id == capture_id, EvalCapture.split == self._split)
         return (await conn.execute(query)).scalar_one_or_none()
 
     async def put_capture(self, bundle: CaptureBundle, category: EvalCategory) -> CaptureId:
-        key = f"{self._split}/{bundle.manifest.capture_id}.bundle.zst"
-        blob = await asyncio.to_thread(encode, bundle)
-        await asyncio.to_thread(self._objects.put, key, blob)
+        key = private_eval_capture_key(self._private_split, bundle.manifest.capture_id)
+        size_bytes = await self._put_bundle(key, bundle)
         async with self._engine.begin() as conn:
             await conn.execute(
                 pg_insert(EvalCapture)
                 .values(
-                    split=self._split, host=_host(bundle), category=category, **_capture_columns(bundle, key, len(blob))
+                    split=self._split,
+                    host=_host(bundle),
+                    category=category,
+                    **_capture_columns(bundle, key, size_bytes),
                 )
                 .on_conflict_do_nothing(index_elements=[EvalCapture.id])
             )

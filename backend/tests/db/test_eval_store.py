@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Capture, CaptureId, EvalPage, EvalPageId, EvalRun, SchemaDef, SchemaId, Site, Split
-from crawlerai.db.private_models import PrivateBase
+from crawlerai.db.private_models import PrivateBase, PrivateEvalRun
 from crawlerai.eval.store import (
     DevEvalStore,
     EvalNotFound,
@@ -361,7 +361,7 @@ async def test_the_private_database_refuses_dev_runs(private_database_url: str) 
         async with engine.connect() as conn:
             with pytest.raises(IntegrityError, match="ck_eval_run_split"):
                 await conn.execute(
-                    insert(PrivateBase.metadata.tables["eval_run"]).values(
+                    insert(PrivateEvalRun).values(
                         id=uuid7(), split="dev", engine_version="x", git_sha="a" * 40, metrics={}
                     )
                 )

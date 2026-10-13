@@ -21,7 +21,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, Val
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
 
-Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+SHA256_PATTERN = r"^[0-9a-f]{64}$"
+Sha256 = Annotated[str, Field(pattern=SHA256_PATTERN)]
 # A header list, not a mapping: HTTP allows a field name to repeat (RFC 9110 §5.3, e.g. Set-Cookie), and the
 # bundle keeps headers as received.
 HeaderList = tuple[tuple[str, str], ...]
@@ -155,6 +156,11 @@ def capture_key(capture_id: UUID, fetched_at: datetime) -> str:
 def dev_eval_capture_key(capture_id: UUID) -> str:
     """Dev eval captures, which never expire (SPEC-01 §4.4). Hidden and fresh bundles use another store (INV-01)."""
     return f"eval/dev/{capture_id}.bundle.zst"
+
+
+def private_eval_capture_key(split: Literal["hidden", "fresh"], capture_id: UUID) -> str:
+    """Hidden and fresh eval captures, under the private object store root (SPEC-03 §4.2, INV-01)."""
+    return f"{split}/{capture_id}.bundle.zst"
 
 
 def sha256_hex(data: bytes) -> str:

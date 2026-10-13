@@ -50,19 +50,19 @@ async def _private_diff_and_tables(url: str) -> tuple[list[Any], set[str]]:
     return diff, set(names)
 
 
-def _migrate(url: str, direction: str, revision: str) -> None:
+def _private_config(url: str) -> Config:
     config = Config(ALEMBIC_INI, ini_section="private")
     config.attributes["database_url"] = url
-    getattr(command, direction)(config, revision)
+    return config
 
 
 # Sync: Alembic's env runs its own event loop.
 def test_private_revisions_round_trip_to_the_private_models(private_database_url: str) -> None:
     try:
-        _migrate(private_database_url, "downgrade", "base")
+        command.downgrade(_private_config(private_database_url), "base")
         _, emptied = asyncio.run(_private_diff_and_tables(private_database_url))
     finally:
-        _migrate(private_database_url, "upgrade", "head")
+        command.upgrade(_private_config(private_database_url), "head")
     diff, tables = asyncio.run(_private_diff_and_tables(private_database_url))
 
     assert emptied == {"alembic_version"}
