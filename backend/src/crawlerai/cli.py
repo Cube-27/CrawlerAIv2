@@ -19,6 +19,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
+from crawlerai.api.keys import create_key, revoke_key
 from crawlerai.core.data import DataFetchError, fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
@@ -134,6 +135,29 @@ async def _sync_presets() -> None:
     for schema in inserted:
         print(f"inserted preset {schema.name} version {schema.version}")
     print(f"{len(inserted)} preset version(s) inserted")
+
+
+async def _apikey_create(label: str) -> None:
+    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
+    try:
+        async with engine.begin() as conn:
+            created = await create_key(conn, label)
+    finally:
+        await engine.dispose()
+    # The key is printed this once; only its hash is stored (SPEC-07 §4.2).
+    print(json.dumps({"id": str(created.id), "label": created.label, "key": created.key}))
+
+
+async def _apikey_revoke(parser: argparse.ArgumentParser, key_id: uuid.UUID) -> None:
+    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
+    try:
+        async with engine.begin() as conn:
+            outcome = await revoke_key(conn, key_id)
+    finally:
+        await engine.dispose()
+    if outcome == "not_found":
+        parser.exit(2, f"crawlerai apikey revoke: no API key {key_id}\n")
+    print(json.dumps({"id": str(key_id), "revoked": outcome == "revoked"}))
 
 
 def _data_dir() -> Path:
@@ -256,6 +280,15 @@ def _parser() -> argparse.ArgumentParser:
     data.add_parser(
         "fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256"
     ).set_defaults(handler=_run_data)
+    apikey = commands.add_parser("apikey", help="API keys; the API never creates one (INV-32)").add_subparsers(
+        dest="apikey_command", required=True
+    )
+    create = apikey.add_parser("create", help="create a key and print it, once, with its id")
+    create.set_defaults(handler=_run_apikey_create)
+    create.add_argument("--label", required=True, help="what the key is for")
+    revoke = apikey.add_parser("revoke", help="revoke a key: requests with it are refused from then on")
+    revoke.set_defaults(handler=_run_apikey_revoke)
+    revoke.add_argument("id", type=uuid.UUID, help="the key's id, as `apikey create` printed it")
     _add_eval_commands(commands)
     return parser
 
@@ -291,6 +324,14 @@ def _run_schemas(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> 
         asyncio.run(_sync_presets())
     except PresetConflict as e:
         parser.exit(2, f"crawlerai schemas sync: {e}\n")
+
+
+def _run_apikey_create(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_apikey_create(args.label))
+
+
+def _run_apikey_revoke(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_apikey_revoke(parser, args.id))
 
 
 def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:

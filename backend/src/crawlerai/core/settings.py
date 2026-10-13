@@ -8,7 +8,7 @@ An empty value counts as unset, so unset CI secrets (which arrive as "") behave 
 from typing import Annotated, Literal
 
 from curl_cffi.requests import BrowserTypeLiteral
-from pydantic import BeforeValidator, Field, SecretStr
+from pydantic import BeforeValidator, Field, IPvAnyNetwork, PositiveFloat, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from crawlerai.core.proxy import ProxyEndpoint
@@ -51,10 +51,15 @@ class AcquireSettings(_Base):
 
 
 class ApiSettings(_Base):
-    """What the app factory reads to decide which routers to mount."""
+    """What the app factory reads: which routers to mount, and how to admit requests (SPEC-07 §4.2)."""
 
     # Mounts the labeling endpoints (SPEC-03 §4.10). They serve the dev split only (C1).
     eval_ui: bool = False
+    # JSON list of the proxies whose `Forwarded`/`X-Forwarded-For` name the client (RFC 7239 §8.1, INV-32).
+    trusted_proxies: tuple[IPvAnyNetwork, ...] = ()
+    # The per-key token bucket in front of authentication (D-0027).
+    api_rate_per_s: PositiveFloat = 20
+    api_rate_burst: PositiveInt = 40
 
 
 LLMProviderName = Literal["anthropic", "gemini"]
