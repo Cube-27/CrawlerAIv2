@@ -41,6 +41,9 @@ export function Shell() {
               <li>
                 <Link href="/">Overview</Link>
               </li>
+              <li>
+                <Link href="/scrape">Scrape</Link>
+              </li>
             </ul>
           </nav>
           <main className="min-w-0 flex-1">

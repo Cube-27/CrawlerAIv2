@@ -1,8 +1,22 @@
+import { isJsonObject } from "./json";
+
 /** The parts of an RFC 9457 problem the UI shows. SPEC-07 §4.3 defines the full body; this narrows it until the
  * generated `schema.d.ts` carries the problem schema. */
 export interface ProblemSummary {
   title: string;
   detail: string | null;
+}
+
+/** One entry of a problem's `errors` (SPEC-07 §4.3): the request member and why it was refused. */
+export interface FieldProblem {
+  field: string;
+  reason: string;
+}
+
+export interface Problem extends ProblemSummary {
+  errors: FieldProblem[];
+  /** RFC 9110 §10.2.3, sent with 429 (SPEC-07 §4.2): delay-seconds or an HTTP date, as sent. */
+  retryAfter: string | null;
 }
 
 // RFC 9457 §3: problem bodies are `application/problem+json`; RFC 9110 §8.3.1 allows parameters after `;`.
@@ -11,12 +25,32 @@ function isProblemJson(response: Response): boolean {
   return mediaType === "application/problem+json";
 }
 
+function isFieldProblem(entry: unknown): entry is FieldProblem {
+  return isJsonObject(entry) && typeof entry.field === "string" && typeof entry.reason === "string";
+}
+
+/** The problem `response` answered with, given its already parsed `body` (openapi-fetch reads error bodies itself);
+ * null when it is not a problem with a title. Malformed `errors` entries are skipped. */
+export function problemOf(response: Response, body: unknown): Problem | null {
+  if (!isProblemJson(response) || !isJsonObject(body) || typeof body.title !== "string") {
+    return null;
+  }
+  const errors = Array.isArray(body.errors) ? body.errors : [];
+  return {
+    title: body.title,
+    detail: typeof body.detail === "string" ? body.detail : null,
+    errors: errors.filter(isFieldProblem).map(({ field, reason }) => ({ field, reason })),
+    retryAfter: response.headers.get("Retry-After"),
+  };
+}
+
 /** The problem in `response`, or null when the body is not a problem with a title. Consumes the body. */
-export async function readProblem(response: Response): Promise<ProblemSummary | null> {
+export async function readProblem(response: Response): Promise<Problem | null> {
   if (!isProblemJson(response)) return null;
-  const body: unknown = await response.json().catch(() => null);
-  if (typeof body !== "object" || body === null) return null;
-  const { title, detail } = body as Record<string, unknown>;
-  if (typeof title !== "string") return null;
-  return { title, detail: typeof detail === "string" ? detail : null };
+  return problemOf(response, await response.json().catch(() => null));
+}
+
+/** A problem's per-field errors keyed by request member, as a React Aria `Form`'s `validationErrors` takes them. */
+export function fieldErrors(problem: Problem): Readonly<Record<string, string>> {
+  return Object.fromEntries(problem.errors.map(({ field, reason }) => [field, reason]));
 }

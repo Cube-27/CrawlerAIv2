@@ -1,12 +1,7 @@
 import { Chip, Tooltip } from "@heroui/react";
 import type { FieldResult, FieldTypeSpec, ScalarFieldType } from "../api/field";
+import { isJsonObject, type JsonObject } from "../api/json";
 import { FieldStatusBadge } from "./FieldStatusBadge";
-
-type JsonObject = Readonly<Record<string, unknown>>;
-
-function isObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 // The UI shows server values as they are (ARCHITECTURE §3): it joins the parts of a normalized value and never
 // rounds, converts or fills one in.
@@ -62,13 +57,23 @@ function formatValue(value: unknown, spec: FieldTypeSpec): string {
   if (spec.type === "list") {
     return Array.isArray(value) ? value.map((item) => formatValue(item, spec.item)).join(", ") : "";
   }
-  if (!isObject(value)) return part(value) ?? "";
+  if (!isJsonObject(value)) return part(value) ?? "";
   if (spec.type === "object") {
     return Object.entries(spec.fields)
       .map(([name, sub]) => `${name}: ${formatValue(value[name], sub)}`)
       .join("; ");
   }
   return OBJECT_FORMATS[spec.type]?.(value) ?? JSON.stringify(value);
+}
+
+// A value whose type the caller doesn't know is shown as the server sent it: a string as is, anything else as JSON.
+function formatUntyped(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function formatField(value: unknown, spec: FieldTypeSpec | null): string {
+  return spec === null ? formatUntyped(value) : formatValue(value, spec);
 }
 
 /** An unpublished or empty field: "—" with its reason on hover or focus, never an empty string (DESIGN.md). */
@@ -82,9 +87,12 @@ function NoValue({ reason }: Readonly<{ reason: string | null }>) {
   );
 }
 
-/** A field's value, shown by its type (SPEC-12 §4.2). A field that did not publish shows "—", its reason and its
- * status, and never a value. */
-export function FieldValue({ field, spec }: Readonly<{ field: FieldResult; spec: FieldTypeSpec }>) {
+/** A field's value, shown by its type (SPEC-12 §4.2); `spec` is null when the type is unknown. A field that did not
+ * publish shows "—", its reason and its status, and never a value. */
+export function FieldValue({
+  field,
+  spec,
+}: Readonly<{ field: FieldResult; spec: FieldTypeSpec | null }>) {
   if (field.status !== "published") {
     return (
       <span className="inline-flex items-center gap-2">
@@ -93,7 +101,7 @@ export function FieldValue({ field, spec }: Readonly<{ field: FieldResult; spec:
       </span>
     );
   }
-  if (spec.type === "list" && Array.isArray(field.value) && field.value.length > 0) {
+  if (spec?.type === "list" && Array.isArray(field.value) && field.value.length > 0) {
     return (
       <span className="inline-flex flex-wrap gap-1">
         {field.value.map((item, index) => (
@@ -105,6 +113,6 @@ export function FieldValue({ field, spec }: Readonly<{ field: FieldResult; spec:
       </span>
     );
   }
-  const text = formatValue(field.value, spec);
+  const text = formatField(field.value, spec);
   return text === "" ? <NoValue reason={field.reason} /> : <span>{text}</span>;
 }

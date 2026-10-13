@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router";
 import { ConnectScreen } from "../screens/connect/ConnectScreen";
 import { HomeScreen } from "../screens/home/HomeScreen";
+import { ScrapeScreen } from "../screens/scrape/ScrapeScreen";
 import { LabelingList } from "../screens/labeling/LabelingList";
 import { LabelingPage } from "../screens/labeling/LabelingPage";
 import { listLoader, pageLoader } from "../screens/labeling/loaders";
@@ -17,7 +18,13 @@ export const routes: RouteObject[] = [
     children: [
       { path: "connect", element: <ConnectScreen /> },
       // Screens that call the API with the key (SPEC-12 §4.1: unauthenticated → /connect).
-      { element: <RequireKey />, children: [{ index: true, element: <HomeScreen /> }] },
+      {
+        element: <RequireKey />,
+        children: [
+          { index: true, element: <HomeScreen /> },
+          { path: "scrape", element: <ScrapeScreen /> },
+        ],
+      },
       // SPEC-03 §4.10. The eval routes take no API key; SPEC-12 PR 9 adds the nav entry, shown when the backend
       // reports `eval_ui`.
       { path: "labeling", loader: listLoader, element: <LabelingList /> },
