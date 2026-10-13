@@ -12,6 +12,7 @@ import pytest
 
 from crawlerai import cli
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
 from crawlerai.core.data import DataFetchError
@@ -62,6 +63,7 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
         "/v1/eval/pages/{page_id}/normalize",
         "/v1/eval/pages/{page_id}/prefill",
         "/v1/jobs/{job_id}",
+        "/v1/jobs/{job_id}/events",
         "/v1/jobs/{job_id}/results",
         "/v1/records",
         "/v1/schemas",
@@ -116,9 +118,11 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     monkeypatch.setattr(cli, "run_scheduler", run)
     monkeypatch.setattr(cli, "open_store", lambda url: ("store at", url))
     fetches: list[object] = []
+    posts: list[object] = []
 
-    def entries_for(store: object, fetch: object) -> tuple[str, object]:
+    def entries_for(store: object, fetch: object, post: object) -> tuple[str, object]:
         fetches.append(fetch)
+        posts.append(post)
         return ("entries for", store)
 
     monkeypatch.setattr(cli, "periodic", entries_for)
@@ -135,13 +139,19 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
         "impersonate": AcquireSettings().impersonate,
         "pools": {"dc": ProxyEndpoint("proxy.example.com", 3128)},
     }
+    [post] = posts  # webhooks go through the SSRF guard (SPEC-10 §4.2)
+    assert isinstance(post, partial)
+    assert type(post.keywords["connector"]) is SafeConnector
 
 
-def test_the_scheduler_releases_leases_and_triggers_learning_every_minute_and_expires_and_rechecks_hourly() -> None:
+def test_the_scheduler_entries_and_their_intervals() -> None:
     async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("not called")
 
-    entries = periodic(FsStore(Path("unused")), fetch)
+    async def post(url: str, body: bytes, headers: Mapping[str, str]) -> int:
+        raise AssertionError("not called")
+
+    entries = periodic(FsStore(Path("unused")), fetch, post)
 
     assert [(entry.name, entry.interval, entry.batch) for entry in entries] == [
         ("release_expired_leases", timedelta(minutes=1), None),
@@ -149,6 +159,7 @@ def test_the_scheduler_releases_leases_and_triggers_learning_every_minute_and_ex
         ("expire_candidates", timedelta(hours=1), 1000),
         ("recheck_fetch_method", timedelta(hours=1), 1),
         ("trigger_learning", timedelta(minutes=1), 100),
+        ("deliver_webhooks", timedelta(seconds=5), 1),
     ]
 
 

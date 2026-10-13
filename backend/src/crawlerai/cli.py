@@ -23,6 +23,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key, revoke_key
+from crawlerai.api.webhooks import poster
 from crawlerai.core.data import DataFetchError, fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
@@ -97,7 +98,8 @@ async def _schedule() -> None:
     fetch = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, pools=settings.proxy_pools
     )
-    await run_scheduler(settings, periodic(open_store(settings.object_store), fetch), _stop_on_signals())
+    entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()))
+    await run_scheduler(settings, entries, _stop_on_signals())
 
 
 async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) -> None:
@@ -172,8 +174,10 @@ async def _apikey_create(label: str) -> None:
             created = await create_key(conn, label)
     finally:
         await engine.dispose()
-    # The key is printed this once; only its hash is stored (SPEC-07 §4.2).
-    print(json.dumps({"id": str(created.id), "label": created.label, "key": created.key}))
+    # The key is printed this once; only its hash is stored (SPEC-07 §4.2). The webhook secret, which verifies the
+    # signature of the key's webhooks (SPEC-10 §4.2), is printed with it.
+    created_key = {"id": str(created.id), "label": created.label, "key": created.key}
+    print(json.dumps(created_key | {"webhook_secret": created.webhook_secret}))
 
 
 async def _apikey_revoke(parser: argparse.ArgumentParser, key_id: uuid.UUID) -> None:

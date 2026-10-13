@@ -20,6 +20,7 @@ from functools import partial
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.rungs import Rung
+from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks
 from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import release_expired_leases
@@ -38,9 +39,9 @@ class Periodic:
     batch: int | None = None
 
 
-def periodic(store: ObjectStore, fetch: Rung) -> tuple[Periodic, ...]:
+def periodic(store: ObjectStore, fetch: Rung, post: Poster) -> tuple[Periodic, ...]:
     """The scheduler's entries (SPEC-01 §4.3). `store` is the main object store, where production captures live;
-    `fetch` is the HTTP rung, for the fetch-method re-check (SPEC-02 §4.4)."""
+    `fetch` is the HTTP rung, for the fetch-method re-check (SPEC-02 §4.4); `post` sends webhooks (SPEC-10 §4.2)."""
     return (
         Periodic("release_expired_leases", timedelta(minutes=1), release_expired_leases),
         Periodic(
@@ -66,6 +67,12 @@ def periodic(store: ObjectStore, fetch: Rung) -> tuple[Periodic, ...]:
             timedelta(minutes=1),
             partial(trigger_learning, batch=TRIGGER_BATCH),
             batch=TRIGGER_BATCH,
+        ),
+        Periodic(
+            "deliver_webhooks",
+            timedelta(seconds=5),
+            partial(deliver_webhooks, post=post, batch=DELIVERY_BATCH),
+            batch=DELIVERY_BATCH,
         ),
     )
 
