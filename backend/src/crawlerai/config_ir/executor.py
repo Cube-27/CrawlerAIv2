@@ -49,7 +49,7 @@ from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# ARCHITECTURE §5.3: the listing presets' page-level field for the next page, which the listing's `next` step fills (§12.1).
+# ARCHITECTURE §5.3: the listing presets' page-level next-page field, which the listing's `next` step fills (§12.1).
 NEXT_PAGE_FIELD = "next_page_url"
 # schema.org: a ListItem is an item in a list, the kind of a listing's row.
 ROW_KIND = "ListItem"
