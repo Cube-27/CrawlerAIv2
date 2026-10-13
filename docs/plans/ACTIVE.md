@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
-- Next: SPEC-03 PR 12 and the #42 follow-up; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
+- Next: SPEC-03 PR 12 and the #42 follow-up; SPEC-04 PR 2; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
@@ -114,7 +114,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Schema models, registry, presets, sync | todo | |
+| 1 | Schema models, registry, presets, sync | done (#43) | Follow-up: the C3 scan exempts any tracked JSON `schema_org` value repo-wide; limit it to schema documents under `schemas/presets/` or reject values ending in an IANA TLD. |
 | 2 | Normalizer base, dispatcher, text, url | todo | |
 | 3 | money (CLDR via Babel + price-parser) | todo | |
 | 4 | enum + vocab framework + availability `en` | todo | |
