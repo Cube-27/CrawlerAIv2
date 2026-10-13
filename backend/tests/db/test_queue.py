@@ -3,7 +3,7 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, UrlTask, UrlTaskId
@@ -118,6 +118,18 @@ async def test_claim_takes_at_most_n_and_never_the_same_task_twice(conn: AsyncCo
         ids[4:5],
         [],
     ]
+
+
+async def test_claim_takes_at_most_n_when_the_planner_thinks_the_queue_is_tiny(conn: AsyncConnection) -> None:
+    """Statistics taken while the queue held one task, as on a fresh database, once led Postgres to over-claim."""
+    job_id = await _job(conn)
+    [first] = await _tasks(conn, job_id, 1, url="a", canonical_url="a")
+    await conn.execute(text("ANALYZE url_task"))
+    rest = await _tasks(conn, job_id, 5)
+
+    claimed = await claim_tasks(conn, "w1", 2)
+
+    assert [task.id for task in claimed] == [first, rest[0]]
 
 
 async def test_claiming_a_task_starts_its_queued_job(conn: AsyncConnection) -> None:

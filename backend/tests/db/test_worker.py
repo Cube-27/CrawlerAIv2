@@ -74,8 +74,9 @@ def _job_ended(engine: AsyncEngine, job_id: JobId) -> Callable[[], Awaitable[boo
     return ended
 
 
-async def test_8_claimers_take_1000_tasks_each_exactly_once(engine: AsyncEngine) -> None:
+async def test_8_claimers_take_1000_tasks_each_exactly_once_and_at_most_7_a_claim(engine: AsyncEngine) -> None:
     _, ids = await _job(engine, 1000)
+    sizes: list[int] = []
 
     async def claimer(worker: str) -> list[UrlTaskId]:
         claimed: list[UrlTaskId] = []
@@ -85,12 +86,14 @@ async def test_8_claimers_take_1000_tasks_each_exactly_once(engine: AsyncEngine)
                     batch = await claim_tasks(conn, worker, 7)
                 if not batch:
                     return claimed
+                sizes.append(len(batch))
                 claimed += [task.id for task in batch]
 
     batches = await asyncio.gather(*(claimer(f"w{i}") for i in range(8)))
 
     claims = Counter(task_id for batch in batches for task_id in batch)
     assert claims == Counter(ids)
+    assert max(sizes) == 7
     assert sum(1 for batch in batches if batch) > 1
 
 

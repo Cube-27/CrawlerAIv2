@@ -861,3 +861,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: The full hash; `git rev-parse` at import.
 - Why: An honest marker for unbuilt trees, with no subprocess at import.
 - Reversible: yes
+
+### D-0153 — Claims select from a `MATERIALIZED` CTE
+- Date: 2026-10-13 · Spec/PR: SPEC-01 follow-up (#24) · Status: decided
+- Decision: `claim_tasks` updates rows chosen by a `MATERIALIZED` CTE (`SELECT … LIMIT n FOR UPDATE SKIP LOCKED`), so the subquery runs once and a call never claims more than `n` tasks.
+- Alternatives: `id = ANY(ARRAY(subquery))`.
+- Why: Both force one evaluation; SQLAlchemy expresses the CTE directly, and `MATERIALIZED` is documented PostgreSQL behaviour (PG ≥ 12). `UPDATE … WHERE id IN (SELECT … LIMIT)` can be planned as a semi-join that re-runs the subquery.
+- Reversible: yes
