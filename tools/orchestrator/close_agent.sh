@@ -4,10 +4,7 @@
 # Prints "closed NAME PANE", or "ERROR ..." on stderr and exits 1.
 set -u
 name=${1:-}
-err() {
-  echo "ERROR $*" >&2
-  exit 1
-}
+err() { echo "ERROR $*" >&2; exit 1; }
 [[ -n $name ]] || err "usage: close_agent.sh NAME"
 if ! info=$(herdr agent get "$name" 2>/dev/null); then
   echo "gone $name"
