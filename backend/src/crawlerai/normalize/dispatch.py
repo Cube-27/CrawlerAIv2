@@ -3,9 +3,21 @@
 Callers (the resolver, eval, the API) normalize through `normalize` and never pick a type module themselves.
 """
 
+from functools import partial
+
 from crawlerai.normalize import enum, text, url
+from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import Context, Invalid, Normalizer, NormalizeResult, Raw
 from crawlerai.schemas.types import FieldSpec, FieldType
+
+_MONEY = FieldSpec(type=FieldType.MONEY)
+
+
+def _money(raw: Raw, ctx: Context) -> NormalizeResult:
+    # A range resolves its currency by the money rules (SPEC-04 §4.4) through this registry, so range does not
+    # import money (C8) and declines its currency while no money normalizer is registered.
+    return normalize(raw, _MONEY, ctx)
+
 
 # The field-type registry. Each later SPEC-04 PR adds its type here; `list` and `object` recurse here (PR 9).
 _NORMALIZERS: dict[FieldType, Normalizer] = {
@@ -14,6 +26,7 @@ _NORMALIZERS: dict[FieldType, Normalizer] = {
     FieldType.ENUM: enum.normalize,
     FieldType.URL: url.normalize,
     FieldType.IMAGE_URL: url.normalize,
+    FieldType.RANGE: partial(range_.normalize, money=_money),
 }
 
 
