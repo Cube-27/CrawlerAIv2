@@ -16,7 +16,7 @@ from crawlerai.resolve.ownership import OFFER, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # schema.org: an ItemList (with its ListItems) lists things, so a thing in it is one of many, not the page's own.
-_LISTS = ("ItemList", "ListItem")
+LISTS = ("ItemList", "ListItem")
 # schema.org relation properties of a Product: a thing that is the value of one is another thing than its holder.
 _RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
 _URL = FieldSpec(type=FieldType.URL)
@@ -31,9 +31,14 @@ class AmbiguousTarget:
 
 
 def primary_types(schema: SchemaDef, vocabulary: Vocabulary) -> frozenset[str]:
-    """The types the schema's required fields' `schema_org` paths start at, without Offer when another type remains:
-    an Offer belongs to the item it offers (`OFFER`)."""
-    roots = {parse_path(spec.schema_org).root for spec in schema.fields.values() if spec.required and spec.schema_org}
+    """The types the schema's required row fields' `schema_org` paths start at, without Offer when another type
+    remains: an Offer belongs to the item it offers (`OFFER`). A listing's page fields describe the page, not its
+    rows (§5.2), so they name no primary type."""
+    roots = {
+        parse_path(spec.schema_org).root
+        for spec in schema.fields.values()
+        if spec.required and spec.schema_org and spec.scope == "row"
+    }
     items = frozenset(root for root in roots if not vocabulary.is_a(root, OFFER))
     return items or frozenset(roots)
 
@@ -45,7 +50,7 @@ def select_target(
     graph: EntityGraph,
     primary: frozenset[str],
 ) -> Entity | AmbiguousTarget:
-    primaries = [e for e in graph.entities.values() if _is_primary(graph, e, primary)]
+    primaries = [e for e in graph.entities.values() if is_primary(graph, e, primary)]
     if not primaries:
         return graph.page
     candidates = [e for e in primaries if not _excluded(graph, e, primary)]
@@ -58,7 +63,7 @@ def select_target(
     return AmbiguousTarget(tuple(e.id for e in named or candidates))
 
 
-def _is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:
+def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:
     return any(graph.is_a(entity, type_) for type_ in primary)
 
 
@@ -71,9 +76,9 @@ def _excluded(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bo
     """Whether the entity is inside a list, or inside a relation property of a primary entity (§4.6 step 1)."""
     child = entity
     for ancestor in graph.ancestors(entity):
-        if any(graph.is_a(ancestor, t) for t in _LISTS):
+        if any(graph.is_a(ancestor, t) for t in LISTS):
             return True
-        if child.via in _RELATIONS and _is_primary(graph, ancestor, primary):
+        if child.via in _RELATIONS and is_primary(graph, ancestor, primary):
             return True
         child = ancestor
     return False

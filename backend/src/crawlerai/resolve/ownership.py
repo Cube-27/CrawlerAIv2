@@ -49,8 +49,10 @@ class EntityGraph:
     def is_a(self, entity: Entity, type_: str) -> bool:
         return self.vocabulary.is_a(entity.kind, type_)
 
-    def owned_by(self, candidate: Candidate, target: Entity) -> bool:
+    def owned_by(self, candidate: Candidate, target: Entity, *, page_values: bool = True) -> bool:
+        """Whether the candidate is the target's. `page_values`: whether the page's own values are, as they are for
+        the one entity a detail page is about, and not for one row among a listing's (§4.7 "Listings")."""
         owner = self.owner_of(candidate)
-        if owner.id in (target.id, PAGE):
+        if owner.id == target.id or (page_values and owner.id == PAGE):
             return True
         return owner.parent == target.id and self.is_a(owner, OFFER)

@@ -3,15 +3,17 @@ every field's outcome out. `extract_page` is the one function the worker and the
 
 A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its block class as the outcome and nothing
 else (INV-11). A served page is parsed once (INV-26); every collector reads that one parse, then resolution runs its
-stages in order: ownership and intent, preference, derivations, evidence and τ. In cold mode, required fields still
-missing after that go to role C once, and its candidates are resolved with the others. Resolution never publishes
-part of a page: if it raises, the outcome is `error` and no field is set (§4.14).
+stages in order: ownership and intent, preference, derivations, evidence and τ. In cold mode, a detail page's required
+fields still missing after that go to role C once, and its candidates are resolved with the others. A listing resolves
+each of its rows (`resolve.listing`) and its page-scoped fields, and lists its next-page candidates (§4.12); role C's
+listing call is SPEC-06's. Resolution never publishes part of a page: if it raises, the outcome is `error` and no field
+is set (§4.14).
 """
 
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,7 +30,9 @@ from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
+from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import EntityGraph
+from crawlerai.resolve.pagination import next_page_candidates
 from crawlerai.resolve.preference import (
     PRECEDENCE_FILE,
     PRECEDENCE_TYPES,
@@ -41,7 +45,7 @@ from crawlerai.resolve.preference import (
 )
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 log = logging.getLogger(__name__)
@@ -105,7 +109,7 @@ RoleC = Callable[[GapRequest], Awaitable[GapReply]]
 
 
 class ModeNotSupported(ValueError):
-    """A page this pipeline does not extract yet: config mode (SPEC-08's executor), or a listing (SPEC-05 PR 12)."""
+    """A page this pipeline does not extract yet: config mode (SPEC-08's executor)."""
 
 
 async def extract_page(
@@ -118,16 +122,17 @@ async def extract_page(
     data: EngineData,
     parsed: ParsedPage | None = None,
 ) -> ExtractionResult:
-    """The page's outcome, fields and candidates. `extracted` when every required field and group publishes, else
-    `partial`: whether an incomplete page keeps its record is the caller's (`resolve.records.assemble`). `parsed` is
-    the bundle's parse when the caller already has one (a `scrape` shares it with its formats, INV-26)."""
+    """The page's outcome, fields and candidates. `extracted` when every required field and group publishes (on a
+    listing: in each of at least one row), else `partial`: whether an incomplete page or row keeps its record is the
+    caller's (`resolve.records.assemble`, `assemble_listing`). `parsed` is the bundle's parse when the caller already
+    has one (a `scrape` shares it with its formats, INV-26)."""
     if config is not None or mode != "adhoc":
         raise ModeNotSupported("config mode runs SPEC-08's config executor, which is not wired yet")
-    if schema.page_kind != "detail":
-        raise ModeNotSupported("listing pages resolve their rows from SPEC-05 PR 12")
     not_served = _NOT_SERVED.get(bundle.manifest.block_class)
     if not_served is not None:
         return _result(not_served, mode)
+    if schema.page_kind == "listing":
+        return await _extract_listing(bundle, schema, mode, data, parsed)
     try:
         # Parsing and resolution are CPU work: a thread keeps the event loop serving other tasks meanwhile.
         page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data, parsed)
@@ -189,13 +194,29 @@ class _Page:
         return cls(page, ctx, schema, data, canonical, collected, graph, primary, target, facts)
 
     def resolve(self, candidates: Sequence[Candidate]) -> FieldSet:
-        """Preference (§4.7, §4.8) for the target, derivations, then evidence and τ (§4.9)."""
+        """A detail page's fields, for its target."""
+        return self.resolve_for(self.target, candidates, page_values=True)
+
+    def resolve_listing(self) -> tuple[FieldSet, tuple[FieldSet, ...]]:
+        """A listing's page-scoped fields, for the page entity, and each row's row-scoped fields (§4.7)."""
+        candidates = self.collected.candidates
+        page_fields = self.resolve_for(self.graph.page, candidates, page_values=True)
+        rows = listing_rows(self.graph, self.primary, self.target)
+        return _scoped(self.schema, page_fields, "page"), tuple(
+            _scoped(self.schema, self.resolve_for(row, candidates, page_values=False), "row") for row in rows
+        )
+
+    def resolve_for(
+        self, target: Entity | AmbiguousTarget, candidates: Sequence[Candidate], *, page_values: bool
+    ) -> FieldSet:
+        """Preference (§4.7, §4.8) for `target`, derivations, then evidence and τ (§4.9). `page_values`: whether
+        page-level candidates are the target's (`EntityGraph.owned_by`)."""
         schema = self.schema
         decisions: Mapping[str, Preference | Derived]
-        if isinstance(self.target, AmbiguousTarget):
+        if isinstance(target, AmbiguousTarget):
             decisions = intent_ambiguous(schema, candidates)
         else:
-            resolver = Resolver(self.graph, self.target, self.facts, self.data.orders)
+            resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values)
             preferences = resolver.prefer(schema, candidates)
             by_field: dict[str, list[Candidate]] = defaultdict(list)
             for candidate in candidates:
@@ -220,6 +241,56 @@ def _read_and_resolve(
 ) -> tuple[_Page, FieldSet]:
     page = _Page.read(bundle, schema, data, parsed)
     return page, page.resolve(page.collected.candidates)
+
+
+@dataclass(frozen=True, slots=True)
+class _Listing:
+    page: _Page
+    fields: FieldSet
+    rows: tuple[FieldSet, ...]
+    next_pages: tuple[str, ...]
+
+    @classmethod
+    def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None) -> "_Listing":
+        page = _Page.read(bundle, schema, data, parsed)
+        fields, rows = page.resolve_listing()
+        return cls(page, fields, rows, next_page_candidates(page.page, bundle.manifest.final_url))
+
+
+async def _extract_listing(
+    bundle: CaptureBundle, schema: SchemaDef, mode: ExtractionMode, data: EngineData, parsed: ParsedPage | None
+) -> ExtractionResult:
+    try:
+        listing = await asyncio.to_thread(_Listing.read, bundle, schema, data, parsed)
+    except Exception:  # §4.14, as for a detail page
+        log.exception("extraction failed")
+        return _result("error", mode)
+    # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
+    records = [{**listing.fields, **row} for row in listing.rows]
+    complete = bool(records) and all(is_complete(schema, record) for record in records)
+    return ExtractionResult(
+        outcome="extracted" if complete else "partial",
+        entity=listing.fields,
+        rows=listing.rows,
+        candidates=listing.page.collected.candidates,
+        llm_calls=(),
+        mode=mode,
+        record_confidence=_least_confident(record_confidence(schema, record) for record in records),
+        diagnostics=listing.page.collected.diagnostics,
+        next_pages=listing.next_pages,
+    )
+
+
+def _least_confident(confidences: Iterable[float | None]) -> float | None:
+    """§10, per record: the page's is its least confident row's, `None` while any row's is (or there is no row)."""
+    known = list(confidences)
+    if not known or None in known:
+        return None
+    return min(c for c in known if c is not None)
+
+
+def _scoped(schema: SchemaDef, fields: FieldSet, scope: Scope) -> FieldSet:
+    return {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == scope}
 
 
 def _gaps(schema: SchemaDef, fields: FieldSet) -> tuple[str, ...]:
