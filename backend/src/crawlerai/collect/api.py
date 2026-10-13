@@ -86,20 +86,15 @@ class ApiCollector:
         reading.diagnostics.extend(
             f"api:{self.recipe_id}:{name}: not a field of the schema" for name in self.map if name not in known
         )
-        listing = self.rows is not None and schema.page_kind == "listing"
+        rows = self.rows if schema.page_kind == "listing" else None
         # On a detail page every field describes the page's one entity (SPEC-05 §4.7: detail fields are row-scoped).
-        page_fields = {n: p for n, p in known.items() if not listing or schema.fields[n].scope == "page"}
+        page_fields = {n: p for n, p in known.items() if rows is None or schema.fields[n].scope == "page"}
         candidates = reading.candidates(page_fields, document, json_doc.ROOT, PAGE)
-        rows: list[Entity] = []
-        if listing and self.rows is not None:
-            row_fields = {n: p for n, p in known.items() if n not in page_fields}
-            for path, row in json_doc.select(self.rows, document):
-                # A row is a JSON object (RFC 8259 §4); an item of another kind holds no fields.
-                if isinstance(row, dict):
-                    owner = f"api:{self.recipe_id}:{path}"
-                    rows.append(Entity(id=owner, kind=ROW_KIND, urls=(), parent=None))
-                    candidates.extend(reading.candidates(row_fields, row, path, owner))
-        return Executed(rows=tuple(rows), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
+        if rows is None:
+            return Executed(rows=(), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
+        row_fields = {n: p for n, p in known.items() if n not in page_fields}
+        entities, listed = reading.rows(rows, row_fields, document)
+        return Executed(rows=tuple(entities), candidates=(*candidates, *listed), diagnostics=tuple(reading.diagnostics))
 
 
 @dataclass
@@ -123,3 +118,15 @@ class _Reading:
             if made is not None:
                 found.append(made)
         return found
+
+    def rows(self, query: str, fields: Mapping[str, str], document: JsonValue) -> tuple[list[Entity], list[Candidate]]:
+        """The rows `query` selects, each with its `fields` read relative to it."""
+        entities: list[Entity] = []
+        candidates: list[Candidate] = []
+        for path, row in json_doc.select(query, document):
+            # A row is a JSON object (RFC 8259 §4); an item of another kind holds no fields.
+            if isinstance(row, dict):
+                owner = f"api:{self.recipe_id}:{path}"
+                entities.append(Entity(id=owner, kind=ROW_KIND, urls=(), parent=None))
+                candidates.extend(self.candidates(fields, row, path, owner))
+        return entities, candidates

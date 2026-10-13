@@ -50,7 +50,7 @@ LISTING = _schema(
 )
 
 
-def _collect(document: JsonValue, schema: SchemaDef, collector: ApiCollector) -> Executed:
+def _collect(document: object, schema: SchemaDef, collector: ApiCollector) -> Executed:
     return collector.collect(ParsedPage(json.dumps(document)), schema, CTX)
 
 
