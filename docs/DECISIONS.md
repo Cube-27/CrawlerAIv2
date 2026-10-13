@@ -2955,3 +2955,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A new setting for role S's limit; no cut.
 - Why: Bounds the request without a new setting; 8,192 tokens holds a schema of several dozen fields.
 - Reversible: yes
+
+### D-0451 — The labeling nav entry reads `/healthz` once per query cache
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 9 (#93) · Status: decided
+- Decision: The shell reads `/healthz` with the same-origin client and no key, once per query cache (`staleTime: Infinity`); an unknown or failed answer hides the Labeling entry. `/labeling` itself still says when the labeling API is off.
+- Alternatives: Poll the flag; show the entry by default.
+- Why: The flag is fixed for the backend's lifetime; hiding is the conservative reading of "shown only when" (SPEC-12 §4.3). The cache is per key, so a key change reads it again (review Consider item, left for a follow-up).
+- Reversible: yes
+
+### D-0452 — The current nav entry is marked with `aria-current` and styled in theme.css
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 9 (#93) · Status: decided
+- Decision: The main nav's entry for the page shown carries WAI-ARIA `aria-current="page"`; one rule in `src/app/theme.css` (`.link[aria-current="page"]`) underlines it, HeroUI's own hover treatment.
+- Alternatives: A per-component className (a visual value outside theme.css); HeroUI Tabs as nav (wrong role).
+- Why: Owner rule: a visual change is an edit to theme.css only (DESIGN.md, Theming); the underline marks the state without relying on color.
+- Reversible: yes
+
+### D-0453 — Test stubs answer the shell's `/healthz` by default
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 9 (#93) · Status: decided
+- Decision: `stubApi` (and the test setup through it) answers `GET /healthz` with `healthReply()` (`eval_ui: false`), unrecorded unless a test names it.
+- Alternatives: A `/healthz` reply in every screen test.
+- Why: Every screen now sends it; screen tests assert only their own calls.
+- Reversible: yes
