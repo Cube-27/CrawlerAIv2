@@ -232,3 +232,14 @@ def test_schema_column_references_do_not_exempt_hidden_hosts(tmp_path: Path) -> 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["a.py:1"]
     assert_no_host_in(result, "shop.test")
+
+
+def test_schema_org_values_do_not_exempt_hidden_hosts(tmp_path: Path) -> None:
+    path = ".".join(["Shop", "test"])
+    repo = make_repo(tmp_path / "repo", {"p.json": f'{{"schema_org": "{path}"}}\n'})
+
+    result = run_hidden(repo, "shop.test")
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["p.json:1"]
+    assert_no_host_in(result, "shop.test")

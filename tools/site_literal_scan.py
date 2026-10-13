@@ -10,7 +10,10 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - a token that is the dotted path of a tracked Python module is a module name;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
-  Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes.
+  Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
+- the value of a `"schema_org": "..."` pair on one line (a schema document, SPEC-04 §4.2) is a schema.org property
+  path when it follows schema.org's naming conventions, case-sensitively: an UpperCamelCase type, then lowerCamelCase
+  properties (`Offer.price+priceCurrency`).
 URL hosts are always checked.
 
 With `--public`, `--staged` (the pre-commit hook) scans only the files staged for commit, as the index holds
@@ -62,6 +65,11 @@ DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|
 # A qualified column reference: two SQL identifiers (letters, digits, `_`) joined by one dot, bounded by characters
 # that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
 COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
+# A schema document's `schema_org` value (SPEC-04 §4.2): a schema.org type, then properties, by schema.org's naming
+# conventions. Case-sensitive, unlike hosts: the type's capital is what separates a path from a host.
+SCHEMA_ORG_VALUE = re.compile(
+    r"(\"schema_org\"\s*:\s*\")([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+(?:\+[a-z][A-Za-z0-9]*)?)(?=\")"
+)
 # Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.
 HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
@@ -270,6 +278,7 @@ def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator
         host = match.group(1).lower().rstrip(".")
         if not names_no_public_site(host):
             yield host
+    text = SCHEMA_ORG_VALUE.sub(lambda match: match[1] + " " * len(match[2]), text)
     for match in DOTTED.finditer(repo_names.without_column_references(text)):
         token = match.group(0).lower()
         if token.rsplit(".", 1)[1] in tlds and not repo_names.names(token):

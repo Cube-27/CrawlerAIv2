@@ -463,3 +463,44 @@ def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Pa
     result = run_scan(repo, "--staged", allowlist=[])
 
     assert (result.returncode, result.stdout) == (0, "site-literals: ok, 1 files scanned\n")
+
+
+# schema.org paths ending in a TLD (`.name`), joined at run time like the names above.
+PRODUCT_NAME = ".".join(["Product", "name"])
+BRAND_NAME = ".".join(["Product", "brand", "name"])
+
+
+def test_schema_org_values_of_schema_documents_are_not_hosts(tmp_path: Path) -> None:
+    preset = (
+        "{\n"
+        f'  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},\n'
+        f'  "brand": {{"schema_org" : "{BRAND_NAME}", "type": "text"}},\n'
+        f'  "price": {{"schema_org": "Offer.price+priceCurrency"}}\n'
+        "}\n"
+    )
+    repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/schemas/presets/p.json": preset})
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_hosts_outside_schema_org_paths_are_still_found(tmp_path: Path) -> None:
+    lowercase = PRODUCT_NAME.lower()
+    preset = (
+        f'{{"schema_org": "{lowercase}"}}\n'  # a lowercase type is not schema.org's convention: a host
+        f'{{"same_as": "{PRODUCT_NAME}"}}\n'  # another key
+        f'{{"schema_org": "{PRODUCT_NAME}", "url": "shop.example.com"}}\n'  # the rest of the line
+        f'"schema_org"\nX = "{PRODUCT_NAME}"\n'  # not a pair on one line
+    )
+    repo = make_repo(tmp_path / "repo", {"p.json": preset})
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        f"p.json:1: {lowercase}",
+        f"p.json:2: {lowercase}",
+        "p.json:3: shop.example.com",
+        f"p.json:5: {lowercase}",
+    ]
