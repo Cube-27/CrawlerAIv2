@@ -3359,3 +3359,66 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep them in `test_scrape_service.py` (over 800 lines).
 - Why: C11: split along a logical boundary; test modules cannot import each other (importlib mode).
 - Reversible: yes
+
+### D-0509 — Listing rows
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: Rows are the primary-type entities with an `ItemList`/`ListItem` ancestor and no primary-type entity between them and the list. With no such entity, the rows are the top-level primary entities, when there are at least 3 and intent gives `AmbiguousTarget`.
+- Alternatives: Count every primary entity under a list, related items included.
+- Why: A related or offered item belongs to its holder (§4.6 step 1). Fewer than 3, or one named by the page URL, is what a detail page looks like (§4.7).
+- Reversible: yes
+
+### D-0510 — Rows take no page-level value
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: `EntityGraph.owned_by(..., page_values=False)` for rows: og/meta values are no row's. Page-scoped fields resolve against the page entity. `primary_types` reads only required row fields.
+- Alternatives: Detail ownership for every row.
+- Why: A page value describes the listing, not one of its rows (§4.6, §5.2).
+- Reversible: yes
+
+### D-0511 — A listing record holds the page fields
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: Each row's record is `{**page_fields, **row_fields}`, so `field_meta` covers every schema field (INV-22). Completeness and record confidence are computed over that merged set; the page's `record_confidence` is its least confident row's, `None` when any row's is.
+- Alternatives: A separate page record; rows without the page fields.
+- Why: INV-22; §4.10 gives one record per row.
+- Reversible: yes
+
+### D-0512 — Row entity key
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: `sha256(site_id + url)`, where `url` is the row's published value of its first row-scoped url field with path `T.url`; without one, `<task canonical URL>#<row position>`. A URL listed twice gives one record, the first.
+- Alternatives: The entity's `@id`; no record for a row without a URL.
+- Why: §4.10 "keyed by row url"; position is stable for unchanged markup; SPEC-11 versions records by `(site_id, entity_key)`.
+- Reversible: yes
+
+### D-0513 — Listing outcome
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: `extracted` when there is at least one row and every row is complete; `no_match` when no record is kept (no rows, or a crawl where every row is incomplete); otherwise `partial`, including a crawl that drops some incomplete rows.
+- Alternatives: `partial` with no record for a listing with no rows.
+- Why: §4.10 applied per row; `no_match` means "no record".
+- Reversible: yes
+
+### D-0514 — `next_page_url` is not filled from pagination in cold mode
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: `next_page_candidates` goes into `ExtractionResult.next_pages`. The schema's `next_page_url` field stays `missing` unless a source states it: a config's `next` step (D-0480).
+- Alternatives: A `rel_next` derivation.
+- Why: A derived value without a candidate has no source kind or bucket (INV-22, D-0355); §4.8 lists the only derivations in core (C13).
+- Reversible: yes
+
+### D-0515 — The structural pagination rule needs the integer in the page URL
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: With no integer segment or parameter in the page URL, no structural candidate is taken; `rel=next` still applies. A repeated query parameter name is skipped.
+- Alternatives: Read a missing parameter as page 1.
+- Why: §4.12 "differ from the current URL only in one integer…"; guessing the first page's number skips a page on 0-based sequences (C7). The crawl frontier still gets every link.
+- Reversible: yes
+
+### D-0516 — Role C is not called for listings
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: The detail gap hook (§4.13) runs for detail pages only; role C for listings is SPEC-06 PR 5.
+- Alternatives: Send each row's gaps as a detail request.
+- Why: Role C's listing call returns rows, a different shape (ARCHITECTURE §8.6).
+- Reversible: yes
+
+### D-0517 — `Stored.records`
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 12 (#106) · Status: decided
+- Decision: `store_extraction` returns every record it inserted as `StoredRecord(id, draft)` pairs (0 or 1 for a detail page, one per kept row for a listing), inserted in one statement; `services.scrape` reads the first, since the request refuses listing records.
+- Alternatives: Keep `record_id`/`record` and add listing fields beside them.
+- Why: One shape for both page kinds.
+- Reversible: yes
