@@ -15,6 +15,6 @@ done
 for _ in 1 2 3 4 5 6; do git -C "$main" worktree remove --force "$dir" 2>/dev/null && break; sleep 5; done
 git -C "$main" push -q origin --delete "$branch" 2>/dev/null
 git -C "$main" branch -D "$branch" 2>/dev/null
-docker builder prune -f --keep-storage 5gb >/dev/null 2>&1
-docker image prune -f >/dev/null 2>&1
+docker builder prune -f --max-used-space 5gb >/dev/null || echo "warning: build cache prune failed" >&2
+docker image prune -f >/dev/null || echo "warning: dangling image prune failed" >&2
 git -C "$main" pull -q --ff-only && git -C "$main" log --oneline -1
