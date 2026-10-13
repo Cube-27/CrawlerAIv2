@@ -116,9 +116,11 @@ async def extract_page(
     mode: ExtractionMode,
     *,
     data: EngineData,
+    parsed: ParsedPage | None = None,
 ) -> ExtractionResult:
     """The page's outcome, fields and candidates. `extracted` when every required field and group publishes, else
-    `partial`: whether an incomplete page keeps its record is the caller's (`resolve.records.assemble`)."""
+    `partial`: whether an incomplete page keeps its record is the caller's (`resolve.records.assemble`). `parsed` is
+    the bundle's parse when the caller already has one (a `scrape` shares it with its formats, INV-26)."""
     if config is not None or mode != "adhoc":
         raise ModeNotSupported("config mode runs SPEC-08's config executor, which is not wired yet")
     if schema.page_kind != "detail":
@@ -128,7 +130,7 @@ async def extract_page(
         return _result(not_served, mode)
     try:
         # Parsing and resolution are CPU work: a thread keeps the event loop serving other tasks meanwhile.
-        page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data)
+        page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data, parsed)
     except Exception:  # §4.14: a resolution bug fails the page, never part of it
         log.exception("extraction failed")
         return _result("error", mode)
@@ -174,9 +176,9 @@ class _Page:
     facts: PageFacts
 
     @classmethod
-    def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData) -> "_Page":
+    def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None) -> "_Page":
         manifest = bundle.manifest
-        page = ParsedPage.of(bundle)
+        page = ParsedPage.of(bundle) if parsed is None else parsed
         ctx = page_context(page, manifest.final_url, manifest.fetched_at)
         collected = collect_page(page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters)
         canonical = canonical_link(page, manifest.final_url)
@@ -213,8 +215,10 @@ class _Page:
         return assess_fields(schema, decisions, self.data.calibration, corroborated=frozenset())
 
 
-def _read_and_resolve(bundle: CaptureBundle, schema: SchemaDef, data: EngineData) -> tuple[_Page, FieldSet]:
-    page = _Page.read(bundle, schema, data)
+def _read_and_resolve(
+    bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None
+) -> tuple[_Page, FieldSet]:
+    page = _Page.read(bundle, schema, data, parsed)
     return page, page.resolve(page.collected.candidates)
 
 
