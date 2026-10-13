@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from crawlerai.config_ir.exporters.configs import export_config
-from crawlerai.config_ir.exporters.platform_draft import as_xpath
 from crawlerai.config_ir.model import CssStep, ExtractionConfigIR
 from crawlerai.config_ir.release_executor import ReleasePage, release_run
 from crawlerai.config_ir.release_rules import release_rules
@@ -133,9 +132,27 @@ def _released(ir: ExtractionConfigIR, page: HeldOutPage) -> Any:
     return release_run(ir, ReleasePage(page.page.html, base_url=URL), release_rules(SCHEMA, CTX))
 
 
-def test_the_xpath_form_reads_the_same_values_as_the_ir() -> None:
+def _from_draft(draft: dict[str, Any]) -> ExtractionConfigIR:
+    """The IR with the draft's steps in place of its own: the release check of the IR stands for the draft's only if
+    both read the same values."""
+    document = IR.model_dump(mode="json", by_alias=True)
+
+    def steps(fields: dict[str, Any], drafted: dict[str, Any]) -> None:
+        for name, field in fields.items():
+            field["steps"] = drafted[name]["steps"]
+
+    steps(document["fields"], draft["fields"])
+    listing = draft["listing"]
+    steps(document["listing"]["fields"], listing["fields"])
+    document["listing"]["row"] = {"xpath": listing["row_xpath"]}
+    document["listing"]["next"] = listing["next"]["steps"][0]
+    return ExtractionConfigIR.model_validate(document)
+
+
+def test_the_drafted_steps_read_the_same_values_as_the_ir() -> None:
     page = _page(7)
-    original, translated = _released(IR, page), _released(as_xpath(IR), page)
+    draft = export_config("platform_draft", IR, SCHEMA, [page]).model_dump(mode="json")["export"]
+    original, translated = _released(IR, page), _released(_from_draft(draft), page)
     assert (translated.fields, translated.rows) == (original.fields, original.rows)
     assert translated.rows[0] == {"sku": "S70", "link": "https://catalog.example.test/i/1"}
 

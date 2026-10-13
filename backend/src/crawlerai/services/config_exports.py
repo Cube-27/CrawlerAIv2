@@ -8,8 +8,8 @@ expire, §15), or with no such record, is left out; a field with no engine value
 """
 
 import asyncio
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 from sqlalchemy import select
@@ -58,16 +58,22 @@ async def export(
         ir = ExtractionConfigIR.model_validate(row.ir)
         schema = await registry.get_by_id(conn, row.schema_id)
         stored = await _stored(conn, schema, ir.provenance.validated_on)
-    pages = [page for capture in stored if (page := await _held_out(store, schema, *capture)) is not None]
-    # The release executor parses and runs every page: CPU work, so a thread keeps the event loop serving meanwhile.
-    return await asyncio.to_thread(export_config, fmt, ir, schema, pages)
+    # Reading the bundles, parsing the pages and running the release executor on them is blocking and CPU work, so
+    # one thread does it while the event loop serves other requests.
+    return await asyncio.to_thread(_export, store, fmt, ir, schema, stored)
 
 
-async def _stored(
-    conn: AsyncConnection, schema: SchemaDef, captures: Sequence[CaptureId]
-) -> list[tuple[CaptureId, str, list[_Data]]]:
-    """Each capture with records of `schema`'s version, in `captures` order: its object key and the records of its
-    latest extraction, in the order they were stored."""
+@dataclass(frozen=True, slots=True)
+class _Stored:
+    """A held-out capture's object key and the records of its latest extraction, in the order they were stored."""
+
+    object_key: str
+    extraction_id: ExtractionId
+    records: list[_Data] = field(default_factory=list)
+
+
+async def _stored(conn: AsyncConnection, schema: SchemaDef, captures: Sequence[CaptureId]) -> dict[CaptureId, _Stored]:
+    """Each capture with records of `schema`'s version, in `captures` order."""
     query = (
         select(Capture.id, Capture.object_key, Record.extraction_id, Record.data)
         .join(Extraction, Extraction.capture_id == Capture.id)
@@ -75,27 +81,29 @@ async def _stored(
         .where(Capture.id.in_(captures), Record.schema_id == schema.id, Record.schema_version == schema.version)
         .order_by(Capture.id, Extraction.id.desc(), Record.id)  # ids are UUIDv7: newest extraction, records in order
     )
-    keys: dict[CaptureId, str] = {}
-    latest: dict[CaptureId, ExtractionId] = {}
-    records: dict[CaptureId, list[_Data]] = defaultdict(list)
+    found: dict[CaptureId, _Stored] = {}
     for row in await conn.execute(query):
-        if latest.setdefault(row.id, row.extraction_id) == row.extraction_id:
-            keys[row.id] = row.object_key
-            records[row.id].append(row.data)
-    return [(capture, keys[capture], records[capture]) for capture in captures if capture in keys]
+        stored = found.setdefault(row.id, _Stored(row.object_key, row.extraction_id))
+        if stored.extraction_id == row.extraction_id:
+            stored.records.append(row.data)
+    return {capture: found[capture] for capture in captures if capture in found}
 
 
-async def _held_out(
-    store: ObjectStore, schema: SchemaDef, capture_id: CaptureId, object_key: str, records: list[_Data]
-) -> HeldOutPage | None:
+def _export(
+    store: ObjectStore, fmt: ConfigFormat, ir: ExtractionConfigIR, schema: SchemaDef, stored: dict[CaptureId, _Stored]
+) -> ConfigExport:
+    pages = [page for capture, s in stored.items() if (page := _held_out(store, schema, capture, s)) is not None]
+    return export_config(fmt, ir, schema, pages)
+
+
+def _held_out(store: ObjectStore, schema: SchemaDef, capture_id: CaptureId, stored: _Stored) -> HeldOutPage | None:
     try:
-        blob = await asyncio.to_thread(store.get, object_key)
+        bundle = decode(store.get(stored.object_key))
     except ObjectNotFound:
         return None
-    bundle = await asyncio.to_thread(decode, blob)
     page = ParsedPage.of(bundle)
     ctx = page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
-    facts, rows = _facts(schema, records)
+    facts, rows = _facts(schema, stored.records)
     return HeldOutPage(capture_id, page, ctx, facts, rows)
 
 

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.release_check import ReleaseReport, release_check
+from crawlerai.config_ir.release_check import ReleaseField, ReleaseReport, release_check
 from crawlerai.config_ir.validation import Facts, HeldOutPage
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -85,9 +85,12 @@ def _pages(total: int, differing: int) -> list[HeldOutPage]:
     return [_page(f"<h1>Item {n}</h1>", {"name": f"Item {n}" if n >= differing else "Other"}) for n in range(total)]
 
 
-def _field(report: ReleaseReport, name: str = "name") -> tuple[int, int, bool]:
-    field = report.fields[name]
-    return field.published, field.reproduced, field.manual
+def _triple(field: ReleaseField | None) -> tuple[int, int, bool] | None:
+    return None if field is None else (field.published, field.reproduced, field.manual)
+
+
+def _field(report: ReleaseReport, name: str = "name") -> tuple[int, int, bool] | None:
+    return _triple(report.fields[name])
 
 
 def test_a_field_reproduced_on_every_held_out_page_is_released() -> None:
@@ -168,9 +171,7 @@ def test_listing_rows_and_next_are_checked_against_the_engine() -> None:
     report = release_check(_config({}, ROWS), LISTING, pages)
     assert report.listing is not None
     assert report.fields == {}
-    assert (report.listing.fields["name"].reproduced, report.listing.fields["name"].manual) == (3, False)
-    assert report.listing.next is not None
-    assert (report.listing.next.reproduced, report.listing.next.manual) == (3, False)
+    assert (_triple(report.listing.fields["name"]), _triple(report.listing.next)) == ((3, 3, False), (3, 3, False))
 
 
 @pytest.mark.parametrize(
@@ -183,16 +184,14 @@ def test_listing_rows_and_next_are_checked_against_the_engine() -> None:
 def test_a_row_field_not_reproduced_on_one_page_is_manual(third: HeldOutPage) -> None:
     report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
     assert report.listing is not None
-    name = report.listing.fields["name"]
-    assert (name.published, name.reproduced, name.manual) == (3, 2, True)
+    assert _triple(report.listing.fields["name"]) == (3, 2, True)
 
 
 def test_a_next_step_not_reproduced_is_manual_and_the_rows_stay_released() -> None:
     pages = [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), _listing(["A", "B", "C"], next_href="/c/9")]
     report = release_check(_config({}, ROWS), LISTING, pages)
-    assert report.listing is not None and report.listing.next is not None
-    assert (report.listing.next.reproduced, report.listing.next.manual) == (2, True)
-    assert report.listing.fields["name"].manual is False
+    assert report.listing is not None
+    assert (_triple(report.listing.next), _triple(report.listing.fields["name"])) == ((3, 2, True), (3, 3, False))
 
 
 def test_a_listing_without_next_reports_none() -> None:

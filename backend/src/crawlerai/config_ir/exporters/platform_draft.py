@@ -4,13 +4,15 @@ an external crawler platform whose own format is not known yet (OPEN_QUESTIONS #
 Each field keeps its steps in order, since the first valid value wins (§12.1) and a field reduced to one selector would
 export something other than what the engine runs. A CSS step is exported as its XPath translation, which is what the
 executors run, and an `attr` step as the XPath attribute step `@name` (XPath 1.0 §2.5), which reads the same attribute
-of the context node: the row in a listing, the root element on a page. `as_xpath` is that translation on the IR
-itself, so the release check runs the steps the export carries. A field the release check marks `manual` (§12.3) is
-exported with `manual: true`. An `api_recipe` is exported as stored: held-out validation replayed it (SPEC-09 §4.7),
-and its PHP code hint is SPEC-09's (PR 7). Regexes are in the portable subset (`portable_regex`) and run with PHP's
-`/u` modifier (`regex_flags`). Exports carry selectors only, never values (INV-27).
+of the context node: the row in a listing, the root element on a page. The release executor runs both steps the same
+way (a CSS step by its XPath, `attr` as the context node's attribute), so the release check of the IR is the check of
+the draft. A field the release check marks `manual` (§12.3) is exported with `manual: true`. An `api_recipe` is
+exported as stored: held-out validation replayed it (SPEC-09 §4.7), and its PHP code hint is SPEC-09's (PR 7).
+Regexes are in the portable subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry
+selectors only, never values (INV-27).
 """
 
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,7 +29,7 @@ from crawlerai.config_ir.model import (
     Step,
     XPathStep,
 )
-from crawlerai.config_ir.release_check import ReleaseField, ReleaseReport
+from crawlerai.config_ir.release_check import ReleaseField, ReleaseListing, ReleaseReport
 from crawlerai.db.models import PageKind
 
 
@@ -63,25 +65,11 @@ class PlatformDraft(_Model):
     api_recipe: ApiRecipe | None
 
 
-def as_xpath(ir: ExtractionConfigIR) -> ExtractionConfigIR:
-    """`ir` with its CSS and `attr` steps written as the XPath steps they run as."""
-    listing = ir.listing
-    if listing is not None:
-        listing = listing.model_copy(
-            update={
-                "row": _step(listing.row),
-                "fields": _fields(listing.fields),
-                "next": None if listing.next is None else _step(listing.next),
-            }
-        )
-    return ir.model_copy(update={"fields": _fields(ir.fields), "listing": listing})
-
-
 def platform_draft(ir: ExtractionConfigIR, report: ReleaseReport) -> PlatformDraft:
-    """The draft of `ir`, an IR `as_xpath` returned, with the `manual` marks of its release check `report`."""
+    """The draft of `ir`, with the `manual` marks of its release check `report`."""
     listing = None
     if ir.listing is not None and report.listing is not None:
-        listing = _listing(ir.listing, report.listing.fields, report.listing.next)
+        listing = _listing(ir.listing, report.listing)
     return PlatformDraft(
         ir_version=ir.ir_version,
         site=ir.site,
@@ -104,17 +92,18 @@ def _step(step: Step) -> Step:
             return step
 
 
-def _fields(fields: dict[str, FieldSteps]) -> dict[str, FieldSteps]:
-    return {name: steps.model_copy(update={"steps": [_step(s) for s in steps.steps]}) for name, steps in fields.items()}
+def _draft_field(steps: Sequence[Step], report: ReleaseField) -> DraftField:
+    return DraftField(steps=[_step(step) for step in steps], manual=report.manual)
 
 
 def _draft_fields(fields: dict[str, FieldSteps], report: dict[str, ReleaseField]) -> dict[str, DraftField]:
-    return {name: DraftField(steps=steps.steps, manual=report[name].manual) for name, steps in fields.items()}
+    return {name: _draft_field(steps.steps, report[name]) for name, steps in fields.items()}
 
 
-def _listing(listing: ListingSpec, report: dict[str, ReleaseField], next_: ReleaseField | None) -> DraftListing:
-    row_xpath = listing.row.xpath if isinstance(listing.row, XPathStep) else None
+def _listing(listing: ListingSpec, report: ReleaseListing) -> DraftListing:
+    row = _step(listing.row)
+    row_xpath = row.xpath if isinstance(row, XPathStep) else None
     draft_next = None
-    if listing.next is not None and next_ is not None:
-        draft_next = DraftField(steps=[listing.next], manual=next_.manual)
-    return DraftListing(row_xpath=row_xpath, fields=_draft_fields(listing.fields, report), next=draft_next)
+    if listing.next is not None and report.next is not None:
+        draft_next = _draft_field([listing.next], report.next)
+    return DraftListing(row_xpath=row_xpath, fields=_draft_fields(listing.fields, report.fields), next=draft_next)

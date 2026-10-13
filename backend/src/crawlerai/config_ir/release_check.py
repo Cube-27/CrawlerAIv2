@@ -17,9 +17,8 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR
-from crawlerai.config_ir.release_executor import Released, ReleasePage, release_run
-from crawlerai.config_ir.release_rules import release_rules
-from crawlerai.config_ir.validation import EVERY_PAGE_BELOW, HeldOutPage, release_value
+from crawlerai.config_ir.release_executor import Released
+from crawlerai.config_ir.validation import HeldOutPage, release_on, release_value, small_n_rule
 from crawlerai.db.models import CaptureId
 from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import FieldSpec, SchemaDef
@@ -55,15 +54,13 @@ class ReleaseReport(_Report):
 
 
 def releasable(published: int, reproduced: int) -> bool:
-    """§12.3: every page with an engine value while there are fewer than `EVERY_PAGE_BELOW`, at least `RELEASE_SHARE`
-    from then on; never with none."""
-    if published < EVERY_PAGE_BELOW:
-        return published > 0 and reproduced == published
-    return Fraction(reproduced, published) >= RELEASE_SHARE
+    """§12.3: every page with an engine value while there are fewer than 10, at least `RELEASE_SHARE` from then on;
+    never with none."""
+    return small_n_rule(published, reproduced, minimum=1, share=RELEASE_SHARE)
 
 
 def release_check(ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[HeldOutPage]) -> ReleaseReport:
-    runs = [_Run.of(ir, schema, page) for page in held_out]
+    runs = [_Run(page, release_on(ir, schema, page)) for page in held_out]
     fields = {name: _field(runs, name, schema, _page_seen) for name in ir.fields}
     listing = None
     if ir.listing is not None:
@@ -77,11 +74,6 @@ def release_check(ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[
 class _Run:
     page: HeldOutPage
     released: Released
-
-    @classmethod
-    def of(cls, ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> "_Run":
-        release_page = ReleasePage(page.page.html, page.page.network, page.ctx.base_url)
-        return cls(page, release_run(ir, release_page, release_rules(schema, page.ctx)))
 
 
 # Whether the engine published the field on the page, and whether the release executor reproduced it there.

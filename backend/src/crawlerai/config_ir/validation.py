@@ -158,11 +158,22 @@ def validate(
 def corroboration(comparable: int, agreeing: int) -> FieldStatus:
     """§8.3 step 4: `corroborated` with at least `MIN_COMPARABLE` comparable pages, all agreeing while there are fewer
     than `EVERY_PAGE_BELOW`, and at least `CORROBORATION_SHARE` of them from then on."""
-    if comparable < EVERY_PAGE_BELOW:
-        held = comparable >= MIN_COMPARABLE and agreeing == comparable
-    else:
-        held = Fraction(agreeing, comparable) >= CORROBORATION_SHARE
+    held = small_n_rule(comparable, agreeing, minimum=MIN_COMPARABLE, share=CORROBORATION_SHARE)
     return "corroborated" if held else "uncorroborated"
+
+
+def small_n_rule(pages: int, agreeing: int, *, minimum: int, share: Fraction) -> bool:
+    """ARCHITECTURE §8.3 step 4, §12.3: at least `minimum` pages, all agreeing while there are fewer than
+    `EVERY_PAGE_BELOW`, and at least `share` of them from then on."""
+    if pages < EVERY_PAGE_BELOW:
+        return pages >= minimum and agreeing == pages
+    return Fraction(agreeing, pages) >= share
+
+
+def release_on(ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> Released:
+    """The release executor's run of `ir` on a held-out page, with the schema's rules (D-0527)."""
+    release_page = ReleasePage(page.page.html, page.page.network, page.ctx.base_url)
+    return release_run(ir, release_page, release_rules(schema, page.ctx))
 
 
 # --- one page -------------------------------------------------------------------------------------------------------
@@ -173,7 +184,6 @@ class _PageRun:
     """Both executors' output on one held-out page: the engine's config candidates by owner and field."""
 
     page: HeldOutPage
-    spec_of: Mapping[str, FieldSpec]
     candidates: Mapping[tuple[str, str], Candidate]
     rows: int
     released: Released
@@ -181,17 +191,12 @@ class _PageRun:
     @classmethod
     def of(cls, executor: EngineExecutor, schema: SchemaDef, page: HeldOutPage) -> "_PageRun":
         executed = executor.execute(page.page, schema, page.ctx)
-        release_page = ReleasePage(page.page.html, page.page.network, page.ctx.base_url)
         return cls(
             page=page,
-            spec_of=schema.fields,
             candidates={(c.entity_id, c.field): c for c in executed.candidates},
             rows=len(executed.rows),
-            released=release_run(executor.ir, release_page, release_rules(schema, page.ctx)),
+            released=release_on(executor.ir, schema, page),
         )
-
-    def released_value(self, values: Mapping[str, Value], name: str) -> JsonValue | None:
-        return release_value(values, name, self.spec_of[name], self.page.ctx)
 
 
 def release_value(values: Mapping[str, Value], name: str, spec: FieldSpec, ctx: Context) -> JsonValue | None:
@@ -224,23 +229,23 @@ def _slot(candidate: Candidate | None, released: JsonValue | None, facts: Facts,
     return _Slot(candidate, released, facts.published.get(name), tuple(facts.references.get(name, ())))
 
 
-type _SlotsOf = Callable[[_PageRun, str], tuple[list[_Slot], bool]]
+type _SlotsOf = Callable[[_PageRun, str, FieldSpec], tuple[list[_Slot], bool]]
 
 
-def _page_slots(run: _PageRun, name: str) -> tuple[list[_Slot], bool]:
+def _page_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
     """A page-level field has one slot, the page."""
-    released = run.released_value(run.released.fields, name)
+    released = release_value(run.released.fields, name, spec, run.page.ctx)
     return [_slot(run.candidates.get((PAGE, name)), released, run.page.facts, name)], True
 
 
-def _row_slots(run: _PageRun, name: str) -> tuple[list[_Slot], bool]:
+def _row_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
     """A row field has one slot per row, the config's n-th row against the engine's n-th; the rows align when both
     executors and the engine have as many."""
     facts, released = run.page.rows, run.released.rows
     slots = [
         _slot(
             run.candidates.get((row_id(n), name)),
-            run.released_value(released[n], name) if n < len(released) else None,
+            release_value(released[n], name, spec, run.page.ctx) if n < len(released) else None,
             facts[n] if n < len(facts) else Facts(),
             name,
         )
@@ -299,7 +304,7 @@ def _check_fields(
     reports: dict[str, FieldReport] = {}
     for name, steps in fields.items():
         spec = schema.fields.get(name)
-        seen = [] if spec is None else [_seen(*slots_of(run, name), spec) for run in runs]
+        seen = [] if spec is None else [_seen(*slots_of(run, name, spec), spec) for run in runs]
         report = _report(seen, steps.status, len(runs), "not_in_schema" if spec is None else _dropped(seen))
         reports[name] = report
         if report.status is not None:
