@@ -1,7 +1,10 @@
 import type { ApiClient } from "../../api/client";
 import { parseFieldTypes, type FieldTypeSpec } from "../../api/field";
 import { problemOf, type Problem } from "../../api/problem";
+import type { components } from "../../api/schema";
 import type { ScrapeRequest, ScrapeResponse } from "../../api/scrape";
+
+type ScrapeRequestBody = components["schemas"]["ScrapeRequest"];
 
 export type FieldTypes = Readonly<Record<string, FieldTypeSpec>>;
 
@@ -43,7 +46,7 @@ async function fieldTypes(
 export async function runScrape(client: ApiClient, request: ScrapeRequest): Promise<ScrapeRun> {
   let answer;
   try {
-    answer = await client.POST("/v1/scrape", { body: request });
+    answer = await client.POST("/v1/scrape", { body: request as ScrapeRequestBody });
   } catch (thrown) {
     return failed("The API could not be reached.", thrown instanceof Error ? thrown.message : null);
   }

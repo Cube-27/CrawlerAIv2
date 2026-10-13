@@ -1,6 +1,79 @@
 {
   "components": {
     "schemas": {
+      "AttemptRecord": {
+        "additionalProperties": false,
+        "description": "One rung tried. `status` is None when no response arrived (network error, timeout, SSRF rejection).",
+        "properties": {
+          "block_class": {
+            "enum": [
+              "ok",
+              "blocked",
+              "shell",
+              "not_found",
+              "error"
+            ],
+            "title": "Block Class",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "method": {
+            "enum": [
+              "http",
+              "browser",
+              "api"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "method",
+          "status",
+          "block_class",
+          "duration_ms"
+        ],
+        "title": "AttemptRecord",
+        "type": "object"
+      },
+      "Budget": {
+        "additionalProperties": false,
+        "properties": {
+          "llm_calls": {
+            "default": 10,
+            "minimum": 0.0,
+            "title": "Llm Calls",
+            "type": "integer"
+          }
+        },
+        "title": "Budget",
+        "type": "object"
+      },
       "CaptureRequest": {
         "additionalProperties": false,
         "properties": {
@@ -142,6 +215,101 @@
           "error"
         ],
         "title": "CapturedOut",
+        "type": "object"
+      },
+      "FetchOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "method_hint": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "http",
+              "browser"
+            ],
+            "title": "Method Hint",
+            "type": "string"
+          },
+          "proxy_pool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Pool"
+          },
+          "respect_robots": {
+            "default": true,
+            "title": "Respect Robots",
+            "type": "boolean"
+          },
+          "robots_override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Robots Override Reason"
+          }
+        },
+        "title": "FetchOptions",
+        "type": "object"
+      },
+      "FetchSummary": {
+        "description": "The fetch of the page: the method, status and class of the kept attempt, and every attempt made.",
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptRecord"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "block_class": {
+            "enum": [
+              "ok",
+              "blocked",
+              "shell",
+              "not_found",
+              "error"
+            ],
+            "title": "Block Class",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "http",
+              "browser",
+              "api"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "method",
+          "status_code",
+          "block_class",
+          "attempts"
+        ],
+        "title": "FetchSummary",
         "type": "object"
       },
       "FieldErrorOut": {
@@ -763,6 +931,79 @@
         "title": "PageDetail",
         "type": "object"
       },
+      "PageMetadata": {
+        "properties": {
+          "canonical": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "og": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Og",
+            "type": "object"
+          },
+          "structured_data_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Structured Data Types",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "language",
+          "canonical",
+          "og",
+          "structured_data_types"
+        ],
+        "title": "PageMetadata",
+        "type": "object"
+      },
       "PageSummary": {
         "additionalProperties": false,
         "properties": {
@@ -900,6 +1141,21 @@
         "title": "Problem",
         "type": "object"
       },
+      "SchemaById": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "SchemaById",
+        "type": "object"
+      },
       "SchemaContent": {
         "additionalProperties": false,
         "description": "A schema document as a caller writes it, without the name and version the registry assigns.",
@@ -1021,6 +1277,19 @@
         "title": "SchemaDef",
         "type": "object"
       },
+      "SchemaInline": {
+        "additionalProperties": false,
+        "properties": {
+          "inline": {
+            "$ref": "#/components/schemas/NewSchema"
+          }
+        },
+        "required": [
+          "inline"
+        ],
+        "title": "SchemaInline",
+        "type": "object"
+      },
       "SchemaList": {
         "additionalProperties": false,
         "properties": {
@@ -1036,6 +1305,230 @@
           "items"
         ],
         "title": "SchemaList",
+        "type": "object"
+      },
+      "SchemaPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "SchemaPrompt",
+        "type": "object"
+      },
+      "ScrapeRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records`, with `schema`, `page_kind` and `budget`, is SPEC-07 PR 5;\n`max_age` reuses a recent capture from PR 5, and until then every scrape fetches anew, which any `max_age`\nallows.",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/Budget",
+            "default": {
+              "llm_calls": 10
+            }
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions",
+            "default": {
+              "method_hint": "auto",
+              "respect_robots": true
+            }
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "markdown",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "max_age": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Max Age",
+            "type": "integer"
+          },
+          "page_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "detail",
+                  "listing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Kind"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "timeout_s": {
+            "default": 60,
+            "exclusiveMinimum": 0.0,
+            "maximum": 120.0,
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "formats"
+        ],
+        "title": "ScrapeRequest",
+        "type": "object"
+      },
+      "ScrapeResult": {
+        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None.",
+        "properties": {
+          "capture_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Id"
+          },
+          "fetch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FetchSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "final_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Url"
+          },
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PageMetadata"
+          },
+          "outcome": {
+            "enum": [
+              "extracted",
+              "partial",
+              "blocked",
+              "shell",
+              "not_found",
+              "failed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "raw_html": {
+            "title": "Raw Html",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        },
+        "required": [
+          "job_id",
+          "capture_id",
+          "url",
+          "final_url",
+          "fetched_at",
+          "outcome",
+          "fetch",
+          "usage"
+        ],
+        "title": "ScrapeResult",
         "type": "object"
       },
       "SkippedOut": {
@@ -1061,6 +1554,38 @@
           "reason"
         ],
         "title": "SkippedOut",
+        "type": "object"
+      },
+      "Usage": {
+        "description": "What the scrape's job used (ARCHITECTURE \u00a717).",
+        "properties": {
+          "browser_seconds": {
+            "default": 0,
+            "title": "Browser Seconds",
+            "type": "integer"
+          },
+          "http_requests": {
+            "default": 0,
+            "title": "Http Requests",
+            "type": "integer"
+          },
+          "llm_calls": {
+            "default": 0,
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "llm_tokens_in": {
+            "default": 0,
+            "title": "Llm Tokens In",
+            "type": "integer"
+          },
+          "llm_tokens_out": {
+            "default": 0,
+            "title": "Llm Tokens Out",
+            "type": "integer"
+          }
+        },
+        "title": "Usage",
         "type": "object"
       }
     }
@@ -2085,6 +2610,98 @@
         "summary": "Update Schema",
         "tags": [
           "schemas"
+        ]
+      }
+    },
+    "/v1/scrape": {
+      "post": {
+        "description": "Fetch `url` and return the requested formats; only those are members of the answer.",
+        "operationId": "scrape_v1_scrape_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrapeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Scrape",
+        "tags": [
+          "scrape"
         ]
       }
     }

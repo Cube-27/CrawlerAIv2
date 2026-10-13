@@ -8,8 +8,7 @@ import type { RecordField, SchemaSummary, ScrapeResponse } from "../../api/scrap
 // The form types into several fields with user-event, which is slow in jsdom.
 vi.setConfig({ testTimeout: 20_000 });
 
-// POST /v1/scrape and GET /v1/schemas/{id} are SPEC-07 PRs 4–7, not merged yet: `fetch` answers with the shapes
-// SPEC-07 §4.3–4.4 define.
+// `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
 
 interface Call {
   method: string;
@@ -445,6 +444,30 @@ describe("scrape screen: formats and problems", () => {
     expect(
       within(usage.getByRole("row", { name: /LLM tokens in/ })).getByText("1200"),
     ).toBeVisible();
+  });
+
+  it("shows a page robots.txt kept from being fetched without a fetch or a final URL", async () => {
+    stubApi({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({
+            outcome: "blocked",
+            capture_id: null,
+            final_url: null,
+            fetched_at: null,
+            fetch: null,
+          }),
+        ),
+    });
+    await openScrape();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
+
+    await submit();
+
+    expect(await screen.findByText("blocked")).toBeInTheDocument();
+    expect(screen.queryByText(/^Fetched/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Fetch" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Usage" })).toBeInTheDocument();
   });
 
   it("shows a problem with its per-field errors, and the retry time on 429", async () => {

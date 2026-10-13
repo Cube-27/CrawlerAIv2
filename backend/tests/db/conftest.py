@@ -20,13 +20,13 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Job, JobEvent, UrlTask, UsageEvent
+from crawlerai.db.models import Capture, Job, JobEvent, Site, UrlTask, UsageEvent
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
@@ -78,6 +78,20 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     async with engine.begin() as connection:
         for model in (UsageEvent, JobEvent, UrlTask, Job):
             await connection.execute(delete(model))
+    await engine.dispose()
+
+
+@pytest.fixture
+async def own_origin(database_url: str) -> AsyncIterator[str]:
+    """An https origin on a host no other test uses, for tests that commit a site for it. The site and its captures
+    are deleted afterwards (a task that named a capture keeps a NULL, SPEC-01 §4.2)."""
+    host = f"shop-{uuid7().hex[-12:]}.example.test"
+    yield f"https://{host}"
+    engine = create_async_engine(database_url)
+    async with engine.begin() as connection:
+        site_ids = select(Site.id).where(Site.host == host).scalar_subquery()
+        await connection.execute(delete(Capture).where(Capture.site_id.in_(site_ids)))
+        await connection.execute(delete(Site).where(Site.host == host))
     await engine.dispose()
 
 

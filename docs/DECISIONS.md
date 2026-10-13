@@ -2759,3 +2759,66 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Pass the bundle to the xhr collector.
 - Why: Collectors read the `ParsedPage`, never the bundle (§4.1, INV-26).
 - Reversible: yes
+
+### D-0423 — Scrape formats only for a reached page
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: Formats are returned only when `block_class` is ok (outcome `extracted`); a blocked, shell, not_found or failed page answers 200 with its outcome and no format members.
+- Alternatives: Return the formats of whatever body came back.
+- Why: §4.8: no partial formats on failure; a block page's markdown would read as content.
+- Reversible: yes
+
+### D-0424 — Without `records` a reached page is `extracted`
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: A scrape without `records` whose page was reached has outcome `extracted`.
+- Alternatives: `links_only` (not in §4.4's outcome list).
+- Why: §4.4 lists the outcomes a scrape returns; PR 5 adds `partial`.
+- Reversible: yes
+
+### D-0425 — A page robots.txt keeps from a scrape is `blocked`, without fetch members
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: A robots.txt disallow, or an unreachable robots.txt (RFC 9309 §2.3.1.4), gives outcome `blocked` (task `last_error` `robots` / `robots_unreachable`), and the answer's `capture_id`, `final_url`, `fetched_at` and `fetch` are `null`. The scrape screen hides them when null.
+- Alternatives: A problem response; synthetic fetch members.
+- Why: §4.8: a page not fetched is an outcome; these four are the only nullable additions to §4.4's shape.
+- Reversible: yes
+
+### D-0426 — Every SSRF rejection is a 422 `ssrf_rejected` problem
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: Any SSRF rejection, DNS failure included, is a 422 problem `ssrf_rejected` with the guard's reason as `detail`. A refused target is checked before the job is created; a refused redirect hop fails the job and stores no capture.
+- Alternatives: 400; DNS failure as outcome `failed`.
+- Why: INV-16; the guard fails closed, and one rule is simpler.
+- Reversible: yes
+
+### D-0427 — `records` refused until SPEC-07 PR 5; `max_age` accepted
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: `records` is refused with 422 until PR 5. `max_age` is accepted and every scrape fetches anew. `budget.llm_calls` defaults to 10 (§4.4's example).
+- Alternatives: Accept `records` and ignore it; 501.
+- Why: Never answer as though records were extracted; the frontend sends `max_age` when set.
+- Reversible: yes
+
+### D-0428 — The scrape service takes the engine and commits in steps
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: `services.scrape.scrape(engine, fetching, request)`, not a session: the job and its claimed task commit first, the fetch runs outside any transaction, and its results commit in one transaction; formats are computed before that write. The site's rate is awaited in place within `timeout_s`. Scrape jobs and new sites belong to the `default` project; `api_key` is not passed (no column records it).
+- Alternatives: One transaction (§4.7's sketch); postpone like a worker.
+- Why: A timed-out scrape must still fail its job (§4.4 step 4); a slow page holds no connection or row lock; the caller waits anyway.
+- Reversible: yes
+
+### D-0429 — The API's browser rung launches Chromium per fetch
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: In the API process the browser rung opens a browser for each browser fetch.
+- Alternatives: One browser per API process (SPEC-02 §4.8 says so for workers).
+- Why: The browser is used only on evidence (ARCHITECTURE §7.1); an API process should not hold one it rarely uses. Revisit if measured.
+- Reversible: yes
+
+### D-0430 — Scrape usage per fetch attempt
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: `http_requests` +1 per `http`/`api` attempt, robots.txt included; `browser_seconds` = ceil(attempt duration) per browser attempt (SPEC-02 §4.7, §4.8). The answer's `usage` is read back from `job.usage`.
+- Alternatives: Count the page fetch only.
+- Why: Every request made is visible.
+- Reversible: yes
+
+### D-0431 — Format members are omitted, never null
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 4 (#88) · Status: decided
+- Decision: A format's member is left out when not requested (`exclude_if`) and the OpenAPI document gives it no null branch (`markdown?: string`); `PageMetadata` members are all required in the document. `POST /v1/scrape` is generated into the frontend client; records and the draft schema stay hand-narrowed until PRs 5 and 6, and the form's request is sent as the generated type (openapi-typescript marks defaulted members required).
+- Alternatives: `string | null`; keep the module augmentation.
+- Why: Matches §4.4 and the shapes #82 was built against.
+- Reversible: yes

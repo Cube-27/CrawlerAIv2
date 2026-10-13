@@ -7,11 +7,17 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveFloat, Pos
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-__all__ = ["AttemptRecord", "BlockClass", "FetchPolicy", "FetchResult", "policy_with_attempts"]
+__all__ = ["AttemptRecord", "BlockClass", "FetchPolicy", "FetchResult", "check_robots_override", "policy_with_attempts"]
 
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+def check_robots_override(respect_robots: bool, reason: str | None) -> None:
+    """Ignoring robots.txt is an operator's decision, recorded with its reason (ARCHITECTURE §7.1)."""
+    if not respect_robots and not (reason or "").strip():
+        raise ValueError("respect_robots=false needs a robots_override_reason")
 
 
 class FetchPolicy(_Frozen):
@@ -28,9 +34,7 @@ class FetchPolicy(_Frozen):
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> "FetchPolicy":
-        # Ignoring robots.txt is an operator's decision, recorded with its reason (ARCHITECTURE §7.1).
-        if not self.respect_robots and not (self.robots_override_reason or "").strip():
-            raise ValueError("respect_robots=false needs a robots_override_reason")
+        check_robots_override(self.respect_robots, self.robots_override_reason)
         return self
 
 

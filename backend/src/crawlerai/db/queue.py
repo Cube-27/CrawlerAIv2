@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import Executable, func, select, update
+from sqlalchemy import Executable, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import (
@@ -31,7 +31,17 @@ from crawlerai.db.jobs import (
     transition_job,
     transition_task,
 )
-from crawlerai.db.models import FinishedOutcome, Job, JobId, PageKind, TaskOutcome, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.models import (
+    CaptureId,
+    FinishedOutcome,
+    Job,
+    JobId,
+    PageKind,
+    TaskOutcome,
+    TaskStatus,
+    UrlTask,
+    UrlTaskId,
+)
 
 LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
@@ -96,12 +106,42 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     return sorted(tasks, key=lambda task: (-task.priority, task.id))
 
 
+async def insert_claimed(
+    conn: AsyncConnection, job_id: JobId, url: str, canonical_url: str, page_kind: PageKind | None, worker: str
+) -> ClaimedTask:
+    """Add a task already claimed by `worker`, for a caller that runs it at once instead of queueing it (the
+    synchronous `scrape`, SPEC-07 §4.4). It is leased like any claim, so it finishes through `complete_task` and
+    `fail_task`, and no worker takes it while it runs."""
+    claim = (
+        insert(UrlTask)
+        .values(
+            job_id=job_id,
+            url=url,
+            canonical_url=canonical_url,
+            page_kind=page_kind,
+            status="claimed",
+            claimed_by=worker,
+            lease_until=func.clock_timestamp() + LEASE,
+            attempts=1,
+        )
+        .returning(*_CLAIMED_COLUMNS)
+    )
+    (task,) = await _claimed(conn, claim)
+    return task
+
+
 async def complete_task(
-    conn: AsyncConnection, task: ClaimedTask, outcome: FinishedOutcome, *, reason: str | None = None
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    outcome: FinishedOutcome,
+    *,
+    reason: str | None = None,
+    capture_id: CaptureId | None = None,
 ) -> None:
     """Finish a task with `outcome`; `reason`, kept in `last_error`, says why when the outcome alone does not (a
-    `blocked` task's `robots`, SPEC-02 §4.6)."""
-    await _finish(conn, task, "done", outcome=outcome, last_error=reason)
+    `blocked` task's `robots`, SPEC-02 §4.6). `capture_id` is the page the task fetched, if it fetched one."""
+    values: dict[str, Any] = {} if capture_id is None else {"capture_id": capture_id}
+    await _finish(conn, task, "done", outcome=outcome, last_error=reason, **values)
 
 
 def retry_delay(attempts: int) -> timedelta:
@@ -118,18 +158,22 @@ async def fail_task(
     transient: bool,
     after: timedelta | None = None,
     exhausted: TaskOutcome = "failed",
+    capture_id: CaptureId | None = None,
 ) -> None:
     """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
     asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `retry_delay`. A permanent failure, or the last
-    attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`)."""
-    last_error = _cut(error)
+    attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`).
+    `capture_id` is the page the failed attempt fetched, if it fetched one."""
+    values: dict[str, Any] = {"last_error": _cut(error)}
+    if capture_id is not None:
+        values["capture_id"] = capture_id
     if transient and task.attempts < MAX_ATTEMPTS:
         delay = retry_delay(task.attempts) if after is None else after
-        await _move(conn, task, "queued", last_error=last_error, next_attempt_at=func.now() + delay)
+        await _move(conn, task, "queued", next_attempt_at=func.now() + delay, **values)
     elif exhausted == "failed":
-        await _finish(conn, task, "failed", outcome="failed", last_error=last_error)
+        await _finish(conn, task, "failed", outcome="failed", **values)
     else:
-        await _finish(conn, task, "done", outcome=exhausted, last_error=last_error)
+        await _finish(conn, task, "done", outcome=exhausted, **values)
 
 
 async def cancel_task(conn: AsyncConnection, task: ClaimedTask) -> None:

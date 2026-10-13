@@ -8,7 +8,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-from pydantic import JsonValue
+from pydantic import ConfigDict, JsonValue, with_config
 
 from crawlerai.content.dom import document_base_url, strip, tokens
 from crawlerai.content.page import ParsedPage
@@ -20,6 +20,8 @@ _OG_PREFIXES = ("og:", "product:")
 _IRI_SEPARATOR = re.compile(r"[/#]")
 
 
+# Every member is in the format, absent ones as None or empty, so the API's document lists them all as required.
+@with_config(ConfigDict(json_schema_serialization_defaults_required=True))
 @dataclass(frozen=True)
 class PageMetadata:
     title: str | None = None
