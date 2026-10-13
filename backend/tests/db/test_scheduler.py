@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.types import FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Capture, Job, JobEvent, JobId, Project, Site, UrlTask
 from crawlerai.db.queue import claim_tasks
@@ -21,6 +22,10 @@ from crawlerai.storage.fs import FsStore
 pytestmark = pytest.mark.anyio
 
 QUICK = timedelta(milliseconds=50)
+
+
+async def _no_fetch(url: str) -> FetchResult:
+    raise AssertionError("no site is due for a fetch-method re-check")
 
 
 async def _job(engine: AsyncEngine, count: int) -> JobId:
@@ -68,7 +73,7 @@ async def test_the_scheduler_requeues_tasks_whose_lease_expired(engine: AsyncEng
     async def requeued() -> bool:
         return (await statuses())[expired.id][0] == "queued"
 
-    await _scheduler_until(engine, periodic(FsStore(tmp_path)), requeued)
+    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch), requeued)
 
     assert await statuses() == {expired.id: ("queued", "lease expired"), live.id: ("claimed", None)}
 
@@ -107,7 +112,7 @@ async def test_the_scheduler_expires_production_captures_past_expires_at(engine:
             return (await conn.execute(select(func.count()).where(Capture.site_id == site_id))).scalar_one() == 0
 
     try:
-        await _scheduler_until(engine, periodic(store), expired)
+        await _scheduler_until(engine, periodic(store, _no_fetch), expired)
     finally:
         async with engine.begin() as conn:
             await conn.execute(delete(Capture).where(Capture.site_id == site_id))
@@ -176,3 +181,52 @@ async def test_stopping_ends_the_scheduler_while_it_waits(engine: AsyncEngine) -
         return ran.is_set()
 
     await _scheduler_until(engine, [Periodic("hourly", timedelta(hours=1), hourly)], started, timeout=10)
+
+
+async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
+    engine: AsyncEngine, tmp_path: Path, fetch_result: Callable[..., FetchResult]
+) -> None:
+    url = "https://recheck.example.test/p/1"
+    default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
+    async with engine.begin() as conn:
+        site_id = (
+            await conn.execute(
+                insert(Site)
+                .values(project_id=default_project, host="recheck.example.test", fetch_method="browser")
+                .returning(Site.id)
+            )
+        ).scalar_one()
+        await conn.execute(
+            insert(Capture).values(
+                site_id=site_id,
+                url=url,
+                final_url=url,
+                method="browser",
+                status_code=200,
+                fetched_at=func.now(),
+                block_class="ok",
+                object_key="captures/2026/10/recheck.bundle.zst",
+                html_sha256="0" * 64,
+                size_bytes=4,
+                duration_ms=5,
+            )
+        )
+    fetched: list[str] = []
+
+    async def fetch(fetched_url: str) -> FetchResult:
+        fetched.append(fetched_url)
+        return fetch_result(fetched_url, 200, b"" if fetched_url.endswith("/robots.txt") else b"<p>page</p>")
+
+    async def on_http() -> bool:
+        async with engine.connect() as conn:
+            method = (await conn.execute(select(Site.fetch_method).where(Site.id == site_id))).scalar_one()
+            return bool(method == "http")
+
+    try:
+        await _scheduler_until(engine, periodic(FsStore(tmp_path), fetch), on_http)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(delete(Capture).where(Capture.site_id == site_id))
+            await conn.execute(delete(Site).where(Site.id == site_id))
+
+    assert fetched == ["https://recheck.example.test/robots.txt", url]

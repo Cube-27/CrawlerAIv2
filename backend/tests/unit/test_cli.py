@@ -4,13 +4,17 @@ import shutil
 import subprocess
 import sysconfig
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
 
 import pytest
 
 from crawlerai import cli
+from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
-from crawlerai.core.settings import Settings
+from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.scheduler.loop import periodic
 from crawlerai.storage.fs import FsStore
 
@@ -76,7 +80,7 @@ def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(mon
     assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", {}, False)]
 
 
-def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store(
+def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_and_the_http_rung(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _environment(monkeypatch)
@@ -87,19 +91,37 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store(
 
     monkeypatch.setattr(cli, "run_scheduler", run)
     monkeypatch.setattr(cli, "open_store", lambda url: ("store at", url))
-    monkeypatch.setattr(cli, "periodic", lambda store: ("entries for", store))
+    fetches: list[object] = []
+
+    def entries_for(store: object, fetch: object) -> tuple[str, object]:
+        fetches.append(fetch)
+        return ("entries for", store)
+
+    monkeypatch.setattr(cli, "periodic", entries_for)
 
     main(["scheduler"])
 
     expected_entries = ("entries for", ("store at", "fs:///srv/objects"))
     assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", expected_entries, False)]
+    [fetch] = fetches
+    assert isinstance(fetch, partial)
+    assert (fetch.func, fetch.args) == (fetch_http, ())
+    assert fetch.keywords == {
+        "policy": FetchPolicy(),
+        "engine_version": ENGINE_VERSION,
+        "impersonate": AcquireSettings().impersonate,
+    }
 
 
-def test_the_scheduler_releases_leases_every_minute_and_expires_captures_and_candidates_hourly() -> None:
-    entries = periodic(FsStore(Path("unused")))
+def test_the_scheduler_releases_leases_every_minute_and_expires_and_rechecks_hourly() -> None:
+    async def fetch(url: str) -> FetchResult:
+        raise AssertionError("not called")
 
-    assert [(entry.name, entry.interval) for entry in entries] == [
-        ("release_expired_leases", timedelta(minutes=1)),
-        ("expire_captures", timedelta(hours=1)),
-        ("expire_candidates", timedelta(hours=1)),
+    entries = periodic(FsStore(Path("unused")), fetch)
+
+    assert [(entry.name, entry.interval, entry.batch) for entry in entries] == [
+        ("release_expired_leases", timedelta(minutes=1), None),
+        ("expire_captures", timedelta(hours=1), 1000),
+        ("expire_candidates", timedelta(hours=1), 1000),
+        ("recheck_fetch_method", timedelta(hours=1), 1),
     ]

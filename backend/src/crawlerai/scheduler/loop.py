@@ -19,8 +19,10 @@ from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.robots import Fetch
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import release_expired_leases
+from crawlerai.scheduler.recheck import RECHECK_BATCH, recheck_fetch_method
 from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
 from crawlerai.storage.base import ObjectStore
 
@@ -35,8 +37,9 @@ class Periodic:
     batch: int | None = None
 
 
-def periodic(store: ObjectStore) -> tuple[Periodic, ...]:
-    """The scheduler's entries (SPEC-01 §4.3). `store` is the main object store, where production captures live."""
+def periodic(store: ObjectStore, fetch: Fetch) -> tuple[Periodic, ...]:
+    """The scheduler's entries (SPEC-01 §4.3). `store` is the main object store, where production captures live;
+    `fetch` is the HTTP rung, for the fetch-method re-check (SPEC-02 §4.4)."""
     return (
         Periodic("release_expired_leases", timedelta(minutes=1), release_expired_leases),
         Periodic(
@@ -50,6 +53,12 @@ def periodic(store: ObjectStore) -> tuple[Periodic, ...]:
             timedelta(hours=1),
             partial(expire_candidates, batch=RETENTION_BATCH),
             batch=RETENTION_BATCH,
+        ),
+        Periodic(
+            "recheck_fetch_method",
+            timedelta(hours=1),
+            partial(recheck_fetch_method, fetch=fetch, batch=RECHECK_BATCH),
+            batch=RECHECK_BATCH,
         ),
     )
 

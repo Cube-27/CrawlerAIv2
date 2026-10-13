@@ -9,7 +9,7 @@ from datetime import timedelta
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import FetchResult, policy_with_attempts
 from crawlerai.db.models import Capture, CaptureId, SiteId
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, encode
@@ -48,10 +48,7 @@ async def store_capture(
             size_bytes=len(blob),
             duration_ms=result.duration_ms,
             # SPEC-02 §4.4: the row keeps every rung tried, beside the policy they ran under.
-            fetch_policy={
-                **manifest.fetch_policy,
-                "attempts": [attempt.model_dump(mode="json") for attempt in result.attempts],
-            },
+            fetch_policy=policy_with_attempts(manifest.fetch_policy, result.attempts),
         )
     )
     return CaptureId(manifest.capture_id)
