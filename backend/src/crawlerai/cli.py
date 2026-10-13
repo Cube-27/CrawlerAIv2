@@ -147,6 +147,19 @@ def main(argv: Sequence[str] | None = None) -> None:
             if args.eval_command == "capture":
                 asyncio.run(_eval_capture(args.split, args.schema, args.page_kind, args.category, args.urls))
             else:
-                asyncio.run(_eval_import_sites(args.split, args.file, args.pages_per_site))
+                # The site list is read only from under the working directory, as `fetch --out` is written there.
+                cwd = Path.cwd().resolve()
+                sites = (cwd / args.file).resolve()
+                if not sites.is_relative_to(cwd):
+                    parser.error(f"--file must be under the working directory {cwd}")
+                asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
         except (EvalCliError, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
             parser.exit(2, f"crawlerai eval: {e}\n")
+        except Exception as e:
+            if args.split == "dev":
+                raise
+            # A hidden or fresh failure is reported by its type only: a message or traceback could carry a URL or a
+            # row's values (a database error's DETAIL), and hidden cases must not reach a log (C1).
+            parser.exit(
+                1, f"crawlerai eval: failed with {type(e).__name__}; details withheld for the {args.split} split\n"
+            )

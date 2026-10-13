@@ -169,12 +169,14 @@ def test_capture_refuses_a_url_it_cannot_fetch_before_running(
 
 
 def test_import_sites_captures_the_kept_pages_and_reports_the_rest(
-    runs: list[Call], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    runs: list[Call], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    sites = tmp_path / "sites.txt"
-    sites.write_text(f"mixed commerce_detail {A}/p/1\nmixed commerce_detail {A}/p/2\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sites.txt").write_text(
+        f"mixed commerce_detail {A}/p/1\nmixed commerce_detail {A}/p/2\n", encoding="utf-8"
+    )
 
-    main(["eval", "import-sites", "--split", "fresh", "--file", str(sites), "--pages-per-site", "1"])
+    main(["eval", "import-sites", "--split", "fresh", "--file", "sites.txt", "--pages-per-site", "1"])
 
     assert runs == [("fresh", [PageRequest(1, f"{A}/p/1", "commerce_detail", "mixed")], None)]
     assert capsys.readouterr().out == '{"n": 1, "skipped": "robots"}\n{"n": 2, "skipped": "pages_per_site"}\n'
@@ -207,3 +209,62 @@ def test_a_private_split_without_custodian_settings_exits_with_the_reason(
 
     assert exit_info.value.code == 2
     assert capsys.readouterr().err == "crawlerai eval: expected on any other machine\n"
+
+
+@pytest.mark.parametrize("relative", [True, False])
+def test_import_sites_reads_a_site_list_only_from_under_the_working_directory(
+    runs: list[Call],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    relative: bool,
+) -> None:
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    (tmp_path / "sites.txt").write_text(f"mixed commerce_detail {A}/p/1\n", encoding="utf-8")
+    monkeypatch.chdir(workdir)
+    outside = "../sites.txt" if relative else str(tmp_path / "sites.txt")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["eval", "import-sites", "--split", "fresh", "--pages-per-site", "1", "--file", outside])
+
+    assert exit_info.value.code == 2
+    assert runs == []
+    assert "--file must be under the working directory" in capsys.readouterr().err
+
+
+# What a database error can carry: the values of the row it refused.
+_LEAKY = f"duplicate key value violates unique constraint\nDETAIL: Key (url)=({A}/p/1) already exists."
+
+
+def _capture_raising(monkeypatch: pytest.MonkeyPatch, split: Split) -> None:
+    async def run(*args: object) -> list[Outcome]:
+        raise RuntimeError(_LEAKY)
+
+    monkeypatch.setattr(cli, "run_capture", run)
+    main(
+        [
+            "eval", "capture", "--split", split, "--schema", "commerce_detail", "--page-kind", "detail",
+            "--category", "mixed", f"{A}/p/1",
+        ]
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("split", ["hidden", "fresh"])
+def test_an_unexpected_failure_on_a_private_split_is_reported_by_its_type_only(
+    monkeypatch: pytest.MonkeyPatch, settings_env: None, capsys: pytest.CaptureFixture[str], split: Split
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _capture_raising(monkeypatch, split)
+
+    assert exit_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.err == f"crawlerai eval: failed with RuntimeError; details withheld for the {split} split\n"
+    assert "example.test" not in captured.out + captured.err
+
+
+def test_an_unexpected_failure_on_the_dev_split_keeps_its_details(
+    monkeypatch: pytest.MonkeyPatch, settings_env: None
+) -> None:
+    with pytest.raises(RuntimeError, match="DETAIL: Key"):
+        _capture_raising(monkeypatch, "dev")

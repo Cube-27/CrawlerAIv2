@@ -295,21 +295,19 @@ async def test_pages_of_one_host_are_spaced_by_the_robots_crawl_delay(env: Env, 
 
 
 async def test_a_schema_of_another_page_kind_is_refused_before_any_fetch(env: Env, server: Server) -> None:
+    requests, connector = _requests(server, "/p/1", schema=LISTING_SCHEMA), LoopbackConnector(server.port)
+
     with pytest.raises(EvalCliError, match=f"schema {LISTING_SCHEMA} is for listing pages, not detail"):
-        await run_capture(
-            env.settings,
-            "dev",
-            _requests(server, "/p/1", schema=LISTING_SCHEMA),
-            "detail",
-            LoopbackConnector(server.port),
-        )
+        await run_capture(env.settings, "dev", requests, "detail", connector)
 
     assert server.requests == []
 
 
 async def test_an_unknown_schema_is_refused_before_any_fetch(env: Env, server: Server) -> None:
+    requests, connector = _requests(server, "/p/1", schema="eval_capture_unknown"), LoopbackConnector(server.port)
+
     with pytest.raises(EvalCliError, match="no active schema named eval_capture_unknown"):
-        await run_capture(env.settings, "dev", _requests(server, "/p/1", schema="eval_capture_unknown"), None, None)
+        await run_capture(env.settings, "dev", requests, None, connector)
 
     assert server.requests == []
 
