@@ -10,9 +10,9 @@ interface Call {
   body: unknown;
 }
 
-/** What `/healthz` answers by default: the API is up and does not serve the labeling API. */
-export function healthReply(): Response {
-  return Response.json({ status: "ok", eval_ui: false });
+/** A `/healthz` answer: the API is up and, by default, does not serve the labeling API. */
+export function healthReply(evalUi = false): Response {
+  return Response.json({ status: "ok", eval_ui: evalUi });
 }
 
 const HEALTH = "GET /healthz";

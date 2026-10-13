@@ -2,16 +2,12 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { problem, stubApi } from "../test/api";
+import { healthReply, problem, stubApi } from "../test/api";
 import { prefersDark } from "../test/media";
 import { routes } from "./router";
 
 function renderApp(path = "/") {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-}
-
-function health(evalUi: boolean): Response {
-  return Response.json({ status: "ok", eval_ui: evalUi });
 }
 
 describe("app shell", () => {
@@ -26,7 +22,7 @@ describe("app shell", () => {
   });
 
   it("asks /healthz without a key and shows the Labeling entry when the API reports eval_ui", async () => {
-    const calls = stubApi({ "GET /healthz": () => health(true) });
+    const calls = stubApi({ "GET /healthz": () => healthReply(true) });
     renderApp();
 
     const nav = screen.getByRole("navigation", { name: "Main" });
@@ -40,7 +36,7 @@ describe("app shell", () => {
   });
 
   it("hides the Labeling entry when the API reports eval_ui off", async () => {
-    const calls = stubApi({ "GET /healthz": () => health(false) });
+    const calls = stubApi({ "GET /healthz": () => healthReply(false) });
     renderApp();
 
     await waitFor(() => {
@@ -69,7 +65,7 @@ describe("app shell", () => {
 
   it("marks the entry of the current section as the current page, on its nested routes too", async () => {
     stubApi({
-      "GET /healthz": () => health(true),
+      "GET /healthz": () => healthReply(true),
       "GET /v1/eval/pages/page-1": () => problem(404, { title: "Not Found" }),
     });
     renderApp("/labeling/page-1");
