@@ -8,18 +8,18 @@ the held-out pages (§4.7) and activated (§4.8). Every other end is a failed ru
 validation refusing the config, an LLM failure (D-0588), a cancelled job, an error, or an operator's config activated
 while the run was in flight, which a run that started before it does not replace.
 
-A run takes two transactions: one starts the job and reads the pages, one ends it. None is open while role A is called,
-because the LLM client commits usage on a connection of its own and must not wait on a write to the job's row
-(D-0346). The job's start and end are recorded as `learning_started` and `learning_finished` events (SPEC-10 §4.2).
+A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
+role A is called, because the LLM client commits usage on a connection of its own and must not wait on a write to the
+job's row (D-0346). The job's start and end are recorded as `learning_started` and `learning_finished` events
+(SPEC-10 §4.2).
 """
 
 import asyncio
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any, Final
-from uuid import UUID
+from typing import Final
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -43,9 +43,7 @@ from crawlerai.db.models import (
     JobId,
     JobStatus,
     ProgressiveState,
-    SchemaId,
     Site,
-    SiteId,
 )
 from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.schemas import registry
@@ -79,7 +77,7 @@ class _Run:
     host: str
     fetch: FetchMethod
     serving: ExtractionConfigId | None
-    pages: Sequence[StoredPage]
+    pages: Sequence[StoredPage] = ()
 
 
 async def next_learn_job(conn: AsyncConnection) -> JobId | None:
@@ -101,10 +99,14 @@ async def run_learn_job(
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`)."""
     async with engine.begin() as conn:
-        run = await _start(conn, store, job_id)
+        run = await _start(conn, job_id)
     if not isinstance(run, _Run):
         return run
     try:
+        # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
+        async with engine.connect() as conn:
+            pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
+        run = replace(run, pages=pages)
         ir, held_out = await _learn(client, run, vocabulary, max_chars)
         validated = await asyncio.to_thread(validate, ir, run.schema, held_out, vocabulary)
     except LLMFailure as e:
@@ -118,7 +120,7 @@ async def run_learn_job(
         return await _finish(conn, run, validated)
 
 
-async def _start(conn: AsyncConnection, store: ObjectStore, job_id: JobId) -> _Run | Learned | None:
+async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
     job = (
         await conn.execute(
             select(Job.status, Job.request, Job.cancel_requested)
@@ -129,7 +131,7 @@ async def _start(conn: AsyncConnection, store: ObjectStore, job_id: JobId) -> _R
     ).one_or_none()
     if job is None or job.status != "queued":
         return None
-    key = _key(job.request)
+    key = StateKey.from_request(job.request)
     if job.cancel_requested:
         await learning_failed(conn, key)
         await transition_job(conn, job_id, "cancelled")
@@ -138,15 +140,8 @@ async def _start(conn: AsyncConnection, store: ObjectStore, job_id: JobId) -> _R
     schema = await registry.get_by_id(conn, key.schema_id)
     site = (await conn.execute(select(Site.host, Site.fetch_method).where(Site.id == key.site_id))).one()
     serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
-    pages = await load_pages(conn, store, key.site_id, schema, limit=LEARN_AFTER_PAGES)
-    await record_event(conn, job_id, LEARNING_STARTED, {"pages": [str(page.held_out.capture_id) for page in pages]})
-    return _Run(job_id, key, schema, site.host, site.fetch_method, serving, pages)
-
-
-def _key(request: dict[str, Any]) -> StateKey:
-    """The state a `learn` job's request names (D-0549)."""
-    site_id, schema_id = SiteId(UUID(request["site_id"])), SchemaId(UUID(request["schema_id"]))
-    return StateKey(site_id, schema_id, request["schema_version"], request["page_kind"])
+    await record_event(conn, job_id, LEARNING_STARTED)
+    return _Run(job_id, key, schema, site.host, site.fetch_method, serving)
 
 
 def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[SamplePage], list[HeldOutPage]]:

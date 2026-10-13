@@ -95,7 +95,7 @@ async def extract_task(
         site_id=site_id,
         schema=schema,
         caller_supplied=caller_supplied,
-        config_version=None if config is None else config.version,
+        config=config,
     )
 
 
@@ -108,11 +108,11 @@ async def store_extraction(
     site_id: SiteId,
     schema: SchemaDef,
     caller_supplied: bool,
-    config_version: int | None = None,
+    config: ActiveConfig | None = None,
 ) -> Stored:
     """Store `result`, `extract_page`'s for the task's capture, as `extract_task` does: for a caller that extracts
-    before it opens the transaction (`scrape`, which holds no connection while the page resolves). `config_version`
-    is the version of the config a `config`-mode result ran."""
+    before it opens the transaction (`scrape`, which holds no connection while the page resolves). `config` is the
+    config a `config`-mode result ran."""
     extraction_id: ExtractionId = (
         await conn.execute(
             insert(Extraction)
@@ -120,7 +120,7 @@ async def store_extraction(
                 url_task_id=task.id,
                 capture_id=capture_id,
                 engine_version=ENGINE_VERSION,
-                config_version=config_version,
+                config_version=None if config is None else config.version,
                 mode=result.mode,
                 llm_calls=len(result.llm_calls),
                 diagnostics=list(result.diagnostics),

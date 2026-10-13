@@ -65,13 +65,18 @@ class StoredCandidate:
     chosen: bool
 
 
+def _page_fields(schema: SchemaDef) -> set[str]:
+    """A listing's page-scoped fields: every record holds them, and the first one's are the page's."""
+    return {name for name, spec in schema.fields.items() if spec.scope == "page"}
+
+
 def facts_of(
     schema: SchemaDef, records: Sequence[Mapping[str, JsonValue]], candidates: Iterable[StoredCandidate]
 ) -> tuple[Facts, tuple[Facts, ...]]:
     """The page's facts and a listing's rows' facts, from one extraction's records (`record.data`, in stored order)
     and its valid candidates."""
     if schema.page_kind == "listing":
-        page_fields = {name for name, spec in schema.fields.items() if spec.scope == "page"}
+        page_fields = _page_fields(schema)
         first = records[0] if records else {}
         page = Facts(published={name: value for name, value in first.items() if name in page_fields})
         rows = tuple(
@@ -111,7 +116,7 @@ def published_of(
 
     if schema.page_kind != "listing":
         return (published(records[0], schema.fields) if records else {}), ()
-    page_fields = {name for name, spec in schema.fields.items() if spec.scope == "page"}
+    page_fields = _page_fields(schema)
     row_fields = set(schema.fields) - page_fields
     page = published(records[0], page_fields) if records else {}
     return page, tuple(published(record, row_fields) for record in records)

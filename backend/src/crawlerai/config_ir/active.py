@@ -14,6 +14,7 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.drift import Drifted, DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
+from crawlerai.config_ir.progressive import StateKey
 from crawlerai.db.models import ExtractionConfig, JobId, SiteId
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
@@ -25,17 +26,9 @@ async def active_config(
 ) -> ActiveConfig | None:
     """The active config of `site_id` for `schema`'s version and page kind, bound to its executor; None in cold mode."""
     configs = ExtractionConfig
-    row = (
-        await conn.execute(
-            select(configs.id, configs.version, configs.ir).where(
-                configs.site_id == site_id,
-                configs.schema_id == schema.id,
-                configs.schema_version == schema.version,
-                configs.page_kind == schema.page_kind,
-                configs.status == "active",
-            )
-        )
-    ).one_or_none()
+    key = StateKey(site_id, schema.id, schema.version, schema.page_kind)
+    active = (*key.config_scope(), configs.schema_version == schema.version, configs.status == "active")
+    row = (await conn.execute(select(configs.id, configs.version, configs.ir).where(*active))).one_or_none()
     if row is None:
         return None
     executor = EngineExecutor(ExtractionConfigIR.model_validate(row.ir), vocabulary)
@@ -52,6 +45,6 @@ async def record_page(
 ) -> list[Drifted]:
     """Add `result`, a page `config` ran on, to the config's drift window, and return the fields it suspended. A page
     that was not served or did not resolve shows nothing about the config, and is not recorded."""
-    if result.mode != "config" or result.outcome not in ("extracted", "partial"):
+    if result.outcome not in ("extracted", "partial"):
         return []
     return await record_run(conn, config.id, result.candidates, margins=margins, job_id=job_id)

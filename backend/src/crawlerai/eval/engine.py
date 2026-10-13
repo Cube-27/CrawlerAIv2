@@ -40,7 +40,5 @@ class PipelineEngine:
         executor = None
         if config is not None:
             executor = EngineExecutor(config.ir, self.data.vocabulary)
-        if (executor is None) != (mode == "adhoc"):
-            raise ValueError(f"{mode} mode with{'out' if executor is None else ''} a config")
         # Role C reads `llm`, the harness's `RecordedLLM`; a replay is charged to no job.
         return await extract_page(bundle, schema, executor, role_c(llm, job_id=None), data=self.data)

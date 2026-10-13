@@ -531,7 +531,6 @@ async def _derive(
         return _Derived(formats, drafted)
     if drafted is not None:
         _check_usable(drafted, request.page_kind)
-        config = None
     # Role C is bound here when SPEC-06 PR 4 adds it.
     executor = None if config is None else config.executor
     extraction = await extract_page(result.bundle, schema, executor, None, data=work.data, parsed=page)
@@ -645,7 +644,7 @@ async def _finish(
         site_id=site_id,
         schema=derived.schema,
         caller_supplied=True,
-        config_version=None if derived.config is None else derived.config.version,
+        config=derived.config,
     )
     if derived.config is not None:
         await record_page(conn, derived.config, derived.extraction, margins=margins, job_id=task.job_id)
