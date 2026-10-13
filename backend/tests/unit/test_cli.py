@@ -129,7 +129,7 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     }
 
 
-def test_the_scheduler_releases_leases_every_minute_and_expires_and_rechecks_hourly() -> None:
+def test_the_scheduler_releases_leases_and_triggers_learning_every_minute_and_expires_and_rechecks_hourly() -> None:
     async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("not called")
 
@@ -140,6 +140,7 @@ def test_the_scheduler_releases_leases_every_minute_and_expires_and_rechecks_hou
         ("expire_captures", timedelta(hours=1), 1000),
         ("expire_candidates", timedelta(hours=1), 1000),
         ("recheck_fetch_method", timedelta(hours=1), 1),
+        ("trigger_learning", timedelta(minutes=1), 100),
     ]
 
 
