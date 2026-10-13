@@ -46,6 +46,15 @@ def field_problems(index: int, item: dict[str, object], missing: list[str]) -> l
     return problems
 
 
+def path_problem(index: int, path: str, claimed: set[str]) -> str | None:
+    """Why an entry's path cannot be claimed: it is invalid, or an earlier entry already claims it."""
+    if not valid_entry_path(path):
+        return f"{MANIFEST}: entry {index} has an invalid path {path!r}"
+    if path in claimed:
+        return f"{MANIFEST}: entry {index} repeats path {path!r}"
+    return None
+
+
 def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str, str], set[str]]:
     """Return the problems, the claimed paths, the sha256 of each complete entry by path, and the fetched paths.
 
@@ -64,16 +73,14 @@ def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str,
         if "path" in missing:
             continue
         path = str(item["path"])
-        if not valid_entry_path(path):
-            problems.append(f"{MANIFEST}: entry {index} has an invalid path {path!r}")
-        elif path in claimed:
-            problems.append(f"{MANIFEST}: entry {index} repeats path {path!r}")
-        else:
-            claimed.add(path)
-            if not missing:
-                pinned[path] = str(item["sha256"]).lower()
-            if item.get("fetched") is True:
-                fetched.add(path)
+        if problem := path_problem(index, path, claimed):
+            problems.append(problem)
+            continue
+        claimed.add(path)
+        if not missing:
+            pinned[path] = str(item["sha256"]).lower()
+        if item.get("fetched") is True:
+            fetched.add(path)
     return problems, claimed, pinned, fetched
 
 
