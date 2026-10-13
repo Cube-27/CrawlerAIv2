@@ -1,0 +1,10 @@
+"""Which headers a capture records (SPEC-02 §4.7): every one except credentials."""
+
+from crawlerai.storage.capture_bundle import HeaderList
+
+# Credentials are never stored in a capture: cookies (RFC 6265 §4) and the proxy credentials (RFC 9110 §11.7.2).
+_UNRECORDED = frozenset({"cookie", "set-cookie", "proxy-authorization"})
+
+
+def recorded(headers: HeaderList) -> HeaderList:
+    return tuple((name, value) for name, value in headers if name.lower() not in _UNRECORDED)

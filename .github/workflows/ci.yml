@@ -41,6 +41,8 @@ jobs:
       - run: uv run --no-sync --no-build ruff format --check
       - run: uv run --no-sync --no-build mypy src tests migrations
       - run: uv run --no-sync --no-build lint-imports
+      # Headless Chromium for the `browser`-marked tests (SPEC-02 §6), at the build this Patchright version pins.
+      - run: uv run --no-sync --no-build patchright install --with-deps --only-shell chromium
       - name: Create databases and roles
         working-directory: .
         run: |

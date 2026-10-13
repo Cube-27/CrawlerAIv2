@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
-- Next: SPEC-04 PR 2 (#47), SPEC-02 PR 6 (#46) in review; then SPEC-04 PR 3, SPEC-02 PR 7; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
+- Next: SPEC-04 PR 2 (#47) in review; then SPEC-04 PR 3, SPEC-02 PR 7; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
@@ -88,7 +88,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 3 | Persist capture + `crawlerai fetch` CLI | done (#22) | Also closed #18's follow-ups. |
 | 4 | Politeness + robots + backoff via requeue | done (#26) | Also closed #23's follow-ups. |
 | 5 | Rung selection + fetch_method memory + re-check scheduler task | done (#31) | SPEC-02 L0 rows complete. |
-| 6 | Patchright browser rung with network capture | todo | |
+| 6 | Patchright browser rung with network capture | done (#46) | SSRF guard is a per-fetch SOCKS5 proxy (D-0249). Optional follow-ups: cap `json_responses` at append time; keep the first hop's exchange when the guard rejects a later redirect. |
 | 7 | Proxy pools | todo | |
 | 8 | Adapter protocol + Greenhouse | todo | |
 | 9 | Lever adapter | todo | |

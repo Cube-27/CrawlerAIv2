@@ -92,21 +92,7 @@ class SafeConnector:
         self._resolver = resolver
 
     async def check(self, url: str) -> Target:
-        parts = urlsplit(url)
-        scheme = parts.scheme.lower()
-        if scheme not in _SCHEMES:
-            raise SsrfRejected("scheme")
-        host = parts.hostname
-        if not host:
-            raise SsrfRejected("host")
-        try:
-            explicit = parts.port
-        except ValueError as e:
-            raise SsrfRejected("port") from e
-        port = _SCHEMES[scheme] if explicit is None else explicit
-        if port not in _PORTS:
-            raise SsrfRejected("port")
-
+        host, port = authority(url)
         literal = _literal_ip(host)
         if literal is not None:
             if not is_public(literal):
@@ -120,6 +106,26 @@ class SafeConnector:
         """The next hop of a redirect: `location` is resolved against the current URL (RFC 9110 §10.2.2) and
         checked from scratch."""
         return await self.check(urljoin(current.url, location))
+
+
+def authority(url: str) -> tuple[str, int]:
+    """The host (lowercased, as `urlsplit` gives it) and port `url` connects to; reject a scheme, host or port the
+    guard doesn't admit."""
+    parts = urlsplit(url)
+    scheme = parts.scheme.lower()
+    if scheme not in _SCHEMES:
+        raise SsrfRejected("scheme")
+    host = parts.hostname
+    if not host:
+        raise SsrfRejected("host")
+    try:
+        explicit = parts.port
+    except ValueError as e:
+        raise SsrfRejected("port") from e
+    port = _SCHEMES[scheme] if explicit is None else explicit
+    if port not in _PORTS:
+        raise SsrfRejected("port")
+    return host, port
 
 
 def _literal_ip(host: str) -> IPAddress | None:

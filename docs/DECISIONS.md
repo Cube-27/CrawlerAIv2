@@ -1535,3 +1535,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: restrict to `schemas/presets/` (a path rule); reject values ending in an IANA TLD (rejects `Product.name`, since `name` is a TLD); validate against the schema.org vocabulary (new manifest data).
 - Why: Structural, derived from the schema document shape, as D-0111's columns are. Residual: a reviewed schema document could map a host spelled `Upper.lower.tld`; vocabulary validation would close it if needed.
 - Reversible: yes
+
+### D-0249 — The browser's SSRF guard is a per-fetch SOCKS5 proxy
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 6 (#46) · Status: decided
+- Decision: Each context gets `proxy=socks5://127.0.0.1:<port>` served by `SocksGuard`, which checks each (host, port) with `SafeConnector.check` once per fetch and connects to the checked IP; loopback and link-local bypass is disabled explicitly (`<-loopback>`, Chromium's implicit bypass rules). The first URL is checked before the context opens; WebRTC non-proxied UDP is disabled. SPEC-02 §4.1 and §4.5 are clarified to match; ARCHITECTURE §7.1 is unchanged.
+- Alternatives: §4.5's `route("**/*")` handler (saw only the first URL of a redirect chain in Patchright 1.63, and lets the browser re-resolve DNS); an HTTP forward proxy (needs a request parser).
+- Why: Meets §7.1's "resolve once and connect only to that public IP, on every redirect hop" for everything the browser opens (INV-16).
+- Reversible: yes
+
+### D-0250 — Browser captures store the raw navigation body
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 6 (#46) · Status: decided
+- Decision: `CaptureBundle.raw_body` and `CaptureManifest.raw_html_sha256` (optional), stored as `body.raw.html` for browser captures; `bundle_version` stays 1 and older manifests decode with `None`.
+- Alternatives: Bump `bundle_version`; store it as a network entry.
+- Why: SPEC-02 §4.8 / D-0010 ask for both bodies; the member is additive.
+- Reversible: yes
+
+### D-0251 — `browser_timeout_s` is a hard cap on the whole browser fetch
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 6 (#46) · Status: decided
+- Decision: `goto` gets what remains; the network-idle wait ends at 90% of it; the rest reads the DOM and bodies. A page that never goes idle is read then, not an error; past the cap is `error`/`timeout`.
+- Alternatives: A separate idle timeout.
+- Why: §4.8's "wait up to `browser_timeout_s` for network idle with a hard cap"; one bound.
+- Reversible: yes
+
+### D-0252 — Browser outcome details follow the HTTP fetcher
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 6 (#46) · Status: decided
+- Decision: The size cap is `max_decompressed_bytes` on both bodies; failures report `timeout`, `ssrf_rejected: <reason>` or `network_error: net::ERR_*`, never the URL (D-0128); the navigation response is not captured as a network body; `browser` tests skip without Chromium except under `CI`.
+- Alternatives: `max_body_bytes`; capture a JSON document as a network body.
+- Why: Consistent with D-0127 and D-0128; the document is already `body.html`.
+- Reversible: yes

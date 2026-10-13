@@ -51,6 +51,7 @@ Out of scope (§22 unless noted):
 - `crawlerai.acquire.ssrf` — `resolve_public(host) -> IPv4/6`, `is_public(ip)`, `SafeConnector`.
 - `crawlerai.acquire.http` — `fetch_http(url, policy) -> FetchResult` (curl_cffi, manual redirects).
 - `crawlerai.acquire.browser` — `fetch_browser(url, policy) -> FetchResult` (Patchright).
+- `crawlerai.acquire.socks_guard` — `SocksGuard`, the SSRF guard in front of the browser (4.5).
 - `crawlerai.acquire.api` — `fetch_json(request_spec, policy) -> FetchResult` (httpx; used by adapters and SPEC-09).
 - `crawlerai.acquire.classify` — `classify(status, headers, body) -> BlockClass`.
 - `crawlerai.acquire.politeness` — per-site limiter and backoff state (in-process; see 4.6).
@@ -130,9 +131,12 @@ if r.method == "browser" and r.block_class == "ok": site.fetch_method = "browser
 - HTTP: curl_cffi is given `resolve=[f"{host}:{port}:{ip}"]` so the connection goes to the checked IP; automatic
   redirects are **disabled**; the fetcher follows up to 5 redirects manually, running `resolve_public` on each
   hop. `Location` to a non-http(s) scheme ends with `error`.
-- Browser: a Playwright `route("**/*")` handler resolves every request host (cached per host for the page) and
-  aborts private targets; redirects are covered because each hop is a new request through the route. Navigation
-  to `file:`, `data:` top-level is aborted.
+- Browser: each fetch's context sends every connection through a SOCKS5 proxy on loopback (`acquire.socks_guard`,
+  RFC 1928). The browser resolves no names behind it; the guard runs `SafeConnector.check` on each host (once per
+  fetch) and connects only to the checked address, so every redirect hop, frame and worker is covered. A request
+  interceptor (`route`) can't do this: it sees only the first request of a redirect chain. The first URL is
+  checked before a context opens, which also refuses `file:` and `data:`. WebRTC is kept from sending UDP outside
+  the proxy.
 - Proxy: the proxy resolves DNS, so pinning the IP is impossible. The guard still runs `resolve_public` on the
   hostname before the request and on each manual redirect hop, and the proxy URL itself must be public or
   explicitly allowlisted in settings (`CRAWLERAI_PROXY_POOLS`), as §7.1 states for proxies.

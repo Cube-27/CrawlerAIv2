@@ -1,8 +1,9 @@
 """Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
 worked remembered in `site.fetch_method`.
 
-The adapter and API-recipe rungs come before these once they exist (SPEC-02 PR 8, SPEC-09); the browser rung's
-implementation is SPEC-02 PR 6. Every rung is a function of (url, policy), so `acquire` decides and records only.
+The adapter and API-recipe rungs come before these once they exist (SPEC-02 PR 8, SPEC-09); the browser rung is
+`crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
+only.
 """
 
 from collections.abc import Awaitable, Callable
