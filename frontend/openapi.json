@@ -312,6 +312,63 @@
         "title": "Labels",
         "type": "object"
       },
+      "ListShape": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "discriminator": {
+              "mapping": {
+                "date": "#/components/schemas/ScalarShape",
+                "datetime": "#/components/schemas/ScalarShape",
+                "enum": "#/components/schemas/ScalarShape",
+                "identifier": "#/components/schemas/ScalarShape",
+                "image_url": "#/components/schemas/ScalarShape",
+                "list": "#/components/schemas/ListShape",
+                "location": "#/components/schemas/ScalarShape",
+                "long_text": "#/components/schemas/ScalarShape",
+                "money": "#/components/schemas/ScalarShape",
+                "object": "#/components/schemas/ObjectShape",
+                "range": "#/components/schemas/ScalarShape",
+                "text": "#/components/schemas/ScalarShape",
+                "url": "#/components/schemas/ScalarShape"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScalarShape"
+              },
+              {
+                "$ref": "#/components/schemas/ListShape"
+              },
+              {
+                "$ref": "#/components/schemas/ObjectShape"
+              }
+            ],
+            "title": "Item"
+          },
+          "scope": {
+            "default": "row",
+            "enum": [
+              "row",
+              "page"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "type": {
+            "const": "list",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "item"
+        ],
+        "title": "ListShape",
+        "type": "object"
+      },
       "NormalizeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -329,6 +386,66 @@
           "raw_text"
         ],
         "title": "NormalizeRequest",
+        "type": "object"
+      },
+      "ObjectShape": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "discriminator": {
+                "mapping": {
+                  "date": "#/components/schemas/ScalarShape",
+                  "datetime": "#/components/schemas/ScalarShape",
+                  "enum": "#/components/schemas/ScalarShape",
+                  "identifier": "#/components/schemas/ScalarShape",
+                  "image_url": "#/components/schemas/ScalarShape",
+                  "list": "#/components/schemas/ListShape",
+                  "location": "#/components/schemas/ScalarShape",
+                  "long_text": "#/components/schemas/ScalarShape",
+                  "money": "#/components/schemas/ScalarShape",
+                  "object": "#/components/schemas/ObjectShape",
+                  "range": "#/components/schemas/ScalarShape",
+                  "text": "#/components/schemas/ScalarShape",
+                  "url": "#/components/schemas/ScalarShape"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ScalarShape"
+                },
+                {
+                  "$ref": "#/components/schemas/ListShape"
+                },
+                {
+                  "$ref": "#/components/schemas/ObjectShape"
+                }
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "scope": {
+            "default": "row",
+            "enum": [
+              "row",
+              "page"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "type": {
+            "const": "object",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "fields"
+        ],
+        "title": "ObjectShape",
         "type": "object"
       },
       "PageDetail": {
@@ -364,6 +481,41 @@
               }
             ],
             "title": "Checker"
+          },
+          "fields": {
+            "additionalProperties": {
+              "discriminator": {
+                "mapping": {
+                  "date": "#/components/schemas/ScalarShape",
+                  "datetime": "#/components/schemas/ScalarShape",
+                  "enum": "#/components/schemas/ScalarShape",
+                  "identifier": "#/components/schemas/ScalarShape",
+                  "image_url": "#/components/schemas/ScalarShape",
+                  "list": "#/components/schemas/ListShape",
+                  "location": "#/components/schemas/ScalarShape",
+                  "long_text": "#/components/schemas/ScalarShape",
+                  "money": "#/components/schemas/ScalarShape",
+                  "object": "#/components/schemas/ObjectShape",
+                  "range": "#/components/schemas/ScalarShape",
+                  "text": "#/components/schemas/ScalarShape",
+                  "url": "#/components/schemas/ScalarShape"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ScalarShape"
+                },
+                {
+                  "$ref": "#/components/schemas/ListShape"
+                },
+                {
+                  "$ref": "#/components/schemas/ObjectShape"
+                }
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
           },
           "final_url": {
             "title": "Final Url",
@@ -455,6 +607,7 @@
           "labeler",
           "checker",
           "labels",
+          "fields",
           "url",
           "final_url",
           "bundle_html",
@@ -593,6 +746,42 @@
           "detail"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "ScalarShape": {
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "default": "row",
+            "enum": [
+              "row",
+              "page"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "text",
+              "long_text",
+              "money",
+              "enum",
+              "url",
+              "image_url",
+              "identifier",
+              "date",
+              "datetime",
+              "location",
+              "range"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ScalarShape",
         "type": "object"
       },
       "SkippedOut": {
@@ -842,7 +1031,15 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Entity tag of the stored labels (RFC 9110 \u00a78.8.3)",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -874,7 +1071,7 @@
     },
     "/v1/eval/pages/{page_id}/labels": {
       "put": {
-        "description": "Store one pass of labels (\u00a716.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;\n`checked` is the checker's pass over a labeled page, by someone other than its labeler.",
+        "description": "Store one pass of labels (\u00a716.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;\n`checked` is the checker's pass over a labeled page, by someone other than its labeler.\n\nWith `If-Match` set to the `ETag` of the page as read, a pass over labels that have changed since is refused\nwith 412 (RFC 9110 \u00a713.1.1); a pass that races another store between this request's read and write is 409.",
         "operationId": "put_labels_v1_eval_pages__page_id__labels_put",
         "parameters": [
           {
@@ -885,6 +1082,22 @@
               "format": "uuid",
               "title": "Page Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
             }
           }
         ],
@@ -912,7 +1125,15 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Entity tag of the stored labels (RFC 9110 \u00a78.8.3)",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -924,6 +1145,28 @@
               "application/problem+json": {}
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Failed"
           },
           "422": {
             "content": {

@@ -58,6 +58,10 @@ class EvalNotFound(LookupError):
     """No eval page, eval capture or eval run of this store's split has the id."""
 
 
+class LabelsChanged(Exception):
+    """The page's labels are no longer the ones the pass was made over: another pass was stored since."""
+
+
 class PrivateCredentialsMissing(Exception):
     """The private eval settings are empty. That is the normal state everywhere but on custodian machines and in the
     protected CI job (C1)."""
@@ -109,8 +113,11 @@ class EvalStore(Protocol):
 
     async def put_page(self, page: EvalPageRow) -> EvalPageId: ...
 
-    async def put_labels(self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass) -> None:
-        """Store `labels` as `who`'s pass. A labeler pass clears the checker: the labels it checked have changed."""
+    async def put_labels(
+        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+    ) -> None:
+        """Store `labels` as `who`'s pass over the page's labels `expected`, or raise `LabelsChanged` when the page
+        holds others by then. A labeler pass clears the checker: the labels it checked have changed."""
 
     async def put_run(self, run: EvalRunRow) -> EvalRunId: ...
 
@@ -273,7 +280,9 @@ class _SqlEvalStore(ABC):
             await conn.execute(insert(self._page).values(page.model_dump()))
         return page.id
 
-    async def put_labels(self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass) -> None:
+    async def put_labels(
+        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+    ) -> None:
         match pass_:
             case "labeler":
                 people = {"labeler": who, "checker": None}
@@ -282,15 +291,19 @@ class _SqlEvalStore(ABC):
             case _:
                 assert_never(pass_)
         page = self._page.c
+        # Compare-and-set: the update applies only over the labels the pass was made over (jsonb equality).
         query = (
             update(self._page)
-            .where(page.id == page_id, page.split == self._split)
+            .where(page.id == page_id, page.split == self._split, page.labels == expected)
             .values(labels=labels, **people)
             .returning(page.id)
         )
         async with self._engine.begin() as conn:
             if (await conn.execute(query)).one_or_none() is None:
-                raise EvalNotFound(f"no {self._split} eval page {page_id}")
+                exists = select(page.id).where(page.id == page_id, page.split == self._split)
+                if (await conn.execute(exists)).one_or_none() is None:
+                    raise EvalNotFound(f"no {self._split} eval page {page_id}")
+                raise LabelsChanged(f"the labels of {self._split} eval page {page_id} changed since they were read")
 
     async def put_run(self, run: EvalRunRow) -> EvalRunId:
         if run.split != self._split:

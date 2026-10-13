@@ -87,6 +87,9 @@ export interface paths {
          * Put Labels
          * @description Store one pass of labels (§16.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;
          *     `checked` is the checker's pass over a labeled page, by someone other than its labeler.
+         *
+         *     With `If-Match` set to the `ETag` of the page as read, a pass over labels that have changed since is refused
+         *     with 412 (RFC 9110 §13.1.1); a pass that races another store between this request's read and write is 409.
          */
         put: operations["put_labels_v1_eval_pages__page_id__labels_put"];
         post?: never;
@@ -270,12 +273,46 @@ export interface components {
              */
             status: "draft" | "labeled" | "checked";
         };
+        /** ListShape */
+        ListShape: {
+            /** Item */
+            item: components["schemas"]["ScalarShape"] | components["schemas"]["ListShape"] | components["schemas"]["ObjectShape"];
+            /**
+             * Scope
+             * @default row
+             * @enum {string}
+             */
+            scope: "row" | "page";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "list";
+        };
         /** NormalizeRequest */
         NormalizeRequest: {
             /** Field */
             field: string;
             /** Raw Text */
             raw_text: string;
+        };
+        /** ObjectShape */
+        ObjectShape: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["ScalarShape"] | components["schemas"]["ListShape"] | components["schemas"]["ObjectShape"];
+            };
+            /**
+             * Scope
+             * @default row
+             * @enum {string}
+             */
+            scope: "row" | "page";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "object";
         };
         /** PageDetail */
         PageDetail: {
@@ -293,6 +330,10 @@ export interface components {
             category: "platform_store" | "custom_store" | "api_backed" | "job_board" | "mixed";
             /** Checker */
             checker: string | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["ScalarShape"] | components["schemas"]["ListShape"] | components["schemas"]["ObjectShape"];
+            };
             /** Final Url */
             final_url: string;
             /**
@@ -376,6 +417,20 @@ export interface components {
             title: string;
             /** Type */
             type: string;
+        };
+        /** ScalarShape */
+        ScalarShape: {
+            /**
+             * Scope
+             * @default row
+             * @enum {string}
+             */
+            scope: "row" | "page";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "date" | "datetime" | "enum" | "identifier" | "image_url" | "location" | "long_text" | "money" | "range" | "text" | "url";
         };
         /** SkippedOut */
         SkippedOut: {
@@ -514,6 +569,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Entity tag of the stored labels (RFC 9110 §8.8.3) */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -544,7 +601,9 @@ export interface operations {
     put_labels_v1_eval_pages__page_id__labels_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "if-match"?: string | null;
+            };
             path: {
                 page_id: string;
             };
@@ -559,6 +618,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Entity tag of the stored labels (RFC 9110 §8.8.3) */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -567,6 +628,26 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };

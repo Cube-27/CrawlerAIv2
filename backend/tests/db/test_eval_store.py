@@ -33,6 +33,8 @@ from crawlerai.eval.store import (
     EvalPageRow,
     EvalRunRow,
     EvalStore,
+    Labels,
+    LabelsChanged,
     PrivateEvalStore,
 )
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
@@ -215,8 +217,10 @@ async def test_labels_record_the_labeler_then_a_different_checker(case: Case) ->
     capture_id = await case.store.put_capture(_bundle(), "custom_store")
     page_id = await case.store.put_page(_page(case, capture_id))
 
-    await case.store.put_labels(page_id, {"status": "labeled", "fields": {}}, "ana", "labeler")
-    await case.store.put_labels(page_id, {"status": "checked", "fields": {}}, "ben", "checker")
+    await case.store.put_labels(page_id, {"status": "labeled", "fields": {}}, "ana", "labeler", expected={})
+    await case.store.put_labels(
+        page_id, {"status": "checked", "fields": {}}, "ben", "checker", expected={"status": "labeled", "fields": {}}
+    )
 
     page = await case.store.get_page(page_id)
     assert (page.labels, page.labeler, page.checker) == ({"status": "checked", "fields": {}}, "ana", "ben")
@@ -225,30 +229,55 @@ async def test_labels_record_the_labeler_then_a_different_checker(case: Case) ->
 async def test_a_labeler_pass_clears_the_check(case: Case) -> None:
     capture_id = await case.store.put_capture(_bundle(), "custom_store")
     page_id = await case.store.put_page(_page(case, capture_id))
-    await case.store.put_labels(page_id, {"status": "labeled"}, "ana", "labeler")
-    await case.store.put_labels(page_id, {"status": "checked"}, "ben", "checker")
+    await case.store.put_labels(page_id, {"status": "labeled"}, "ana", "labeler", expected={})
+    await case.store.put_labels(page_id, {"status": "checked"}, "ben", "checker", expected={"status": "labeled"})
 
-    await case.store.put_labels(page_id, {"status": "labeled"}, "ben", "labeler")
+    await case.store.put_labels(page_id, {"status": "labeled"}, "ben", "labeler", expected={"status": "checked"})
 
     page = await case.store.get_page(page_id)
     assert (page.labels, page.labeler, page.checker) == ({"status": "labeled"}, "ben", None)
 
 
+async def test_a_pass_over_labels_that_changed_since_they_were_read_is_refused(case: Case) -> None:
+    capture_id = await case.store.put_capture(_bundle(), "custom_store")
+    page_id = await case.store.put_page(_page(case, capture_id))
+    await case.store.put_labels(page_id, {"status": "labeled", "notes": "v1"}, "ana", "labeler", expected={})
+    await case.store.put_labels(
+        page_id, {"status": "labeled", "notes": "v2"}, "ana", "labeler", expected={"status": "labeled", "notes": "v1"}
+    )
+
+    with pytest.raises(LabelsChanged):
+        await case.store.put_labels(
+            page_id,
+            {"status": "checked", "notes": "v1"},
+            "ben",
+            "checker",
+            expected={"status": "labeled", "notes": "v1"},
+        )
+
+    page = await case.store.get_page(page_id)
+    assert (page.labels, page.checker) == ({"status": "labeled", "notes": "v2"}, None)
+
+
 async def test_the_labeler_cannot_check_their_own_labels(case: Case) -> None:
     capture_id = await case.store.put_capture(_bundle(), "custom_store")
     page_id = await case.store.put_page(_page(case, capture_id))
-    await case.store.put_labels(page_id, {"status": "labeled"}, "ana", "labeler")
+    await case.store.put_labels(page_id, {"status": "labeled"}, "ana", "labeler", expected={})
+    labels: Labels = {"status": "checked"}
+    expected: Labels = {"status": "labeled"}
 
     with pytest.raises(IntegrityError, match="two_people"):
-        await case.store.put_labels(page_id, {"status": "checked"}, "ana", "checker")
+        await case.store.put_labels(page_id, labels, "ana", "checker", expected=expected)
 
     page = await case.store.get_page(page_id)
     assert (page.labels, page.checker) == ({"status": "labeled"}, None)
 
 
 async def test_labels_of_an_unknown_page_are_refused(case: Case) -> None:
+    page_id = EvalPageId(uuid7())
+
     with pytest.raises(EvalNotFound):
-        await case.store.put_labels(EvalPageId(uuid7()), {}, "ana", "labeler")
+        await case.store.put_labels(page_id, {}, "ana", "labeler", expected={})
 
 
 async def test_the_latest_run_is_the_newest_optionally_of_one_commit(case: Case) -> None:

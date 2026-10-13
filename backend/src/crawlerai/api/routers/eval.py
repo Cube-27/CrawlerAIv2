@@ -8,6 +8,8 @@ reason as an RFC 9457 problem (§4.11). SPEC-07 moves the problem model to `api.
 """
 
 import asyncio
+import hashlib
+import json
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -15,7 +17,7 @@ from email.message import Message
 from typing import Annotated, Literal, Protocol, assert_never, get_args
 from urllib.parse import urljoin
 
-from fastapi import APIRouter, Body, Depends, FastAPI, Query, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from selectolax.lexbor import LexborHTMLParser
@@ -27,7 +29,7 @@ from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped, check_urls, run_capture
 from crawlerai.eval.labels import FieldShape, InvalidLabels, LabelError, Labels, LabelStatus, field_shapes, parse_labels
-from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass
+from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import CaptureBundle
 
@@ -131,6 +133,23 @@ def _not_found(page_id: EvalPageId) -> JSONResponse:
     return _problem(404, "not_found", "Not found", f"no dev eval page {page_id}")
 
 
+def _labels_changed(status: int) -> JSONResponse:
+    return _problem(
+        status, "labels_changed", "Labels changed", "another pass was stored since the page was read; reload it"
+    )
+
+
+def _etag(page: EvalPageRow) -> str:
+    """A strong entity tag of the page's stored labels (RFC 9110 §8.8.3): sha256 of their canonical JSON."""
+    canonical = json.dumps(page.labels, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return f'"{hashlib.sha256(canonical.encode()).hexdigest()}"'
+
+
+def _if_match(header: str, etag: str) -> bool:
+    """RFC 9110 §13.1.1: `*`, or a list of entity tags one of which strongly matches. A weak tag never does."""
+    return header.strip() == "*" or etag in (tag.strip() for tag in header.split(","))
+
+
 _STATUSES: dict[str, LabelStatus] = {status: status for status in get_args(LabelStatus)}
 
 
@@ -168,6 +187,7 @@ class PageSummary(_Model):
 
 class PageDetail(PageSummary):
     labels: Labels | None
+    fields: dict[str, FieldShape]  # the page's schema fields, which its labels label
     url: str
     final_url: str
     bundle_html: str  # sanitized; see `sanitize_html`
@@ -220,16 +240,22 @@ async def list_pages(
     return [PageSummary.of(page) for page in await backend.store.list_pages(schema_name, status)]
 
 
-@router.get("/pages/{page_id}", response_model=PageDetail, responses={404: _PROBLEM})
-async def get_page(page_id: EvalPageId, backend: Backend) -> PageDetail | JSONResponse:
+# The labels' entity tag, which `PUT labels` takes back as `If-Match` so a pass never overwrites one it didn't see.
+_ETAG = {"ETag": {"description": "Entity tag of the stored labels (RFC 9110 §8.8.3)", "schema": {"type": "string"}}}
+
+
+@router.get("/pages/{page_id}", response_model=PageDetail, responses={200: {"headers": _ETAG}, 404: _PROBLEM})
+async def get_page(page_id: EvalPageId, backend: Backend, response: Response) -> PageDetail | JSONResponse:
     try:
         page = await backend.store.get_page(page_id)
     except EvalNotFound:
         return _not_found(page_id)
     bundle = await backend.store.get_bundle(page.capture_id)
+    response.headers["ETag"] = _etag(page)
     return PageDetail(
         **PageSummary.of(page).model_dump(),
         labels=Labels.model_validate(page.labels) if page.labels else None,
+        fields=await backend.schema_fields(page.schema_id),
         url=bundle.manifest.url,
         final_url=bundle.manifest.final_url,
         bundle_html=await asyncio.to_thread(sanitize_html, bundle),  # parsing is synchronous
@@ -245,18 +271,27 @@ _LABELS_BODY = {"content": {"application/json": {"schema": {"$ref": "#/component
 @router.put(
     "/pages/{page_id}/labels",
     response_model=PageSummary,
-    responses={404: _PROBLEM, 422: _PROBLEM},
+    responses={200: {"headers": _ETAG}, 404: _PROBLEM, 409: _PROBLEM, 412: _PROBLEM, 422: _PROBLEM},
     openapi_extra={"requestBody": _LABELS_BODY},
 )
 async def put_labels(
-    page_id: EvalPageId, labels: Annotated[dict[str, JsonValue], Body()], backend: Backend
+    page_id: EvalPageId,
+    labels: Annotated[dict[str, JsonValue], Body()],
+    backend: Backend,
+    response: Response,
+    if_match: Annotated[str | None, Header()] = None,
 ) -> PageSummary | JSONResponse:
     """Store one pass of labels (§16.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;
-    `checked` is the checker's pass over a labeled page, by someone other than its labeler."""
+    `checked` is the checker's pass over a labeled page, by someone other than its labeler.
+
+    With `If-Match` set to the `ETag` of the page as read, a pass over labels that have changed since is refused
+    with 412 (RFC 9110 §13.1.1); a pass that races another store between this request's read and write is 409."""
     try:
         page = await backend.store.get_page(page_id)
     except EvalNotFound:
         return _not_found(page_id)
+    if if_match is not None and not _if_match(if_match, _etag(page)):
+        return _labels_changed(412)
     try:
         parsed = parse_labels(labels, page.page_kind, await backend.schema_fields(page.schema_id))
     except InvalidLabels as e:
@@ -265,11 +300,17 @@ async def put_labels(
         case LabelError() as error:
             return _invalid("the labels are invalid", [error])
         case (who, pass_):
-            stored = parsed.model_dump(mode="json")
-            await backend.store.put_labels(page.id, stored, who, pass_)
+            # A checker pass keeps the labeler's name as stored (`_pass` matches it casefolded).
+            stored = parsed.model_dump(mode="json") | ({"labeler": page.labeler} if parsed.status == "checked" else {})
+            try:
+                await backend.store.put_labels(page.id, stored, who, pass_, expected=page.labels)
+            except LabelsChanged:
+                return _labels_changed(409)
             # As the store records it: a labeler pass clears the checker.
             people = {pass_: who} | ({"checker": None} if parsed.status != "checked" else {})
-            return PageSummary.of(page.model_copy(update={"labels": stored, **people}))
+            updated = page.model_copy(update={"labels": stored, **people})
+            response.headers["ETag"] = _etag(updated)
+            return PageSummary.of(updated)
 
 
 def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelError:
@@ -280,7 +321,8 @@ def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelErr
         return labels.labeler, "labeler"
     if _status(page) not in ("labeled", "checked"):
         return LabelError("status", "only a labeled page can be checked")
-    if labels.labeler != page.labeler:
+    # Names compare casefolded, as `Labels` compares labeler and checker.
+    if page.labeler is None or labels.labeler is None or labels.labeler.casefold() != page.labeler.casefold():
         return LabelError("labeler", f"a checker pass keeps the page's labeler ({page.labeler})")
     if labels.checker is None:  # `parse_labels` refuses a checked page without a checker
         return LabelError("checker", "a checker pass names its checker")
@@ -324,6 +366,16 @@ def _outcome(outcome: Outcome) -> CapturedOut | SkippedOut:
             assert_never(outcome)
 
 
+# WHATWG URL parsing (URL Standard §4.4) strips leading C0 controls and spaces and removes every ASCII tab and
+# newline before it reads the scheme, so `java<TAB>script:` is a `javascript:` URL in a browser.
+_URL_IGNORED = str.maketrans("", "", "\t\n\r")
+_C0_OR_SPACE = "".join(map(chr, range(0x21)))
+
+
+def _javascript_url(value: str) -> bool:
+    return value.translate(_URL_IGNORED).lstrip(_C0_OR_SPACE).lower().startswith("javascript:")
+
+
 # HTML elements that run script or embed another browsing context (HTML Living Standard §4.8, §4.12.1), and the
 # `meta http-equiv` pragmas, which can refresh or redirect the document (§4.2.5.3).
 _ACTIVE = "script, iframe, frame, frameset, object, embed, meta[http-equiv]"
@@ -342,7 +394,7 @@ def sanitize_html(bundle: CaptureBundle) -> str:
         node.decompose()
     for node in tree.root.traverse() if tree.root is not None else ():
         for name, value in list(node.attributes.items()):
-            if name.lower().startswith("on") or (value or "").strip().lower().startswith("javascript:"):
+            if name.lower().startswith("on") or _javascript_url(value or ""):
                 del node.attrs[name]
     head, base = tree.head, LexborHTMLParser("<base>").css_first("base")
     if head is None or base is None:

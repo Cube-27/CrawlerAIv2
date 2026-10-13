@@ -105,3 +105,19 @@ async def test_a_dev_page_is_labeled_checked_and_exported(client: tuple[httpx.As
     assert exported["labels"]["fields"]["price"]["value"] == {"amount": "19.90", "currency": "EUR"}
     assert (exported["labeler"], exported["checker"]) == ("ana", "ben")
     assert [row["id"] for row in listed] == [page_id]
+
+
+async def test_a_pass_over_labels_read_before_another_pass_is_refused(client: tuple[httpx.AsyncClient, str]) -> None:
+    http, page_id = client
+    read = await http.get(f"/v1/eval/pages/{page_id}")
+    labeled = await http.put(
+        f"/v1/eval/pages/{page_id}/labels", json=_labels("labeled"), headers={"If-Match": read.headers["etag"]}
+    )
+
+    stale = await http.put(
+        f"/v1/eval/pages/{page_id}/labels", json=_labels("draft"), headers={"If-Match": read.headers["etag"]}
+    )
+
+    assert labeled.status_code == 200
+    assert (stale.status_code, stale.json()["type"]) == (412, "labels_changed")
+    assert (await http.get(f"/v1/eval/pages/{page_id}")).json()["status"] == "labeled"
