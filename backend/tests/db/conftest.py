@@ -12,8 +12,10 @@ The database is migrated to head once per session. Each test runs in a transacti
 or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
 """
 
+import hashlib
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -22,7 +24,11 @@ from alembic.config import Config
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.core.capture import BlockClass
+from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Job, JobEvent, UrlTask, UsageEvent
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 TEST_PRIVATE_DATABASE_URL = "CRAWLERAI_TEST_PRIVATE_DATABASE_URL"
@@ -74,3 +80,41 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
         for model in (UsageEvent, JobEvent, UrlTask, Job):
             await connection.execute(delete(model))
     await engine.dispose()
+
+
+@pytest.fixture
+def fetch_result() -> Callable[..., FetchResult]:
+    """A factory for the result of one HTTP fetch of `url`, as `fetch_http` reports it."""
+
+    def make(
+        url: str,
+        status: int = 200,
+        body: bytes = b"",
+        headers: HeaderList = (),
+        *,
+        block_class: BlockClass = "ok",
+        error: str | None = None,
+    ) -> FetchResult:
+        manifest = CaptureManifest(
+            capture_id=uuid7(),
+            url=url,
+            final_url=url,
+            fetched_at=datetime.now(UTC),
+            method="http",
+            status_code=status,
+            block_class=block_class,
+            headers=Headers(request=(), response=headers),
+            timings_ms={"total": 1},
+            html_sha256=hashlib.sha256(body).hexdigest(),
+            network_bodies=(),
+            fetch_policy=FetchPolicy().model_dump(mode="json"),
+            engine_version="test",
+        )
+        attempt = AttemptRecord(
+            method="http", status=status or None, block_class=block_class, duration_ms=1, error=error
+        )
+        return FetchResult(
+            bundle=CaptureBundle(manifest=manifest, body=body, network=()), duration_ms=1, attempts=(attempt,)
+        )
+
+    return make
