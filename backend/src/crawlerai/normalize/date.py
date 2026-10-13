@@ -18,7 +18,7 @@ needs a time and a numeric UTC offset; a date takes the calendar date the input 
 
 import re
 from datetime import UTC, date, datetime, timedelta
-from functools import cache
+from functools import cache, lru_cache
 from typing import Literal
 
 from babel import Locale, UnknownLocaleError
@@ -33,8 +33,6 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 Order = Literal["DMY", "MDY", "YMD"]
 # The day/month/year orders of CLDR short date patterns, which are also the orders `dateparser` takes (`DATE_ORDER`).
 _ORDERS: tuple[Order, ...] = ("DMY", "MDY", "YMD")
-# CLDR date pattern letters (UTS #35 Part 4 §8): `y` year, `M` month, `d` day, in the order a pattern writes them.
-_PATTERN_ORDERS: dict[str, Order] = {"dMy": "DMY", "Mdy": "MDY", "yMd": "YMD"}
 
 # SPEC-04 §4.4: years outside this range are not values of the type.
 _MIN_YEAR, _MAX_YEAR = 1970, 2100
@@ -57,6 +55,10 @@ _DIGITS = re.compile(r"\d+")
 _QUOTED = re.compile(r"'[^']*'")
 # `dateparser` periods that name a day; a coarser period ("1 month ago", "March 2026") does not name a date.
 _DAY_PERIODS = frozenset({"day", "time"})
+# `dateparser` keeps every settings object it is given for the life of the process, so relative dates are read
+# against two fixed bases and then moved onto `ctx.captured_at`: a per-call base would grow that registry per page.
+_ANCHOR = datetime(2000, 1, 3)
+_ONE_DAY = timedelta(days=1)
 # The languages `dateparser` has data for (from CLDR); it rejects any other at parse time.
 _DATEPARSER_LANGUAGES = frozenset(language_order)
 
@@ -116,8 +118,12 @@ def _years(field: str) -> list[int]:
     if len(field) == 4:
         return [int(field)]
     if len(field) <= 2:
-        return [century + int(field) for century in (1900, 2000, 2100)]
+        return _two_digit_years(int(field))
     return []
+
+
+def _two_digit_years(two_digits: int) -> list[int]:
+    return [century + two_digits for century in (1900, 2000, 2100)]
 
 
 def _from_text(
@@ -129,12 +135,19 @@ def _from_text(
     written = {int(run) for run in _DIGITS.findall(text)}
     readings: set[datetime] = set()
     for order in orders:
-        reading = _parse(text, languages, order, base)
-        if reading is None or reading[1] not in _DAY_PERIODS:
+        reading = _parse(text, languages, order, _ANCHOR)
+        if reading is None:
             continue
         value, period = reading
+        if period not in _DAY_PERIODS:
+            continue
         # A relative date moves with its base and an absolute one does not: a structural test, not a phrase list.
-        relative = _parse(text, languages, order, base + timedelta(days=1)) != reading
+        moved = _parse(text, languages, order, _ANCHOR + _ONE_DAY)
+        relative = moved != reading
+        if relative:
+            if moved != (value + _ONE_DAY, period):
+                continue  # not a fixed offset from its base, so moving it onto the capture time would misread it
+            value += base.replace(tzinfo=None) - _ANCHOR
         if want_time:
             if relative:
                 # "2 days ago" carries no time of day, and `dateparser` reports "2 hours ago" with the same period.
@@ -154,7 +167,7 @@ def _from_text(
 def _with_years(value: datetime) -> set[datetime]:
     """`value` in each year its two-digit year names; 29 February drops out of common years."""
     readings = set()
-    for year in _years(f"{value.year % 100:02d}"):
+    for year in _two_digit_years(value.year % 100):
         try:
             readings.add(value.replace(year=year))
         except ValueError:
@@ -163,6 +176,17 @@ def _with_years(value: datetime) -> set[datetime]:
 
 
 def _parse(text: str, languages: tuple[str, ...], order: Order, base: datetime) -> tuple[datetime, str | None] | None:
+    try:
+        data = _parser(languages, order, base).get_date_data(text)
+    except (ValueError, OverflowError):
+        return None
+    if data.date_obj is None:
+        return None
+    return data.date_obj, data.period
+
+
+@lru_cache(maxsize=256)
+def _parser(languages: tuple[str, ...], order: Order, base: datetime) -> DateDataParser:
     settings = {
         # A date missing its day, month or year is not a date; filling it from the clock would be a default (C7).
         "STRICT_PARSING": True,
@@ -170,13 +194,7 @@ def _parse(text: str, languages: tuple[str, ...], order: Order, base: datetime) 
         "RELATIVE_BASE": base,
         "RETURN_TIME_AS_PERIOD": True,
     }
-    try:
-        data = DateDataParser(languages=list(languages), settings=settings).get_date_data(text)
-    except (ValueError, OverflowError):
-        return None
-    if data.date_obj is None:
-        return None
-    return data.date_obj, data.period
+    return DateDataParser(languages=list(languages), settings=settings)
 
 
 def _decide(readings: set[date] | set[datetime], want_time: bool) -> NormalizeResult:
@@ -212,7 +230,7 @@ def _orders(ctx: Context) -> tuple[Order, ...]:
     return tuple(o for o in _ORDERS if o in found) or _ORDERS
 
 
-@cache
+@lru_cache(maxsize=1024)  # tags come from pages, so the cache is bounded
 def _tag_orders(tag: str) -> frozenset[Order]:
     """The orders of a BCP 47 tag (or an `ll_TT` Open Graph locale): its CLDR locale's short date pattern when the tag
     names a territory; else the patterns of every CLDR locale of its language and script, since a language alone does
@@ -222,14 +240,20 @@ def _tag_orders(tag: str) -> frozenset[Order]:
     except (ValueError, TypeError, UnknownLocaleError):
         return frozenset()
     if locale.territory:
-        locales = [locale]
-    else:
-        locales = []
-        for identifier in locale_identifiers():
-            other = Locale.parse(identifier)
-            if other.language == locale.language and (locale.script is None or other.script == locale.script):
-                locales.append(other)
-    return frozenset(order for loc in locales if (order := _pattern_order(loc)) is not None)
+        order = _pattern_order(locale)
+        return frozenset() if order is None else frozenset({order})
+    return _language_orders(locale.language, locale.script)
+
+
+@cache  # keyed by CLDR language and script, a finite set
+def _language_orders(language: str, script: str | None) -> frozenset[Order]:
+    locales = (Locale.parse(identifier) for identifier in locale_identifiers())
+    return frozenset(
+        order
+        for loc in locales
+        if loc.language == language and (script is None or loc.script == script)
+        if (order := _pattern_order(loc)) is not None
+    )
 
 
 def _pattern_order(locale: Locale) -> Order | None:
@@ -237,16 +261,15 @@ def _pattern_order(locale: Locale) -> Order | None:
     pattern = _QUOTED.sub("", locale.date_formats["short"].pattern)
     if any(letter not in pattern for letter in "yMd"):
         return None
-    return _PATTERN_ORDERS.get("".join(sorted("yMd", key=pattern.find)))
+    # CLDR date pattern letters (UTS #35 Part 4 §8): `y` year, `M` month, `d` day.
+    order = "".join(sorted("yMd", key=pattern.find)).upper()
+    return next((o for o in _ORDERS if o == order), None)
 
 
 def _languages(ctx: Context) -> tuple[str, ...]:
     """The languages of the page's locales that `dateparser` reads, as primary language subtags (BCP 47 §2.2.1)."""
-    found = []
-    for tag in (ctx.html_lang, ctx.og_locale):
-        if tag and (language := re.split(r"[-_]", tag, maxsplit=1)[0].lower()) and language in _DATEPARSER_LANGUAGES:
-            found.append(language)
-    return tuple(dict.fromkeys(found))
+    primary = (re.split(r"[-_]", tag, maxsplit=1)[0].lower() for tag in (ctx.html_lang, ctx.og_locale) if tag)
+    return tuple(dict.fromkeys(language for language in primary if language in _DATEPARSER_LANGUAGES))
 
 
 def equal(a: JsonValue, b: JsonValue) -> bool:

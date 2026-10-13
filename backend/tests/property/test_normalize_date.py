@@ -172,6 +172,13 @@ def test_a_relative_date_depends_on_the_capture_time() -> None:
     assert normalize("2 days ago", ctx=ctx) == Ok("2026-04-07")
 
 
+@given(st.datetimes(min_value=datetime(1971, 1, 1), max_value=datetime(2100, 1, 1), timezones=st.just(UTC)))
+def test_a_relative_time_counts_back_from_the_capture_time(captured_at: datetime) -> None:
+    ctx = Context(captured_at=captured_at, html_lang="en")
+
+    assert normalize("3 hours ago", ctx=ctx) == Ok((captured_at - timedelta(hours=3)).date().isoformat())
+
+
 @pytest.mark.parametrize(
     ("raw", "ctx", "expected"),
     [
