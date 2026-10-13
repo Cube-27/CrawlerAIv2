@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-01 PR 7 (also renames the double-prefixed CHECKs below); SPEC-02 PR 3; SPEC-01 PR 8; Sonar gate fix (in progress).
+- Next: SPEC-01 PR 7 (also renames the double-prefixed CHECKs below); SPEC-02 PR 3; SPEC-01 PR 8.
+- Done: SonarCloud security findings that failed the gate on `main` fixed in code (#21, D-0141, D-0142).
 - Follow-up for SPEC-01 PR 7 (from #20): CHECK constraints in migrations 0002–0004 are double-prefixed in the database (`ck_job_ck_job_kind`), because the migrations pass full names and the naming convention prefixes again; 0005 uses `op.f()`. Rename them in the next migration and pin it with a test that checks names in the database.
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
 - Follow-up (scale, not yet due): `release_expired_leases` handles all expired leases in one transaction; add a per-run batch limit if many workers die at once (#19 review). The `job_event (job_id, id)` index comes with SPEC-10's SSE query.

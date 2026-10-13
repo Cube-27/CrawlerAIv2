@@ -282,7 +282,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0070 — CI and the image install dependencies from wheels only
-- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: decided
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 2 (#3) · Status: superseded by D-0141
 - Decision: `uv sync --frozen --no-build --no-install-project`, then `uv build --wheel` + `uv pip install --no-build --no-deps` for the project. Later steps use `uv run --no-sync --no-build`. Local dev keeps the editable sync. SonarCloud S8544 on the wheel install is a false positive (it resolves nothing).
 - Alternatives: `uv sync --frozen` (builds sdist dependencies; S8541).
 - Why: No third-party build script runs in CI or the image.
@@ -776,4 +776,18 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Moved from `storage.capture_bundle`; `storage`, `acquire` and `db` import them from `core`.
 - Alternatives: Duplicate the Literals in `db.models`.
 - Why: The layering contract keeps `db` and `storage` independent; one definition keeps the CHECK and the bundle in sync.
+- Reversible: yes
+
+### D-0141 — One locked `uv sync` installs CI and the image
+- Date: 2026-10-13 · Spec/PR: SPEC-00 follow-up (#21) · Status: decided
+- Decision: `uv sync --frozen --no-build --no-binary-package crawlerai --no-editable` (`--no-dev` in the image) replaces D-0070's `--no-install-project` + `uv build` + `uv pip install`. Only the project is built from source; every dependency stays wheel-only from `uv.lock`. Later steps still use `uv run --no-sync --no-build`.
+- Alternatives: keep D-0070's commands and mark SonarCloud S8544 as a false positive.
+- Why: Same property as D-0070 (no third-party build script runs), and every install now comes from the lockfile, which clears S8544 in code.
+- Reversible: yes
+
+### D-0142 — The site-literal scan's allowlist must lie inside `--root`
+- Date: 2026-10-13 · Spec/PR: SPEC-00 follow-up (#21) · Status: decided
+- Decision: the default allowlist is `<root>/tools/site_literal_allowlist.txt`; an explicit `--allowlist` must resolve inside `--root`, else `UsageError`.
+- Alternatives: read any path given (SonarCloud S8707).
+- Why: The scanned repository is the natural base; default CI and hook runs are unchanged.
 - Reversible: yes

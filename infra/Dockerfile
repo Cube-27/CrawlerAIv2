@@ -9,12 +9,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-build --no-install-project
 
-# The project itself is built from this repo's source and installed as a wheel.
+# The project alone is built from this repo's source and installed non-editable; dependencies stay wheel-only.
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv build --wheel --out-dir /tmp/dist \
-    && uv pip install --no-build --no-deps /tmp/dist/*.whl \
-    && rm -rf /tmp/dist
+    uv sync --frozen --no-dev --no-build --no-binary-package crawlerai --no-editable
 COPY alembic.ini ./
 COPY migrations ./migrations
 
