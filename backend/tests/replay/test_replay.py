@@ -5,27 +5,51 @@ import asyncio
 import json
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import JsonValue
 
+from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, ExtractionMode, SchemaId, Split
+from crawlerai.db.models import (
+    CaptureId,
+    EvalCategory,
+    EvalPageId,
+    EvalRunId,
+    ExtractionMode,
+    SchemaId,
+    SourceKind,
+    Split,
+)
+from crawlerai.eval.engine import PipelineEngine
 from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields, build_report
 from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
-from crawlerai.schemas.types import FieldSpec, FieldType
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.types import Evidence, ExtractionResult, FieldOutcome, LLMCallRecord
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, decode, encode, sha256_hex
 
-SCHEMA = SchemaFields(
+SCHEMA = SchemaDef(
+    id=SchemaId(uuid7()),
+    origin="user",
+    status="active",
     name="synthetic_detail",
+    version=1,
     page_kind="detail",
-    fields={"title": FieldSpec(type=FieldType.TEXT), "summary": FieldSpec(type=FieldType.TEXT)},
-    required=frozenset({"title"}),
+    fields={
+        "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
+        "summary": FieldSpec(type=FieldType.TEXT, description="d"),
+    },
 )
+VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
+ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
+DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
 
 
 class MemoryStore:
@@ -110,16 +134,32 @@ class LiveLLM:
         )
 
 
+def published(value: str, evidence: Evidence, source_kind: SourceKind, locator: str) -> FieldOutcome:
+    return FieldOutcome(
+        status="published",
+        reason=None,
+        value=value,
+        evidence=evidence,
+        confidence=None,
+        calibrated=False,
+        source_kind=source_kind,
+        locator=locator,
+        derived_by=None,
+        chosen=None,
+        rejected=(),
+    )
+
+
 class StubEngine:
     """A synthetic engine: the title from the page's `<h1>`, the summary from one LLM call. It reads nothing but the
-    bundle and the LLM, as SPEC-05's `replay_page` will. Records what the harness passed it."""
+    bundle and the LLM, as `extract_page` does. Records what the harness passed it."""
 
     version = "stub+cal.none"
 
     def __init__(self) -> None:
         self.seen: list[tuple[ConfigSnapshot | None, ExtractionMode]] = []
 
-    def schema(self, name: str) -> SchemaFields:
+    def schema(self, name: str) -> SchemaDef:
         if name != SCHEMA.name:
             raise LookupError(name)
         return SCHEMA
@@ -127,11 +167,11 @@ class StubEngine:
     async def replay_page(
         self,
         bundle: CaptureBundle,
-        schema: SchemaFields,
+        schema: SchemaDef,
         config: ConfigSnapshot | None,
         llm: LLMClient,
         mode: ExtractionMode,
-    ) -> PageOutput:
+    ) -> ExtractionResult:
         self.seen.append((config, mode))
         html = bundle.body.decode()
         heading = re.search(r"<h1>(.*?)</h1>", html)
@@ -150,10 +190,28 @@ class StubEngine:
                 job_id=None,
             )
         )
-        fields = {"summary": FieldOutput(status="published", value=response.data["summary"], evidence="llm_grounded")}
+        summary = response.data["summary"]
+        assert isinstance(summary, str)
+        fields = {"summary": published(summary, "llm_grounded", "llm", "text:0-1")}
         if heading is not None:
-            fields["title"] = FieldOutput(status="published", value=heading.group(1), evidence="structured")
-        return PageOutput(block_class=bundle.manifest.block_class, mode=mode, llm_calls=1, fields=fields)
+            fields["title"] = published(heading.group(1), "structured", "microdata", "microdata:/html/body/h1")
+        call = LLMCallRecord(
+            prompt_kind="c_extract_detail",
+            provider=response.provider,
+            model=response.model,
+            request_hash=response.request_hash,
+            tokens_in=response.tokens_in,
+            tokens_out=response.tokens_out,
+        )
+        return ExtractionResult(
+            outcome="extracted",
+            entity=fields,
+            rows=(),
+            candidates=(),
+            llm_calls=(call,),
+            mode=mode,
+            record_confidence=None,
+        )
 
 
 def bundle(n: int) -> CaptureBundle:
@@ -318,7 +376,11 @@ def test_a_case_carries_the_page_and_its_labels() -> None:
     store = MemoryStore()
     page = asyncio.run(add_page(store, 1))
     [case] = asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))
-    assert (case.page_id, case.category, case.schema_def) == (str(page.id), "custom_store", SCHEMA)
+    assert (case.page_id, case.category) == (str(page.id), "custom_store")
+    # Metrics read the schema's fields, required fields and groups.
+    assert case.schema_def == SchemaFields(
+        name="synthetic_detail", page_kind="detail", fields=SCHEMA.fields, required=frozenset({"title"})
+    )
     assert case.labels.model_dump(mode="json", exclude_defaults=True) == {
         "label_version": 1,
         "status": "checked",
@@ -388,6 +450,26 @@ def test_a_missing_recording_drops_the_page() -> None:
     assert dropped_error(store, provider=False).startswith("recording missing:")
 
 
+def test_an_unreadable_recording_drops_the_page() -> None:
+    class Garbled(MemoryStore):
+        async def llm_cache_get(self, key: str) -> bytes | None:
+            return b'{"data": {}}'
+
+    store = Garbled()
+    asyncio.run(add_page(store, 1))
+    assert dropped_error(store, provider=False).startswith("recording unreadable: recording ")
+
+
+def test_a_recording_whose_object_is_gone_drops_the_page() -> None:
+    class Lost(MemoryStore):
+        async def llm_cache_get(self, key: str) -> bytes | None:
+            raise ObjectNotFound(key)
+
+    store = Lost()
+    asyncio.run(add_page(store, 1))
+    assert dropped_error(store, provider=False).endswith("its object is missing")
+
+
 def test_dropped_pages_leave_n_pages() -> None:
     # §4.11: a dropped page counts against `n_pages`, which trips the gate.
     store = MemoryStore()
@@ -411,9 +493,46 @@ def test_a_schema_of_another_page_kind_stops_the_run() -> None:
     listing = SCHEMA.model_copy(update={"page_kind": "listing"})
 
     class ListingEngine(StubEngine):
-        def schema(self, name: str) -> SchemaFields:
+        def schema(self, name: str) -> SchemaDef:
             return listing
 
     run = replay_split(store, ListingEngine(), live=LiveLLM())
     with pytest.raises(ValueError, match="is a detail page"):
         asyncio.run(run)
+
+
+# --- the pipeline (SPEC-05 §7: `extract_page` is what `replay_split` runs) ---
+
+
+def jsonld_page(n: int) -> CaptureBundle:
+    node = {"@context": "https://schema.org", "@type": "Product", "name": f"Item {n}"}
+    body = f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
+    original = bundle(n)
+    manifest = original.manifest.model_copy(update={"html_sha256": sha256_hex(body)})
+    return original.model_copy(update={"manifest": manifest, "body": body})
+
+
+def test_the_pipeline_engine_replays_pages_through_extract_page() -> None:
+    store = MemoryStore()
+    for n in (1, 2):
+        page = asyncio.run(add_page(store, n))
+        store.blobs[page.capture_id] = encode(jsonld_page(n))
+    engine = PipelineEngine(DATA, {SCHEMA.name: SCHEMA})
+
+    first = asyncio.run(replay_split(store, engine, live=None))
+    second = asyncio.run(replay_split(store, engine, live=None))
+
+    assert dump(first) == dump(second)
+    outputs = [case.output for case in first]
+    assert all(isinstance(output, PageOutput) for output in outputs)
+    assert [o.fields["title"] for o in outputs if isinstance(o, PageOutput)] == [
+        FieldOutput(status="published", value=f"Item {n}", evidence="structured") for n in (1, 2)
+    ]
+    report = build_report(first, "dev", engine_version=engine.version, git_sha="a" * 40)
+    assert report.n_pages == 2
+
+
+def test_the_pipeline_engine_knows_only_its_schemas() -> None:
+    engine = PipelineEngine(DATA, {SCHEMA.name: SCHEMA})
+    with pytest.raises(LookupError, match="other_schema"):
+        engine.schema("other_schema")
