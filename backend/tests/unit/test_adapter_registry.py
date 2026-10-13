@@ -99,7 +99,7 @@ def test_every_platform_adapter_has_its_own_name() -> None:
     adapters: tuple[Adapter, ...] = platform_adapters(no_fetch)
 
     names = [adapter.name for adapter in adapters]
-    assert "greenhouse" in names
+    assert {"greenhouse", "lever"} <= set(names)
     Registry(adapters, active=names)  # refuses repeated names
 
 
