@@ -161,7 +161,7 @@ uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic u
 
 # frontend (cd frontend); CI also runs `make api-client` and fails on a diff
 pnpm install --frozen-lockfile
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
+pnpm check && pnpm test && pnpm build   # Vite+: `pnpm check` (vp check) formats, lints and type-checks
 
 # site-literals (cd backend): lint and test the repo tools, then the C3 scan
 uv run ruff check ../tools && uv run ruff format --check ../tools && uv run mypy --strict ../tools
@@ -175,4 +175,4 @@ tools/license_scan.sh               # after `pnpm install` in frontend/; writes 
 ```
 
 Other commands: `uv run crawlerai --version`, `uv run crawlerai openapi` (backend); `pnpm dev`, `pnpm format`
-(frontend).
+(`vp check --fix`) (frontend).

@@ -86,7 +86,7 @@ Out of scope:
     tests/
       unit/  property/  replay/  contracts/
   frontend/
-    package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  eslint.config.js  .prettierrc
+    package.json  pnpm-lock.yaml  pnpm-workspace.yaml  vite.config.ts  tsconfig.json
     src/api/schema.d.ts (generated)  src/api/client.ts
     src/app/ (router, shell, theme)  src/screens/  src/components/
 ```
@@ -125,12 +125,13 @@ Commands (all via `uv run`): `ruff check .`, `ruff format --check .`, `mypy src 
 
 | Tool | Choice | License | Why |
 |---|---|---|---|
-| Build | Vite 6+, React 19, TypeScript 5 | MIT, MIT, Apache-2.0 | Owner choice. |
+| Toolchain | **Vite+** (`vite-plus`, `vp`): Vite (Rolldown), Vitest, Oxlint, Oxfmt and the `tsgo` type-check, configured in `vite.config.ts` | MIT | Owner choice (replaces ESLint, Prettier, `tsc` and the separate Vite/Vitest setup). One config, one command (`vp check`); fast enough for the pre-commit budget (4.8). |
+| Build | React 19, TypeScript 5 (strict `tsconfig.json`, checked by `vp check`) | MIT, Apache-2.0 | Owner choice. |
 | UI library | **HeroUI v3** — `@heroui/react@3.2.6` + `@heroui/styles@3.2.6` **[verified 2026-10-12]** | MIT **[verified from the published packages; D-0051]** | v3 is the stable major (out of beta March 2026). It is built on React Aria Components and Tailwind CSS v4. Use the latest 3.x patch at setup time. |
 | CSS | Tailwind CSS v4 via `@tailwindcss/vite` | MIT | Required by HeroUI v3 **[verified]**. Setup is two CSS imports: `@import "tailwindcss"; @import "@heroui/styles";`. No provider component is needed **[verified]**. |
 | Package manager | `pnpm` | MIT | Strict node_modules, fast, lockfile. |
-| Lint/format | ESLint 9 (flat config) + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-jsx-a11y`; Prettier | MIT | a11y lint supports the React Aria accessibility goal (DESIGN.md). |
-| Unit tests | Vitest + Testing Library + jsdom | MIT | Fast, Vite-native. |
+| Lint/format | Oxlint (type-aware) with the `typescript` (the strict type-checked set), `react` (react-hooks rules) and `jsx-a11y` (strict set) plugins; Oxfmt | MIT | a11y lint supports the React Aria accessibility goal (DESIGN.md). |
+| Unit tests | Vitest (`vp test`, imports from `vite-plus/test`) + Testing Library + jsdom | MIT | Fast, Vite-native. |
 | Routing | `react-router` | MIT | — |
 | API client | `openapi-typescript` (types) + `openapi-fetch` (client) + `@tanstack/react-query` | MIT | Generated from `backend` OpenAPI; see 4.5. |
 
@@ -174,7 +175,8 @@ Jobs (all required for merge, all run on every PR):
 1. `backend`: `uv sync --frozen`; `ruff check`; `ruff format --check`; `mypy`; `lint-imports`; `pytest -m "not replay"`;
    `pytest -m replay` (dev captures only; empty until SPEC-03); alembic `upgrade head` + `downgrade base` + `upgrade head`
    against a service Postgres.
-2. `frontend`: `pnpm install --frozen-lockfile`; `pnpm lint`; `pnpm typecheck`; `pnpm test`; `pnpm build`;
+2. `frontend`: `pnpm install --frozen-lockfile`; `pnpm check` (`vp check`: format, lint, type-check); `pnpm test`;
+   `pnpm build`;
    API client freshness check (4.5).
 3. `licenses`: `tools/license_scan.sh` — backend: `pip-licenses --fail-on "AGPL-3.0;AGPL-3.0-only;AGPL-3.0-or-later;GPL-2.0;GPL-2.0-only;GPL-2.0-or-later;GPL-3.0;GPL-3.0-only;GPL-3.0-or-later;SSPL-1.0;CC-BY-NC-4.0;CC-BY-NC-SA-4.0;CC-BY-NC-ND-4.0;PolyForm-Noncommercial-1.0.0;Commons-Clause"`
    against the synced environment (covers transitive deps); frontend: a `license-checker`-style tool with
@@ -220,7 +222,7 @@ Jobs (all required for merge, all run on every PR):
 `.pre-commit-config.yaml` (fast; whole run < 10 s on a typical change):
 - ruff (lint + format), mypy on changed files is too slow; run mypy only in `make check` and CI.
 - `tools/site_literal_scan.py --public --staged`.
-- prettier + eslint on staged frontend files.
+- `vp check --fix` (format, lint, type-check) on staged frontend files.
 - `end-of-file-fixer`, `trailing-whitespace`, `check-merge-conflict`.
 
 No hook counts lines or complexity (C11).
