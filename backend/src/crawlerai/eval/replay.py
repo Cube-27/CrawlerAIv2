@@ -6,14 +6,11 @@ split's recorded responses, so a replay reads nothing but the bundle, the page's
 recordings: two replays of one engine version give byte-identical results.
 
 `Engine` is the seam for SPEC-05: its `replay_page` is the function the worker calls, with SPEC-03's signature; the
-engine holds its calibration, which `version` names (`core.engine_version`). `LLMRequest`, `LLMResponse` and
-`LLMClient` are the part of SPEC-06's client that recording needs. SPEC-06 brings the full types to
-`crawlerai.llm.client`; these then go, and SPEC-05's `ExtractionResult` and SPEC-04's `SchemaDef` replace
-`PageOutput` and `SchemaFields` (as in `metrics`).
+engine holds its calibration, which `version` names (`core.engine_version`). SPEC-05's `ExtractionResult` and
+SPEC-04's `SchemaDef` replace `PageOutput` and `SchemaFields` (as in `metrics`).
 """
 
-import json
-from typing import Literal, Protocol
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
@@ -21,47 +18,13 @@ from crawlerai.db.models import ExtractionMode
 from crawlerai.eval.labels import from_pydantic, parse_labels
 from crawlerai.eval.metrics import ConfigFieldStatus, EvalCase, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
+from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, request_hash
 from crawlerai.storage.base import ObjectNotFound
-from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle, sha256_hex
-
-
-class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class LLMRequest(_Model):
-    prompt_kind: str
-    model_class: Literal["fast", "strong"]
-    system: str
-    user: str
-    output_schema: dict[str, JsonValue]  # JSON Schema of the response
-
-
-class LLMResponse(_Model):
-    data: dict[str, JsonValue]
-    provider: str
-    model: str
-    tokens_in: int
-    tokens_out: int
-    latency_ms: int
-    request_hash: str
-
-
-class LLMClient(Protocol):
-    async def complete_json(self, req: LLMRequest) -> LLMResponse: ...
+from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
 
 
 class RecordingMissing(LookupError):
     """A replay asked for a response that was never recorded, and no provider may be called."""
-
-
-def request_key(req: LLMRequest) -> str:
-    """sha256 of (role, model, prompt, schema) (§4.5) as a canonical JSON array: an array keeps the parts apart, and
-    sorted keys make the schema's key order irrelevant. The model is the requested class; the provider picks the
-    concrete model after the request exists (SPEC-06 failover), so the key can't depend on it."""
-    parts = [req.prompt_kind, req.model_class, req.system, req.user, req.output_schema]
-    canonical = json.dumps(parts, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return sha256_hex(canonical.encode())
 
 
 class RecordedLLM:
@@ -76,7 +39,7 @@ class RecordedLLM:
         self._live = live
 
     async def complete_json(self, req: LLMRequest) -> LLMResponse:
-        key = request_key(req)
+        key = request_hash(req)
         recorded = await self._store.llm_cache_get(key)
         if recorded is not None:
             return LLMResponse.model_validate_json(recorded)

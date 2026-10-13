@@ -2,32 +2,20 @@
 dev split, and the determinism test: two runs give byte-identical JSON."""
 
 import asyncio
-import hashlib
 import json
 import re
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, ExtractionMode, SchemaId, Split
 from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields, build_report
-from crawlerai.eval.replay import (
-    ConfigSnapshot,
-    LLMClient,
-    LLMRequest,
-    LLMResponse,
-    RecordedLLM,
-    RecordingMissing,
-    replay_split,
-    request_key,
-)
+from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
+from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, request_hash
 from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, decode, encode, sha256_hex
@@ -118,7 +106,7 @@ class LiveLLM:
             tokens_in=len(req.user),
             tokens_out=4,
             latency_ms=100 + len(self.calls),
-            request_hash=request_key(req),
+            request_hash=request_hash(req),
         )
 
 
@@ -153,7 +141,13 @@ class StubEngine:
                 model_class="fast",
                 system="Extract the summary.",
                 user=html,
-                output_schema={"type": "object", "properties": {"summary": {"type": "string"}}},
+                output_schema={
+                    "type": "object",
+                    "properties": {"summary": {"type": "string"}},
+                    "additionalProperties": False,
+                },
+                max_output_tokens=64,
+                job_id=None,
             )
         )
         fields = {"summary": FieldOutput(status="published", value=response.data["summary"], evidence="llm_grounded")}
@@ -261,7 +255,9 @@ REQUEST = LLMRequest(
     model_class="fast",
     system="system prompt",
     user="user prompt",
-    output_schema={"type": "object", "required": ["a"]},
+    output_schema={"type": "object", "required": ["a"], "additionalProperties": False},
+    max_output_tokens=64,
+    job_id=None,
 )
 
 
@@ -269,7 +265,7 @@ def test_a_miss_calls_the_provider_and_records_the_response() -> None:
     store, live = MemoryStore(), LiveLLM()
     response = asyncio.run(RecordedLLM(store, live).complete_json(REQUEST))
     assert live.calls == [REQUEST]
-    assert store.cache == {request_key(REQUEST): response.model_dump_json().encode()}
+    assert store.cache == {request_hash(REQUEST): response.model_dump_json().encode()}
 
 
 def test_a_hit_returns_the_recording_without_calling_the_provider() -> None:
@@ -284,54 +280,17 @@ def test_a_hit_returns_the_recording_without_calling_the_provider() -> None:
 def test_a_miss_without_a_provider_raises() -> None:
     llm = RecordedLLM(MemoryStore(), None)
     call = llm.complete_json(REQUEST)
-    with pytest.raises(RecordingMissing, match=request_key(REQUEST)):
+    with pytest.raises(RecordingMissing, match=request_hash(REQUEST)):
         asyncio.run(call)
 
 
 def test_a_recording_is_data_not_code() -> None:
     # A recording is parsed as JSON into an `LLMResponse`; anything else is refused, never evaluated.
     store = MemoryStore()
-    store.cache[request_key(REQUEST)] = b"__import__('os').system('true')"
+    store.cache[request_hash(REQUEST)] = b"__import__('os').system('true')"
     call = RecordedLLM(store, None).complete_json(REQUEST)
     with pytest.raises(ValueError, match="Invalid JSON"):
         asyncio.run(call)
-
-
-def test_the_key_is_sha256_of_the_canonical_request() -> None:
-    canonical = json.dumps(
-        ["c_extract_detail", "fast", "system prompt", "user prompt", {"required": ["a"], "type": "object"}],
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    assert request_key(REQUEST) == hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def test_the_key_ignores_schema_key_order() -> None:
-    reordered = REQUEST.model_copy(update={"output_schema": {"required": ["a"], "type": "object"}})
-    assert request_key(reordered) == request_key(REQUEST)
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("prompt_kind", "c_extract_listing"),
-        ("model_class", "strong"),
-        ("system", "system prompt "),
-        ("user", "user prompt."),
-        ("output_schema", {"type": "object"}),
-    ],
-)
-def test_each_part_of_the_request_changes_the_key(field: str, value: Any) -> None:
-    assert request_key(REQUEST.model_copy(update={field: value})) != request_key(REQUEST)
-
-
-@given(st.text(), st.text(), st.text(), st.text())
-def test_parts_cannot_run_into_each_other(system_a: str, user_a: str, system_b: str, user_b: str) -> None:
-    # Moving text between two parts never keeps the key: the parts are a JSON array, not a concatenation.
-    a = REQUEST.model_copy(update={"system": system_a, "user": user_a})
-    b = REQUEST.model_copy(update={"system": system_b, "user": user_b})
-    assert (request_key(a) == request_key(b)) == ((system_a, user_a) == (system_b, user_b))
 
 
 # --- replay_split ---
