@@ -66,7 +66,12 @@ const itemSchema: SchemaSummary = {
   name: "item_detail",
   version: 2,
   origin: "user",
-  fields: { title: { type: "text" }, price: { type: "money" }, brand: { type: "text" } },
+  fields: {
+    title: { type: "text" },
+    price: { type: "money" },
+    brand: { type: "text" },
+    tags: { type: "list", item: { type: "text" } },
+  },
 };
 
 function scrapeResponse(overrides: Partial<ScrapeResponse> = {}): ScrapeResponse {
@@ -111,6 +116,7 @@ const withRecords = scrapeResponse({
           value: { amount: "19.90", currency: "EUR" },
           locator: "jsonld:0:$.offers.price",
         }),
+        tags: field({ value: ["blue", "mug"], locator: "jsonld:0:$.keywords" }),
         brand: field({
           status: "conflict",
           reason: "disagree",
@@ -155,7 +161,7 @@ async function openTab(name: string) {
   return within(screen.getByRole("tabpanel", { name }));
 }
 
-describe("scrape screen", () => {
+describe("scrape screen: the request", () => {
   it("is in the main navigation", async () => {
     await openScrape();
 
@@ -216,7 +222,9 @@ describe("scrape screen", () => {
       budget: { llm_calls: 0 },
     });
   });
+});
 
+describe("scrape screen: records and schemas", () => {
   it("shows each record field with its value, status, confidence, evidence, source and locator", async () => {
     stubApi({
       "POST /v1/scrape": () => Response.json(withRecords),
@@ -274,6 +282,26 @@ describe("scrape screen", () => {
         '{"amount":"19.90","currency":"EUR"}',
       ),
     ).toBeInTheDocument();
+    const tags = within(records.getByRole("row", { name: /tags/ }));
+    expect(tags.getByText('["blue","mug"]')).toBeInTheDocument();
+    expect(tags.queryByLabelText(/No value/)).not.toBeInTheDocument();
+  });
+
+  it("still shows the records when the schema request itself fails", async () => {
+    stubApi({
+      "POST /v1/scrape": () => Response.json(withRecords),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => {
+        throw new TypeError("network down");
+      },
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+
+    const records = await openTab("Records");
+    expect(within(records.getByRole("row", { name: /title/ })).getByText("Blue mug")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("types an inline schema's records by the schema sent, without reading a stored one", async () => {
@@ -352,7 +380,9 @@ describe("scrape screen", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.body).toMatchObject({ schema: { prompt: "the item's price" } });
   });
+});
 
+describe("scrape screen: formats and problems", () => {
   it("shows each returned format in its own tab", async () => {
     stubApi({
       "POST /v1/scrape": () =>

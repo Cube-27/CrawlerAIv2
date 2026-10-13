@@ -1,5 +1,4 @@
 import { Table, Typography } from "@heroui/react";
-import type { FieldTypeSpec } from "../../api/field";
 import type { RecordField, ScrapeRecord } from "../../api/scrape";
 import { ConfidenceCell } from "../../components/ConfidenceCell";
 import { EmptyView } from "../../components/EmptyView";
@@ -8,9 +7,6 @@ import { FieldValue } from "../../components/FieldValue";
 import { LocatorText } from "../../components/LocatorText";
 import { StatusLabel } from "../../components/StatusLabel";
 import type { FieldTypes } from "./run";
-
-// A field whose type is unknown is shown as the server sent it: a string as is, anything else as JSON (FieldValue).
-const UNKNOWN_TYPE: FieldTypeSpec = { type: "text" };
 
 /** One record's fields, one row each, with every `field_meta` attribute the API returns (SPEC-07 §4.4). */
 function RecordFields({
@@ -52,7 +48,7 @@ function RecordFields({
                 <Table.Row id={field.name}>
                   <Table.Cell>{field.name}</Table.Cell>
                   <Table.Cell>
-                    <FieldValue field={field} spec={fieldTypes[field.name] ?? UNKNOWN_TYPE} />
+                    <FieldValue field={field} spec={fieldTypes[field.name] ?? null} />
                   </Table.Cell>
                   <Table.Cell>
                     <FieldStatusBadge status={field.status} />

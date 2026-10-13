@@ -21,6 +21,17 @@ describe("FieldStatusBadge", () => {
 });
 
 describe("FieldValue", () => {
+  it.each([
+    [["blue", "mug"], '["blue","mug"]'],
+    [{ amount: "19.90", currency: "EUR" }, '{"amount":"19.90","currency":"EUR"}'],
+    ["Blue mug", "Blue mug"],
+  ])("shows a published value of unknown type as the server sent it: %j", (value, text) => {
+    render(<FieldValue field={{ status: "published", reason: null, value }} spec={null} />);
+
+    expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/No value/)).not.toBeInTheDocument();
+  });
+
   it("renders a conflict as an em dash with its reason and status, and no value", async () => {
     render(
       <FieldValue
