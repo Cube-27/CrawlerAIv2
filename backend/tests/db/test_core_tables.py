@@ -75,8 +75,9 @@ async def test_site_defaults_to_http_fetch_method_with_no_overrides(conn: AsyncC
 async def test_site_host_is_unique(conn: AsyncConnection) -> None:
     await conn.execute(_site("example.test"))
 
+    duplicate = _site("example.test")
     with pytest.raises(IntegrityError, match="uq_site_host"):
-        await conn.execute(_site("example.test"))
+        await conn.execute(duplicate)
 
 
 async def test_hosts_differing_only_by_a_www_label_are_two_sites(conn: AsyncConnection) -> None:
@@ -89,15 +90,15 @@ async def test_hosts_differing_only_by_a_www_label_are_two_sites(conn: AsyncConn
 
 
 async def test_site_host_must_be_lowercase(conn: AsyncConnection) -> None:
+    statement = _site("Example.test")
     with pytest.raises(IntegrityError, match="ck_site_host_lowercase"):
-        await conn.execute(_site("Example.test"))
+        await conn.execute(statement)
 
 
 async def test_site_requires_an_existing_project(conn: AsyncConnection) -> None:
+    statement = _site("example.test", project_id=ProjectId(uuid.UUID("00000000-0000-7000-8000-000000000000")))
     with pytest.raises(IntegrityError, match="fk_site_project_id_project"):
-        await conn.execute(
-            _site("example.test", project_id=ProjectId(uuid.UUID("00000000-0000-7000-8000-000000000000")))
-        )
+        await conn.execute(statement)
 
 
 @pytest.mark.parametrize("fetch_method", get_args(FetchMethod))
@@ -119,16 +120,18 @@ async def test_site_accepts_every_fetch_method(conn: AsyncConnection, fetch_meth
 async def test_site_rejects_values_outside_its_domain(
     conn: AsyncConnection, columns: dict[str, Any], constraint: str
 ) -> None:
+    statement = _site("example.test", **columns)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(_site("example.test", **columns))
+        await conn.execute(statement)
 
 
 async def test_schema_def_name_and_version_are_unique(conn: AsyncConnection) -> None:
     await conn.execute(_schema(name="commerce_detail", version=1))
     await conn.execute(_schema(name="commerce_detail", version=2))
 
+    duplicate = _schema(name="commerce_detail", version=1)
     with pytest.raises(IntegrityError, match="uq_schema_def_name_version"):
-        await conn.execute(_schema(name="commerce_detail", version=1))
+        await conn.execute(duplicate)
 
 
 async def test_schema_def_required_groups_default_to_empty(conn: AsyncConnection) -> None:
@@ -166,8 +169,9 @@ async def test_schema_def_accepts_every_enumeration_member(conn: AsyncConnection
 async def test_schema_def_rejects_values_outside_its_domain(
     conn: AsyncConnection, columns: dict[str, Any], constraint: str
 ) -> None:
+    statement = _schema(**columns)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(_schema(**columns))
+        await conn.execute(statement)
 
 
 async def test_api_key_hash_is_unique_and_starts_unrevoked(conn: AsyncConnection) -> None:
@@ -175,5 +179,6 @@ async def test_api_key_hash_is_unique_and_starts_unrevoked(conn: AsyncConnection
     row = (await conn.execute(insert(ApiKey).values(**key).returning(ApiKey.last_used_at, ApiKey.revoked_at))).one()
 
     assert (row.last_used_at, row.revoked_at) == (None, None)
+    duplicate = insert(ApiKey).values(**key)
     with pytest.raises(IntegrityError, match="uq_api_key_hashed_key"):
-        await conn.execute(insert(ApiKey).values(**key))
+        await conn.execute(duplicate)

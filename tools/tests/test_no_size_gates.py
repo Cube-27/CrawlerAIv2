@@ -64,6 +64,19 @@ def test_checks_without_gates_pass(tmp_path: Path) -> None:
         ("frontend/package.json", '    "check": "vp lint -D pedantic",'),
         ("frontend/package.json", '    "check": "vp lint --deny=style",'),
         ("frontend/package.json", '  "jest": { "coverageThreshold": { "global": { "lines": 80 } } }'),
+        # The complexity check with any threshold but 15, or with complexipy's ratchet or report-only modes.
+        ("backend/pyproject.toml", "max-complexity-allowed = 20"),
+        ("Makefile", "\tcd backend && uv run complexipy --max-complexity-allowed 16"),
+        # The limit is set only in config: a flag would be a second place to change it.
+        (".pre-commit-config.yaml", "        entry: uv run complexipy --max-complexity-allowed 15"),
+        ("Makefile", "\tcd backend && uv run complexipy --max-complexity-allowed=150"),
+        ("backend/pyproject.toml", "snapshot-create = true"),
+        (".github/workflows/ci.yml", "      - run: uv run complexipy --snapshot-ignore"),
+        ("Makefile", "\tcd backend && uv run complexipy --ignore-complexity"),
+        ("backend/pyproject.toml", "ignore-complexity = true"),
+        ("frontend/vite.config.ts", '      "crawlerai/cognitive-complexity": ["error", { max: 25 }],'),
+        ("frontend/vite.config.ts", '      "crawlerai/cognitive-complexity": ["warn", { max: 15 }],'),
+        ("frontend/vite.config.ts", '      "complexity/complexity": ["error", { cognitive: 15 }],'),
     ],
 )
 def test_size_complexity_or_coverage_gate_fails_with_path_and_line(tmp_path: Path, path: str, line: str) -> None:
@@ -118,3 +131,24 @@ def test_every_finding_is_reported(tmp_path: Path) -> None:
         ".github/workflows/ci.yml:2",
         "Makefile:2",
     ]
+
+
+def test_the_complexity_limit_of_15_and_the_file_length_warning_pass(tmp_path: Path) -> None:
+    root = make_root(
+        tmp_path,
+        {
+            "backend/pyproject.toml": "[tool.complexipy]\nmax-complexity-allowed=15\nfailed = true\n",
+            "Makefile": "check-complexity:\n\tcd backend && uv run complexipy --no-ignore\n",
+            "frontend/vite.config.ts": (
+                '    jsPlugins: [{ name: "crawlerai", specifier: "./lint/cognitive-complexity.js" }],\n'
+                '      "crawlerai/cognitive-complexity": ["error", { max: 15 }],\n'
+                '      "crawlerai/cognitive-complexity": [ "error", {max:15} ],\n'
+            ),
+            ".github/workflows/ci.yml": "      - run: python3 tools/file_length.py\n",
+        },
+    )
+
+    result = run_check(root)
+
+    assert result.returncode == 0, result.stdout
+    assert result.stdout == "no-size-gates: ok, 4 files\n"

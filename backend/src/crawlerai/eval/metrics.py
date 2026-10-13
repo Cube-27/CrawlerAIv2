@@ -348,14 +348,16 @@ def _zero_touch(schema: SchemaFields, judgments: Sequence[Judgment]) -> bool:
         return False
     if any(j.field in schema.required and j.cell != "TP" for j in judgments):
         return False
-    for group in schema.required_groups:
-        cells: defaultdict[str, set[Cell]] = defaultdict(set)
-        for j in judgments:
-            if j.field in group:
-                cells[j.entity].add(j.cell)
-        if any("TP" not in c or "FP" in c for c in cells.values()):
-            return False
-    return True
+    return all(_group_met(group, judgments) for group in schema.required_groups)
+
+
+def _group_met(group: frozenset[str], judgments: Sequence[Judgment]) -> bool:
+    """Whether a required group has a TP member and no FP member on each entity (§4.6)."""
+    cells: defaultdict[str, set[Cell]] = defaultdict(set)
+    for j in judgments:
+        if j.field in group:
+            cells[j.entity].add(j.cell)
+    return not any("TP" not in c or "FP" in c for c in cells.values())
 
 
 def _ratio(num: int, den: int) -> float | None:

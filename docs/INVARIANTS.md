@@ -26,7 +26,7 @@ is not built yet is still binding: review applies it until the check exists.
 | INV-15 | Price, currency and availability of a published offer come from one source object. | §10 | Resolver test. | SPEC-05 |
 | INV-16 | Every outbound connection target is a public IP; each redirect hop is re-checked; proxies do not bypass the check. | §7.1, §18 | SSRF tests with a stub resolver. | SPEC-02 |
 | INV-17 | LLM output is never executed. | §11, §18 | ruff S102/S307, plus a grep for `exec(`, `eval(` and `subprocess` outside an allowlisted module. | ruff: active (`S` rules in `backend/pyproject.toml`). Grep: added with the first LLM code (SPEC-06). |
-| INV-18 | CI and hooks contain no LOC, complexity or coverage-threshold gates. | C11 | `tools/no_size_gates.py` (CI `no-size-gates`). | Active. |
+| INV-18 | CI and hooks contain no size, complexity or coverage-threshold gate other than C11's two: cognitive complexity of at most 15 per function (a failing check) and a warning for source files over 800 lines (never a failure). No ratchets. (Amended 2026-10-13, ARCHITECTURE Appendix A #33.) | C11 | `tools/no_size_gates.py` (CI `no-size-gates`). | Active. |
 | INV-19 | Every PR that touches extraction behaviour carries the dev delta report and the hidden pass/fail per field type. | C10 | PR template; protected job comment. | PR template: active. Protected job comment: SPEC-03. |
 | INV-20 | An exported config field reproduces the engine's value on every held-out page while there are fewer than 10, and on ≥ 95% from 10 on, or is marked `manual`. | §12.3 | Release check test. | SPEC-08 |
 | INV-21 | Wrong-product count on hidden is 0, or the merge fails. | G2, §16.4 | Protected job gate. | SPEC-03; reports `no_baseline` until milestone M. |

@@ -24,9 +24,9 @@ API: Final = "https://boards-api.greenhouse.io/v1/boards"
 # is `/embed/job_board?for={board_token}`, an embedded job `/embed/job_app?for={board_token}&token={job_id}`.
 BOARD_HOSTS: Final = frozenset({"boards.greenhouse.io", "job-boards.greenhouse.io"})
 
-# A board token is a `PATH_SEGMENT`; a job id is the API's integer id.
+# A board token is a `PATH_SEGMENT`; a job id is the API's integer id, in ASCII digits.
 _TOKEN = PATH_SEGMENT
-_JOB_ID = re.compile(r"[0-9]+")
+_JOB_ID = re.compile(r"\d+", re.ASCII)
 
 # schema.org JobPosting property -> the member names leading to its value in a job object (Job Board API
 # documentation, job object). `content` is the description as HTML-escaped HTML; `first_published` and `company_name`

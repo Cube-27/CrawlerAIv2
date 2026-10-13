@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     MetaData,
     Text,
+    TextClause,
     UniqueConstraint,
     Uuid,
     func,
@@ -119,6 +120,16 @@ def created_at_column() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+def empty_object_default() -> TextClause:
+    """The server default of a JSONB object column: an empty object."""
+    return text("'{}'::jsonb")
+
+
+def version_positive() -> CheckConstraint:
+    """Versions count from 1."""
+    return CheckConstraint("version >= 1", name="version_positive")
+
+
 class Project(Base):
     __tablename__ = "project"
 
@@ -168,7 +179,7 @@ class SchemaDef(Base):
         UniqueConstraint("id", "version"),
         # The target of `eval_page`'s (`schema_id`, `schema_name`) foreign key.
         UniqueConstraint("id", "name"),
-        CheckConstraint("version >= 1", name="version_positive"),
+        version_positive(),
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("origin", SchemaOrigin), name="origin"),
         CheckConstraint(one_of("status", SchemaStatus), name="status"),
@@ -216,7 +227,7 @@ class Capture(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     duration_ms: Mapped[int] = mapped_column(Integer)
-    fetch_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    fetch_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
 
 
 class ExtractionConfig(Base):
@@ -224,7 +235,7 @@ class ExtractionConfig(Base):
     __table_args__ = (
         _schema_version_fk(),
         UniqueConstraint("site_id", "schema_id", "page_kind", "version"),
-        CheckConstraint("version >= 1", name="version_positive"),
+        version_positive(),
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("status", ConfigStatus), name="status"),
         CheckConstraint(one_of("origin", ConfigOrigin), name="origin"),
@@ -248,7 +259,7 @@ class ExtractionConfig(Base):
     status: Mapped[ConfigStatus] = mapped_column(Text, server_default=text("'draft'"))
     ir: Mapped[dict[str, Any]] = mapped_column(JSONB)
     origin: Mapped[ConfigOrigin] = mapped_column(Text)
-    field_status: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    field_status: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     validation_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
@@ -305,7 +316,7 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(Text, server_default=text("'queued'"))
     webhook_url: Mapped[str | None] = mapped_column(Text)
     engine_version: Mapped[str] = mapped_column(Text)
-    usage: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    usage: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     created_at: Mapped[datetime] = created_at_column()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -356,7 +367,7 @@ class JobEvent(Base):
     job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     kind: Mapped[str] = mapped_column(Text)
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
 
 
 class UsageEvent(Base):
@@ -375,7 +386,7 @@ class UsageEvent(Base):
     model_or_pool: Mapped[str | None] = mapped_column(Text)
     quantity: Mapped[int] = mapped_column(BigInteger)
     # `metadata` is taken by the declarative base; the column keeps the §6 name.
-    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, server_default=text("'{}'::jsonb"))
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, server_default=empty_object_default())
 
 
 class Extraction(Base):
@@ -432,7 +443,7 @@ class Record(Base):
     __table_args__ = (
         _schema_version_fk(),
         CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
-        CheckConstraint("version >= 1", name="version_positive"),
+        version_positive(),
         # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4).
         Index(None, "site_id", "entity_key", "schema_id"),
     )
@@ -470,7 +481,7 @@ class EvalPageColumns:
     schema_name: Mapped[str] = mapped_column(Text)
     page_kind: Mapped[PageKind] = mapped_column(Text)
     category: Mapped[EvalCategory] = mapped_column(Text)
-    labels: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    labels: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     labeler: Mapped[str | None] = mapped_column(Text)
     checker: Mapped[str | None] = mapped_column(Text)
     # The active config of the page's site when it was captured, if any, to measure config fields (SPEC-03 §4.5).

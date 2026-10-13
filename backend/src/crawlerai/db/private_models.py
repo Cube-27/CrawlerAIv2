@@ -18,7 +18,6 @@ from sqlalchemy import (
     MetaData,
     Text,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -33,6 +32,7 @@ from crawlerai.db.models import (
     EvalRunColumns,
     PrivateSplit,
     created_at_column,
+    empty_object_default,
     eval_page_checks,
     one_of,
 )
@@ -77,7 +77,7 @@ class EvalCapture(PrivateBase):
     html_sha256: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     duration_ms: Mapped[int] = mapped_column(Integer)
-    fetch_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    fetch_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
 
 
 class PrivateEvalPage(EvalPageColumns, PrivateBase):

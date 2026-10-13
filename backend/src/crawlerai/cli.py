@@ -167,6 +167,7 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     capture = eval_commands.add_parser(
         "capture", help="fetch pages and store each as an unlabeled eval page of the split"
     )
+    capture.set_defaults(handler=_run_eval, eval_handler=_run_eval_capture)
     capture.add_argument("--split", choices=splits, required=True)
     capture.add_argument("--schema", required=True, help="the name of an active schema")
     capture.add_argument("--page-kind", choices=page_kinds, required=True)
@@ -175,12 +176,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     import_sites = eval_commands.add_parser(
         "import-sites", help="capture the pages of a site list (`<category> <schema> <url>` per line) into the split"
     )
+    import_sites.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_sites)
     import_sites.add_argument("--split", choices=splits, required=True)
     import_sites.add_argument("--file", type=Path, required=True)
     import_sites.add_argument("--pages-per-site", type=_positive_int, required=True)
     promote_command = eval_commands.add_parser(
         "promote", help="move the fresh sites whose pages are all checked into dev, keeping their labels"
     )
+    promote_command.set_defaults(handler=_run_eval, eval_handler=_run_eval_promote)
     # The one move §16.1 defines for fresh; hidden moves only by `rotate-hidden`.
     promote_command.add_argument("--from", dest="source", choices=["fresh"], required=True)
     promote_command.add_argument("--to", dest="target", choices=["dev"], required=True)
@@ -188,12 +191,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     rotate = eval_commands.add_parser(
         "rotate-hidden", help="move a fraction of the hidden sites, chosen per category, into dev"
     )
+    rotate.set_defaults(handler=_run_eval, eval_handler=_run_eval_rotate_hidden)
     rotate.add_argument("--fraction", type=_fraction, required=True)
     for name, help_ in (
         ("calibrate", "write backend/data/calibration.json from a dev eval run"),
         ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval run"),
     ):
         fit = eval_commands.add_parser(name, help=help_)
+        fit.set_defaults(handler=_run_eval, eval_handler=_run_eval_fit)
         # Every split is accepted here so that the refusal is the command's own, stated and tested (INV-02).
         fit.add_argument("--split", choices=splits, required=True, help="dev; any other split is refused")
         fit.add_argument("--run", type=uuid.UUID, required=True, help="the id of the dev eval run to fit on")
@@ -214,15 +219,27 @@ def _fraction(value: str) -> float:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    parser = _parser()
+    args = parser.parse_args(argv)
+    # Each command's parser names its handler (`set_defaults(handler=...)`); no command runs nothing.
+    handler = getattr(args, "handler", None)
+    if handler is not None:
+        handler(parser, args)
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="crawlerai")
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('crawlerai')}")
     commands = parser.add_subparsers(dest="command")
-    commands.add_parser("openapi", help="print the API's OpenAPI document as JSON")
-    commands.add_parser("worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM")
+    commands.add_parser("openapi", help="print the API's OpenAPI document as JSON").set_defaults(handler=_run_openapi)
+    commands.add_parser(
+        "worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM"
+    ).set_defaults(handler=_run_worker)
     commands.add_parser(
         "scheduler", help="run the scheduler: release expired leases, expire old data, re-check fetch methods"
-    )
+    ).set_defaults(handler=_run_scheduler)
     fetch = commands.add_parser("fetch", help="fetch one URL over HTTP into a capture bundle file")
+    fetch.set_defaults(handler=_run_fetch)
     fetch.add_argument("url")
     fetch.add_argument(
         "--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar), under this directory"
@@ -230,63 +247,94 @@ def main(argv: Sequence[str] | None = None) -> None:
     schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
         dest="schemas_command", required=True
     )
-    schemas.add_parser("sync", help="insert the preset schema versions the database lacks (after migrating)")
+    schemas.add_parser(
+        "sync", help="insert the preset schema versions the database lacks (after migrating)"
+    ).set_defaults(handler=_run_schemas)
     data = commands.add_parser("data", help="the pinned data files of backend/data/manifest.json").add_subparsers(
         dest="data_command", required=True
     )
-    data.add_parser("fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256")
+    data.add_parser(
+        "fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256"
+    ).set_defaults(handler=_run_data)
     _add_eval_commands(commands)
-    args = parser.parse_args(argv)
-    if args.command == "openapi":
-        _print_openapi()
-    elif args.command == "worker":
-        asyncio.run(_work())
-    elif args.command == "scheduler":
-        asyncio.run(_schedule())
-    elif args.command == "fetch":
-        # The bundle is written only under the working directory: a path argument never reaches elsewhere.
-        cwd = Path.cwd().resolve()
-        out = (cwd / args.out).resolve()
-        if not out.is_relative_to(cwd):
-            parser.error(f"--out must be under the working directory {cwd}")
-        asyncio.run(_fetch(args.url, out))
-    elif args.command == "schemas":
-        try:
-            asyncio.run(_sync_presets())
-        except PresetConflict as e:
-            parser.exit(2, f"crawlerai schemas sync: {e}\n")
-    elif args.command == "data":
-        try:
-            for line in fetch_data(_data_dir()):
-                print(line)
-        except (DataFetchError, EvalCliError) as e:
-            parser.exit(2, f"crawlerai data fetch: {e}\n")
-    elif args.command == "eval":
-        try:
-            if args.eval_command == "capture":
-                asyncio.run(_eval_capture(args.split, args.schema, args.page_kind, args.category, args.urls))
-            elif args.eval_command == "promote":
-                asyncio.run(_eval_promote(args.all))
-            elif args.eval_command == "rotate-hidden":
-                asyncio.run(_eval_rotate_hidden(args.fraction))
-            elif args.eval_command in ("calibrate", "fit-precedence"):
-                # Refused before any store is opened: a private split's run is never read here (C1).
-                calibrate.require_dev(args.split)
-                asyncio.run(_eval_fit(args.eval_command, EvalRunId(args.run)))
-            else:
-                # The site list is read only from under the working directory, as `fetch --out` is written there.
-                cwd = Path.cwd().resolve()
-                sites = (cwd / args.file).resolve()
-                if not sites.is_relative_to(cwd):
-                    parser.error(f"--file must be under the working directory {cwd}")
-                asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
-        except (EvalCliError, EvalNotFound, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
-            parser.exit(2, f"crawlerai eval: {e}\n")
-        except Exception as e:
-            # Only a dev command shows its failure; `promote` and `rotate-hidden` read private splits and have none.
-            split = getattr(args, "split", "private")
-            if split == "dev":
-                raise
-            # A hidden or fresh failure is reported by its type only: a message or traceback could carry a URL or a
-            # row's values (a database error's DETAIL), and hidden cases must not reach a log (C1).
-            parser.exit(1, f"crawlerai eval: failed with {type(e).__name__}; details withheld for the {split} split\n")
+    return parser
+
+
+def _under_cwd(parser: argparse.ArgumentParser, option: str, path: Path) -> Path:
+    """`path` resolved against the working directory; a path argument never reaches outside it."""
+    cwd = Path.cwd().resolve()
+    resolved = (cwd / path).resolve()
+    if not resolved.is_relative_to(cwd):
+        parser.error(f"{option} must be under the working directory {cwd}")
+    return resolved
+
+
+def _run_openapi(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    _print_openapi()
+
+
+def _run_worker(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    asyncio.run(_work())
+
+
+def _run_scheduler(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    asyncio.run(_schedule())
+
+
+def _run_fetch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    # The bundle is written only under the working directory: a path argument never reaches elsewhere.
+    asyncio.run(_fetch(args.url, _under_cwd(parser, "--out", args.out)))
+
+
+def _run_schemas(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    try:
+        asyncio.run(_sync_presets())
+    except PresetConflict as e:
+        parser.exit(2, f"crawlerai schemas sync: {e}\n")
+
+
+def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    try:
+        for line in fetch_data(_data_dir()):
+            print(line)
+    except (DataFetchError, EvalCliError) as e:
+        parser.exit(2, f"crawlerai data fetch: {e}\n")
+
+
+def _run_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    try:
+        args.eval_handler(parser, args)
+    except (EvalCliError, EvalNotFound, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
+        parser.exit(2, f"crawlerai eval: {e}\n")
+    except Exception as e:
+        # Only a dev command shows its failure; `promote` and `rotate-hidden` read private splits and have none.
+        split = getattr(args, "split", "private")
+        if split == "dev":
+            raise
+        # A hidden or fresh failure is reported by its type only: a message or traceback could carry a URL or a
+        # row's values (a database error's DETAIL), and hidden cases must not reach a log (C1).
+        parser.exit(1, f"crawlerai eval: failed with {type(e).__name__}; details withheld for the {split} split\n")
+
+
+def _run_eval_capture(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_eval_capture(args.split, args.schema, args.page_kind, args.category, args.urls))
+
+
+def _run_eval_import_sites(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    # The site list is read only from under the working directory, as `fetch --out` is written there.
+    sites = _under_cwd(parser, "--file", args.file)
+    asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
+
+
+def _run_eval_promote(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_eval_promote(args.all))
+
+
+def _run_eval_rotate_hidden(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_eval_rotate_hidden(args.fraction))
+
+
+def _run_eval_fit(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    # Refused before any store is opened: a private split's run is never read here (C1).
+    calibrate.require_dev(args.split)
+    asyncio.run(_eval_fit(args.eval_command, EvalRunId(args.run)))

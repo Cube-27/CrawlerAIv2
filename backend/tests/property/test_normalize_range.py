@@ -30,22 +30,32 @@ PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
 
 def _money(raw: Raw, _ctx: Context) -> NormalizeResult:
     if isinstance(raw, dict):
-        code, price = raw["priceCurrency"], raw["price"]
-        if code not in CODES:
-            return Invalid("unknown_currency")
-        amount = Decimal(str(price))
-    else:
-        assert isinstance(raw, str)
-        number = re.search(r"[0-9]+(?:\.[0-9]+)?", raw)
-        if number is None:
-            return Invalid("no_number")
-        amount = Decimal(number.group())
-        codes = [c for c in CODES if c in raw]
-        if "$" in raw and not codes:
-            return Ambiguous("symbol", tuple({"amount": str(amount), "currency": c} for c in ("USD", "CAD")))
-        if len(codes) != 1:
-            return Invalid("no_currency")
-        code = codes[0]
+        return _structured_money(raw)
+    assert isinstance(raw, str)
+    return _text_money(raw)
+
+
+def _structured_money(raw: dict[str, JsonValue]) -> NormalizeResult:
+    code, price = raw["priceCurrency"], raw["price"]
+    if code not in CODES:
+        return Invalid("unknown_currency")
+    return _positive(Decimal(str(price)), str(code))
+
+
+def _text_money(raw: str) -> NormalizeResult:
+    number = re.search(r"[0-9]+(?:\.[0-9]+)?", raw)
+    if number is None:
+        return Invalid("no_number")
+    amount = Decimal(number.group())
+    codes = [c for c in CODES if c in raw]
+    if "$" in raw and not codes:
+        return Ambiguous("symbol", tuple({"amount": str(amount), "currency": c} for c in ("USD", "CAD")))
+    if len(codes) != 1:
+        return Invalid("no_currency")
+    return _positive(amount, codes[0])
+
+
+def _positive(amount: Decimal, code: str) -> NormalizeResult:
     if amount <= 0:
         return Invalid("not_positive")
     return Ok({"amount": str(amount), "currency": code})

@@ -139,20 +139,26 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, specs: Mapping[str, FieldS
     except ValidationError as e:
         raise InvalidLabels([from_pydantic(err) for err in e.errors()]) from None
     complete = labels.status != "draft"
-    if page_kind == "detail":
-        # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope.
-        errors = list(_check_fields("fields", labels.fields, specs, specs, complete))
-        if labels.rows:
-            errors.append(LabelError("rows", "only listing pages have rows"))
-    else:
-        page = {name: spec for name, spec in specs.items() if spec.scope == "page"}
-        row = {name: spec for name, spec in specs.items() if spec.scope == "row"}
-        errors = list(_check_fields("fields", labels.fields, page, specs, complete))
-        for i, label_row in enumerate(labels.rows):
-            errors.extend(_check_fields(f"rows[{i}].fields", label_row.fields, row, specs, complete))
+    check = _check_detail if page_kind == "detail" else _check_listing
+    errors = list(check(labels, specs, complete))
     if errors:
         raise InvalidLabels(errors)
     return labels
+
+
+def _check_detail(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
+    # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope.
+    yield from _check_fields("fields", labels.fields, specs, specs, complete)
+    if labels.rows:
+        yield LabelError("rows", "only listing pages have rows")
+
+
+def _check_listing(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
+    page = {name: spec for name, spec in specs.items() if spec.scope == "page"}
+    row = {name: spec for name, spec in specs.items() if spec.scope == "row"}
+    yield from _check_fields("fields", labels.fields, page, specs, complete)
+    for i, label_row in enumerate(labels.rows):
+        yield from _check_fields(f"rows[{i}].fields", label_row.fields, row, specs, complete)
 
 
 def _check_fields(
@@ -165,21 +171,29 @@ def _check_fields(
     for name, label in labels.items():
         spec = expected.get(name)
         if spec is None:
-            if name not in specs:
-                yield LabelError(f"{path}.{name}", "not a field of the schema")
-            elif specs[name].scope == "row":
-                yield LabelError(f"{path}.{name}", "a row field belongs in rows")
-            else:
-                yield LabelError(f"{path}.{name}", "a page field belongs in fields")
-            continue
-        for i, distractor in enumerate(label.distractors):
-            if distractor is None:
-                yield LabelError(f"{path}.{name}.distractors[{i}]", "a distractor has a value")
-            elif label.value is not None and equal(distractor, label.value, spec):
-                yield LabelError(f"{path}.{name}.distractors[{i}]", "a distractor equals the value")
+            yield LabelError(f"{path}.{name}", _misplaced(name, specs))
+        else:
+            yield from _check_distractors(f"{path}.{name}", label, spec)
     if complete:
         for name in expected.keys() - labels.keys():
             yield LabelError(f"{path}.{name}", "not labeled; mark it absent if the page does not show it")
+
+
+def _misplaced(name: str, specs: Mapping[str, FieldSpec]) -> str:
+    """Why a label for `name` is not expected where it is."""
+    if name not in specs:
+        return "not a field of the schema"
+    if specs[name].scope == "row":
+        return "a row field belongs in rows"
+    return "a page field belongs in fields"
+
+
+def _check_distractors(path: str, label: FieldLabel, spec: FieldSpec) -> Iterator[LabelError]:
+    for i, distractor in enumerate(label.distractors):
+        if distractor is None:
+            yield LabelError(f"{path}.distractors[{i}]", "a distractor has a value")
+        elif label.value is not None and equal(distractor, label.value, spec):
+            yield LabelError(f"{path}.distractors[{i}]", "a distractor equals the value")
 
 
 def from_pydantic(err: ErrorDetails) -> LabelError:

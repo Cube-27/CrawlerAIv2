@@ -242,7 +242,7 @@ _PROBLEM = {
 }
 
 
-@router.get("/pages", response_model=list[PageSummary])
+@router.get("/pages")
 async def list_pages(
     backend: Backend,
     split: Literal["dev"] = "dev",  # §4.10's filter; the API serves no other split (C1)
@@ -406,7 +406,7 @@ def sanitize_html(bundle: CaptureBundle) -> str:
     for node in tree.css(f"{_ACTIVE}, base"):
         node.decompose()
     for node in tree.root.traverse() if tree.root is not None else ():
-        for name, value in list(node.attributes.items()):
+        for name, value in node.attributes.items():
             if name.lower().startswith("on") or _javascript_url(value or ""):
                 del node.attrs[name]
     head, base = tree.head, LexborHTMLParser("<base>").css_first("base")

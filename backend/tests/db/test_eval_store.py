@@ -158,8 +158,9 @@ async def test_putting_a_capture_twice_converges(case: Case) -> None:
 
 
 async def test_an_unknown_capture_is_not_found(case: Case) -> None:
+    unknown = CaptureId(uuid7())
     with pytest.raises(EvalNotFound):
-        await case.store.get_bundle(CaptureId(uuid7()))
+        await case.store.get_bundle(unknown)
 
 
 async def test_a_page_round_trips(case: Case) -> None:
@@ -180,23 +181,26 @@ async def test_a_page_round_trips(case: Case) -> None:
 
 
 async def test_an_unknown_page_is_not_found(case: Case) -> None:
+    unknown = EvalPageId(uuid7())
     with pytest.raises(EvalNotFound):
-        await case.store.get_page(EvalPageId(uuid7()))
+        await case.store.get_page(unknown)
 
 
 async def test_a_page_of_another_split_is_refused(case: Case) -> None:
     capture_id = await case.store.put_capture(_bundle(), "mixed")
     other: Split = "fresh" if case.store.split == "dev" else "dev"
 
+    page = _page(case, capture_id, split=other)
     with pytest.raises(ValueError, match=f"a {other} page cannot be stored in the {case.store.split} store"):
-        await case.store.put_page(_page(case, capture_id, split=other))
+        await case.store.put_page(page)
 
     assert await case.store.list_pages() == []
 
 
 async def test_a_page_must_reference_a_capture_of_this_store(case: Case) -> None:
+    page = _page(case, CaptureId(uuid7()))
     with pytest.raises(EvalNotFound):
-        await case.store.put_page(_page(case, CaptureId(uuid7())))
+        await case.store.put_page(page)
 
 
 async def test_pages_are_listed_by_schema_name_and_label_status(case: Case) -> None:
@@ -307,8 +311,9 @@ async def test_a_run_is_read_back_by_its_id(case: Case) -> None:
 async def test_a_run_of_another_split_is_refused(case: Case) -> None:
     other: Split = "fresh" if case.store.split == "dev" else "dev"
 
+    run = EvalRunRow(split=other, engine_version="x", git_sha="a" * 40, metrics={})
     with pytest.raises(ValueError, match=f"a {other} run cannot be stored"):
-        await case.store.put_run(EvalRunRow(split=other, engine_version="x", git_sha="a" * 40, metrics={}))
+        await case.store.put_run(run)
 
     assert await case.store.latest_run(None) is None
 
@@ -388,23 +393,21 @@ async def test_the_main_database_refuses_hidden_and_fresh_pages_and_runs(databas
     engine = create_async_engine(database_url)
     try:
         for split in ("hidden", "fresh"):
+            run = insert(EvalRun).values(split=split, engine_version="x", git_sha="a" * 40, metrics={})
             async with engine.connect() as conn:
                 with pytest.raises(IntegrityError, match="ck_eval_run_split"):
-                    await conn.execute(
-                        insert(EvalRun).values(split=split, engine_version="x", git_sha="a" * 40, metrics={})
-                    )
+                    await conn.execute(run)
+            page = insert(EvalPage).values(
+                capture_id=uuid7(),
+                split=split,
+                schema_id=uuid7(),
+                schema_name=SCHEMA_NAME,
+                page_kind="detail",
+                category="mixed",
+            )
             async with engine.connect() as conn:
                 with pytest.raises(IntegrityError, match="ck_eval_page_split"):
-                    await conn.execute(
-                        insert(EvalPage).values(
-                            capture_id=uuid7(),
-                            split=split,
-                            schema_id=uuid7(),
-                            schema_name=SCHEMA_NAME,
-                            page_kind="detail",
-                            category="mixed",
-                        )
-                    )
+                    await conn.execute(page)
     finally:
         await engine.dispose()
 
@@ -412,12 +415,9 @@ async def test_the_main_database_refuses_hidden_and_fresh_pages_and_runs(databas
 async def test_the_private_database_refuses_dev_runs(private_database_url: str) -> None:
     engine = create_async_engine(private_database_url)
     try:
+        run = insert(PrivateEvalRun).values(id=uuid7(), split="dev", engine_version="x", git_sha="a" * 40, metrics={})
         async with engine.connect() as conn:
             with pytest.raises(IntegrityError, match="ck_eval_run_split"):
-                await conn.execute(
-                    insert(PrivateEvalRun).values(
-                        id=uuid7(), split="dev", engine_version="x", git_sha="a" * 40, metrics={}
-                    )
-                )
+                await conn.execute(run)
     finally:
         await engine.dispose()

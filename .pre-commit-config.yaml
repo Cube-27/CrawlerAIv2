@@ -1,5 +1,6 @@
 # Fast checks on staged files (SPEC-00 §4.8; budget: under 10 s for a typical change). mypy, the test suites and the
-# other CI jobs run in `make check` and CI. No hook counts lines or complexity (C11).
+# other CI jobs run in `make check` and CI. C11's complexity limit runs here on the staged files (complexipy, and the
+# Oxlint rule inside `vp check`); the file-length warning runs only in CI and `make check`.
 # Install with `uvx pre-commit install` (pre-commit >= 4). The hook goes into the clone's shared hooks directory, so
 # it covers every worktree. The local hooks run the tools that backend/uv.lock and frontend/pnpm-lock.yaml pin: they
 # need `uv` and `pnpm install` in frontend/.
@@ -28,6 +29,13 @@ repos:
         entry: uv run --project backend --frozen ruff format --force-exclude
         language: system
         types_or: [python, pyi]
+      # C11: cognitive complexity of at most 15 per function, on the staged Python files. complexipy runs from
+      # backend/ so it reads the limit from [tool.complexipy] there; the paths get a `../` prefix to match.
+      - id: complexipy
+        name: complexipy
+        entry: sh -c 'cd backend && for f; do set -- "$@" "../$f"; shift; done && exec uv run --frozen complexipy --no-ignore --failed "$@"' --
+        language: system
+        types: [python]
       # C3, INV-03: the index content of every staged file, with the same exemptions as CI.
       - id: site-literals
         name: site-literal scan

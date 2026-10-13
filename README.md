@@ -80,7 +80,7 @@ backend/                Python package `crawlerai` (src/crawlerai/), tests, alem
   .importlinter             one-module-per-field-type and layering contracts (C8)
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
-tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates
+tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
 docs/                   architecture, open questions, specs, decisions, tracker, invariants, design
 .github/                CI workflows (ci.yml, eval-protected.yml) and the pull request template
 .claude/skills/         agent procedures

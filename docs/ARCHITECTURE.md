@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 8, 2026-10-13. No code exists.
+Status: design, rev 9, 2026-10-13. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -101,7 +101,7 @@ on every site.
 | C8 | **One module per field type.** | Import-linter independence and forbidden-import contracts, plus review. |
 | C9 | **Tests check type properties and replays, not specific sites.** No test is named after a site or asserts one site's output. | C3 scan; review. |
 | C10 | **How changes are accepted.** A change is accepted when it **improves dev** and **does not regress hidden** (§16.4). Claims that something *improved* are made only from **fresh** results, never from hidden. Accepting on "hidden improved" would fit hidden slowly through repeated selection. PR comments carry dev deltas and only the hidden pass/fail per field type. Numeric hidden aggregates go only to the custodian. Until labels exist (§21, milestone M), the gate reports `no_baseline` and acceptance rests on tests, replays and review. | CI; PR template. |
-| C11 | **No size gates.** No LOC or complexity ratchets. | CI meta-check. |
+| C11 | **Two size checks, no others** (Appendix A #33). Cognitive complexity is at most 15 per function (as SonarSource defines it), a hard check. A file has at most 800 lines, a soft limit: CI warns and never fails. A file past 800 is split along logical boundaries (cohesive modules, field types per C8), never mechanically to meet the number. No other LOC, complexity, coverage or ratchet gates. | Complexity check in CI and `make check`; file-length warning; CI meta-check that refuses any other gate. |
 | C12 | **Nothing is copied or ported from Invoro or v1:** code, lists, config, tests, prompts or data (Appendix A #24). | License scan; C3 scan. |
 | C13 | **Mechanisms are admitted by evidence.** A mechanism outside core is added only when evaluation results or production outcomes show a class of failures it fixes, and its effect is measured. "It makes sense" and "v1 had it" are not evidence. | §22 register; PR report. |
 
@@ -785,7 +785,7 @@ re-derived from standards and evidence; nothing is copied.
 | Root/entity selection by additive weights; multiple rollup passes re-deciding fields | v1 |
 | An LLM audit of the tuning sites used as the quality signal | Invoro |
 | Tests named after sites; regression suites pinned to one run's defects | Both |
-| LOC or complexity gates driving file splits | Both |
+| LOC or complexity gates driving file splits | Both (v2 keeps one complexity limit and a non-failing file-length warning, C11) |
 
 ---
 
@@ -903,6 +903,7 @@ implementation go in `DECISIONS.md`, not here.
 | 30 | Hidden/fresh privacy answers (2026-10-13) | Hidden and fresh aggregates use complementary suppression as well as the 10-field minimum cell (§16.3). Hidden and fresh pages are labeled only through an instance of the app on the custodian machine with a private backend, never deployed. |
 | 31 | Parse once (2026-10-13) | A capture body is parsed at most once per parser per pipeline run; every consumer reads one shared `ParsedPage` (§8). The release executor is the only exception. |
 | 32 | Operational invariants (2026-10-13) | No layer after resolution changes a published value; a job pins its settings at submit; cookies stay inside one fetch; untrusted bodies are bounded; one task's failure never fails another; forwarded headers only from trusted proxies and no API keys created at startup (INV-27–INV-32). |
+| 33 | Complexity and file length (2026-10-13) | Cognitive complexity of at most 15 per function is a hard check in CI and `make check`, for backend, tools and frontend code. 800 lines per file is a soft limit: CI warns, never fails, and a file past it is split by meaning, not to meet the number. Coverage gates and ratchets stay forbidden (C11). |
 
 ---
 
@@ -978,3 +979,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 6 | 2026-10-12 | **Labeling deferred** (Appendix A #29). §21 rewritten: L0–L4 accepted on functional criteria, accuracy claims moved to milestone M; rule for drawing hidden and fresh from untouched sites; C10 notes the `no_baseline` period. |
 | 7 | 2026-10-13 | **Owner answers** (Appendix A #30). §16.3: complementary suppression for hidden and fresh aggregates (D-0234, OPEN_QUESTIONS #16). |
 | 8 | 2026-10-13 | **Parse once** (Appendix A #31, owner). §8: one `ParsedPage` per capture, shared by every consumer (INV-26). Appendix A #32: operational invariants INV-27–INV-32 (owner-selected). Comparisons with a named hosted crawler removed (owner). |
+| 9 | 2026-10-13 | **C11 amended** (Appendix A #33): a hard cognitive-complexity limit of 15 per function and a soft, warning-only limit of 800 lines per file; no other size, coverage or ratchet gates. INV-18 reworded; SPEC-00 §4.6 updated. |

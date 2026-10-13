@@ -26,7 +26,7 @@ export function FieldEditor({
   onChange,
   onFocus,
   onNormalize,
-}: FieldEditorProps) {
+}: Readonly<FieldEditorProps>) {
   const label = `${name} (${shape.type})`;
 
   return (

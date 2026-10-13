@@ -39,8 +39,9 @@ def test_the_dev_store_needs_no_private_settings() -> None:
     ],
 )
 def test_hidden_and_fresh_need_both_private_settings(split: PrivateSplit, private: dict[str, str]) -> None:
+    settings = _settings(**private)
     with pytest.raises(PrivateCredentialsMissing, match="expected on any other machine"):
-        get_store(split, _settings(**private))
+        get_store(split, settings)
 
 
 @pytest.mark.parametrize("split", ["hidden", "fresh"])
@@ -65,5 +66,6 @@ def test_a_private_store_serves_its_split(split: PrivateSplit) -> None:
 def test_private_settings_must_name_a_separate_database_and_object_root(
     database_url: str, object_store: str, reason: str
 ) -> None:
+    settings = _settings(eval_private_database_url=database_url, eval_private_object_store=object_store)
     with pytest.raises(PrivateStoreNotSeparate, match=reason):
-        get_store("hidden", _settings(eval_private_database_url=database_url, eval_private_object_store=object_store))
+        get_store("hidden", settings)

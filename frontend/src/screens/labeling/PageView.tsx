@@ -9,7 +9,10 @@ export interface Pick {
 /** The captured page, sanitized by the API, in a frame that runs no script (SPEC-03 §4.10). The frame shares this
  * page's origin only so that a click in it can be read here; without `allow-scripts` the page itself still runs
  * nothing, and a click never follows a link or submits a form. */
-export function PageView({ html, onPick }: { html: string; onPick: (pick: Pick) => void }) {
+export function PageView({
+  html,
+  onPick,
+}: Readonly<{ html: string; onPick: (pick: Pick) => void }>) {
   const frame = useRef<HTMLIFrameElement>(null);
   // The listener outlives renders; it calls the current `onPick`, which knows the field focused now.
   const pick = useRef(onPick);

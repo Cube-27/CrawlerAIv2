@@ -46,7 +46,12 @@ ones. Add no validators, parsers, guards or options beyond what the spec asks fo
 evidence.
 
 **Minimize reader load (C11).** What matters is how much a reader must trace and hold in their head, not line
-counts.
+counts. C11's two checks measure that only roughly: cognitive complexity of at most 15 per function (a hard
+check), and 800 lines per file (a warning).
+- Bring a complex function down by meaning: extract named steps, replace branch chains with dispatch tables, and
+  split a module by responsibility. Never by moving lines into a helper with no name of its own.
+- A file past 800 lines is split along logical boundaries (cohesive modules, field types per C8), never
+  mechanically.
 - Inline wrappers that have one caller, and adapters that have no second implementation.
 - Prefer pure functions and local state.
 - A new reader should be able to answer "where does X come from, and what can change it?" in 30 seconds.

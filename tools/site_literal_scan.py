@@ -78,7 +78,14 @@ SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[
 HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
 # holding a quote cannot swallow the rest of the file; template literals and block comments may span lines.
-JS_PIECE = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|//[^\n]*|/\*.*?\*/", re.DOTALL)
+JS_DOUBLE_QUOTED = r'"(?:[^"\\\n]|\\.)*"'
+JS_SINGLE_QUOTED = r"'(?:[^'\\\n]|\\.)*'"
+JS_TEMPLATE = r"`(?:[^`\\]|\\.)*`"
+JS_LINE_COMMENT = r"//[^\n]*"
+JS_BLOCK_COMMENT = r"/\*.*?\*/"
+JS_PIECE = re.compile(
+    "|".join((JS_DOUBLE_QUOTED, JS_SINGLE_QUOTED, JS_TEMPLATE, JS_LINE_COMMENT, JS_BLOCK_COMMENT)), re.DOTALL
+)
 
 HIDDEN = "[hidden]"
 
@@ -135,47 +142,60 @@ def schema_columns(file: Path) -> Iterator[tuple[str, str]]:
         return
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and call_name(node) in {"create_table", "Table", "add_column"}:
-            if table := string_arg(node):
-                for argument in node.args[1:]:
-                    if call_name(argument) == "Column" and (column := string_arg(argument)):
-                        yield table, column
+            yield from table_call_columns(node)
         elif isinstance(node, ast.ClassDef):
             yield from declarative_columns(node)
 
 
-def declarative_columns(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
-    table = next(
-        (
-            statement.value.value
-            for statement in node.body
-            if isinstance(statement, ast.Assign)
+def table_call_columns(node: ast.Call) -> Iterator[tuple[str, str]]:
+    """Alembic `create_table` and `add_column`, SQLAlchemy `Table`: the table name, then `Column("name", ...)`s."""
+    table = string_arg(node)
+    if not table:
+        return
+    for argument in node.args[1:]:
+        if call_name(argument) == "Column" and (column := string_arg(argument)):
+            yield table, column
+
+
+def declared_table(node: ast.ClassDef) -> str | None:
+    """The `__tablename__` a declarative class assigns, when it is a string."""
+    for statement in node.body:
+        if (
+            isinstance(statement, ast.Assign)
             and any(isinstance(target, ast.Name) and target.id == "__tablename__" for target in statement.targets)
             and isinstance(statement.value, ast.Constant)
             and isinstance(statement.value.value, str)
-        ),
-        None,
-    )
+        ):
+            return statement.value.value
+    return None
+
+
+def assignment(statement: ast.stmt) -> tuple[list[ast.expr], ast.expr] | None:
+    """The targets and value of a class-body assignment, annotated or not; None for any other statement."""
+    if isinstance(statement, ast.AnnAssign) and statement.value:
+        return [statement.target], statement.value
+    if isinstance(statement, ast.Assign):
+        return statement.targets, statement.value
+    return None
+
+
+def declarative_columns(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
+    table = declared_table(node)
     if table is None:
         return
     for statement in node.body:
-        if isinstance(statement, ast.AnnAssign) and statement.value:
-            targets: list[ast.expr] = [statement.target]
-            value = statement.value
-        elif isinstance(statement, ast.Assign):
-            targets, value = statement.targets, statement.value
-        else:
+        assigned = assignment(statement)
+        if assigned is None or call_name(assigned[1]) not in {"mapped_column", "Column"}:
             continue
-        if call_name(value) in {"mapped_column", "Column"}:
-            for target in targets:
-                if isinstance(target, ast.Name):
-                    yield table, string_arg(value) or target.id
+        targets, value = assigned
+        yield from ((table, string_arg(value) or target.id) for target in targets if isinstance(target, ast.Name))
 
 
 def schema_org_paths(file: Path) -> Iterator[str]:
     """The schema.org paths a JSON schema document maps its fields to; none when the file is not one."""
     try:
         document = json.loads(file.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
+    except (OSError, ValueError):  # UnicodeDecodeError is a ValueError
         return
     if not (
         isinstance(document, dict)
@@ -198,6 +218,12 @@ def schema_org_paths(file: Path) -> Iterator[str]:
             stack.extend(fields.values())
 
 
+def module_names(pure: PurePosixPath) -> set[str]:
+    """Every dotted name a Python file can be imported as: its full module path and each of its suffixes."""
+    parts = [*pure.parent.parts, pure.stem] if pure.stem != "__init__" else list(pure.parent.parts)
+    return {".".join(parts[start:]).lower() for start in range(len(parts))}
+
+
 @dataclass(frozen=True)
 class RepoNames:
     """Names the repository itself defines, which dotted tokens may refer to instead of a host."""
@@ -218,8 +244,7 @@ class RepoNames:
             if pure.suffix:
                 extensions.add(pure.suffix[1:].lower())
             if pure.suffix == ".py":
-                parts = [*pure.parent.parts, pure.stem] if pure.stem != "__init__" else list(pure.parent.parts)
-                modules.update(".".join(parts[start:]).lower() for start in range(len(parts)))
+                modules.update(module_names(pure))
                 columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
             if pure.suffix == ".json":
                 schema_paths.update(schema_org_paths(root / path))
@@ -337,30 +362,40 @@ def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator
             yield token.lower()
 
 
+def paths_to_scan(root: Path, tracked: list[str], *, staged: bool) -> list[str]:
+    if staged:
+        # Added, copied, modified or renamed in the index; a deletion leaves nothing to scan.
+        return git_paths(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
+    return [path for path in tracked if (root / path).is_file()]
+
+
+def file_findings(path: str, text: str, allowlist: Allowlist, tlds: frozenset[str], repo_names: RepoNames) -> list[str]:
+    """One `path:line: host` per host the allowlist doesn't allow, once per line."""
+    seen: set[tuple[int, str]] = set()
+    findings: list[str] = []
+    for number, segment in segments_of(path, text):
+        for host in hosts_in(segment, tlds, repo_names):
+            if (number, host) not in seen and not allowlist.allows(host):
+                seen.add((number, host))
+                findings.append(f"{path}:{number}: {host}")
+    return findings
+
+
 def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool) -> tuple[list[str], int]:
     """Return the findings and the number of files scanned."""
     tracked = tracked_files(root)
     repo_names = RepoNames.of(root, tracked)
-    if staged:
-        # Added, copied, modified or renamed in the index; a deletion leaves nothing to scan.
-        paths = git_paths(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
-    else:
-        paths = [path for path in tracked if (root / path).is_file()]
     findings: list[str] = []
     scanned = 0
-    for path in paths:
+    for path in paths_to_scan(root, tracked, staged=staged):
         if is_exempt(path):
             continue
         data = git(root, "show", f":{path}") if staged else (root / path).read_bytes()
         if b"\0" in data:
             continue
         scanned += 1
-        reported: set[tuple[int, str]] = set()
-        for number, text in segments_of(path, data.decode("utf-8", errors="replace")):
-            for host in hosts_in(text, tlds, repo_names):
-                if (number, host) not in reported and not allowlist.allows(host):
-                    reported.add((number, host))
-                    findings.append(f"{path}:{number}: {host}")
+        text = data.decode("utf-8", errors="replace")
+        findings.extend(file_findings(path, text, allowlist, tlds, repo_names))
     return findings, scanned
 
 

@@ -2102,3 +2102,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep the host percent-encoded.
 - Why: WHATWG URL Standard, host parsing.
 - Reversible: yes
+
+### D-0330 — Python complexity check: complexipy
+- Date: 2026-10-13 · Spec/PR: owner-directed, C11 amendment (#65) · Status: decided
+- Decision: complexipy 8 (MIT, no dependencies) measures SonarSource cognitive complexity for backend `src`, `tests`, `migrations` and `tools/`. The limit of 15 is set only in `[tool.complexipy]` (backend/pyproject.toml). It runs with `--no-ignore` in the backend CI job, `make check-complexity` and a pre-commit hook that runs from `backend/`.
+- Alternatives: flake8-cognitive-complexity (adds flake8 next to ruff); radon/xenon (cyclomatic complexity, not cognitive).
+- Why: it implements Sonar's metric, and one binary covers backend and tools. `no_size_gates` refuses its snapshot ratchet, report-only mode and any threshold given as a flag.
+- Reversible: yes
+
+### D-0331 — Frontend complexity rule: local Oxlint rule over oxlint-plugin-complexity
+- Date: 2026-10-13 · Spec/PR: owner-directed, C11 amendment (#65) · Status: decided
+- Decision: `frontend/lint/cognitive-complexity.js` is an Oxlint JS plugin built on oxlint-plugin-complexity 3.0.1's `createCognitiveVisitor` (MIT). It reports cognitive complexity above `max: 15` and nothing else.
+- Alternatives: eslint-plugin-sonarjs (LGPL-3.0-only, avoided by CLAUDE.md, and an ESLint stack beside Oxlint); the plugin's own `complexity/complexity` rule (always gates cyclomatic complexity too, a second gate C11 doesn't allow); Oxlint's core `complexity` rule (cyclomatic only).
+- Why: licence-clean, and it runs inside `vp check`. It is stricter than Sonar on React components, because it adds +1 per nested function and skips `a || literal` defaults and JSX `cond && <X/>`. `PageEditor` scored 49 here and 23 on Sonar.
+- Reversible: yes
+
+### D-0332 — The file-length warning covers source files only
+- Date: 2026-10-13 · Spec/PR: owner-directed, C11 amendment (#65) · Status: decided
+- Decision: `tools/file_length.py` counts tracked `.py`, `.js/.jsx/.mjs/.cjs`, `.ts/.tsx/.mts/.cts` and `.sh` files, except the generated `frontend/src/api/schema.d.ts`. It checks its own repository and takes no arguments, and runs in the `no-size-gates` job and `make check-size-gates`, not in pre-commit.
+- Alternatives: count every tracked file, documents included.
+- Why: the owner's rule is about splitting code by meaning (C8); documents and generated files have no logical split.
+- Reversible: yes
+
+### D-0333 — Gate refs are passed after `--end-of-options`
+- Date: 2026-10-13 · Spec/PR: owner-directed, Sonar fixes (#65) · Status: decided
+- Decision: `commits_on` runs `git rev-list --end-of-options <ref> --`, so a ref that starts with `-` fails as an unknown revision instead of acting as an option. Extends D-0193.
+- Alternatives: refuse refs that start with `-` in Python.
+- Why: git's own end-of-options marker covers every option form.
+- Reversible: yes

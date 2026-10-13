@@ -12,5 +12,5 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
-  document.documentElement.removeAttribute("data-theme");
+  delete document.documentElement.dataset.theme;
 });

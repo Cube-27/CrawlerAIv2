@@ -56,8 +56,11 @@ These come from the generalization contract. Breaking one is a defect, even when
   - A PR that changes extraction behaviour includes the aggregate report in its description (the PR template's
     evaluation section). Until milestone M (ARCHITECTURE §21) the gate reports `no_baseline`, and acceptance
     rests on tests, replays and review.
-- **No size gates (C11).** Don't split files to satisfy a size number, and don't add LOC, complexity or coverage
-  gates or ratchets. The `no-size-gates` CI job enforces this.
+- **Two size checks, no others (C11).** Cognitive complexity is at most 15 per function: a hard check in CI and
+  `make check` (complexipy for Python, an Oxlint rule for TS/TSX). A file has at most 800 lines: a soft limit
+  that only warns. Past 800, split the file along logical boundaries (cohesive modules, field types per C8),
+  never mechanically to meet the number; bring complexity down by extracting named steps, not by suppressing
+  it. Add no other LOC, complexity, coverage or ratchet gate. The `no-size-gates` CI job enforces this.
 - **Nothing from the earlier versions (C12).** Don't read, copy or port code, lists, config, tests or prompts from
   the sibling `Invoro` or `CrawlerAI` (v1) projects. When a §22 candidate is admitted, its design may *read* them,
   as ARCHITECTURE §20 allows, but nothing is copied.
@@ -156,6 +159,7 @@ uv sync --frozen
 uv run ruff check && uv run ruff format --check
 uv run mypy src tests migrations
 uv run lint-imports                 # C8 import contracts
+uv run complexipy --no-ignore       # C11: cognitive complexity <= 15 (src, tests, migrations, ../tools)
 uv run patchright install --only-shell chromium   # once per Patchright version: the `browser`-marked tests
 uv run pytest
 uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
@@ -164,7 +168,8 @@ uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic u
 
 # frontend (cd frontend); CI also runs `make api-client` and fails on a diff
 pnpm install --frozen-lockfile
-pnpm check && pnpm test && pnpm build   # Vite+: `pnpm check` (vp check) formats, lints and type-checks
+pnpm check && pnpm test && pnpm build   # Vite+: `pnpm check` (vp check) formats, lints (incl. C11 complexity)
+                                        # and type-checks
 
 # site-literals (cd backend): lint and test the repo tools, then the C3 scan
 uv run ruff check ../tools && uv run ruff format --check ../tools && uv run mypy --strict ../tools
@@ -174,6 +179,7 @@ uv run python ../tools/site_literal_scan.py --public
 # data-manifest, no-size-gates, licenses (repo root)
 python3 tools/data_manifest_check.py
 python3 tools/no_size_gates.py
+python3 tools/file_length.py        # C11: warns on source files over 800 lines; never fails
 tools/license_scan.sh               # after `pnpm install` in frontend/; writes license-report/
 ```
 
