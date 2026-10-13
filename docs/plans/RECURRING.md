@@ -7,7 +7,7 @@ step); a **skill rule** only where no check can. Workers read this list before o
 | Finding | Seen in | Prevented by |
 |---|---|---|
 | A CLI path argument is read without a base-directory check (SonarCloud `pythonsecurity:S8707`, path traversal). | #21, #22, #30 | Skill rule (`/implement-pr` §4): resolve the path and refuse it outside the working directory or repo root, with a test, as `fetch --out` does (D-0146). |
-| A `pytest.raises` block holds more than one statement or call (SonarCloud `python:S5778`). | #20, #23, #30 | Check: ruff `PT012` (one statement). Skill rule for nested calls, which `PT012` doesn't see: build arguments before the `with`. |
+| A `pytest.raises` block holds more than one statement or call (SonarCloud `python:S5778`). | #20, #23, #30, #33 | Check: ruff `PT012` (one statement). Skill rule for nested calls, which `PT012` doesn't see: build arguments before the `with`. |
 | A worker reports DONE while the PR's SonarCloud gate is red. | #28, #30 | Skill rule (`/implement-pr` §6): DONE requires the PR's gate `OK`. `tools/orchestrator/wait_ci.sh` prints the gate. |
 | Duplicated lines on new code push the SonarCloud gate over 3%. | #28 | Watch. Skill rule if it recurs. |
 | Throwaway test Postgres containers outlive their worktree. | #28, #30 | `tools/orchestrator/cleanup_worktree.sh` on merge; skill rule (`/implement-pr` §3): remove containers you start. |
