@@ -28,7 +28,7 @@ from crawlerai.storage.capture_bundle import HeaderList
 __all__ = ["JsonFetcher", "JsonRequest", "fetch_json"]
 
 # RFC 8259 §11: the JSON media type.
-_ACCEPT = "application/json"
+ACCEPT = "application/json"
 # httpx's own jar, which refuses every cookie: it would match them against the request URL, which holds the checked
 # address, so a cookie would follow the address to every host behind it. It never stores one, so one serves all.
 _NO_COOKIES = CookieJar(DefaultCookiePolicy(allowed_domains=[]))
@@ -154,7 +154,7 @@ async def _send(
     cookies.set_cookie_header(named)
     # The request goes to the checked address; the Host header (RFC 9110 §7.2) and the TLS server name (RFC 6066 §3,
     # httpx's `sni_hostname` extension) keep the name, so virtual hosting and certificate checks see the real host.
-    headers = httpx.Headers({"Accept": _ACCEPT})
+    headers = httpx.Headers({"Accept": ACCEPT})
     for name, value in json_request.headers:
         if name.lower() != "cookie":  # the fetch sends only its own cookies (INV-29)
             headers[name] = value

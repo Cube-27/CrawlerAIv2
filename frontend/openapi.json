@@ -2681,6 +2681,17 @@
               }
             ]
           },
+          "api_recipe_php": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Recipe Php"
+          },
           "draft": {
             "const": true,
             "default": true,
@@ -2742,7 +2753,8 @@
           "fetch",
           "fields",
           "listing",
-          "api_recipe"
+          "api_recipe",
+          "api_recipe_php"
         ],
         "title": "PlatformDraft",
         "type": "object"

@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). L2: SPEC-08 complete; in progress SPEC-09 PR 7; SPEC-12 PR 6 awaits an owner design check. L3 in progress: SPEC-10 PR 2, SPEC-10 PR 3.
+- L1 complete (2026-10-14). L2 complete except SPEC-12 PR 6, which awaits an owner design check. L3 in progress: SPEC-10 PR 2 (#128), SPEC-10 PR 3, SPEC-10 PR 6.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -197,7 +197,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | Held-out validation + IR integration | done (#121) | D-0581–D-0584 |
 | 5 | Execution rung + `api` collector + pagination | done (#125) | D-0599–D-0604 (D-0604 supersedes D-0543). |
 | 6 | Role D | done (#126) | D-0611–D-0613. Follow-up from review: the shared test `ScriptedClient` ignores its `ReplyCheck` argument. |
-| 7 | PHP hint template in `platform_draft` | todo | |
+| 7 | PHP hint template in `platform_draft` | done (#129) | D-0625–D-0627 |
 
 ## [SPEC-10 — Async jobs, map, crawl frontier, extract, batch, SSE, webhooks and the MCP server](../specs/SPEC-10-jobs-crawl-extract-mcp.md)
 

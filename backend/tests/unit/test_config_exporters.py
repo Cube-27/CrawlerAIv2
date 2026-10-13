@@ -116,6 +116,7 @@ def test_platform_draft_carries_every_step_in_order_as_xpath_regex_or_jsonpath()
             "next": {"steps": [{"regex": "next=([a-z0-9/]+)", "post": [{"absolutize_url": {}}]}], "manual": False},
         },
         "api_recipe": None,
+        "api_recipe_php": None,
     }
 
 
@@ -157,7 +158,7 @@ def test_the_drafted_steps_read_the_same_values_as_the_ir() -> None:
     assert translated.rows[0] == {"sku": "S70", "link": "https://catalog.example.test/i/1"}
 
 
-def test_platform_draft_carries_the_api_recipe_as_stored() -> None:
+def test_platform_draft_carries_the_api_recipe_as_stored_and_its_php_hint() -> None:
     recipe = {
         "method": "GET",
         "url": "https://api.example.test/v2/items/{p1}",
@@ -167,4 +168,7 @@ def test_platform_draft_carries_the_api_recipe_as_stored() -> None:
     }
     ir = ExtractionConfigIR.model_validate({**IR.model_dump(mode="json", by_alias=True), "api_recipe": recipe})
     exported = export_config("platform_draft", ir, SCHEMA, [_page(n) for n in range(3)])
-    assert exported.model_dump(mode="json")["export"]["api_recipe"] == ir.model_dump(mode="json")["api_recipe"]
+    draft = exported.model_dump(mode="json")["export"]
+    assert draft["api_recipe"] == ir.model_dump(mode="json")["api_recipe"]
+    assert "'url' => strtr('https://api.example.test/v2/items/{p1}', $path)," in draft["api_recipe_php"]
+    assert "//   \"heading\": \"$['data']['title']\"" in draft["api_recipe_php"]
