@@ -17,7 +17,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api import problems
 from crawlerai.api.auth import RateLimiter
-from crawlerai.api.routers import batch, captures, configs, health, jobs, records, schemas, scrape
+from crawlerai.api.routers import batch, captures, configs, events, health, jobs, records, schemas, scrape
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import ApiSettings, Settings
@@ -80,6 +80,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(records.router)
     app.include_router(captures.router)
     app.include_router(jobs.router)
+    app.include_router(events.router)
     app.include_router(configs.router)
     if app.state.eval_ui:
         app.include_router(eval_router.router)

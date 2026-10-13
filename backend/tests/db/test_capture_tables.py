@@ -167,6 +167,7 @@ async def test_new_capture_tables_have_the_indexes_their_queries_need(conn: Asyn
         "ix_url_task_capture_id",
         "pk_extraction",
         "ix_extraction_capture_id",
+        "ix_extraction_url_task_id",
         "pk_candidate",
         "ix_candidate_extraction_id",
         "ix_candidate_created_at",

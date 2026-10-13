@@ -11,8 +11,9 @@ new value, or the holder fences itself out.
 A lease runs out when its worker died or hung; `release_expired_leases` (the scheduler, every minute) counts that as
 a transient failure of the attempt.
 
-Finishing a task settles its job in the same transaction. The job row is locked first, so of two workers finishing
-a job's last two tasks, the second one waits, then sees the first one's task as finished and ends the job.
+Finishing a task records its run events (`crawlerai.db.task_events`) and settles its job in the same transaction.
+The job row is locked first, so of two workers finishing a job's last two tasks, the second one waits, then sees the
+first one's task as finished and ends the job.
 """
 
 import uuid
@@ -42,6 +43,7 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
+from crawlerai.db.task_events import record_task_events
 
 LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
@@ -214,6 +216,8 @@ async def _claimed(conn: AsyncConnection, statement: Executable) -> list[Claimed
 
 async def _finish(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
     await _move(conn, task, target, **values)
+    if target != "cancelled":  # a cancelled task did not run
+        await record_task_events(conn, task.id)
     await settle_job(conn, task.job_id)
 
 
