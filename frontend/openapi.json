@@ -232,6 +232,115 @@
         "title": "AttrStep",
         "type": "object"
       },
+      "BatchScrapeRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for).\n`webhook_url` is called when the job ends (\u00a74.2).",
+        "properties": {
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions",
+            "default": {
+              "method_hint": "auto",
+              "respect_robots": true
+            }
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "markdown",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "page_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "detail",
+                  "listing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Kind"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Urls",
+            "type": "array"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "urls",
+          "formats"
+        ],
+        "title": "BatchScrapeRequest",
+        "type": "object"
+      },
+      "BatchSubmitted": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "BatchSubmitted",
+        "type": "object"
+      },
       "Budget": {
         "additionalProperties": false,
         "properties": {
@@ -2535,6 +2644,151 @@
         "title": "PageMetadata",
         "type": "object"
       },
+      "PageOutput": {
+        "description": "A task of a job without a schema, with the content formats the job asked for (ARCHITECTURE \u00a78.5). The formats\nare members only when the task reached its page and its capture is still kept.",
+        "properties": {
+          "capture_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Id"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "final_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Url"
+          },
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PageMetadata"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "extracted",
+                  "partial",
+                  "unchanged",
+                  "links_only",
+                  "blocked",
+                  "shell",
+                  "not_found",
+                  "no_match",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "raw_html": {
+            "title": "Raw Html",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "claimed",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "url",
+          "status",
+          "outcome",
+          "capture_id",
+          "final_url",
+          "fetched_at"
+        ],
+        "title": "PageOutput",
+        "type": "object"
+      },
+      "PageOutputPage": {
+        "description": "One page of a job's tasks, oldest first; `next_cursor` is the `cursor` of the page after it, None on the\nlast.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PageOutput"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "PageOutputPage",
+        "type": "object"
+      },
       "PageSummary": {
         "additionalProperties": false,
         "properties": {
@@ -4161,6 +4415,113 @@
         ]
       }
     },
+    "/v1/batch/scrape": {
+      "post": {
+        "description": "Queue a job that scrapes each of `urls` with the same formats, schema and fetch options; a URL given twice is\nscraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued.",
+        "operationId": "batch_scrape_v1_batch_scrape_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchScrapeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Batch Scrape",
+        "tags": [
+          "batch"
+        ]
+      }
+    },
     "/v1/captures/{capture_id}/replay": {
       "post": {
         "description": "The records the current engine makes from the capture, against the schema versions of the records stored from\nit. 404: no such capture, or its bundle expired; 409: no record was made from it.",
@@ -5404,7 +5765,7 @@
     },
     "/v1/jobs/{job_id}/results": {
       "get": {
-        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. Pass a page's `next_cursor` as `cursor` for the page\nafter it. 409: an export of a job without a schema.",
+        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached. Pass a page's\n`next_cursor` as `cursor` for the page after it. 409: an export of a job without a schema.",
         "operationId": "job_results_v1_jobs__job_id__results_get",
         "parameters": [
           {
@@ -5474,6 +5835,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/ExportPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PageOutputPage"
                     }
                   ],
                   "title": "Response Job Results V1 Jobs  Job Id  Results Get"

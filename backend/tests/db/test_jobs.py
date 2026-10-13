@@ -42,8 +42,9 @@ from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import jobs
-from crawlerai.services.jobs import ExportPage, JobEnded, JobNotFound, NotExportable, ResultsQuery
+from crawlerai.services.jobs import ExportPage, JobEnded, JobNotFound, NotExportable, PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
+from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
 
@@ -160,9 +161,10 @@ async def _cancel(engine: AsyncEngine, job_id: JobId) -> jobs.JobSummary:
         return await jobs.cancel_job(conn, job_id)
 
 
-async def _results(engine: AsyncEngine, job_id: JobId, **query: Any) -> RecordPage | ExportPage:
+async def _results(engine: AsyncEngine, job_id: JobId, **query: Any) -> RecordPage | ExportPage | PageOutputPage:
     async with engine.connect() as conn:
-        return await jobs.job_results(conn, job_id, ResultsQuery(**query))
+        # These jobs have no captures: the store is never read.
+        return await jobs.job_results(conn, job_id, ResultsQuery(**query), store=FsStore(Path("unused")))
 
 
 async def _task_statuses(conn: AsyncConnection, job_id: JobId) -> list[str]:
@@ -330,7 +332,7 @@ async def test_a_job_without_a_schema_has_no_records_to_export(world: World) -> 
 
     json_page = await _results(world.engine, job_id)
 
-    assert json_page == RecordPage(items=[], next_cursor=None)
+    assert json_page == PageOutputPage(items=[], next_cursor=None)
     with pytest.raises(NotExportable):
         await _results(world.engine, job_id, format="csv_records")
 

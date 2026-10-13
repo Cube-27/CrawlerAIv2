@@ -21,6 +21,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/batch/scrape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Scrape
+         * @description Queue a job that scrapes each of `urls` with the same formats, schema and fetch options; a URL given twice is
+         *     scraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued.
+         */
+        post: operations["batch_scrape_v1_batch_scrape_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/captures/{capture_id}/replay": {
         parameters: {
             query?: never;
@@ -247,8 +268,9 @@ export interface paths {
         /**
          * Job Results
          * @description The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
-         *     `csv_records` or `markdown` text in the schema's columns. Pass a page's `next_cursor` as `cursor` for the page
-         *     after it. 409: an export of a job without a schema.
+         *     `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
+         *     tasks, oldest first, each with the content formats the job asked for once its page was reached. Pass a page's
+         *     `next_cursor` as `cursor` for the page after it. 409: an export of a job without a schema.
          */
         get: operations["job_results_v1_jobs__job_id__results_get"];
         put?: never;
@@ -489,6 +511,42 @@ export interface components {
              * @default []
              */
             post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+        };
+        /**
+         * BatchScrapeRequest
+         * @description The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
+         *     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
+         *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for).
+         *     `webhook_url` is called when the job ends (§4.2).
+         */
+        BatchScrapeRequest: {
+            /**
+             * @default {
+             *       "method_hint": "auto",
+             *       "respect_robots": true
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions"];
+            /** Formats */
+            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            /** Locale */
+            locale?: string | null;
+            /** Page Kind */
+            page_kind?: ("detail" | "listing") | null;
+            /** Schema */
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | null;
+            /** Urls */
+            urls: string[];
+            /** Webhook Url */
+            webhook_url?: string | null;
+        };
+        /** BatchSubmitted */
+        BatchSubmitted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
         };
         /** Budget */
         Budget: {
@@ -1328,6 +1386,53 @@ export interface components {
             /** Title */
             title: string | null;
         };
+        /**
+         * PageOutput
+         * @description A task of a job without a schema, with the content formats the job asked for (ARCHITECTURE §8.5). The formats
+         *     are members only when the task reached its page and its capture is still kept.
+         */
+        PageOutput: {
+            /** Capture Id */
+            capture_id: string | null;
+            /** Fetched At */
+            fetched_at: string | null;
+            /** Final Url */
+            final_url: string | null;
+            /** Html */
+            html?: string;
+            /** Links */
+            links?: string[];
+            /** Markdown */
+            markdown?: string;
+            metadata?: components["schemas"]["PageMetadata"];
+            /** Outcome */
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
+            /** Raw Html */
+            raw_html?: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "claimed" | "done" | "failed" | "cancelled";
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * PageOutputPage
+         * @description One page of a job's tasks, oldest first; `next_cursor` is the `cursor` of the page after it, None on the
+         *     last.
+         */
+        PageOutputPage: {
+            /** Items */
+            items: components["schemas"]["PageOutput"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** PageSummary */
         PageSummary: {
             /**
@@ -1977,6 +2082,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    batch_scrape_v1_batch_scrape_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchScrapeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchSubmitted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Service Unavailable */
@@ -2770,7 +2949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecordPage"] | components["schemas"]["ExportPage"];
+                    "application/json": components["schemas"]["RecordPage"] | components["schemas"]["ExportPage"] | components["schemas"]["PageOutputPage"];
                 };
             };
             /** @description Unauthorized */

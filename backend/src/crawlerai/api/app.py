@@ -5,7 +5,6 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import partial
-from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -18,15 +17,13 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api import problems
 from crawlerai.api.auth import RateLimiter
-from crawlerai.api.routers import captures, configs, health, jobs, records, schemas, scrape
+from crawlerai.api.routers import batch, captures, configs, health, jobs, records, schemas, scrape
 from crawlerai.api.routers import eval as eval_router
-from crawlerai.collect.schema_org_map import VocabularyMissing
-from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
-from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
+from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import ApiSettings, Settings
 from crawlerai.llm.providers.from_settings import client_from_settings
-from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.scrape import Fetching
+from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 
 log = logging.getLogger(__name__)
@@ -51,27 +48,6 @@ def _fetching(settings: Settings) -> Fetching:
     return Fetching(Rungs(http=http, browser=browser), connector, open_store(settings.object_store), HostLimiter())
 
 
-def _engine_data() -> EngineData | None:
-    """The engine's data files from `backend/data/` of the source tree, for `records` and replays; None where they
-    are not there (an installed package, or a tree without `crawlerai data fetch`): `records` and replays then answer
-    503, and the other formats work (D-0492 ships the files)."""
-    backend = backend_dir(Path(__file__))
-    if backend is None:
-        log.warning("no backend source tree: records and replays are unavailable")
-        return None
-    try:
-        return EngineData.load(data_dir(backend))
-    except VocabularyMissing as e:
-        log.warning("records and replays are unavailable: %s", e)
-        return None
-
-
-def _drift_margins() -> DriftMargins | None:
-    """The dev-fitted drift margins (SPEC-08 §4.9); None when none are fitted, and then no field is suspended."""
-    backend = backend_dir(Path(__file__))
-    return None if backend is None else load_margins(data_dir(backend) / MARGINS_FILE)
-
-
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
@@ -79,8 +55,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.database = engine
     app.state.fetching = _fetching(settings)
     app.state.llm = client_from_settings(settings, engine)
-    app.state.engine_data = _engine_data()
-    app.state.drift_margins = _drift_margins()
+    app.state.engine_data = load_engine_data()
+    app.state.drift_margins = load_drift_margins()
     try:
         yield
     finally:
@@ -99,6 +75,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(schemas.router)
     app.include_router(scrape.router)
+    app.include_router(batch.router)
     app.include_router(records.router)
     app.include_router(captures.router)
     app.include_router(jobs.router)

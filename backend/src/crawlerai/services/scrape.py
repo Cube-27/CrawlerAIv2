@@ -20,12 +20,11 @@ that reached its page within that many seconds is read again instead of fetching
 """
 
 import asyncio
-import math
 import os
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Final, Literal, Self, TypedDict
+from typing import Any, Final, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
@@ -33,121 +32,73 @@ from sqlalchemy import Row, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Robots, site_robots
-from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method
+from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override
-from crawlerai.config_ir.active import active_config, record_page
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.config_ir.active import active_config
 from crawlerai.config_ir.drift import DriftMargins
-from crawlerai.content.html import cleaned_html
-from crawlerai.content.links import links
-from crawlerai.content.markdown import markdown
-from crawlerai.content.metadata import PageMetadata, metadata
+from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.db.models import (
-    Capture,
-    CaptureId,
-    FetchMethod,
-    Job,
-    JobId,
-    PageKind,
-    ProgressiveState,
-    Project,
-    SchemaId,
-    Site,
-    SiteId,
-    UrlTask,
-    UsageResource,
-)
+from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
-from crawlerai.db.usage import record_usage
 from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
-from crawlerai.llm.roles.s_schema import draft_schema, normalize_prompt
+from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.normalize.url import canonical_url
 from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.task import ActiveConfig, store_extraction
+from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
-from crawlerai.schemas.registry import SchemaNotFound, get_by_id
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services import schemas
 from crawlerai.services.records import ScrapedRecord
-from crawlerai.services.schemas import NewSchema
+from crawlerai.services.scrape_steps import (
+    BLOCK_OUTCOMES,
+    DEFAULT_PROJECT,
+    EXTRACTION_ERROR,
+    FetchOptions,
+    Formats,
+    Input,
+    PageFormat,
+    PageOutcome,
+    SchemaById,
+    SchemaInline,
+    SchemaPrompt,
+    SchemaUnusable,
+    SiteRow,
+    check_records,
+    check_usable,
+    fetch_policy,
+    format_member,
+    named_schema,
+    new_capture,
+    page_formats,
+    record_fetch_usage,
+    record_outcome,
+    site_row,
+    store_page_record,
+)
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
-ScrapeFormat = Literal["markdown", "html", "raw_html", "links", "metadata", "records"]
-# `url_task.outcome` as a scrape reports it (§4.4).
-ScrapeOutcome = Literal["extracted", "partial", "blocked", "shell", "not_found", "failed"]
-
 MAX_TIMEOUT_S: Final = 120  # D-0028
-_OUTCOMES: Final[dict[BlockClass, ScrapeOutcome]] = {
-    # Without `records` the page is extracted once it is fetched; with them, its record decides (`partial`).
-    "ok": "extracted",
-    "blocked": "blocked",
-    "shell": "shell",
-    "not_found": "not_found",
-    "error": "failed",
-}
-# The usage a fetch attempt counts (SPEC-02 §4.7, §4.8): a request per HTTP or API attempt, the seconds of a browser's.
-_REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
 # The process that runs a scrape's task, named as a worker names itself (`crawlerai.worker.loop`).
 _CLAIMANT: Final = f"api:{socket.gethostname()}:{os.getpid()}"
-# Jobs and sites belong to the project migrations create (single tenant, ARCHITECTURE §1).
-_DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
 _NO_LLM: Final = Unconfigured("no LLM provider is configured")
 
 
-class _Input(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class SchemaById(_Input):
-    id: SchemaId
-
-
-class SchemaInline(_Input):
-    inline: NewSchema
-
-
-class SchemaPrompt(_Input):
-    prompt: str
-
-    @field_validator("prompt")
-    @classmethod
-    def _not_blank(cls, prompt: str) -> str:
-        # Role S reads the prompt whitespace-normalized (SPEC-06 §4.5), so one of only whitespace is empty.
-        if not normalize_prompt(prompt):
-            raise ValueError("the prompt is empty")
-        return prompt
-
-
-class FetchOptions(_Input):
-    method_hint: Literal["auto", "http", "browser"] = "auto"
-    respect_robots: bool = True
-    robots_override_reason: str | None = None
-    proxy_pool: str | None = None
-
-    @model_validator(mode="after")
-    def _override_has_a_reason(self) -> Self:
-        check_robots_override(self.respect_robots, self.robots_override_reason)
-        return self
-
-
-class Budget(_Input):
+class Budget(Input):
     llm_calls: NonNegativeInt = 10
 
 
-class ScrapeRequest(_Input):
+class ScrapeRequest(Input):
     """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
     `budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds."""
 
     url: str
-    formats: list[ScrapeFormat] = Field(min_length=1)
+    formats: list[PageFormat] = Field(min_length=1)
     schema_: SchemaById | SchemaInline | SchemaPrompt | None = Field(default=None, alias="schema")
     page_kind: PageKind | None = None
     max_age: NonNegativeInt = 0  # seconds
@@ -165,41 +116,8 @@ class ScrapeRequest(_Input):
 
     @model_validator(mode="after")
     def _records_have_a_schema(self) -> Self:
-        if "records" not in self.formats:
-            return self
-        if self.schema_ is None:
-            raise ValueError("the records format needs a schema")
-        if self.page_kind is None:
-            raise ValueError("the records format needs a page_kind")
-        if self.page_kind == "listing":
-            raise ValueError("records of listing pages are not available yet")
-        if isinstance(self.schema_, SchemaInline) and self.schema_.inline.page_kind != self.page_kind:
-            raise ValueError(f"the inline schema is for {self.schema_.inline.page_kind} pages, not {self.page_kind}")
+        check_records(self.formats, self.schema_, self.page_kind)
         return self
-
-
-def _absent(value: object) -> bool:
-    return value is None
-
-
-def _never_null(schema: dict[str, Any]) -> None:
-    # A format's member is left out rather than null, so the document gives it no null branch and no default.
-    (branch,) = (branch for branch in schema.pop("anyOf") if branch.get("type") != "null")
-    schema.update(branch)
-    del schema["default"]
-
-
-def _format(alias: str | None = None) -> Any:
-    """A member that is in the answer only when it was asked for: a format, or the draft of a prompt (§4.4)."""
-    return Field(default=None, alias=alias, exclude_if=_absent, json_schema_extra=_never_null)
-
-
-class _Formats(TypedDict, total=False):
-    markdown: str
-    html: str
-    raw_html: str
-    links: list[str]
-    metadata: PageMetadata
 
 
 class FetchSummary(BaseModel):
@@ -232,15 +150,15 @@ class ScrapeResult(BaseModel):
     url: str
     final_url: str | None
     fetched_at: datetime | None
-    outcome: ScrapeOutcome
+    outcome: PageOutcome
     fetch: FetchSummary | None
-    markdown: str | None = _format()
-    html: str | None = _format()
-    raw_html: str | None = _format()
-    links: list[str] | None = _format()
-    metadata: PageMetadata | None = _format()
-    schema_: SchemaDef | None = _format(alias="schema")
-    records: list[ScrapedRecord] | None = _format()
+    markdown: str | None = format_member()
+    html: str | None = format_member()
+    raw_html: str | None = format_member()
+    links: list[str] | None = format_member()
+    metadata: PageMetadata | None = format_member()
+    schema_: SchemaDef | None = format_member(alias="schema")
+    records: list[ScrapedRecord] | None = format_member()
     usage: Usage
 
 
@@ -268,15 +186,8 @@ class ScrapeTimedOut(Exception):
         super().__init__(f"the scrape did not finish within {timeout_s:g} s")
 
 
-class ScrapeInvalid(Exception):
-    """The request's `schema` is one `records` cannot use: no such id, a retired version, or another page kind."""
-
-
 class RecordsUnavailable(Exception):
     """`records` was asked of a process without the engine's data files (`EngineData`, D-0492)."""
-
-
-_SiteRow = Row[SiteId, FetchMethod, str | None, str | None, int | None]
 
 
 @dataclass(frozen=True)
@@ -303,14 +214,14 @@ class _Derived:
     """What a scrape makes of a page it reached: the formats, the draft of a prompt, and the page's extraction with
     the schema it extracted against."""
 
-    formats: _Formats
+    formats: Formats
     drafted: SchemaDef | None = None
     schema: SchemaDef | None = None
     extraction: ExtractionResult | None = None
     config: ActiveConfig | None = None
 
 
-_NOTHING: Final = _Derived(_Formats())
+_NOTHING: Final = _Derived(Formats())
 
 
 class _FetchMembers(TypedDict):
@@ -334,10 +245,10 @@ async def scrape(
 ) -> ScrapeResult:
     """Run `request` as a scrape job; `records` reads `data`, and an active config's drift `margins`. Raises, before
     any job is created: `ScrapeRejected` for a target refused outright, `RecordsUnavailable` for `records` without
-    `data`, `ScrapeInvalid` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
+    `data`, `SchemaUnusable` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
     `InvalidSchema` for an inline schema. Raises, failing the job: `ScrapeRejected` for a refused redirect,
     `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
-    `ScrapeInvalid` for a draft of another page kind."""
+    `SchemaUnusable` for a draft of another page kind."""
     try:
         await fetching.connector.check(request.url)
     except SsrfRejected as e:
@@ -353,7 +264,7 @@ async def scrape(
     except ScrapeRejected as e:
         await _fail(engine, task, e.reason)
         raise
-    except ScrapeInvalid:
+    except SchemaUnusable:
         await _fail(engine, task, "invalid_schema")
         raise
     except LLMFailure as e:
@@ -368,26 +279,7 @@ async def _named_schema(engine: AsyncEngine, request: ScrapeRequest, data: Engin
         return None
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    match request.schema_:
-        case SchemaById(id=schema_id):
-            async with engine.connect() as conn:
-                try:
-                    schema = await get_by_id(conn, schema_id)
-                except SchemaNotFound as e:
-                    raise ScrapeInvalid(str(e)) from e
-            _check_usable(schema, request.page_kind)
-            return schema
-        case SchemaInline(inline=inline):
-            async with engine.begin() as conn:
-                return await schemas.inline(conn, inline)
-    return None
-
-
-def _check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
-    if schema.status == "retired":
-        raise ScrapeInvalid(f"schema {schema.name} version {schema.version} is retired")
-    if schema.page_kind != page_kind:
-        raise ScrapeInvalid(f"schema {schema.name} is for {schema.page_kind} pages, not {page_kind}")
+    return await named_schema(engine, request.schema_, request.page_kind)
 
 
 async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None) -> ClaimedTask:
@@ -398,7 +290,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef 
             await conn.execute(
                 pg_insert(Job)
                 .values(
-                    project_id=_DEFAULT_PROJECT,
+                    project_id=DEFAULT_PROJECT,
                     kind="scrape",
                     request=request.model_dump(mode="json", by_alias=True),
                     schema_id=None if schema is None else schema.id,
@@ -425,11 +317,11 @@ async def _run(
     written in one transaction after it. A recent capture `max_age` allows is read instead of fetching."""
     host = urlsplit(request.url).hostname or ""
     async with engine.begin() as conn:
-        site = await _site(conn, host)
+        site = await site_row(conn, host)
         row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age) if request.max_age else None
         config = await _config(conn, site.id, work)
     recent = None if row is None else await _reread(fetching.store, row)
-    policy = _policy(request, site.proxy_pool)
+    policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
     fetches: list[FetchResult] = []
     page = recent.result if recent else await _fetch(engine, fetching, request.url, host, policy, site, fetches)
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
@@ -440,13 +332,13 @@ async def _run(
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
-            capture_id = recent.capture_id if recent else await _new_capture(conn, fetching.store, site.id, page)
+            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
             outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins)
             members = _fetch_members(page, capture_id)
         else:
             outcome = "blocked"
             await complete_task(conn, task, outcome, reason=page)
-        await _record_usage(conn, task.job_id, fetches, policy.proxy_pool)
+        await record_fetch_usage(conn, task.job_id, fetches, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
     if outcome == "failed":
         derived = _NOTHING  # §4.8: nothing derived from the page is returned on failure
@@ -496,11 +388,6 @@ async def _reread(store: ObjectStore, row: _CaptureRow) -> _Recent | None:
     return _Recent(capture_id, FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts))
 
 
-async def _new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:
-    await remember_fetch_method(conn, site_id, page)
-    return await store_capture(conn, store, page, site_id)
-
-
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:
     """The site's active config for the schema `records` names; a prompt's draft is new, so it has none."""
     if work.schema is None or work.data is None:
@@ -530,7 +417,7 @@ async def _derive(
     if "records" not in request.formats or schema is None or work.data is None:
         return _Derived(formats, drafted)
     if drafted is not None:
-        _check_usable(drafted, request.page_kind)
+        check_usable(drafted, request.page_kind)
     # Role C is bound here when SPEC-06 PR 4 adds it.
     executor = None if config is None else config.executor
     extraction = await extract_page(result.bundle, schema, executor, None, data=work.data, parsed=page)
@@ -552,35 +439,13 @@ def _fetch_members(result: FetchResult, capture_id: CaptureId) -> _FetchMembers:
     )
 
 
-async def _site(conn: AsyncConnection, host: str) -> _SiteRow:
-    """The site of `host`, created in the default project the first time it is scraped."""
-    await conn.execute(
-        pg_insert(Site)
-        .values(project_id=_DEFAULT_PROJECT, host=host)
-        .on_conflict_do_nothing(index_elements=[Site.host])
-    )
-    columns = (Site.id, Site.fetch_method, Site.proxy_pool, Site.robots_snapshot, Site.crawl_delay_ms)
-    return (await conn.execute(select(*columns).where(Site.host == host))).one()
-
-
-def _policy(request: ScrapeRequest, site_pool: str | None) -> FetchPolicy:
-    options = request.fetch
-    return FetchPolicy(
-        method_hint=options.method_hint,
-        proxy_pool=options.proxy_pool or site_pool,
-        respect_robots=options.respect_robots,
-        robots_override_reason=options.robots_override_reason,
-        locale_hint=request.locale,
-    )
-
-
 async def _fetch(
     engine: AsyncEngine,
     fetching: Fetching,
     url: str,
     host: str,
     policy: FetchPolicy,
-    site: _SiteRow,
+    site: SiteRow,
     fetches: list[FetchResult],
 ) -> FetchResult | str:
     """The page as fetched, or why robots.txt kept it from being fetched (SPEC-02 §4.6). Every fetch made,
@@ -625,10 +490,10 @@ async def _finish(
     capture_id: CaptureId,
     derived: _Derived,
     margins: DriftMargins | None,
-) -> tuple[ScrapeOutcome, list[ScrapedRecord] | None]:
+) -> tuple[PageOutcome, list[ScrapedRecord] | None]:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
     the page's run of an active config in its drift window."""
-    outcome = _OUTCOMES[result.block_class]
+    outcome = BLOCK_OUTCOMES[result.block_class]
     if outcome == "failed":
         error = result.attempts[-1].error or outcome
         await fail_task(conn, task, error, transient=False, capture_id=capture_id)
@@ -636,97 +501,31 @@ async def _finish(
     if derived.extraction is None or derived.schema is None:
         await complete_task(conn, task, outcome, capture_id=capture_id)
         return outcome, None
-    stored = await store_extraction(
+    extraction = derived.extraction
+    stored = await store_page_record(
         conn,
         task,
-        derived.extraction,
+        extraction,
         capture_id=capture_id,
         site_id=site_id,
         schema=derived.schema,
-        caller_supplied=True,
         config=derived.config,
+        margins=margins,
     )
-    if derived.config is not None:
-        await record_page(conn, derived.config, derived.extraction, margins=margins, job_id=task.job_id)
-    if not stored.records:
-        # A scrape URL is caller-supplied, so a page it reached has a record unless resolution failed (SPEC-05 §4.14).
-        await fail_task(conn, task, "extraction_error", transient=False, capture_id=capture_id)
+    if stored is None:
+        await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
         return "failed", None
-    # Records of a detail page only: the request refuses listing records (`_records_have_a_schema`).
-    stored_record = stored.records[0]
-    outcome = "extracted" if stored_record.draft.complete else "partial"
+    outcome = record_outcome(stored)
     await complete_task(conn, task, outcome, capture_id=capture_id)
-    await _count_page(conn, site_id, derived.schema)
-    record = ScrapedRecord.of(
-        stored_record.id,
-        stored_record.draft,
-        mode=derived.extraction.mode,
-        confidence=derived.extraction.record_confidence,
-    )
+    record = ScrapedRecord.of(stored.id, stored.draft, mode=extraction.mode, confidence=extraction.record_confidence)
     return outcome, [record]
 
 
-async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
-    """An extracted or partial page counts toward the progressive state of its site, schema version and page kind
-    (ARCHITECTURE §8.3; SPEC-08 reads it)."""
-    state = ProgressiveState
-    await conn.execute(
-        pg_insert(state)
-        .values(
-            site_id=site_id,
-            schema_id=schema.id,
-            schema_version=schema.version,
-            page_kind=schema.page_kind,
-            pages_extracted=1,
-        )
-        .on_conflict_do_update(
-            index_elements=[state.site_id, state.schema_id, state.schema_version, state.page_kind],
-            set_={"pages_extracted": state.pages_extracted + 1},
-        )
-    )
-
-
 def _content(
-    page: ParsedPage, final_url: str, requested: list[ScrapeFormat], *, sample: bool
-) -> tuple[_Formats, str | None]:
+    page: ParsedPage, final_url: str, requested: list[PageFormat], *, sample: bool
+) -> tuple[Formats, str | None]:
     """The requested content formats of the page and, when `sample`, its cleaned text."""
-    return _formats(page, final_url, requested), page.cleaned_text.text if sample else None
-
-
-def _formats(page: ParsedPage, final_url: str, requested: list[ScrapeFormat]) -> _Formats:
-    formats: _Formats = {}
-    if "markdown" in requested:
-        formats["markdown"] = markdown(page)
-    if "html" in requested:
-        formats["html"] = cleaned_html(page)
-    if "raw_html" in requested:
-        formats["raw_html"] = page.html
-    if "links" in requested:
-        formats["links"] = list(links(page, final_url))
-    if "metadata" in requested:
-        formats["metadata"] = metadata(page, final_url)
-    return formats
-
-
-async def _record_usage(
-    conn: AsyncConnection, job_id: JobId, fetches: list[FetchResult], proxy_pool: str | None
-) -> None:
-    for result in fetches:
-        for attempt in result.attempts:
-            resource: UsageResource
-            if attempt.method in _REQUEST_METHODS:
-                resource, quantity = "http_requests", 1
-            else:
-                resource, quantity = "browser_seconds", math.ceil(attempt.duration_ms / 1000)
-            await record_usage(
-                conn,
-                job_id,
-                resource,
-                provider=None,
-                model_or_pool=proxy_pool,
-                quantity=quantity,
-                metadata={"method": attempt.method},
-            )
+    return page_formats(page, final_url, requested), page.cleaned_text.text if sample else None
 
 
 async def _usage(conn: AsyncConnection, job_id: JobId) -> Usage:

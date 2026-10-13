@@ -10,6 +10,7 @@ import csv
 import io
 import json
 import uuid
+from pathlib import Path
 from typing import Any, get_args
 
 from hypothesis import HealthCheck, given, settings
@@ -28,8 +29,11 @@ from crawlerai.schemas.types import SchemaDef as Schema
 from crawlerai.services import jobs
 from crawlerai.services.jobs import ExportPage, ResultsQuery
 from crawlerai.services.records import MAX_PAGE, RecordPage, StoredRecord
+from crawlerai.storage.fs import FsStore
 
 FIELDS = ("alpha", "beta", "gamma")
+# Records are read from the database; a job with a schema never reads a capture.
+NO_STORE = FsStore(Path("unused"))
 # PostgreSQL's jsonb holds no U+0000 (PostgreSQL docs, "JSON Types").
 _text = st.text(st.characters(codec="utf-8", exclude_characters="\x00"), max_size=8)
 _scalars = st.booleans() | st.integers(-(2**53), 2**53) | st.floats(allow_nan=False, allow_infinity=False) | _text
@@ -90,13 +94,13 @@ async def _delete(conn: AsyncConnection, job_id: JobId, schema_name: str) -> Non
 
 
 async def _records_page(conn: AsyncConnection, job_id: JobId) -> RecordPage:
-    page = await jobs.job_results(conn, job_id, ResultsQuery(limit=MAX_PAGE))
+    page = await jobs.job_results(conn, job_id, ResultsQuery(limit=MAX_PAGE), store=NO_STORE)
     assert isinstance(page, RecordPage)
     return page
 
 
 async def _export(conn: AsyncConnection, job_id: JobId, fmt: RecordFormat) -> str:
-    page = await jobs.job_results(conn, job_id, ResultsQuery(format=fmt, limit=MAX_PAGE))
+    page = await jobs.job_results(conn, job_id, ResultsQuery(format=fmt, limit=MAX_PAGE), store=NO_STORE)
     assert isinstance(page, ExportPage)
     return page.content
 

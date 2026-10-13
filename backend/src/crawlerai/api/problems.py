@@ -39,7 +39,8 @@ def conflict(detail: str) -> ProblemError:
 
 
 def records_unavailable(detail: str) -> ProblemError:
-    """The engine's data files are not installed, so no records can be extracted (`api.app._engine_data`)."""
+    """The engine's data files are not installed, so no records can be extracted
+    (`services.scrape_steps.load_engine_data`)."""
     return ProblemError(503, "records_unavailable", "Records unavailable", detail)
 
 
