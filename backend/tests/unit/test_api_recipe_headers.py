@@ -246,6 +246,8 @@ def test_a_header_that_varies_between_pages_is_never_sent(port: int, received: l
         "dGhpcyBpcyBhIHNlY3JldCB0b2tlbg==",  # base64 (§4)
         "eyJhbGciOiJIUzI1NiJ9-_x",  # base64url (§5)
         "Token 123e4567-e89b-12d3-a456-426614174000",  # one list item of the value is a token
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl",  # a JWS compact serialization (RFC 7515 §7.1)
+        "1700000000.0123456789abcdef0123",  # dot-separated parts, one of them a token
     ],
 )
 def test_a_value_that_looks_like_a_token_is_withheld(port: int, value: str) -> None:

@@ -23,10 +23,11 @@ from crawlerai.schemas.types import SchemaDef
 
 # RFC 8259 §11: the JSON media type, the one header a recipe starts with.
 _ACCEPT: Final = {"Accept": "application/json"}
-# A value looks like a token when one of its list items (RFC 9110 §5.6.1, §5.6.6: items split at commas, parameters
-# at semicolons, words at whitespace) is 20 or more characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL-
-# and filename-safe; hex, §8, is in both), padding allowed.
-_ITEM_SEPARATORS: Final = re.compile(r"[\s,;]+")
+# A value looks like a token when one of its items (RFC 9110 §5.6.1, §5.6.6: items split at commas, parameters at
+# semicolons, words at whitespace; RFC 7515 §7.1: the parts of a JWS compact serialization split at dots) is 20 or more
+# characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL- and filename-safe; hex, §8, is in both), padding
+# allowed.
+_ITEM_SEPARATORS: Final = re.compile(r"[\s,;.]+")
 _TOKEN: Final = re.compile(r"(?:[A-Za-z0-9+/]{20,}|[A-Za-z0-9_-]{20,})={0,2}")
 _NO_SINGLE_HEADER: Final = "no single captured header makes the replay reproduce the sample values"
 
