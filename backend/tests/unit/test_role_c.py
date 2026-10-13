@@ -226,8 +226,9 @@ def test_a_call_without_a_valid_reply_leaves_the_reason_and_no_candidates(failur
 
 def test_other_errors_propagate() -> None:
     # A replay's missing recording must reach the harness, which drops the page (SPEC-03 §4.5).
+    client = ScriptedClient(LookupError("no recorded response"))
     with pytest.raises(LookupError, match="no recorded response"):
-        extract(ScriptedClient(LookupError("no recorded response")))
+        extract(client)
 
 
 # --- the bound hook ---

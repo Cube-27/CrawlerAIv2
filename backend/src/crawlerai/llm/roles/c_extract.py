@@ -62,13 +62,13 @@ class Filled:
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
     """`{fields: {<name>: span | null}}` for exactly the requested fields (§4.4)."""
     names = sorted(fields)
-    span_or_null: JsonValue = {"anyOf": [_SPAN, {"type": "null"}]}
+    properties: dict[str, JsonValue] = {name: {"anyOf": [_SPAN, {"type": "null"}]} for name in names}
     return {
         "type": "object",
         "properties": {
             "fields": {
                 "type": "object",
-                "properties": dict.fromkeys(names, span_or_null),
+                "properties": properties,
                 "required": list(names),
                 "additionalProperties": False,
             }
