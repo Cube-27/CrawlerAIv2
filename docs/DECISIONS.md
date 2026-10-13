@@ -2626,3 +2626,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `None`.
 - Why: The §4.4 response shape gives `markdown` as a string.
 - Reversible: yes
+
+### D-0404 — Microdata and RDFa Lite items
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 4 (#83) · Status: decided
+- Decision: An item is an element with `itemscope` or `typeof`; an element with both is one item, with the types of both syntaxes. Both syntaxes' property elements belong to their nearest enclosing item; `itemref` adds microdata properties per the HTML Standard's crawl (each element once; the item's own element excluded). A nested item (a property element that is an item) is its holder's child; an item that is no property is top-level, so DOM nesting alone gives no parent. A parent is the nearest entity up a chain of single holders (untyped items skipped), unless that would make a cycle; an item that two items hold has no parent.
+- Alternatives: Parent by DOM nesting; read the two syntaxes as separate item sets.
+- Why: The HTML Standard's top-level and nested items; one entity per element keeps the `microdata:<xpath>` ids unique. A property never crosses into another item's scope, so a related item's values are never attributed to the outer item.
+- Reversible: yes
+
+### D-0405 — Vocabulary scope of microdata and RDFa names
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 4 (#83) · Status: decided
+- Decision: A short `itemprop` name is a schema.org term only in an item with a schema.org `itemtype` (http or https). An untyped item is in no vocabulary, even when nested in a schema.org item. RDFa terms resolve under a schema.org `vocab` in scope (an empty `vocab` clears it), and the `schema:` prefix of the RDFa 1.1 initial context is read. Full schema.org IRIs are read anywhere. `prefix` declarations are not read.
+- Alternatives: An untyped nested item inherits its holder's vocabulary.
+- Why: The HTML Standard ties names to the item's type; the most conservative reading (C7). RDFa Core 1.1 §7.4.3 and the initial context.
+- Reversible: yes
+
+### D-0406 — Microdata values and item JSON
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 4 (#83) · Status: decided
+- Decision: Values follow the HTML Standard's "Values" (`meta` content; `src`/`href`/`data` URL attributes as written, the empty string when absent; `data`/`meter` value; `time` datetime; else text content). RDFa values: `content`, then `time` datetime, then `resource`/`href`/`src`, then text content. URLs are kept as written; the url normalizer resolves them against the base URL. An item value's raw is its JSON-LD-shaped object (`@type`, `@id`, then each property, one value bare and several as an array), what the normalizers read. Each item appears once in that object, so `itemref` cycles and shared items keep it as large as the page. The locator of an item value is its element. A blank `itemid` or `resource` names nothing.
+- Alternatives: The HTML Standard's microdata-to-JSON form (`{"type", "properties"}`), which the normalizers do not read; resolved URLs as raw.
+- Why: The same raw shapes as JSON-LD, so one normalizer reads both; raw values match the capture.
+- Reversible: yes

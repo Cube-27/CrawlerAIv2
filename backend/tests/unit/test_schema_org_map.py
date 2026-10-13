@@ -76,6 +76,7 @@ class _Node:
 
     name: str
     properties: Mapping[str, Sequence["JsonValue | _Node"]]
+    node_id: str | None = None
 
     def values(self, prop: str) -> list[Value]:
         found = []

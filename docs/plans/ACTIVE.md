@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PRs 4, 6, SPEC-12 PR 3. Next: SPEC-07 PR 4, SPEC-05 PR 7, SPEC-06 PR 4 after SPEC-05 PR 9.
+- In progress: SPEC-05 PR 6, SPEC-12 PR 3. Next: SPEC-07 PR 4, SPEC-05 PR 7, SPEC-06 PR 4 after SPEC-05 PR 9.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -135,7 +135,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | Cleaned text + visible index | done (#67) | |
 | 2 | Candidate/Entity/Outcome models, locator format | done (#72) | |
 | 3 | JSON-LD collector + schema.org map | done (#78) | Locators address each block as written, not an expanded graph; SPEC-05 §4.3 and the `collect/locator.py` comment say "expanded graph" (needs a spec clarification). |
-| 4 | Microdata/RDFa Lite collector | todo | |
+| 4 | Microdata/RDFa Lite collector | done (#83) | Follow-up from review: in mixed-syntax scopes, an `itemprop` inside a `typeof`-only element nested in an `itemscope` item is dropped. |
 | 5 | OpenGraph collector | done (#79) | |
 | 6 | Ownership + intent | todo | |
 | 7 | Preference + atomic offers + URL-param rule + derivations | todo | |

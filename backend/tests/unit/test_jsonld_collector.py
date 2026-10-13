@@ -169,7 +169,7 @@ def test_a_value_the_candidate_model_refuses_is_skipped_with_a_diagnostic() -> N
     )
     assert [(c.raw, c.locator) for c in result.candidates] == [("Widget 9", "jsonld:1:$['name']")]
     assert len(result.diagnostics) == 1
-    assert result.diagnostics[0].startswith("jsonld:0: value at jsonld:0:$['name'] skipped")
+    assert result.diagnostics[0].startswith("value at jsonld:0:$['name'] skipped")
 
 
 def test_an_invalid_block_is_skipped_with_a_diagnostic() -> None:

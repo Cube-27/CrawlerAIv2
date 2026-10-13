@@ -6,15 +6,21 @@ follows `p`, then `q`, through the nodes the values name; `+r` joins the last no
 """
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import NamedTuple, Protocol
+from urllib.parse import urlsplit
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
+from crawlerai.collect.base import Candidate
 from crawlerai.core.engine_version import backend_dir, data_dir
+from crawlerai.db.models import SourceKind
+from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.dispatch import normalize
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # The pinned schema.org release in `backend/data/manifest.json` (SPEC-04 §4.6, D-0018).
 VOCABULARY_FILE = Path("schemaorg") / "schemaorg-all-https.jsonld"
@@ -23,6 +29,14 @@ VOCABULARY_FILE = Path("schemaorg") / "schemaorg-all-https.jsonld"
 _SCHEMA_PREFIX = "schema:"
 _RDFS_CLASS = "rdfs:Class"
 _SUB_CLASS_OF = "rdfs:subClassOf"
+# schema.org namespaces: https is current, http the earlier one; the vocabulary treats both as the same terms.
+NAMESPACES = ("https://schema.org/", "http://schema.org/")
+_URL = FieldSpec(type=FieldType.URL)
+
+
+def schema_term(iri: str) -> str | None:
+    """The schema.org term an IRI names in either namespace (`http://schema.org/Product` is `Product`), else `None`."""
+    return next((iri.removeprefix(n) for n in NAMESPACES if iri.startswith(n)), None)
 
 
 class VocabularyMissing(RuntimeError):
@@ -59,6 +73,12 @@ class Vocabulary:
 
     def is_a(self, type_: str, ancestor: str) -> bool:
         return ancestor in self.supertypes.get(type_, frozenset())
+
+    def specific_first(self, names: Sequence[str]) -> tuple[str, ...]:
+        """The vocabulary's types among `names`, each once, most specific first: a type that another listed type is a
+        subtype of follows it."""
+        known = list(dict.fromkeys(name for name in names if name in self))
+        return tuple(sorted(known, key=lambda t: any(o != t and self.is_a(o, t) for o in known)))
 
 
 @cache
@@ -125,6 +145,11 @@ class Value:
 class Node(Protocol):
     """A structured-data node: a JSON-LD object, or a microdata item."""
 
+    @property
+    def node_id(self) -> str | None:
+        """The IRI that names the node (a JSON-LD `@id`, a microdata `itemid`), resolved."""
+        ...
+
     def values(self, prop: str) -> Sequence[Value]: ...
 
 
@@ -172,3 +197,71 @@ def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
     if companions:
         extra[path.joined] = companions[0] if len(companions) == 1 else companions
     return [Selected({path.steps[-1]: v.raw} | extra, v.locator) for v in values]
+
+
+@dataclass(frozen=True, slots=True)
+class Typed:
+    """A node that is an entity: its entity id and its schema.org types, most specific first."""
+
+    id: str
+    types: tuple[str, ...]
+    node: Node
+
+
+def field_candidates(
+    entities: Sequence[Typed],
+    schema: SchemaDef,
+    ctx: Context,
+    *,
+    vocabulary: Vocabulary,
+    source_kind: SourceKind,
+    diagnostics: list[str],
+) -> Iterator[Candidate]:
+    """A candidate per value each field's path reaches on each entity of its type. A value the candidate model refuses
+    (nested deeper than its validator recurses) is skipped with a diagnostic: a collector never raises on page content
+    (SPEC-05 §4.5)."""
+    for name, spec in schema.fields.items():
+        if spec.schema_org is None:
+            continue
+        path = parse_path(spec.schema_org)
+        for entity in entities:
+            if not any(vocabulary.is_a(t, path.root) for t in entity.types):
+                continue
+            for selected in select(entity.node, path, as_list=spec.type is FieldType.LIST):
+                try:
+                    yield Candidate(
+                        field=name,
+                        entity_id=entity.id,
+                        source_kind=source_kind,
+                        raw=selected.raw,
+                        normalized=normalize(selected.raw, spec, ctx),
+                        locator=selected.locator,
+                        independent=True,
+                    )
+                except ValidationError as e:
+                    diagnostics.append(f"value at {selected.locator} skipped ({e.errors()[0]['type']})")
+
+
+def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
+    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its `url` and its own IRI, its
+    `mainEntityOfPage`, and its offers' `url`."""
+    written: list[JsonValue] = _page_names(node)
+    for value in node.values("mainEntityOfPage"):
+        written.extend(_page_names(value.node) if value.node is not None else [value.raw])
+    for value in node.values("offers"):
+        if value.node is not None:
+            written.extend(v.raw for v in value.node.values("url"))
+    urls: list[str] = []
+    for raw in written:
+        result = normalize(raw, _URL, ctx)
+        if isinstance(result, Ok) and isinstance(result.value, str) and result.value not in urls:
+            urls.append(result.value)
+    return tuple(urls)
+
+
+def _page_names(node: Node) -> list[JsonValue]:
+    names: list[JsonValue] = [v.raw for v in node.values("url")]
+    # RFC 3986 §3.5: an IRI with a fragment names a part of a document, not the page itself.
+    if node.node_id is not None and not urlsplit(node.node_id).fragment:
+        names.append(node.node_id)
+    return names

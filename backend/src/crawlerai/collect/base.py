@@ -4,6 +4,7 @@ proposes for schema fields, and the `Collector` protocol.
 A collector proposes; it never chooses. Ownership, intent and preference are `crawlerai.resolve`'s.
 """
 
+from collections.abc import Mapping
 from typing import Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -67,3 +68,13 @@ class Collector(Protocol):
     and normalizes each raw value with `ctx` (SPEC-04)."""
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult: ...
+
+
+def descends(entity: str | None, ancestor: str, parents: Mapping[str, str | None]) -> bool:
+    """Whether `entity` is `ancestor` or below it in `parents`; a collector checks it before giving a node a parent, so
+    that entities stay a tree (§4.6)."""
+    while entity is not None:
+        if entity == ancestor:
+            return True
+        entity = parents[entity]
+    return False
