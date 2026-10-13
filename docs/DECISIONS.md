@@ -4172,3 +4172,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A learn loop in `crawlerai worker` here.
 - Why: SPEC-10 PR 2 owns handler registration and is in flight in parallel.
 - Reversible: yes
+
+### D-0625 — The PHP hint takes its parameters from the caller
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 7 (#129) · Status: decided
+- Decision: `api_recipe_request($page_url, $params)` takes each parameter's value from the caller; a comment per parameter names its binder and says how binders read the page; PHP does not evaluate binders.
+- Alternatives: Port the path, query and regex binders to PHP.
+- Why: Path-segment and percent-decoding details would be a second implementation to keep in step, and `jsonld`/`js_state` binders need the page's JSON documents anyway; the hint is a draft for review (§12.2).
+- Reversible: yes
+
+### D-0626 — The hint is `platform_draft.api_recipe_php`
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 7 (#129) · Status: decided
+- Decision: `PlatformDraft` gains `api_recipe_php: str | None` beside `api_recipe`, set exactly when the IR has a recipe.
+- Alternatives: A separate export format; a field inside the recipe object.
+- Why: SPEC-09 §4.9 puts both in `platform_draft`, and the recipe stays the IR's model unchanged (D-0606).
+- Reversible: yes
+
+### D-0627 — Jinja2 renders the hint, with escaping enforced
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 7 (#129) · Status: decided
+- Decision: Jinja2 (BSD-3-Clause) renders `api_recipe.php.j2` with `StrictUndefined`, autoescape on and a `finalize` that accepts only `php_literal`, `php_comment` or `php_int` values (a `Markup` subclass).
+- Alternatives: `string.Template`; Python f-strings.
+- Why: §4.9 names a `.j2` template, and `finalize` turns a missing escape into an error rather than an injection into the PHP.
+- Reversible: yes
