@@ -29,8 +29,8 @@ from pydantic import JsonValue
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
 from crawlerai.schemas.types import FieldSpec, FieldType
 
-# schema.org `price`: digits with `.` (U+002E) as the decimal point and no grouping symbols.
-_SCHEMA_ORG_PRICE = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+# schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
+_SCHEMA_ORG_PRICE = re.compile(r"\d+(?:\.\d+)?", re.ASCII)
 # Structural: a written amount is a run of digits joined by single separators (CLDR decimal and group symbols: `.`,
 # `,`, apostrophes, spaces). A text holding two runs states two amounts: a range or a list, never one money value.
 _AMOUNT_RUN = re.compile(r"\d+(?:[.,'\u2019\s]\d+)*")
@@ -191,7 +191,7 @@ def _amounts(written: str, locales: frozenset[str]) -> list[Decimal]:
         # CLDR group symbols that are spaces (U+00A0, U+202F) are written as any Unicode space separator on pages.
         text = "".join(group if unicodedata.category(c) == "Zs" else c for c in written) if group.isspace() else written
         try:
-            readings.add(parse_decimal(text, loc, strict=True, numbering_system="latn"))
+            readings.add(parse_decimal(text, loc, strict=True))
         except NumberFormatError:
             continue
     return sorted(readings)
@@ -288,12 +288,13 @@ def _signs_by_length() -> tuple[tuple[int, frozenset[str]], ...]:
 
 @cache
 def _convention(identifier: str) -> tuple[str, str, object]:
-    """A locale's CLDR number convention: decimal symbol, group symbol, grouping sizes."""
+    """A locale's CLDR number convention: decimal symbol, group symbol, grouping sizes. Babel reads symbols and parses
+    in the Latin digit system (`latn`) by default, the digits `_AMOUNT_RUN` reads after NFKC."""
     locale = Locale.parse(identifier)
     pattern = locale.decimal_formats.get(None)
     return (
-        get_decimal_symbol(locale, numbering_system="latn"),
-        get_group_symbol(locale, numbering_system="latn"),
+        get_decimal_symbol(locale),
+        get_group_symbol(locale),
         pattern.grouping if pattern is not None else None,
     )
 

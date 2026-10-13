@@ -262,7 +262,9 @@ def test_an_ok_value_normalizes_to_itself_in_both_structured_forms(code: str, am
 def test_the_same_input_and_context_give_the_same_result(sign: str, tag: str | None) -> None:
     ctx = Context(captured_at=AT, html_lang=tag)
 
-    assert money.normalize(f"{sign} 1.234", MONEY, ctx) == money.normalize(f"{sign} 1.234", MONEY, ctx)
+    first = money.normalize(f"{sign} 1.234", MONEY, ctx)
+
+    assert money.normalize(f"{sign} 1.234", MONEY, ctx) == first
 
 
 def test_the_dispatcher_sends_money_to_the_money_module() -> None:
