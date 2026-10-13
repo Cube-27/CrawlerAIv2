@@ -95,12 +95,14 @@ def test_the_lxml_tree_accepts_an_xml_declaration_and_an_empty_document(html: st
 
 class _Counter:
     def __init__(self) -> None:
-        self.calls = 0
         self.inputs: list[object] = []
+
+    @property
+    def calls(self) -> int:
+        return len(self.inputs)
 
     def wrap(self, constructor: Callable[..., Any]) -> Callable[..., Any]:
         def counted(*args: Any, **kwargs: Any) -> Any:
-            self.calls += 1
             self.inputs.append(args[0] if args else None)
             return constructor(*args, **kwargs)
 

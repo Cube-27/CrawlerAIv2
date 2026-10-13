@@ -65,6 +65,13 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
     return isinstance(left, Ok) and left == canonical(b, None)
 
 
+def canonical_url(raw: str, base: str | None) -> str | None:
+    """`raw` as a canonical absolute http(s) URL, or `None` when it is not one: `canonical` for callers outside a field
+    (the content formats), which drop what declines."""
+    result = canonical(raw, base)
+    return result.value if isinstance(result, Ok) and isinstance(result.value, str) else None
+
+
 def canonical(raw: str, base: str | None) -> NormalizeResult:
     """The url type's canonical form of `raw`, resolved against `base` when relative (SPEC-04 §4.4). Other modules
     that canonicalize URLs outside a field (the `links` content format) call this, so there is one set of rules."""

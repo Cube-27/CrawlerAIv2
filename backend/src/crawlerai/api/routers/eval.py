@@ -367,8 +367,7 @@ def sanitize_html(bundle: CaptureBundle) -> str:
         base_url = urljoin(base_url, page_base.attributes.get("href") or "")
     for node in tree.css(f"{_ACTIVE}, base"):
         node.decompose()
-    if tree.root is not None:
-        remove_scripting_attributes(tree.root)
+    remove_scripting_attributes(tree)
     head, base = tree.head, LexborHTMLParser("<base>").css_first("base")
     if head is None or base is None:
         raise RuntimeError("the HTML parser creates `head` in every document")

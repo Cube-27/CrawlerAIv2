@@ -20,13 +20,14 @@ _C0_OR_SPACE = "".join(map(chr, range(0x21)))
 
 def is_javascript_url(value: str) -> bool:
     """Whether `value` parses as a `javascript:` URL (HTML §7.11.1); the scheme is ASCII case-insensitive."""
-    return value.translate(_URL_IGNORED).lstrip(_C0_OR_SPACE).lower().startswith("javascript:")
+    # A `javascript:` URL has a colon; most attribute values (classes, styles, text) don't, and skip the copies.
+    return ":" in value and value.translate(_URL_IGNORED).lstrip(_C0_OR_SPACE).lower().startswith("javascript:")
 
 
-def remove_scripting_attributes(root: lexbor.LexborNode) -> None:
-    """Remove from `root` and its descendants every event handler content attribute (HTML §8.1.8.2: the `on*`
+def remove_scripting_attributes(tree: lexbor.LexborHTMLParser) -> None:
+    """Remove from the document every event handler content attribute (HTML §8.1.8.2: the `on*`
     names) and every attribute whose value is a `javascript:` URL, whatever the attribute's name."""
-    for node in root.traverse():
+    for node in tree.root.traverse() if tree.root is not None else ():
         for name, value in node.attributes.items():
             if name.lower().startswith("on") or is_javascript_url(value or ""):
                 del node.attrs[name]
@@ -38,6 +39,5 @@ def cleaned_html(page: ParsedPage) -> str:
     tree = page.tree.clone()
     for node in tree.css(_REMOVED):
         node.decompose()
-    if tree.root is not None:
-        remove_scripting_attributes(tree.root)
+    remove_scripting_attributes(tree)
     return tree.html or ""

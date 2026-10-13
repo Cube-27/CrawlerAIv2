@@ -10,12 +10,10 @@ from dataclasses import dataclass, field
 
 from pydantic import JsonValue
 
-from crawlerai.content.links import absolute_url, document_base_url, rel_types
+from crawlerai.content.dom import document_base_url, strip, tokens
 from crawlerai.content.page import ParsedPage
+from crawlerai.normalize.url import canonical_url
 
-# HTML Living Standard §2.3.1: "strip and collapse ASCII whitespace", as `document.title` does (§3.1.3).
-_ASCII_WHITESPACE = re.compile(r"[\t\n\f\r ]+")
-_ASCII_WHITESPACE_CHARS = "\t\n\f\r "
 # The Open Graph protocol: `og:` properties, and the `product:` namespace of its `product` object type.
 _OG_PREFIXES = ("og:", "product:")
 # RFC 3987 §2.2 and RFC 3986 §3: an IRI's last path segment or its fragment follows the last `/` or `#`.
@@ -41,7 +39,7 @@ def metadata(page: ParsedPage, final_url: str) -> PageMetadata:
     return PageMetadata(
         title=_title(page),
         description=_meta_name(page, "description"),
-        language=_stripped(_html_lang(page)) or _stripped(og.get("og:locale")),
+        language=strip(_html_lang(page)) or strip(og.get("og:locale")),
         canonical=_canonical(page, final_url),
         og=og,
         structured_data_types=tuple(
@@ -50,20 +48,17 @@ def metadata(page: ParsedPage, final_url: str) -> PageMetadata:
     )
 
 
-def _stripped(value: str | None) -> str | None:
-    return (value or "").strip(_ASCII_WHITESPACE_CHARS) or None
-
-
 def _title(page: ParsedPage) -> str | None:
+    # HTML Living Standard §3.1.3: `document.title` strips and collapses ASCII whitespace (§2.3.1).
     node = page.tree.css_first("title")
-    return _stripped(_ASCII_WHITESPACE.sub(" ", node.text(deep=True))) if node is not None else None
+    return (" ".join(tokens(node.text(deep=True))) or None) if node is not None else None
 
 
 def _meta_name(page: ParsedPage, name: str) -> str | None:
     # HTML Living Standard §4.2.5.1: standard metadata names compare ASCII case-insensitively.
     for node in page.tree.css("meta[name][content]"):
         if (node.attributes.get("name") or "").lower() == name:
-            return _stripped(node.attributes.get("content"))
+            return strip(node.attributes.get("content"))
     return None
 
 
@@ -87,8 +82,8 @@ def _open_graph(page: ParsedPage) -> dict[str, str]:
 def _canonical(page: ParsedPage, final_url: str) -> str | None:
     # RFC 6596: the canonical link relation.
     for node in page.tree.css("link[href]"):
-        if "canonical" in rel_types(node):
-            return absolute_url(node.attributes.get("href") or "", document_base_url(page, final_url))
+        if "canonical" in tokens((node.attributes.get("rel") or "").lower()):
+            return canonical_url(node.attributes.get("href") or "", document_base_url(page, final_url))
     return None
 
 
@@ -122,7 +117,7 @@ def _microdata_types(page: ParsedPage) -> Iterator[str]:
     # HTML Living Standard §5.2.2: `itemtype`, on an element with `itemscope`, is a set of space-separated absolute
     # URLs.
     for node in page.tree.css("[itemscope][itemtype]"):
-        yield from map(_type_name, _ASCII_WHITESPACE.split(node.attributes.get("itemtype") or ""))
+        yield from map(_type_name, tokens(node.attributes.get("itemtype")))
 
 
 def _type_name(value: str) -> str:
