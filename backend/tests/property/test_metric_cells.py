@@ -1,10 +1,12 @@
 """Properties of the metric table (SPEC-03 §4.6, §4.7) over generated label/output pairs: each field lands in the
 cell its construction says, the ratios follow from the cells, page and row order don't matter, and the exported
-aggregate suppresses every small cell and carries no host (INV-01)."""
+aggregate suppresses every small cell, complements a lone suppressed cell in its group, and carries no host (INV-01,
+INV-25)."""
 
 import random
 import re
 from collections import Counter
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, get_args
 
@@ -15,12 +17,16 @@ from crawlerai.eval.labels import Labels, ScalarShape, ScalarType
 from crawlerai.eval.metrics import (
     MIN_CELL,
     EvalCase,
+    Evidence,
     FieldMetrics,
     FieldOutput,
     PageOutput,
+    PrecisionMetrics,
     Report,
     SchemaFields,
     Suppressed,
+    Usage,
+    ZeroTouch,
     build_report,
     export_aggregate,
 )
@@ -168,7 +174,79 @@ def test_aggregate_suppresses_small_cells_and_names_no_host(
         full, out = getattr(report, table), getattr(aggregate, table)
         assert out.keys() == full.keys()
         for key, cell in out.items():
-            assert cell == (Suppressed(n=full[key].n) if full[key].n < MIN_CELL else full[key])
+            # Complementary suppression may hide a cell of 10 or more as well (D-0234); its exact rule is tested below.
+            assert cell in (Suppressed(n=full[key].n), full[key])
+            assert full[key].n >= MIN_CELL or isinstance(cell, Suppressed)
     for key, cell in aggregate.acquisition.items():
         assert cell == (Suppressed(n=cell.n) if isinstance(cell, Suppressed) else report.acquisition[key])
     assert _HOST.search(aggregate.model_dump_json()) is None
+
+
+_n = st.integers(min_value=0, max_value=30)
+
+
+def _keyed(left: list[str], right: list[str]) -> st.SearchStrategy[dict[str, int]]:
+    return st.dictionaries(st.tuples(st.sampled_from(left), st.sampled_from(right)).map("|".join), _n)
+
+
+_TYPES = ["money", "text", "url"]
+_EVIDENCE: list[str] = list(get_args(Evidence))
+_STATUSES = ["corroborated", "uncorroborated", "operator", "suspended"]
+
+
+@given(
+    _keyed(_TYPES, _EVIDENCE),
+    _keyed(_TYPES, _STATUSES),
+    st.dictionaries(st.sampled_from(["platform_store", "custom_store", "api_backed", "job_board", "mixed"]), _n),
+    st.dictionaries(st.sampled_from(["adhoc", "config"]), _n),
+    st.sampled_from(["hidden", "fresh"]),
+)
+def test_no_suppressed_cell_is_derivable_from_its_group(
+    buckets: dict[str, int], statuses: dict[str, int], categories: dict[str, int], modes: dict[str, int], split: str
+) -> None:
+    report = Report.model_validate(
+        {
+            "engine_version": "e1",
+            "git_sha": "abc",
+            "split": split,
+            "n_pages": sum(categories.values()),
+            "by_field_type": {},
+            "by_field": {},
+            "by_bucket": {k: PrecisionMetrics(precision=0.5, n=n) for k, n in buckets.items()},
+            "by_config_status": {k: PrecisionMetrics(precision=0.5, n=n) for k, n in statuses.items()},
+            "by_category": {k: ZeroTouch(zero_touch=0.5, n=n) for k, n in categories.items()},
+            "acquisition": {k: {"ok": n} for k, n in categories.items()},
+            "usage": {k: Usage(llm_calls_per_1k_pages=1.0, n=n) for k, n in modes.items()},
+        }
+    )
+    aggregate = export_aggregate(report)
+
+    # Bucket and config-status cells sum to their field type's cell; category and usage cells sum to `n_pages`.
+    groups: list[tuple[str, Callable[[str], str]]] = [
+        ("by_bucket", lambda k: k.split("|")[0]),
+        ("by_config_status", lambda k: k.split("|")[0]),
+        ("by_category", lambda _: ""),
+        ("usage", lambda _: ""),
+    ]
+    for table, group_of in groups:
+        full: Mapping[str, PrecisionMetrics | ZeroTouch | Usage] = getattr(report, table)
+        out: Mapping[str, object] = getattr(aggregate, table)
+        for group in {group_of(k) for k in full}:
+            keys = [k for k in full if group_of(k) == group]
+            hidden = {k for k in keys if isinstance(out[k], Suppressed)}
+            small = {k for k in keys if full[k].n < MIN_CELL}
+            # Every small cell is hidden, and every visible cell is reported unchanged.
+            assert small <= hidden
+            assert all(out[k] == full[k] for k in keys if k not in hidden)
+            # One hidden cell alone in a group of several would be its total minus the visible cells (§16.3).
+            assert len(hidden) != 1 or len(keys) == 1
+            # The complement adds exactly one cell, the smallest of the rest, and only to a lone small cell.
+            if len(small) == 1 and len(keys) > 1:
+                rest = [full[k].n for k in keys if k not in small]
+                assert len(hidden - small) == 1
+                assert full[(hidden - small).pop()].n == min(rest)
+            else:
+                assert hidden == small
+    assert {k for k, v in aggregate.acquisition.items() if isinstance(v, Suppressed)} == {
+        k for k, v in aggregate.by_category.items() if isinstance(v, Suppressed)
+    }

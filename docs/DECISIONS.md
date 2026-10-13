@@ -1514,3 +1514,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `Offer.url`; `Product.brand`.
 - Why: schema.org `brand` is a `Brand`/`Organization`, so the text is its `name`; schema.org has no next-page property.
 - Reversible: yes
+
+### D-0246 — Complementary groups include `by_category` (with `acquisition`) and `usage`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 12 (#44) · Status: decided
+- Decision: Besides §4.7's bucket and config-status groups, category and usage cells are complemented, since their `n` sums to the reported `n_pages`.
+- Alternatives: Only the two groups §4.7 names.
+- Why: The ACTIVE row asks for every group that sums to a reported total; the conservative reading (§16.3).
+- Reversible: yes
+
+### D-0247 — A one-cell group gets no complement; ties break by key
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 12 (#44) · Status: decided
+- Decision: A group with one suppressed cell gets no complement; among equal-`n` candidates the first key is suppressed.
+- Alternatives: Suppress the group total too.
+- Why: A one-cell group equals its total, which §16.3 reports at its own size; key order keeps exports deterministic.
+- Reversible: yes

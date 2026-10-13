@@ -375,3 +375,106 @@ def test_generalization_gap_is_dev_minus_fresh() -> None:
 
     assert generalization_gap(dev, fresh) == {"money": 0.5}
     assert generalization_gap(dev, export_aggregate(fresh)) == {}
+
+
+def _precision_table(cells: dict[str, int]) -> dict[str, PrecisionMetrics | Suppressed]:
+    return {k: PrecisionMetrics(precision=1.0, n=n) for k, n in cells.items()}
+
+
+def _report(split: str = "hidden", **tables: Any) -> Report:
+    return Report.model_validate(
+        {
+            "engine_version": "e1",
+            "git_sha": "abc",
+            "split": split,
+            "n_pages": 50,
+            "by_field_type": {},
+            "by_field": {},
+            "by_bucket": {},
+            "by_config_status": {},
+            "by_category": {},
+            "acquisition": {},
+            "usage": {},
+            **tables,
+        }
+    )
+
+
+def test_a_lone_small_bucket_takes_the_next_smallest_of_its_type_with_it() -> None:
+    r = _report(
+        by_bucket=_precision_table({"money|structured": 30, "money|agreed": 12, "money|adapter": 4, "text|agreed": 5})
+    )
+
+    agg = export_aggregate(r)
+
+    assert agg.by_bucket == {
+        "money|structured": PrecisionMetrics(precision=1.0, n=30),
+        "money|agreed": Suppressed(n=12),
+        "money|adapter": Suppressed(n=4),
+        "text|agreed": Suppressed(n=5),
+    }
+
+
+def test_a_lone_small_config_status_takes_the_next_smallest_of_its_type_with_it() -> None:
+    r = _report(
+        by_config_status=_precision_table({"money|corroborated": 15, "money|operator": 11, "money|suspended": 2})
+    )
+
+    agg = export_aggregate(r)
+
+    assert agg.by_config_status == {
+        "money|corroborated": PrecisionMetrics(precision=1.0, n=15),
+        "money|operator": Suppressed(n=11),
+        "money|suspended": Suppressed(n=2),
+    }
+
+
+def test_two_small_cells_need_no_complement() -> None:
+    r = _report(by_bucket=_precision_table({"money|structured": 30, "money|agreed": 3, "money|adapter": 4}))
+
+    agg = export_aggregate(r)
+
+    assert agg.by_bucket["money|structured"] == PrecisionMetrics(precision=1.0, n=30)
+
+
+def test_categories_and_their_acquisition_are_complemented_as_one_group() -> None:
+    # Category cells count pages, and together they count every page in `n_pages`.
+    r = _report(
+        by_category={
+            "custom_store": ZeroTouch(zero_touch=0.5, n=25),
+            "mixed": ZeroTouch(zero_touch=0.5, n=11),
+            "job_board": ZeroTouch(zero_touch=1.0, n=3),
+        },
+        acquisition={"custom_store": {"ok": 25}, "mixed": {"ok": 10, "shell": 1}, "job_board": {"ok": 3}},
+    )
+
+    agg = export_aggregate(r)
+
+    assert agg.by_category == {
+        "custom_store": ZeroTouch(zero_touch=0.5, n=25),
+        "mixed": Suppressed(n=11),
+        "job_board": Suppressed(n=3),
+    }
+    assert agg.acquisition == {"custom_store": {"ok": 25}, "mixed": Suppressed(n=11), "job_board": Suppressed(n=3)}
+
+
+def test_usage_modes_are_complemented_as_one_group() -> None:
+    r = _report(
+        usage={"adhoc": Usage(llm_calls_per_1k_pages=400.0, n=45), "config": Usage(llm_calls_per_1k_pages=0.0, n=5)}
+    )
+
+    agg = export_aggregate(r)
+
+    assert agg.usage == {"adhoc": Suppressed(n=45), "config": Suppressed(n=5)}
+
+
+def test_dev_keeps_primary_suppression_only() -> None:
+    r = _report("dev", by_bucket=_precision_table({"money|structured": 30, "money|agreed": 12, "money|adapter": 4}))
+
+    agg = export_aggregate(r)
+
+    assert agg.by_bucket == {
+        "money|structured": PrecisionMetrics(precision=1.0, n=30),
+        "money|agreed": PrecisionMetrics(precision=1.0, n=12),
+        "money|adapter": Suppressed(n=4),
+    }

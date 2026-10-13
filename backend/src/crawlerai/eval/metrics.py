@@ -9,7 +9,7 @@ suppressed).
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
@@ -211,20 +211,25 @@ def export_aggregate(report: Report) -> Report:
     """The report as it may leave the protected job (§4.7): no per-page rows, and every cell under `MIN_CELL`
     reduced to its `n`. Page-level cells (category, acquisition, usage) count pages, which is stricter than counting
     the fields on them. Per-field cells stay in the job for hidden and fresh: their keys name schemas, and §4.7 and C10
-    expose aggregates per field type and evidence bucket only."""
-    by_category = _suppress_all(report.by_category)
+    expose aggregates per field type and evidence bucket only.
+
+    Hidden and fresh aggregates also suppress complementarily (§16.3, D-0234), in every group of cells that sums to
+    a reported total: the bucket cells and the config-status cells of one field type (published fields of that
+    type), and the category cells and the usage cells (pages, which sum to `n_pages`)."""
+    dev = report.split == "dev"
+    by_category = _complement(_suppress_all(report.by_category), _whole, dev)
     return report.model_copy(
         update={
             "by_field_type": _suppress_all(report.by_field_type),
-            "by_field": _suppress_all(report.by_field) if report.split == "dev" else {},
-            "by_bucket": _suppress_all(report.by_bucket),
-            "by_config_status": _suppress_all(report.by_config_status),
+            "by_field": _suppress_all(report.by_field) if dev else {},
+            "by_bucket": _complement(_suppress_all(report.by_bucket), _field_type, dev),
+            "by_config_status": _complement(_suppress_all(report.by_config_status), _field_type, dev),
             "by_category": by_category,
             # Acquisition counts the same pages as the category's zero-touch cell, so it shares that suppression.
             "acquisition": {
                 k: cell if isinstance(cell, Suppressed) else report.acquisition[k] for k, cell in by_category.items()
             },
-            "usage": _suppress_all(report.usage),
+            "usage": _complement(_suppress_all(report.usage), _whole, dev),
             "pages": None,
         }
     )
@@ -382,3 +387,35 @@ def _suppress_all[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppr
 
 def _suppress[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppressed](cell: C) -> C | Suppressed:
     return Suppressed(n=cell.n) if cell.n < MIN_CELL else cell
+
+
+def _complement[C: PrecisionMetrics | ZeroTouch | Usage](
+    table: Mapping[str, C | Suppressed], group_of: Callable[[str], str], dev: bool
+) -> dict[str, C | Suppressed]:
+    """Complementary suppression (§16.3): a group whose cells sum to a reported total must not show all its cells
+    but one, or that one is the total minus the others. So when exactly one cell of a group is suppressed, the
+    next-smallest cell (ties by key) is suppressed too; with two hidden, only their sum is derivable. A group of one
+    cell equals its total, which is reported at its own size by design, so it is left as is. Dev is reported in full
+    (§4.7), so it gets none."""
+    out = dict(table)
+    if dev:
+        return out
+    groups: defaultdict[str, list[str]] = defaultdict(list)
+    for key in table:
+        groups[group_of(key)].append(key)
+    for keys in groups.values():
+        visible = [k for k in keys if not isinstance(out[k], Suppressed)]
+        if len(keys) - len(visible) == 1 and visible:
+            nearest = min(visible, key=lambda k: (out[k].n, k))
+            out[nearest] = Suppressed(n=out[nearest].n)
+    return out
+
+
+def _field_type(key: str) -> str:
+    # "field_type|evidence" and "field_type|status": the group is the field type.
+    return key.split("|", 1)[0]
+
+
+def _whole(_key: str) -> str:
+    # Category and usage cells count pages; together they count every page in `n_pages`.
+    return ""
