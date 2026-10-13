@@ -11,6 +11,11 @@ class NoResizeObserver {
   disconnect(): void {}
 }
 
+// jsdom has no Web Animations API; HeroUI's tab indicator reads `getAnimations` when the selected tab changes.
+if (!("getAnimations" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "getAnimations", { value: (): Animation[] => [] });
+}
+
 beforeEach(() => {
   prefersDark(false);
   vi.stubGlobal("ResizeObserver", NoResizeObserver);
