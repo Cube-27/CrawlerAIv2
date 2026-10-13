@@ -2130,3 +2130,64 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: refuse refs that start with `-` in Python.
 - Why: git's own end-of-options marker covers every option form.
 - Reversible: yes
+
+### D-0334 — Page text is rendered from the tree; `ParsedPage` caches it
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided
+- Decision: `content.text.render(root)` returns the cleaned text and the shown attribute values in one walk of the selectolax tree. `ParsedPage.cleaned_text` and `ParsedPage.visible_values` cache the result; SPEC-05 §4.1 writes these as `cleaned_text(page)` and `visible_values(page)`.
+- Alternatives: functions that take the page, which need a circular import and let a caller skip the cache.
+- Why: one walk, one cache, one import direction.
+- Reversible: yes
+
+### D-0335 — Inline text joins as rendered
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided
+- Decision: text nodes are concatenated, and whitespace collapses as CSS Text 3 §4.1 collapses it, with Unicode White_Space as the collapsible set (as SPEC-04 collapses). Table cells are separated by a space; line boxes and `br` by `\n`. SPEC-05 §4.4's "inline text joined by space" is read this way.
+- Alternatives: a space between every inline node, which turns `$<span>19</span>` into `$ 19`, text that is not on the page.
+- Why: grounding (INV-12) needs verbatim page text.
+- Reversible: yes
+
+### D-0336 — Visibility index entries are lines, not runs
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided
+- Decision: the index holds every cleaned-text line, plus the `alt`, `title`, `value` and `content` attributes of visible elements, in the SPEC-04 text form. `visible(value)` is a substring match that doesn't split a word, with letters and digits as an approximation of UAX #29 word boundaries.
+- Alternatives: exact membership of a run, which misses values split across inline elements.
+- Why: lines contain every run. Matching whole words keeps `9.99` from matching inside `19.99`.
+- Reversible: yes
+
+### D-0337 — The hidden set comes from the HTML Standard
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided
+- Decision: content counts as hidden when it is one of:
+  - the HTML Standard rendering section's "Hidden elements", which include `head`, `title`, `meta`, `input[type=hidden]` and a closed `dialog`;
+  - `noscript` and `svg`, from SPEC-05 §4.4;
+  - `iframe`, whose content is raw text.
+
+  `visibility` is inherited, and a descendant with `visible` is shown again (CSS 2 §11.2). As a result, `meta[content]` is never in the index.
+- Alternatives: only the elements §4.4 lists.
+- Why: a standard decides what is hidden, not a list grown page by page (C2, C4).
+- Reversible: yes
+
+### D-0338 — One decode for both parsers
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided
+- Decision: `storage.capture_bundle.decode_body` decodes the body once, in the Content-Type charset, else UTF-8 (as D-0213); the labeling view uses it too. lxml gets the decoded text re-encoded as UTF-8 with that encoding named, so an XML encoding declaration doesn't break it. An empty document gives an empty `html` element.
+- Alternatives: give each parser the raw bytes.
+- Why: lexbor decodes bytes wrongly (non-ASCII came out as U+FFFD), and both parsers must read the same characters.
+- Reversible: yes
+
+### D-0339 — Node paths: absolute indexed XPath in the selectolax tree
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided
+- Decision: `TextRun.node_path` and `ScriptBlock.xpath` are XPath 1.0 location paths into the selectolax (HTML-standard) tree, with every step indexed (`/html[1]/body[1]/div[3]`). A tag that is not an NCName (`o:p`) gets `*[name()='o:p'][n]`. One formatter, `content.text.xpath_step`, builds every step. A path may not resolve in `lxml_tree`, because libxml2 builds HTML trees differently (no implied `tbody`, different handling of misnested tags).
+- Alternatives: paths computed in the lxml tree, which would need lxml for every page.
+- Why: a path must name the tree its text came from.
+- Reversible: yes
+
+### D-0340 — Row-level readiness
+- Date: 2026-10-13 · Spec/PR: run-plan · Status: decided
+- Decision: a row is ready when the code it touches is merged, or when what it needs is fully specified (a frontend row may mock spec-defined API shapes), even if its spec's other listed dependencies aren't done. Rows within one spec still run in order.
+- Alternatives: spec-level readiness only.
+- Why: spec-level dependencies left worker slots idle while the first rows of SPEC-07, SPEC-06 and SPEC-12 needed nothing from SPEC-05 (the owner asked about the frontend).
+- Reversible: yes
+
+### D-0341 — No custom design system
+- Date: 2026-10-13 · Spec/PR: owner-directed · Status: decided (owner)
+- Decision: HeroUI v3 as it is. Every visual value lives in `src/app/theme.css`, so a visual change is a one-file change. No wrapper components, inline styles, raw colors, palette utilities or arbitrary values. A CI check follows.
+- Alternatives: a drafted design system; an owner-supplied design.
+- Why: owner instruction.
+- Reversible: yes
