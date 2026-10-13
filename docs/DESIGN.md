@@ -99,6 +99,8 @@ These follow from the product's precision rules (ARCHITECTURE §10, §13.1).
 - An abstained field is rendered as "—" with its reason on hover, never as an empty string.
 - `calibrated=false` is rendered as a visible badge.
 - `confidence` is rendered as a number, not a bar: a bar implies a calibration the value may not have.
+- Screens show a field only through the shared compositions in `src/components/`: `FieldValue` (value by type,
+  or "—" with reason and status), `FieldStatusBadge`, `ConfidenceCell` and `LocatorText`.
 
 ## Charts
 

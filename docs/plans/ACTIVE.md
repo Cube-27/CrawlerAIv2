@@ -224,7 +224,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Connect screen + auth context + 401 handling | done (#68) | |
-| 2 | Shared field components | todo | |
+| 2 | Shared field components | done (#73) | |
 | 3 | Scrape screen | todo | |
 | 4 | Schemas screens | todo | |
 | 5 | Records screen + inspector + replay | todo | |
