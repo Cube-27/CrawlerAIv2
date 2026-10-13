@@ -3569,3 +3569,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Mark nulls absent; require a labeler in the body; overwrite any labels.
 - Why: `absent` is the labeler's claim (G2); a pre-fill never counts as ground truth and must not erase a human pass.
 - Reversible: yes
+
+### D-0539 — `wait_ci.sh` treats a missing `backend` check after a grace period as "CI never started"
+- Date: 2026-10-14 · Spec/PR: tooling chore (#112) · Status: decided
+- Decision: CI counts as started when the ci workflow's `backend` check (no `needs:`) appears on the head, the same check the success condition already requires. Grace is 5 minutes from the start of the wait (`WAIT_CI_NO_RUN_S`); a `CONFLICTING`/`DIRTY` PR fails at once.
+- Alternatives: count check runs with a `workflowName`; `gh run list --commit` (needs the full SHA and a second call).
+- Why: one definition of "CI started"; a `workflowName` count could be met by another workflow while `backend` never comes, which is the hang this fixes (#109).
+- Reversible: yes — edit `tools/orchestrator/wait_ci.sh`.
