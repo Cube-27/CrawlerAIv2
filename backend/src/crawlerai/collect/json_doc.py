@@ -5,6 +5,7 @@ queried with the RFC 9535 subset adapter maps are written in."""
 import json
 import re
 from collections.abc import Callable, Iterator
+from typing import TypeGuard
 
 from pydantic import JsonValue
 
@@ -34,17 +35,29 @@ def parse_prefix(text: str, start: int) -> JsonValue:
 
 def scalars(document: JsonValue) -> Iterator[tuple[str, str | int | float]]:
     """Every string and number in `document` with its normalized path, in document order. `true`, `false` and `null`
-    are left out: they are not values of any field type. Iterative, so that nesting depth is bounded by what the parser
-    accepts rather than by the call stack."""
-    stack: list[tuple[JsonValue, str]] = [(document, ROOT)]
+    are left out: they are not values of any field type."""
+    return ((path, value) for path, value in nodes(document) if is_scalar(value))
+
+
+def nodes(document: JsonValue, *, wildcard: bool = False) -> Iterator[tuple[str, JsonValue]]:
+    """Every node of `document` with its normalized path, in document order; with `wildcard`, array indices are
+    written `[*]` (RFC 9535 §2.5.1.2). Iterative, so that nesting depth is bounded by what the parser accepts rather
+    than by the call stack."""
+    stack: list[tuple[str, JsonValue]] = [(ROOT, document)]
     while stack:
-        value, path = stack.pop()
+        path, value = stack.pop()
+        yield path, value
+        children: list[tuple[str, JsonValue]] = []
         if isinstance(value, dict):
-            stack.extend((child, member(path, key)) for key, child in reversed(value.items()))
+            children = [(member(path, key), child) for key, child in value.items()]
         elif isinstance(value, list):
-            stack.extend((value[i], f"{path}[{i}]") for i in range(len(value) - 1, -1, -1))
-        elif isinstance(value, (str, int, float)) and not isinstance(value, bool):
-            yield path, value
+            children = [(f"{path}[{'*' if wildcard else i}]", child) for i, child in enumerate(value)]
+        stack.extend(reversed(children))
+
+
+def is_scalar(value: JsonValue) -> TypeGuard[str | int | float]:
+    """A string or a number; a JSON boolean is not one, though Python's `bool` is an `int`."""
+    return isinstance(value, (str, int, float)) and not isinstance(value, bool)
 
 
 def select(query: str, document: JsonValue, at: str = ROOT) -> list[tuple[str, JsonValue]]:
