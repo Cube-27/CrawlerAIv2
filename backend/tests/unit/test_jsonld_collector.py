@@ -159,6 +159,19 @@ def test_deep_nesting_is_walked_without_the_call_stack() -> None:
     assert [(c.raw, c.locator) for c in result.candidates] == [("Widget 9", "jsonld:0:$" + "[0]" * depth + "['name']")]
 
 
+def test_a_value_the_candidate_model_refuses_is_skipped_with_a_diagnostic() -> None:
+    deep: Any = "x"
+    for _ in range(300):
+        deep = {"a": deep}
+    result = _collect(
+        {"@context": SCHEMA_ORG, "@type": "Product", "name": deep},
+        {"@context": SCHEMA_ORG, "@type": "Product", "name": "Widget 9"},
+    )
+    assert [(c.raw, c.locator) for c in result.candidates] == [("Widget 9", "jsonld:1:$['name']")]
+    assert len(result.diagnostics) == 1
+    assert result.diagnostics[0].startswith("jsonld:0: value at jsonld:0:$['name'] skipped")
+
+
 def test_an_invalid_block_is_skipped_with_a_diagnostic() -> None:
     result = _collect('{"@type": "Product", "name": "x",}', {"@context": SCHEMA_ORG, "@type": "Product", "name": "y"})
     assert [(c.locator, c.raw) for c in result.candidates] == [("jsonld:1:$['name']", "y")]
