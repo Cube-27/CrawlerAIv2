@@ -3,6 +3,10 @@
 Each entry runs once at start, then again `interval` after its previous run ended, in a transaction of its own. An
 entry that raises is rolled back and logged, and runs again at its next turn: one failing entry, or the database
 being down for a while, stops none of the others.
+
+An entry with a `batch` handles at most that many items per run and returns how many it handled. A full batch means
+more may be waiting, so the entry is due again at once: a backlog drains in short transactions, one per batch,
+taking turns with the other entries, instead of one long transaction or one batch per interval.
 """
 
 import asyncio
@@ -17,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import release_expired_leases
-from crawlerai.scheduler.retention import expire_candidates, expire_captures
+from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
 from crawlerai.storage.base import ObjectStore
 
 log = logging.getLogger(__name__)
@@ -28,14 +32,25 @@ class Periodic:
     name: str
     interval: timedelta
     run: Callable[[AsyncConnection], Awaitable[object]]
+    batch: int | None = None
 
 
 def periodic(store: ObjectStore) -> tuple[Periodic, ...]:
     """The scheduler's entries (SPEC-01 §4.3). `store` is the main object store, where production captures live."""
     return (
         Periodic("release_expired_leases", timedelta(minutes=1), release_expired_leases),
-        Periodic("expire_captures", timedelta(hours=1), partial(expire_captures, store=store)),
-        Periodic("expire_candidates", timedelta(hours=1), expire_candidates),
+        Periodic(
+            "expire_captures",
+            timedelta(hours=1),
+            partial(expire_captures, store=store, batch=RETENTION_BATCH),
+            batch=RETENTION_BATCH,
+        ),
+        Periodic(
+            "expire_candidates",
+            timedelta(hours=1),
+            partial(expire_candidates, batch=RETENTION_BATCH),
+            batch=RETENTION_BATCH,
+        ),
     )
 
 
@@ -48,8 +63,9 @@ async def run_scheduler(settings: Settings, entries: Sequence[Periodic], stop: a
         while not stop.is_set():
             for index, entry in enumerate(entries):
                 if due[index] <= clock() and not stop.is_set():
-                    await _run(engine, entry)
-                    due[index] = clock() + entry.interval.total_seconds()
+                    result = await _run(engine, entry)
+                    backlog = entry.batch is not None and result == entry.batch
+                    due[index] = clock() if backlog else clock() + entry.interval.total_seconds()
             wait = max(0.0, min(due) - clock()) if due else None
             with suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), wait)
@@ -57,11 +73,13 @@ async def run_scheduler(settings: Settings, entries: Sequence[Periodic], stop: a
         await engine.dispose()
 
 
-async def _run(engine: AsyncEngine, entry: Periodic) -> None:
+async def _run(engine: AsyncEngine, entry: Periodic) -> object:
+    """The entry's result, or None if it failed."""
     try:
         async with engine.begin() as conn:
             result = await entry.run(conn)
     except Exception:
         log.exception("scheduler: %s failed; it runs again in %s", entry.name, entry.interval)
-    else:
-        log.debug("scheduler: %s: %s", entry.name, result)
+        return None
+    log.debug("scheduler: %s: %s", entry.name, result)
+    return result

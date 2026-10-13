@@ -11,7 +11,7 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Candidate, Capture, CaptureId, Extraction, ExtractionId, Job, Project, Site, UrlTask
-from crawlerai.scheduler.retention import expire_candidates, expire_captures
+from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -80,7 +80,7 @@ async def test_production_captures_past_expires_at_lose_bundle_and_row_and_the_r
     dev_eval = await _capture(conn, store, "eval/dev/never-expires.bundle.zst", None)
     store.put("eval/dev/no-row.bundle.zst", b"blob")
 
-    assert await expire_captures(conn, store) == 1
+    assert await expire_captures(conn, store, batch=RETENTION_BATCH) == 1
 
     ids = [expired, due_now, live, forever, dev_eval]
     remaining = set((await conn.execute(select(Capture.id).where(Capture.id.in_(ids)))).scalars())
@@ -100,7 +100,7 @@ async def test_a_row_under_an_eval_prefix_is_kept_with_its_bundle_even_past_expi
     store = FsStore(tmp_path)
     dev_eval = await _capture(conn, store, "eval/dev/mislabelled.bundle.zst", func.now() - timedelta(days=1))
 
-    assert await expire_captures(conn, store) == 0
+    assert await expire_captures(conn, store, batch=RETENTION_BATCH) == 0
 
     assert (await conn.execute(select(Capture.id).where(Capture.id == dev_eval))).scalar_one() == dev_eval
     assert store.list("") == ["eval/dev/mislabelled.bundle.zst"]
@@ -114,8 +114,8 @@ async def test_expiring_captures_is_idempotent_when_the_bundle_is_already_gone(
     capture_id = await _capture(conn, store, key, func.now() - timedelta(seconds=1))
     store.delete(key)
 
-    assert await expire_captures(conn, store) == 1
-    assert await expire_captures(conn, store) == 0
+    assert await expire_captures(conn, store, batch=RETENTION_BATCH) == 1
+    assert await expire_captures(conn, store, batch=RETENTION_BATCH) == 0
 
     assert (await conn.execute(select(Capture.id).where(Capture.id == capture_id))).scalar_one_or_none() is None
 
@@ -140,9 +140,57 @@ async def test_candidates_older_than_30_days_are_deleted_and_younger_ones_kept(c
         for name, age in ages.items()
     }
 
-    assert await expire_candidates(conn) == 1
+    assert await expire_candidates(conn, batch=RETENTION_BATCH) == 1
 
     query = select(Candidate.id).where(Candidate.extraction_id == extraction_id)
     remaining = set((await conn.execute(query)).scalars())
     assert remaining == {ids["young"], ids["new"]}
-    assert await expire_candidates(conn) == 0
+    assert await expire_candidates(conn, batch=RETENTION_BATCH) == 0
+
+
+async def test_one_run_expires_at_most_a_batch_of_captures_oldest_first_and_later_runs_the_rest(
+    conn: AsyncConnection, tmp_path: Path
+) -> None:
+    store = FsStore(tmp_path)
+    for age in range(5, 0, -1):
+        await _capture(conn, store, f"captures/2026/09/aged-{age}.bundle.zst", func.now() - timedelta(hours=age))
+
+    assert await expire_captures(conn, store, batch=2) == 2
+    assert store.list("") == [f"captures/2026/09/aged-{age}.bundle.zst" for age in (1, 2, 3)]
+    assert await expire_captures(conn, store, batch=2) == 2
+    assert await expire_captures(conn, store, batch=2) == 1
+    assert await expire_captures(conn, store, batch=2) == 0
+    assert store.list("") == []
+
+
+async def test_one_run_expires_at_most_a_batch_of_candidates_oldest_first_and_later_runs_the_rest(
+    conn: AsyncConnection,
+) -> None:
+    extraction_id = await _extraction(conn)
+    values = {
+        "extraction_id": extraction_id,
+        "entity_ref": "page",
+        "field": "title",
+        "raw_value": "A title",
+        "normalize_status": "ok",
+        "source_kind": "jsonld",
+        "independent": True,
+        "locator": "jsonld:0:$.name",
+    }
+    ids = [
+        (
+            await conn.execute(
+                insert(Candidate)
+                .values(**values, created_at=func.now() - timedelta(days=30 + age))
+                .returning(Candidate.id)
+            )
+        ).scalar_one()
+        for age in range(5, 0, -1)
+    ]
+    query = select(Candidate.id).where(Candidate.extraction_id == extraction_id)
+
+    assert await expire_candidates(conn, batch=2) == 2
+    assert set((await conn.execute(query)).scalars()) == set(ids[2:])
+    assert await expire_candidates(conn, batch=2) == 2
+    assert await expire_candidates(conn, batch=2) == 1
+    assert await expire_candidates(conn, batch=2) == 0

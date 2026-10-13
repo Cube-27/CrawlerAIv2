@@ -148,6 +148,24 @@ async def test_entries_repeat_at_their_interval_and_a_failing_one_neither_stops_
         assert (await conn.execute(select(func.count()).select_from(JobEvent))).scalar_one() == 0
 
 
+async def test_a_batched_entry_that_fills_its_batch_runs_again_at_once_until_its_backlog_drains(
+    engine: AsyncEngine,
+) -> None:
+    backlog = [2, 2, 1]
+    runs: list[int] = []
+
+    async def drain(conn: AsyncConnection) -> int:
+        runs.append(backlog.pop(0) if backlog else 0)
+        return runs[-1]
+
+    async def drained() -> bool:
+        return not backlog
+
+    await _scheduler_until(engine, [Periodic("drain", timedelta(hours=1), drain, batch=2)], drained, timeout=10)
+
+    assert runs == [2, 2, 1]
+
+
 async def test_stopping_ends_the_scheduler_while_it_waits(engine: AsyncEngine) -> None:
     ran = asyncio.Event()
 
