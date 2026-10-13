@@ -237,7 +237,6 @@ Coverage gates and ratchets stay forbidden.
 - `tools/site_literal_scan.py --public --staged`.
 - `vp check --fix` (format, lint, type-check) on staged frontend files.
 - `end-of-file-fixer`, `trailing-whitespace`, `check-merge-conflict`.
-
 - `complexipy` on staged Python files, at the C11 limit of 15; the frontend's limit runs inside `vp check`.
 
 No hook counts lines (C11).
