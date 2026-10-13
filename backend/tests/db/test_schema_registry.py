@@ -76,8 +76,9 @@ async def test_a_preset_older_than_a_stored_preset_version_is_refused(conn: Asyn
 async def test_a_preset_version_taken_by_a_user_schema_is_refused(conn: AsyncConnection) -> None:
     await registry.create(conn, _custom(), "user")
 
+    presets = [_custom()]
     with pytest.raises(PresetConflict, match="event_detail version 1"):
-        await registry.sync_presets(conn, [_custom()])
+        await registry.sync_presets(conn, presets)
 
 
 async def test_create_starts_a_name_at_version_1_once(conn: AsyncConnection) -> None:
@@ -86,8 +87,9 @@ async def test_create_starts_a_name_at_version_1_once(conn: AsyncConnection) -> 
 
     assert (created.version, created.origin, created.status) == (1, "user", "active")
     assert await registry.get_by_id(conn, created.id) == created
+    again = _custom()
     with pytest.raises(SchemaExists):
-        await registry.create(conn, _custom(), "prompt_draft")
+        await registry.create(conn, again, "prompt_draft")
     with pytest.raises(ValueError, match="starts at version 1"):
         await registry.create(conn, second_version, "user")
 
@@ -121,8 +123,9 @@ async def test_missing_schemas_raise_not_found(conn: AsyncConnection) -> None:
         await registry.get(conn, "event_detail", 1)
     with pytest.raises(SchemaNotFound):
         await registry.get_by_id(conn, missing_id)
+    no_changes = SchemaChanges()
     with pytest.raises(SchemaNotFound):
-        await registry.new_version(conn, "event_detail", SchemaChanges(), "user")
+        await registry.new_version(conn, "event_detail", no_changes, "user")
 
 
 async def test_list_filters_by_status(conn: AsyncConnection) -> None:

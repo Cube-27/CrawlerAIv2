@@ -237,8 +237,9 @@ def test_bundle_rejects_network_file_names_out_of_sequence() -> None:
     entry = good.manifest.network_bodies[0].model_copy(update={"file": "network/0007.json"})
     manifest = good.manifest.model_copy(update={"network_bodies": (entry,)})
 
+    data = {"manifest": manifest.model_dump(), "body": good.body, "network": good.network}
     with pytest.raises(ValidationError, match=r"network/0001\.json"):
-        CaptureBundle.model_validate({"manifest": manifest.model_dump(), "body": good.body, "network": good.network})
+        CaptureBundle.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -259,16 +260,18 @@ def test_decode_raises_corrupt_bundle_when_body_was_altered() -> None:
     members = _members(encode(_bundle()))
     members["body.html"] = b"<html>tampered</html>"
 
+    blob = _tar_zst(members)
     with pytest.raises(CorruptBundle, match="html_sha256"):
-        decode(_tar_zst(members))
+        decode(blob)
 
 
 def test_decode_raises_corrupt_bundle_for_unexpected_members() -> None:
     members = _members(encode(_bundle()))
     members["../escape"] = b""
 
+    blob = _tar_zst(members)
     with pytest.raises(CorruptBundle, match="unexpected"):
-        decode(_tar_zst(members))
+        decode(blob)
 
 
 def test_capture_keys_follow_the_documented_layout() -> None:

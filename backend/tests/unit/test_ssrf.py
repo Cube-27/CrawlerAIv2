@@ -65,8 +65,9 @@ class StubResolver:
 
 
 def _reason(connector: SafeConnector, url: str) -> RejectReason:
+    check = connector.check(url)
     with pytest.raises(SsrfRejected) as e:
-        asyncio.run(connector.check(url))
+        asyncio.run(check)
     return e.value.reason
 
 
@@ -182,8 +183,9 @@ def test_redirect_to_a_private_address_is_rejected_after_a_public_first_hop() ->
     connector = SafeConnector(resolver)
     first = asyncio.run(connector.check("https://www.example.com/start"))
     assert first.ip == IPv4Address(_PUBLIC_V4)
+    redirect = connector.redirect(first, "http://internal.example.net/admin")
     with pytest.raises(SsrfRejected) as e:
-        asyncio.run(connector.redirect(first, "http://internal.example.net/admin"))
+        asyncio.run(redirect)
     assert e.value.reason == "private_address"
     assert resolver.calls == ["www.example.com", "internal.example.net"]
 
@@ -203,8 +205,9 @@ def test_redirect_to_a_private_address_is_rejected_after_a_public_first_hop() ->
 def test_every_redirect_hop_is_rechecked(location: str, reason: RejectReason) -> None:
     connector = SafeConnector(StubResolver({"www.example.com": [_PUBLIC_V4]}))
     first = asyncio.run(connector.check("https://www.example.com/start"))
+    redirect = connector.redirect(first, location)
     with pytest.raises(SsrfRejected) as e:
-        asyncio.run(connector.redirect(first, location))
+        asyncio.run(redirect)
     assert e.value.reason == reason
 
 
@@ -220,6 +223,7 @@ def test_relative_redirect_resolves_against_the_current_url_and_is_rechecked() -
 def test_rejection_message_does_not_carry_the_url() -> None:
     # Logs redact URLs when configured (SPEC-02 §4.11); the exception must not leak them.
     connector = SafeConnector(StubResolver({"secret.example.com": ["10.0.0.1"]}))
+    check = connector.check("https://secret.example.com/token=abc")
     with pytest.raises(SsrfRejected) as e:
-        asyncio.run(connector.check("https://secret.example.com/token=abc"))
+        asyncio.run(check)
     assert str(e.value) == "ssrf_rejected: private_address"

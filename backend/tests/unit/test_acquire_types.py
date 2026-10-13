@@ -42,8 +42,9 @@ def test_result_reads_method_and_block_class_from_its_bundle() -> None:
 
 
 def test_result_needs_at_least_one_attempt() -> None:
+    bundle = _bundle()
     with pytest.raises(ValidationError, match="attempts"):
-        FetchResult(bundle=_bundle(), duration_ms=0, attempts=())
+        FetchResult(bundle=bundle, duration_ms=0, attempts=())
 
 
 def test_attempt_records_a_failure_without_a_status() -> None:

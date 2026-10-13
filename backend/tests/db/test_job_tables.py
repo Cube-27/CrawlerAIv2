@@ -103,8 +103,9 @@ async def test_task_accepts_every_outcome(conn: AsyncConnection, outcome: str) -
 async def test_job_rejects_values_outside_its_domain(
     conn: AsyncConnection, columns: dict[str, Any], constraint: str
 ) -> None:
+    statement = _job(**columns)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(_job(**columns))
+        await conn.execute(statement)
 
 
 @pytest.mark.parametrize(
@@ -123,16 +124,18 @@ async def test_task_rejects_values_outside_its_domain(
 ) -> None:
     job_id = await _job_id(conn)
 
+    statement = _task(job_id, **columns)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(_task(job_id, **columns))
+        await conn.execute(statement)
 
 
 async def test_a_job_holds_each_canonical_url_once(conn: AsyncConnection) -> None:
     job_id = await _job_id(conn)
     await conn.execute(_task(job_id, url="https://example.test/p/1?ref=a"))
 
+    duplicate = _task(job_id, url="https://example.test/p/1?ref=b")
     with pytest.raises(IntegrityError, match="uq_url_task_job_id_canonical_url"):
-        await conn.execute(_task(job_id, url="https://example.test/p/1?ref=b"))
+        await conn.execute(duplicate)
 
 
 async def test_two_jobs_may_hold_the_same_canonical_url(conn: AsyncConnection) -> None:
@@ -143,8 +146,9 @@ async def test_two_jobs_may_hold_the_same_canonical_url(conn: AsyncConnection) -
 
 
 async def test_task_requires_an_existing_job(conn: AsyncConnection) -> None:
+    statement = _task(JobId(MISSING_ID))
     with pytest.raises(IntegrityError, match="fk_url_task_job_id_job"):
-        await conn.execute(_task(JobId(MISSING_ID)))
+        await conn.execute(statement)
 
 
 async def test_job_event_defaults_to_an_empty_payload_and_requires_its_job(conn: AsyncConnection) -> None:
@@ -153,5 +157,6 @@ async def test_job_event_defaults_to_an_empty_payload_and_requires_its_job(conn:
     await conn.execute(insert(JobEvent).values(job_id=job_id, kind="progress"))
 
     assert (await conn.execute(select(JobEvent.kind, JobEvent.payload))).one() == ("progress", {})
+    statement = insert(JobEvent).values(job_id=MISSING_ID, kind="progress")
     with pytest.raises(IntegrityError, match="fk_job_event_job_id_job"):
-        await conn.execute(insert(JobEvent).values(job_id=MISSING_ID, kind="progress"))
+        await conn.execute(statement)

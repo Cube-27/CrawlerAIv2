@@ -279,8 +279,9 @@ async def test_deleting_an_expired_capture_keeps_its_task_and_extraction(conn: A
 async def test_task_capture_must_exist(conn: AsyncConnection) -> None:
     await _task(conn)
 
+    statement = update(UrlTask).values(capture_id=MISSING_ID)
     with pytest.raises(IntegrityError, match="fk_url_task_capture_id_capture"):
-        await conn.execute(update(UrlTask).values(capture_id=MISSING_ID))
+        await conn.execute(statement)
 
 
 async def test_a_new_extraction_has_no_llm_calls_and_no_config(conn: AsyncConnection) -> None:
@@ -352,8 +353,9 @@ async def test_candidate_rejects_values_outside_its_domain(
 ) -> None:
     values = _candidate_values(await _extraction(conn), **columns)
 
+    statement = insert(Candidate).values(**values)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(insert(Candidate).values(**values))
+        await conn.execute(statement)
 
 
 async def test_a_new_record_is_version_1_with_no_changed_fields(conn: AsyncConnection) -> None:
@@ -398,8 +400,9 @@ async def test_record_rejects_values_outside_its_domain(
 ) -> None:
     values = await _record_values(conn)
 
+    statement = insert(Record).values(**{**values, **columns})
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(insert(Record).values(**{**values, **columns}))
+        await conn.execute(statement)
 
 
 async def test_a_new_url_state_has_no_missing_runs_and_is_not_gone(conn: AsyncConnection) -> None:
@@ -424,15 +427,17 @@ async def test_url_state_holds_one_row_per_site_and_canonical_url(conn: AsyncCon
     await conn.execute(insert(UrlState).values(site_id=first, canonical_url=url, last_seen_at=FETCHED_AT))
     await conn.execute(insert(UrlState).values(site_id=second, canonical_url=url, last_seen_at=FETCHED_AT))
 
+    statement = insert(UrlState).values(site_id=first, canonical_url=url, last_seen_at=FETCHED_AT)
     with pytest.raises(IntegrityError, match="pk_url_state"):
-        await conn.execute(insert(UrlState).values(site_id=first, canonical_url=url, last_seen_at=FETCHED_AT))
+        await conn.execute(statement)
 
 
 async def test_url_state_rejects_negative_missing_runs(conn: AsyncConnection) -> None:
     values = {"site_id": await _site(conn), "canonical_url": "https://example.test/", "last_seen_at": FETCHED_AT}
 
+    statement = insert(UrlState).values(**values, missing_runs=-1)
     with pytest.raises(IntegrityError, match="ck_url_state_missing_runs_non_negative"):
-        await conn.execute(insert(UrlState).values(**values, missing_runs=-1))
+        await conn.execute(statement)
 
 
 @pytest.mark.parametrize("mode", get_args(ProgressiveMode))
@@ -457,8 +462,9 @@ async def test_progressive_state_is_one_row_per_site_schema_version_and_page_kin
     await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v1, page_kind="listing")))
     await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v2, schema_version=2)))
 
+    statement = insert(ProgressiveState).values(**_progressive_values(site_id, v1))
     with pytest.raises(IntegrityError, match="pk_progressive_state"):
-        await conn.execute(insert(ProgressiveState).values(**_progressive_values(site_id, v1)))
+        await conn.execute(statement)
 
 
 @pytest.mark.parametrize(
@@ -476,8 +482,9 @@ async def test_progressive_state_rejects_values_outside_its_domain(
 ) -> None:
     values = _progressive_values(await _site(conn), await _schema(conn), **columns)
 
+    statement = insert(ProgressiveState).values(**values)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(insert(ProgressiveState).values(**values))
+        await conn.execute(statement)
 
 
 @pytest.mark.parametrize("origin", get_args(ConfigOrigin))
@@ -501,10 +508,9 @@ async def test_a_site_has_one_active_config_per_schema_and_page_kind(conn: Async
         insert(ExtractionConfig).values(**_config_values(site_id, schema_id, page_kind="listing", status="active"))
     )
 
+    statement = insert(ExtractionConfig).values(**_config_values(site_id, schema_id, version=4, status="active"))
     with pytest.raises(IntegrityError, match="uq_extraction_config_active"):
-        await conn.execute(
-            insert(ExtractionConfig).values(**_config_values(site_id, schema_id, version=4, status="active"))
-        )
+        await conn.execute(statement)
 
 
 async def test_activating_a_new_config_after_suspending_the_old_one_succeeds(conn: AsyncConnection) -> None:
@@ -547,13 +553,15 @@ async def test_config_rejects_values_outside_its_domain(
 ) -> None:
     values = _config_values(await _site(conn), await _schema(conn), **columns)
 
+    statement = insert(ExtractionConfig).values(**values)
     with pytest.raises(IntegrityError, match=constraint):
-        await conn.execute(insert(ExtractionConfig).values(**values))
+        await conn.execute(statement)
 
 
 async def test_config_versions_are_unique_per_site_schema_and_page_kind(conn: AsyncConnection) -> None:
     site_id, schema_id = await _site(conn), await _schema(conn)
     await conn.execute(insert(ExtractionConfig).values(**_config_values(site_id, schema_id)))
 
+    statement = insert(ExtractionConfig).values(**_config_values(site_id, schema_id))
     with pytest.raises(IntegrityError, match="uq_extraction_config_site_id_schema_id_page_kind_version"):
-        await conn.execute(insert(ExtractionConfig).values(**_config_values(site_id, schema_id)))
+        await conn.execute(statement)
