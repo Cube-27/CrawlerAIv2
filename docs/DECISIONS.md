@@ -45,7 +45,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0024 | Role C offsets corrected by exact-match search, never fuzzy | pending-owner |
 | D-0037 | `map`/`crawl` scope is the exact host | pending-owner |
 | D-0086 | Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md | pending-owner |
-| D-0110 | eslint pre-commit hook exceeds the 10 s budget on Windows | needs-owner |
 | D-0187 | Secondary suppression of aggregate cells for hidden/fresh | needs-owner |
 | D-0214 | How hidden/fresh pages get labeled at milestone M | needs-owner |
 
@@ -158,7 +157,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0052 — Frontend versions pinned exactly
-- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 3 (#4) · Status: decided
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 3 (#4) · Status: superseded by D-0226
 - Decision: Exact pins: HeroUI 3.2.6, React 19.3.0, Vite 8.3.4, Tailwind 4.3.3, react-router 8.4.0, Vitest 5.0.3, TypeScript 5.9.3, ESLint 9.39.5. TypeScript stays on 5.x and ESLint on 9 for the spec's toolchain (typescript-eslint, jsx-a11y peers). Bump ESLint once jsx-a11y supports 10.
 - Alternatives: `^` ranges; ESLint 10 without jsx-a11y.
 - Why: Reproducible installs and the SPEC-00 §4.3 tool list.
@@ -298,7 +297,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0072 — Generated API files are excluded from Prettier
-- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 4 (#9) · Status: decided
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 4 (#9) · Status: superseded by D-0226
 - Decision: `openapi.json` and `src/api/schema.d.ts` are in `.prettierignore`.
 - Alternatives: run Prettier inside `gen:api`.
 - Why: One source of formatting keeps the freshness diff simple.
@@ -564,7 +563,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0110 — eslint pre-commit hook exceeds the 10 s budget on Windows
-- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: needs-owner
+- Date: 2026-10-13 · Spec/PR: SPEC-00 PR 9 (#12) · Status: superseded by D-0227
 - Question: the eslint hook takes 10.6–17.4 s for a one-file frontend change on the Windows dev host (5–6 s warm on Linux), against SPEC-00 §4.8's < 10 s budget. Which wins?
 - Options: (a) keep type-aware eslint in the hook and accept the Windows overage; (b) drop type-aware rules from the hook, keeping the full lint in `make check` and CI; (c) revisit the frontend lint config (`projectService`, HeroUI type depth) in a frontend row.
 - Recommendation: (a) now, since hooks are not weakened; consider (c) later.
@@ -1373,4 +1372,25 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `rotate_hidden` leaves out hidden hosts that have fresh pages before choosing, and the per-category fraction is a share of the hosts that can rotate. `import-sites` is unchanged. A host in both hidden and fresh stays in both until one copy is removed by hand, since `promote` skips it too.
 - Alternatives: (b) `import-sites` refuses a fresh host already in hidden or dev; (c) both.
 - Why: Fresh means sites nobody has seen, and a site moves whole (§16.1). This mirrors `promote`'s guard and changes no input contract; (b) changes the custodian's import and needs a lookup across stores at capture time.
+- Reversible: yes
+
+### D-0226 — Frontend toolchain is Vite+
+- Date: 2026-10-13 · Spec/PR: SPEC-00 §4.3 follow-up (#38, owner request) · Status: decided
+- Decision: `vite-plus` 1.1.0 (MIT), pinned exactly, replaces ESLint, Prettier, `tsc -b` and the separate Vite/Vitest setup; lint (Oxlint), fmt (Oxfmt), type-check (tsgo), test and build are configured in `frontend/vite.config.ts`. pnpm stays. Generated API files are excluded through `fmt.ignorePatterns`. TypeScript 5.9.3 stays only as the `openapi-typescript` peer and for editors. `engines.node` follows vite-plus (`^22.18.0 || ^24.11.0 || >=26.0.0`); CI uses Node 24. Plugins are a plain array (`lazyPlugins` fails `exactOptionalPropertyTypes`). Supersedes the ESLint/Prettier/Vitest parts of D-0003, D-0052 and D-0072.
+- Alternatives: keep ESLint + Prettier; Biome.
+- Why: The owner asked for one toolchain in one PR. SPEC-00 §4.3 and DESIGN.md were edited in the same PR under that request.
+- Reversible: yes, with churn
+
+### D-0227 — The pre-commit hook runs `vp check` on staged frontend files
+- Date: 2026-10-13 · Spec/PR: #38 · Status: decided
+- Decision: A `sh -c` hook strips the `frontend/` prefix and runs `vp check` from `frontend/`. A one-file frontend commit takes about 4 s on the Windows dev host with type-aware rules on, inside SPEC-00 §4.8's 10 s budget. This resolves D-0110 (OPEN_QUESTIONS #15 is left for the owner to close).
+- Alternatives: `vp -C frontend check` (formats but does not lint root-relative paths, and exits 0); `vp staged` (lint-staged keeps its own git stash, which worktrees share); `vp hooks` (would replace the pre-commit framework the backend uses).
+- Why: Measured on the probe that fails the hook (an a11y violation).
+- Reversible: yes
+
+### D-0228 — The no-size-gates scanner covers Oxlint
+- Date: 2026-10-13 · Spec/PR: #38 · Status: decided
+- Decision: Oxlint config files and the `pedantic`/`style`/`restriction` categories, set with a severity in config or by `-W`/`-D`/`--deny=` flags, count as size gates, because they enable `max-*`/`complexity` rules (C11).
+- Alternatives: read the resolved Oxlint config.
+- Why: C11 must hold after the lint tool changes; text matching is enough for the configs we have.
 - Reversible: yes
