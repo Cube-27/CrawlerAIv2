@@ -1,0 +1,9 @@
+
+This is a repair round. Your previous spec did not reproduce the browser's requests; the request shows it and what it
+did on each sample page:
+- `invalid_spec(...)`: the spec is not one the program reads;
+- `method_mismatch(got, want)`: the method differs from the browser's;
+- `no_value(name)`: the binder of `name` reads no value on that page;
+- `url_mismatch(got, want)`: the filled-in URL is `got` where the browser requested `want`;
+- `body_mismatch(...)`: the filled-in body differs from the browser's.
+Write a new spec.
