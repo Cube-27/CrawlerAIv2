@@ -3247,3 +3247,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Settle it here.
 - Why: It changes `infra/Dockerfile` and packaging, outside this row; D-0444 already blocks committing the fitted files.
 - Reversible: yes
+
+### D-0493 — Recipe splits into `RequestSpec` and `ApiRecipe`
+- Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided
+- Decision: `RequestSpec` holds method, url, `params_from_url`, headers, body, pagination and `requires_page_fetch`; `ApiRecipe(RequestSpec)` adds `map` (at least one field) and a required `proof`.
+- Alternatives: One model with optional `map`/`proof`.
+- Why: Binding and role D (§4.5, "the `ApiRecipe` without `map`/`proof`") produce the request half; a stored recipe always carries its proof.
+- Reversible: yes
+
+### D-0494 — `bind` returns `RequestSpec | Ambiguous` over samples
+- Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided
+- Decision: `bind(samples)`, where a `Sample` is the page URL, the captured request (method, URL, body) and the page's JSON documents by kind (`jsonld`, `js_state`) as the caller builds them.
+- Alternatives: `bind(candidates) -> ApiRecipe` as the spec's module list sketches.
+- Why: The map comes from discovery and the headers from replay (PRs 2–3), so binding can only produce the request half.
+- Reversible: yes
+
+### D-0495 — Binder grammar
+- Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided
+- Decision: `path:<i>` counts page path segments after the leading `/` from 0; `query:<name>` takes the first non-empty value; `regex:<pattern>` is portable with exactly one group, searched over the raw path; `jsonld:`/`js_state:` take a `json_doc.select` query selecting exactly one scalar. Values compare percent-decoded and are re-encoded per place (RFC 3986 pchar in the path; `&`, `=`, `+` encoded in a query value); numbers compare as their JSON text.
+- Alternatives: 1-based indexes; comparing raw strings.
+- Why: One spelling per value lets URL and JSON sources meet; exact reproduction of every sample is still required.
+- Reversible: yes, until recipes are stored
+
+### D-0496 — Recipe JSONPaths use the engine's subset
+- Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided
+- Decision: `map`, `pagination.rows` and data binders must be queries `json_doc.select` reads (`$['a'][0][*]`); dot notation (`$.data.name`, the spec's illustration) is refused.
+- Alternatives: Accept dot notation and translate it.
+- Why: What is stored is what the engine runs (§12.1); the config executor (#98) uses the same `select`.
+- Reversible: yes
+
+### D-0497 — Which values become parameters
+- Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided
+- Decision: Binding needs two sample pages. A value equal to a page-URL path segment or query value on every sample is bound, even when constant; a varying value with no URL source binds to a page-data path only when the same path holds it on every sample (`requires_page_fetch`); a constant without a URL source stays literal; a varying value without a source is `Ambiguous`. Parameters are `p1`, `p2`, … in order of first use.
+- Alternatives: Bind only varying values; allow one sample.
+- Why: One page cannot tell constants from parameters; binding constant page data would add a fetch for nothing; held-out validation (PR 4) checks the choice.
+- Reversible: yes
+
+### D-0498 — Credential headers are refused in the recipe model
+- Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided
+- Decision: `Authorization`, `Proxy-Authorization` and `Cookie`, in any case (RFC 9110 §11.6.2, §11.7.2; RFC 6265 §5.4), never appear in a recipe; the token-value rule stays with header minimization (PR 3).
+- Alternatives: Refuse only in PR 3's minimizer.
+- Why: §4.6 says they are never kept; the model also guards role D output and operator corrections.
+- Reversible: yes
