@@ -15,13 +15,14 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.base import Candidate
+from crawlerai.collect.config import ConfigExecutor
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import Candidate as CandidateRow
 from crawlerai.db.models import (
     CaptureId,
     Extraction,
+    ExtractionConfigId,
     ExtractionId,
-    ExtractionMode,
     NormalizeStatus,
     Record,
     RecordId,
@@ -35,6 +36,16 @@ from crawlerai.resolve.records import RecordDraft, assemble, assemble_listing
 from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveConfig:
+    """A site's active config for one schema version and page kind (ARCHITECTURE §8.4): its row, its version, which
+    the extraction records, and its executor (`collect.config`, bound by `config_ir.active`)."""
+
+    id: ExtractionConfigId
+    version: int
+    executor: ConfigExecutor
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,18 +75,27 @@ async def extract_task(
     schema: SchemaDef,
     data: EngineData,
     role_c: RoleC | None,
-    mode: ExtractionMode,
+    config: ActiveConfig | None,
     caller_supplied: bool,
 ) -> Stored:
     """Extract the task's capture and store the result in `conn`'s transaction. `caller_supplied` is true for
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
     crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
 
+    `config` is the site's active config for the schema version and page kind (`config` mode, ARCHITECTURE §8.4).
     `role_c` calls the LLM client before this step writes anything, and the client commits usage on its own
     connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row."""
-    result = await extract_page(bundle, schema, None, role_c, mode, data=data)
+    executor = None if config is None else config.executor
+    result = await extract_page(bundle, schema, executor, role_c, data=data)
     return await store_extraction(
-        conn, task, result, capture_id=capture_id, site_id=site_id, schema=schema, caller_supplied=caller_supplied
+        conn,
+        task,
+        result,
+        capture_id=capture_id,
+        site_id=site_id,
+        schema=schema,
+        caller_supplied=caller_supplied,
+        config=config,
     )
 
 
@@ -88,9 +108,11 @@ async def store_extraction(
     site_id: SiteId,
     schema: SchemaDef,
     caller_supplied: bool,
+    config: ActiveConfig | None = None,
 ) -> Stored:
     """Store `result`, `extract_page`'s for the task's capture, as `extract_task` does: for a caller that extracts
-    before it opens the transaction (`scrape`, which holds no connection while the page resolves)."""
+    before it opens the transaction (`scrape`, which holds no connection while the page resolves). `config` is the
+    config a `config`-mode result ran."""
     extraction_id: ExtractionId = (
         await conn.execute(
             insert(Extraction)
@@ -98,7 +120,7 @@ async def store_extraction(
                 url_task_id=task.id,
                 capture_id=capture_id,
                 engine_version=ENGINE_VERSION,
-                config_version=None,
+                config_version=None if config is None else config.version,
                 mode=result.mode,
                 llm_calls=len(result.llm_calls),
                 diagnostics=list(result.diagnostics),

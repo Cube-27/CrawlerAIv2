@@ -3,9 +3,9 @@ for debugging. Nothing a replay makes is stored.
 
 A capture carries no schema of its own, so it replays against each schema version its stored records follow, the
 version the records were made with (schemas are immutable per version, §5.2), so a replayed record compares with
-the stored one. Replays run cold (`adhoc`, no config): the site's active config runs through SPEC-08's executor,
-which `extract_page` gains with SPEC-08 PR 8, and until then no site has an active config. No replay calls an LLM:
-`extract_page` gets no role C.
+the stored one. A schema version the site has an active config for replays with that config (`config` mode, SPEC-08
+§4.8), as a page fetched now would extract; nothing joins its drift window. No replay calls an LLM: `extract_page`
+gets no role C.
 """
 
 import asyncio
@@ -13,10 +13,11 @@ import asyncio
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from crawlerai.config_ir.active import active_config
 from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
-from crawlerai.resolve.task import page_records
+from crawlerai.resolve.task import ActiveConfig, page_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.records import ExtractedRecord
@@ -55,10 +56,15 @@ async def replay(
             )
         ).scalars()
         schemas = [await registry.get_by_id(conn, schema_id) for schema_id in schema_ids]
+        configs = [await active_config(conn, capture.site_id, schema, data.vocabulary) for schema in schemas]
     if not schemas:
         raise NotReplayable(f"no record was made from capture {capture_id}, so no schema says what to extract")
     bundle = await _bundle(store, capture)
-    return [record for schema in schemas for record in await _replay(bundle, schema, data, capture)]
+    return [
+        record
+        for schema, config in zip(schemas, configs, strict=True)
+        for record in await _replay(bundle, schema, config, data, capture)
+    ]
 
 
 async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
@@ -70,9 +76,9 @@ async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
 
 
 async def _replay(
-    bundle: CaptureBundle, schema: SchemaDef, data: EngineData, capture: _Capture
+    bundle: CaptureBundle, schema: SchemaDef, config: ActiveConfig | None, data: EngineData, capture: _Capture
 ) -> list[ExtractedRecord]:
-    result = await extract_page(bundle, schema, None, None, "adhoc", data=data)
+    result = await extract_page(bundle, schema, None if config is None else config.executor, None, data=data)
     if result.entity is None:
         return []
     # The records a page task would store: a listing's rows are deduplicated by their URLs (§4.10). Their entity keys

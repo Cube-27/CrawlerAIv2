@@ -90,7 +90,7 @@ def _run(ir: ExtractionConfigIR, schema: SchemaDef, html: str) -> dict[str, Obse
     executed = EngineExecutor(ir, Vocabulary(supertypes={})).execute(
         ParsedPage(html), schema, Context(captured_at=CTX_TIME)
     )
-    return observe(ir, executed)
+    return observe(ir, executed.candidates)
 
 
 def test_a_layout_change_suspends_the_field_once_its_windowed_yield_falls_below_the_margin() -> None:

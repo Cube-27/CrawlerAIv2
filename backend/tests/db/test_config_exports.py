@@ -82,7 +82,7 @@ class World:
                 schema=self.schema,
                 data=self.data,
                 role_c=None,
-                mode="adhoc",
+                config=None,
                 caller_supplied=True,
             )
         return capture_id

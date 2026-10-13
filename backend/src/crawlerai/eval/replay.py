@@ -14,6 +14,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
+from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import ExtractionMode, FieldStatus, SourceKind
 from crawlerai.eval.labels import from_pydantic, parse_labels
@@ -66,11 +67,12 @@ class RecordedLLM:
 
 class ConfigSnapshot(BaseModel):
     """The site's active config as `eval_page.config_snapshot` holds it: the `extraction_config` row's `ir` and
-    `field_status` (ARCHITECTURE §6, §12). Other columns of the row pass through to the engine."""
+    `field_status` (ARCHITECTURE §6, §12). Other columns of the row pass through to the engine. An `ir` the IR model
+    refuses makes the snapshot invalid, and the page is dropped."""
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    ir: dict[str, JsonValue]
+    ir: ExtractionConfigIR
     field_status: dict[str, FieldStatus] = {}
 
 

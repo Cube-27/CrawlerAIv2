@@ -4095,3 +4095,80 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Repair on replay failure too.
 - Why: §4.5 "must reproduce the captured endpoint URL on every sample page and the replayed response must contain the mapped values"; no fetch happens for a URL the model wrote that the browser did not request.
 - Reversible: yes
+
+### D-0614 — Config mode follows from the config
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: `extract_page(bundle, schema, config, role_c, *, data, parsed)` has no `mode` argument: the mode is `config` exactly when a config executor is passed, else `adhoc`.
+- Alternatives: Keep `mode` and refuse mismatches.
+- Why: One source of truth; a mismatch cannot be expressed.
+- Reversible: yes
+
+### D-0615 — A covered field is never asked of role C
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: A field the active config runs (any status but `suspended`) is not asked of role C, even when its step misses on a page; it stays `missing`, and drift catches the miss.
+- Alternatives: Ask role C for covered fields that missed.
+- Why: SPEC-08 §4.8 ("role C runs only for required fields the config has no steps for"); zero LLM calls on covered fields.
+- Reversible: yes
+
+### D-0616 — Listing rows in config mode
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: Structured rows win; the config's rows serve only when structured data gives none. Role C is asked for no rows while the config runs a row field, and only for page fields the config does not run.
+- Alternatives: Merge config rows with structured rows.
+- Why: Candidates belong to their own row entities, so the two cannot meet in one row; where structured rows exist, cold extraction is already LLM-free.
+- Reversible: yes
+
+### D-0617 — The active config is read from `extraction_config`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: `config_ir.active.active_config` reads the `status='active'` row for (site, schema version, page kind), not `progressive_state.active_config_id`.
+- Alternatives: Read the state's `active_config_id`.
+- Why: The config row is what drift and corrections update, and its unique index allows only one active config.
+- Reversible: yes
+
+### D-0618 — Drift records a page's config candidates
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: `drift.observe`/`record_run` take the page's `config` candidates instead of an `Executed`; only config-mode pages with outcome `extracted`/`partial` are recorded (`active.record_page`). Scrape records them now; the worker's page handler does with SPEC-10 PR 2.
+- Alternatives: Carry `Executed` through `ExtractionResult`; record in `store_extraction` (`resolve` cannot import `config_ir`).
+- Why: The result already holds the candidates; a page that was not served says nothing about the config.
+- Reversible: yes
+
+### D-0619 — Capture replay runs the site's current active config
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: `POST /v1/captures/{id}/replay` extracts with the site's current active config for each schema version, and adds nothing to its drift window.
+- Alternatives: The config version the stored extraction used.
+- Why: A replay shows what the current engine extracts.
+- Reversible: yes
+
+### D-0620 — `ConfigSnapshot.ir` is an `ExtractionConfigIR`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: An eval page whose snapshot IR the model refuses is dropped as `invalid config_snapshot`.
+- Alternatives: Fail the replay run.
+- Why: The same treatment as an invalid `field_status`.
+- Reversible: yes
+
+### D-0621 — The learning sample
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: A run reads the 8 latest extracted pages (`held_out.load_pages`); the 5 with the most published required values (page and rows; most recent first on ties) are the sample, the rest held out. The induced config is `origin=adapter` when induction mapped a field, else `induced`; mapped fields are not synthesized.
+- Alternatives: Only the first 8 pages ever.
+- Why: §4.4's selection rule; adapter fields keep coming from the adapter (D-0556).
+- Reversible: yes
+
+### D-0622 — How a learn run ends
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: `completed` when it activates; `failed` on refusal, an LLM failure (D-0588) or an error; `cancelled` when cancel is requested before it starts or activates. Every non-activating end calls `learning_failed`; the `learning_finished` event carries `config_id`, `reason` and the validation report.
+- Alternatives: Leave the state `learning` on an error.
+- Why: §4.8 (a failed run leaves the state cold and retries); PR 4 follow-up.
+- Reversible: yes
+
+### D-0623 — A learning run does not replace an operator config activated during it (answers D-0598)
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: A run whose state got an operator config while it was in flight ends `operator_config` without activating. A run started while an operator config already served (forced or drift re-learn) may replace it.
+- Alternatives: Always replace; never replace an operator config.
+- Why: The operator wrote that config knowing the pages the run learns from; a re-learn requested over one is a request to replace it.
+- Reversible: yes
+
+### D-0624 — Learn jobs are run by the worker with SPEC-10 PR 2
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 8 (#127) · Status: decided
+- Decision: `learning.next_learn_job`/`run_learn_job` are the entry points; registering them in the worker process goes to SPEC-10 PR 2 with the task handlers (as D-0485). Open there: a `_start` failure leaves the job `queued`, so it is picked again on every poll; a run whose process dies (or whose `_finish` raises) stays `running`/`learning` until a lease or timeout exists.
+- Alternatives: A learn loop in `crawlerai worker` here.
+- Why: SPEC-10 PR 2 owns handler registration and is in flight in parallel.
+- Reversible: yes

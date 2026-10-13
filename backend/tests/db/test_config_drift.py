@@ -97,7 +97,7 @@ async def _run(conn: AsyncConnection, config_id: ExtractionConfigId, job_id: Job
     ).scalar_one()
     executor = EngineExecutor(ExtractionConfigIR.model_validate(row), Vocabulary(supertypes={}))
     executed = executor.execute(ParsedPage(html), SCHEMA, Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC)))
-    found = await record_run(conn, config_id, executed, job_id=job_id, **{"margins": MARGINS, **kw})
+    found = await record_run(conn, config_id, executed.candidates, job_id=job_id, **{"margins": MARGINS, **kw})
     return [d.field for d in found]
 
 
@@ -129,7 +129,7 @@ async def test_a_layout_change_suspends_the_field_and_starts_a_forced_relearn(co
             "validated_validity": 1.0,
         },
     )
-    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.created_at)
+    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.id)
     requests: list[dict[str, Any]] = list((await conn.execute(learn)).scalars())
     assert [request["force"] for request in requests] == [False, True]
     state = (await conn.execute(select(ProgressiveState).where(*key.where()))).one()

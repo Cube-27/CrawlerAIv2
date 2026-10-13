@@ -32,7 +32,6 @@ from crawlerai.resolve.pipeline import (
     GapRequest,
     ListingGapReply,
     ListingGapRequest,
-    ModeNotSupported,
     RoleC,
     extract_page,
 )
@@ -114,7 +113,7 @@ def _extract(
     role_c: RoleC | None = None,
     data: EngineData = DATA,
 ) -> ExtractionResult:
-    return asyncio.run(extract_page(bundle, schema, None, role_c, "adhoc", data=data))
+    return asyncio.run(extract_page(bundle, schema, None, role_c, data=data))
 
 
 def _statuses(result: ExtractionResult) -> dict[str, tuple[str, str | None]]:
@@ -234,12 +233,6 @@ def test_resolution_that_raises_fails_the_page_without_fields(monkeypatch: pytes
     monkeypatch.setattr(pipeline, "assess_fields", broken)
     result = _extract(_bundle(_html(_product())))
     assert (result.outcome, result.entity, result.record_confidence) == ("error", None, None)
-
-
-def test_config_mode_is_refused_until_its_row_lands() -> None:
-    config_mode = extract_page(_bundle(_html(_product())), PRODUCT, {"ir": {}}, None, "config", data=DATA)
-    with pytest.raises(ModeNotSupported, match="config"):
-        asyncio.run(config_mode)
 
 
 # --- the LLM hook (§4.13) ---

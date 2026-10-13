@@ -12,11 +12,14 @@ listing's rows have no references, and their fields stay `uncorroborated`.
 
 `load_captures` reads named captures the same way: the pages a config was validated on (`provenance.validated_on`),
 which the release check runs on (§4.12).
+
+A learning run (§4.4) reads the same pages, both as held-out pages and as sample pages: the published values with the
+locator of each (`record.field_meta`), which induction generalizes and synthesis shows role A (§4.5, §4.6).
 """
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, get_args
 
@@ -25,6 +28,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.validation import Facts, HeldOutPage
 from crawlerai.content.context import page_context
 from crawlerai.content.page import ParsedPage
@@ -61,13 +65,18 @@ class StoredCandidate:
     chosen: bool
 
 
+def _page_fields(schema: SchemaDef) -> set[str]:
+    """A listing's page-scoped fields: every record holds them, and the first one's are the page's."""
+    return {name for name, spec in schema.fields.items() if spec.scope == "page"}
+
+
 def facts_of(
     schema: SchemaDef, records: Sequence[Mapping[str, JsonValue]], candidates: Iterable[StoredCandidate]
 ) -> tuple[Facts, tuple[Facts, ...]]:
     """The page's facts and a listing's rows' facts, from one extraction's records (`record.data`, in stored order)
     and its valid candidates."""
     if schema.page_kind == "listing":
-        page_fields = {name for name, spec in schema.fields.items() if spec.scope == "page"}
+        page_fields = _page_fields(schema)
         first = records[0] if records else {}
         page = Facts(published={name: value for name, value in first.items() if name in page_fields})
         rows = tuple(
@@ -84,10 +93,54 @@ def facts_of(
     return Facts(published=dict(records[0]) if records else {}, references=dict(references)), ()
 
 
+@dataclass(frozen=True, slots=True)
+class StoredRecord:
+    """A record's published values (`record.data`) and their locators (`record.field_meta`)."""
+
+    data: Mapping[str, JsonValue]
+    locators: Mapping[str, str]
+
+
+def published_of(
+    schema: SchemaDef, records: Sequence[StoredRecord]
+) -> tuple[dict[str, Published], tuple[dict[str, Published], ...]]:
+    """The page's published values with their locators, and a listing's rows', as `facts_of` splits them. A value
+    stored without a locator is left out: induction and synthesis read a value together with where it came from."""
+
+    def published(record: StoredRecord, names: Collection[str]) -> dict[str, Published]:
+        return {
+            name: Published(value, record.locators[name])
+            for name, value in record.data.items()
+            if name in names and name in record.locators
+        }
+
+    if schema.page_kind != "listing":
+        return (published(records[0], schema.fields) if records else {}), ()
+    page_fields = _page_fields(schema)
+    row_fields = set(schema.fields) - page_fields
+    page = published(records[0], page_fields) if records else {}
+    return page, tuple(published(record, row_fields) for record in records)
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPage:
+    """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`)."""
+
+    held_out: HeldOutPage
+    sample: SamplePage
+
+
 async def load_held_out(
     conn: AsyncConnection, store: ObjectStore, site_id: SiteId, schema: SchemaDef, *, limit: int
 ) -> list[HeldOutPage]:
     """Up to `limit` held-out pages of `site_id` for `schema`'s version, most recent first."""
+    return [page.held_out for page in await load_pages(conn, store, site_id, schema, limit=limit)]
+
+
+async def load_pages(
+    conn: AsyncConnection, store: ObjectStore, site_id: SiteId, schema: SchemaDef, *, limit: int
+) -> list[StoredPage]:
+    """Up to `limit` stored pages of `site_id` for `schema`'s version, most recent first."""
     return await _pages(conn, store, schema, await _extractions(conn, site_id, schema, limit))
 
 
@@ -98,7 +151,8 @@ async def load_captures(
     latest such extraction."""
     rows = await conn.execute(_latest(schema).where(Capture.id.in_(captures)))
     found = {row.id: (row.id, row.object_key, row.extraction_id) for row in rows}
-    return await _pages(conn, store, schema, [found[capture] for capture in captures if capture in found])
+    pages = await _pages(conn, store, schema, [found[capture] for capture in captures if capture in found])
+    return [page.held_out for page in pages]
 
 
 async def _pages(
@@ -106,20 +160,27 @@ async def _pages(
     store: ObjectStore,
     schema: SchemaDef,
     extractions: Sequence[tuple[CaptureId, str, ExtractionId]],
-) -> list[HeldOutPage]:
+) -> list[StoredPage]:
     """Each extraction's page, parsed, with the facts the engine stored; a capture whose bundle expired is skipped."""
     ids = [extraction_id for _, _, extraction_id in extractions]
     records = await _records(conn, ids, schema)
     candidates = await _candidates(conn, ids)
     # The bundles are independent reads; fetch them together.
     loaded = await asyncio.gather(*(_parsed(store, object_key) for _, object_key, _ in extractions))
-    pages: list[HeldOutPage] = []
+    pages: list[StoredPage] = []
     for (capture_id, _, extraction_id), parsed in zip(extractions, loaded, strict=True):
         if parsed is None:
             continue
         page, ctx = parsed
-        facts, rows = facts_of(schema, records[extraction_id], candidates[extraction_id])
-        pages.append(HeldOutPage(capture_id, page, ctx, facts, rows))
+        stored = records[extraction_id]
+        facts, rows = facts_of(schema, [record.data for record in stored], candidates[extraction_id])
+        published, published_rows = published_of(schema, stored)
+        pages.append(
+            StoredPage(
+                HeldOutPage(capture_id, page, ctx, facts, rows),
+                SamplePage(page, ctx, published, published_rows),
+            )
+        )
     return pages
 
 
@@ -166,15 +227,16 @@ def _latest(schema: SchemaDef) -> Select[CaptureId, str, ExtractionId]:
 
 async def _records(
     conn: AsyncConnection, ids: Sequence[ExtractionId], schema: SchemaDef
-) -> dict[ExtractionId, list[Mapping[str, JsonValue]]]:
+) -> dict[ExtractionId, list[StoredRecord]]:
     query = (
-        select(Record.extraction_id, Record.data)
+        select(Record.extraction_id, Record.data, Record.field_meta)
         .where(Record.extraction_id.in_(ids), Record.schema_id == schema.id, Record.schema_version == schema.version)
         .order_by(Record.id)  # ids are UUIDv7, so this is the order the records were stored in
     )
-    found: dict[ExtractionId, list[Mapping[str, JsonValue]]] = defaultdict(list)
+    found: dict[ExtractionId, list[StoredRecord]] = defaultdict(list)
     for row in await conn.execute(query):
-        found[row.extraction_id].append(row.data)
+        locators = {name: meta["locator"] for name, meta in row.field_meta.items() if meta.get("locator")}
+        found[row.extraction_id].append(StoredRecord(row.data, locators))
     return found
 
 

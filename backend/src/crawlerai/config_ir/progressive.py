@@ -17,6 +17,7 @@ which ends the run with `learning_activated` or `learning_failed`.
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any, Final, Literal
+from uuid import UUID
 
 from sqlalchemy import ColumnElement, case, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -86,6 +87,12 @@ class StateKey:
 
     def columns(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_request(cls, request: Mapping[str, Any]) -> "StateKey":
+        """The state a `learn` job's `request` names (`request_learning`, D-0549)."""
+        site_id, schema_id = SiteId(UUID(request["site_id"])), SchemaId(UUID(request["schema_id"]))
+        return cls(site_id, schema_id, request["schema_version"], request["page_kind"])
 
     def where(self) -> list[ColumnElement[bool]]:
         return [getattr(ProgressiveState, name) == value for name, value in self.columns().items()]

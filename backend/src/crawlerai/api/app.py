@@ -21,6 +21,7 @@ from crawlerai.api.auth import RateLimiter
 from crawlerai.api.routers import captures, configs, health, jobs, records, schemas, scrape
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.collect.schema_org_map import VocabularyMissing
+from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import ApiSettings, Settings
 from crawlerai.llm.providers.from_settings import client_from_settings
@@ -65,6 +66,12 @@ def _engine_data() -> EngineData | None:
         return None
 
 
+def _drift_margins() -> DriftMargins | None:
+    """The dev-fitted drift margins (SPEC-08 §4.9); None when none are fitted, and then no field is suspended."""
+    backend = backend_dir(Path(__file__))
+    return None if backend is None else load_margins(data_dir(backend) / MARGINS_FILE)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
@@ -73,6 +80,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.fetching = _fetching(settings)
     app.state.llm = client_from_settings(settings, engine)
     app.state.engine_data = _engine_data()
+    app.state.drift_margins = _drift_margins()
     try:
         yield
     finally:

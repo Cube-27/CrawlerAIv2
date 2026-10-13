@@ -130,7 +130,7 @@ class _Setup:
             schema=schema,
             data=DATA,
             role_c=role_c,
-            mode="adhoc",
+            config=None,
             caller_supplied=caller_supplied,
         )
 
