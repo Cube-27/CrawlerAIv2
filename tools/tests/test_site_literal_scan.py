@@ -4,7 +4,6 @@ Every host here is reserved by RFC 2606 or RFC 6761. Detection tests pass an exp
 reserved names are not exempted.
 """
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -119,11 +118,10 @@ def test_default_allowlist_exempts_reserved_names(tmp_path: Path) -> None:
                 'D = "http://localhost:8000/healthz"\n'
                 'E = "https://x.invalid/"\n'
                 'F = "https://shop.example/"\n'
-            )
+            ),
+            "tools/site_literal_allowlist.txt": (SCAN.parent / "site_literal_allowlist.txt").read_bytes(),
         },
     )
-    (repo / "tools").mkdir()
-    shutil.copy(SCAN.parent / "site_literal_allowlist.txt", repo / "tools")
 
     result = run_scan(repo)
 
@@ -158,12 +156,12 @@ def test_allowlist_entry_without_justification_is_rejected(tmp_path: Path) -> No
     assert "justification" in result.stderr
 
 
-@pytest.mark.parametrize("relative", [False, True])
-def test_allowlist_outside_the_scanned_repository_is_rejected(tmp_path: Path, relative: bool) -> None:
+@pytest.mark.parametrize("dotdot", [False, True], ids=["absolute", "dotdot"])
+def test_allowlist_outside_the_scanned_repository_is_rejected(tmp_path: Path, dotdot: bool) -> None:
     outside = tmp_path / "allowlist.txt"
     outside.write_text("shop.example  # reserved test name\n", encoding="utf-8")
     repo = make_repo(tmp_path / "repo", {"a.txt": "https://shop.example/\n"})
-    path = repo / ".." / "allowlist.txt" if relative else outside
+    path = repo / ".." / "allowlist.txt" if dotdot else outside
 
     result = run_scan(repo, "--allowlist", str(path))
 
