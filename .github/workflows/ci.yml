@@ -85,6 +85,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # Visual values only in theme.css, UI only from @heroui/react (docs/DESIGN.md, Theming and Stack).
+      - run: python3 ../tools/theme_only_check.py
       # Vite+: format check (Oxfmt), lint (Oxlint) and the strict type-check (tsgo) in one pass.
       - run: pnpm check
       - run: pnpm test
