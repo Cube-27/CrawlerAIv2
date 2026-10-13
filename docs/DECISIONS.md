@@ -3653,3 +3653,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: No database checks.
 - Why: The state machine's invariants hold even for writes outside `config_ir.progressive`.
 - Reversible: yes
+
+### D-0551 — Induction covers detail pages only
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: `induce` returns every field of a listing schema in `to_synthesize` (`listing`).
+- Alternatives: Induce listing row fields relative to a guessed row.
+- Why: §4.6 builds the `row` selector in synthesis; a row field cannot be checked without one.
+- Reversible: yes
+
+### D-0552 — A field is induced only when every sample page published it
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: A field missing on any sample page goes to synthesis (`not_published_on_every_page`).
+- Alternatives: Induce from the pages that have it.
+- Why: The literal reading of §4.5 ("all five", "on every sample page").
+- Reversible: yes
+
+### D-0553 — Induction checks a selector with the engine executor
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: A candidate is kept only if, on every sample page, `executor.field_candidate` gives an `Ok` value `equal` to the published one; an XPath candidate's node path must also select exactly one node.
+- Alternatives: A separate check in induction.
+- Why: C8; `normalize-space(...)` would hide a multi-match, so the node path is counted separately.
+- Reversible: yes
+
+### D-0554 — JSON-LD candidates are relative to each enclosing typed node
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: For each enclosing schema.org node (nearest first) and each of its types, a `jsonld` step with `when_type`, its path with indices as `[*]`, then as written.
+- Alternatives: Only `[*]`.
+- Why: §4.5 compares after stripping indices; keeping the written index lets a single-valued field from a multi-valued property still verify.
+- Reversible: yes
+
+### D-0555 — XPath anchors and readings
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: Anchors are `@id`, `@itemprop`, `@data-*` and stable class tokens on the element and its ancestors, nearest first; no unanchored path is proposed. Each path is read as `normalize-space(...)`, then as each of the element's attributes.
+- Alternatives: An absolute unpositioned path; microdata's value-attribute table.
+- Why: ARCHITECTURE §8.1 rules out bare generic paths; trying every attribute is structural and needs no copy of microdata's table (C8).
+- Reversible: yes
+
+### D-0556 — Adapter and API values come from their mapping
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: Fields whose locators are `adapter:`/`api:` with one mapping name go to `Induction.mapped`, not to IR steps; the caller sets `origin=adapter`.
+- Alternatives: `jsonpath` steps with `source="api"`.
+- Why: The engine refuses `api` sources (SPEC-09 executes them) and `config_ir` cannot import adapters.
+- Reversible: yes
+
+### D-0557 — Locators that do not resolve to one element are proposed as written
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: A `microdata:` or `config:` XPath that does not select exactly one element on the lxml tree is proposed as it is, and verification decides; an unresolvable selectolax path is then rejected and the field goes to synthesis.
+- Alternatives: Generalize on the selectolax tree.
+- Why: The executors run on lxml, so a selector is judged there; an earlier config's expression is already general.
+- Reversible: yes
+
+### D-0558 — Induced status and list fields
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 5 (#116) · Status: decided
+- Decision: Induced fields are `uncorroborated` until validation (PR 6). List fields with `microdata:`/`config:` locators go to synthesis; only `jsonld` induces list fields.
+- Alternatives: Generalize one located element to the item set.
+- Why: One element does not give the item set without an item selector, which synthesis builds.
+- Reversible: yes

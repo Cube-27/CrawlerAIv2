@@ -185,13 +185,13 @@ class JsonLdCollector:
             diagnostics=tuple(diagnostics),
         )
 
-    def nodes(self, page: ParsedPage) -> Iterator[tuple[tuple[str, ...], Mapping[str, JsonValue]]]:
-        """The page's schema.org nodes in document order, each with its types, most specific first. Invalid blocks
-        are skipped; `collect` reports them."""
+    def nodes(self, page: ParsedPage) -> Iterator[tuple[str, tuple[str, ...], Mapping[str, JsonValue]]]:
+        """The page's schema.org nodes in document order, each with its locator (`jsonld:<block>:<path>`) and its
+        types, most specific first. Invalid blocks are skipped; `collect` reports them."""
         for index, document in blocks(page, []):
             for found in self._walk(index, document):
                 if found.types:
-                    yield found.types, found.data
+                    yield found.id, found.types, found.data
 
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
         """Every object of `document` in document order. Iterative, so that nesting depth is bounded by what the JSON

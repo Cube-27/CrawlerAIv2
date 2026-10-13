@@ -111,6 +111,15 @@ class EngineExecutor:
             )
 
 
+def field_candidate(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, vocabulary: Vocabulary, name: str, steps: Sequence[Step]
+) -> Candidate | None:
+    """The candidate `EngineExecutor` proposes for the page-level field `name` when it has `steps`: how induction
+    (SPEC-08 §4.5) checks a selector by the very rules it will run under."""
+    run = _Run(page, schema, ctx, vocabulary)
+    return run.first_value(name, steps, schema.fields[name], _Scope(page.lxml_tree, in_row=False), PAGE)
+
+
 @dataclass
 class _Run:
     page: ParsedPage
@@ -130,7 +139,7 @@ class _Run:
     def nodes(self) -> list[tuple[tuple[str, ...], JsonValue]]:
         if self._nodes is None:
             found = jsonld.JsonLdCollector(self.vocabulary).nodes(self.page)
-            self._nodes = [(types, dict(data)) for types, data in found]
+            self._nodes = [(types, dict(data)) for _, types, data in found]
         return self._nodes
 
     def fields(self, fields: Mapping[str, FieldSteps], scope: _Scope, owner: str) -> Iterator[Candidate]:
