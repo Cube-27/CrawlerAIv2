@@ -15,7 +15,8 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
 from crawlerai.core.settings import AcquireSettings, Settings
-from crawlerai.scheduler.loop import PERIODIC, run_scheduler
+from crawlerai.scheduler.loop import periodic, run_scheduler
+from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.loop import run_worker
 
@@ -44,7 +45,8 @@ async def _work() -> None:
 
 
 async def _schedule() -> None:
-    await run_scheduler(Settings(), PERIODIC, _stop_on_signals())
+    settings = Settings()
+    await run_scheduler(settings, periodic(open_store(settings.object_store)), _stop_on_signals())
 
 
 async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) -> None:
@@ -74,7 +76,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("openapi", help="print the API's OpenAPI document as JSON")
     commands.add_parser("worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM")
-    commands.add_parser("scheduler", help="run the scheduler: periodic upkeep, such as releasing expired leases")
+    commands.add_parser("scheduler", help="run the scheduler: release expired leases, expire captures and candidates")
     fetch = commands.add_parser("fetch", help="fetch one URL over HTTP into a capture bundle file")
     fetch.add_argument("url")
     fetch.add_argument(
