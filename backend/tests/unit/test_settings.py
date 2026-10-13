@@ -16,6 +16,9 @@ _OPTIONAL = [
     "CRAWLERAI_ROLE",
     "CRAWLERAI_IMPERSONATE",
     "CRAWLERAI_EVAL_UI",
+    "CRAWLERAI_LLM_PROVIDERS",
+    "CRAWLERAI_LLM_FAST_MODEL_ANTHROPIC",
+    "CRAWLERAI_LLM_API_KEY_GEMINI",
 ]
 
 
@@ -58,6 +61,9 @@ def test_optional_settings_unset_or_empty_take_their_unset_values(env: pytest.Mo
     assert settings.role is None
     assert settings.impersonate == "chrome150"
     assert settings.eval_ui is False
+    assert settings.llm_providers == ("anthropic", "gemini")
+    assert settings.llm_fast_model_anthropic == "claude-haiku-5-5"
+    assert settings.llm_api_key_gemini is None
 
 
 def test_database_url_is_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
@@ -114,3 +120,30 @@ def test_impersonate_names_a_curl_cffi_browser_profile(env: pytest.MonkeyPatch) 
     env.setenv("CRAWLERAI_IMPERSONATE", "chrome9999")
     with pytest.raises(ValidationError, match="impersonate"):
         Settings()
+
+
+@pytest.mark.parametrize(
+    ("value", "providers"),
+    [
+        ("gemini", ("gemini",)),
+        ("gemini,anthropic", ("gemini", "anthropic")),
+        (" anthropic , gemini ", ("anthropic", "gemini")),
+    ],
+)
+def test_llm_providers_are_a_comma_separated_failover_order(
+    env: pytest.MonkeyPatch, value: str, providers: tuple[str, ...]
+) -> None:
+    env.setenv("CRAWLERAI_LLM_PROVIDERS", value)
+    assert Settings().llm_providers == providers
+
+
+@pytest.mark.parametrize("value", ["anthropic,anthropic", "anthropic,other", "anthropic,"])
+def test_a_repeated_or_unknown_llm_provider_is_rejected(env: pytest.MonkeyPatch, value: str) -> None:
+    env.setenv("CRAWLERAI_LLM_PROVIDERS", value)
+    with pytest.raises(ValidationError, match="llm_providers"):
+        Settings()
+
+
+def test_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
+    env.setenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", "secret-key-value")
+    assert "secret-key-value" not in repr(Settings())

@@ -1,7 +1,8 @@
 """The LLM client (SPEC-06 §4.2, ARCHITECTURE §11): one request shape for every role, JSON-schema output, budgets
 and usage.
 
-`MeteredClient` asks one `Provider` for JSON, checks it against the request's JSON Schema (draft 2020-12) and
+`MeteredClient` asks its first `Provider` for JSON, fails over to the next one once if the first does not answer
+(a rate limit, a server error or a timeout), checks the reply against the request's JSON Schema (draft 2020-12) and
 retries once with the validation error appended. Before every provider call it checks the job's `llm_calls` budget;
 after every call that answered, it records `llm_calls`, `llm_tokens_in` and `llm_tokens_out` (INV-23). Usage is
 committed in a transaction of its own, never the caller's: a task that fails afterwards rolls its transaction back,
@@ -13,6 +14,7 @@ Model output is data: it is parsed as JSON and validated, never executed (INV-17
 
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, Protocol
 
@@ -117,6 +119,13 @@ class ProviderError(Exception):
     """The provider did not answer: a rate limit, a server error or a timeout."""
 
 
+def is_transient(status: int) -> bool:
+    """Whether an HTTP status says the provider did not answer this time: 408 Request Timeout (RFC 9110 §15.5.9),
+    429 Too Many Requests (RFC 6585 §4) or a 5xx server error (RFC 9110 §15.6). Other errors are the request's own
+    fault (a bad key, an unknown model, a refused schema); another provider would not fix them, so they propagate."""
+    return status in (408, 429) or 500 <= status <= 599
+
+
 class BudgetExhausted(Exception):
     """The job has no `llm_calls` budget left; the call was not made (§4.7)."""
 
@@ -134,34 +143,46 @@ class _Invalid:
     error: str
 
 
+@dataclass(frozen=True)
+class _Answer:
+    provider: str
+    reply: ProviderReply
+    latency_ms: int
+
+
 class MeteredClient:
-    def __init__(self, provider: Provider, engine: AsyncEngine) -> None:
-        self._provider = provider
+    def __init__(self, providers: Sequence[Provider], engine: AsyncEngine) -> None:
+        """`providers` in order of preference (`CRAWLERAI_LLM_PROVIDERS`). A call fails over at most once (§4.2), so
+        there are one or two."""
+        if not 1 <= len(providers) <= 2:
+            raise ValueError("an LLM client needs one or two providers")
+        self._providers = tuple(providers)
         self._engine = engine
 
     async def complete_json(self, req: LLMRequest) -> LLMResponse:
         key = request_hash(req)
         validator = Draft202012Validator(req.output_schema)
-        reply, latency_ms = await self._call(req, req.user, key)
-        checked = _check(reply.text, validator)
+        answer = await self._call(req, req.user, key)
+        checked = _check(answer.reply.text, validator)
         if isinstance(checked, _Invalid):
             retry_user = f"{req.user}\n\n{RETRY_NOTE.format(error=checked.error)}"
-            reply, latency_ms = await self._call(req, retry_user, key)
-            checked = _check(reply.text, validator)
+            answer = await self._call(req, retry_user, key)
+            checked = _check(answer.reply.text, validator)
         if isinstance(checked, _Invalid):
             raise OutputInvalid(checked.error)
         return LLMResponse(
             data=checked,
-            provider=self._provider.name,
-            model=reply.model,
-            tokens_in=reply.tokens_in,
-            tokens_out=reply.tokens_out,
-            latency_ms=latency_ms,
+            provider=answer.provider,
+            model=answer.reply.model,
+            tokens_in=answer.reply.tokens_in,
+            tokens_out=answer.reply.tokens_out,
+            latency_ms=answer.latency_ms,
             request_hash=key,
         )
 
-    async def _call(self, req: LLMRequest, user: str, key: str) -> tuple[ProviderReply, int]:
-        """One provider call, charged to the request's job: budget first, usage after."""
+    async def _call(self, req: LLMRequest, user: str, key: str) -> _Answer:
+        """One answered call, charged to the request's job: budget first, usage after. The first provider is asked;
+        if it does not answer, the next one is asked once. A call that did not answer is not charged (D-0347)."""
         if req.job_id is not None:
             await self._check_budget(req.job_id)
         call = ProviderCall(
@@ -172,15 +193,19 @@ class MeteredClient:
             max_output_tokens=req.max_output_tokens,
             timeout_s=TIMEOUT_S[req.model_class],
         )
-        started = time.monotonic()
-        try:
-            reply = await self._provider.complete(call)
-        except ProviderError as error:
-            raise ProviderUnavailable(f"{self._provider.name}: {error}") from error
-        latency_ms = round((time.monotonic() - started) * 1000)
-        if req.job_id is not None:
-            await self._record(req.job_id, req, key, reply, latency_ms)
-        return reply, latency_ms
+        errors: list[str] = []
+        for provider in self._providers:
+            started = time.monotonic()
+            try:
+                reply = await provider.complete(call)
+            except ProviderError as error:
+                errors.append(f"{provider.name}: {error}")
+                continue
+            answer = _Answer(provider.name, reply, round((time.monotonic() - started) * 1000))
+            if req.job_id is not None:
+                await self._record(req.job_id, req, key, answer)
+            return answer
+        raise ProviderUnavailable("; ".join(errors))
 
     async def _check_budget(self, job_id: JobId) -> None:
         async with self._engine.connect() as conn:
@@ -188,9 +213,15 @@ class MeteredClient:
         if remaining == 0:
             raise BudgetExhausted(f"job {job_id} has no llm_calls budget left")
 
-    async def _record(self, job_id: JobId, req: LLMRequest, key: str, reply: ProviderReply, latency_ms: int) -> None:
+    async def _record(self, job_id: JobId, req: LLMRequest, key: str, answer: _Answer) -> None:
         # Its own transaction: see the module docstring.
-        metadata = {"prompt_kind": req.prompt_kind, "model": reply.model, "request_hash": key, "latency_ms": latency_ms}
+        reply = answer.reply
+        metadata = {
+            "prompt_kind": req.prompt_kind,
+            "model": reply.model,
+            "request_hash": key,
+            "latency_ms": answer.latency_ms,
+        }
         usage: tuple[tuple[UsageResource, int], ...] = (
             ("llm_calls", 1),
             ("llm_tokens_in", reply.tokens_in),
@@ -202,7 +233,7 @@ class MeteredClient:
                     conn,
                     job_id,
                     resource,
-                    provider=self._provider.name,
+                    provider=answer.provider,
                     model_or_pool=reply.model,
                     quantity=quantity,
                     metadata=metadata,

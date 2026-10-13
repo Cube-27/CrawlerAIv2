@@ -2387,3 +2387,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Other mappings.
 - Why: DESIGN.md "Status display": each domain maps its values to one tone, once.
 - Reversible: yes
+
+### D-0370 — Anthropic calls send no `temperature`
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: The Anthropic provider sends no sampling parameters; Gemini sends `temperature: 0`. Narrows D-0023's "temperature 0" to the providers that accept it.
+- Alternatives: Send `temperature: 0` everywhere (§4.2).
+- Why: Claude Haiku 5.5 and Sonnet 5.5 reject non-default sampling values with a 400; replay determinism comes from the recorded cache (INV-10), not from temperature.
+- Reversible: yes
+
+### D-0371 — Failover is per call, from the first provider, at most once
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: Each provider call, including the one validity retry, asks the configured providers in order; a client has one or two providers. A call that does not answer is not charged (D-0347); the budget is checked once before each call.
+- Alternatives: Keep using the provider that answered for the retry.
+- Why: Simplest reading of "failover to the next provider once" (§4.2); `LLMResponse.provider` names the one that answered.
+- Reversible: yes
+
+### D-0372 — Only "no answer" fails over
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: 408, 429, 5xx (RFC 9110, RFC 6585), timeouts and connection errors become `ProviderError`; other statuses (bad key, unknown model, refused schema) propagate as the SDK's exception.
+- Alternatives: Fail over on any error.
+- Why: Another provider would not fix a misconfiguration; it should fail loudly.
+- Reversible: yes
+
+### D-0373 — SDK retries are off
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: Anthropic `max_retries=0`; Gemini without retry options (one attempt).
+- Alternatives: Keep the SDKs' backoff retries.
+- Why: They would multiply latency up to the 60/120 s timeouts and hide the failover the spec defines.
+- Reversible: yes
+
+### D-0374 — Default model ids in settings
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: fast: `claude-haiku-5-5`, `gemini-3.5-flash-lite`; strong: `claude-sonnet-5-5`, `gemini-3.8-flash`; each overridable by `CRAWLERAI_LLM_{FAST,STRONG}_MODEL_<PROVIDER>`.
+- Alternatives: No defaults; `gemini-3.1-pro-preview` for strong.
+- Why: Appendix C names Haiku/Flash-Lite-class and Sonnet-class models; Gemini Pro is a preview, 3.8 Flash is the current stable mid-tier model.
+- Reversible: yes
+
+### D-0375 — Provider settings and keys
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: `CRAWLERAI_LLM_PROVIDERS` is comma-separated, defaults to `anthropic,gemini`, and refuses duplicates and unknown names; keys are `CRAWLERAI_LLM_API_KEY_<PROVIDER>` (SecretStr); `providers_from_settings` refuses a listed provider without a key.
+- Alternatives: The vendors' own env vars (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`).
+- Why: One `CRAWLERAI_*` namespace (SPEC-00 §4.4); no client is built half-configured.
+- Reversible: yes
+
+### D-0376 — LLM output token counts include thinking
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: Gemini `tokens_out` = candidates + thinking tokens; Anthropic's `output_tokens` already includes thinking; a Gemini response without usage metadata records 0.
+- Alternatives: Candidate tokens only.
+- Why: Thinking tokens are billed as output.
+- Reversible: yes
+
+### D-0377 — LLM provider SDK dependencies
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 2 (#74) · Status: decided
+- Decision: `anthropic` (MIT) and `google-genai` (Apache-2.0), as SPEC-06 §4.1 names; `httpx` moved from dev to runtime and `httpx2` added (the providers catch their transport errors and take test clients).
+- Alternatives: Raw HTTP.
+- Why: The spec names the official SDKs.
+- Reversible: yes
