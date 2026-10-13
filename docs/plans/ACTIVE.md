@@ -2,8 +2,9 @@
 
 The live state of implementation. The orchestrator (`/run-plan`) is its only writer; a solo agent with no orchestrator updates it in its PR
 (`CLAUDE.md` §3). One row
-is one PR from a spec's PR plan. Spec dependencies are listed in `specs/README.md`. A row can start once every row
-it depends on is `done`. Within a spec, rows run in order unless the spec says otherwise.
+is one PR from a spec's PR plan. Spec dependencies are listed in `specs/README.md`. A row is ready when everything
+it needs is available: the code it touches or builds on is merged, or what it needs from unmerged work is fully
+specified (types, API shapes, table columns). Readiness is per row (owner, 2026-10-13).
 
 **Statuses:**
 - `todo`
