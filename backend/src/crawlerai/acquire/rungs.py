@@ -1,9 +1,9 @@
 """Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
 worked remembered in `site.fetch_method`.
 
-The adapter and API-recipe rungs come before these once they exist (SPEC-02 PR 8, SPEC-09); the browser rung is
-`crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
-only.
+A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) and no other rung; the API-recipe rung
+joins it once it exists (SPEC-09). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a
+function of (url, policy), so `acquire` decides and records only.
 """
 
 from collections.abc import Awaitable, Callable
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import SLOW_DOWN
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult, policy_with_attempts
+from crawlerai.adapters.registry import Registry
 from crawlerai.db.models import FetchMethod, Site, SiteId
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
@@ -26,12 +27,16 @@ _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 class Rungs:
     http: Rung
     browser: Rung
+    adapters: Registry | None = None
 
 
 async def acquire(url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs) -> FetchResult:
-    """Fetch `url` with `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or
-    block is fetched again in the browser, and the browser's outcome is kept only if it is `ok`. The result lists
-    every attempt, in its bundle's manifest too."""
+    """Fetch `url` through the active adapter that detects it, if any. Otherwise fetch it with
+    `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched again in
+    the browser, and the browser's outcome is kept only if it is `ok`. The result lists every attempt, in its
+    bundle's manifest too."""
+    if rungs.adapters is not None and (adapter := rungs.adapters.detect(url)) is not None:
+        return await adapter.fetch(url, policy)
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     kept, attempts, duration_ms = result, result.attempts, result.duration_ms
