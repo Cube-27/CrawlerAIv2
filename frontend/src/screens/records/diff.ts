@@ -2,7 +2,7 @@ import { isJsonObject } from "../../api/json";
 import type { RecordField } from "../../api/scrape";
 
 /** One field of a stored record beside the same field of its replay; a side is null when that record lacks the field. */
-export interface FieldChange {
+interface FieldChange {
   name: string;
   stored: RecordField | null;
   replayed: RecordField | null;
@@ -37,7 +37,9 @@ function sameField(stored: RecordField | null, replayed: RecordField | null): bo
 /** Every field either record has, by name, and whether the replay changed its status or its value. Confidence,
  * evidence and locator are shown but not compared: the same value can be published from another source. */
 export function diffFields(stored: Fields, replayed: Fields): FieldChange[] {
-  const names = [...new Set([...Object.keys(stored), ...Object.keys(replayed)])].sort();
+  const names = [...new Set([...Object.keys(stored), ...Object.keys(replayed)])].sort((a, b) =>
+    a.localeCompare(b),
+  );
   return names.map((name) => {
     const before = stored[name] ?? null;
     const after = replayed[name] ?? null;
