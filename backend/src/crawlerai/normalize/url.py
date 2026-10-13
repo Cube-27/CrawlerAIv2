@@ -7,6 +7,7 @@ other JSON value is `Invalid("not_a_string")`. A relative reference resolves aga
 """
 
 import re
+import string
 from urllib.parse import SplitResult, quote, urljoin, urlsplit
 
 from pydantic import JsonValue
@@ -22,7 +23,7 @@ _TAB_OR_NEWLINE = re.compile(r"[\t\n\r]")
 # canonical.
 _PERCENT_TRIPLET = re.compile(r"%([0-9A-Fa-f]{2})")
 # RFC 3986 §2.3: unreserved characters. Percent-encoded, they are equivalent to the character (§6.2.2.2).
-_UNRESERVED = re.compile(r"[A-Za-z0-9\-._~]")
+_UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
 # RFC 3986 §3.3 `pchar` without the unreserved set (which `quote` never encodes), plus `/`; §3.4 adds `?` for the
 # query. `%` stays, so existing triplets and a bare `%` (a WHATWG validation error, not a failure) are kept.
 _PATH_SAFE = "!$&'()*+,;=:@/%"
@@ -56,12 +57,13 @@ def _canonical(raw: str, base: str | None) -> NormalizeResult:
         return Invalid("empty")
     reference = _TAB_OR_NEWLINE.sub("", raw.strip(_C0_AND_SPACE))
     try:
-        if not urlsplit(reference).scheme:
+        parts = urlsplit(reference)
+        if not parts.scheme:
             if base is None:
                 return Invalid("relative_without_base")
             # RFC 3986 §5.2: reference resolution against the base URI.
             reference = urljoin(base, reference)
-        parts = urlsplit(reference)
+            parts = urlsplit(reference)
         port = parts.port
     except ValueError:
         return Invalid("unparsable")
@@ -93,11 +95,12 @@ def _authority(parts: SplitResult, hostname: str, port: int | None) -> str:
 
 
 def _normalize_triplets(component: str) -> str:
-    def one(match: re.Match[str]) -> str:
-        char = chr(int(match.group(1), 16))
-        return char if _UNRESERVED.fullmatch(char) else f"%{match.group(1).upper()}"
+    return _PERCENT_TRIPLET.sub(_normalize_triplet, component)
 
-    return _PERCENT_TRIPLET.sub(one, component)
+
+def _normalize_triplet(match: re.Match[str]) -> str:
+    char = chr(int(match.group(1), 16))
+    return char if char in _UNRESERVED else f"%{match.group(1).upper()}"
 
 
 def _remove_dot_segments(path: str) -> str:

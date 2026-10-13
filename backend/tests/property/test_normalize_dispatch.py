@@ -12,6 +12,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
 CTX = Context(captured_at=AT)
+PAGE_CTX = Context(captured_at=AT, base_url="https://example.test/a", page_url="https://example.test/a")
 _PARAMETERS: dict[FieldType, dict[str, object]] = {
     FieldType.ENUM: {"vocab": "schema:ItemAvailability"},
     FieldType.IDENTIFIER: {"scheme": "gtin"},
@@ -29,9 +30,7 @@ def _spec(type_: FieldType) -> FieldSpec:
     st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8),
 )
 def test_no_type_returns_ok_for_empty_input(type_: FieldType, raw: str) -> None:
-    ctx = Context(captured_at=AT, base_url="https://example.test/a", page_url="https://example.test/a")
-
-    assert not isinstance(normalize(raw, _spec(type_), ctx), Ok)
+    assert not isinstance(normalize(raw, _spec(type_), PAGE_CTX), Ok)
 
 
 def test_text_and_long_text_go_to_the_text_module() -> None:
