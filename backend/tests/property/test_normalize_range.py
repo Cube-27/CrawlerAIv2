@@ -212,7 +212,10 @@ def test_empty_or_whitespace_input_is_invalid(raw: str) -> None:
     )
 )
 def test_normalize_is_pure(raw: JsonValue) -> None:
-    assert norm(raw) == norm(raw)
+    first = norm(raw)
+    second = norm(raw)
+
+    assert first == second
 
 
 def test_another_type_is_a_programming_error() -> None:

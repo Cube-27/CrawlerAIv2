@@ -38,10 +38,10 @@ _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
 _PERIOD_TOKEN = re.compile(r"(?:\bper\s+|/\s*)(hour|day|week|month|year)\b", re.IGNORECASE)
 # The range separators SPEC-04 §4.4 names: hyphen-minus, en dash (the range dash, Unicode U+2013) and `en` "to".
 _SEPARATOR = re.compile(r"\s*(?:-|\u2013|\bto\b)\s*", re.IGNORECASE)
-# A written amount: ASCII digits, with the grouping and decimal marks CLDR number patterns use between them (full
-# stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount is the
-# money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
-_AMOUNT = re.compile(r"[0-9](?:[0-9.,' \u00a0\u202f]*[0-9])?")
+# A written amount: ASCII digits (`re.ASCII`), with the grouping and decimal marks CLDR number patterns use between
+# them (full stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount
+# is the money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
+_AMOUNT = re.compile(r"\d(?:[\d.,' \u00a0\u202f]*\d)?", re.ASCII)
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> NormalizeResult:
@@ -176,16 +176,16 @@ def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> N
                 if a[1] == b[1] and a[0] <= b[0]
             )
             return Ambiguous(reason, options)
-        case Ok(), Ok():
-            pass
-    (lo_amount, lo_currency), (hi_amount, hi_currency) = _amount(lo.value), _amount(hi.value)
-    if lo_currency != hi_currency:
-        return Invalid("currency_mismatch")
-    if lo_amount > hi_amount:
-        return Invalid("min_greater_than_max")
-    if period is None:
-        return Ambiguous("period_missing", ())
-    return Ok(_value(lo_amount, hi_amount, currency=lo_currency, unit=None, period=period))
+        case Ok(value=lo_value), Ok(value=hi_value):
+            (lo_amount, lo_currency), (hi_amount, hi_currency) = _amount(lo_value), _amount(hi_value)
+            if lo_currency != hi_currency:
+                return Invalid("currency_mismatch")
+            if lo_amount > hi_amount:
+                return Invalid("min_greater_than_max")
+            if period is None:
+                return Ambiguous("period_missing", ())
+            return Ok(_value(lo_amount, hi_amount, currency=lo_currency, unit=None, period=period))
+    raise TypeError("a normalize result is Ok, Ambiguous or Invalid")
 
 
 def _options(result: NormalizeResult) -> tuple[JsonValue, ...]:
