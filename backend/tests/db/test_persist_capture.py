@@ -41,7 +41,9 @@ def _result() -> FetchResult:
         fetch_policy=FetchPolicy(timeout_s=12.0).model_dump(mode="json"),
         engine_version="0+cal.0",
     )
-    return FetchResult(bundle=CaptureBundle(manifest=manifest, body=BODY, network=()), duration_ms=1950, attempts=ATTEMPTS)
+    return FetchResult(
+        bundle=CaptureBundle(manifest=manifest, body=BODY, network=()), duration_ms=1950, attempts=ATTEMPTS
+    )
 
 
 async def _site(conn: AsyncConnection) -> SiteId:

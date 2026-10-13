@@ -7,20 +7,26 @@ resolver, so redirect hops leaving the server are checked exactly as in producti
 
 import asyncio
 import gzip
+import json
+import os
 import socket
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import version
 from ipaddress import IPv4Address, ip_address
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 
+from crawlerai import cli
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.cli import main
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.storage.capture_bundle import decode, encode
 
@@ -368,3 +374,53 @@ def _closed_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
+
+
+# --- the fetch command -------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reply", "status", "block_class"),
+    [(html(_PAGE), 200, "ok"), (html(_SHELL), 200, "shell"), (html(b"gone", 404), 404, "not_found")],
+)
+def test_the_fetch_command_writes_a_bundle_that_decodes(
+    server: Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reply: Reply,
+    status: int,
+    block_class: str,
+) -> None:
+    # It needs no database or object store: the bundle goes to a file.
+    for name in list(os.environ):
+        if name.upper().startswith("CRAWLERAI_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setattr(cli, "SafeConnector", lambda: LoopbackConnector(server.port, _DNS))
+    server.route("/p", reply)
+    out = tmp_path / "bundle.zst"
+
+    main(["fetch", server.url("/p"), "--out", str(out)])
+
+    bundle = decode(out.read_bytes())
+    manifest = bundle.manifest
+    assert (manifest.url, manifest.status_code, manifest.block_class) == (server.url("/p"), status, block_class)
+    assert bundle.body == reply.body
+    assert manifest.engine_version == version("crawlerai")
+    assert json.loads(capsys.readouterr().out) == {
+        "capture_id": str(manifest.capture_id),
+        "final_url": server.url("/p"),
+        "status_code": status,
+        "block_class": block_class,
+        "error": None,
+    }
+
+
+def test_the_fetch_command_reports_a_failed_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "bundle.zst"
+    main(["fetch", "http://127.0.0.1/", "--out", str(out)])
+
+    assert decode(out.read_bytes()).manifest.block_class == "error"
+    assert json.loads(capsys.readouterr().out)["error"] == "ssrf_rejected: private_address"

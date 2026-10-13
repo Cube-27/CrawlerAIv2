@@ -29,10 +29,17 @@ class DatabaseSettings(BaseSettings):
     database_url: SecretStr
 
 
-class Settings(DatabaseSettings):
+class AcquireSettings(BaseSettings):
+    """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
+
+    model_config = SettingsConfigDict(env_prefix="CRAWLERAI_", env_ignore_empty=True, frozen=True)
+
+    impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
+
+
+class Settings(DatabaseSettings, AcquireSettings):
     eval_private_database_url: SecretStr | None = None
     object_store: ObjectStoreUrl
     eval_private_object_store: ObjectStoreUrl | None = None
     log_redact_urls: bool = False
     role: Role | None = None
-    impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
