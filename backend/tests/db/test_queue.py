@@ -1,10 +1,11 @@
+import asyncio
 from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy import func, insert, select, text, update
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import (
@@ -118,6 +119,20 @@ async def test_claim_takes_at_most_n_and_never_the_same_task_twice(conn: AsyncCo
         ids[4:5],
         [],
     ]
+
+
+async def test_claim_takes_at_most_n_when_the_planner_thinks_the_queue_is_tiny(conn: AsyncConnection) -> None:
+    """Statistics taken while the queue held one task, as on a fresh database, lead Postgres to run the claim's
+    `LIMIT n ... SKIP LOCKED` subquery once per scanned row; each run skips the rows already claimed and offers `n`
+    more, so a claim could take every due task."""
+    job_id = await _job(conn)
+    [first] = await _tasks(conn, job_id, 1, url="a", canonical_url="a")
+    await conn.execute(text("ANALYZE url_task"))
+    rest = await _tasks(conn, job_id, 5)
+
+    claimed = await claim_tasks(conn, "w1", 2)
+
+    assert [task.id for task in claimed] == [first, rest[0]]
 
 
 async def test_claiming_a_task_starts_its_queued_job(conn: AsyncConnection) -> None:
@@ -347,3 +362,27 @@ async def test_releasing_with_no_expired_lease_changes_nothing(conn: AsyncConnec
     assert await release_expired_leases(conn) == 0
 
     assert (await _row(conn, task_id)).status == "claimed"
+
+
+async def test_concurrent_claims_each_take_at_most_n_and_share_no_task(engine: AsyncEngine) -> None:
+    """Claimers racing over committed tasks: every claim takes at most `n`, and every task is claimed exactly once."""
+    claimers, n, count = 8, 3, 240
+    async with engine.begin() as conn:
+        ids = set(await _tasks(conn, await _job(conn), count))
+
+    async def claimer(worker: str) -> list[list[UrlTaskId]]:
+        batches: list[list[UrlTaskId]] = []
+        while True:
+            async with engine.begin() as conn:
+                batch = [task.id for task in await claim_tasks(conn, worker, n)]
+            if not batch:
+                return batches
+            batches.append(batch)
+
+    batches = [
+        batch for worker in await asyncio.gather(*(claimer(f"w{i}") for i in range(claimers))) for batch in worker
+    ]
+
+    assert max(len(batch) for batch in batches) <= n
+    claimed = [task_id for batch in batches for task_id in batch]
+    assert sorted(claimed) == sorted(ids)
