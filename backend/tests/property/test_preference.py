@@ -111,12 +111,7 @@ _OFFER = st.tuples(st.none() | _PRICES, st.none() | _STOCK)
 def test_offer_fields_publish_from_one_offer_that_all_offers_agree_with(
     offers: list[tuple[dict[str, str] | None, str | None]],
 ) -> None:
-    candidates = []
-    for n, (offer, (price, stock)) in enumerate(zip(OFFERS, offers, strict=False)):
-        if price is not None:
-            candidates.append(_candidate("price", price, offer.id, "jsonld", 2 * n))
-        if stock is not None:
-            candidates.append(_candidate("availability", stock, offer.id, "jsonld", 2 * n + 1))
+    candidates = _offer_candidates(offers)
 
     result = _resolver().prefer(_schema(price=PRICE, availability=AVAILABILITY), candidates)
 
@@ -129,6 +124,16 @@ def test_offer_fields_publish_from_one_offer_that_all_offers_agree_with(
     for name, preference in published.items():
         stated = [c.normalized for c in candidates if c.field == name]
         assert all(value == preference.chosen.normalized for value in stated)
+
+
+def _offer_candidates(offers: list[tuple[dict[str, str] | None, str | None]]) -> list[Candidate]:
+    candidates = []
+    for n, (offer, (price, stock)) in enumerate(zip(OFFERS, offers, strict=False)):
+        if price is not None:
+            candidates.append(_candidate("price", price, offer.id, "jsonld", 2 * n))
+        if stock is not None:
+            candidates.append(_candidate("availability", stock, offer.id, "jsonld", 2 * n + 1))
+    return candidates
 
 
 _PREFERENCES = st.one_of(

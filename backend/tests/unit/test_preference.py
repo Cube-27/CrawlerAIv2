@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.jsonld import JsonLdCollector
@@ -69,11 +70,11 @@ def _locator(entity_id: str, kind: SourceKind, n: int) -> str:
 
 def _candidate(
     field: str,
-    value: object,
+    value: JsonValue,
     entity: Entity | str = PRODUCT,
     kind: SourceKind = "jsonld",
     *,
-    raw: object = None,
+    raw: JsonValue = None,
     normalized: NormalizeResult | None = None,
     n: int = 0,
 ) -> Candidate:
@@ -83,7 +84,7 @@ def _candidate(
         entity_id=entity_id,
         source_kind=kind,
         raw=value if raw is None else raw,
-        normalized=normalized or Ok(value),  # type: ignore[arg-type]
+        normalized=normalized or Ok(value),
         locator=_locator(entity_id, kind, n),
         independent=True,
     )
