@@ -12,7 +12,9 @@ from. A draft the LLM could not give (no provider, no budget, an invalid reply) 
 
 `records` extracts the page with `extract_page` (SPEC-05) against the schema named by id, given inline, or drafted,
 and stores the extraction and the record (`resolve.task`). A scrape URL is caller-supplied, so a page whose required
-fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10). The formats,
+fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10). A site with an
+active config for the schema version extracts in `config` mode (SPEC-08 §4.8), and the page joins the config's drift
+window (§4.9). The formats,
 the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same canonical URL
 that reached its page within that many seconds is read again instead of fetching.
 """
@@ -37,6 +39,8 @@ from crawlerai.acquire.robots import Robots, site_robots
 from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override
+from crawlerai.config_ir.active import active_config, record_page
+from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.content.html import cleaned_html
 from crawlerai.content.links import links
 from crawlerai.content.markdown import markdown
@@ -65,7 +69,7 @@ from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
 from crawlerai.llm.roles.s_schema import draft_schema, normalize_prompt
 from crawlerai.normalize.url import canonical_url
 from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.task import store_extraction
+from crawlerai.resolve.task import ActiveConfig, store_extraction
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
 from crawlerai.schemas.types import SchemaDef
@@ -285,11 +289,12 @@ class _Recent:
 
 @dataclass(frozen=True)
 class _Work:
-    """What a scrape works with besides fetching: the LLM client, the engine's data, and the schema `records`
-    extracts with when the request names it (a prompt's is drafted after the fetch)."""
+    """What a scrape works with besides fetching: the LLM client, the engine's data and drift margins, and the schema
+    `records` extracts with when the request names it (a prompt's is drafted after the fetch)."""
 
     llm: LLMClient
     data: EngineData | None
+    margins: DriftMargins | None
     schema: SchemaDef | None
 
 
@@ -302,6 +307,7 @@ class _Derived:
     drafted: SchemaDef | None = None
     schema: SchemaDef | None = None
     extraction: ExtractionResult | None = None
+    config: ActiveConfig | None = None
 
 
 _NOTHING: Final = _Derived(_Formats())
@@ -324,17 +330,19 @@ async def scrape(
     *,
     llm: LLMClient = _NO_LLM,
     data: EngineData | None = None,
+    margins: DriftMargins | None = None,
 ) -> ScrapeResult:
-    """Run `request` as a scrape job; `records` reads `data`. Raises, before any job is created: `ScrapeRejected`
-    for a target refused outright, `RecordsUnavailable` for `records` without `data`, `ScrapeInvalid` for a schema id
-    `records` cannot use, and the schemas service's `SchemaConflict` or `InvalidSchema` for an inline schema. Raises,
-    failing the job: `ScrapeRejected` for a refused redirect, `ScrapeTimedOut` past `request.timeout_s`, the LLM
-    client's `LLMFailure` when a prompt could not be drafted, and `ScrapeInvalid` for a draft of another page kind."""
+    """Run `request` as a scrape job; `records` reads `data`, and an active config's drift `margins`. Raises, before
+    any job is created: `ScrapeRejected` for a target refused outright, `RecordsUnavailable` for `records` without
+    `data`, `ScrapeInvalid` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
+    `InvalidSchema` for an inline schema. Raises, failing the job: `ScrapeRejected` for a refused redirect,
+    `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
+    `ScrapeInvalid` for a draft of another page kind."""
     try:
         await fetching.connector.check(request.url)
     except SsrfRejected as e:
         raise ScrapeRejected(str(e)) from e
-    work = _Work(llm, data, await _named_schema(engine, request, data))
+    work = _Work(llm, data, margins, await _named_schema(engine, request, data))
     task = await _start(engine, request, work.schema)
     try:
         async with asyncio.timeout(request.timeout_s):
@@ -419,6 +427,7 @@ async def _run(
     async with engine.begin() as conn:
         site = await _site(conn, host)
         row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age) if request.max_age else None
+        config = await _config(conn, site.id, work)
     recent = None if row is None else await _reread(fetching.store, row)
     policy = _policy(request, site.proxy_pool)
     fetches: list[FetchResult] = []
@@ -427,12 +436,12 @@ async def _run(
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
     if isinstance(page, FetchResult) and page.block_class == "ok":
-        derived = await _derive(engine, work, request, task, page)
+        derived = await _derive(engine, work, request, task, page, config)
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await _new_capture(conn, fetching.store, site.id, page)
-            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived)
+            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins)
             members = _fetch_members(page, capture_id)
         else:
             outcome = "blocked"
@@ -492,11 +501,23 @@ async def _new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteI
     return await store_capture(conn, store, page, site_id)
 
 
+async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:
+    """The site's active config for the schema `records` names; a prompt's draft is new, so it has none."""
+    if work.schema is None or work.data is None:
+        return None
+    return await active_config(conn, site_id, work.schema, work.data.vocabulary)
+
+
 async def _derive(
-    engine: AsyncEngine, work: _Work, request: ScrapeRequest, task: ClaimedTask, result: FetchResult
+    engine: AsyncEngine,
+    work: _Work,
+    request: ScrapeRequest,
+    task: ClaimedTask,
+    result: FetchResult,
+    config: ActiveConfig | None,
 ) -> _Derived:
     """The requested formats, the draft of a prompt, and the extraction for `records`, from one parse of the page
-    (INV-26)."""
+    (INV-26), with the site's active `config` when there is one."""
     page = ParsedPage.of(result.bundle)
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     final_url = result.bundle.manifest.final_url
@@ -510,9 +531,11 @@ async def _derive(
         return _Derived(formats, drafted)
     if drafted is not None:
         _check_usable(drafted, request.page_kind)
-    # Cold progressive mode: `adhoc` until SPEC-08 wires configs. Role C is bound here when SPEC-06 PR 4 adds it.
-    extraction = await extract_page(result.bundle, schema, None, None, "adhoc", data=work.data, parsed=page)
-    return _Derived(formats, drafted, schema, extraction)
+        config = None
+    # Role C is bound here when SPEC-06 PR 4 adds it.
+    executor = None if config is None else config.executor
+    extraction = await extract_page(result.bundle, schema, executor, None, data=work.data, parsed=page)
+    return _Derived(formats, drafted, schema, extraction, config)
 
 
 def _fetch_members(result: FetchResult, capture_id: CaptureId) -> _FetchMembers:
@@ -602,8 +625,10 @@ async def _finish(
     result: FetchResult,
     capture_id: CaptureId,
     derived: _Derived,
+    margins: DriftMargins | None,
 ) -> tuple[ScrapeOutcome, list[ScrapedRecord] | None]:
-    """Settle the task with the page's outcome, after storing its extraction and record when `records` asked."""
+    """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
+    the page's run of an active config in its drift window."""
     outcome = _OUTCOMES[result.block_class]
     if outcome == "failed":
         error = result.attempts[-1].error or outcome
@@ -620,7 +645,10 @@ async def _finish(
         site_id=site_id,
         schema=derived.schema,
         caller_supplied=True,
+        config_version=None if derived.config is None else derived.config.version,
     )
+    if derived.config is not None:
+        await record_page(conn, derived.config, derived.extraction, margins=margins, job_id=task.job_id)
     if not stored.records:
         # A scrape URL is caller-supplied, so a page it reached has a record unless resolution failed (SPEC-05 §4.14).
         await fail_task(conn, task, "extraction_error", transient=False, capture_id=capture_id)

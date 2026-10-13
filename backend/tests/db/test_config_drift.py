@@ -97,7 +97,7 @@ async def _run(conn: AsyncConnection, config_id: ExtractionConfigId, job_id: Job
     ).scalar_one()
     executor = EngineExecutor(ExtractionConfigIR.model_validate(row), Vocabulary(supertypes={}))
     executed = executor.execute(ParsedPage(html), SCHEMA, Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC)))
-    found = await record_run(conn, config_id, executed, job_id=job_id, **{"margins": MARGINS, **kw})
+    found = await record_run(conn, config_id, executed.candidates, job_id=job_id, **{"margins": MARGINS, **kw})
     return [d.field for d in found]
 
 

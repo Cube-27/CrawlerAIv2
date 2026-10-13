@@ -124,7 +124,7 @@ class World:
                 schema=schema,
                 data=self.data,
                 role_c=None,
-                mode="adhoc",
+                config=None,
                 caller_supplied=True,
             )
             outcome = stored.outcome

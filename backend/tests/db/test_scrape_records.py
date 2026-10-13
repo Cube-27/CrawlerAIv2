@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -22,7 +22,18 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Capture, Extraction, Job, ProgressiveState, Record, SchemaId, UrlTask
+from crawlerai.db.models import (
+    Capture,
+    Extraction,
+    ExtractionConfig,
+    Job,
+    ProgressiveState,
+    Project,
+    Record,
+    SchemaId,
+    Site,
+    UrlTask,
+)
 from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.llm.client import MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
@@ -463,3 +474,60 @@ async def test_a_capture_that_did_not_reach_the_page_is_not_reused(
 
     assert len(web.page_fetches()) == 2
     assert (second.outcome, second.raw_html) == ("extracted", PAGE.decode())
+
+
+async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_page_joins_its_drift_window(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # SPEC-08 §4.8, §4.9: the site's active config runs on the page, and the page is added to the config's window.
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, _product_page(url), "ok")
+    host = own_origin.removeprefix("https://")
+    ir = {
+        "ir_version": "1",
+        "site": host,
+        "schema": {"name": kettle_schema.name, "version": 1},
+        "page_kind": "detail",
+        "fetch": {"method": "http"},
+        "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
+        "provenance": {
+            "origin": "induced",
+            "validated_on": [],
+            "learned_at": "2026-10-01T00:00:00Z",
+            "engine_version": "test",
+        },
+    }
+    async with engine.begin() as conn:
+        project = select(Project.id).where(Project.name == "default").scalar_subquery()
+        site_id = (
+            await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))
+        ).scalar_one()
+        config = insert(ExtractionConfig).values(
+            site_id=site_id,
+            schema_id=kettle_schema.id,
+            schema_version=1,
+            page_kind="detail",
+            version=3,
+            status="active",
+            ir=ir,
+            origin="induced",
+            field_status={"title": "corroborated"},
+        )
+        config_id = (await conn.execute(config.returning(ExtractionConfig.id))).scalar_one()
+    try:
+        result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
+
+        assert result.records is not None
+        (record,) = result.records
+        assert (result.outcome, record.mode) == ("extracted", "config")
+        extraction = await _row(engine, select(Extraction.mode, Extraction.config_version))
+        window = await _row(engine, select(ExtractionConfig.drift_window).where(ExtractionConfig.id == config_id))
+        assert (tuple(extraction), window.drift_window) == (("config", 3), {"title": [[True, True]]})
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.id == config_id))

@@ -3,12 +3,17 @@ every field's outcome out. `extract_page` is the one function the worker and the
 
 A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its block class as the outcome and nothing
 else (INV-11). A served page is parsed once (INV-26); every collector reads that one parse, then resolution runs its
-stages in order: ownership and intent, preference, derivations, evidence and τ. In cold mode, a detail page's required
-fields still missing after that go to role C once, and its candidates are resolved with the others. A listing resolves
-each of its rows (`resolve.listing`) and its page-scoped fields, and lists its next-page candidates (§4.12). A listing
-whose structured data gives no rows asks role C for them (ARCHITECTURE §8.6), with its missing page fields; its rows
-are then the reply's. Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is
-set (§4.14).
+stages in order: ownership and intent, preference, derivations, evidence and τ. A detail page's required fields still
+missing after that go to role C once, and its candidates are resolved with the others. A listing resolves each of its
+rows (`resolve.listing`) and its page-scoped fields, and lists its next-page candidates (§4.12). A listing whose
+structured data gives no rows asks role C for them (ARCHITECTURE §8.6), with its missing page fields; its rows are then
+the reply's. Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set
+(§4.14).
+
+With the site's active config (ARCHITECTURE §8.4, SPEC-08 §4.8) a page is extracted in `config` mode: the config's
+executor reads the same parse, its candidates enter resolution with the collectors' (in the bucket of the config
+field's status, §10), and role C is asked only for fields the config does not run. A listing's rows are the structured
+data's when it gives any, else the config's; role C never adds rows beside a config that runs row fields.
 """
 
 import asyncio
@@ -20,6 +25,7 @@ from pathlib import Path
 from typing import Protocol
 
 from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary
 from crawlerai.content.context import page_context
@@ -139,40 +145,36 @@ class RoleC(Protocol):
     async def listing(self, request: ListingGapRequest) -> ListingGapReply: ...
 
 
-class ModeNotSupported(ValueError):
-    """A page this pipeline does not extract yet: config mode (SPEC-08's executor)."""
-
-
 async def extract_page(
     bundle: CaptureBundle,
     schema: SchemaDef,
-    config: object | None,
+    config: ConfigExecutor | None,
     role_c: RoleC | None,
-    mode: ExtractionMode,
     *,
     data: EngineData,
     parsed: ParsedPage | None = None,
 ) -> ExtractionResult:
-    """The page's outcome, fields and candidates. `extracted` when every required field and group publishes (on a
+    """The page's outcome, fields and candidates: in `config` mode with `config`, the site's active config for the
+    schema version and page kind, else `adhoc` (cold). `extracted` when every required field and group publishes (on a
     listing: in each of at least one row), else `partial`: whether an incomplete page or row keeps its record is the
     caller's (`resolve.records.assemble`, `assemble_listing`). `parsed` is the bundle's parse when the caller already
     has one (a `scrape` shares it with its formats, INV-26)."""
-    if config is not None or mode != "adhoc":
-        raise ModeNotSupported("config mode runs SPEC-08's config executor, which is not wired yet")
+    mode: ExtractionMode = "adhoc" if config is None else "config"
     not_served = _NOT_SERVED.get(bundle.manifest.block_class)
     if not_served is not None:
         return _result(not_served, mode)
+    source = _Source(bundle, schema, data, parsed, config)
     if schema.page_kind == "listing":
-        return await _extract_listing(bundle, schema, role_c, mode, data, parsed)
+        return await _extract_listing(source, role_c, mode)
     try:
         # Parsing and resolution are CPU work: a thread keeps the event loop serving other tasks meanwhile.
-        page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data, parsed)
+        page, fields = await asyncio.to_thread(_read_and_resolve, source)
     except Exception:  # §4.14: a resolution bug fails the page, never part of it
         log.exception(_FAILED)
         return _result("error", mode)
-    candidates, diagnostics = page.collected.candidates, page.collected.diagnostics
+    candidates, diagnostics = page.candidates, page.diagnostics
     llm_calls: tuple[LLMCallRecord, ...] = ()
-    missing = _gaps(schema, fields)
+    missing = _gaps(schema, fields, page.config.covered)
     if role_c is not None and missing and isinstance(page.target, Entity):
         reply = await role_c.detail(GapRequest(page.page, schema, page.ctx, page.target, missing))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
@@ -198,9 +200,46 @@ async def extract_page(
 
 
 @dataclass(frozen=True, slots=True)
+class _Source:
+    """What a page is extracted from: the capture, its parse when the caller has one, and the active config."""
+
+    bundle: CaptureBundle
+    schema: SchemaDef
+    data: EngineData
+    parsed: ParsedPage | None
+    config: ConfigExecutor | None
+
+
+@dataclass(frozen=True, slots=True)
+class _Config:
+    """What the active config proposed for the page. `covered`: the fields it runs, which role C is not asked for
+    (§8.4); `corroborated`: those whose values take the `config_corroborated` bucket (§10)."""
+
+    rows: tuple[Entity, ...] = ()
+    candidates: tuple[Candidate, ...] = ()
+    diagnostics: tuple[str, ...] = ()
+    covered: frozenset[str] = frozenset()
+    corroborated: frozenset[str] = frozenset()
+
+    @classmethod
+    def run(cls, config: ConfigExecutor | None, page: ParsedPage, schema: SchemaDef, ctx: Context) -> "_Config":
+        if config is None:
+            return cls()
+        executed = config.execute(page, schema, ctx)
+        status = config.field_status
+        return cls(
+            rows=executed.rows,
+            candidates=executed.candidates,
+            diagnostics=executed.diagnostics,
+            covered=frozenset(status),
+            corroborated=frozenset(name for name, s in status.items() if s == "corroborated"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _Page:
-    """One served page, parsed once (INV-26), with its context, every collector's result, and what resolution reads
-    of it whatever the candidates: the entity graph, the target (§4.6) and the URL-parameter facts."""
+    """One served page, parsed once (INV-26), with its context, every collector's result and the config's, and what
+    resolution reads of it whatever the candidates: the entity graph, the target (§4.6) and the URL-parameter facts."""
 
     page: ParsedPage
     ctx: Context
@@ -208,23 +247,33 @@ class _Page:
     data: EngineData
     canonical_url: str | None
     collected: Collected
+    config: _Config
     graph: EntityGraph
     primary: frozenset[str]
     target: Entity | AmbiguousTarget
     facts: PageFacts
 
     @classmethod
-    def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None) -> "_Page":
-        manifest = bundle.manifest
-        page = ParsedPage.of(bundle) if parsed is None else parsed
+    def read(cls, source: _Source) -> "_Page":
+        manifest, schema, data = source.bundle.manifest, source.schema, source.data
+        page = ParsedPage.of(source.bundle) if source.parsed is None else source.parsed
         ctx = page_context(page, manifest.final_url, manifest.fetched_at)
         collected = collect_page(page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters)
+        config = _Config.run(source.config, page, schema, ctx)
         canonical = canonical_link(page, manifest.final_url)
-        graph = EntityGraph.of(collected.entities, data.vocabulary)
+        graph = EntityGraph.of((*collected.entities, *config.rows), data.vocabulary)
         primary = primary_types(schema, data.vocabulary)
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
-        return cls(page, ctx, schema, data, canonical, collected, graph, primary, target, facts)
+        return cls(page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts)
+
+    @property
+    def candidates(self) -> tuple[Candidate, ...]:
+        return (*self.collected.candidates, *self.config.candidates)
+
+    @property
+    def diagnostics(self) -> tuple[str, ...]:
+        return (*self.collected.diagnostics, *self.config.diagnostics)
 
     def resolve(self, candidates: Sequence[Candidate]) -> FieldSet:
         """A detail page's fields, for its target."""
@@ -266,14 +315,12 @@ class _Page:
                 )
                 for name, spec in schema.fields.items()
             }
-        return assess_fields(schema, decisions, self.data.calibration, corroborated=frozenset())
+        return assess_fields(schema, decisions, self.data.calibration, corroborated=self.config.corroborated)
 
 
-def _read_and_resolve(
-    bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None
-) -> tuple[_Page, FieldSet]:
-    page = _Page.read(bundle, schema, data, parsed)
-    return page, page.resolve(page.collected.candidates)
+def _read_and_resolve(source: _Source) -> tuple[_Page, FieldSet]:
+    page = _Page.read(source)
+    return page, page.resolve(page.candidates)
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,21 +334,28 @@ class _Listing:
     llm_calls: tuple[LLMCallRecord, ...] = ()
 
     @classmethod
-    def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None) -> "_Listing":
-        page = _Page.read(bundle, schema, data, parsed)
-        candidates = page.collected.candidates
-        fields, rows = page.resolve_listing(candidates, listing_rows(page.graph, page.primary, page.target))
-        next_pages = next_page_candidates(page.page, bundle.manifest.final_url)
-        return cls(page, fields, rows, next_pages, candidates, page.collected.diagnostics)
+    def read(cls, source: _Source) -> "_Listing":
+        page = _Page.read(source)
+        candidates = page.candidates
+        # SPEC-08 §4.8: the config's rows serve only where structured data gives none. Its row candidates belong to its
+        # own row entities, so structured and config values never meet in one row.
+        rows = listing_rows(page.graph, page.primary, page.target) or page.config.rows
+        fields, resolved = page.resolve_listing(candidates, rows)
+        next_pages = next_page_candidates(page.page, source.bundle.manifest.final_url)
+        return cls(page, fields, resolved, next_pages, candidates, page.diagnostics)
 
     def gap(self) -> ListingGapRequest | None:
         """The role C request when structured data gives no rows (ARCHITECTURE §8.6): every row field, and the page
-        fields still `missing`; None with rows, or for a schema without row fields."""
+        fields still `missing` that the config does not run; None with rows, for a schema without row fields, or when
+        the config runs a row field (§8.4; role C's rows could not join the config's)."""
         schema = self.page.schema
+        covered = self.page.config.covered
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
-        if self.rows or not row_fields:
+        if self.rows or not row_fields or covered.intersection(row_fields):
             return None
-        page_missing = tuple(name for name, outcome in self.fields.items() if outcome.status == "missing")
+        page_missing = tuple(
+            name for name, outcome in self.fields.items() if outcome.status == "missing" and name not in covered
+        )
         return ListingGapRequest(self.page.page, schema, self.page.ctx, row_fields, page_missing)
 
     def with_reply(self, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
@@ -343,16 +397,9 @@ class _Listing:
         )
 
 
-async def _extract_listing(
-    bundle: CaptureBundle,
-    schema: SchemaDef,
-    role_c: RoleC | None,
-    mode: ExtractionMode,
-    data: EngineData,
-    parsed: ParsedPage | None,
-) -> ExtractionResult:
+async def _extract_listing(source: _Source, role_c: RoleC | None, mode: ExtractionMode) -> ExtractionResult:
     try:
-        listing = await asyncio.to_thread(_Listing.read, bundle, schema, data, parsed)
+        listing = await asyncio.to_thread(_Listing.read, source)
     except Exception:  # §4.14, as for a detail page
         log.exception(_FAILED)
         return _result("error", mode)
@@ -380,13 +427,14 @@ def _scoped(schema: SchemaDef, fields: FieldSet, scope: Scope) -> FieldSet:
     return {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == scope}
 
 
-def _gaps(schema: SchemaDef, fields: FieldSet) -> tuple[str, ...]:
-    """§4.13: the fields role C is asked for, in schema order. Only `missing` fields are asked (never a conflict or
-    an abstention), and only when a required one is among them: a required field, or a member of a required group
-    that no member fills yet. Missing optional fields then ride along in the same call (SPEC-06 §4.4, D-0025)."""
+def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple[str, ...]:
+    """§4.13: the fields role C is asked for, in schema order. Only `missing` fields the active config does not run
+    are asked (ARCHITECTURE §8.4), never a conflict or an abstention, and only when a required one is among them: a
+    required field, or a member of a required group that no member fills yet. Missing optional fields then ride along
+    in the same call (SPEC-06 §4.4, D-0025)."""
     published = {name for name, outcome in fields.items() if outcome.status == "published"}
     unmet = {name for group in schema.required_groups if not published.intersection(group) for name in group}
-    missing = [name for name, outcome in fields.items() if outcome.status == "missing"]
+    missing = [name for name, outcome in fields.items() if outcome.status == "missing" and name not in covered]
     if not any(schema.fields[name].required or name in unmet for name in missing):
         return ()
     return tuple(missing)

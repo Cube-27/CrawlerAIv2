@@ -409,12 +409,30 @@ def test_without_a_config_snapshot_the_page_replays_cold() -> None:
     assert case.config_status == {}
 
 
+# A config for SCHEMA that reads the title from the page's `<h1>` (SPEC-08 §4.2).
+IR: dict[str, JsonValue] = {
+    "ir_version": "1",
+    "site": "shop.example.com",
+    "schema": {"name": SCHEMA.name, "version": 1},
+    "page_kind": "detail",
+    "fetch": {"method": "http"},
+    "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
+    "listing": None,
+    "provenance": {
+        "origin": "induced",
+        "validated_on": [],
+        "learned_at": "2026-10-01T00:00:00Z",
+        "engine_version": "test",
+    },
+}
+SNAPSHOT: dict[str, JsonValue] = {"ir": IR, "field_status": {"title": "corroborated"}}
+
+
 def test_a_config_snapshot_replays_in_config_mode_and_gives_field_status() -> None:
     store, engine = MemoryStore(), StubEngine()
-    snapshot: dict[str, JsonValue] = {"ir": {"fields": {}}, "field_status": {"title": "corroborated"}}
-    asyncio.run(add_page(store, 1, config_snapshot=snapshot))
+    asyncio.run(add_page(store, 1, config_snapshot=SNAPSHOT))
     [case] = asyncio.run(replay_split(store, engine, live=LiveLLM()))
-    assert engine.seen == [(ConfigSnapshot(ir={"fields": {}}, field_status={"title": "corroborated"}), "config")]
+    assert engine.seen == [(ConfigSnapshot.model_validate(SNAPSHOT), "config")]
     assert case.config_status == {"title": "corroborated"}
 
 
@@ -427,8 +445,15 @@ def dropped_error(store: MemoryStore, *, provider: bool = True) -> str:
 
 def test_an_invalid_config_snapshot_drops_the_page() -> None:
     store = MemoryStore()
-    asyncio.run(add_page(store, 1, config_snapshot={"ir": {}, "field_status": {"title": "trusted"}}))
+    asyncio.run(add_page(store, 1, config_snapshot={"ir": IR, "field_status": {"title": "trusted"}}))
     assert dropped_error(store).startswith("invalid config_snapshot: field_status.title: ")
+
+
+def test_a_snapshot_whose_ir_the_model_refuses_drops_the_page() -> None:
+    store = MemoryStore()
+    asyncio.run(add_page(store, 1, config_snapshot={"ir": {**IR, "ir_version": "2"}}))
+    error = dropped_error(store)
+    assert error.startswith("invalid config_snapshot: ") and "ir_version" in error
 
 
 def test_a_missing_bundle_drops_the_page() -> None:
@@ -542,6 +567,34 @@ def test_the_pipeline_engine_replays_pages_through_extract_page() -> None:
     ]
     report = build_report(first, "dev", engine_version=engine.version, git_sha="a" * 40)
     assert report.n_pages == 2
+
+
+def test_the_pipeline_engine_replays_a_config_snapshot_in_config_mode() -> None:
+    # SPEC-08 §6 "dev replay": a page with its site's config snapshot runs that config, and its config fields'
+    # precision is reported per field status.
+    store = MemoryStore()
+    for n in (1, 2):
+        asyncio.run(add_page(store, n, config_snapshot=SNAPSHOT))
+    engine = PipelineEngine(DATA, {SCHEMA.name: SCHEMA})
+
+    cases = asyncio.run(replay_split(store, engine, live=None))
+
+    outputs = [case.output for case in cases]
+    assert [(o.mode, o.llm_calls, o.fields["title"]) for o in outputs if isinstance(o, PageOutput)] == [
+        (
+            "config",
+            0,
+            FieldOutput(
+                status="published",
+                value=f"Item {n}",
+                evidence="config_corroborated",
+                offered={"config": (f"Item {n}",)},
+            ),
+        )
+        for n in (1, 2)
+    ]
+    report = build_report(cases, "dev", engine_version=engine.version, git_sha="a" * 40)
+    assert list(report.by_config_status) == ["text|corroborated"]
 
 
 def test_the_pipeline_engine_knows_only_its_schemas() -> None:

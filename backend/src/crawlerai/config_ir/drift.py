@@ -21,8 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.base import PAGE
-from crawlerai.collect.config import Executed
+from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
 from crawlerai.config_ir.progressive import StateKey, request_learning
 from crawlerai.db.jobs import record_event
@@ -88,12 +87,14 @@ def _running(ir: ExtractionConfigIR) -> Iterable[tuple[str, FieldSteps, bool]]:
                 yield name, steps, in_row
 
 
-def observe(ir: ExtractionConfigIR, executed: Executed) -> dict[str, Observation]:
-    """What `executed`, one page's run of `ir`, shows for each field that ran. A row field matched when any row has
-    its value, and is valid when every row's value is."""
+def observe(ir: ExtractionConfigIR, candidates: Sequence[Candidate]) -> dict[str, Observation]:
+    """What one page's run of `ir`, the `config` candidates it proposed, shows for each field that ran. A row field
+    matched when any row has its value, and is valid when every row's value is."""
     observed: dict[str, Observation] = {}
     for name, _, in_row in _running(ir):
-        found = [c for c in executed.candidates if c.field == name and (c.entity_id != PAGE) == in_row]
+        found = [
+            c for c in candidates if c.source_kind == "config" and c.field == name and (c.entity_id != PAGE) == in_row
+        ]
         observed[name] = Observation(
             matched=bool(found), valid=bool(found) and all(isinstance(c.normalized, Ok) for c in found)
         )
@@ -157,13 +158,13 @@ def _dump_window(window: Window) -> dict[str, list[list[bool]]]:
 async def record_run(
     conn: AsyncConnection,
     config_id: ExtractionConfigId,
-    executed: Executed,
+    candidates: Sequence[Candidate],
     *,
     margins: DriftMargins | None,
     job_id: JobId,
 ) -> list[Drifted]:
-    """Add one page's run of the active config `config_id` to its window, suspend the fields that drifted, and return
-    them. A config that is no longer active records nothing."""
+    """Add one page's run of the active config `config_id`, the `config` candidates it proposed, to its window,
+    suspend the fields that drifted, and return them. A config that is no longer active records nothing."""
     config = (
         await conn.execute(
             select(ExtractionConfig)
@@ -174,7 +175,7 @@ async def record_run(
     if config is None:
         return []
     ir = ExtractionConfigIR.model_validate(config.ir)
-    window = extend(_load_window(config.drift_window), observe(ir, executed))
+    window = extend(_load_window(config.drift_window), observe(ir, candidates))
     found = drifted(ir, window, margins) if margins is not None else []
     values: dict[str, object] = {"drift_window": _dump_window(window)}
     if found:

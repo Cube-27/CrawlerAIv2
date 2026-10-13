@@ -21,7 +21,19 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import ApiKey, Capture, CaptureId, Job, JobId, Project, Record, RecordId, Site, SiteId
+from crawlerai.db.models import (
+    ApiKey,
+    Capture,
+    CaptureId,
+    ExtractionConfig,
+    Job,
+    JobId,
+    Project,
+    Record,
+    RecordId,
+    Site,
+    SiteId,
+)
 from crawlerai.db.queue import insert_claimed
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
@@ -108,7 +120,7 @@ class World:
                 schema=self.schema,
                 data=self.data,
                 role_c=None,
-                mode="adhoc",
+                config=None,
                 caller_supplied=True,
             )
         return Made(job_id, capture_id, stored.records[0].id if stored.records else None)
@@ -247,6 +259,45 @@ async def test_a_replay_extracts_the_capture_again_rather_than_reading_the_store
         "published",
         {"amount": "19.90", "currency": "EUR"},
     )
+
+
+async def test_a_schema_version_with_an_active_config_replays_with_it(world: World) -> None:
+    # SPEC-08 §4.8: the page is extracted as one fetched now would be, in `config` mode.
+    made = await world.scrape("/p/1", _page("Blue kettle"))
+    ir = {
+        "ir_version": "1",
+        "site": world.origin.removeprefix("https://"),
+        "schema": {"name": world.schema.name, "version": 1},
+        "page_kind": "detail",
+        "fetch": {"method": "http"},
+        "fields": {"title": {"steps": [{"jsonld": "$['name']", "when_type": "Product"}], "status": "operator"}},
+        "provenance": {
+            "origin": "operator",
+            "validated_on": [],
+            "learned_at": "2026-10-01T00:00:00Z",
+            "engine_version": "test",
+        },
+    }
+    config = insert(ExtractionConfig).values(
+        site_id=world.site_id,
+        schema_id=world.schema.id,
+        schema_version=1,
+        page_kind="detail",
+        version=1,
+        status="active",
+        ir=ir,
+        origin="operator",
+    )
+    async with world.engine.begin() as conn:
+        config_id = (await conn.execute(config.returning(ExtractionConfig.id))).scalar_one()
+    try:
+        [replayed] = await captures.replay(world.engine, world.store, world.data, made.capture_id)
+    finally:
+        async with world.engine.begin() as conn:
+            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.id == config_id))
+
+    title = replayed.fields["title"]
+    assert (replayed.mode, title.value, title.source_kind) == ("config", "Blue kettle", "jsonld")
 
 
 async def test_replaying_an_unknown_capture_is_not_found(world: World) -> None:
