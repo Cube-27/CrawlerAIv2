@@ -18,6 +18,7 @@ from curl_cffi.requests import AsyncSession, BrowserTypeLiteral, Response
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.classify import classify
+from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.ids import uuid7
@@ -27,8 +28,6 @@ from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Hea
 # themselves, 305 and 306 are deprecated).
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _MAX_REDIRECTS = 5  # SPEC-02 §4.5
-# Credentials are never stored in a capture: cookies (RFC 6265 §4) and the proxy credentials (RFC 9110 §11.7.2).
-_UNRECORDED = frozenset({"cookie", "set-cookie", "proxy-authorization"})
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
     CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
@@ -185,8 +184,8 @@ def _response(target: Target, response: Response, sent: list[bytes], body: bytes
     return _Response(
         url=target.url,
         status=response.status_code,
-        request_headers=_recorded(_parse_request_headers(sent[-1] if sent else b"")),
-        response_headers=_recorded(received),
+        request_headers=recorded(_parse_request_headers(sent[-1] if sent else b"")),
+        response_headers=recorded(received),
         body=body,
     )
 
@@ -196,10 +195,6 @@ def _parse_request_headers(block: bytes) -> HeaderList:
     # `name: value` lines (RFC 9112 §3, §5).
     lines = block.decode("latin-1").split("\r\n")[1:]
     return tuple((name, value.strip()) for name, _, value in (line.partition(":") for line in lines if ":" in line))
-
-
-def _recorded(headers: HeaderList) -> HeaderList:
-    return tuple((name, value) for name, value in headers if name.lower() not in _UNRECORDED)
 
 
 def _location(response: _Response) -> str | None:
