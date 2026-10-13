@@ -15,6 +15,7 @@ prev=$(snapshot)
 while true; do
   sleep "$INTERVAL"
   cur=$(snapshot)
+  [ -z "$cur" ] && continue   # a failed poll is not every agent gone; keep the last good snapshot
   # An agent that was working and now isn't, or that vanished.
   while read -r name status; do
     [ -z "$name" ] && continue

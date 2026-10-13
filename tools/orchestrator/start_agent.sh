@@ -11,6 +11,7 @@ root_fwd="$(dirname "$main")/CrawlerAIv2-worktrees"
 path=$(cygpath -w "$root_fwd/$wt" 2>/dev/null || echo "$root_fwd/$wt" | tr '/' '\')
 
 free=$(powershell -NoProfile -c "[int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024)" | tr -d '\r')
+case $free in ""|*[!0-9]*) echo "ERROR could not read free memory"; exit 1;; esac
 if [ "$free" -lt "$min_free" ]; then echo "ERROR low memory: ${free}MB free < ${min_free}MB"; exit 1; fi
 [ -d "$root_fwd/$wt" ] || { echo "ERROR no worktree $root_fwd/$wt"; exit 1; }
 

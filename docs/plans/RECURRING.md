@@ -1,7 +1,7 @@
 # Recurring findings
 
 Mistakes that agents made more than once, and what now prevents each one. The orchestrator keeps this file
-current (`/run-plan` §4). A finding that recurs gets a **check** where one can catch it (lint rule, `tools/` scan, CI
+current (`/run-plan` §2a). A finding that recurs gets a **check** where one can catch it (lint rule, `tools/` scan, CI
 step); a **skill rule** only where no check can. Workers read this list before opening a PR (`/implement-pr` §4).
 
 | Finding | Seen in | Prevented by |
