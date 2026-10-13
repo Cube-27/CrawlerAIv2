@@ -1,6 +1,103 @@
 {
   "components": {
     "schemas": {
+      "AbsolutizeUrlOp": {
+        "additionalProperties": false,
+        "description": "Resolves the value against the page's base URL (RFC 3986 \u00a75).",
+        "properties": {
+          "absolutize_url": {
+            "$ref": "#/components/schemas/_NoParams"
+          }
+        },
+        "required": [
+          "absolutize_url"
+        ],
+        "title": "AbsolutizeUrlOp",
+        "type": "object"
+      },
+      "ApiRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequestBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "headers": {
+            "default": {},
+            "patternProperties": {
+              "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$": {
+                "type": "string"
+              }
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "map": {
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "type": "string"
+              }
+            },
+            "title": "Map",
+            "type": "object"
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "pagination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pagination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "params_from_url": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "type": "string"
+              }
+            },
+            "title": "Params From Url",
+            "type": "object"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "requires_page_fetch": {
+            "default": false,
+            "title": "Requires Page Fetch",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "url",
+          "map",
+          "proof"
+        ],
+        "title": "ApiRecipe",
+        "type": "object"
+      },
       "AttemptRecord": {
         "additionalProperties": false,
         "description": "One rung tried. `status` is None when no response arrived (network error, timeout, SSRF rejection).",
@@ -59,6 +156,80 @@
           "duration_ms"
         ],
         "title": "AttemptRecord",
+        "type": "object"
+      },
+      "AttrStep-Input": {
+        "additionalProperties": false,
+        "description": "An attribute of the context node: the row in a listing.",
+        "properties": {
+          "attr": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.\\-]*$",
+            "title": "Attr",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          }
+        },
+        "required": [
+          "attr"
+        ],
+        "title": "AttrStep",
+        "type": "object"
+      },
+      "AttrStep-Output": {
+        "additionalProperties": false,
+        "description": "An attribute of the context node: the row in a listing.",
+        "properties": {
+          "attr": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.\\-]*$",
+            "title": "Attr",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          }
+        },
+        "required": [
+          "attr"
+        ],
+        "title": "AttrStep",
         "type": "object"
       },
       "Budget": {
@@ -217,6 +388,363 @@
         "title": "CapturedOut",
         "type": "object"
       },
+      "ConfigDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "field_status": {
+            "additionalProperties": {
+              "enum": [
+                "corroborated",
+                "uncorroborated",
+                "operator",
+                "suspended"
+              ],
+              "type": "string"
+            },
+            "title": "Field Status",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ir": {
+            "$ref": "#/components/schemas/ExtractionConfigIR"
+          },
+          "origin": {
+            "enum": [
+              "adapter",
+              "induced",
+              "llm_synth",
+              "operator"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "active",
+              "suspended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validation_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "site",
+          "schema_id",
+          "schema_version",
+          "page_kind",
+          "version",
+          "status",
+          "origin",
+          "field_status",
+          "validation_report",
+          "ir"
+        ],
+        "title": "ConfigDetail",
+        "type": "object"
+      },
+      "ConfigList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConfigList",
+        "type": "object"
+      },
+      "ConfigSummary": {
+        "additionalProperties": false,
+        "description": "One version of a site's config for one schema version and page kind, without its IR.",
+        "properties": {
+          "field_status": {
+            "additionalProperties": {
+              "enum": [
+                "corroborated",
+                "uncorroborated",
+                "operator",
+                "suspended"
+              ],
+              "type": "string"
+            },
+            "title": "Field Status",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "adapter",
+              "induced",
+              "llm_synth",
+              "operator"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "active",
+              "suspended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validation_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "site",
+          "schema_id",
+          "schema_version",
+          "page_kind",
+          "version",
+          "status",
+          "origin",
+          "field_status",
+          "validation_report"
+        ],
+        "title": "ConfigSummary",
+        "type": "object"
+      },
+      "CorrectedSteps": {
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/XPathStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/CssStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonLdStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonPathStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/AttrStep-Input"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "CorrectedSteps",
+        "type": "object"
+      },
+      "Correction": {
+        "additionalProperties": false,
+        "description": "The body of `PUT /v1/configs/{id}`: steps per field (`null` removes the field), and fields whose steps the\noperator confirms.",
+        "properties": {
+          "confirm": {
+            "default": [],
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "title": "Confirm",
+            "type": "array"
+          },
+          "fields": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CorrectedSteps"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          }
+        },
+        "title": "Correction",
+        "type": "object"
+      },
+      "CssStep-Input": {
+        "additionalProperties": false,
+        "description": "A CSS selector, kept for readability, and its XPath 1.0 translation, which is what executors run.",
+        "properties": {
+          "css": {
+            "title": "Css",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "xpath": {
+            "title": "Xpath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "css",
+          "xpath"
+        ],
+        "title": "CssStep",
+        "type": "object"
+      },
+      "CssStep-Output": {
+        "additionalProperties": false,
+        "description": "A CSS selector, kept for readability, and its XPath 1.0 translation, which is what executors run.",
+        "properties": {
+          "css": {
+            "title": "Css",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "xpath": {
+            "title": "Xpath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "css",
+          "xpath"
+        ],
+        "title": "CssStep",
+        "type": "object"
+      },
       "ExportPage": {
         "description": "One page of a job's records in an export format (SPEC-08 \u00a74.11); `next_cursor` as in `RecordPage`.",
         "properties": {
@@ -297,6 +825,96 @@
           "fields"
         ],
         "title": "ExtractedRecord",
+        "type": "object"
+      },
+      "ExtractionConfigIR": {
+        "additionalProperties": false,
+        "properties": {
+          "api_recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiRecipe"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/Fetch"
+          },
+          "fields": {
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/FieldSteps"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "ir_version": {
+            "const": "1",
+            "title": "Ir Version",
+            "type": "string"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ListingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/SchemaRef"
+          },
+          "site": {
+            "minLength": 1,
+            "title": "Site",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ir_version",
+          "site",
+          "schema",
+          "page_kind",
+          "fetch",
+          "fields",
+          "provenance"
+        ],
+        "title": "ExtractionConfigIR",
+        "type": "object"
+      },
+      "Fetch": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "title": "Fetch",
         "type": "object"
       },
       "FetchOptions": {
@@ -448,6 +1066,101 @@
           "absent"
         ],
         "title": "FieldLabel",
+        "type": "object"
+      },
+      "FieldReport": {
+        "additionalProperties": false,
+        "description": "One field on the held-out pages. `pages`: held-out pages; `matched`/`valid`: pages where the config matched and\nwhere every match was valid; `published`/`reproduced`: pages where the engine published the field and where both\nexecutors gave that value; `comparable`/`corroborated_on`: pages with a structured or adapter value and where the\nconfig's value equals it. `status` is None for a dropped field, with the check it failed in `dropped`.",
+        "properties": {
+          "comparable": {
+            "title": "Comparable",
+            "type": "integer"
+          },
+          "corroborated_on": {
+            "title": "Corroborated On",
+            "type": "integer"
+          },
+          "dropped": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped"
+          },
+          "matched": {
+            "title": "Matched",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "published": {
+            "title": "Published",
+            "type": "integer"
+          },
+          "reproduced": {
+            "title": "Reproduced",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "corroborated",
+                  "uncorroborated",
+                  "operator",
+                  "suspended"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "integer"
+          },
+          "validity": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity"
+          },
+          "yield": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yield",
+            "type": "number"
+          }
+        },
+        "required": [
+          "pages",
+          "matched",
+          "valid",
+          "published",
+          "reproduced",
+          "comparable",
+          "corroborated_on",
+          "status",
+          "yield",
+          "validity"
+        ],
+        "title": "FieldReport",
         "type": "object"
       },
       "FieldSpec-Input": {
@@ -668,6 +1381,81 @@
         "title": "FieldSpec",
         "type": "object"
       },
+      "FieldSteps": {
+        "additionalProperties": false,
+        "description": "A field's steps in order (the first valid value wins, \u00a712.1), its status, and its held-out yield and validity\n(SPEC-08 \u00a74.7) once validated.",
+        "properties": {
+          "status": {
+            "enum": [
+              "corroborated",
+              "uncorroborated",
+              "operator",
+              "suspended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/XPathStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/CssStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonLdStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonPathStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/AttrStep-Output"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          },
+          "validity": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity"
+          },
+          "yield": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yield"
+          }
+        },
+        "required": [
+          "steps",
+          "status"
+        ],
+        "title": "FieldSteps",
+        "type": "object"
+      },
       "FieldType": {
         "description": "The \u00a75.1 field types. A type is added here only together with its normalizer module (C8).",
         "enum": [
@@ -812,6 +1600,198 @@
         "title": "JobSummary",
         "type": "object"
       },
+      "JsonLdStep-Input": {
+        "additionalProperties": false,
+        "description": "A JSONPath into the page's expanded JSON-LD nodes, optionally only those of one schema.org type.",
+        "properties": {
+          "jsonld": {
+            "pattern": "^\\$",
+            "title": "Jsonld",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "when_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Za-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When Type"
+          }
+        },
+        "required": [
+          "jsonld"
+        ],
+        "title": "JsonLdStep",
+        "type": "object"
+      },
+      "JsonLdStep-Output": {
+        "additionalProperties": false,
+        "description": "A JSONPath into the page's expanded JSON-LD nodes, optionally only those of one schema.org type.",
+        "properties": {
+          "jsonld": {
+            "pattern": "^\\$",
+            "title": "Jsonld",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "when_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Za-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When Type"
+          }
+        },
+        "required": [
+          "jsonld"
+        ],
+        "title": "JsonLdStep",
+        "type": "object"
+      },
+      "JsonPathStep-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "jsonpath": {
+            "pattern": "^\\$",
+            "title": "Jsonpath",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "jsonld",
+              "js_state",
+              "xhr",
+              "api"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jsonpath",
+          "source"
+        ],
+        "title": "JsonPathStep",
+        "type": "object"
+      },
+      "JsonPathStep-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "jsonpath": {
+            "pattern": "^\\$",
+            "title": "Jsonpath",
+            "type": "string"
+          },
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "jsonld",
+              "js_state",
+              "xhr",
+              "api"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jsonpath",
+          "source"
+        ],
+        "title": "JsonPathStep",
+        "type": "object"
+      },
       "JsonValue": {},
       "LabelRow": {
         "additionalProperties": false,
@@ -911,6 +1891,161 @@
         "title": "Labels",
         "type": "object"
       },
+      "LearnRequest": {
+        "additionalProperties": false,
+        "description": "`schema_id` names the schema version, and so the page kind, to learn for; `force` re-learns an active one.",
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_id"
+        ],
+        "title": "LearnRequest",
+        "type": "object"
+      },
+      "LearnStarted": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "LearnStarted",
+        "type": "object"
+      },
+      "ListingReport": {
+        "additionalProperties": false,
+        "description": "`rows_ok`: held-out pages where `row` selected at least `MIN_ROWS` rows; when some page has fewer, the listing is\ndropped (`dropped`) and its fields with it.",
+        "properties": {
+          "dropped": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldReport"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rows_ok": {
+            "title": "Rows Ok",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows_ok",
+          "fields",
+          "next"
+        ],
+        "title": "ListingReport",
+        "type": "object"
+      },
+      "ListingSpec": {
+        "additionalProperties": false,
+        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next\npage's URL.",
+        "properties": {
+          "fields": {
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/FieldSteps"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/XPathStep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CssStep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JsonLdStep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JsonPathStep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RegexStep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AttrStep-Output"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "row": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/XPathStep-Output"
+              },
+              {
+                "$ref": "#/components/schemas/CssStep-Output"
+              },
+              {
+                "$ref": "#/components/schemas/JsonLdStep-Output"
+              },
+              {
+                "$ref": "#/components/schemas/JsonPathStep-Output"
+              },
+              {
+                "$ref": "#/components/schemas/RegexStep-Output"
+              },
+              {
+                "$ref": "#/components/schemas/AttrStep-Output"
+              }
+            ],
+            "title": "Row"
+          }
+        },
+        "required": [
+          "row",
+          "fields"
+        ],
+        "title": "ListingSpec",
+        "type": "object"
+      },
       "NewSchema": {
         "additionalProperties": false,
         "properties": {
@@ -956,6 +2091,27 @@
           "name"
         ],
         "title": "NewSchema",
+        "type": "object"
+      },
+      "NormalizeOp-Input": {
+        "additionalProperties": false,
+        "description": "`{\"<field type>\": {}}`: the type's normalizer (SPEC-04) runs on the value.",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "NormalizeOp",
+        "type": "object"
+      },
+      "NormalizeOp-Output": {
+        "additionalProperties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
         "type": "object"
       },
       "NormalizeRequest": {
@@ -1338,6 +2494,45 @@
         "title": "PageSummary",
         "type": "object"
       },
+      "Pagination": {
+        "additionalProperties": false,
+        "description": "\u00a74.8: the listing's next request sets query parameter `name` to `start`, `start + step`, ... until `rows`\nselects nothing.",
+        "properties": {
+          "kind": {
+            "const": "param",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "step": {
+            "minimum": 1.0,
+            "title": "Step",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "start",
+          "step",
+          "rows"
+        ],
+        "title": "Pagination",
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": false,
         "description": "RFC 9457 problem details (SPEC-07 \u00a74.3). `type` is one of the API's problem types, or `about:blank` when the\nHTTP status says all there is to say (RFC 9457 \u00a74.2.1); `instance` is the request's path (\u00a73.1.5).",
@@ -1379,6 +2574,140 @@
           "instance"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "Proof": {
+        "additionalProperties": false,
+        "description": "How the recipe was accepted: the held-out captures it reproduced (\u00a74.7), the headers replay tried (\u00a74.6) and\nwhat bound it.",
+        "properties": {
+          "bound_by": {
+            "enum": [
+              "deterministic",
+              "role_d"
+            ],
+            "title": "Bound By",
+            "type": "string"
+          },
+          "headers_tried": {
+            "minimum": 0.0,
+            "title": "Headers Tried",
+            "type": "integer"
+          },
+          "validated_on": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Validated On",
+            "type": "array"
+          }
+        },
+        "required": [
+          "validated_on",
+          "headers_tried",
+          "bound_by"
+        ],
+        "title": "Proof",
+        "type": "object"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_version": {
+            "minLength": 1,
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "learned_at": {
+            "format": "date-time",
+            "title": "Learned At",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "adapter",
+              "induced",
+              "llm_synth",
+              "operator"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "validated_on": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Validated On",
+            "type": "array"
+          }
+        },
+        "required": [
+          "origin",
+          "validated_on",
+          "learned_at",
+          "engine_version"
+        ],
+        "title": "Provenance",
+        "type": "object"
+      },
+      "RecipeFieldReport": {
+        "additionalProperties": false,
+        "description": "One field of an API recipe's map (SPEC-09 \u00a74.7). `published`: held-out pages where the engine published the\nfield; `reproduced`: those where the replayed response gave that value.",
+        "properties": {
+          "published": {
+            "title": "Published",
+            "type": "integer"
+          },
+          "reproduced": {
+            "title": "Reproduced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "published",
+          "reproduced"
+        ],
+        "title": "RecipeFieldReport",
+        "type": "object"
+      },
+      "RecipeReport": {
+        "additionalProperties": false,
+        "description": "The API recipe's held-out validation (SPEC-09 \u00a74.7). `refused` says why the recipe did not enter the config.",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecipeFieldReport"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "held_out": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Held Out",
+            "type": "array"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused"
+          }
+        },
+        "required": [
+          "held_out",
+          "fields"
+        ],
+        "title": "RecipeReport",
         "type": "object"
       },
       "RecordField": {
@@ -1538,6 +2867,108 @@
         "title": "RecordPage",
         "type": "object"
       },
+      "RegexReplaceOp": {
+        "additionalProperties": false,
+        "properties": {
+          "regex_replace": {
+            "$ref": "#/components/schemas/RegexReplaceParams"
+          }
+        },
+        "required": [
+          "regex_replace"
+        ],
+        "title": "RegexReplaceOp",
+        "type": "object"
+      },
+      "RegexReplaceParams": {
+        "additionalProperties": false,
+        "properties": {
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          },
+          "repl": {
+            "title": "Repl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern",
+          "repl"
+        ],
+        "title": "RegexReplaceParams",
+        "type": "object"
+      },
+      "RegexStep-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "regex": {
+            "title": "Regex",
+            "type": "string"
+          }
+        },
+        "required": [
+          "regex"
+        ],
+        "title": "RegexStep",
+        "type": "object"
+      },
+      "RegexStep-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "regex": {
+            "title": "Regex",
+            "type": "string"
+          }
+        },
+        "required": [
+          "regex"
+        ],
+        "title": "RegexStep",
+        "type": "object"
+      },
       "ReplayRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1565,6 +2996,22 @@
           "records"
         ],
         "title": "ReplayResult",
+        "type": "object"
+      },
+      "RequestBody": {
+        "additionalProperties": false,
+        "description": "A JSON request body with `{name}` placeholders; a value is written JSON-escaped where its placeholder stands.",
+        "properties": {
+          "template": {
+            "minLength": 1,
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "RequestBody",
         "type": "object"
       },
       "SchemaById": {
@@ -1745,6 +3192,27 @@
           "prompt"
         ],
         "title": "SchemaPrompt",
+        "type": "object"
+      },
+      "SchemaRef": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "SchemaRef",
         "type": "object"
       },
       "ScrapeRequest": {
@@ -2151,6 +3619,19 @@
         "title": "TaskCounts",
         "type": "object"
       },
+      "TrimOp": {
+        "additionalProperties": false,
+        "properties": {
+          "trim": {
+            "$ref": "#/components/schemas/_NoParams"
+          }
+        },
+        "required": [
+          "trim"
+        ],
+        "title": "TrimOp",
+        "type": "object"
+      },
       "Usage": {
         "description": "What the scrape's job used (ARCHITECTURE \u00a717).",
         "properties": {
@@ -2181,6 +3662,142 @@
           }
         },
         "title": "Usage",
+        "type": "object"
+      },
+      "ValidationReport": {
+        "additionalProperties": false,
+        "description": "The `extraction_config.validation_report` (SPEC-08 \u00a74.7). `refused` says why nothing can activate; `api_recipe`\nis the recipe's validation when the site has one (SPEC-09 \u00a74.7).",
+        "properties": {
+          "api_recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldReport"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "held_out": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Held Out",
+            "type": "array"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ListingReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused"
+          }
+        },
+        "required": [
+          "held_out",
+          "fields",
+          "listing"
+        ],
+        "title": "ValidationReport",
+        "type": "object"
+      },
+      "XPathStep-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "xpath": {
+            "title": "Xpath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "xpath"
+        ],
+        "title": "XPathStep",
+        "type": "object"
+      },
+      "XPathStep-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "post": {
+            "default": [],
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NormalizeOp-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TrimOp"
+                },
+                {
+                  "$ref": "#/components/schemas/AbsolutizeUrlOp"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexReplaceOp"
+                }
+              ]
+            },
+            "title": "Post",
+            "type": "array"
+          },
+          "xpath": {
+            "title": "Xpath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "xpath"
+        ],
+        "title": "XPathStep",
+        "type": "object"
+      },
+      "_NoParams": {
+        "additionalProperties": false,
+        "description": "`{}`: the op takes no parameters.",
+        "properties": {},
+        "title": "_NoParams",
         "type": "object"
       }
     }
@@ -2358,6 +3975,232 @@
         "summary": "Replay Capture",
         "tags": [
           "captures"
+        ]
+      }
+    },
+    "/v1/configs/{config_id}": {
+      "get": {
+        "description": "The config's IR and validation report.",
+        "operationId": "get_config_v1_configs__config_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "configs"
+        ]
+      },
+      "put": {
+        "description": "Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.\nIt is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be\nthe latest version of its site, schema version and page kind; otherwise 409.",
+        "operationId": "correct_config_v1_configs__config_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Correction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Correct Config",
+        "tags": [
+          "configs"
         ]
       }
     },
@@ -4088,6 +5931,217 @@
         "summary": "Scrape",
         "tags": [
           "scrape"
+        ]
+      }
+    },
+    "/v1/sites/{host}/configs": {
+      "get": {
+        "description": "Every version of the site's configs, with status, field status and validation report, by schema version, page\nkind and version.",
+        "operationId": "list_site_configs_v1_sites__host__configs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Site Configs",
+        "tags": [
+          "configs"
+        ]
+      }
+    },
+    "/v1/sites/{host}/learn": {
+      "post": {
+        "description": "Starts learning the site's config for a schema version; 409 while a run is in flight, or when the site has an\nactive config and `force` is not set.",
+        "operationId": "learn_site_v1_sites__host__learn_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Learn Site",
+        "tags": [
+          "configs"
         ]
       }
     }

@@ -1,0 +1,81 @@
+"""`/v1/sites/{host}/configs`, `/v1/configs/{id}` and `/v1/sites/{host}/learn` (SPEC-08 §4.10, ARCHITECTURE §13.1):
+a site's configs, operator corrections (C5) and forced learning. The rules are the configs service's; this router
+translates HTTP to it and its errors to problems."""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+from crawlerai.api.auth import require_api_key
+from crawlerai.api.dto import PROBLEM_RESPONSE, ConfigList, LearnStarted
+from crawlerai.api.problems import conflict, invalid, not_found, records_unavailable
+from crawlerai.config_ir.corrections import Correction, InvalidCorrection
+from crawlerai.db.models import ExtractionConfigId
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.schemas.registry import SchemaNotFound
+from crawlerai.services import configs
+from crawlerai.services.configs import ConfigConflict, ConfigDetail, ConfigNotFound, LearnRequest, SiteNotFound
+from crawlerai.services.scrape import Fetching
+
+router = APIRouter(
+    prefix="/v1",
+    tags=["configs"],
+    dependencies=[Depends(require_api_key)],
+    responses={401: PROBLEM_RESPONSE, 422: PROBLEM_RESPONSE, 429: PROBLEM_RESPONSE},
+)
+_BY_ID: dict[int | str, dict[str, Any]] = {404: PROBLEM_RESPONSE}
+_CHANGES: dict[int | str, dict[str, Any]] = {404: PROBLEM_RESPONSE, 409: PROBLEM_RESPONSE}
+
+
+@asynccontextmanager
+async def _transaction(request: Request) -> AsyncIterator[AsyncConnection]:
+    """One transaction for the request, with the service's errors answered as problems."""
+    engine: AsyncEngine = request.app.state.database
+    try:
+        async with engine.begin() as conn:
+            yield conn
+    except (SiteNotFound, ConfigNotFound, SchemaNotFound) as e:
+        raise not_found(str(e)) from e
+    except ConfigConflict as e:
+        raise conflict(str(e)) from e
+    except InvalidCorrection as e:
+        raise invalid(str(e), e.errors) from e
+
+
+@router.get("/sites/{host}/configs", responses=_BY_ID)
+async def list_site_configs(host: str, request: Request) -> ConfigList:
+    """Every version of the site's configs, with status, field status and validation report, by schema version, page
+    kind and version."""
+    async with _transaction(request) as conn:
+        return ConfigList(items=await configs.list_for_host(conn, host))
+
+
+@router.get("/configs/{config_id}", responses=_BY_ID)
+async def get_config(config_id: ExtractionConfigId, request: Request) -> ConfigDetail:
+    """The config's IR and validation report."""
+    async with _transaction(request) as conn:
+        return await configs.get(conn, config_id)
+
+
+@router.put("/configs/{config_id}", responses={**_CHANGES, 503: PROBLEM_RESPONSE})
+async def correct_config(config_id: ExtractionConfigId, body: Correction, request: Request) -> ConfigDetail:
+    """Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.
+    It is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be
+    the latest version of its site, schema version and page kind; otherwise 409."""
+    data: EngineData | None = request.app.state.engine_data
+    if data is None:
+        raise records_unavailable("the engine's data files are not installed, so no config can be validated")
+    fetching: Fetching = request.app.state.fetching
+    async with _transaction(request) as conn:
+        return await configs.correct(conn, fetching.store, data.vocabulary, config_id, body)
+
+
+@router.post("/sites/{host}/learn", status_code=202, responses=_CHANGES)
+async def learn_site(host: str, body: LearnRequest, request: Request) -> LearnStarted:
+    """Starts learning the site's config for a schema version; 409 while a run is in flight, or when the site has an
+    active config and `force` is not set."""
+    async with _transaction(request) as conn:
+        return LearnStarted(job_id=await configs.learn(conn, host, body))

@@ -40,7 +40,7 @@ LEARN_AFTER_PAGES: Final = 8
 # States per run of `trigger_learning`; the scheduler runs a full batch again at once, so a backlog drains in one turn.
 TRIGGER_BATCH: Final = 100
 
-LearnEvent = Literal["start", "start_forced", "activate", "fail"]
+LearnEvent = Literal["start", "start_forced", "activate", "fail", "operator"]
 
 TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]]] = {
     # Pages keep being served cold while a site learns (ARCHITECTURE §8.4).
@@ -50,6 +50,9 @@ TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]
     "activate": {"learning": "active", "active": "active"},
     # A failed run leaves a cold site cold (§4.8) and an active one on its config.
     "fail": {"learning": "cold", "active": "active"},
+    # An operator's validated config activates in any mode (§4.10); a learning run in flight goes on, and may replace
+    # it with the config it validates.
+    "operator": {"cold": "active", "learning": "active", "active": "active"},
 }
 
 
@@ -135,6 +138,20 @@ async def learning_activated(conn: AsyncConnection, key: StateKey, config_id: Ex
         raise NotLearning(key, "activate")
 
 
+async def lock_state(conn: AsyncConnection, key: StateKey) -> None:
+    """Lock `key`'s state row for the transaction, creating it cold first if there is none; one config change per
+    state at a time then takes its version after the one before."""
+    await conn.execute(pg_insert(ProgressiveState).values(**key.columns()).on_conflict_do_nothing())
+    await conn.execute(select(ProgressiveState.mode).where(*key.where()).with_for_update())
+
+
+async def operator_activated(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
+    """Make `config_id`, an operator's validated config, `key`'s active config (§4.10), with or without a learning
+    run in flight. The state must exist."""
+    if not await _move(conn, key, "operator", in_flight=None, active_config_id=config_id):
+        raise LookupError(f"no progressive_state {key}")
+
+
 async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
     """End `key`'s learning run with nothing activated: a state that was learning goes cold, to try again after
     `LEARN_AFTER_PAGES` more pages (§4.8). Raises `NotLearning` when no run is in flight."""
@@ -144,14 +161,16 @@ async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
         raise NotLearning(key, "fail")
 
 
-async def _move(conn: AsyncConnection, key: StateKey, event: LearnEvent, *, in_flight: bool, **values: Any) -> bool:
+async def _move(
+    conn: AsyncConnection, key: StateKey, event: LearnEvent, *, in_flight: bool | None, **values: Any
+) -> bool:
     """Compare-and-set `key`'s state along `event`'s edges, setting `values` too; whether it moved. `in_flight` is
-    whether a learning run must be in flight for `event`."""
+    whether a learning run must be in flight for `event`; None when either will do."""
     state = ProgressiveState
     edges = TRANSITIONS[event]
-    started = state.learning_started_at.is_not(None) if in_flight else state.learning_started_at.is_(None)
+    where = [*key.where(), state.mode.in_(edges)]
+    if in_flight is not None:
+        where.append(state.learning_started_at.is_not(None) if in_flight else state.learning_started_at.is_(None))
     mode = case(*((state.mode == source, target) for source, target in edges.items()))
-    moved = await conn.execute(
-        update(state).where(*key.where(), state.mode.in_(edges), started).values(mode=mode, **values)
-    )
+    moved = await conn.execute(update(state).where(*where).values(mode=mode, **values))
     return moved.rowcount > 0
