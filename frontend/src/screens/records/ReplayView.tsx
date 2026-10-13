@@ -1,6 +1,6 @@
 import { Table, Typography } from "@heroui/react";
 import type { FieldTypes, FieldTypeSpec } from "../../api/field";
-import type { ReplayResult } from "../../api/records";
+import type { ExtractedRecord, ReplayResult } from "../../api/records";
 import type { RecordField, ScrapeRecord } from "../../api/scrape";
 import { EmptyView } from "../../components/EmptyView";
 import { FieldValue } from "../../components/FieldValue";
@@ -20,7 +20,7 @@ function ReplayDiff({
   stored,
   replayed,
   fieldTypes,
-}: Readonly<{ stored: ScrapeRecord; replayed: ScrapeRecord; fieldTypes: FieldTypes }>) {
+}: Readonly<{ stored: ScrapeRecord; replayed: ExtractedRecord; fieldTypes: FieldTypes }>) {
   const changes = diffFields(stored.fields, replayed.fields);
   return (
     <Table>

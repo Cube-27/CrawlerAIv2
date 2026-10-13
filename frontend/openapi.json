@@ -217,6 +217,51 @@
         "title": "CapturedOut",
         "type": "object"
       },
+      "ExtractedRecord": {
+        "description": "A record's content (\u00a76 `record`): `complete` when every required field and group published (\u00a710), and its\nconfidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with\nthese: they are not stored, so they have no id.",
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "adhoc",
+              "config"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "complete",
+          "confidence",
+          "fields"
+        ],
+        "title": "ExtractedRecord",
+        "type": "object"
+      },
       "FetchOptions": {
         "additionalProperties": false,
         "properties": {
@@ -1268,6 +1313,65 @@
         "title": "RecordField",
         "type": "object"
       },
+      "RecordPage": {
+        "description": "One page of records, newest first; `next_cursor` is null on the last page.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StoredRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RecordPage",
+        "type": "object"
+      },
+      "ReplayRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_llm": {
+            "default": false,
+            "title": "Allow Llm",
+            "type": "boolean"
+          }
+        },
+        "title": "ReplayRequest",
+        "type": "object"
+      },
+      "ReplayResult": {
+        "additionalProperties": false,
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ExtractedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "ReplayResult",
+        "type": "object"
+      },
       "SchemaById": {
         "additionalProperties": false,
         "properties": {
@@ -1668,7 +1772,7 @@
         "type": "object"
       },
       "ScrapedRecord": {
-        "description": "A record (\u00a76 `record`): `complete` when every required field and group published (\u00a710), and its confidence,\nthe minimum over the required fields, `None` when any of them is uncalibrated.",
+        "description": "A stored record as `scrape` answers with it.",
         "properties": {
           "complete": {
             "title": "Complete",
@@ -1709,11 +1813,11 @@
           }
         },
         "required": [
-          "id",
           "mode",
           "complete",
           "confidence",
-          "fields"
+          "fields",
+          "id"
         ],
         "title": "ScrapedRecord",
         "type": "object"
@@ -1741,6 +1845,81 @@
           "reason"
         ],
         "title": "SkippedOut",
+        "type": "object"
+      },
+      "StoredRecord": {
+        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE \u00a715),\nthe schema version its fields follow, and its own version (\u00a714).",
+        "properties": {
+          "capture_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Id"
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "adhoc",
+              "config"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "complete",
+          "confidence",
+          "fields",
+          "id",
+          "capture_id",
+          "schema_id",
+          "version"
+        ],
+        "title": "StoredRecord",
         "type": "object"
       },
       "Usage": {
@@ -1816,6 +1995,140 @@
         "summary": "Healthz",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/captures/{capture_id}/replay": {
+      "post": {
+        "description": "The records the current engine makes from the capture, against the schema versions of the records stored from\nit. 404: no such capture, or its bundle expired; 409: no record was made from it, or its schema is a page kind\nnot extracted yet.",
+        "operationId": "replay_capture_v1_captures__capture_id__replay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Capture Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Replay Capture",
+        "tags": [
+          "captures"
         ]
       }
     },
@@ -2291,6 +2604,154 @@
         "summary": "Prefill",
         "tags": [
           "eval"
+        ]
+      }
+    },
+    "/v1/records": {
+      "get": {
+        "description": "Records newest first, narrowed by job, site (host) and schema version. Pass a page's `next_cursor` as `cursor`\nfor the page after it.",
+        "operationId": "list_records_v1_records_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "site",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site"
+            }
+          },
+          {
+            "in": "query",
+            "name": "schema_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Records",
+        "tags": [
+          "records"
         ]
       }
     },

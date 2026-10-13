@@ -21,6 +21,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/captures/{capture_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Capture
+         * @description The records the current engine makes from the capture, against the schema versions of the records stored from
+         *     it. 404: no such capture, or its bundle expired; 409: no record was made from it, or its schema is a page kind
+         *     not extracted yet.
+         */
+        post: operations["replay_capture_v1_captures__capture_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/eval/capture": {
         parameters: {
             query?: never;
@@ -134,6 +156,27 @@ export interface paths {
          * @description Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06.
          */
         post: operations["prefill_v1_eval_pages__page_id__prefill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Records
+         * @description Records newest first, narrowed by job, site (host) and schema version. Pass a page's `next_cursor` as `cursor`
+         *     for the page after it.
+         */
+        get: operations["list_records_v1_records_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -302,6 +345,27 @@ export interface components {
             page_id: string;
             /** Status Code */
             status_code: number;
+        };
+        /**
+         * ExtractedRecord
+         * @description A record's content (§6 `record`): `complete` when every required field and group published (§10), and its
+         *     confidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with
+         *     these: they are not stored, so they have no id.
+         */
+        ExtractedRecord: {
+            /** Complete */
+            complete: boolean;
+            /** Confidence */
+            confidence: number | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["RecordField"];
+            };
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "adhoc" | "config";
         };
         /** FetchOptions */
         FetchOptions: {
@@ -670,6 +734,29 @@ export interface components {
             status: "published" | "missing" | "conflict" | "abstained";
             value: components["schemas"]["JsonValue"];
         };
+        /**
+         * RecordPage
+         * @description One page of records, newest first; `next_cursor` is null on the last page.
+         */
+        RecordPage: {
+            /** Items */
+            items: components["schemas"]["StoredRecord"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** ReplayRequest */
+        ReplayRequest: {
+            /**
+             * Allow Llm
+             * @default false
+             */
+            allow_llm: boolean;
+        };
+        /** ReplayResult */
+        ReplayResult: {
+            /** Records */
+            records: components["schemas"]["ExtractedRecord"][];
+        };
         /** SchemaById */
         SchemaById: {
             /**
@@ -834,8 +921,7 @@ export interface components {
         };
         /**
          * ScrapedRecord
-         * @description A record (§6 `record`): `complete` when every required field and group published (§10), and its confidence,
-         *     the minimum over the required fields, `None` when any of them is uncalibrated.
+         * @description A stored record as `scrape` answers with it.
          */
         ScrapedRecord: {
             /** Complete */
@@ -868,6 +954,40 @@ export interface components {
             n: number;
             /** Reason */
             reason: string;
+        };
+        /**
+         * StoredRecord
+         * @description A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
+         *     the schema version its fields follow, and its own version (§14).
+         */
+        StoredRecord: {
+            /** Capture Id */
+            capture_id: string | null;
+            /** Complete */
+            complete: boolean;
+            /** Confidence */
+            confidence: number | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["RecordField"];
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "adhoc" | "config";
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+            /** Version */
+            version: number;
         };
         /**
          * Usage
@@ -925,6 +1045,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    replay_capture_v1_captures__capture_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Service Unavailable */
@@ -1199,6 +1405,62 @@ export interface operations {
             };
             /** @description Not Implemented */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_records_v1_records_get: {
+        parameters: {
+            query?: {
+                job_id?: string | null;
+                site?: string | null;
+                schema_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
