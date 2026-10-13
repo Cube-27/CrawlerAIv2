@@ -114,9 +114,12 @@ async def submit_batch(
     """Store `request` as a queued job with its tasks. Raises, storing nothing: `BatchRejected` for a refused target,
     `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
     await _check_targets(connector, request)
-    if "records" in request.formats and data is None:
-        raise RecordsUnavailable("this process has not loaded the engine's data files")
-    schema = await named_schema(engine, request.schema_, request.page_kind)
+    schema = None
+    # Only `records` reads a schema (SPEC-07 §4.4): a format batch that names one is a format job.
+    if "records" in request.formats:
+        if data is None:
+            raise RecordsUnavailable("this process has not loaded the engine's data files")
+        schema = await named_schema(engine, request.schema_, request.page_kind)
     async with engine.begin() as conn:
         pinned = None
         if schema is not None and data is not None:

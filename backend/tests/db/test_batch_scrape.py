@@ -264,6 +264,32 @@ async def test_page_outputs_are_made_from_each_tasks_capture_and_paginate(
 
 
 @pytest.mark.usefixtures("site")
+async def test_a_schema_without_the_records_format_is_ignored(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, _page("Blue kettle"))
+    # The schema's page kind is not the request's: unread without `records`, so not refused either.
+    batch = _batch([url], "markdown", schema={"id": str(kettle_schema.id)}, page_kind="listing")
+    submitted = await submit_batch(engine, fetching.connector, batch, data=engine_data)
+
+    await _run(engine, fetching, engine_data, submitted.job_id)
+
+    async with engine.connect() as conn:
+        job = (await conn.execute(select(Job.schema_id, Job.pinned).where(Job.id == submitted.job_id))).one()
+    results = await _results(engine, fetching, submitted.job_id)
+    assert tuple(job) == (None, None)
+    assert isinstance(results, PageOutputPage)
+    [item] = results.items
+    assert item.markdown is not None and "boils water quickly" in item.markdown
+
+
+@pytest.mark.usefixtures("site")
 async def test_records_are_stored_per_page_and_an_incomplete_page_is_partial(
     engine: AsyncEngine,
     fetching: Fetching,
