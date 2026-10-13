@@ -28,16 +28,15 @@ _CALLABLE: Final = XPATH1_FUNCTIONS | _NODE_TYPES
 # XPath 1.0 §3.7 OperatorName.
 _OPERATOR_NAMES: Final = frozenset({"and", "or", "mod", "div"})
 # XPath 1.0 §3.7 ExprToken. NCName is approximated by word characters plus `.` and `-` (XML Names §3).
-_TOKEN: Final = re.compile(
-    r"""
-    (?P<space>\s+)
-    | (?P<literal>"[^"]*"|'[^']*')
-    | (?P<number>\d+(?:\.\d*)?|\.\d+)
-    | (?P<variable>\$)
-    | (?P<name>[^\W\d][\w.\-]*(?::(?:[^\W\d][\w.\-]*|\*))?)
-    | (?P<punct>\.\.|::|//|!=|<=|>=|[./()\[\]@,|+\-=<>*])
-    """,
-    re.VERBOSE,
+# Tried in order at each position, as the alternatives of one token rule.
+_NCNAME: Final = r"[^\W\d][\w.\-]*"
+_TOKENS: Final = (
+    ("space", re.compile(r"\s+")),
+    ("literal", re.compile(r""""[^"]*"|'[^']*'""")),
+    ("number", re.compile(r"\d+(?:\.\d*)?|\.\d+")),
+    ("variable", re.compile(r"\$")),
+    ("name", re.compile(rf"{_NCNAME}(?::(?:{_NCNAME}|\*))?")),
+    ("punct", re.compile(r"\.\.|::|//|[!<>]=|[./()\[\]@,|+\-=<>*]")),
 )
 # §3.7: after one of these (or at the start) a `*` is a name test and an NCName is a name, not an operator.
 _OPERAND_STARTS: Final = frozenset(
@@ -68,15 +67,19 @@ def check_xpath1(expression: str) -> str:
 def _tokens(expression: str) -> Iterator[tuple[str, str]]:
     position = 0
     while position < len(expression):
-        match = _TOKEN.match(expression, position)
-        if match is None:
-            raise XPath1Error(f"{expression[position]!r} is not an XPath 1.0 token")
-        kind = match.lastgroup or ""  # every alternative is a named group
+        kind, text = _token_at(expression, position)
         if kind == "variable":
             raise XPath1Error("variable references are not allowed")
         if kind != "space":
-            yield kind, match.group()
-        position = match.end()
+            yield kind, text
+        position += len(text)
+
+
+def _token_at(expression: str, position: int) -> tuple[str, str]:
+    for kind, token in _TOKENS:
+        if match := token.match(expression, position):
+            return kind, match.group()
+    raise XPath1Error(f"{expression[position]!r} is not an XPath 1.0 token")
 
 
 def _check_name(name: str, *, calls: bool) -> None:
