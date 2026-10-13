@@ -133,27 +133,30 @@ def is_transient(status: int) -> bool:
 
 
 class LLMFailure(Exception):
-    """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type."""
+    """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type, and
+    `field_reason` as the reason of the fields the call was for, which stay `missing`."""
 
     code: ClassVar[str]
+    field_reason: ClassVar[str]
 
 
 class BudgetExhausted(LLMFailure):
     """The job has no `llm_calls` budget left; the call was not made (§4.7)."""
 
     code = BUDGET_EXHAUSTED
+    field_reason = "llm_budget"
 
 
 class ProviderUnavailable(LLMFailure):
     """No provider answered (§4.7)."""
 
-    code = "llm_unavailable"
+    code = field_reason = "llm_unavailable"
 
 
 class OutputInvalid(LLMFailure):
     """The reply did not match the output schema, after the one retry (§4.7)."""
 
-    code = "llm_output_invalid"
+    code = field_reason = "llm_output_invalid"
 
 
 class Unconfigured:

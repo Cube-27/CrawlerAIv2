@@ -35,7 +35,7 @@ def role_c(client: LLMClient, *, job_id: JobId | None) -> RoleC:
 
 def _call(response: LLMResponse) -> LLMCallRecord:
     return LLMCallRecord(
-        prompt_kind="c_extract_detail",
+        prompt_kind=c_extract.PROMPT_KIND,
         provider=response.provider,
         model=response.model,
         request_hash=response.request_hash,

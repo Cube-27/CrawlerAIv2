@@ -151,11 +151,12 @@ async def extract_page(
         reply = await role_c(GapRequest(page.page, schema, page.ctx, page.target, missing))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
         diagnostics = (*diagnostics, *reply.diagnostics)
-        try:
-            fields = await asyncio.to_thread(page.resolve, candidates)
-        except Exception:
-            log.exception(_FAILED)
-            return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
+        if reply.candidates:  # without new candidates, resolution would decide the same
+            try:
+                fields = await asyncio.to_thread(page.resolve, candidates)
+            except Exception:
+                log.exception(_FAILED)
+                return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
     return ExtractionResult(
