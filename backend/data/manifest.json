@@ -8,6 +8,46 @@
       "sha256": "45d9f126c1f5af44e41a40bbf84feafd38ca16806cb094618fa0ef6371cbdd16",
       "license": "No license stated by IANA; public registry data",
       "justification": "Top-level domains for the C3 site-literal scan hostname pattern (SPEC-00 §4.7)."
+    },
+    {
+      "path": "geonames/cities15000.zip",
+      "url": "https://download.geonames.org/export/dump/cities15000.zip",
+      "version": "GeoNames export dump as of 2026-10-13 (Last-Modified 2026-10-13T01:57:19Z)",
+      "retrieved": "2026-10-13",
+      "sha256": "19de48da195cd1ef7f636c2293bb8b6d1591addf23b45cd94d5684de5f261aed",
+      "license": "CC BY 4.0 (GeoNames); attribution in NOTICE",
+      "justification": "Cities with a population over 15000: the localities the location normalizer matches in text (SPEC-04 §4.4).",
+      "fetched": true
+    },
+    {
+      "path": "geonames/admin1CodesASCII.txt",
+      "url": "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+      "version": "GeoNames export dump as of 2026-10-13 (Last-Modified 2026-10-13T01:57:19Z)",
+      "retrieved": "2026-10-13",
+      "sha256": "1da92a6323a5fec3176f3f743bf4cf4040fd56a876da55e46fbca23c863aa60a",
+      "license": "CC BY 4.0 (GeoNames); attribution in NOTICE",
+      "justification": "First-level administrative divisions: the regions the location normalizer matches and reports (SPEC-04 §4.4).",
+      "fetched": true
+    },
+    {
+      "path": "geonames/countryInfo.txt",
+      "url": "https://download.geonames.org/export/dump/countryInfo.txt",
+      "version": "GeoNames export dump as of 2026-10-13 (Last-Modified 2026-10-13T01:57:19Z)",
+      "retrieved": "2026-10-13",
+      "sha256": "c5997ea659df5bcf42509eb937064d172b2a998bb873608603e8421d714a9974",
+      "license": "CC BY 4.0 (GeoNames); attribution in NOTICE",
+      "justification": "ISO 3166-1 codes and country names for the location normalizer (SPEC-04 §4.4).",
+      "fetched": true
+    },
+    {
+      "path": "schemaorg/schemaorg-all-https.jsonld",
+      "url": "https://raw.githubusercontent.com/schemaorg/schemaorg/8adb51c91fc12adb271fc787a26cfab204e9d105/data/releases/30.1/schemaorg-all-https.jsonld",
+      "version": "30.1",
+      "retrieved": "2026-10-13",
+      "sha256": "07e7c663dbc12a0937581745e59a98ed12b8698f38e8e3b03650287d9df88ae5",
+      "license": "CC BY-SA 3.0 (schema.org), used as a vocabulary file only; attribution in NOTICE",
+      "justification": "The schema.org vocabulary: types, properties and enumeration members that schema documents and enum vocabularies name (SPEC-04 §4.2, §4.6, D-0018).",
+      "fetched": true
     }
   ]
 }

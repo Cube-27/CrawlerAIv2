@@ -19,6 +19,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
+from crawlerai.core.data import DataFetchError, fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
@@ -136,10 +137,11 @@ async def _sync_presets() -> None:
 
 
 def _data_dir() -> Path:
-    """`backend/data/` of the source tree this package runs from, where SPEC-05 reads its calibration and precedence."""
+    """`backend/data/` of the source tree this package runs from: the pinned data files, and the calibration and
+    precedence that SPEC-05 reads."""
     backend = backend_dir(Path(calibrate.__file__))  # any module one package below `crawlerai`
     if backend is None:
-        raise EvalCliError("no backend source tree: calibration and precedence are written to backend/data/")
+        raise EvalCliError("no backend source tree: data files are read from and written to backend/data/")
     return data_dir(backend)
 
 
@@ -229,6 +231,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         dest="schemas_command", required=True
     )
     schemas.add_parser("sync", help="insert the preset schema versions the database lacks (after migrating)")
+    data = commands.add_parser("data", help="the pinned data files of backend/data/manifest.json").add_subparsers(
+        dest="data_command", required=True
+    )
+    data.add_parser("fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256")
     _add_eval_commands(commands)
     args = parser.parse_args(argv)
     if args.command == "openapi":
@@ -249,6 +255,12 @@ def main(argv: Sequence[str] | None = None) -> None:
             asyncio.run(_sync_presets())
         except PresetConflict as e:
             parser.exit(2, f"crawlerai schemas sync: {e}\n")
+    elif args.command == "data":
+        try:
+            for line in fetch_data(_data_dir()):
+                print(line)
+        except (DataFetchError, EvalCliError) as e:
+            parser.exit(2, f"crawlerai data fetch: {e}\n")
     elif args.command == "eval":
         try:
             if args.eval_command == "capture":

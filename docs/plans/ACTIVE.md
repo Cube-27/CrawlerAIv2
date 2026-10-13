@@ -33,6 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 - Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
 - Next: SPEC-04 PR 2 (#47) in review, then SPEC-04 PRs 3–8 in parallel; SPEC-02 PRs 7, 8 in progress, then 9; SPEC-05 after SPEC-04.
+- Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
@@ -121,7 +122,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | enum + vocab framework + availability `en` | done (#54) | Follow-up for SPEC-05 or a preset bump: `commerce_detail` availability is `schema:ItemAvailability`, so DOM availability text won't normalize unless the field also reads `type:availability`. |
 | 5 | date/datetime | done (#57) | Follow-up: check a datetime's year range on the UTC value as well (`2100-12-31T23:00-05:00` → `2101-01-01T04:00Z`). |
 | 6 | identifier | done (#59) | |
-| 7 | Data manifest + GeoNames fetch + location | todo | |
+| 7 | Data manifest + GeoNames fetch + location | done (#60) | |
 | 8 | range | done (#56) | Follow-ups: move the `type:period` words into `vocab/` (PR 4's framework) with a JUSTIFICATION.md; a dispatcher-level property test of range against the real money rules once PR 3 merges. |
 | 9 | `equal` per type + list/object recursion | todo | Also: url's WHATWG forbidden-host-code-point check (from #47). |
 

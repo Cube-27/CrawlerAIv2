@@ -6,7 +6,8 @@ paths pass. Tests are not exempt (C9).
 
 Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
-- a two-label token whose last label is the extension of a tracked file is a file name;
+- a two-label token whose last label is the extension of a tracked file, or of a data file
+  `backend/data/manifest.json` pins (a fetched one is not tracked; SPEC-04 §4.6), is a file name;
 - a token that is the dotted path of a tracked Python module is a module name;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
@@ -54,7 +55,8 @@ DEFAULT_ALLOWLIST = PurePosixPath("tools/site_literal_allowlist.txt")
 EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", ".github/")
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
 EXEMPT_SUFFIXES = (".lock",)
-EXEMPT_FILES = frozenset({"backend/data/manifest.json"})
+DATA_MANIFEST = "backend/data/manifest.json"
+EXEMPT_FILES = frozenset({DATA_MANIFEST})
 
 JS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 
@@ -221,6 +223,8 @@ class RepoNames:
                 columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
             if pure.suffix == ".json":
                 schema_paths.update(schema_org_paths(root / path))
+            if path == DATA_MANIFEST:
+                extensions.update(manifest_extensions(root / path))
         return cls(frozenset(extensions), frozenset(modules), frozenset(columns), frozenset(schema_paths))
 
     def names(self, token: str) -> bool:
@@ -237,6 +241,18 @@ class RepoNames:
             lambda match: " " * len(match[0]) if (match[1].lower(), match[2].lower()) in self.columns else match[0],
             text,
         )
+
+
+def manifest_extensions(manifest: Path) -> Iterator[str]:
+    """The extensions, lowercase, of the data files the manifest pins; nothing when it does not read as one."""
+    try:
+        entries = json.loads(manifest.read_text(encoding="utf-8")).get("entries")
+    except (OSError, ValueError, AttributeError):
+        return
+    for entry in entries if isinstance(entries, list) else []:
+        path = entry.get("path") if isinstance(entry, dict) else None
+        if isinstance(path, str) and (suffix := PurePosixPath(path).suffix):
+            yield suffix[1:].lower()
 
 
 def load_tlds(tld_list: Path) -> frozenset[str]:

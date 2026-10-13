@@ -5,7 +5,7 @@ Callers (the resolver, eval, the API) normalize through `normalize` and never pi
 
 from functools import partial
 
-from crawlerai.normalize import date, enum, identifier, money, text, url
+from crawlerai.normalize import date, enum, identifier, location, money, text, url
 from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import Context, Invalid, Normalizer, NormalizeResult, Raw
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -25,6 +25,7 @@ _NORMALIZERS: dict[FieldType, Normalizer] = {
     FieldType.LONG_TEXT: text.normalize,
     FieldType.ENUM: enum.normalize,
     FieldType.MONEY: money.normalize,
+    FieldType.LOCATION: location.normalize,
     FieldType.URL: url.normalize,
     FieldType.IDENTIFIER: identifier.normalize,
     FieldType.IMAGE_URL: url.normalize,
