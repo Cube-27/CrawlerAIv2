@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-01 PR 8 (#25, in review); SPEC-02 PR 4 (in progress); SPEC-02 PR 5; then SPEC-03.
+- Next: SPEC-02 PR 4 and SPEC-03 PR 1 (in progress); SPEC-02 PR 5; SPEC-03 PRs 2–11.
 - Follow-ups for SPEC-02 PR 4 (from #23): `crawlerai fetch` should stamp captures with `ENGINE_VERSION` instead of `version("crawlerai")` (D-0143); in `tests/unit/test_engine_version.py:46` build the tree before `pytest.raises` (Sonar S5778); drop the deprecated `Result.tuples()` in `tests/db/test_check_names.py`.
 - Open (SPEC-04 PR 7 / SPEC-05): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Decide how runtime data ships (package data or a settings path) together with GeoNames data and calibration; the build must write `VERSION`.
 - Note for SPEC-06: usage recorded in a task's transaction is lost if the handler then raises (transient retries roll back). Catch provider errors and return a result, or record usage in its own transaction.
@@ -69,7 +69,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | Object store (fs, s3) + capture bundle format | done (#13) | |
 | 6 | capture, extraction, candidate, record, url_state, progressive_state, extraction_config tables | done (#20) | Migration 0005. |
 | 7 | usage_event + budgets + engine_version | done (#23) | Migration 0006; also renamed the double-prefixed CHECKs. |
-| 8 | Retention jobs | todo | |
+| 8 | Retention jobs | done (#25) | Bounded batches (D-0155). SPEC-01 complete. |
 
 ## [SPEC-02 — Acquisition: HTTP, browser, adapters, politeness, SSRF, captures](../specs/SPEC-02-acquisition.md)
 

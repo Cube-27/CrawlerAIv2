@@ -868,3 +868,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `id = ANY(ARRAY(subquery))`.
 - Why: Both force one evaluation; SQLAlchemy expresses the CTE directly, and `MATERIALIZED` is documented PostgreSQL behaviour (PG ≥ 12). `UPDATE … WHERE id IN (SELECT … LIMIT)` can be planned as a semi-join that re-runs the subquery.
 - Reversible: yes
+
+### D-0154 — Only keys under `captures/` expire
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 8 (#25) · Status: decided
+- Decision: `expire_captures` filters on `expires_at < now()` and `object_key` starting with `captures/`; a row under `eval/` is kept whatever its `expires_at`.
+- Alternatives: Filter on `expires_at` alone.
+- Why: "Eval prefixes untouched" becomes structural rather than dependent on row data (C1).
+- Reversible: yes
+
+### D-0155 — Retention runs one bounded batch per transaction; a full batch runs again at once
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 8 (#25) · Status: decided
+- Decision: Each run of `expire_captures`/`expire_candidates` deletes at most `RETENTION_BATCH` (1000) rows chosen by `id IN (SELECT … ORDER BY … LIMIT :batch)`. A run that returns a full batch makes the entry due again immediately (`Periodic.batch`), so a backlog drains as consecutive short transactions; the 1 h interval of §4.3 is kept, and a failed run waits its interval.
+- Alternatives: Loop with commit inside the entry; run every minute; size the batch to expected ingest.
+- Why: A partial failure strands at most one batch; progress is monotonic; capacity scales with backlog.
+- Reversible: yes
+
+### D-0156 — Retention deletes rows, then bundles, then commits
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 8 (#25) · Status: decided
+- Decision: `DELETE … RETURNING object_key`, delete each object, then the scheduler commits. Until the next run, up to one batch of rows already past `expires_at` may name deleted bundles (stated in the docstring).
+- Alternatives: Delete bundles after commit (a crash leaves orphan bundles nothing expires).
+- Why: A failed delete or commit leaves the rows and the next run converges (store `delete` is idempotent); no bundle is left without the row that expires it (D-0144).
+- Reversible: yes
+
+### D-0157 — "Past" is strict
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 8 (#25) · Status: decided
+- Decision: `expires_at < now()`, `created_at < now() - 30 days`.
+- Alternatives: Inclusive comparisons.
+- Why: Most conservative reading of "past `expires_at`" and "kept 30 days".
+- Reversible: yes
+
+### D-0158 — The scheduler table is built from the object store
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 8 (#25) · Status: decided
+- Decision: `periodic(store)` replaces the `PERIODIC` constant; `expire_captures` gets the store through `functools.partial`. Retention lives in `crawlerai.scheduler.retention`.
+- Alternatives: Open the store inside `expire_captures` from settings.
+- Why: Keeps `Periodic.run` as `(conn) -> …` with the store explicit; retention needs both `db` and `storage`, independent siblings in the layering.
+- Reversible: yes
