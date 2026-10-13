@@ -5,12 +5,10 @@ import {
   Fieldset,
   Input,
   Label,
-  ListBox,
-  Select,
   TextArea,
   TextField,
 } from "@heroui/react";
-import { useState, type Key } from "react";
+import { useState } from "react";
 import type { FieldSpecInput } from "../api/schemas";
 import {
   FIELD_TYPES,
@@ -25,54 +23,11 @@ import {
   type FieldRow,
 } from "./schemaDocument";
 import { Choices } from "./Choices";
+import { OptionSelect } from "./OptionSelect";
 
 /** An optional text member: an empty input sends null, which the API reads as not set. */
 function optional(text: string): string | null {
   return text === "" ? null : text;
-}
-
-/** A labelled HeroUI Select over a `Record` of option labels. */
-function OptionSelect<K extends string>({
-  label,
-  options,
-  value,
-  isRequired = false,
-  accepts,
-  onChange,
-}: Readonly<{
-  label: string;
-  options: Readonly<Record<K, string>>;
-  value: K | null;
-  isRequired?: boolean;
-  accepts: (key: unknown) => key is K;
-  onChange: (value: K) => void;
-}>) {
-  return (
-    <Select
-      isRequired={isRequired}
-      value={value}
-      onChange={(key: Key | null) => {
-        if (accepts(key)) onChange(key);
-      }}
-    >
-      <Label>{label}</Label>
-      <Select.Trigger>
-        <Select.Value />
-        <Select.Indicator />
-      </Select.Trigger>
-      <Select.Popover>
-        <ListBox>
-          {Object.entries<string>(options).map(([option, text]) => (
-            <ListBox.Item key={option} id={option} textValue={text}>
-              {text}
-              <ListBox.ItemIndicator />
-            </ListBox.Item>
-          ))}
-        </ListBox>
-      </Select.Popover>
-      <FieldError />
-    </Select>
-  );
 }
 
 /** A nested member (`item`, `fields`) edited as JSON; the spec changes only while the text is that member's shape. */

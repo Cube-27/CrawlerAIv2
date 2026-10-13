@@ -39,13 +39,13 @@ interface RecordQuery {
   cursor?: string;
 }
 
+/** The filters that are set, by name: an empty one is left out of a query. */
+export function activeFilters(filters: RecordFilters): Partial<RecordFilters> {
+  return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
+}
+
 function recordQuery(filters: RecordFilters, cursor: string | null): RecordQuery {
-  const query: RecordQuery = {};
-  if (filters.schema_id !== "") query.schema_id = filters.schema_id;
-  if (filters.job_id !== "") query.job_id = filters.job_id;
-  if (filters.site !== "") query.site = filters.site;
-  if (cursor !== null) query.cursor = cursor;
-  return query;
+  return { ...activeFilters(filters), ...(cursor === null ? {} : { cursor }) };
 }
 
 /** The page of records at `cursor` (the first page when null); the page size is the server's. */

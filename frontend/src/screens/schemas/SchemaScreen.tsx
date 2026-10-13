@@ -2,7 +2,7 @@ import { Button, Chip, Tabs, toast } from "@heroui/react";
 import { useNavigate, useParams } from "react-router";
 import { problemOf } from "../../api/hooks/query";
 import { useRetireSchema, useSchema, useSchemaVersions } from "../../api/hooks/schemas";
-import type { SchemaDef } from "../../api/schemas";
+import { schemaVersionLabel, type SchemaDef } from "../../api/schemas";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
@@ -15,10 +15,6 @@ interface SchemaDetail {
   schema: SchemaDef;
   /** Every version of the schema's name. */
   versions: SchemaDef[];
-}
-
-function versionLabel({ name, version }: SchemaDef): string {
-  return `${name} version ${String(version)}`;
 }
 
 /** The changes the server accepts for this version (SPEC-07 §4.6): a preset changes only through its files, an edit
@@ -45,7 +41,7 @@ function DetailActions({
       {allowed.retire ? (
         <ConfirmDialog
           trigger={<Button variant="danger-soft">Retire</Button>}
-          title={`Retire ${versionLabel(schema)}?`}
+          title={`Retire ${schemaVersionLabel(schema)}?`}
           confirmLabel="Retire"
           onConfirm={onRetire}
         >
@@ -122,7 +118,7 @@ export function SchemaScreen() {
   const onRetire = (version: SchemaDef) => {
     retire.mutate(version.id, {
       onSuccess: () => {
-        toast.success(`Retired ${versionLabel(version)}.`);
+        toast.success(`Retired ${schemaVersionLabel(version)}.`);
       },
     });
   };

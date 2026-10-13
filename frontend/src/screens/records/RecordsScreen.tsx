@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { parseFieldTypes } from "../../api/field";
 import { problemOf } from "../../api/hooks/query";
 import { useRecords } from "../../api/hooks/records";
 import { useSchema } from "../../api/hooks/schemas";
-import type { RecordFilters, StoredRecord } from "../../api/records";
+import { activeFilters, type RecordFilters, type StoredRecord } from "../../api/records";
 import { EmptyView } from "../../components/EmptyView";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
@@ -23,10 +23,6 @@ function filtersOf(params: URLSearchParams): RecordFilters {
   };
 }
 
-function searchOf(filters: RecordFilters): Record<string, string> {
-  return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
-}
-
 /** One page of the filtered records with previous and next. The API pages forward by cursor (SPEC-07 §4.6), so the
  * cursors of the pages before are kept here; the first page has none. */
 function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
@@ -36,11 +32,12 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
   const records = useRecords(filters, cursor);
   const schema = useSchema(filters.schema_id);
   const problem = problemOf(records.error ?? schema.error);
+  // Stable while the schema is, so opening a record leaves the table's columns and cells as they are.
+  const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
 
   if (problem !== null) return <ProblemAlert problem={problem} />;
   if (!records.isSuccess || !schema.isSuccess) return <LoadingView label="Loading records" />;
 
-  const fieldTypes = parseFieldTypes(schema.data.fields);
   const { items, next_cursor: next } = records.data;
   return (
     <div className="flex flex-col gap-3">
@@ -84,7 +81,7 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
 export function RecordsScreen() {
   const [params, setParams] = useSearchParams();
   const filters = filtersOf(params);
-  const key = new URLSearchParams(searchOf(filters)).toString();
+  const key = new URLSearchParams(activeFilters(filters)).toString();
   return (
     <section className="flex flex-col gap-6">
       <PageHeader title="Records" />
@@ -92,7 +89,7 @@ export function RecordsScreen() {
         key={key}
         filters={filters}
         onSubmit={(next) => {
-          setParams(searchOf(next));
+          setParams(activeFilters(next));
         }}
       />
       {filters.schema_id === "" ? (

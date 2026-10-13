@@ -4,9 +4,9 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { RecordPage, ReplayResult, StoredRecord } from "../../api/records";
-import type { RecordField } from "../../api/scrape";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
+import { recordField } from "../../test/records";
 
 // The screen types into fields and opens a drawer with user-event, which is slow in jsdom.
 vi.setConfig({ testTimeout: 20_000 });
@@ -35,22 +35,7 @@ const schema: SchemaDef = {
 
 const otherSchema: SchemaDef = { ...schema, id: OTHER_SCHEMA_ID, name: "event_detail", version: 1 };
 
-function field(overrides: Partial<RecordField>): RecordField {
-  return {
-    value: "Blue kettle",
-    status: "published",
-    reason: null,
-    evidence: "structured",
-    confidence: 0.97,
-    calibrated: true,
-    source_kind: "jsonld",
-    locator: "jsonld:0:$.name",
-    derived_by: null,
-    ...overrides,
-  };
-}
-
-const conflictPrice = field({
+const conflictPrice = recordField({
   value: null,
   status: "conflict",
   reason: "disagree",
@@ -70,7 +55,7 @@ function storedRecord(overrides: Partial<StoredRecord> = {}): StoredRecord {
     mode: "adhoc",
     complete: false,
     confidence: 0.8,
-    fields: { title: field({}), price: conflictPrice },
+    fields: { title: recordField({}), price: conflictPrice },
     ...overrides,
   };
 }
@@ -160,8 +145,8 @@ describe("records screen: the list", () => {
           version: 1,
           confidence: null,
           fields: {
-            title: field({ value: "Red kettle" }),
-            price: field({ value: { amount: "19.90", currency: "EUR" } }),
+            title: recordField({ value: "Red kettle" }),
+            price: recordField({ value: { amount: "19.90", currency: "EUR" } }),
           },
         }),
       ]),
@@ -203,7 +188,10 @@ describe("records screen: the list", () => {
         const last = calls.at(-1);
         return last?.query.includes("cursor=c2") === true
           ? page([
-              storedRecord({ id: SECOND_ID, fields: { title: field({ value: "Red kettle" }) } }),
+              storedRecord({
+                id: SECOND_ID,
+                fields: { title: recordField({ value: "Red kettle" }) },
+              }),
             ])()
           : page([storedRecord()], "c2")();
       },
@@ -304,8 +292,8 @@ describe("records screen: the inspector", () => {
             complete: true,
             confidence: 0.9,
             fields: {
-              title: field({ confidence: 0.5 }),
-              price: field({ value: { amount: "21.00", currency: "EUR" } }),
+              title: recordField({ confidence: 0.5 }),
+              price: recordField({ value: { amount: "21.00", currency: "EUR" } }),
             },
           },
         ],
@@ -339,7 +327,7 @@ describe("records screen: the inspector", () => {
       mode: "adhoc",
       complete: true,
       confidence: 0.9,
-      fields: { title: field({ value: "Red kettle" }) },
+      fields: { title: recordField({ value: "Red kettle" }) },
     };
     stubApi({
       "GET /v1/schemas": schemaList,

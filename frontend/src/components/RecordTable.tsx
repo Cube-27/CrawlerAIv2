@@ -1,5 +1,5 @@
 import { Table } from "@heroui/react";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { FieldTypes, FieldTypeSpec } from "../api/field";
 import type { StoredRecord } from "../api/records";
 import { confidenceText } from "./ConfidenceCell";
@@ -49,7 +49,7 @@ export function RecordTable({
   fieldTypes: FieldTypes;
   onOpen: (record: StoredRecord) => void;
 }>) {
-  const columns = columnsOf(fieldTypes);
+  const columns = useMemo(() => columnsOf(fieldTypes), [fieldTypes]);
   return (
     <Table>
       <Table.ScrollContainer>
