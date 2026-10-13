@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 9, SPEC-07 PR 6, SPEC-12 PR 5, SPEC-08 PR 1 (L2, keeps slots full). Next: SPEC-05 PRs 12, 13, SPEC-07 PRs 5, 8 and SPEC-06 PRs 4, 5 after SPEC-05 PR 9.
+- In progress: SPEC-05 PR 9, SPEC-07 PR 6, SPEC-12 PR 5. Next: SPEC-05 PRs 12, 13, SPEC-07 PRs 5, 8 and SPEC-06 PRs 4, 5 after SPEC-05 PR 9; SPEC-08 PR 2 (L2).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -174,7 +174,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | IR model + validation (XPath 1.0, regex subset, css→xpath) | todo | |
+| 1 | IR model + validation (XPath 1.0, regex subset, css→xpath) | done (#95) | D-0460–D-0465. Follow-ups: loader re-translates or pins css→xpath across cssselect upgrades (PR 2/10); regex subset follows the PHP `/u` choice for non-ASCII and `(?i)` (PR 11). |
 | 2 | Engine executor + SPEC-05 injection | todo | |
 | 3 | Release executor + import contract | todo | |
 | 4 | Progressive state + learning trigger + `learn` job kind | todo | |
