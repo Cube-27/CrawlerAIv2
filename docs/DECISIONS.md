@@ -2913,3 +2913,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: See options.
 - Why: The specs contradict each other (CLAUDE.md §4).
 - Reversible: yes
+
+### D-0445 — The adapter collector is built per capture with the adapter and the detected page kind
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 11 (#91) · Status: decided
+- Decision: `AdapterCollector(adapter, page_kind)` implements the `Collector` protocol. The pipeline (PR 9) builds it for `api` captures from `registry.detect(bundle.url)` and that adapter's `detect(bundle.url).page_kind`.
+- Alternatives: Detect from `ctx.page_url`, which for an API capture is the endpoint, not the page.
+- Why: Only the bundle's `url` holds the page URL.
+- Reversible: yes
+
+### D-0446 — The adapter entity is the node at the mapped query's last wildcard
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 11 (#91) · Status: decided
+- Decision: Entity id `adapter:<name>:<normalized path>` (`$` for detail, `$['jobs'][0]` per listing row). Kind is the single schema.org root type of the mapped paths; a map spanning several types is skipped with a diagnostic. `urls` come from `adapter.map({"url": "<Type>.url"})`.
+- Alternatives: Add `root(page_kind)` to the `Adapter` protocol.
+- Why: Structural (RFC 9535); the adapters need no change.
+- Reversible: yes
+
+### D-0447 — `json_doc.select` takes name, wildcard and index segments
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 11 (#91) · Status: decided
+- Decision: RFC 9535 queries limited to name, wildcard and non-negative index segments, so every normalized path (and so every locator path) is a query; other queries raise `ValueError`.
+- Alternatives: A JSONPath library.
+- Why: Adapter maps use only this subset (D-0266); no dependency needed.
+- Reversible: yes

@@ -6,7 +6,7 @@ follows `p`, then `q`, through the nodes the values name; `+r` joins the last no
 """
 
 import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -217,9 +217,7 @@ def field_candidates(
     source_kind: SourceKind,
     diagnostics: list[str],
 ) -> Iterator[Candidate]:
-    """A candidate per value each field's path reaches on each entity of its type. A value the candidate model refuses
-    (nested deeper than its validator recurses) is skipped with a diagnostic: a collector never raises on page content
-    (SPEC-05 §4.5)."""
+    """A candidate per value each field's path reaches on each entity of its type."""
     for name, spec in schema.fields.items():
         if spec.schema_org is None:
             continue
@@ -228,18 +226,37 @@ def field_candidates(
             if not any(vocabulary.is_a(t, path.root) for t in entity.types):
                 continue
             for selected in select(entity.node, path, as_list=spec.type is FieldType.LIST):
-                try:
-                    yield Candidate(
-                        field=name,
-                        entity_id=entity.id,
-                        source_kind=source_kind,
-                        raw=selected.raw,
-                        normalized=normalize(selected.raw, spec, ctx),
-                        locator=selected.locator,
-                        independent=True,
-                    )
-                except ValidationError as e:
-                    diagnostics.append(f"value at {selected.locator} skipped ({e.errors()[0]['type']})")
+                found = candidate(name, spec, entity.id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
+                if found is not None:
+                    yield found
+
+
+def candidate(
+    field: str,
+    spec: FieldSpec,
+    entity_id: str,
+    source_kind: SourceKind,
+    raw: JsonValue,
+    locator: str,
+    ctx: Context,
+    diagnostics: list[str],
+) -> Candidate | None:
+    """The independent candidate of one value a collector read from a source's own structure, normalized as `spec`.
+    A value the candidate model refuses (nested deeper than its validator recurses) is skipped with a diagnostic: a
+    collector never raises on page content (SPEC-05 §4.5)."""
+    try:
+        return Candidate(
+            field=field,
+            entity_id=entity_id,
+            source_kind=source_kind,
+            raw=raw,
+            normalized=normalize(raw, spec, ctx),
+            locator=locator,
+            independent=True,
+        )
+    except ValidationError as e:
+        diagnostics.append(f"value at {locator} skipped ({e.errors()[0]['type']})")
+        return None
 
 
 def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
@@ -251,12 +268,13 @@ def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
     for value in node.values("offers"):
         if value.node is not None:
             written.extend(v.raw for v in value.node.values("url"))
-    urls: list[str] = []
-    for raw in written:
-        result = normalize(raw, _URL, ctx)
-        if isinstance(result, Ok) and isinstance(result.value, str) and result.value not in urls:
-            urls.append(result.value)
-    return tuple(urls)
+    return canonical_urls(written, ctx)
+
+
+def canonical_urls(written: Iterable[JsonValue], ctx: Context) -> tuple[str, ...]:
+    """The values of `written` that normalize as URLs, canonicalized, each once, in order."""
+    results = [normalize(raw, _URL, ctx) for raw in written]
+    return tuple(dict.fromkeys(r.value for r in results if isinstance(r, Ok) and isinstance(r.value, str)))
 
 
 def _page_names(node: Node) -> list[JsonValue]:
