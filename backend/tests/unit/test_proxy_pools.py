@@ -249,6 +249,19 @@ def test_a_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, proxy: Stu
     assert result.bundle.manifest.fetch_policy["proxy_pool"] == "dc"
 
 
+@pytest.mark.parametrize("variable", ["NO_PROXY", "no_proxy"])
+def test_the_environments_no_proxy_does_not_send_a_pool_fetch_direct(
+    origin: Origin, proxy: StubProxy, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    # Going direct would skip the pool and let curl resolve the host itself, unpinned from the checked address.
+    monkeypatch.setenv(variable, "*")
+
+    result = _fetch("http://shop.example.test/p", {"dc": proxy.endpoint()})
+
+    assert _outcome(result) == (200, "ok", None)
+    assert proxy.tunnels == ["shop.example.test:80"]
+
+
 def test_the_pools_credentials_reach_the_proxy_and_never_the_capture(origin: Origin, proxy: StubProxy) -> None:
     endpoint = proxy.endpoint(_CREDENTIALS)
     proxy.required = endpoint.authorization

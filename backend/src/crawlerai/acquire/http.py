@@ -105,7 +105,8 @@ async def _follow(
 ) -> _Response:
     target = await _checked(connector.check(url), deadline, None)
     # One session per fetch keeps cookies set by one hop for the next, and none across fetches. `trust_env=False`
-    # with an explicit proxy option (below) ignores proxy environment variables: proxies come only from the pools.
+    # stops curl_cffi reading the proxy environment variables; libcurl reads them itself, so each request also sets
+    # CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY (below): proxies come only from the pools.
     async with AsyncSession(impersonate=impersonate, trust_env=False) as session:
         response = await _get(session, target, policy, proxy, deadline)
         for hop in range(MAX_REDIRECTS + 1):
@@ -199,6 +200,9 @@ def _through(proxy: ProxyEndpoint) -> dict[CurlOpt, object]:
         CurlOpt.PROXYTYPE: _CURLPROXY_HTTP,
         # A CONNECT tunnel for http pages too (RFC 9110 §9.3.6): the proxy relays bytes and never rewrites a request.
         CurlOpt.HTTPPROXYTUNNEL: 1,
+        # An empty list overrides the environment's `no_proxy`, which would otherwise send matching hosts direct,
+        # resolved by curl rather than the guard (CURLOPT_NOPROXY).
+        CurlOpt.NOPROXY: "",
     }
     if proxy.username is not None:
         # Set apart from the proxy URL, so the credentials need no percent-encoding (CURLOPT_PROXYUSERNAME).
