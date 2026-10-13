@@ -23,7 +23,7 @@ from ipaddress import IPv4Address, IPv6Address
 from types import TracebackType
 from typing import Self, cast
 
-from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target, authority
+from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target, authority, bracketed
 from crawlerai.core.proxy import ProxyEndpoint
 
 __all__ = ["SocksGuard"]
@@ -152,8 +152,7 @@ class SocksGuard:
         if key not in self._targets:
             # The scheme only selects `check`'s rules for web URLs: its port allowlist is the same for http and https,
             # and the tunnel carries whichever the page uses.
-            literal = f"[{host}]" if ":" in host else host
-            self._targets[key] = asyncio.ensure_future(self._connector.check(f"https://{literal}:{port}/"))
+            self._targets[key] = asyncio.ensure_future(self._connector.check(f"https://{bracketed(host)}:{port}/"))
         try:
             return await asyncio.shield(self._targets[key])
         except SsrfRejected as e:
@@ -167,9 +166,9 @@ async def _tunnel(proxy: ProxyEndpoint, target: Target) -> tuple[asyncio.StreamR
         reader, writer = await asyncio.open_connection(proxy.host, proxy.port)
     except OSError as e:
         raise _Refused(_HOST_UNREACHABLE) from e
-    # RFC 9112 §3.2.3: CONNECT names the authority; an IPv6 literal goes in brackets (RFC 3986 §3.2.2).
-    host = f"[{target.host}]" if ":" in target.host else target.host
-    head = [f"CONNECT {host}:{target.port} HTTP/1.1", f"Host: {host}:{target.port}"]
+    # RFC 9112 §3.2.3: CONNECT names the authority.
+    authority_form = f"{bracketed(target.host)}:{target.port}"
+    head = [f"CONNECT {authority_form} HTTP/1.1", f"Host: {authority_form}"]
     if proxy.authorization is not None:
         head.append(f"Proxy-Authorization: {proxy.authorization}")
     try:

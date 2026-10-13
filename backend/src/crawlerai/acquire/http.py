@@ -24,11 +24,12 @@ from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
-from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
+from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target, bracketed
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList
 
+_CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYTYPE)
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
     CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
@@ -70,7 +71,7 @@ async def fetch_http(
     started = time.monotonic()
     error: str | None = None
     try:
-        proxy = _pool(policy, pools)
+        proxy = pool_endpoint(policy.proxy_pool, pools)
         deadline = started + policy.timeout_s
         final = await _follow(url, policy, impersonate, connector or SafeConnector(), proxy, deadline)
         # classify parses HTML synchronously; a thread keeps the event loop free.
@@ -78,6 +79,8 @@ async def fetch_http(
         last: _Response | None = final
     except _Failed as failed:
         error, block_class, last = failed.error, "error", failed.last
+    except UnknownProxyPool as unknown:
+        error, block_class, last = str(unknown), "error", None
     return fetch_result(
         url=url,
         method="http",
@@ -90,13 +93,6 @@ async def fetch_http(
         block_class=block_class,
         error=error,
     )
-
-
-def _pool(policy: FetchPolicy, pools: Mapping[str, ProxyEndpoint] | None) -> ProxyEndpoint | None:
-    try:
-        return pool_endpoint(policy.proxy_pool, pools or {})
-    except UnknownProxyPool as e:
-        raise _Failed(str(e), None) from e
 
 
 async def _follow(
@@ -183,7 +179,7 @@ async def _get(
 
 
 def _pinned(target: Target) -> dict[CurlOpt, object]:
-    ip = f"[{target.ip}]" if target.ip.version == 6 else str(target.ip)
+    ip = bracketed(str(target.ip))
     return {
         # Every connection of this request goes to the checked address, whatever host name curl derives from the
         # URL (IDNA, case, percent-encoding): CURLOPT_RESOLVE's `*` host matches every name on the port.
@@ -195,9 +191,12 @@ def _pinned(target: Target) -> dict[CurlOpt, object]:
 def _through(proxy: ProxyEndpoint) -> dict[CurlOpt, object]:
     # No CURLOPT_RESOLVE: its `*` would also redirect the connection to the proxy. The proxy resolves the page's host
     # itself (ARCHITECTURE §7.1); the guard checked that host before this request.
-    host = f"[{proxy.host}]" if ":" in proxy.host else proxy.host
     options: dict[CurlOpt, object] = {
-        CurlOpt.PROXY: f"http://{host}:{proxy.port}",
+        # The proxy's host alone, with its type and port set apart: curl's CURLPROXY_HTTP (0) speaks plain HTTP to
+        # the proxy, the only kind a pool is (`crawlerai.core.proxy`); pages inside the tunnel keep their own TLS.
+        CurlOpt.PROXY: bracketed(proxy.host),
+        CurlOpt.PROXYPORT: proxy.port,
+        CurlOpt.PROXYTYPE: _CURLPROXY_HTTP,
         # A CONNECT tunnel for http pages too (RFC 9110 §9.3.6): the proxy relays bytes and never rewrites a request.
         CurlOpt.HTTPPROXYTUNNEL: 1,
     }

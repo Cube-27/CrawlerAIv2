@@ -60,10 +60,11 @@ class UnknownProxyPool(Exception):
         super().__init__("proxy_pool_unknown")
 
 
-def pool_endpoint(name: str | None, pools: Mapping[str, ProxyEndpoint]) -> ProxyEndpoint | None:
-    """The endpoint of pool `name`, or None when no pool is asked for."""
+def pool_endpoint(name: str | None, pools: Mapping[str, ProxyEndpoint] | None) -> ProxyEndpoint | None:
+    """The endpoint of pool `name` among `pools` (none configured when None), or None when no pool is asked for."""
     if name is None:
         return None
-    if name not in pools:
+    endpoint = (pools or {}).get(name)
+    if endpoint is None:
         raise UnknownProxyPool
-    return pools[name]
+    return endpoint

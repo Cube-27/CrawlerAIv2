@@ -121,7 +121,7 @@ async def fetch_browser(
     exchange: Exchange | None = None
     content = Content(body=b"")
     try:
-        proxy = pool_endpoint(policy.proxy_pool, pools or {})
+        proxy = pool_endpoint(policy.proxy_pool, pools)
         async with asyncio.timeout(policy.browser_timeout_s):
             exchange, content = await _render(
                 url, policy, session, connector or SafeConnector(), proxy, started, timings

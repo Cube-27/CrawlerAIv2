@@ -108,6 +108,11 @@ class SafeConnector:
         return await self.check(urljoin(current.url, location))
 
 
+def bracketed(host: str) -> str:
+    """`host` as it is written before a port: an IPv6 literal goes in brackets (RFC 3986 §3.2.2)."""
+    return f"[{host}]" if ":" in host else host
+
+
 def authority(url: str) -> tuple[str, int]:
     """The host (lowercased, as `urlsplit` gives it) and port `url` connects to; reject a scheme, host or port the
     guard doesn't admit."""
