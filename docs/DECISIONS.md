@@ -791,3 +791,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: read any path given (SonarCloud S8707).
 - Why: The scanned repository is the natural base; default CI and hook runs are unchanged.
 - Reversible: yes
+
+### D-0143 — `crawlerai fetch` passes the package version as engine version until SPEC-01 PR 7
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 3 (#22) · Status: decided
+- Decision: `fetch_http`/`store_capture` take the engine version as a parameter; the CLI passes `version("crawlerai")` until PR 7 replaces it.
+- Alternatives: Wait for PR 7.
+- Why: PR 7 was in flight. Bundles from the CLI before PR 7 carry `0.1.0`.
+- Reversible: yes
+
+### D-0144 — `store_capture` writes the object before the row
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 3 (#22) · Status: decided
+- Decision: The object is written first, and the row is inserted after it in the caller's transaction, so a row never names a missing bundle.
+- Alternatives: Insert the row first.
+- Why: A failed insert leaves only an unreferenced object, which an orphan sweep could remove if one is ever measured to be needed; `expire_captures` deletes by row.
+- Reversible: yes
+
+### D-0145 — No `CURLINFO_PRIMARY_IP` check
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 3 (#22) · Status: decided
+- Decision: Not added.
+- Alternatives: Compare the connected address with the checked one after each response (#18 follow-up).
+- Why: `CURLOPT_RESOLVE "*:port:ip"` also overrides literal-IP URLs, so curl can't connect anywhere else; the check could never fire or be tested.
+- Reversible: yes
+
+### D-0146 — `crawlerai fetch --out` must lie under the working directory
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 3 (#22) · Status: decided
+- Decision: `--out` is resolved and rejected (exit 2) unless it lies under the working directory.
+- Alternatives: Write anywhere (SonarCloud S8707).
+- Why: Same shape as D-0142.
+- Reversible: yes
+
+### D-0147 — `crawlerai fetch` exits 0 whenever a bundle is written
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 3 (#22) · Status: decided
+- Decision: Including an `error` outcome; the outcome is reported in the JSON summary's `block_class` and `error`.
+- Alternatives: Non-zero exit on an `error` outcome.
+- Why: The outcome is data, not a CLI failure.
+- Reversible: yes

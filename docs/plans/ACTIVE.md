@@ -32,12 +32,12 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-01 PR 7 (also renames the double-prefixed CHECKs below); SPEC-02 PR 3; SPEC-01 PR 8.
+- Next: SPEC-01 PR 7 (in progress); queue over-claim fix (below); SPEC-01 PR 8; SPEC-02 PR 4; then SPEC-03.
+- Bug (fix row, due): `db/queue.claim_tasks` uses `UPDATE … WHERE id IN (SELECT … LIMIT n FOR UPDATE SKIP LOCKED)`; Postgres may re-run the subquery as a semi-join, so one call can claim more than `n` tasks (seen as a flaky CI run on #22). Fix with a `MATERIALIZED` CTE or `id = ANY(ARRAY(…))`, and pin the limit with a test.
 - Done: SonarCloud security findings that failed the gate on `main` fixed in code (#21, D-0141, D-0142).
 - Follow-up for SPEC-01 PR 7 (from #20): CHECK constraints in migrations 0002–0004 are double-prefixed in the database (`ck_job_ck_job_kind`), because the migrations pass full names and the naming convention prefixes again; 0005 uses `op.f()`. Rename them in the next migration and pin it with a test that checks names in the database.
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
 - Follow-up (scale, not yet due): `release_expired_leases` handles all expired leases in one transaction; add a per-run batch limit if many workers die at once (#19 review). The `job_event (job_id, id)` index comes with SPEC-10's SSE query.
-- Follow-ups for SPEC-02 PR 3 (from #18's review): (1) the cross-host pin test pins both hosts to 127.0.0.1, so it can't fail; pin the second to an address with no listener and assert `network_error: curl 7`; (2) DNS resolution in `connector.check`/`redirect` is outside the `timeout_s` budget, so bound it by the remaining time; (3) raise `curl-cffi` to `>=0.16`; (4) optional: compare `CURLINFO_PRIMARY_IP` with the checked address, and set `CURLOPT_PROTOCOLS_STR="http,https"`.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
 - Blocked: none.
 
@@ -75,7 +75,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | Acquisition types, classify, SSRF guard | done (#16) | Ran ahead of SPEC-01 PRs 3–8; it needs no SPEC-01 table. |
 | 2 | HTTP fetch (curl_cffi) with manual redirects and caps | done (#18) | |
-| 3 | Persist capture + `crawlerai fetch` CLI | todo | |
+| 3 | Persist capture + `crawlerai fetch` CLI | done (#22) | Also closed #18's follow-ups. |
 | 4 | Politeness + robots + backoff via requeue | todo | |
 | 5 | Rung selection + fetch_method memory + re-check scheduler task | todo | |
 | 6 | Patchright browser rung with network capture | todo | |
