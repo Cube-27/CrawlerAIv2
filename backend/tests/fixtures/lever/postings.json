@@ -1,0 +1,31 @@
+[
+  {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "text": "Synthetic Platform Engineer",
+    "categories": { "location": "Remote", "commitment": "Full-time", "team": "Engineering", "allLocations": ["Remote"] },
+    "country": null,
+    "description": "<p>Build synthetic systems.</p>",
+    "descriptionPlain": "Build synthetic systems.",
+    "lists": [],
+    "additional": "",
+    "additionalPlain": "",
+    "hostedUrl": "https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000001",
+    "applyUrl": "https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000001/apply",
+    "workplaceType": "remote"
+  },
+  {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "text": "Synthetic Data Analyst",
+    "categories": { "location": "Example City", "commitment": "Part-time", "team": "Data", "allLocations": ["Example City"] },
+    "country": "ZZ",
+    "description": "<p>Analyse synthetic data.</p>",
+    "descriptionPlain": "Analyse synthetic data.",
+    "lists": [],
+    "additional": "",
+    "additionalPlain": "",
+    "hostedUrl": "https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000002",
+    "applyUrl": "https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000002/apply",
+    "workplaceType": "on-site",
+    "salaryRange": { "currency": "XTS", "interval": "per-year-salary", "min": 1, "max": 2 }
+  }
+]

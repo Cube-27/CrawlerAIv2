@@ -6,24 +6,23 @@ written here (C3). Tenants and the recorded API responses under `tests/fixtures/
 
 import asyncio
 import json
-import re
-from functools import partial
-from ipaddress import ip_address
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.greenhouse import API, BOARD_HOSTS, Greenhouse
 from crawlerai.db.models import PageKind
-from crawlerai.schemas.registry import load_presets
+
+StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
+JsonSelect = Callable[[str, Any], list[Any]]  # the `select_json` fixture (conftest)
+PresetFields = Callable[[str], dict[str, str]]  # the `preset_fields` fixture (conftest)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "greenhouse"
 HOST = sorted(BOARD_HOSTS)[0]
@@ -85,65 +84,41 @@ def test_other_urls_are_not_detected(url: str) -> None:
     assert ADAPTER.detect(url) is None
 
 
-def _api(routes: dict[str, bytes]) -> JsonFetcher:
-    """`fetch_json` against a stand-in API serving `routes` (path and query -> body), resolving every host to a
-    public address."""
-
-    async def resolve(_host: str) -> list[IPAddress]:
-        return [ip_address("93.184.215.14")]
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        body = routes.get(request.url.raw_path.decode())
-        return httpx.Response(404, json={}) if body is None else httpx.Response(200, content=body)
-
-    return partial(
-        fetch_json, engine_version="test", connector=SafeConnector(resolve), transport=httpx.MockTransport(handler)
-    )
-
-
-def _api_path(endpoint: str) -> str:
-    return httpx.URL(endpoint).raw_path.decode()
-
-
-def test_a_job_page_is_fetched_from_the_retrieve_job_endpoint() -> None:
+def test_a_job_page_is_fetched_from_the_retrieve_job_endpoint(stand_in_api: StandInApi) -> None:
     body = (FIXTURES / "job.json").read_bytes()
     endpoint = f"{API}/{TENANT}/jobs/4000001"
     page = f"https://{HOST}/{TENANT}/jobs/4000001"
 
-    result = asyncio.run(Greenhouse(_api({_api_path(endpoint): body})).fetch(page, FetchPolicy()))
+    result = asyncio.run(Greenhouse(stand_in_api({endpoint: body})).fetch(page, FetchPolicy()))
 
     manifest = result.bundle.manifest
     assert (manifest.method, manifest.block_class, manifest.url, manifest.final_url) == ("api", "ok", page, endpoint)
     assert result.bundle.body == body
 
 
-def test_a_board_page_is_fetched_from_the_list_jobs_endpoint_with_content() -> None:
+def test_a_board_page_is_fetched_from_the_list_jobs_endpoint_with_content(stand_in_api: StandInApi) -> None:
     body = (FIXTURES / "jobs.json").read_bytes()
     endpoint = f"{API}/{TENANT}/jobs?content=true"
 
-    result = asyncio.run(Greenhouse(_api({_api_path(endpoint): body})).fetch(f"https://{HOST}/{TENANT}", FetchPolicy()))
+    result = asyncio.run(Greenhouse(stand_in_api({endpoint: body})).fetch(f"https://{HOST}/{TENANT}", FetchPolicy()))
 
     assert (result.block_class, result.bundle.manifest.final_url, result.bundle.body) == ("ok", endpoint, body)
 
 
-def test_a_missing_job_is_not_found() -> None:
-    result = asyncio.run(Greenhouse(_api({})).fetch(f"https://{HOST}/{TENANT}/jobs/1", FetchPolicy()))
+def test_a_missing_job_is_not_found(stand_in_api: StandInApi) -> None:
+    result = asyncio.run(Greenhouse(stand_in_api({})).fetch(f"https://{HOST}/{TENANT}/jobs/1", FetchPolicy()))
 
     assert result.block_class == "not_found"
 
 
 def test_a_url_it_does_not_detect_is_refused() -> None:
+    fetch = ADAPTER.fetch("https://jobs.example.com/board", FetchPolicy())
     with pytest.raises(ValueError, match="not a job board URL"):
-        asyncio.run(ADAPTER.fetch("https://jobs.example.com/board", FetchPolicy()))
+        asyncio.run(fetch)
 
 
-def _schema_org(preset: str) -> dict[str, str]:
-    (schema,) = (s for s in load_presets() if s.name == preset)
-    return {name: spec.schema_org for name, spec in schema.fields.items() if spec.schema_org is not None}
-
-
-def test_the_job_detail_preset_maps_to_the_job_object() -> None:
-    assert ADAPTER.map(_schema_org("job_detail"), "detail") == {
+def test_the_job_detail_preset_maps_to_the_job_object(preset_fields: PresetFields) -> None:
+    assert ADAPTER.map(preset_fields("job_detail"), "detail") == {
         "title": "$['title']",
         "company": "$['company_name']",
         "locations": "$['location']['name']",
@@ -153,8 +128,8 @@ def test_the_job_detail_preset_maps_to_the_job_object() -> None:
     }
 
 
-def test_the_job_listing_preset_maps_into_each_listed_job() -> None:
-    assert ADAPTER.map(_schema_org("job_listing"), "listing") == {
+def test_the_job_listing_preset_maps_into_each_listed_job(preset_fields: PresetFields) -> None:
+    assert ADAPTER.map(preset_fields("job_listing"), "listing") == {
         "title": "$['jobs'][*]['title']",
         "url": "$['jobs'][*]['absolute_url']",
         "location": "$['jobs'][*]['location']['name']",
@@ -167,26 +142,17 @@ def test_a_property_the_platform_does_not_document_is_left_out() -> None:
     }
 
 
-def _select(path: str, document: Any) -> list[Any]:
-    """The values a mapped path selects: `$`, then `['name']` member and `[*]` wildcard segments (RFC 9535 §2.5)."""
-    nodes = [document]
-    for segment in re.findall(r"\['([^']*)'\]|\[\*\]", path.removeprefix("$")):
-        if segment:
-            nodes = [node[segment] for node in nodes if isinstance(node, dict) and segment in node]
-        else:
-            nodes = [item for node in nodes for item in node]
-    return nodes
-
-
 @pytest.mark.parametrize(
     ("preset", "page_kind", "fixture"), [("job_detail", "detail", "job.json"), ("job_listing", "listing", "jobs.json")]
 )
 def test_every_mapped_path_selects_a_string_in_the_recorded_response(
-    preset: str, page_kind: PageKind, fixture: str
+    preset: str, page_kind: PageKind, fixture: str, select_json: JsonSelect, preset_fields: PresetFields
 ) -> None:
     document = json.loads((FIXTURES / fixture).read_text(encoding="utf-8"))
 
-    selected = {field: _select(path, document) for field, path in ADAPTER.map(_schema_org(preset), page_kind).items()}
+    selected = {
+        field: select_json(path, document) for field, path in ADAPTER.map(preset_fields(preset), page_kind).items()
+    }
 
     expected_count = 1 if page_kind == "detail" else len(document["jobs"])
     assert {field: len(values) for field, values in selected.items()} == dict.fromkeys(selected, expected_count)

@@ -1,0 +1,24 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "text": "Synthetic Platform Engineer",
+  "categories": {
+    "location": "Remote",
+    "commitment": "Full-time",
+    "team": "Engineering",
+    "department": "Research",
+    "allLocations": ["Remote"]
+  },
+  "country": null,
+  "opening": "<p>Opening of a test fixture.</p>",
+  "openingPlain": "Opening of a test fixture.",
+  "description": "<p>Opening of a test fixture.</p><p>Build synthetic systems.</p>",
+  "descriptionPlain": "Opening of a test fixture.\nBuild synthetic systems.",
+  "descriptionBody": "<p>Build synthetic systems.</p>",
+  "descriptionBodyPlain": "Build synthetic systems.",
+  "lists": [{ "text": "Requirements", "content": "<li>Write tests</li>" }],
+  "additional": "",
+  "additionalPlain": "",
+  "hostedUrl": "https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000001",
+  "applyUrl": "https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000001/apply",
+  "workplaceType": "remote"
+}

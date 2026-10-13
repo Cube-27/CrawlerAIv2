@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch
+from crawlerai.adapters.base import PATH_SEGMENT, AdapterMatch, json_path
 from crawlerai.db.models import PageKind
 
 API: Final = "https://boards-api.greenhouse.io/v1/boards"
@@ -24,9 +24,8 @@ API: Final = "https://boards-api.greenhouse.io/v1/boards"
 # is `/embed/job_board?for={board_token}`, an embedded job `/embed/job_app?for={board_token}&token={job_id}`.
 BOARD_HOSTS: Final = frozenset({"boards.greenhouse.io", "job-boards.greenhouse.io"})
 
-# A board token is one path segment of RFC 3986 §2.3 unreserved characters, other than a dot-segment (`.`, `..`,
-# RFC 3986 §5.2.4), which would move the API path; a job id is the API's integer id.
-_TOKEN = re.compile(r"(?!\.+$)[A-Za-z0-9._~-]+")
+# A board token is a `PATH_SEGMENT`; a job id is the API's integer id.
+_TOKEN = PATH_SEGMENT
 _JOB_ID = re.compile(r"[0-9]+")
 
 # schema.org JobPosting property -> the member names leading to its value in a job object (Job Board API
@@ -41,8 +40,7 @@ _JOB_FIELDS: Final[dict[str, tuple[str, ...]]] = {
     "JobPosting.dateModified": ("updated_at",),
     "JobPosting.hiringOrganization.name": ("company_name",),
 }
-# JSONPath (RFC 9535) bracket notation, the form of its Normalized Paths (§2.7): the list-jobs response holds the
-# jobs in its `jobs` array.
+# JSONPath (RFC 9535) roots: the list-jobs response holds the jobs in its `jobs` array.
 _ROOT: Final[dict[PageKind, str]] = {"detail": "$", "listing": "$['jobs'][*]"}
 
 
@@ -70,13 +68,8 @@ class Greenhouse:
         return await self._fetch(JsonRequest(url=endpoint, page_url=url), policy)
 
     def map(self, schema_org: Mapping[str, str], page_kind: PageKind) -> dict[str, str]:
-        # The member names are plain ASCII, so they need no escaping inside single quotes (RFC 9535 §2.3.1.1).
         root = _ROOT[page_kind]
-        return {
-            field: root + "".join(f"['{name}']" for name in _JOB_FIELDS[path])
-            for field, path in schema_org.items()
-            if path in _JOB_FIELDS
-        }
+        return {field: json_path(root, _JOB_FIELDS[path]) for field, path in schema_org.items() if path in _JOB_FIELDS}
 
 
 def _hosted(segments: list[str]) -> AdapterMatch | None:
