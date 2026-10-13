@@ -19,7 +19,7 @@ from ipaddress import IPv4Address, IPv6Address
 from types import TracebackType
 from typing import Self, cast
 
-from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
+from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target, authority
 
 __all__ = ["SocksGuard"]
 
@@ -58,7 +58,7 @@ class SocksGuard:
             done.set_result(target)
             self._targets[(target.host.lower(), target.port)] = done
         self._handlers: set[asyncio.Task[None]] = set()
-        self._servers: list[asyncio.Server] = []
+        self._server: asyncio.Server | None = None
         self.rejections: dict[tuple[str, int], RejectReason] = {}
         self.address: tuple[str, int] = ("127.0.0.1", 0)  # the listening address, once the guard is entered
 
@@ -67,21 +67,29 @@ class SocksGuard:
         host, port = self.address
         return f"socks5://{host}:{port}"
 
+    def rejection_for(self, url: str) -> RejectReason | None:
+        """Why the guard refused the connection `url` needs, if it did."""
+        try:
+            host, port = authority(url)
+        except SsrfRejected:
+            return None  # refused before any connection: the guard never saw it
+        return self.rejections.get((host.lower(), port))
+
     async def __aenter__(self) -> Self:
-        server = await asyncio.start_server(self._serve, "127.0.0.1", 0)
-        self._servers.append(server)
-        self.address = ("127.0.0.1", int(server.sockets[0].getsockname()[1]))
+        self._server = await asyncio.start_server(self._serve, "127.0.0.1", 0)
+        self.address = ("127.0.0.1", int(self._server.sockets[0].getsockname()[1]))
         return self
 
     async def __aexit__(
         self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
     ) -> None:
-        for server in self._servers:
+        server, self._server = self._server, None
+        if server is not None:
             server.close()
         for handler in self._handlers:
             handler.cancel()
         await asyncio.gather(*self._handlers, return_exceptions=True)
-        for server in self._servers:
+        if server is not None:
             await server.wait_closed()
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

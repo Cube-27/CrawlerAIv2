@@ -8,7 +8,7 @@ import asyncio
 import io
 import time
 from collections.abc import Awaitable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
@@ -19,10 +19,10 @@ from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.headers import recorded
+from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.ids import uuid7
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.storage.capture_bundle import HeaderList
 
 # RFC 9110 §15.4: the redirect status codes that carry a Location to follow (300 and 304 do not redirect by
 # themselves, 305 and 306 are deprecated).
@@ -42,6 +42,10 @@ class _Response:
     request_headers: HeaderList
     response_headers: HeaderList
     body: bytes
+
+    @property
+    def exchange(self) -> Exchange:
+        return Exchange(self.url, self.status, self.request_headers, self.response_headers)
 
 
 class _Failed(Exception):
@@ -66,35 +70,20 @@ async def fetch_http(
         final = await _follow(url, policy, impersonate, connector or SafeConnector(), started + policy.timeout_s)
         # classify parses HTML synchronously; a thread keeps the event loop free.
         block_class: BlockClass = await asyncio.to_thread(classify, final.status, final.response_headers, final.body)
+        last: _Response | None = final
     except _Failed as failed:
-        error, block_class = failed.error, "error"
-        # An error keeps no body: it yields no records (INV-11), and a partial body would mislead a replay.
-        last = failed.last or _Response(url=url, status=0, request_headers=(), response_headers=(), body=b"")
-        final = replace(last, body=b"")
-    duration_ms = round((time.monotonic() - started) * 1000)
-
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
+        error, block_class, last = failed.error, "error", failed.last
+    return fetch_result(
         url=url,
-        final_url=final.url,
-        fetched_at=fetched_at,
         method="http",
-        status_code=final.status,
-        block_class=block_class,
-        headers=Headers(request=final.request_headers, response=final.response_headers),
-        timings_ms={"total": duration_ms},
-        html_sha256=sha256_hex(final.body),
-        network_bodies=(),
-        fetch_policy=policy.model_dump(mode="json"),
+        policy=policy,
         engine_version=engine_version,
-    )
-    attempt = AttemptRecord(
-        method="http", status=final.status or None, block_class=block_class, duration_ms=duration_ms, error=error
-    )
-    return FetchResult(
-        bundle=CaptureBundle(manifest=manifest, body=final.body, network=()),
-        duration_ms=duration_ms,
-        attempts=(attempt,),
+        fetched_at=fetched_at,
+        started=started,
+        exchange=None if last is None else last.exchange,
+        content=Content(body=b"" if last is None else last.body),
+        block_class=block_class,
+        error=error,
     )
 
 

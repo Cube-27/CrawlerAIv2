@@ -15,7 +15,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
-from urllib.parse import urlsplit
 
 from patchright.async_api import Browser, Page, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
@@ -24,19 +23,11 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.headers import recorded
+from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.ids import uuid7
-from crawlerai.storage.capture_bundle import (
-    CaptureBundle,
-    CaptureManifest,
-    HeaderList,
-    Headers,
-    NetworkBody,
-    network_file,
-    sha256_hex,
-)
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, sha256_hex
 
 __all__ = ["BrowserSession", "fetch_browser", "open_browser"]
 
@@ -101,26 +92,10 @@ async def _identity(browser: Browser) -> tuple[str, dict[str, JsonValue]]:
 
 
 class _Failed(Exception):
-    def __init__(self, error: str, response: "_Navigation | None") -> None:
+    def __init__(self, error: str, exchange: Exchange | None) -> None:
         super().__init__(error)
         self.error = error
-        self.response = response
-
-
-@dataclass(frozen=True)
-class _Navigation:
-    url: str
-    status: int
-    request_headers: HeaderList
-    response_headers: HeaderList
-
-
-@dataclass(frozen=True)
-class _Rendered:
-    navigation: _Navigation
-    body: bytes  # the rendered DOM
-    raw_body: bytes | None  # the navigation response body; None when the browser no longer holds it
-    network: tuple[tuple[NetworkBody, bytes], ...]
+        self.exchange = exchange
 
 
 async def fetch_browser(
@@ -135,65 +110,32 @@ async def fetch_browser(
     started = time.monotonic()
     timings: dict[str, int] = {}
     error: str | None = None
-    rendered: _Rendered | None = None
-    navigation: _Navigation | None = None
+    exchange: Exchange | None = None
+    content = Content(body=b"")
     try:
         async with asyncio.timeout(policy.browser_timeout_s):
-            rendered = await _render(url, policy, session, connector or SafeConnector(), started, timings)
-        navigation = rendered.navigation
-        _check_size(rendered, policy)
+            exchange, content = await _render(url, policy, session, connector or SafeConnector(), started, timings)
         # classify parses HTML synchronously; a thread keeps the event loop free.
-        headers = navigation.response_headers
-        block_class: BlockClass = await asyncio.to_thread(classify, navigation.status, headers, rendered.body)
+        headers = exchange.response_headers
+        block_class: BlockClass = await asyncio.to_thread(classify, exchange.status, headers, content.body)
     except _Failed as failed:
-        error, block_class, navigation = failed.error, "error", failed.response or navigation
+        error, block_class, exchange = failed.error, "error", failed.exchange
     except TimeoutError:
         error, block_class = "timeout", "error"
-    if error is not None:
-        # An error keeps no body: it yields no records (INV-11), and a partial page would mislead a replay.
-        rendered = None
-    navigation = navigation or _Navigation(url=url, status=0, request_headers=(), response_headers=())
-    duration_ms = round((time.monotonic() - started) * 1000)
-    body = rendered.body if rendered else b""
-    network = rendered.network if rendered else ()
-
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
+    return fetch_result(
         url=url,
-        final_url=navigation.url,
-        fetched_at=fetched_at,
         method="browser",
-        status_code=navigation.status,
-        block_class=block_class,
-        headers=Headers(request=navigation.request_headers, response=navigation.response_headers),
-        # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
-        timings_ms={"total": duration_ms, **timings},
-        html_sha256=sha256_hex(body),
-        raw_html_sha256=None if rendered is None or rendered.raw_body is None else sha256_hex(rendered.raw_body),
-        network_bodies=tuple(entry for entry, _ in network),
-        fetch_policy=policy.model_dump(mode="json"),
+        policy=policy,
         engine_version=engine_version,
+        fetched_at=fetched_at,
+        started=started,
+        exchange=exchange,
+        content=content,
+        block_class=block_class,
+        error=error,
+        # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
+        timings=timings,
     )
-    status = navigation.status or None
-    attempt = AttemptRecord(
-        method="browser", status=status, block_class=block_class, duration_ms=duration_ms, error=error
-    )
-    return FetchResult(
-        bundle=CaptureBundle(
-            manifest=manifest,
-            body=body,
-            network=tuple(data for _, data in network),
-            raw_body=rendered.raw_body if rendered else None,
-        ),
-        duration_ms=duration_ms,
-        attempts=(attempt,),
-    )
-
-
-def _check_size(rendered: _Rendered, policy: FetchPolicy) -> None:
-    # The browser hands over bodies after content decoding, so the decompressed cap is the one that applies.
-    if max(len(rendered.body), len(rendered.raw_body or b"")) > policy.max_decompressed_bytes:
-        raise _Failed("body_cap", rendered.navigation)
 
 
 async def _render(
@@ -203,7 +145,7 @@ async def _render(
     connector: SafeConnector,
     started: float,
     timings: dict[str, int],
-) -> _Rendered:
+) -> tuple[Exchange, Content]:
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
@@ -226,12 +168,13 @@ async def _render(
 
 async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
-) -> _Rendered:
-    hops: list[str] = [first.url]  # the main frame's navigation requests, one per redirect hop
+) -> tuple[Exchange, Content]:
+    last_hop = first.url  # the main frame's latest navigation request: one per redirect hop
 
     def on_request(request: Request) -> None:
+        nonlocal last_hop
         if request.is_navigation_request() and request.frame == page.main_frame:
-            hops.append(request.url)
+            last_hop = request.url
 
     json_responses: list[Response] = []
 
@@ -248,28 +191,43 @@ async def _navigate(
     try:
         response = await page.goto(url, wait_until="domcontentloaded", timeout=_ms_until(budget_end))
     except PlaywrightError as e:
-        raise _Failed(_navigation_error(e, hops[-1], guard.rejections), None) from e
+        raise _Failed(_navigation_error(e, guard.rejection_for(last_hop)), None) from e
     if response is None:  # only a same-document navigation has none, and a new page has no document yet
         raise _Failed("no_response", None)
-    navigation = _Navigation(
+    sent, received = await asyncio.gather(response.request.headers_array(), response.headers_array())
+    exchange = Exchange(
         url=response.url,
         status=response.status,
-        request_headers=recorded(_header_list(await response.request.headers_array())),
-        response_headers=recorded(_header_list(await response.headers_array())),
+        request_headers=recorded(_header_list(sent)),
+        response_headers=recorded(_header_list(received)),
     )
     # Network idle (no connection for 500 ms) is waited for until the hard cap; a page that never settles is read
     # as it is then.
     idle_end = started + _IDLE_SHARE * policy.browser_timeout_s
     with contextlib.suppress(PlaywrightTimeout):
         await page.wait_for_load_state("networkidle", timeout=_ms_until(idle_end))
+    body, raw_body, network = await asyncio.gather(
+        _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses)
+    )
+    # The browser hands over bodies after content decoding, so the decompressed cap is the one that applies.
+    if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
+        raise _Failed("body_cap", exchange)
+    return exchange, Content(body=body, raw_body=raw_body, network=network)
+
+
+async def _rendered(page: Page, exchange: Exchange) -> bytes:
     try:
-        body = (await page.content()).encode()
+        return (await page.content()).encode()
     except PlaywrightError as e:
-        raise _Failed("render_error", navigation) from e
-    raw_body: bytes | None = None
-    with contextlib.suppress(PlaywrightError):
-        raw_body = await response.body()
-    return _Rendered(navigation=navigation, body=body, raw_body=raw_body, network=await _json_bodies(json_responses))
+        raise _Failed("render_error", exchange) from e
+
+
+async def _raw_body(response: Response) -> bytes | None:
+    """The navigation response body, or None when the browser no longer holds it."""
+    try:
+        return await response.body()
+    except PlaywrightError:
+        return None
 
 
 def _is_json(response: Response) -> bool:
@@ -302,24 +260,13 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
     return tuple(captured)
 
 
-def _navigation_error(error: PlaywrightError, last_hop: str, rejections: dict[tuple[str, int], RejectReason]) -> str:
+def _navigation_error(error: PlaywrightError, rejected: RejectReason | None) -> str:
     if isinstance(error, PlaywrightTimeout):
         return "timeout"
-    reason = rejections.get(_guard_key(last_hop))
-    if reason is not None:
-        return str(SsrfRejected(reason))
+    if rejected is not None:
+        return str(SsrfRejected(rejected))
     match = _NET_ERROR.search(error.message)
     return f"network_error: {match.group()}" if match else "network_error"
-
-
-def _guard_key(url: str) -> tuple[str, int]:
-    parts = urlsplit(url)
-    default = 443 if parts.scheme == "https" else 80
-    try:
-        port = parts.port or default
-    except ValueError:
-        port = default
-    return (parts.hostname or "", port)
 
 
 def _header_list(headers: Sequence[Mapping[str, object]]) -> HeaderList:
