@@ -4,44 +4,12 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { RecordField, SchemaSummary, ScrapeResponse } from "../../api/scrape";
+import { problem, stubApi } from "../../test/api";
 
 // The form types into several fields with user-event, which is slow in jsdom.
 vi.setConfig({ testTimeout: 20_000 });
 
 // `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
-
-interface Call {
-  method: string;
-  path: string;
-  authorization: string | null;
-  body: unknown;
-}
-
-/** Stubs `fetch` with one reply per `METHOD /path`; records every request. */
-function stubApi(replies: Record<string, () => Response>): Call[] {
-  const calls: Call[] = [];
-  vi.stubGlobal("fetch", async (request: Request) => {
-    const path = new URL(request.url).pathname;
-    const text = await request.text();
-    calls.push({
-      method: request.method,
-      path,
-      authorization: request.headers.get("Authorization"),
-      body: text === "" ? null : (JSON.parse(text) as unknown),
-    });
-    const reply = replies[`${request.method} ${path}`];
-    if (reply === undefined) throw new Error(`unexpected ${request.method} ${path}`);
-    return reply();
-  });
-  return calls;
-}
-
-function problem(status: number, body: object, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify({ status, ...body }), {
-    status,
-    headers: { "content-type": "application/problem+json", ...headers },
-  });
-}
 
 const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";
 
@@ -185,6 +153,7 @@ describe("scrape screen: the request", () => {
     expect(calls[0]).toEqual({
       method: "POST",
       path: "/v1/scrape",
+      query: "",
       authorization: "Bearer ck_first",
       body: {
         url: "https://store.test/items/1",
@@ -372,6 +341,10 @@ describe("scrape screen: records and schemas", () => {
     const schemaTab = await openTab("Draft schema");
     expect(schemaTab.getByText("drafted")).toBeInTheDocument();
     expect(schemaTab.getByText("prompt_draft")).toBeInTheDocument();
+    expect(schemaTab.getByRole("link", { name: "Edit as schema" })).toHaveAttribute(
+      "href",
+      `/schemas/new?from=${SCHEMA_ID}`,
+    );
     const records = await openTab("Records");
     expect(
       within(records.getByRole("row", { name: /price/ })).getByText("19.90 EUR"),
