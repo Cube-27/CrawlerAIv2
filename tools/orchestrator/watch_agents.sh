@@ -5,8 +5,8 @@
 # falls below MIN_FREE_MB (LOWMEM), or a new comment starting READY, BLOCKED or ESCALATE appears on an open PR
 # (PRCOMMENT <n>; counted from start). Replaces one `herdr agent wait` per agent.
 # IGNORE: comma-separated agent names to skip, e.g. implementors left waiting for `YOUR TURN`.
-# Single instance: exits 2 with "ERROR another watcher is running (pid N)" on stderr while a live watcher holds
-# the pidfile; a stale pidfile is cleared. Start it only as a tracked background task, never with `&`.
+# Single instance: exits 2 with "ERROR another watcher is running (pid N, windows pid W)" on stderr while a live
+# watcher holds the pidfile; a stale pidfile is cleared. Start it only as a tracked background task, never with `&`.
 MIN_FREE_MB=${MIN_FREE_MB:-1500}
 INTERVAL=${INTERVAL:-30}
 IGNORE=${IGNORE:-}
@@ -52,22 +52,22 @@ alive() {
   return
 }
 take_lock() {
-  local tmp="$lock.$$" pid winpid
-  echo "$$ $(cat "/proc/$$/winpid" 2>/dev/null)" > "$tmp" || return 1
+  local tmp="$lock.$$" pid winpid rc=1
+  read -r winpid < "/proc/$$/winpid" 2>/dev/null
+  echo "$$ $winpid" > "$tmp" || return 1
   # ln fails if the pidfile exists, so creating it is atomic and exclusive; one retry after clearing a stale one.
   for _ in 1 2; do
-    if ln "$tmp" "$lock" 2>/dev/null; then rm -f "$tmp"; return 0; fi
+    if ln "$tmp" "$lock" 2>/dev/null; then rc=0; break; fi
     read -r pid winpid < "$lock" 2>/dev/null
     if [[ -n $pid ]] && alive "$pid" "$winpid"; then
-      rm -f "$tmp"
-      echo "ERROR another watcher is running (pid $pid)" >&2
-      return 2
+      echo "ERROR another watcher is running (pid $pid, windows pid $winpid)" >&2
+      rc=2; break
     fi
     rm -f "$lock"
   done
   rm -f "$tmp"
-  echo "ERROR could not take $lock" >&2
-  return 1
+  if (( rc == 1 )); then echo "ERROR could not take $lock" >&2; fi
+  return "$rc"
 }
 release_lock() {
   local pid
@@ -76,8 +76,7 @@ release_lock() {
   return 0
 }
 
-take_lock; rc=$?
-if (( rc != 0 )); then exit "$rc"; fi
+take_lock || exit "$?"
 trap release_lock EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
