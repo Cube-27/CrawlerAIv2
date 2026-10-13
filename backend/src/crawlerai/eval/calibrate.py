@@ -2,7 +2,8 @@
 `source_precedence.yaml` from a dev eval run.
 
 Both are fitted on dev only (C1, INV-02): each refuses a run of any other split, and stamps what it writes with
-`source_split: dev`, the run's id and its commit. The fits are parameters. SPEC-05 §4.11 brings its own
+`source_split: dev`, the run's id and its commit; the engine reads them back with `resolve.evidence` and
+`resolve.preference`. The fits are parameters. SPEC-05 §4.11 brings its own
 (`resolve/calibrate`); until then calibration is the run's bucket table, and precedence keeps the current order.
 """
 
@@ -19,6 +20,7 @@ from crawlerai.db.models import EvalRunId, Split
 from crawlerai.eval.cli import EvalCliError
 from crawlerai.eval.metrics import PrecisionMetrics, Report
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.preference import PRECEDENCE_FILE, parse_orders
 from crawlerai.storage.fs import FsStore
 
@@ -35,19 +37,6 @@ class PrecedenceMissing(EvalCliError):
 
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class Bucket(_Model):
-    n: int  # published fields of the bucket
-    precision: float | None
-
-
-class Calibration(_Model):
-    calibration_version: Literal[1] = 1
-    source_split: Literal["dev"] = "dev"
-    eval_run_id: EvalRunId
-    git_sha: str
-    buckets: dict[str, Bucket]  # "field_type|evidence"
 
 
 class Precedence(_Model):

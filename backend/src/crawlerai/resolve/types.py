@@ -1,7 +1,9 @@
 """What resolution returns (SPEC-05 §4.2): one outcome per schema field, and the result of one page.
 
 The models hold INV-22: every published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and
-`locator`. An unpublished field holds no value and says why (§10 "Incomplete pages").
+`locator`. Its confidence is its bucket's dev precision, so it is `None` only while the bucket has no dev measurement,
+and then the field is `calibrated=false` (§10: uncalibrated buckets publish with the flag set). An unpublished field
+holds no value and says why (§10 "Incomplete pages").
 """
 
 from typing import Annotated, Literal, Self
@@ -25,8 +27,8 @@ _NOT_SERVED: frozenset[Outcome] = frozenset({"blocked", "shell", "not_found"})
 _UNPUBLISHED: frozenset[Outcome] = _NOT_SERVED | {"error"}
 # A probability: a bucket's measured precision (§4.9).
 Probability = Annotated[float, Field(ge=0.0, le=1.0)]
-# The attributes INV-22 requires of a published field.
-_PUBLISHED_REQUIRES = ("value", "evidence", "confidence", "source_kind", "locator")
+# The attributes INV-22 requires of a published field; `confidence` is checked with `calibrated`.
+_PUBLISHED_REQUIRES = ("value", "evidence", "source_kind", "locator")
 
 
 class _Model(BaseModel):

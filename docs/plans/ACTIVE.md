@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 8, SPEC-07 PR 6, SPEC-08 PR 1 (L2, keeps slots full while L1 rows wait on SPEC-05 PR 8). Next: SPEC-12 PR 5, SPEC-05 PRs 9, 12, 13 after PR 8, SPEC-07 PRs 5, 8 after SPEC-05 PR 9, SPEC-06 PRs 4, 5 after SPEC-05 PR 9.
+- In progress: SPEC-05 PR 9, SPEC-07 PR 6, SPEC-12 PR 5, SPEC-08 PR 1 (L2, keeps slots full). Next: SPEC-05 PRs 12, 13, SPEC-07 PRs 5, 8 and SPEC-06 PRs 4, 5 after SPEC-05 PR 9.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -139,7 +139,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | OpenGraph collector | done (#79) | |
 | 6 | Ownership + intent | done (#85) | Follow-ups for PR 7: an Offer whose `itemOffered` references the Product by `@id` is the Product's parent, so `owned_by` doesn't give it the Product; a node referenced under both `isRelatedTo` and `isSimilarTo` gets `via=None` and isn't excluded. |
 | 7 | Preference + atomic offers + URL-param rule + derivations | done (#90) | The initial `source_precedence.yaml` is not committed: INV-05 vs SPEC-05 (D-0444, needs-owner). Derived `canonical_link`/`final_url` values stay a separate `Derived` result until D-0355 is answered. From review: PR 9 decides whether collectors get `base_url` (with it, `absolutize` never fires). |
-| 8 | Evidence buckets, calibration loader, τ, records | todo | |
+| 8 | Evidence buckets, calibration loader, τ, records | done (#94) | `data/calibration.json` not committed (D-0444); a missing file means every field is uncalibrated. Page-URL derivations stay `missing` (`no_provenance`) until D-0355. Follow-ups from review: a visible lone js_state/xhr value abstains with `no_bucket`; an `absolutize` value drops the preference's rejected candidates. |
 | 9 | Pipeline `extract_page` + worker handler for scrape tasks + blocked/shell | todo | |
 | 10 | js_state + xhr collectors with admission rule | done (#86) | `AdmittingCollector` takes the other kinds' candidates; PR 9 runs it after them (D-0418). Follow-up from review: js_state reads only a script's first assignment, so `var n = 1; window.X = {...}` gives no document; could take the first assignment whose value is an object or array. |
 | 11 | Adapter collector | done (#91) | PR 9 builds `AdapterCollector(adapter, page_kind)` for `api` captures from the bundle's `url` (D-0445). Follow-up from review: a list field mapped through a nested wildcard would become one candidate per item; no current map does this. |

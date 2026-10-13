@@ -127,7 +127,7 @@ def test_a_published_field_carries_its_value_and_evidence() -> None:
     assert (outcome.source_kind, outcome.locator) == ("jsonld", "jsonld:0:$['@graph'][0]['name']")
 
 
-@pytest.mark.parametrize("attribute", ["evidence", "confidence", "source_kind", "locator", "value"])
+@pytest.mark.parametrize("attribute", ["evidence", "source_kind", "locator", "value"])
 def test_a_published_field_without_a_required_attribute_is_refused(attribute: str) -> None:
     values = _published(**{attribute: None})
     with pytest.raises(ValidationError, match=attribute):
@@ -137,6 +137,14 @@ def test_a_published_field_without_a_required_attribute_is_refused(attribute: st
 def test_an_uncalibrated_published_field_still_carries_a_confidence() -> None:
     outcome = FieldOutcome(**_published(calibrated=False, confidence=0.5))
     assert (outcome.calibrated, outcome.confidence) == (False, 0.5)
+
+
+def test_a_published_field_without_a_dev_measurement_is_uncalibrated() -> None:
+    outcome = FieldOutcome(**_published(calibrated=False, confidence=None))
+    assert (outcome.calibrated, outcome.confidence) == (False, None)
+    values = _published(calibrated=True, confidence=None)
+    with pytest.raises(ValidationError, match="calibrated"):
+        FieldOutcome(**values)
 
 
 def test_a_published_field_locator_must_parse() -> None:
