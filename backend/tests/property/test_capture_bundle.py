@@ -36,7 +36,10 @@ def _sha(data: bytes) -> str:
 
 
 def _bundle(
-    method: CaptureMethod = "browser", body: bytes = b"<html></html>", network: tuple[bytes, ...] = ()
+    method: CaptureMethod = "browser",
+    body: bytes = b"<html></html>",
+    network: tuple[bytes, ...] = (),
+    raw_body: bytes | None = None,
 ) -> CaptureBundle:
     return CaptureBundle(
         manifest=CaptureManifest(
@@ -52,6 +55,7 @@ def _bundle(
             ),
             timings_ms={"total": 412},
             html_sha256=_sha(body),
+            raw_html_sha256=None if raw_body is None else _sha(raw_body),
             network_bodies=tuple(
                 NetworkBody(
                     url=f"https://api.example.test/{i}",
@@ -67,6 +71,7 @@ def _bundle(
         ),
         body=body,
         network=network,
+        raw_body=raw_body,
     )
 
 
@@ -100,6 +105,7 @@ def bundles(draw: st.DrawFn) -> CaptureBundle:
     method: CaptureMethod = draw(st.sampled_from(get_args(CaptureMethod)))
     body = draw(st.binary(max_size=2048))
     network = draw(st.lists(st.binary(max_size=256), max_size=4)) if method == "browser" else []
+    raw_body = draw(st.none() | st.binary(max_size=512)) if method == "browser" else None
     manifest = CaptureManifest(
         capture_id=draw(st.uuids()),
         url=draw(_text),
@@ -111,6 +117,7 @@ def bundles(draw: st.DrawFn) -> CaptureBundle:
         headers=Headers(request=draw(_headers), response=draw(_headers)),
         timings_ms=draw(st.dictionaries(_text, st.integers(0, 10**7), max_size=4)),
         html_sha256=_sha(body),
+        raw_html_sha256=None if raw_body is None else _sha(raw_body),
         network_bodies=tuple(
             NetworkBody(
                 url=draw(_text),
@@ -124,7 +131,7 @@ def bundles(draw: st.DrawFn) -> CaptureBundle:
         fetch_policy=draw(st.dictionaries(_text, _json, max_size=3)),
         engine_version=draw(_text),
     )
-    return CaptureBundle(manifest=manifest, body=body, network=tuple(network))
+    return CaptureBundle(manifest=manifest, body=body, network=tuple(network), raw_body=raw_body)
 
 
 @given(bundles())
@@ -150,6 +157,58 @@ def test_archive_holds_manifest_html_body_and_numbered_network_files_in_order() 
     assert manifest["capture_id"] == str(_CAPTURE_ID)
     assert manifest["headers"]["response"] == [["set-cookie", "a=1"], ["set-cookie", "b=2"]]
     assert manifest["network_bodies"][1]["file"] == "network/0002.json"
+
+
+def test_browser_capture_keeps_the_raw_navigation_body_beside_the_rendered_one() -> None:
+    bundle = _bundle(body=b"<html>rendered</html>", raw_body=b"<html>raw</html>", network=(b"{}",))
+
+    members = _members(encode(bundle))
+
+    assert list(members) == ["manifest.json", "body.html", "body.raw.html", "network/0001.json"]
+    assert members["body.html"] == b"<html>rendered</html>"
+    assert members["body.raw.html"] == b"<html>raw</html>"
+    assert json.loads(members["manifest.json"])["raw_html_sha256"] == _sha(b"<html>raw</html>")
+
+
+def test_bundle_without_a_raw_body_has_no_raw_member() -> None:
+    members = _members(encode(_bundle(method="http")))
+
+    assert list(members) == ["manifest.json", "body.html"]
+    assert json.loads(members["manifest.json"])["raw_html_sha256"] is None
+
+
+def test_manifest_written_before_raw_bodies_existed_still_decodes() -> None:
+    members = _members(encode(_bundle(method="http")))
+    manifest = json.loads(members["manifest.json"])
+    del manifest["raw_html_sha256"]
+    members["manifest.json"] = json.dumps(manifest).encode()
+
+    assert decode(_tar_zst(members)) == _bundle(method="http")
+
+
+def test_bundle_rejects_a_raw_body_on_a_non_browser_capture() -> None:
+    browser = _bundle(raw_body=b"<html>raw</html>")
+    manifest = browser.manifest.model_copy(update={"method": "http"})
+
+    with pytest.raises(ValidationError, match="raw body"):
+        CaptureBundle(manifest=manifest, body=browser.body, network=(), raw_body=browser.raw_body)
+
+
+def test_bundle_rejects_a_raw_body_that_does_not_match_raw_html_sha256() -> None:
+    good = _bundle(raw_body=b"<html>raw</html>")
+
+    with pytest.raises(ValidationError, match="raw_html_sha256"):
+        CaptureBundle(manifest=good.manifest, body=good.body, network=(), raw_body=b"other")
+    with pytest.raises(ValidationError, match="raw_html_sha256"):
+        CaptureBundle(manifest=good.manifest, body=good.body, network=(), raw_body=None)
+
+
+def test_decode_raises_corrupt_bundle_when_the_raw_body_is_missing() -> None:
+    members = _members(encode(_bundle(raw_body=b"<html>raw</html>")))
+    del members["body.raw.html"]
+
+    with pytest.raises(CorruptBundle, match=r"body\.raw\.html"):
+        decode(_tar_zst(members))
 
 
 def test_api_capture_body_is_stored_as_body_json() -> None:
