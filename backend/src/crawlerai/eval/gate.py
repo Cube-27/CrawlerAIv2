@@ -15,11 +15,12 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from crawlerai.eval.labels import ScalarType
 from crawlerai.eval.metrics import FieldMetrics, Report
 from crawlerai.eval.store import EvalRunRow
 
 # SPEC-03 §4.8: the field types with at least one required field in a preset. The precision rule covers only these.
-REQUIRED_FIELD_TYPES = frozenset(
+REQUIRED_FIELD_TYPES: frozenset[ScalarType] = frozenset(
     {"money", "text", "long_text", "enum", "url", "image_url", "identifier", "date", "location"}
 )
 
@@ -54,22 +55,22 @@ def gate(candidate: Report, baseline: Report | None) -> GateResult:
     reasons: list[str] = []
     by_field_type: dict[str, bool] = {}
     for type_, cell in sorted(cells.items()):
-        failed = False
+        type_reasons = []
         if cell.wrong_product > 0:
-            reasons.append(f"wrong_product:{type_}")
-            failed = True
+            type_reasons.append(f"wrong_product:{type_}")
         if base_cells is not None and type_ in REQUIRED_FIELD_TYPES and _precision_dropped(cell, base_cells.get(type_)):
-            reasons.append(f"precision_drop:{type_}")
-            failed = True
-        by_field_type[type_] = not failed
-    if baseline is None:
-        reasons.append("no_baseline")
-    elif candidate.n_pages < baseline.n_pages:
+            type_reasons.append(f"precision_drop:{type_}")
+        by_field_type[type_] = not type_reasons
+        reasons += type_reasons
+    if baseline is not None and candidate.n_pages < baseline.n_pages:
         reasons.append("n_pages_dropped")
+    passed = not reasons
+    if baseline is None:
+        reasons.append("no_baseline")  # informational: it never fails the gate
 
     return GateResult(
         baseline_git_sha=baseline.git_sha if baseline is not None else None,
-        passed=all(r == "no_baseline" for r in reasons),
+        passed=passed,
         reasons=sorted(reasons),
         by_field_type=by_field_type,
     )
@@ -101,10 +102,11 @@ class RunHistory(Protocol):
 
 async def find_baseline(store: RunHistory, main_commits: Iterable[str]) -> Report | None:
     """The report of the newest run whose commit is in `main_commits` (newest first), or None (§4.8)."""
-    if await store.latest_run(None) is None:
+    newest = await store.latest_run(None)
+    if newest is None:
         return None  # no runs at all: skip the walk over main
     for sha in main_commits:
-        run = await store.latest_run(sha)
+        run = newest if sha == newest.git_sha else await store.latest_run(sha)
         if run is not None:
             return Report.model_validate(run.metrics)
     return None

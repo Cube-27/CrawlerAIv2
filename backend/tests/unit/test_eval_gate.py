@@ -5,6 +5,7 @@ import asyncio
 import os
 import shutil
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ def cell(precision: float | None = 0.97, wrong_product: int = 0, n: int = 100) -
 
 
 def report(
-    by_field_type: dict[str, FieldMetrics | Suppressed],
+    by_field_type: Mapping[str, FieldMetrics | Suppressed],
     *,
     n_pages: int = 150,
     git_sha: str = "c" * 40,
@@ -40,7 +41,7 @@ def report(
         git_sha=git_sha,
         split=split,
         n_pages=n_pages,
-        by_field_type=by_field_type,
+        by_field_type=dict(by_field_type),
         by_field={},
         by_bucket={},
         by_config_status={},
@@ -151,7 +152,7 @@ def test_splits_must_match() -> None:
     ),
     st.integers(0, 500),
 )
-def test_a_report_never_regresses_against_itself(types: dict[str, FieldMetrics | Suppressed], n_pages: int) -> None:
+def test_a_report_never_regresses_against_itself(types: dict[str, FieldMetrics], n_pages: int) -> None:
     same = report(types, n_pages=n_pages)
     assert gate(same, same).passed is True
 
@@ -184,6 +185,13 @@ def test_baseline_is_the_newest_main_commit_with_a_run() -> None:
     assert asyncio.run(find_baseline(store, ["4" * 40, "3" * 40, "2" * 40, "1" * 40])) == newer
 
 
+def test_the_newest_run_is_reused_when_main_reaches_it() -> None:
+    newest = report({}, git_sha="2" * 40)
+    store = FakeStore({"1" * 40: report({}, git_sha="1" * 40), "2" * 40: newest})
+    assert asyncio.run(find_baseline(store, ["3" * 40, "2" * 40, "1" * 40])) == newest
+    assert store.asked == [None, "3" * 40]
+
+
 def test_no_run_on_main_means_no_baseline() -> None:
     store = FakeStore({"9" * 40: report({}, git_sha="9" * 40)})
     assert asyncio.run(find_baseline(store, ["2" * 40, "1" * 40])) is None
@@ -196,15 +204,19 @@ def test_an_empty_store_answers_without_walking_main() -> None:
 
 
 GIT = shutil.which("git")
-IDENTITY = (("NAME", "test"), ("EMAIL", "test@example.com"))
 
 
 @pytest.mark.skipif(GIT is None, reason="needs git")
 def test_commits_on_lists_a_ref_newest_first(tmp_path: Path) -> None:
     assert GIT is not None
 
-    identity = {f"GIT_{role}_{part}": value for role in ("AUTHOR", "COMMITTER") for part, value in IDENTITY}
-    env = {**os.environ, **identity}
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
 
     def git(*args: str) -> str:
         return subprocess.run(  # noqa: S603
