@@ -164,6 +164,10 @@ def _request(backend: FakeBackend | None, method: str, path: str, body: Any = No
     return asyncio.run(send())
 
 
+def _capture_body(urls: list[str], split: str = "dev") -> dict[str, object]:
+    return {"split": split, "schema": "item_detail", "page_kind": "detail", "category": "custom_store", "urls": urls}
+
+
 def _writes(backend: FakeBackend) -> list[str]:
     return [call for call in backend.store.calls if call.startswith("put_labels")]
 
@@ -237,13 +241,7 @@ def test_hidden_and_fresh_splits_are_refused_without_touching_a_store(split: str
         backend,
         "POST",
         "/v1/eval/capture",
-        {
-            "split": split,
-            "schema": "item_detail",
-            "page_kind": "detail",
-            "category": "custom_store",
-            "urls": [PAGE_URL],
-        },
+        _capture_body([PAGE_URL], split),
     )
 
     assert (listing.status_code, capture.status_code) == (422, 422)
@@ -418,7 +416,7 @@ def test_capture_runs_eval_capture_into_dev_and_reports_outcomes() -> None:
         backend,
         "POST",
         "/v1/eval/capture",
-        {"split": "dev", "schema": "item_detail", "page_kind": "detail", "category": "custom_store", "urls": urls},
+        _capture_body(urls),
     )
 
     assert response.status_code == 200
@@ -463,7 +461,7 @@ def test_capture_input_errors_are_validation_problems(
         backend,
         "POST",
         "/v1/eval/capture",
-        {"split": "dev", "schema": "item_detail", "page_kind": "detail", "category": "custom_store", "urls": urls},
+        _capture_body(urls),
     )
 
     assert response.status_code == 422

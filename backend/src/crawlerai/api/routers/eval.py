@@ -10,6 +10,8 @@ reason as an RFC 9457 problem (§4.11). SPEC-07 moves the problem model to `api.
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from dataclasses import asdict
+from email.message import Message
 from typing import Annotated, Literal, Protocol, assert_never, get_args
 from urllib.parse import urljoin
 
@@ -132,6 +134,12 @@ def _not_found(page_id: EvalPageId) -> JSONResponse:
 _STATUSES: dict[str, LabelStatus] = {status: status for status in get_args(LabelStatus)}
 
 
+def _status(page: EvalPageRow) -> LabelStatus | None:
+    """The stored labels' status; None for a page not labeled yet."""
+    status = page.labels.get("status")
+    return _STATUSES.get(status) if isinstance(status, str) else None
+
+
 class PageSummary(_Model):
     id: EvalPageId
     capture_id: CaptureId
@@ -145,7 +153,6 @@ class PageSummary(_Model):
 
     @classmethod
     def of(cls, page: EvalPageRow) -> "PageSummary":
-        status = page.labels.get("status")
         return cls(
             id=page.id,
             capture_id=page.capture_id,
@@ -153,7 +160,7 @@ class PageSummary(_Model):
             schema_name=page.schema_name,
             page_kind=page.page_kind,
             category=page.category,
-            status=_STATUSES.get(status) if isinstance(status, str) else None,
+            status=_status(page),
             labeler=page.labeler,
             checker=page.checker,
         )
@@ -258,8 +265,11 @@ async def put_labels(
         case LabelError() as error:
             return _invalid("the labels are invalid", [error])
         case (who, pass_):
-            await backend.store.put_labels(page.id, parsed.model_dump(mode="json"), who, pass_)
-    return PageSummary.of(await backend.store.get_page(page.id))
+            stored = parsed.model_dump(mode="json")
+            await backend.store.put_labels(page.id, stored, who, pass_)
+            # As the store records it: a labeler pass clears the checker.
+            people = {pass_: who} | ({"checker": None} if parsed.status != "checked" else {})
+            return PageSummary.of(page.model_copy(update={"labels": stored, **people}))
 
 
 def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelError:
@@ -268,7 +278,7 @@ def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelErr
         if labels.labeler is None:
             return LabelError("labeler", "a labeler pass names its labeler")
         return labels.labeler, "labeler"
-    if page.labels.get("status") not in ("labeled", "checked"):
+    if _status(page) not in ("labeled", "checked"):
         return LabelError("status", "only a labeled page can be checked")
     if labels.labeler != page.labeler:
         return LabelError("labeler", f"a checker pass keeps the page's labeler ({page.labeler})")
@@ -307,16 +317,9 @@ async def capture(body: CaptureRequest, backend: Backend) -> CaptureResponse | J
 def _outcome(outcome: Outcome) -> CapturedOut | SkippedOut:
     match outcome:
         case Captured():
-            return CapturedOut(
-                n=outcome.n,
-                capture_id=outcome.capture_id,
-                page_id=outcome.page_id,
-                status_code=outcome.status_code,
-                block_class=outcome.block_class,
-                error=outcome.error,
-            )
+            return CapturedOut(**asdict(outcome))
         case Skipped():
-            return SkippedOut(n=outcome.n, reason=outcome.reason)
+            return SkippedOut(**asdict(outcome))
         case _:
             assert_never(outcome)
 
@@ -352,13 +355,12 @@ def sanitize_html(bundle: CaptureBundle) -> str:
 def _decode(bundle: CaptureBundle) -> str:
     """The body as text, in the charset its Content-Type names (RFC 9110 §8.3.2), else UTF-8 (the HTML default,
     §13.2.3.2); undecodable bytes become U+FFFD."""
+    header = Message()
     for name, value in bundle.manifest.headers.response:
         if name.lower() == "content-type":
-            for param in value.split(";")[1:]:
-                key, _, charset = param.strip().partition("=")
-                if key.lower() == "charset":
-                    try:
-                        return bundle.body.decode(charset.strip().strip('"'), errors="replace")
-                    except LookupError:
-                        break
-    return bundle.body.decode("utf-8", errors="replace")
+            header["content-type"] = value
+            break
+    try:
+        return bundle.body.decode(header.get_content_charset() or "utf-8", errors="replace")
+    except LookupError:  # a charset Python doesn't know
+        return bundle.body.decode("utf-8", errors="replace")

@@ -2,9 +2,8 @@
 capture"): a synthetic dev page is labeled by one person, checked by another and read back, through the app with
 `CRAWLERAI_EVAL_UI` on. Throwaway main database (`CRAWLERAI_TEST_DATABASE_URL`) and a temporary object root."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import aclosing
-from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -13,13 +12,11 @@ from pydantic import JsonValue
 from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.acquire.types import FetchPolicy
+from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.core.ids import uuid7
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Capture, EvalPage, SchemaDef, Site
 from crawlerai.eval.store import EvalPageRow, get_store
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 pytestmark = pytest.mark.anyio
 
@@ -34,7 +31,7 @@ FIELDS = {
 
 @pytest.fixture
 async def client(
-    database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fetch_result: Callable[..., FetchResult]
 ) -> AsyncIterator[tuple[httpx.AsyncClient, str]]:
     """A client of the app with the labeling API, and the id of one unlabeled dev page."""
     object_store = "fs:///" + tmp_path.as_posix().lstrip("/")
@@ -49,24 +46,9 @@ async def client(
                 .returning(SchemaDef.id)
             )
         ).scalar_one()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=URL,
-        final_url=URL,
-        fetched_at=datetime.now(UTC),
-        method="http",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=()),
-        timings_ms={"total": 1},
-        html_sha256=sha256_hex(BODY),
-        network_bodies=(),
-        fetch_policy=FetchPolicy().model_dump(mode="json"),
-        engine_version="test",
-    )
     settings = Settings.model_validate({"database_url": database_url, "object_store": object_store})
     async with aclosing(get_store("dev", settings)) as store:
-        capture_id = await store.put_capture(CaptureBundle(manifest=manifest, body=BODY, network=()), "custom_store")
+        capture_id = await store.put_capture(fetch_result(URL, body=BODY).bundle, "custom_store")
         page_id = await store.put_page(
             EvalPageRow(
                 capture_id=capture_id,
