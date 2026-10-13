@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.dto import PROBLEM_RESPONSE, Model
 from crawlerai.api.problems import ProblemError, invalid, not_found
+from crawlerai.content.html import remove_scripting_attributes
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
@@ -350,16 +351,6 @@ def _outcome(outcome: Outcome) -> CapturedOut | SkippedOut:
             assert_never(outcome)
 
 
-# WHATWG URL parsing (URL Standard §4.4) strips leading C0 controls and spaces and removes every ASCII tab and
-# newline before it reads the scheme, so `java<TAB>script:` is a `javascript:` URL in a browser.
-_URL_IGNORED = str.maketrans("", "", "\t\n\r")
-_C0_OR_SPACE = "".join(map(chr, range(0x21)))
-
-
-def _javascript_url(value: str) -> bool:
-    return value.translate(_URL_IGNORED).lstrip(_C0_OR_SPACE).lower().startswith("javascript:")
-
-
 # HTML elements that run script or embed another browsing context (HTML Living Standard §4.8, §4.12.1), and the
 # `meta http-equiv` pragmas, which can refresh or redirect the document (§4.2.5.3).
 _ACTIVE = "script, iframe, frame, frameset, object, embed, meta[http-equiv]"
@@ -376,10 +367,7 @@ def sanitize_html(bundle: CaptureBundle) -> str:
         base_url = urljoin(base_url, page_base.attributes.get("href") or "")
     for node in tree.css(f"{_ACTIVE}, base"):
         node.decompose()
-    for node in tree.root.traverse() if tree.root is not None else ():
-        for name, value in node.attributes.items():
-            if name.lower().startswith("on") or _javascript_url(value or ""):
-                del node.attrs[name]
+    remove_scripting_attributes(tree)
     head, base = tree.head, LexborHTMLParser("<base>").css_first("base")
     if head is None or base is None:
         raise RuntimeError("the HTML parser creates `head` in every document")

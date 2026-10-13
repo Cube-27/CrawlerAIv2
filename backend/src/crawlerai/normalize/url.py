@@ -42,12 +42,12 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         raise TypeError(f"the url normalizer does not handle type {spec.type}")
     if not isinstance(raw, str):
         return Invalid("not_a_string")
-    result = _canonical(raw, ctx.base_url)
+    result = canonical(raw, ctx.base_url)
     if (
         spec.type is FieldType.IMAGE_URL
         and isinstance(result, Ok)
         and ctx.page_url is not None
-        and _canonical(ctx.page_url, None) == result
+        and canonical(ctx.page_url, None) == result
     ):
         # SPEC-04 §4.4: without a fetch there is no content-type evidence, so the one structural check is that an
         # image is not the page it appears on.
@@ -61,11 +61,20 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
         return True
     if not (isinstance(a, str) and isinstance(b, str)):
         return False
-    left = _canonical(a, None)
-    return isinstance(left, Ok) and left == _canonical(b, None)
+    left = canonical(a, None)
+    return isinstance(left, Ok) and left == canonical(b, None)
 
 
-def _canonical(raw: str, base: str | None) -> NormalizeResult:
+def canonical_url(raw: str, base: str | None) -> str | None:
+    """`raw` as a canonical absolute http(s) URL, or `None` when it is not one: `canonical` for callers outside a field
+    (the content formats), which drop what declines."""
+    result = canonical(raw, base)
+    return result.value if isinstance(result, Ok) and isinstance(result.value, str) else None
+
+
+def canonical(raw: str, base: str | None) -> NormalizeResult:
+    """The url type's canonical form of `raw`, resolved against `base` when relative (SPEC-04 §4.4). Other modules
+    that canonicalize URLs outside a field (the `links` content format) call this, so there is one set of rules."""
     # A URL is percent-encoded as UTF-8 (WHATWG URL Standard), and a lone surrogate has no UTF-8 encoding.
     if has_surrogate(raw):
         return Invalid("surrogate")
