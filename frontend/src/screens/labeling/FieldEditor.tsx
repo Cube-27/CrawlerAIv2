@@ -1,4 +1,13 @@
-import { Button, Checkbox, Input, Label, TextArea, TextField } from "@heroui/react";
+import {
+  Button,
+  Checkbox,
+  Fieldset,
+  Input,
+  Label,
+  TextArea,
+  TextField,
+  Typography,
+} from "@heroui/react";
 import type { FieldDraft, FieldShape } from "./draft";
 
 export interface FieldEditorProps {
@@ -30,11 +39,11 @@ export function FieldEditor({
   const label = `${name} (${shape.type})`;
 
   return (
-    <fieldset aria-label={group} className="flex flex-col gap-2 rounded border border-border p-3">
-      <legend className="px-1 font-medium">
+    <Fieldset aria-label={group}>
+      <Fieldset.Legend>
         {label}
         {picking ? " — picking from the page" : ""}
-      </legend>
+      </Fieldset.Legend>
       <div className="flex items-end gap-2">
         <TextField
           onFocus={onFocus}
@@ -56,7 +65,11 @@ export function FieldEditor({
           Normalize
         </Button>
       </div>
-      {normalized === null ? null : <p className="text-sm text-muted">{normalized}</p>}
+      {normalized === null ? null : (
+        <Typography.Paragraph size="sm" color="muted">
+          {normalized}
+        </Typography.Paragraph>
+      )}
       <TextField
         onFocus={onFocus}
         value={field.value}
@@ -104,10 +117,10 @@ export function FieldEditor({
         <TextArea rows={2} />
       </TextField>
       {errors.map((reason) => (
-        <p key={reason} className="text-sm text-danger">
+        <Typography.Paragraph key={reason} size="sm" className="text-danger">
           Error: {reason}
-        </p>
+        </Typography.Paragraph>
       ))}
-    </fieldset>
+    </Fieldset>
   );
 }

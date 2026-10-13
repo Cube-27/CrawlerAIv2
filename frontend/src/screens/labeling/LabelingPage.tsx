@@ -1,7 +1,21 @@
-import { Button, Input, Label, Link, Radio, RadioGroup, TextArea, TextField } from "@heroui/react";
+import {
+  Alert,
+  Button,
+  Input,
+  Label,
+  Link,
+  Radio,
+  RadioGroup,
+  TextArea,
+  TextField,
+  Typography,
+} from "@heroui/react";
 import { PageHeader } from "../../components/PageHeader";
+import { ProblemAlert } from "../../components/ProblemAlert";
 import { useState, type ReactNode } from "react";
 import { useLoaderData } from "react-router";
+import { EmptyView } from "../../components/EmptyView";
+import { FormActions } from "../../components/FormActions";
 import {
   fieldNames,
   samePerson,
@@ -21,20 +35,18 @@ import {
 } from "./editorState";
 import { EvalUiOff } from "./EvalUiOff";
 import { FieldEditor } from "./FieldEditor";
-import { SplitBadge, statusText } from "./LabelingList";
+import { LabelStatusChip, SplitBadge } from "./LabelingList";
 import type { PageDetail, pageLoader } from "./loaders";
 import { PageView } from "./PageView";
 
 export function LabelingPage() {
   const data = useLoaderData<typeof pageLoader>();
-  // Kept here, outside the editor, so it outlives the editor's reload after a save.
-  const [notice, setNotice] = useState<string | null>(null);
 
   switch (data.kind) {
     case "off":
       return <EvalUiOff />;
     case "missing":
-      return <output className="block">No dev eval page has this id.</output>;
+      return <EmptyView title="No dev eval page has this id." />;
     case "page":
       return (
         <PageEditor
@@ -42,8 +54,6 @@ export function LabelingPage() {
           key={data.etag ?? data.page.id}
           page={data.page}
           etag={data.etag}
-          notice={notice}
-          onSaved={setNotice}
         />
       );
     default: {
@@ -97,25 +107,29 @@ function LabelingHeader({ page }: Readonly<{ page: PageDetail }>) {
     <>
       <PageHeader title="Labeling">
         <SplitBadge split={page.split} />
+        <LabelStatusChip status={page.status} />
         <Link href="/labeling">All pages</Link>
       </PageHeader>
-      <p className="text-sm text-muted">
-        {page.schema_name} · {page.page_kind} · {page.category} · {statusText(page.status)}
+      <Typography.Paragraph size="sm" color="muted">
+        {page.schema_name} · {page.page_kind} · {page.category}
         {page.labeler === null ? "" : ` · labeled by ${page.labeler}`}
         {page.checker === null ? "" : ` · checked by ${page.checker}`}
-      </p>
+      </Typography.Paragraph>
     </>
   );
 }
 
 function ConflictAlert({ onReload }: Readonly<{ onReload: () => void }>) {
   return (
-    <div role="alert" className="flex flex-wrap items-center gap-3">
-      <p>Another pass was saved since this page was opened.</p>
+    <Alert status="warning" role="alert">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>Another pass was saved since this page was opened.</Alert.Title>
+      </Alert.Content>
       <Button variant="secondary" onPress={onReload}>
         Reload the page
       </Button>
-    </div>
+    </Alert>
   );
 }
 
@@ -126,14 +140,15 @@ function SaveProblems({
 }: Readonly<{ problem: string | null; errors: FieldError[] }>) {
   if (problem === null && errors.length === 0) return null;
   return (
-    <div role="alert">
-      {problem === null ? null : <p>Not saved: {problem}</p>}
+    <ProblemAlert
+      problem={{ title: problem === null ? "Not saved" : `Not saved: ${problem}`, detail: null }}
+    >
       {errors.map((e) => (
-        <p key={`${e.field}:${e.reason}`}>
+        <Alert.Description key={`${e.field}:${e.reason}`}>
           {e.field === "" ? "Labels" : e.field}: {e.reason}
-        </p>
+        </Alert.Description>
       ))}
-    </div>
+    </ProblemAlert>
   );
 }
 
@@ -190,11 +205,11 @@ function RowsEditor({
 }>) {
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">Rows</h2>
+      <Typography.Heading level={2}>Rows</Typography.Heading>
       {rowKeys.map((key, i) => (
         <div key={key} className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-medium">Row {i + 1}</h3>
+            <Typography.Heading level={3}>Row {i + 1}</Typography.Heading>
             <Button
               variant="secondary"
               aria-label={`Remove row ${String(i + 1)}`}
@@ -222,8 +237,12 @@ function LabelerActions({
 }: Readonly<{ clearsCheck: boolean; disabled: boolean; onSave: (status: LabelStatus) => void }>) {
   return (
     <>
-      {clearsCheck ? <p className="text-sm text-muted">A labeler pass clears the check.</p> : null}
-      <div className="flex flex-wrap gap-2">
+      {clearsCheck ? (
+        <Typography.Paragraph size="sm" color="muted">
+          A labeler pass clears the check.
+        </Typography.Paragraph>
+      ) : null}
+      <FormActions>
         <Button
           variant="secondary"
           isDisabled={disabled}
@@ -241,7 +260,7 @@ function LabelerActions({
         >
           Mark labeled
         </Button>
-      </div>
+      </FormActions>
     </>
   );
 }
@@ -253,8 +272,8 @@ function CheckerActions({
 }: Readonly<{ blocked: string | null; disabled: boolean; onSave: (status: LabelStatus) => void }>) {
   return (
     <>
-      {blocked === null ? null : <p className="text-sm">{blocked}</p>}
-      <div>
+      {blocked === null ? null : <Typography.Paragraph size="sm">{blocked}</Typography.Paragraph>}
+      <FormActions>
         <Button
           isDisabled={disabled}
           onPress={() => {
@@ -263,7 +282,7 @@ function CheckerActions({
         >
           Confirm check
         </Button>
-      </div>
+      </FormActions>
     </>
   );
 }
@@ -271,18 +290,14 @@ function CheckerActions({
 function PageEditor({
   page,
   etag,
-  notice,
-  onSaved,
 }: Readonly<{
   page: PageDetail;
   etag: string | null;
-  notice: string | null;
-  onSaved: (notice: string) => void;
 }>) {
   const names = fieldNames(page.page_kind, page.fields);
   const edit = useDraft(page, names.page[0]);
   const { normalized, normalize } = useNormalize(page.id, edit.fieldAt, edit.setField);
-  const saver = useSave(page.id, etag, onSaved);
+  const saver = useSave(page.id, etag);
   const [pass, setPass] = useState<Pass>("labeler");
   const [labeler, setLabeler] = useState(page.labeler ?? "");
   const [checker, setChecker] = useState("");
@@ -327,7 +342,6 @@ function PageEditor({
   return (
     <section className="flex flex-col gap-4">
       <LabelingHeader page={page} />
-      {notice === null ? null : <output className="block">{notice}</output>}
       {saver.conflict ? <ConflictAlert onReload={() => void saver.reload()} /> : null}
       <SaveProblems
         problem={saver.problem}

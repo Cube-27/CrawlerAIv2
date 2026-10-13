@@ -5,5 +5,8 @@ export function prefersDark(dark: boolean): void {
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: dark && query === "(prefers-color-scheme: dark)",
     media: query,
+    // HeroUI's toast region listens for reduced-motion changes; the scheme never changes during a test.
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
   }));
 }

@@ -42,7 +42,7 @@ export function PageView({
       sandbox="allow-same-origin"
       srcDoc={html}
       onLoad={listen}
-      className="h-[70dvh] w-full rounded border border-border"
+      className="h-page-view w-full rounded border border-border"
     />
   );
 }
