@@ -37,12 +37,12 @@ def metadata(page: ParsedPage, final_url: str) -> PageMetadata:
     `og:locale`), `canonical` (`link[rel=canonical]`, absolute), `og` (every `og:*` and `product:*` property, the
     first value of each) and `structured_data_types` (distinct JSON-LD `@type` values, then microdata `itemtype`
     names, in document order)."""
-    og = _open_graph(page)
+    og = open_graph(page)
     return PageMetadata(
         title=_title(page),
         description=_meta_name(page, "description"),
-        language=strip(_html_lang(page)) or strip(og.get("og:locale")),
-        canonical=_canonical(page, final_url),
+        language=strip(html_lang(page)) or strip(og.get("og:locale")),
+        canonical=canonical_link(page, final_url),
         og=og,
         structured_data_types=tuple(
             dict.fromkeys(name for name in (*_json_ld_types(page), *_microdata_types(page)) if name)
@@ -64,12 +64,12 @@ def _meta_name(page: ParsedPage, name: str) -> str | None:
     return None
 
 
-def _html_lang(page: ParsedPage) -> str | None:
+def html_lang(page: ParsedPage) -> str | None:
     root = page.tree.root
     return root.attributes.get("lang") if root is not None else None
 
 
-def _open_graph(page: ParsedPage) -> dict[str, str]:
+def open_graph(page: ParsedPage) -> dict[str, str]:
     # The Open Graph protocol: properties are `<meta property=… content=…>`; `name` is read too, as SPEC-05 §4.2's
     # `meta:` locator does. "The first tag (from top to bottom) is given preference during conflicts."
     og: dict[str, str] = {}
@@ -81,7 +81,7 @@ def _open_graph(page: ParsedPage) -> dict[str, str]:
     return og
 
 
-def _canonical(page: ParsedPage, final_url: str) -> str | None:
+def canonical_link(page: ParsedPage, final_url: str) -> str | None:
     # RFC 6596: the canonical link relation.
     for node in page.tree.css("link[href]"):
         if "canonical" in tokens((node.attributes.get("rel") or "").lower()):
