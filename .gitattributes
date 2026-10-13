@@ -1,2 +1,4 @@
 # Pinned external data is verified by sha256 (tools/data_manifest_check.py); keep its bytes exact.
 backend/data/** -text
+# Shell scripts run under bash, which fails on CRLF line endings.
+*.sh text eol=lf

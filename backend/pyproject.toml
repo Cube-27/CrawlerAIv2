@@ -31,7 +31,8 @@ line-length = 120
 
 [tool.ruff.lint]
 # S102 (exec) and S307 (eval) come with "S": LLM output is never executed (ARCHITECTURE §18).
-select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF"]
+# PT012: one statement per `pytest.raises` block (SonarCloud S5778 recurred; docs/plans/RECURRING.md).
+select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT012"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]

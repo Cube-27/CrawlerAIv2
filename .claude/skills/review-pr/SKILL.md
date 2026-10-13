@@ -38,6 +38,8 @@ pragmatically. Don't push commits to the branch; the author fixes. Adapted from 
    compatibility shims.
 5. **Decisions.** Choices the spec didn't make are listed in the PR's `## Decisions` section. Anything that should
    have been escalated (`CLAUDE.md` §4) is a blocking finding.
+6. **SonarCloud and recurring findings.** Read the PR's gate (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`
+   prints it). A red gate is an Act-on item. Check the diff against `docs/plans/RECURRING.md`: a repeat of a listed mistake is an Act-on item.
 
 ## 3. Judge
 
@@ -60,3 +62,6 @@ these verdicts:
 - `ESCALATE`: needs the owner (`CLAUDE.md` §4); name the question.
 
 Never approve with an Act-on item open, and never approve on red CI.
+
+End the comment with one line naming the category of each Act-on item, for example
+`Categories: path-traversal, sonar-gate`. The orchestrator tallies these lines to spot recurring mistakes.

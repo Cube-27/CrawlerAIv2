@@ -276,16 +276,19 @@ def test_a_hit_returns_the_recording_without_calling_the_provider() -> None:
 
 
 def test_a_miss_without_a_provider_raises() -> None:
+    llm = RecordedLLM(MemoryStore(), None)
+    call = llm.complete_json(REQUEST)
     with pytest.raises(RecordingMissing, match=request_key(REQUEST)):
-        asyncio.run(RecordedLLM(MemoryStore(), None).complete_json(REQUEST))
+        asyncio.run(call)
 
 
 def test_a_recording_is_data_not_code() -> None:
     # A recording is parsed as JSON into an `LLMResponse`; anything else is refused, never evaluated.
     store = MemoryStore()
     store.cache[request_key(REQUEST)] = b"__import__('os').system('true')"
+    call = RecordedLLM(store, None).complete_json(REQUEST)
     with pytest.raises(ValueError, match="Invalid JSON"):
-        asyncio.run(RecordedLLM(store, None).complete_json(REQUEST))
+        asyncio.run(call)
 
 
 def test_the_key_is_sha256_of_the_canonical_request() -> None:
@@ -432,8 +435,9 @@ def test_dropped_pages_leave_n_pages() -> None:
 def test_a_schema_the_engine_does_not_know_stops_the_run() -> None:
     store = MemoryStore()
     asyncio.run(add_page(store, 1, schema_name="unknown_schema"))
+    run = replay_split(store, StubEngine(), live=LiveLLM())
     with pytest.raises(LookupError, match="unknown_schema"):
-        asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))
+        asyncio.run(run)
 
 
 def test_a_schema_of_another_page_kind_stops_the_run() -> None:
@@ -445,5 +449,6 @@ def test_a_schema_of_another_page_kind_stops_the_run() -> None:
         def schema(self, name: str) -> SchemaFields:
             return listing
 
+    run = replay_split(store, ListingEngine(), live=LiveLLM())
     with pytest.raises(ValueError, match="is a detail page"):
-        asyncio.run(replay_split(store, ListingEngine(), live=LiveLLM()))
+        asyncio.run(run)

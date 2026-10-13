@@ -34,24 +34,43 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
    checkout) and `herdr agent list` before starting either. Within those limits, run as many ready rows in parallel
    as can proceed independently. Two workers never run rows that edit the same migration. For each assignment:
    - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
-     `spec-NN/pr-M-<short-name>`, and start the worker as a herdr agent
-     in its own pane, with the worktree as its cwd. Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator
-     assigned you this row. Report the PR URL when done."
+     `spec-NN/pr-M-<short-name>`, and start the worker with `tools/orchestrator/start_agent.sh <name> <worktree>
+     "<prompt>"` (§1a). Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator assigned you this row.
+     Report the PR URL when done."
 3. **On a worker report.** Run `/review-pr <n>` in a fresh reviewer agent, never the worker itself.
-   - `FIX`: send the Act-on list back to the same worker. After 3 FIX rounds on one PR, escalate.
+   - `FIX`: send the Act-on list back to the same worker, or to a fresh worker in the same worktree if the first
+     was closed to save memory. After 3 FIX rounds on one PR, escalate.
    - `MERGE`: in the PR's worktree, add one commit `chore(plan): done SPEC-NN PR M` that:
      - sets the row to `done (#n)`;
      - copies the PR's `## Decisions` into DECISIONS.md with the next IDs, with `needs-owner` entries also listed
        in the index.
 
-     Push it, wait for green CI, then run `gh pr merge <n> --squash --delete-branch`. Close the PR's herdr panes,
-     then remove the worktree.
+     Push it and wait with `tools/orchestrator/wait_ci.sh <n> <sha>`, which waits on that commit, not the previous
+     one. Then run `gh pr merge <n> --squash`, close the PR's herdr panes, and run
+     `tools/orchestrator/cleanup_worktree.sh <worktree> <branch>`.
+   - **Early tracker commits.** While the review runs, you may write the tracker commit early, but only for the PR
+     that merges next. An early commit on any other PR conflicts as soon as another PR merges first.
    - **Merge strictly one at a time.** Merge one PR. Rebase the next one onto the new `main`, add its tracker commit,
      wait for green CI, then merge it, and so on. IDs never clash, and every merge is tested against the real `main`.
    - `ESCALATE`: follow §2.
 4. **CI on main.** Before every merge and after it, check that `main` is green. If `main` turns red, fixing it
    comes before any new assignment. Assign a fix row to one worker, and stop other merges until it is green.
 5. **Checkpoint.** Update "Current focus" in ACTIVE.md (next, blocked) in the same tracker commit.
+
+## 1a. Processes (never hang the machine)
+
+The owner's concern is the machine, not the agents' count alone. Manage every process you start:
+- **One watcher.** Run `tools/orchestrator/watch_agents.sh` in the background. It polls `herdr agent list` and exits
+  with `SETTLED <name>`, `GONE <name>` or `LOWMEM <MB>`. Handle the event, then start it again. Don't run one
+  `herdr agent wait` per agent. If the watcher is killed, start it again; a killed watcher means finished agents go
+  unnoticed.
+- **Memory admission.** `start_agent.sh` refuses to start an agent below 1.5 GB free. On `LOWMEM`, close idle
+  panes, and remove leftover `crawlerai-*` containers, before anything else. Never touch containers or processes of
+  other projects.
+- **Close what's done.** Close a worker's pane once its PR is reported. Close a reviewer's pane once its PR merges.
+  Remove the worktree's containers on merge (`cleanup_worktree.sh`).
+- **Start agents only through `start_agent.sh`.** It builds the cwd and checks it. A wrong cwd leaves the agent
+  stuck at a trust prompt.
 
 ## 2. Escalation (the only times the owner is involved)
 
@@ -70,6 +89,18 @@ the owner:
 - touching eval access or secrets;
 - force-pushing or rewriting `main`, or using an admin bypass of the branch rules;
 - deleting data.
+
+## 2a. Self-improvement
+
+Agents should not make the same mistake twice:
+- After each review, read its `Categories:` line and the PR's SonarCloud findings. When a category or rule shows up
+  a second time, add it to `docs/plans/RECURRING.md`, and in the same change:
+  - prefer a **check**: a lint rule, a `tools/` scan or a CI step, so the mistake can't merge again;
+  - where no check can catch it, add a **skill rule** to `/implement-pr` or `/review-pr`, and make the rule name the
+    finding.
+- Your own slips count too. Fix the procedure or a `tools/orchestrator/` script, not just the instance.
+- These changes go through a normal PR with a fresh reviewer. Do them as soon as a slot frees up, ahead of new
+  rows. They pay back on every later row.
 
 ## 3. Stop
 
