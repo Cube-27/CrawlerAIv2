@@ -276,6 +276,10 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
         sent = response.request.post_data_buffer
         if len(data) > _JSON_BODY_MAX_BYTES or len(sent or b"") > _JSON_BODY_MAX_BYTES:
             continue
+        try:
+            headers = recorded(_header_list(await response.request.headers_array()))
+        except PlaywrightError:
+            headers = None  # the request is gone from the browser
         entry = NetworkBody(
             url=response.url,
             status=response.status,
@@ -284,6 +288,7 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
             file=network_file(len(captured)),
             method=response.request.method,
             request_body=_text_or_none(sent),
+            request_headers=headers,
         )
         captured.append((entry, data))
     return tuple(captured)

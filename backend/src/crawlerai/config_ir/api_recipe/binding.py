@@ -19,6 +19,7 @@ from pydantic import JsonValue, ValidationError
 from crawlerai.collect import json_doc
 from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, Binder, PageDataKind, RequestSpec, parse_binder
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS
+from crawlerai.storage.capture_bundle import HeaderList
 
 # The page's JSON documents a `jsonld:` or `js_state:` binder reads, by kind.
 PageData = Mapping[PageDataKind, JsonValue]
@@ -36,6 +37,7 @@ class CapturedRequest:
     method: str
     url: str
     body: str | None = None
+    headers: HeaderList = ()  # as the browser sent them, in order; header minimization (§4.6) replays them
 
 
 @dataclass(frozen=True)

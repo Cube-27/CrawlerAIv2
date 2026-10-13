@@ -9,9 +9,10 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from http.cookiejar import CookieJar, DefaultCookiePolicy
+from typing import Literal
 
 import httpx
 
@@ -22,6 +23,7 @@ from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = ["JsonFetcher", "JsonRequest", "fetch_json"]
 
@@ -36,6 +38,10 @@ _NO_COOKIES = CookieJar(DefaultCookiePolicy(allowed_domains=[]))
 class JsonRequest:
     url: str  # the endpoint
     page_url: str  # the page the JSON stands for: the capture's `url`; the endpoint is its `final_url`
+    method: Literal["GET", "POST"] = "GET"
+    # Sent in order after `Accept: application/json`, replacing a field of the same name; never Host or Cookie.
+    headers: HeaderList = ()
+    body: str | None = None  # UTF-8 text, a POST's only
 
 
 JsonFetcher = Callable[[JsonRequest, FetchPolicy], Awaitable[FetchResult]]
@@ -64,7 +70,7 @@ async def fetch_json(
     body = b""
     try:
         async with asyncio.timeout(policy.timeout_s):
-            last, body = await _follow(request.url, policy, connector or SafeConnector(), transport)
+            last, body = await _follow(request, policy, connector or SafeConnector(), transport)
         block_class, error = await asyncio.to_thread(_outcome, last.status, body)
     except _Failed as failed:
         error, block_class, last = failed.error, "error", failed.last
@@ -98,9 +104,9 @@ def _outcome(status: int, body: bytes) -> tuple[BlockClass, str | None]:
 
 
 async def _follow(
-    url: str, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
+    request: JsonRequest, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
 ) -> tuple[Exchange, bytes]:
-    target = await _checked(connector.check(url), None)
+    target = await _checked(connector.check(request.url), None)
     # Cookies live for this fetch only (INV-29), matched on each hop's host name (RFC 6265 §5.4), not by httpx's jar
     # (`_NO_COOKIES`). Host-only cookies stay on their host (§5.3 step 6).
     cookies = httpx.Cookies(CookieJar(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain)))
@@ -111,7 +117,7 @@ async def _follow(
     ) as client:
         hops = 0
         while True:
-            exchange, response = await _send(client, target, cookies)
+            exchange, response = await _send(client, target, cookies, request)
             try:
                 location = redirect_location(exchange.status, exchange.response_headers)
                 if location is None:
@@ -122,6 +128,15 @@ async def _follow(
                 raise _Failed("too_many_redirects", exchange)
             hops += 1
             target = await _checked(connector.redirect(target, location), exchange)
+            request = _redirected(request, exchange.status)
+
+
+def _redirected(request: JsonRequest, status: int) -> JsonRequest:
+    """WHATWG Fetch §4.4 (HTTP-redirect fetch) step 12: a 303, or a 301 or 302 after a POST, goes on as a GET without
+    a body; 307 and 308 repeat the request."""
+    if status == 303 or (status in (301, 302) and request.method == "POST"):
+        return replace(request, method="GET", body=None)
+    return request
 
 
 async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
@@ -131,17 +146,27 @@ async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
         raise _Failed(str(e), last) from e
 
 
-async def _send(client: httpx.AsyncClient, target: Target, cookies: httpx.Cookies) -> tuple[Exchange, httpx.Response]:
+async def _send(
+    client: httpx.AsyncClient, target: Target, cookies: httpx.Cookies, json_request: JsonRequest
+) -> tuple[Exchange, httpx.Response]:
     url = httpx.URL(target.url)
     named = httpx.Request("GET", url)  # the hop as cookie matching sees it: by host name, not by address
     cookies.set_cookie_header(named)
     # The request goes to the checked address; the Host header (RFC 9110 §7.2) and the TLS server name (RFC 6066 §3,
     # httpx's `sni_hostname` extension) keep the name, so virtual hosting and certificate checks see the real host.
-    headers = {"Host": url.netloc.decode("ascii"), "Accept": _ACCEPT}
+    headers = httpx.Headers({"Accept": _ACCEPT})
+    for name, value in json_request.headers:
+        if name.lower() != "cookie":  # the fetch sends only its own cookies (INV-29)
+            headers[name] = value
+    headers["Host"] = url.netloc.decode("ascii")  # replaces a caller's Host: the checked host's name
     if "Cookie" in named.headers:
         headers["Cookie"] = named.headers["Cookie"]
     request = client.build_request(
-        "GET", url.copy_with(host=str(target.ip)), headers=headers, extensions={"sni_hostname": target.host}
+        json_request.method,
+        url.copy_with(host=str(target.ip)),
+        headers=headers,
+        content=json_request.body,  # httpx encodes text as UTF-8
+        extensions={"sni_hostname": target.host},
     )
     try:
         response = await client.send(request, stream=True)

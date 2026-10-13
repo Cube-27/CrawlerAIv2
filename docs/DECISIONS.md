@@ -3709,3 +3709,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Generalize one located element to the item set.
 - Why: One element does not give the item set without an item selector, which synthesis builds.
 - Reversible: yes
+
+### D-0559 — Header minimization adds one captured header at a time (spec reading)
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 3 (#117) · Status: decided
+- Decision: If no single captured header added to `Accept: application/json` makes the replay pass, the recipe is `not_learnable`; headers are not combined.
+- Alternatives: Add all, then remove one at a time (delta debugging).
+- Why: SPEC-09 §4.6's wording and its most conservative reading; every kept header is individually proven.
+- Reversible: yes
+
+### D-0560 — Captured headers never tried in a replay
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 3 (#117) · Status: decided
+- Decision: Never tried: the client's own fields (`model.CLIENT_FIELDS`: Host, Content-Length, Transfer-Encoding, connection options, Accept-Encoding; RFC 9110/9112), which `RequestSpec` also refuses as it refuses credentials; HTTP/2 pseudo-headers; credentials; values that differ between sample pages; token-like values. A value is token-like when one of its items (split at whitespace, `,`, `;` and `.`, RFC 9110 §5.6, RFC 7515 §7.1) is 20 or more characters of one RFC 4648 base64 alphabet. `NotLearnable` names the withheld headers.
+- Alternatives: A 20-character run anywhere in the value (flags `application/x-www-form-urlencoded`).
+- Why: §4.6's structural token rule without catching media types; JWTs are caught by their parts (review of #117).
+- Reversible: yes
+
+### D-0561 — Replay compares map values with the published values
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 3 (#117) · Status: decided
+- Decision: `replay.reproduces` compares `normalize(read_map(...))` with `equal` against `record.data` for every map field the page has a value for (at least one).
+- Alternatives: Compare with the captured network body's leaves.
+- Why: The same bar discovery used to pick the map; §4.7 compares against browser-captured values.
+- Reversible: yes
+
+### D-0562 — Captured network requests record their headers; `JsonRequest` sends method, headers and body
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 3 (#117) · Status: decided
+- Decision: `NetworkBody.request_headers` is optional, recorded through `acquire.headers.recorded` (no cookies), `None` in older bundles. `JsonRequest` gains `method`, `headers` and `body`; the fetch's own Host and cookies win, and a redirected POST follows WHATWG Fetch §4.4.
+- Alternatives: Bump `bundle_version`.
+- Why: §4.6 replays "headers from the captured request"; consistent with D-0540.
+- Reversible: yes

@@ -7,7 +7,7 @@ Captures are built in memory with synthetic `.test` hosts; the browser-marked en
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -47,6 +47,7 @@ class Body:
     method: str | None = "GET"
     status: int = 200
     request_body: str | None = None
+    request_headers: tuple[tuple[str, str], ...] | None = None
 
     @property
     def data(self) -> bytes:
@@ -76,6 +77,7 @@ def _bundle(page_url: str, html: str, bodies: Sequence[Body]) -> CaptureBundle:
                     file=f"network/{i + 1:04d}.json",
                     method=b.method,
                     request_body=b.request_body,
+                    request_headers=b.request_headers,
                 )
                 for i, b in enumerate(bodies)
             ),
@@ -229,3 +231,14 @@ def test_bodies_that_are_not_json_are_skipped() -> None:
     lamp = _sample("lamp-1", _values("Desk Lamp", "19.5"), [Body(f"{API}/products/lamp-1", b"not json")])
 
     assert discover([lamp, CHAIR], SCHEMA) == []
+
+
+def test_a_candidate_request_carries_the_headers_the_browser_sent() -> None:
+    sent = (("Referer", f"{SITE}/p/lamp-1"), ("X-Requested-With", "XMLHttpRequest"))
+    lamp = _sample(
+        "lamp-1", _values("Desk Lamp", "19.5"), [replace(_product("lamp-1", "Desk Lamp", "19.5"), request_headers=sent)]
+    )
+
+    (best,) = discover([lamp, CHAIR], SCHEMA)
+
+    assert [request.headers for request in best.requests] == [sent, ()]

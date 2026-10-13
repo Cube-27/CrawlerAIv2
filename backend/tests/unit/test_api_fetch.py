@@ -121,6 +121,63 @@ def test_a_redirect_is_followed_through_the_guard() -> None:
     assert result.bundle.manifest.final_url == "https://cdn.example.com/jobs.json"
 
 
+def test_a_recipe_request_sends_its_method_body_and_headers_but_keeps_the_host() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return json_reply()(request)
+
+    headers = (("Accept", "application/vnd.test+json"), ("X-Requested-With", "XMLHttpRequest"), ("Host", "a.test"))
+    request = JsonRequest(url=API, page_url=PAGE, method="POST", headers=headers, body='{"id": "1"}')
+    asyncio.run(
+        fetch_json(
+            request,
+            FetchPolicy(),
+            engine_version="test",
+            connector=connector(_DNS),
+            transport=httpx.MockTransport(handler),
+        )
+    )
+
+    (sent,) = seen
+    assert (sent.method, sent.content) == ("POST", b'{"id": "1"}')
+    assert [sent.headers[name] for name in ("Accept", "X-Requested-With", "Host")] == [
+        "application/vnd.test+json",
+        "XMLHttpRequest",
+        "api.example.com",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status", "method", "body"),
+    # WHATWG Fetch §4.4 (HTTP-redirect fetch) step 12: 303, and 301/302 after a POST, go on as a GET without a
+    # body; 307 and 308 repeat the request as it was.
+    [(301, "GET", b""), (302, "GET", b""), (303, "GET", b""), (307, "POST", b"{}"), (308, "POST", b"{}")],
+)
+def test_a_redirected_post_follows_the_fetch_standard(status: int, method: str, body: bytes) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if len(seen) == 1:
+            return httpx.Response(status, headers={"Location": "/v1/board/all"})
+        return json_reply()(request)
+
+    request = JsonRequest(url=API, page_url=PAGE, method="POST", body="{}")
+    asyncio.run(
+        fetch_json(
+            request,
+            FetchPolicy(),
+            engine_version="test",
+            connector=connector(_DNS),
+            transport=httpx.MockTransport(handler),
+        )
+    )
+
+    assert (seen[1].method, seen[1].content) == (method, body)
+
+
 def test_a_redirect_to_a_private_address_is_rejected() -> None:
     result = fetch(lambda _r: httpx.Response(302, headers={"Location": "http://internal.example.com/"}))
 
