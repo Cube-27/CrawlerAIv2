@@ -36,7 +36,10 @@ async function fieldTypes(
 
 /** Runs one `POST /v1/scrape`. A 401 drops the key through the client's middleware (`useApiClient`). */
 export async function runScrape(client: ApiClient, request: ScrapeRequest): Promise<ScrapeRun> {
-  const answer = await apiResult(() => client.POST("/v1/scrape", { body: request as ScrapeRequestBody }), "The scrape");
+  const answer = await apiResult(
+    () => client.POST("/v1/scrape", { body: request as ScrapeRequestBody }),
+    "The scrape",
+  );
   if (answer.kind === "failed") return answer;
   return {
     kind: "done",
