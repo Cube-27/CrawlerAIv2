@@ -21,8 +21,8 @@ from typing import Final
 from pydantic import JsonValue
 
 from crawlerai.collect import json_doc
+from crawlerai.collect.api import joined_raw, map_paths
 from crawlerai.config_ir.api_recipe.binding import CapturedRequest, UrlShape, url_shape
-from crawlerai.config_ir.api_recipe.model import joined_raw, map_paths
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize

@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, RequestSpec, map_paths, parse_binder, read_map
+from crawlerai.collect.api import map_paths, read_map
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, RequestSpec, parse_binder
 
 _CAPTURE = str(uuid.UUID(int=1))
 

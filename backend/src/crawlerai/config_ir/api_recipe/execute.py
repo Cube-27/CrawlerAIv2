@@ -1,0 +1,130 @@
+"""Recipe execution (SPEC-09 §4.8, ARCHITECTURE §7.1 "Adapter / API" rung, §8.6): serve a site's pages with its
+active config's API recipe over `fetch_json`, with no browser.
+
+`RecipeRung` is the recipe bound to its fetchers, the rung `acquire` takes (`acquire.rungs`): it binds the
+parameters from the page URL (fetching the HTML page first only when a binder reads the page's JSON documents,
+`requires_page_fetch`), sends the recipe's request through the SSRF guard (INV-16) and answers a
+`FetchResult(method='api')` whose body is the JSON. A page the recipe cannot serve is an `error` result, and `acquire`
+fetches it the configured way (§4.10). A listing's pages come from `pages`, which sets the recipe's pagination
+parameter to `start`, `start + step`, ... until a response's `rows` select nothing or the caller's limit is reached:
+this is how infinite scroll is served (§8.6). `recipe_collector` reads what the rung fetched.
+"""
+
+import asyncio
+import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
+from crawlerai.acquire.outcome import Content, fetch_result
+from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
+from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.collect import json_doc
+from crawlerai.collect.api import ApiCollector
+from crawlerai.config_ir.api_recipe.binding import PageData, page_data, with_query_value
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Pagination
+from crawlerai.config_ir.api_recipe.replay import request_for
+from crawlerai.content.page import ParsedPage
+
+
+def recipe_collector(recipe: ApiRecipe, recipe_id: str) -> ApiCollector:
+    """The collector of the captures `recipe` fetches; `recipe_id` names it in candidate locators."""
+    rows = None if recipe.pagination is None else recipe.pagination.rows
+    return ApiCollector(recipe_id, recipe.map, rows)
+
+
+@dataclass(frozen=True, slots=True)
+class RecipeRung:
+    """`recipe` bound to `fetch_json` (the job's guard and engine version) and to `fetch_page`, the HTTP rung that
+    fetches the HTML page when the recipe reads the page's JSON documents."""
+
+    recipe: ApiRecipe
+    fetch_json: JsonFetcher
+    fetch_page: Rung
+    engine_version: str
+
+    async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
+        """The JSON the recipe's endpoint answers for the page at `url`."""
+        bound = await self._request(url, policy)
+        if isinstance(bound, FetchResult):
+            return bound
+        request, page = bound
+        return _after(page, await self.fetch_json(request, policy))
+
+    async def pages(self, url: str, policy: FetchPolicy, limit: int) -> AsyncIterator[FetchResult]:
+        """The listing at `url`, one response per value of the pagination parameter, at most `limit` requests. A
+        response whose `rows` select nothing ends the listing and is not yielded; one that is not `ok` is yielded
+        last."""
+        pagination = self.recipe.pagination
+        if pagination is None:
+            raise ValueError("a recipe without pagination serves one response per page")
+        bound = await self._request(url, policy)
+        if isinstance(bound, FetchResult):
+            yield bound
+            return
+        request, page = bound
+        for n in range(limit):
+            value = str(pagination.start + n * pagination.step)
+            paged = replace(request, url=with_query_value(request.url, pagination.name, value))
+            result = _after(page, await self.fetch_json(paged, policy))
+            page = None  # the HTML page is fetched once, and counted with the first response
+            if result.block_class != "ok":
+                yield result
+                return
+            # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
+            if not await asyncio.to_thread(_has_rows, result, pagination):
+                return
+            yield result
+
+    async def _request(self, url: str, policy: FetchPolicy) -> tuple[JsonRequest, FetchResult | None] | FetchResult:
+        """The recipe's request for the page, with the HTML page fetch it needed; when it has none, an `error`
+        result, or the page fetch itself when that asked for fewer requests."""
+        data: PageData = {}
+        page = None
+        if self.recipe.requires_page_fetch:
+            page = await self.fetch_page(url, policy)
+            if slow_down(page):
+                return page  # a 429 or 503 asks for fewer requests: `acquire` keeps it, with no fallback request
+            if page.block_class != "ok":
+                return self._unserved(url, policy, f"page_{page.block_class}", page)
+            # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
+            data = await asyncio.to_thread(_page_data, page)
+        request = request_for(self.recipe, url, data)
+        if request is None:
+            return self._unserved(url, policy, "unbound_parameter", page)
+        return request, page
+
+    def _unserved(self, url: str, policy: FetchPolicy, reason: str, page: FetchResult | None) -> FetchResult:
+        result = fetch_result(
+            url=url,
+            method="api",
+            policy=policy,
+            engine_version=self.engine_version,
+            fetched_at=datetime.now(UTC),
+            started=time.monotonic(),
+            exchange=None,
+            content=Content(body=b""),
+            block_class="error",
+            error=reason,
+        )
+        return _after(page, result)
+
+
+def _after(page: FetchResult | None, result: FetchResult) -> FetchResult:
+    """`result` with the HTML page fetch before it among its attempts."""
+    if page is None:
+        return result
+    return with_attempts(result, page.attempts + result.attempts, page.duration_ms + result.duration_ms)
+
+
+def _page_data(page: FetchResult) -> PageData:
+    return page_data(ParsedPage.of(page.bundle))
+
+
+def _has_rows(result: FetchResult, pagination: Pagination) -> bool:
+    try:
+        document = json_doc.parse(result.bundle.body.decode("utf-8"))
+    except ValueError:  # not UTF-8 JSON (RFC 8259 §8.1): the collector reads no rows from it either
+        return False
+    return bool(json_doc.select(pagination.rows, document))

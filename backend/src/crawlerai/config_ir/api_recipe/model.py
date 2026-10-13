@@ -7,15 +7,15 @@ JSONPaths in the subset the engine reads (`select` of `json_doc`). Site strings 
 live in recipe documents only (C3); this module holds none.
 """
 
-import json
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Annotated, Final, Literal, NamedTuple, Self, get_args
 from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from crawlerai.collect import json_doc
+from crawlerai.collect.api import map_paths
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern
 from crawlerai.db.models import CaptureId
 from crawlerai.schemas.types import NAME_PATTERN, Name
@@ -55,8 +55,6 @@ CLIENT_FIELDS: Final = frozenset(
         "accept-encoding",
     }
 )
-# §4.2: a money field joins the amount and currency paths with `+`; each part starts at the root `$` (RFC 9535 §2.2).
-_JOIN: Final = re.compile(r"\+(?=\$)")
 
 
 class Binder(NamedTuple):
@@ -115,29 +113,6 @@ def _check_binder(text: str) -> str:
 def _check_jsonpath(path: str) -> str:
     _engine_jsonpath(path)
     return path
-
-
-def map_paths(path: str) -> list[str]:
-    """The JSONPaths a map entry joins with `+`, in order."""
-    return _JOIN.split(path)
-
-
-def joined_raw(parts: Sequence[str | int | float]) -> str:
-    """The raw value of a map entry that joins its parts with `+`: their texts separated by a space, a number as its
-    JSON text (RFC 8259 §6), so the money normalizer reads an amount and a currency as one value."""
-    return " ".join(part if isinstance(part, str) else json.dumps(part) for part in parts)
-
-
-def read_map(path: str, document: JsonValue) -> str | int | float | None:
-    """The raw value a map entry reads in `document`: the one scalar its path selects, or its joined parts'
-    `joined_raw`; `None` when a part selects anything but exactly one scalar."""
-    parts: list[str | int | float] = []
-    for part in map_paths(path):
-        nodes = json_doc.select(part, document)
-        if len(nodes) != 1 or not json_doc.is_scalar(value := nodes[0][1]):
-            return None
-        parts.append(value)
-    return parts[0] if len(parts) == 1 else joined_raw(parts)
 
 
 def _check_map_path(path: str) -> str:

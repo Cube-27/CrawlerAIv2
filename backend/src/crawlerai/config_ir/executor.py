@@ -22,7 +22,7 @@ from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import js_state, jsonld, xhr
 from crawlerai.collect.base import PAGE, Candidate, Entity
-from crawlerai.collect.config import Executed
+from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -52,9 +52,6 @@ from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-
-# schema.org: a ListItem is an item in a list, the kind of a listing's row.
-ROW_KIND = "ListItem"
 
 
 def row_id(n: int) -> str:
@@ -138,7 +135,7 @@ class _Run:
 
     def documents(self, source: JsonSource) -> list[JsonValue]:
         if source not in self._documents:
-            self._documents[source] = _documents(source, self.page)
+            self._documents[source] = documents(source, self.page)
         return self._documents[source]
 
     def nodes(self) -> list[tuple[tuple[str, ...], JsonValue]]:
@@ -306,7 +303,8 @@ def _jsonld_values(step: JsonLdStep, run: _Run) -> list[Raw]:
     return _select_all(step.jsonld, nodes)
 
 
-def _documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
+def documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
+    """The page's JSON documents of `source`, in page order."""
     # Unreadable documents are skipped here; the jsonld, js_state and xhr collectors report them for the page.
     match source:
         case "jsonld":

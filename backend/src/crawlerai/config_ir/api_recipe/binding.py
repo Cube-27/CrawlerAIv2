@@ -17,8 +17,17 @@ from urllib.parse import quote, unquote, urlsplit
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import json_doc
-from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, Binder, PageDataKind, RequestSpec, parse_binder
+from crawlerai.config_ir.api_recipe.model import (
+    PAGE_DATA_KINDS,
+    PLACEHOLDER,
+    Binder,
+    PageDataKind,
+    RequestSpec,
+    parse_binder,
+)
+from crawlerai.config_ir.executor import documents
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS
+from crawlerai.content.page import ParsedPage
 from crawlerai.storage.capture_bundle import HeaderList
 
 # The page's JSON documents a `jsonld:` or `js_state:` binder reads, by kind.
@@ -81,6 +90,21 @@ def render_url(template: str, params: Mapping[str, str]) -> str:
     """`template` with each placeholder replaced by its value, encoded for the path or the query it stands in."""
     path, question, query = template.partition("?")
     return _fill(path, params, _PATH_SAFE) + question + _fill(query, params, _QUERY_SAFE)
+
+
+def with_query_value(url: str, name: str, value: str) -> str:
+    """`url` with its query items named `name` replaced by one `name=value` at the end, both encoded as a query value
+    is (`render_url`)."""
+    path, _, query = url.partition("?")
+    items = [item for item in query.split("&") if item and unquote(item.partition("=")[0]) != name]
+    items.append(f"{quote(name, safe=_QUERY_SAFE)}={quote(value, safe=_QUERY_SAFE)}")
+    return f"{path}?{'&'.join(items)}"
+
+
+def page_data(page: ParsedPage) -> PageData:
+    """The page's JSON documents as `jsonld:` and `js_state:` binders read them: a list per kind, in page order,
+    unreadable ones skipped (their collectors report them)."""
+    return {kind: documents(kind, page) for kind in PAGE_DATA_KINDS}
 
 
 def render_body(template: str, params: Mapping[str, str]) -> str:
