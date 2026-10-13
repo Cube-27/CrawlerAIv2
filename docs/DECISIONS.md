@@ -38,15 +38,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 
 | ID | Title | Status |
 |---|---|---|
-| D-0001 | LGPL dependencies allowed but avoided | pending-owner |
-| D-0012 | Labeling iframe loads images from live sites | pending-owner |
-| D-0015 | `apply_url` maps to `JobPosting.url` | pending-owner |
-| D-0019 | Only derivations: canonical/final URL → `url`, absolutize | pending-owner |
-| D-0024 | Role C offsets corrected by exact-match search, never fuzzy | pending-owner |
-| D-0037 | `map`/`crawl` scope is the exact host | pending-owner |
-| D-0086 | Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md | pending-owner |
-| D-0187 | Secondary suppression of aggregate cells for hidden/fresh | needs-owner |
-| D-0214 | How hidden/fresh pages get labeled at milestone M | needs-owner |
+| — | None open (answered in D-0234) | — |
 
 ---
 
@@ -55,7 +47,8 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 ### D-0001 – D-0044: Decisions made while writing the specs
 
 - Date: 2026-10-12 · Source: spec authoring (SPEC-00 … SPEC-12) and the rev 5 consistency pass.
-- Status: `pending-owner` where the Index above lists it; `decided` otherwise. Every entry is reversible unless the
+- Status: `decided`, except D-0001, D-0012, D-0015, D-0019, D-0024 and D-0037: `confirmed 2026-10-13`
+  (Owner answer: confirmed as written, D-0234). Every entry is reversible unless the
   table says otherwise. Implementation proceeds on all of them (OPEN_QUESTIONS #14).
 - Decisions settled by ARCHITECTURE rev 5 are not repeated here: corroboration floor, `operator` bucket, schema
   version restarting learning, glob-expanded `extract` URLs, `error` class, robots outcome, PR-comment contents.
@@ -395,11 +388,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0086 — Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md
-- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: pending-owner
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: confirmed 2026-10-13
 - Decision: CLAUDE.md §5 step 1: the escalation writer copies the `needs-owner` entry as a row in `OPEN_QUESTIONS.md`. This is the only agent edit to that file without owner approval.
 - Alternatives: the owner copies them.
 - Why: SPEC-00 §4.9 item 13 and OPEN_QUESTIONS.md's own text require the copy; CLAUDE.md §6 otherwise reserves the file to the owner.
 - Reversible: yes
+- Owner answer: confirmed as written (D-0234).
 
 ### D-0087 — SPEC-00 §4.3 HeroUI row corrected (clarifying edit)
 - Date: 2026-10-12 · Spec/PR: SPEC-00 PR 10 (#10) · Status: decided
@@ -1102,11 +1096,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0187 — Secondary suppression of aggregate cells for hidden/fresh
-- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: needs-owner
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: confirmed 2026-10-13
 - Question: `by_bucket` and `by_config_status` cells are subsets of `by_field_type`, so one suppressed cell can be derived by subtracting the visible cells from the type total. §16.3 asks only for primary suppression (cells under 10), while its goal is that aggregates "can't identify individual cases". Add secondary suppression?
 - Options: (a) keep primary suppression only, as §16.3 says; (b) add complementary suppression: when exactly one cell in a group is suppressed, suppress the next-smallest too; (c) report bucket and config-status tables only for dev.
 - Recommendation: (b). It closes the subtraction path at little cost, and the gate reads unsuppressed numbers inside the job anyway (D-0182).
 - Blocked: nothing. Ships with primary suppression; changing it touches ARCHITECTURE §16.3, so it needs the owner.
+- Owner answer: option (b), complementary suppression (D-0234; ARCHITECTURE Appendix A #30, §16.3).
 
 ### D-0188 — Wrong products fail the gate even without a baseline
 - Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
@@ -1291,11 +1286,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0214 — How hidden/fresh pages get labeled at milestone M
-- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: needs-owner
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: confirmed 2026-10-13
 - Question: The labeling API serves dev only (D-0207). SPEC-03 §1/§4.10 suggest the same screen could label hidden/fresh on a custodian machine. How should hidden/fresh labeling work?
 - Options: (a) a custodian-only process: the same app run on the custodian machine with a private backend, never deployed; (b) this router gains a private backend behind a custodian-only setting; (c) label hidden/fresh with a separate CLI.
 - Recommendation: (a). It keeps the main deployment unable to reach private data, and it reuses the screen.
 - Blocked: nothing now. Needed before H3 (milestone M).
+- Owner answer: option (a), a custodian-machine instance with a private backend, never deployed (D-0234; Appendix A #30).
 
 ### D-0215 — `RecordedLLM` keys on the requested model class
 - Date: 2026-10-13 · Spec/PR: SPEC-03 PR 4 (#33) · Status: decided
@@ -1428,4 +1424,16 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `pyyaml>=6,<7` (MIT), with `types-pyyaml` for mypy; only `safe_load`/`safe_dump`.
 - Alternatives: Write YAML by hand.
 - Why: SPEC-05 reads the file with a YAML parser; the safe functions never construct objects.
+- Reversible: yes
+
+### D-0234 — Owner answers to the open owner questions
+- Date: 2026-10-13 · Spec/PR: owner · Status: decided
+- Decision: The owner took the recommended option on each open item.
+  - D-0187 → (b): hidden/fresh aggregates use complementary suppression (ARCHITECTURE rev 7 §16.3; SPEC-03 PR 12).
+  - D-0214 → (a): hidden/fresh pages are labeled by the same app run on the custodian machine with a private backend, never deployed.
+  - The `pending-owner` entries D-0001, D-0012, D-0015, D-0019, D-0024, D-0037 and D-0086 are confirmed as written (OPEN_QUESTIONS #14).
+  - D-0110 is closed by D-0227 (OPEN_QUESTIONS #15).
+  - Secrets (H1, H2, H4) are not needed yet; SPEC-03 PR 7 stays `human` until they are.
+- Alternatives: the other options listed in D-0187 and D-0214.
+- Why: Owner instruction, 2026-10-13.
 - Reversible: yes
