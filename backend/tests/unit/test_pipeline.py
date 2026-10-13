@@ -318,6 +318,36 @@ def test_role_c_is_not_called_for_conflicts() -> None:
     assert role_c.requests == []
 
 
+def test_missing_optional_fields_ride_along_with_a_required_gap() -> None:
+    # SPEC-06 §4.4, D-0025: one call, in schema order.
+    role_c = FakeRoleC()
+    node = {key: value for key, value in _product(price=None).items() if key != "sku"}
+    _extract(_bundle(_html(node)), role_c=role_c)
+    assert [r.missing for r in role_c.requests] == [("price", "sku")]
+
+
+def test_missing_optional_fields_alone_do_not_call_role_c() -> None:
+    role_c = FakeRoleC()
+    node = {key: value for key, value in _product().items() if key != "sku"}
+    result = _extract(_bundle(_html(node)), role_c=role_c)
+    assert (role_c.requests, result.llm_calls) == ([], ())
+
+
+async def _budget_spent(request: GapRequest) -> GapReply:
+    return GapReply(candidates=(), llm_calls=(), failure="llm_budget", diagnostics=("role C: llm_budget",))
+
+
+def test_a_role_c_call_without_a_reply_leaves_the_asked_fields_missing_with_its_reason() -> None:
+    # SPEC-06 §4.7: never a published guess; the page is partial and says why.
+    result = _extract(_bundle(_html(_product(price=None))), role_c=_budget_spent)
+    assert _statuses(result) == {
+        "title": ("published", None),
+        "price": ("missing", "llm_budget"),
+        "sku": ("published", None),
+    }
+    assert (result.outcome, result.diagnostics) == ("partial", ("role C: llm_budget",))
+
+
 def test_a_role_c_failure_is_not_a_resolution_error() -> None:
     # A replay's missing recording must reach the harness, which drops the page (SPEC-03 §4.5).
     async def failing(_request: GapRequest) -> GapReply:

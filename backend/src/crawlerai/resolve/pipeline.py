@@ -99,10 +99,14 @@ class GapRequest:
 
 @dataclass(frozen=True, slots=True)
 class GapReply:
-    """Role C's grounded candidates (`source_kind='llm'`, owned by the target) and the calls it made."""
+    """Role C's grounded candidates (`source_kind='llm'`, owned by the target) and the calls it made. `failure` is
+    set when its call gave no valid reply (SPEC-06 §4.7): the asked fields then stay `missing` with it as their
+    reason. `diagnostics` join the page's (values dropped as ungrounded, truncation)."""
 
     candidates: tuple[Candidate, ...]
     llm_calls: tuple[LLMCallRecord, ...]
+    failure: str | None = None
+    diagnostics: tuple[str, ...] = ()
 
 
 # The LLM hook (§4.13), filled by SPEC-06's role C; the caller binds the LLM client.
@@ -140,19 +144,20 @@ async def extract_page(
     except Exception:  # §4.14: a resolution bug fails the page, never part of it
         log.exception(_FAILED)
         return _result("error", mode)
-    candidates = page.collected.candidates
+    candidates, diagnostics = page.collected.candidates, page.collected.diagnostics
     llm_calls: tuple[LLMCallRecord, ...] = ()
     missing = _gaps(schema, fields)
     if role_c is not None and missing and isinstance(page.target, Entity):
         reply = await role_c(GapRequest(page.page, schema, page.ctx, page.target, missing))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
+        diagnostics = (*diagnostics, *reply.diagnostics)
         try:
             fields = await asyncio.to_thread(page.resolve, candidates)
         except Exception:
             log.exception(_FAILED)
-            return _result(
-                "error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=page.collected.diagnostics
-            )
+            return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
+        if reply.failure is not None:
+            fields = _unanswered(fields, missing, reply.failure)
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -161,7 +166,7 @@ async def extract_page(
         llm_calls=llm_calls,
         mode=mode,
         record_confidence=record_confidence(schema, fields),
-        diagnostics=page.collected.diagnostics,
+        diagnostics=diagnostics,
     )
 
 
@@ -295,15 +300,25 @@ def _scoped(schema: SchemaDef, fields: FieldSet, scope: Scope) -> FieldSet:
 
 
 def _gaps(schema: SchemaDef, fields: FieldSet) -> tuple[str, ...]:
-    """§4.13: the fields role C is asked for, in schema order: each required field that is `missing` (not a conflict
-    or an abstention), and each `missing` member of a required group that no member fills yet."""
+    """§4.13: the fields role C is asked for, in schema order. Only `missing` fields are asked (never a conflict or
+    an abstention), and only when a required one is among them: a required field, or a member of a required group
+    that no member fills yet. Missing optional fields then ride along in the same call (SPEC-06 §4.4, D-0025)."""
     published = {name for name, outcome in fields.items() if outcome.status == "published"}
     unmet = {name for group in schema.required_groups if not published.intersection(group) for name in group}
-    return tuple(
-        name
-        for name, spec in schema.fields.items()
-        if (spec.required or name in unmet) and fields[name].status == "missing"
-    )
+    missing = [name for name, outcome in fields.items() if outcome.status == "missing"]
+    if not any(schema.fields[name].required or name in unmet for name in missing):
+        return ()
+    return tuple(missing)
+
+
+def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:
+    """The fields after a role C call that gave no reply: each asked field still `missing` says why (SPEC-06 §4.7)."""
+    return {
+        name: outcome.model_copy(update={"reason": failure})
+        if name in asked and outcome.status == "missing"
+        else outcome
+        for name, outcome in fields.items()
+    }
 
 
 def _result(

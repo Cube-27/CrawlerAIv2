@@ -50,7 +50,7 @@ class LLMRequest(_Model):
     user: str
     output_schema: dict[str, JsonValue]  # JSON Schema (draft 2020-12) of the response
     max_output_tokens: int
-    job_id: JobId | None  # None only for the eval labeling pre-fill, which no job pays for
+    job_id: JobId | None  # None only for an eval replay or the labeling pre-fill, which no job pays for
 
     @field_validator("output_schema")
     @classmethod
