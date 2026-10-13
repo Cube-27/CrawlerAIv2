@@ -11,9 +11,11 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
   Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
-- a token that is a schema.org property path some tracked schema document maps a field to (a `schema_org` value in a
-  JSON file, SPEC-04 §4.2, up to any `+`) is that path. The paths are read from the documents, as columns are read
-  from the schema.
+- a token that is, as written, a schema.org property path some tracked schema document maps a field to is that path.
+  A schema document is a JSON object with a `name`, an integer `version`, a `page_kind` and a `fields` object
+  (SPEC-04 §4.2); the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
+  up to any `+`, that follow schema.org naming. The paths are read from the documents, as columns are read from the
+  schema.
 URL hosts are always checked.
 
 With `--public`, `--staged` (the pre-commit hook) scans only the files staged for commit, as the index holds
@@ -66,6 +68,10 @@ DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|
 # A qualified column reference: two SQL identifiers (letters, digits, `_`) joined by one dot, bounded by characters
 # that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
 COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
+# schema.org naming conventions (https://schema.org/docs/styleguide.html): a path starts at an UpperCamelCase type and
+# follows lowerCamelCase properties; `+` joins a second property of the last type (SPEC-04 §4.2). A host is written
+# lowercase, so it is not a path in this form, and a path is matched only as written.
+SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[a-z][A-Za-z0-9]*)?")
 # Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.
 HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
@@ -163,20 +169,31 @@ def declarative_columns(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
                     yield table, string_arg(value) or target.id
 
 
-def schema_org_values(file: Path) -> Iterator[str]:
-    """The `schema_org` values of a JSON file's schema documents, at any depth; none when it does not parse."""
+def schema_org_paths(file: Path) -> Iterator[str]:
+    """The schema.org paths a JSON schema document maps its fields to; none when the file is not one."""
     try:
-        stack = [json.loads(file.read_text(encoding="utf-8"))]
+        document = json.loads(file.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError):
         return
+    if not (
+        isinstance(document, dict)
+        and isinstance(document.get("name"), str)
+        and type(document.get("version")) is int
+        and isinstance(document.get("page_kind"), str)
+        and isinstance(document.get("fields"), dict)
+    ):
+        return
+    stack = list(document["fields"].values())
     while stack:
-        node = stack.pop()
-        if isinstance(node, dict):
-            if isinstance(value := node.get("schema_org"), str):
-                yield value
-            stack.extend(node.values())
-        elif isinstance(node, list):
-            stack.extend(node)
+        field = stack.pop()
+        if not isinstance(field, dict):
+            continue
+        if isinstance(value := field.get("schema_org"), str) and (match := SCHEMA_ORG_PATH.fullmatch(value)):
+            yield match[1]
+        if isinstance(item := field.get("item"), dict):
+            stack.append(item)
+        if isinstance(fields := field.get("fields"), dict):
+            stack.extend(fields.values())
 
 
 @dataclass(frozen=True)
@@ -203,13 +220,15 @@ class RepoNames:
                 modules.update(".".join(parts[start:]).lower() for start in range(len(parts)))
                 columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
             if pure.suffix == ".json":
-                schema_paths.update(value.split("+")[0].lower() for value in schema_org_values(root / path))
+                schema_paths.update(schema_org_paths(root / path))
         return cls(frozenset(extensions), frozenset(modules), frozenset(columns), frozenset(schema_paths))
 
     def names(self, token: str) -> bool:
-        labels = token.split(".")
+        """Whether the token, as written, is a file name, a module or a schema.org path."""
+        lowered = token.lower()
+        labels = lowered.split(".")
         return (
-            (len(labels) == 2 and labels[1] in self.extensions) or token in self.modules or token in self.schema_paths
+            (len(labels) == 2 and labels[1] in self.extensions) or lowered in self.modules or token in self.schema_paths
         )
 
     def without_column_references(self, text: str) -> str:
@@ -297,9 +316,9 @@ def hosts_in(text: str, tlds: frozenset[str], repo_names: RepoNames) -> Iterator
         if not names_no_public_site(host):
             yield host
     for match in DOTTED.finditer(repo_names.without_column_references(text)):
-        token = match.group(0).lower()
-        if token.rsplit(".", 1)[1] in tlds and not repo_names.names(token):
-            yield token
+        token = match.group(0)
+        if token.rsplit(".", 1)[1].lower() in tlds and not repo_names.names(token):
+            yield token.lower()
 
 
 def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool) -> tuple[list[str], int]:

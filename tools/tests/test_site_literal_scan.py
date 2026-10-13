@@ -469,29 +469,37 @@ def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Pa
 PRODUCT_NAME = ".".join(["Product", "name"])
 BRAND_NAME = ".".join(["Product", "brand", "name"])
 OFFER_NAME = ".".join(["Offer", "name"])
-PRESET = (
-    "{\n"
-    f'  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},\n'
-    f'  "rows": {{"item": {{"fields": {{"brand": {{"schema_org": "{BRAND_NAME}"}}}}}}}},\n'
-    '  "price": {"schema_org": "Offer.price+priceCurrency"}\n'
-    "}\n"
+# A host in the place of a schema.org path; it is in no allowlist the tests pass.
+SHOP = ".".join(["Shop", "example", "com"])
+
+
+def schema_document(fields: str) -> str:
+    """A JSON schema document (SPEC-04 §4.2) with the given `fields` object body."""
+    return '{"name": "p", "version": 1, "page_kind": "listing",\n  "fields": {' + fields + "}\n}\n"
+
+
+PRESET = schema_document(
+    f'\n  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},'
+    '\n  "rows": {"type": "list", "item": {"type": "object",'
+    f' "fields": {{"brand": {{"schema_org": "{BRAND_NAME}"}}}}}}}},'
+    '\n  "price": {"type": "money", "schema_org": "Offer.price+priceCurrency"}'
 )
 
 
 def test_schema_org_paths_the_schema_documents_define_are_not_hosts(tmp_path: Path) -> None:
-    refs = f'A = "{PRODUCT_NAME.lower()}"\n# maps to {BRAND_NAME}\n'
-    repo = make_repo(tmp_path / "repo", {"schemas/presets/p.json": PRESET, "refs.py": refs})
+    refs = f'A = "{PRODUCT_NAME}"\n# maps to {BRAND_NAME}\n'
+    repo = make_repo(tmp_path / "repo", {"schemas/p.json": PRESET, "refs.py": refs})
 
     result = run_scan(repo, allowlist=[])
 
-    assert result.returncode == 0, result.stdout
+    assert (result.returncode, result.stdout) == (0, "site-literals: ok, 2 files scanned\n")
 
 
 def test_schema_org_shapes_no_schema_document_defines_are_hosts(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {
-            "schemas/presets/p.json": PRESET,
+            "schemas/p.json": PRESET,
             "q.json": f'{{"same_as": "{OFFER_NAME}"}}\n',  # another key
             "broken.json": f'{{"schema_org": "{OFFER_NAME}"\n',  # not JSON
             "refs.py": f'A = "{OFFER_NAME}"\nB = "shop.{PRODUCT_NAME}"\n',
@@ -506,4 +514,49 @@ def test_schema_org_shapes_no_schema_document_defines_are_hosts(tmp_path: Path) 
         f"q.json:1: {OFFER_NAME.lower()}",
         f"refs.py:1: {OFFER_NAME.lower()}",
         f"refs.py:2: shop.{PRODUCT_NAME.lower()}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        pytest.param(f'{{"schema_org": "{OFFER_NAME}"}}\n', id="not-a-schema-document"),
+        pytest.param(f'{{"fields": {{"a": {{"schema_org": "{OFFER_NAME}"}}}}}}\n', id="no-name-version-page-kind"),
+        pytest.param(
+            f'{{"name": "p", "version": 1, "page_kind": "detail", "fields": {{}}, "schema_org": "{OFFER_NAME}"}}\n',
+            id="outside-a-field",
+        ),
+        pytest.param(
+            schema_document(f'"a": {{"description": {{"schema_org": "{OFFER_NAME}"}}}}'), id="not-a-field-key"
+        ),
+    ],
+)
+def test_schema_org_values_outside_field_specs_of_schema_documents_are_hosts(tmp_path: Path, document: str) -> None:
+    repo = make_repo(tmp_path / "repo", {"d.json": document, "refs.py": f'A = "{OFFER_NAME}"\n'})
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 1
+    assert f"refs.py:1: {OFFER_NAME.lower()}" in result.stdout.splitlines()
+
+
+def test_schema_org_paths_follow_schema_org_naming_and_match_as_written(tmp_path: Path) -> None:
+    """A path is an UpperCamelCase type, then lowerCamelCase properties: a lowercase host in a field's `schema_org`
+    exempts nothing, and a path written in another case is not that path."""
+    repo = make_repo(
+        tmp_path / "repo",
+        {
+            "schemas/p.json": PRESET,
+            "d.json": schema_document(f'"a": {{"type": "text", "schema_org": "{SHOP.lower()}"}}'),
+            "refs.py": f'A = "{SHOP.lower()}"\nB = "{PRODUCT_NAME.lower()}"\n',
+        },
+    )
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        f"d.json:2: {SHOP.lower()}",
+        f"refs.py:1: {SHOP.lower()}",
+        f"refs.py:2: {PRODUCT_NAME.lower()}",
     ]
