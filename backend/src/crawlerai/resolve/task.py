@@ -69,7 +69,10 @@ async def extract_task(
 ) -> Stored:
     """Extract the task's capture and store the result in `conn`'s transaction. `caller_supplied` is true for
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
-    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome."""
+    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
+
+    `role_c` calls the LLM client before this step writes anything, and the client commits usage on its own
+    connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row."""
     result = await extract_page(bundle, schema, None, role_c, mode, data=data)
     return await store_extraction(
         conn, task, result, capture_id=capture_id, site_id=site_id, schema=schema, caller_supplied=caller_supplied
