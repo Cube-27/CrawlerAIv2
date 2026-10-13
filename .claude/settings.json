@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "py=$(command -v python3 || command -v python) || { echo 'merge guard: no python3 or python on PATH; denying.' >&2; exit 2; }; exec \"$py\" -I -S \"$CLAUDE_PROJECT_DIR/tools/orchestrator/merge_guard.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
