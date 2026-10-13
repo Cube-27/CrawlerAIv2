@@ -14,22 +14,23 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import EvalRunId, Split
-from crawlerai.eval.metrics import PrecisionMetrics, Report, Suppressed
+from crawlerai.eval.cli import EvalCliError
+from crawlerai.eval.metrics import PrecisionMetrics, Report
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.storage.fs import FsStore
 
-CALIBRATION_FILE = "calibration.json"
 PRECEDENCE_FILE = "source_precedence.yaml"
-_STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
 
 Orders = dict[str, tuple[str, ...]]  # field type -> source kinds, first wins (SPEC-05 §4.7)
 
 
-class NotDev(Exception):
+class NotDev(EvalCliError):
     """A fit was asked of a split other than dev."""
 
 
-class PrecedenceMissing(Exception):
+class PrecedenceMissing(EvalCliError):
     """There is no current source precedence to refit."""
 
 
@@ -57,6 +58,8 @@ class Precedence(_Model):
     orders: Orders
 
 
+_STAMP = Precedence.model_fields.keys() - {"orders"}
+
 CalibrationFit = Callable[[EvalRunRow], dict[str, Bucket]]
 PrecedenceFit = Callable[[EvalRunRow, Mapping[str, Sequence[str]]], Orders]
 
@@ -70,11 +73,10 @@ def run_buckets(run: EvalRunRow) -> dict[str, Bucket]:
     """The run's `by_bucket` table: `n` and precision of the published fields per field type and evidence bucket,
     which is SPEC-05 §4.11's definition. A suppressed cell keeps its size and has no precision."""
     report = Report.model_validate(run.metrics)
-    return {key: _bucket(cell) for key, cell in report.by_bucket.items()}
-
-
-def _bucket(cell: PrecisionMetrics | Suppressed) -> Bucket:
-    return Bucket(n=cell.n, precision=cell.precision if isinstance(cell, PrecisionMetrics) else None)
+    return {
+        key: Bucket(n=cell.n, precision=cell.precision if isinstance(cell, PrecisionMetrics) else None)
+        for key, cell in report.by_bucket.items()
+    }
 
 
 def keep_order(run: EvalRunRow, current: Mapping[str, Sequence[str]]) -> Orders:
@@ -123,16 +125,13 @@ def read_precedence(data_dir: Path) -> Orders:
 
 def write_precedence(precedence: Precedence, data_dir: Path) -> Path:
     # SPEC-05 §4.7's shape: the stamp, then one list of source kinds per field type, in the fit's order.
-    document = {
-        "source_split": precedence.source_split,
-        "eval_run_id": str(precedence.eval_run_id),
-        "git_sha": precedence.git_sha,
-        **{type_: list(order) for type_, order in precedence.orders.items()},
+    document = precedence.model_dump(mode="json", exclude={"orders"}) | {
+        type_: list(order) for type_, order in precedence.orders.items()
     }
     return _write(data_dir / PRECEDENCE_FILE, yaml.safe_dump(document, sort_keys=False))
 
 
 def _write(path: Path, text: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(text.encode())
+    # Atomic (temp file, then rename): a crash never leaves a truncated file for the engine version to hash.
+    FsStore(path.parent).put(path.name, text.encode())
     return path

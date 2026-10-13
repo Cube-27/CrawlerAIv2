@@ -117,6 +117,11 @@ def test_precedence_keeps_the_current_order_while_runs_carry_no_per_source_count
         "text": ["adapter", "api", "jsonld", "microdata", "og", "config", "llm"],
         "url": ["adapter", "jsonld", "og"],
     }
+    # A refit reads its own output back: the stamp is not a field type.
+    assert read_precedence(tmp_path) == {
+        "text": ("adapter", "api", "jsonld", "microdata", "og", "config", "llm"),
+        "url": ("adapter", "jsonld", "og"),
+    }
 
 
 def test_precedence_writes_the_order_the_fit_returns(tmp_path: Path) -> None:
@@ -128,16 +133,6 @@ def test_precedence_writes_the_order_the_fit_returns(tmp_path: Path) -> None:
     path = write_precedence(fit_precedence(_run(), current, reverse), tmp_path)
 
     assert yaml.safe_load(path.read_text(encoding="utf-8"))["text"] == ["llm", "jsonld", "adapter"]
-
-
-def test_a_refit_reads_its_own_output_back(tmp_path: Path) -> None:
-    (tmp_path / "source_precedence.yaml").write_text(CURRENT, encoding="utf-8")
-    write_precedence(fit_precedence(_run(), read_precedence(tmp_path)), tmp_path)
-
-    assert read_precedence(tmp_path) == {
-        "text": ("adapter", "api", "jsonld", "microdata", "og", "config", "llm"),
-        "url": ("adapter", "jsonld", "og"),
-    }
 
 
 def test_precedence_needs_a_current_order_to_refit(tmp_path: Path) -> None:

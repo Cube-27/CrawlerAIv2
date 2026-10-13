@@ -17,8 +17,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
-from crawlerai.core import engine_version
-from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir
+from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
 from crawlerai.eval import calibrate, promote
@@ -123,25 +122,23 @@ async def _eval_rotate_hidden(fraction: float) -> None:
 
 def _data_dir() -> Path:
     """`backend/data/` of the source tree this package runs from, where SPEC-05 reads its calibration and precedence."""
-    backend = backend_dir(Path(engine_version.__file__))
+    backend = backend_dir(Path(calibrate.__file__))  # any module one package below `crawlerai`
     if backend is None:
         raise EvalCliError("no backend source tree: calibration and precedence are written to backend/data/")
-    return backend / "data"
+    return data_dir(backend)
 
 
-async def _eval_calibrate(run_id: EvalRunId) -> None:
+async def _eval_fit(command: str, run_id: EvalRunId) -> None:
+    """`calibrate` or `fit-precedence`: fit on dev run `run_id` and write the file."""
+    directory = _data_dir()
+    # Read before the store is opened: without a current order there is nothing to refit.
+    current = calibrate.read_precedence(directory) if command == "fit-precedence" else None
     async with aclosing(dev_store(Settings())) as dev:
         run = await dev.get_run(run_id)
-    path = calibrate.write_calibration(calibrate.calibrate(run), _data_dir())
-    print(json.dumps({"written": str(path), "eval_run_id": str(run.id), "source_split": run.split}))
-
-
-async def _eval_fit_precedence(run_id: EvalRunId) -> None:
-    data_dir = _data_dir()
-    current = calibrate.read_precedence(data_dir)
-    async with aclosing(dev_store(Settings())) as dev:
-        run = await dev.get_run(run_id)
-    path = calibrate.write_precedence(calibrate.fit_precedence(run, current), data_dir)
+    if current is None:
+        path = calibrate.write_calibration(calibrate.calibrate(run), directory)
+    else:
+        path = calibrate.write_precedence(calibrate.fit_precedence(run, current), directory)
     print(json.dumps({"written": str(path), "eval_run_id": str(run.id), "source_split": run.split}))
 
 
@@ -239,8 +236,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             elif args.eval_command in ("calibrate", "fit-precedence"):
                 # Refused before any store is opened: a private split's run is never read here (C1).
                 calibrate.require_dev(args.split)
-                fit = _eval_calibrate if args.eval_command == "calibrate" else _eval_fit_precedence
-                asyncio.run(fit(EvalRunId(args.run)))
+                asyncio.run(_eval_fit(args.eval_command, EvalRunId(args.run)))
             else:
                 # The site list is read only from under the working directory, as `fetch --out` is written there.
                 cwd = Path.cwd().resolve()
@@ -248,14 +244,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 if not sites.is_relative_to(cwd):
                     parser.error(f"--file must be under the working directory {cwd}")
                 asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
-        except (
-            EvalCliError,
-            EvalNotFound,
-            PrivateCredentialsMissing,
-            PrivateStoreNotSeparate,
-            calibrate.NotDev,
-            calibrate.PrecedenceMissing,
-        ) as e:
+        except (EvalCliError, EvalNotFound, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
             parser.exit(2, f"crawlerai eval: {e}\n")
         except Exception as e:
             # Only a dev command shows its failure; `promote` and `rotate-hidden` read private splits and have none.

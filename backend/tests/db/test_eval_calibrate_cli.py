@@ -9,7 +9,7 @@ from pathlib import Path
 import anyio
 import pytest
 import yaml
-from sqlalchemy import delete, insert
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai import cli
@@ -17,7 +17,8 @@ from crawlerai.cli import main
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import EvalRun
 from crawlerai.eval.metrics import PrecisionMetrics, Report
-from crawlerai.eval.store import EvalRunRow
+from crawlerai.eval.store import DevEvalStore, EvalRunRow
+from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
 
@@ -41,8 +42,7 @@ async def dev_run(database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
     run = EvalRunRow(split="dev", engine_version=report.engine_version, git_sha=SHA, metrics=report.model_dump())
     engine = create_async_engine(database_url)
-    async with engine.begin() as conn:
-        await conn.execute(insert(EvalRun).values(run.model_dump()))
+    await DevEvalStore(engine, FsStore(tmp_path / "objects")).put_run(run)
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
     monkeypatch.setattr(cli, "_data_dir", lambda: tmp_path / "data")
