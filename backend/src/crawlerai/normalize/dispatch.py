@@ -4,6 +4,7 @@ Callers (the resolver, eval, the API) normalize through `normalize` and never pi
 """
 
 from crawlerai.normalize import enum, text, url
+from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import Context, Invalid, Normalizer, NormalizeResult, Raw
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -14,6 +15,7 @@ _NORMALIZERS: dict[FieldType, Normalizer] = {
     FieldType.ENUM: enum.normalize,
     FieldType.URL: url.normalize,
     FieldType.IMAGE_URL: url.normalize,
+    FieldType.RANGE: lambda raw, spec, ctx: range_.normalize(raw, spec, ctx, money=_money),
 }
 
 
@@ -24,3 +26,12 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     if normalizer is None:
         return Invalid("unknown_type")
     return normalizer(raw, spec, ctx)
+
+
+_MONEY = FieldSpec(type=FieldType.MONEY)
+
+
+def _money(raw: Raw, ctx: Context) -> NormalizeResult:
+    # A range resolves its currency by the money rules (SPEC-04 §4.4) through this registry, so range does not
+    # import money (C8) and declines its currency while no money normalizer is registered.
+    return normalize(raw, _MONEY, ctx)

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from crawlerai.normalize.base import Context, Invalid, Ok
 from crawlerai.normalize.dispatch import normalize
@@ -50,3 +51,25 @@ def test_url_and_image_url_go_to_the_url_module() -> None:
 def test_a_type_without_a_normalizer_yet_declines_as_unknown_type() -> None:
     # `list` and `object` recursion arrives with SPEC-04 PR 9, the last normalizer PR.
     assert normalize(["a"], _spec(FieldType.LIST), CTX) == Invalid("unknown_type")
+
+
+def test_range_goes_to_the_range_module() -> None:
+    unit_range: JsonValue = {"@type": "QuantitativeValue", "minValue": 1, "maxValue": 2.5, "unitCode": "KGM"}
+
+    expected: JsonValue = {"min": "1", "max": "2.5", "currency": None, "unit": "KGM", "period": None}
+    assert normalize(unit_range, _spec(FieldType.RANGE), CTX) == Ok(expected)
+
+
+def test_range_resolves_its_currency_by_the_registered_money_rules() -> None:
+    money_range: JsonValue = {"currency": "EUR", "minValue": 1, "maxValue": 2, "unitText": "YEAR"}
+    money = normalize({"price": 1, "priceCurrency": "EUR"}, _spec(FieldType.MONEY), CTX)
+
+    result = normalize(money_range, _spec(FieldType.RANGE), CTX)
+
+    # Before SPEC-04 PR 3 registers money, its decline is the range's decline.
+    if isinstance(money, Ok):
+        assert isinstance(result, Ok)
+        assert isinstance(result.value, dict)
+        assert (result.value["currency"], result.value["period"]) == ("EUR", "YEAR")
+    else:
+        assert result == money
