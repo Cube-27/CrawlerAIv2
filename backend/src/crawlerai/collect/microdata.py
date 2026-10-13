@@ -285,14 +285,16 @@ def _rdfa_term(token: str, vocab_is_schema: bool) -> str | None:
 
 def _resolve(written: str | None, ctx: Context) -> str | None:
     # HTML Standard: `itemid` is a URL, parsed against the document's base; RDFa `resource` is an IRI reference.
+    # A blank one names nothing: resolved, it would be the base URL itself.
+    written = (written or "").strip()
     if not written:
         return None
     try:
-        resolved = written.strip() if ctx.base_url is None else urljoin(ctx.base_url, written.strip())
+        resolved = written if ctx.base_url is None else urljoin(ctx.base_url, written)
         urlsplit(resolved)
     except ValueError:  # not a URL (an unclosed IPv6 bracket), so it names nothing
         return None
-    return resolved or None
+    return resolved
 
 
 def _scalar(prop: _Property) -> str:

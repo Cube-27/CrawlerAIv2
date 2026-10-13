@@ -321,3 +321,10 @@ def test_deep_nesting_is_walked_without_the_call_stack() -> None:
     # The brand's JSON object nests deeper than the candidate model accepts: skipped, never raised (§4.5).
     assert result.candidates == ()
     assert [d.split(" (")[0] for d in result.diagnostics] == [f"value at microdata:{BODY}/div[1]/div[1] skipped"]
+
+
+@pytest.mark.parametrize("attribute", ['itemscope itemid=" "', 'vocab="https://schema.org/" resource="\t"'])
+def test_a_blank_item_id_names_no_page(attribute: str) -> None:
+    # A blank id would resolve to the base URL itself and name the page the item is on.
+    result = _collect(f'<div {attribute} itemtype="https://schema.org/Product" typeof="Product"></div>')
+    assert [e.urls for e in result.entities] == [()]
