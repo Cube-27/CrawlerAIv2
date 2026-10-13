@@ -270,6 +270,26 @@ describe("labeler pass", () => {
     expect(screen.getByRole("textbox", { name: "Labeler name" })).toHaveValue("ana");
   });
 
+  it.each([
+    ["an HTML page", new Response("<h1>Bad Gateway</h1>", { status: 502 }), "502"],
+    ["a JSON body that is not a problem", json({ detail: [{ msg: "x" }] }, { status: 500 }), "500"],
+  ])("says the save failed when the error body is %s", async (_, reply, status) => {
+    stubApi({
+      [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
+      [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [reply],
+    });
+    renderAt(`/labeling/${PAGE_ID}`);
+    await field("title");
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Labeler name" }), "ana");
+    await userEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      `Not saved: the server answered ${status}.`,
+    );
+    expect(screen.getByRole("textbox", { name: "Labeler name" })).toHaveValue("ana");
+  });
+
   it("names a value that is not JSON without calling the API", async () => {
     const calls = stubApi({ [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())] });
     renderAt(`/labeling/${PAGE_ID}`);

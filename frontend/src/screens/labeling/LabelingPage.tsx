@@ -53,6 +53,20 @@ const PASSES: [Pass, string][] = [
   ["checker", "Checker"],
 ];
 
+/**
+ * The field errors and message of a failed save. The API answers with an RFC 9457 problem, but a proxy's HTML page
+ * or FastAPI's own validation list can arrive instead, and the screen still says the save failed.
+ */
+function saveFailure(error: unknown, status: number): { errors: FieldError[]; detail: string } {
+  const body =
+    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : {};
+  return {
+    errors: Array.isArray(body.errors) ? (body.errors as FieldError[]) : [],
+    detail:
+      typeof body.detail === "string" ? body.detail : `the server answered ${String(status)}.`,
+  };
+}
+
 /** Where a click on the page goes: a top-level field, or a field of one listing row. */
 interface Target {
   row: number | null;
@@ -202,8 +216,9 @@ function PageEditor({
       setConflict(true);
       return;
     }
-    setErrors(error.errors);
-    setProblem(error.detail);
+    const failure = saveFailure(error, response.status);
+    setErrors(failure.errors);
+    setProblem(failure.detail);
   }
 
   const checkable = page.status === "labeled" || page.status === "checked";
