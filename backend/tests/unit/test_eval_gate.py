@@ -134,15 +134,18 @@ def test_a_type_missing_from_the_candidate_is_not_compared() -> None:
 
 def test_suppressed_cells_are_refused() -> None:
     # The gate reads the unsuppressed in-job report (D-0182); an exported aggregate can hide a wrong product.
+    suppressed = report({"money": Suppressed(n=3)})
+    candidate = report({"money": cell()})
     with pytest.raises(GateInputInvalid, match="suppressed"):
-        gate(report({"money": Suppressed(n=3)}), BASELINE)
+        gate(suppressed, BASELINE)
     with pytest.raises(GateInputInvalid, match="suppressed"):
-        gate(report({"money": cell()}), report({"money": Suppressed(n=3)}))
+        gate(candidate, suppressed)
 
 
 def test_splits_must_match() -> None:
+    fresh = report({"money": cell()}, split="fresh")
     with pytest.raises(GateInputInvalid, match="fresh run against a hidden baseline"):
-        gate(report({"money": cell()}, split="fresh"), BASELINE)
+        gate(fresh, BASELINE)
 
 
 @given(
@@ -232,6 +235,15 @@ def test_commits_on_lists_a_ref_newest_first(tmp_path: Path) -> None:
     git("commit", "-q", "--allow-empty", "-m", "topic")
 
     assert commits_on("main", tmp_path) == shas[::-1]
+
+
+@pytest.mark.skipif(GIT is None, reason="needs git")
+def test_commits_on_reads_a_ref_that_looks_like_an_option_as_a_ref(tmp_path: Path) -> None:
+    assert GIT is not None
+    subprocess.run([GIT, "init", "-q", str(tmp_path)], check=True)  # noqa: S603
+
+    with pytest.raises(GateInputInvalid, match="--all"):
+        commits_on("--all", tmp_path)
 
 
 @pytest.mark.skipif(GIT is None, reason="needs git")

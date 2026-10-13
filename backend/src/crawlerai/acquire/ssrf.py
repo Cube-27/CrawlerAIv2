@@ -24,8 +24,8 @@ _SCHEMES = {"http": 80, "https": 443}
 _PORTS = frozenset({80, 443, 8080, 8443})
 # WHATWG URL Standard §3.5 "ends in a number checker": a host whose last label is decimal digits or 0x-hex is
 # parsed as an IPv4 address (`2130706433`, `0x7f.1`, `127.1`). Only canonical dotted quads are accepted, so the
-# address checked here is the one any client would connect to.
-_ENDS_IN_NUMBER = re.compile(r"(?i)(?:^|\.)(?:[0-9]+|0x[0-9a-f]*)\.?$")
+# address checked here is the one any client would connect to. ASCII digits only (`re.ASCII`), as the standard says.
+_ENDS_IN_NUMBER = re.compile(r"(?:^|\.)(?:\d+|0x[0-9a-f]*)\.?$", re.ASCII | re.IGNORECASE)
 # RFC 6052 §2.1: the NAT64 well-known prefix embeds an IPv4 address in its last 32 bits.
 _NAT64 = IPv6Network("64:ff9b::/96")
 

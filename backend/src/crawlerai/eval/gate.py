@@ -127,8 +127,10 @@ def commits_on(ref: str, repo: Path) -> list[str]:
     git = shutil.which("git")
     if git is None:
         raise GateInputInvalid("git is not on PATH")
-    result = subprocess.run(  # noqa: S603  (fixed argv, no shell)
-        [git, "-C", str(repo), "rev-list", ref, "--"], capture_output=True, text=True, check=False
+    # A fixed argv with no shell. `--end-of-options` makes git read `ref` as a revision even when it starts with `-`,
+    # so a ref can't become an option.
+    result = subprocess.run(  # noqa: S603
+        [git, "-C", str(repo), "rev-list", "--end-of-options", ref, "--"], capture_output=True, text=True, check=False
     )
     if result.returncode != 0:
         raise GateInputInvalid(f"git rev-list {ref} failed: {result.stderr.strip()}")

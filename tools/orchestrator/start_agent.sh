@@ -28,7 +28,12 @@ fi
 pane=$(herdr tab create --cwd "$path" --label "$name" --no-focus 2>/dev/null \
   | python -c "import json,sys;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])")
 [[ -n $pane ]] || err "tab create failed"
-close_and_fail() { herdr pane close "$pane" >/dev/null 2>&1; err "$1; closed pane $pane"; }
+close_and_fail() {
+  local reason=$1
+  herdr pane close "$pane" >/dev/null 2>&1
+  err "$reason; closed pane $pane"
+  return 1
+}
 herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 >/dev/null 2>&1
 cwd=$(herdr agent get "$name" 2>/dev/null | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent'].get('cwd',''))")
 [[ $cwd == "$path" ]] || close_and_fail "$name cwd is '$cwd', expected '$path'"
