@@ -1,7 +1,12 @@
-"""Fail when a workflow, hook or tool config adds a size, complexity or coverage gate (SPEC-00 §4.6, INV-18, C11).
+"""Fail when a workflow, hook or tool config adds a size, complexity or coverage gate beyond C11's two (SPEC-00 §4.6,
+INV-18, C11).
 
-Scans the CI workflows, the local hooks and `make check`, and the configs of the tools they run, for the flags,
-rules and tools that turn line counts, complexity or a coverage percentage into a failing check. Prints
+C11 (ARCHITECTURE Appendix A #33) allows exactly two size checks: cognitive complexity of at most 15 per function
+(complexipy for Python, the repo's Oxlint rule for TypeScript), and a warning, never a failure, for source files over
+800 lines (`tools/file_length.py`, which these configs only run). Scans the CI workflows, the local hooks and
+`make check`, and the configs of the tools they run, for the flags, rules and tools that turn line counts, complexity
+or a coverage percentage into a failing check, or that ratchet one. A line that sets the complexity limit to 15 in
+an allowed form passes; the same setting with any other value or severity is a finding. Prints
 `path:line: line` per match and exits 1, or prints one summary line and exits 0.
 """
 
@@ -49,8 +54,21 @@ GATES = re.compile(
             r"check-coverage",
             r"\bthresholds\b",
             r"coverageThreshold",
+            # Cognitive complexity: complexipy's threshold, its ratchet (snapshots) and its report-only mode, and
+            # Oxlint cognitive-complexity rules.
+            r"snapshot[-_](?:create|ignore)",
+            r"ignore[-_]complexity",
+            r"cognitive[-_]complexity[\"']?\s*:",
+            r"(?<![\w-])[\"']?cognitive[\"']?\s*:",
         )
     )
+)
+
+# The allowed form of each complexity setting, removed from a line before it is searched: complexipy's threshold
+# (`max-complexity-allowed = 15` in backend/pyproject.toml, or the flag of the same name), and the Oxlint rule in
+# frontend/vite.config.ts. Any other value, severity or form still matches GATES.
+ALLOWED = re.compile(
+    r'max-complexity-allowed(?: = |[ =])15(?![\w.])|"crawlerai/cognitive-complexity": \["error", \{ max: 15 \}\]'
 )
 
 
@@ -66,7 +84,9 @@ def check(root: Path) -> tuple[list[str], int]:
         lines = path.read_text(encoding="utf-8").splitlines()
         relative = path.relative_to(root).as_posix()
         findings.extend(
-            f"{relative}:{number}: {line.strip()}" for number, line in enumerate(lines, 1) if GATES.search(line)
+            f"{relative}:{number}: {line.strip()}"
+            for number, line in enumerate(lines, 1)
+            if GATES.search(ALLOWED.sub("", line))
         )
     return findings, len(files)
 

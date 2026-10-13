@@ -66,6 +66,9 @@ importers:
       openapi-typescript:
         specifier: 7.13.0
         version: 7.13.0(typescript@5.9.3)
+      oxlint-plugin-complexity:
+        specifier: 3.0.1
+        version: 3.0.1(estree-walker@3.0.3)
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
@@ -1566,6 +1569,21 @@ packages:
       vite-plus:
         optional: true
 
+  oxlint-plugin-complexity@3.0.1:
+    resolution: {integrity: sha512-POwapzA4N6tCU/Hy2VFf6x42Ku3uLpsc3QvW8QMVpuF7gQB4kRB0FACanUxrJsf/3Z5NzDoAh5Ta7VSYauV1Qg==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      diff: '>=5.0.0'
+      estree-walker: '>=3.0.0'
+      oxc-parser: '>=0.60.0'
+    peerDependenciesMeta:
+      diff:
+        optional: true
+      estree-walker:
+        optional: true
+      oxc-parser:
+        optional: true
+
   oxlint-tsgolint@7.0.2003:
     resolution: {integrity: sha512-VnK4zlqgmgq/7ZcjzCk/WpN8kKFsYGcB85Io9qT3wL4K8Un3RKmJkp793crNETieMusPMKOA4a+Mw2wbteI6TQ==}
     hasBin: true
@@ -3033,6 +3051,12 @@ snapshots:
       '@oxfmt/binding-win32-ia32-msvc': 0.72.0
       '@oxfmt/binding-win32-x64-msvc': 0.72.0
       vite-plus: 1.1.0(@vitest/ui@5.0.3(vitest@5.0.3))(jiti@2.7.0)(jsdom@30.1.2)(typescript@5.9.3)
+
+  oxlint-plugin-complexity@3.0.1(estree-walker@3.0.3):
+    dependencies:
+      '@oxlint/plugins': 1.79.0
+    optionalDependencies:
+      estree-walker: 3.0.3
 
   oxlint-tsgolint@7.0.2003:
     optionalDependencies:

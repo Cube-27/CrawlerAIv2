@@ -253,9 +253,15 @@ export default defineConfig({
         name: "vite-plus",
         specifier: "vite-plus/oxlint-plugin",
       },
+      {
+        name: "crawlerai",
+        specifier: "./lint/cognitive-complexity.js",
+      },
     ],
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
+      // C11: cognitive complexity of at most 15 per function, the SonarCloud threshold (S3776).
+      "crawlerai/cognitive-complexity": ["error", { max: 15 }],
     },
   },
   fmt: {

@@ -7,7 +7,8 @@ Layer: L0. Architecture refs: §2 (C1–C13), §4, §18, §19, §21.
 Create the monorepo, toolchain, CI, hooks and root documents that every later spec builds on. Nothing in this
 spec extracts anything. Its purpose is to make the generalization contract (§2.2) mechanically enforced from the
 first commit: the site-literal scan (C3), the import contract (C8), the license deny-list (§18), the protected
-eval job placeholder (C1), the aggregate-report PR requirement (C10), and the absence of size gates (C11).
+eval job placeholder (C1), the aggregate-report PR requirement (C10), and C11's size checks: a complexity limit, a file-length
+warning, and nothing else.
 
 ## 2. Scope
 
@@ -26,8 +27,8 @@ Core:
 
 Out of scope:
 - Any extraction, acquisition, eval or API behaviour (SPEC-01 onward).
-- LOC, complexity, coverage-percentage or file-size gates (C11). Do not add them in any form, including "soft"
-  warnings.
+- Size, complexity, coverage-percentage or ratchet gates other than C11's two (§4.6). Do not add them in any
+  form.
 - §22 candidates: all. In particular no "site health dashboard" and no "review queue UI" in the frontend skeleton.
 - Deployment to any cloud; only `docker-compose` for local development and a Dockerfile that builds the single
   backend image (§4).
@@ -185,8 +186,20 @@ Jobs (all required for merge, all run on every PR):
    substring (so LGPL does not match GPL).
 4. `site-literals`: `python tools/site_literal_scan.py --public` (4.7).
 5. `data-manifest`: `python tools/data_manifest_check.py`.
-6. `no-size-gates` (meta): a one-line grep that fails if any workflow or hook references LOC counts, `radon`,
-   `xenon`, `--max-lines`, `--max-complexity` or a coverage threshold flag. This keeps C11 enforced against drift.
+6. `no-size-gates` (meta): `tools/no_size_gates.py` fails if any workflow, hook or tool config references LOC
+   counts, `radon`, `xenon`, `--max-lines`, a complexity limit, a ratchet or a coverage threshold flag, other
+   than C11's two checks. This keeps C11 enforced against drift. The same job runs `tools/file_length.py`.
+
+C11 (amended 2026-10-13, ARCHITECTURE Appendix A #33) allows exactly two size checks:
+- **Cognitive complexity of at most 15 per function**, as SonarSource defines it (SonarCloud rule S3776). A
+  hard check: `complexipy --no-ignore` in the backend job (backend `src`, `tests`, `migrations` and `tools/`,
+  threshold in `[tool.complexipy]`), and the `crawlerai/cognitive-complexity` Oxlint rule
+  (`frontend/lint/cognitive-complexity.js`) inside `vp check` for TS/TSX. Inline suppressions don't count.
+- **800 lines per source file**, a soft limit: `tools/file_length.py` prints a warning (a workflow annotation
+  in CI) and never fails. A file past 800 is split along logical boundaries (cohesive modules, field types
+  per C8), never mechanically to meet the number.
+
+Coverage gates and ratchets stay forbidden.
 
 `.github/workflows/eval-protected.yml` (placeholder in this spec; filled by SPEC-03):
 - Triggered on `pull_request` and `push` to `main`; uses GitHub **environment** `eval-protected` whose secrets
@@ -225,7 +238,9 @@ Jobs (all required for merge, all run on every PR):
 - `vp check --fix` (format, lint, type-check) on staged frontend files.
 - `end-of-file-fixer`, `trailing-whitespace`, `check-merge-conflict`.
 
-No hook counts lines or complexity (C11).
+- `complexipy` on staged Python files, at the C11 limit of 15; the frontend's limit runs inside `vp check`.
+
+No hook counts lines (C11).
 
 ### 4.9 Root files (content requirements)
 
@@ -249,7 +264,8 @@ items below in operational language and adds any that are missing; it does not r
 6. "One module per field type; if you need the same logic twice you are in the wrong module" (C8).
 7. "No test names a site or asserts one site's output; write property tests and replay tests" (C9).
 8. "Do not build anything in ARCHITECTURE §22. If a task asks for it, stop and point at C13."
-9. "Do not add LOC, complexity, or coverage gates, and do not split files to satisfy a size number" (C11).
+9. "Keep cognitive complexity at most 15 per function; past 800 lines, split a file by meaning, never to meet
+   the number; add no other size, coverage or ratchet gate" (C11).
 10. How to read eval results (C10, §16.3–16.4): the dev report is full; the hidden report is pass/fail plus
     aggregates per field type and evidence bucket, with cells under 10 labeled fields suppressed. A change is
     accepted when it **improves dev** and **does not regress hidden** (no hidden precision drop > 0.5 pt on any
@@ -285,7 +301,7 @@ Initial list (later specs may add, never remove):
 | INV-15 | Price, currency and availability of a published offer come from one source object. | §10 | Resolver test (SPEC-05). |
 | INV-16 | Every outbound connection target is a public IP; each redirect hop is re-checked; proxies do not bypass the check. | §7.1, §18 | SSRF tests with a stub resolver (SPEC-02). |
 | INV-17 | LLM output is never executed. | §11, §18 | ruff S102/S307 + grep for `exec(`/`eval(`/`subprocess` outside an allowlisted module. |
-| INV-18 | CI and hooks contain no LOC, complexity or coverage-threshold gates. | C11 | `no-size-gates` CI job. |
+| INV-18 | CI and hooks contain no size, complexity or coverage-threshold gate other than C11's two: cognitive complexity of at most 15 per function (a failing check) and a warning for source files over 800 lines (never a failure). No ratchets. (Amended 2026-10-13, ARCHITECTURE Appendix A #33.) | C11 | `no-size-gates` CI job. |
 | INV-19 | Every PR that touches extraction behaviour carries the dev delta report and the hidden pass/fail per field type. | C10 | PR template; protected job comment. |
 | INV-20 | An exported config field reproduces the engine's value on every held-out page while there are fewer than 10, and on ≥ 95% from 10 on, or is marked `manual`. | §12.3 | Release check test (SPEC-08). |
 | INV-21 | Wrong-product count on hidden is 0 or the merge fails. | G2, §16.4 | Protected job gate. |

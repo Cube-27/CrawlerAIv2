@@ -41,6 +41,9 @@ jobs:
       - run: uv run --no-sync --no-build ruff format --check
       - run: uv run --no-sync --no-build mypy src tests migrations
       - run: uv run --no-sync --no-build lint-imports
+      # C11: cognitive complexity of at most 15 per function, for src, tests, migrations and ../tools
+      # ([tool.complexipy] in pyproject.toml). `--no-ignore`: an inline suppression does not exempt a function.
+      - run: uv run --no-sync --no-build complexipy --no-ignore
       # Headless Chromium for the `browser`-marked tests (SPEC-02 §6), at the build this Patchright version pins.
       - run: uv run --no-sync --no-build patchright install --with-deps --only-shell chromium
       - name: Create databases and roles
@@ -153,9 +156,11 @@ jobs:
           name: license-report
           path: license-report/
 
-  # SPEC-00 §4.6 job 6: no size, complexity or coverage-threshold gate in CI, hooks or tool configs (C11, INV-18).
+  # SPEC-00 §4.6 job 6: no size, complexity or coverage-threshold gate in CI, hooks or tool configs beyond C11's two
+  # (INV-18), and the soft file-length limit, which only warns.
   no-size-gates:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: python3 tools/no_size_gates.py
+      - run: python3 tools/file_length.py

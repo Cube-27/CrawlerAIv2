@@ -17,8 +17,10 @@ Setup is in `README.md`, and every command, including the checks CI runs, is in 
 for the parts you changed before you open a PR. CI runs all of them on every PR, and every job must pass before
 merge.
 
-There are no line-count, complexity or coverage-percentage gates, and none may be added (C11). The `no-size-gates`
-CI job fails if one appears in a workflow, a hook or a tool config.
+C11 allows two size checks and no others. Cognitive complexity is at most 15 per function, and CI fails above
+it. A source file over 800 lines gets a warning, never a failure: split it by meaning, not to meet the number.
+No other line-count, complexity, coverage-percentage or ratchet gate may be added. The `no-size-gates` CI job
+fails if one appears in a workflow, a hook or a tool config.
 
 ## Pull requests
 
