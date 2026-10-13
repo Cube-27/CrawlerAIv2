@@ -69,8 +69,8 @@ DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|
 # that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
 COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
 # schema.org naming conventions (https://schema.org/docs/styleguide.html): a path starts at an UpperCamelCase type and
-# follows lowerCamelCase properties; `+` joins a second property of the last type (SPEC-04 §4.2). A host is written
-# lowercase, so it is not a path in this form, and a path is matched only as written.
+# follows lowerCamelCase properties; `+` joins a second property of the last type (SPEC-04 §4.2). A path is matched
+# only as written, so a host in its usual lowercase form is never one.
 SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[a-z][A-Za-z0-9]*)?")
 # Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.
 HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
