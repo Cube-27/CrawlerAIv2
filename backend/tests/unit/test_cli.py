@@ -57,6 +57,8 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
         "/v1/eval/pages/{page_id}/labels",
         "/v1/eval/pages/{page_id}/normalize",
         "/v1/eval/pages/{page_id}/prefill",
+        "/v1/jobs/{job_id}",
+        "/v1/jobs/{job_id}/results",
         "/v1/records",
         "/v1/schemas",
         "/v1/schemas/{schema_id}",
