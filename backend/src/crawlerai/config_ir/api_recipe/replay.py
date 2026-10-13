@@ -58,29 +58,17 @@ async def compare(
     whose value at its path is `equal` to that value; every entry is false when the request cannot be made or its
     answer is not JSON, and nothing is sent when no field is compared."""
     compared = {name: path for name, path in fields.items() if page.values.get(name) is not None}
-    if not compared:
-        return {}
-    document = await _answer(spec, page, replay)
-    if isinstance(document, _NoAnswer):
-        return dict.fromkeys(compared, False)
-    return {name: _equal(read_map(path, document), name, page, schema) for name, path in compared.items()}
-
-
-class _NoAnswer:
-    """The replay gave no JSON document (JSON `null` is a document)."""
-
-
-async def _answer(spec: RequestSpec, page: ReplayPage, replay: Replay) -> JsonValue | _NoAnswer:
     request = request_for(spec, page.sample.page_url, page.sample.page_data)
-    if request is None:
-        return _NoAnswer()
+    if not compared or request is None:
+        return dict.fromkeys(compared, False)
     result = await replay(request)
     if result.block_class != "ok":
-        return _NoAnswer()
+        return dict.fromkeys(compared, False)
     try:
-        return json_doc.parse(result.bundle.body.decode("utf-8"))
+        document = json_doc.parse(result.bundle.body.decode("utf-8"))
     except ValueError:  # UnicodeDecodeError is a ValueError
-        return _NoAnswer()
+        return dict.fromkeys(compared, False)
+    return {name: _equal(read_map(path, document), name, page, schema) for name, path in compared.items()}
 
 
 def _equal(raw: str | int | float | None, name: str, page: ReplayPage, schema: SchemaDef) -> bool:

@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from crawlerai.config_ir.api_recipe.headers import Proven
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, BoundBy
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, BoundBy, Proof
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage, compare
 from crawlerai.config_ir.validation import MIN_HELD_OUT, RecipeFieldReport, RecipeReport, Validated
 from crawlerai.db.models import CaptureId
@@ -46,20 +46,21 @@ async def validate_recipe(
     """Replays `proven.spec` for each held-out page, in order, and accepts it with the `fields` map when every field
     reproduces on every page that published it (§4.7)."""
     captures = [item.capture_id for item in held_out]
-    if len(held_out) < MIN_HELD_OUT:
-        return RecipeValidated(None, RecipeReport(held_out=captures, fields={}, refused="too_few_held_out"))
-    tallies = {name: [0, 0] for name in fields}
-    for item in held_out:
-        for name, same in (await compare(proven.spec, fields, item.page, schema, replay)).items():
-            tallies[name][0] += 1
-            tallies[name][1] += int(same)
-    reports = {name: RecipeFieldReport(published=n, reproduced=ok) for name, (n, ok) in tallies.items()}
-    refused = _refused(reports)
+    enough = len(held_out) >= MIN_HELD_OUT
+    pages = [await compare(proven.spec, fields, item.page, schema, replay) for item in held_out] if enough else []
+    reports = {
+        name: RecipeFieldReport(
+            published=sum(name in page for page in pages), reproduced=sum(page.get(name, False) for page in pages)
+        )
+        for name in fields
+        if enough
+    }
+    refused = _refused(reports) if enough else "too_few_held_out"
+    report = RecipeReport(held_out=captures, fields=reports, refused=refused)
     if refused is not None:
-        return RecipeValidated(None, RecipeReport(held_out=captures, fields=reports, refused=refused))
-    proof = {"validated_on": captures, "headers_tried": proven.headers_tried, "bound_by": bound_by}
-    recipe = ApiRecipe.model_validate({**proven.spec.model_dump(), "map": dict(fields), "proof": proof})
-    return RecipeValidated(recipe, RecipeReport(held_out=captures, fields=reports))
+        return RecipeValidated(None, report)
+    proof = Proof(validated_on=captures, headers_tried=proven.headers_tried, bound_by=bound_by)
+    return RecipeValidated(ApiRecipe(**proven.spec.model_dump(), map=dict(fields), proof=proof), report)
 
 
 def _refused(reports: Mapping[str, RecipeFieldReport]) -> str | None:

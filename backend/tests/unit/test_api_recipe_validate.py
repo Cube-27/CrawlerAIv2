@@ -67,19 +67,21 @@ def _answers(overrides: Answers | None = None) -> dict[str, JsonValue]:
     return {**answers, **(overrides or {})}
 
 
+def _values(slug: str) -> dict[str, JsonValue]:
+    """The values the engine published for the product's page."""
+    name, price = PRODUCTS[slug]
+    return {"title": name, "price": {"amount": str(price), "currency": "EUR"}}
+
+
 def _held_out(
-    slugs: Sequence[str] = tuple(PRODUCTS), published: Callable[[str], dict[str, JsonValue]] | None = None
+    slugs: Sequence[str] = tuple(PRODUCTS), published: Callable[[str], dict[str, JsonValue]] = _values
 ) -> list[HeldOutReplay]:
     pages = []
     for i, slug in enumerate(slugs):
-        name, price = PRODUCTS.get(slug, ("Unknown", 1))
         page_url = f"{SITE}/p/{slug}"
         ctx = Context(captured_at=datetime(2026, 10, 14, tzinfo=UTC), base_url=page_url, page_url=page_url)
-        values: dict[str, JsonValue] = (
-            published(slug) if published else {"title": name, "price": {"amount": str(price), "currency": "EUR"}}
-        )
         sample = Sample(page_url, CapturedRequest("GET", f"{ENDPOINT}/{slug}"))
-        pages.append(HeldOutReplay(_capture(i), ReplayPage(sample, values, ctx)))
+        pages.append(HeldOutReplay(_capture(i), ReplayPage(sample, published(slug), ctx)))
     return pages
 
 
@@ -140,10 +142,8 @@ def test_a_value_that_differs_on_one_held_out_page_rejects_the_recipe(stand_in_a
 
 def test_a_page_without_a_published_value_is_not_compared_for_that_field(stand_in_api: StandInApi) -> None:
     def published(slug: str) -> dict[str, JsonValue]:
-        name, price = PRODUCTS[slug]
-        values: dict[str, JsonValue] = {"title": name, "price": {"amount": str(price), "currency": "EUR"}}
         # The engine published no price on this page: the value is null.
-        return {"title": name, "price": None} if slug == "tea-cup" else values
+        return {**_values(slug), "price": None} if slug == "tea-cup" else _values(slug)
 
     held_out = _held_out(published=published)
     answers = _answers({"tea-cup": {"data": {"name": "Tea Cup", "price": None, "currency": "EUR"}}})
