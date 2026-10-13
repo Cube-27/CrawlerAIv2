@@ -16,6 +16,9 @@ from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
+# schema.org: a ListItem is an item in a list, the kind of a listing's row.
+ROW_KIND = "ListItem"
+
 
 class Executed(BaseModel):
     """What a config proposed for one page. Its page-level candidates are owned by `page`, which the OpenGraph collector

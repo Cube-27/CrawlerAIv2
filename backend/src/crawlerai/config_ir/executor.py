@@ -22,7 +22,7 @@ from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import js_state, jsonld, xhr
 from crawlerai.collect.base import PAGE, Candidate, Entity
-from crawlerai.collect.config import Executed
+from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -52,9 +52,6 @@ from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-
-# schema.org: a ListItem is an item in a list, the kind of a listing's row.
-ROW_KIND = "ListItem"
 
 
 def row_id(n: int) -> str:

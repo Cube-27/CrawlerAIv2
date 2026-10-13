@@ -1,0 +1,125 @@
+"""The API recipe collector (SPEC-09 §4.8, ARCHITECTURE §7.2, §8.1): the JSON an API recipe fetched, read through the
+recipe's `map`.
+
+An `api` capture's body is the JSON the recipe's endpoint answered for the page (`FetchResult(method='api')`). Each map
+entry is a query into that JSON (the `select` subset of `json_doc`), or for atomic money queries joined with `+`
+(§4.2); an entry reads a value only where each of its queries selects exactly one scalar. Values are `api` candidates
+located as `api:<recipe id>:<normalized path>`; nothing here interprets them, the field's normalizer is the only
+filter (C7).
+
+The recipe lives in the config IR, which sits above `collect` (`.importlinter`), so the caller binds this collector to
+the recipe's map and rows, as it binds the config executor (`collect.config`), and the result has the same shape: a
+detail page's values belong to the page; a listing's row-scoped values belong to the rows its `rows` query selects,
+read with paths relative to each row, and its page-scoped values to the page.
+"""
+
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Final
+
+from pydantic import JsonValue
+
+from crawlerai.collect import json_doc
+from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.collect.config import ROW_KIND, Executed
+from crawlerai.collect.locator import format_locator
+from crawlerai.collect.schema_org_map import candidate
+from crawlerai.content.page import ParsedPage
+from crawlerai.normalize.base import Context
+from crawlerai.schemas.types import SchemaDef
+
+Scalar = str | int | float
+
+# §4.2: a money field joins the amount and currency paths with `+`; each part starts at the root `$` (RFC 9535 §2.2).
+_JOIN: Final = re.compile(r"\+(?=\$)")
+
+
+def map_paths(path: str) -> list[str]:
+    """The JSONPaths a map entry joins with `+`, in order."""
+    return _JOIN.split(path)
+
+
+def joined_raw(parts: Sequence[Scalar]) -> str:
+    """The raw value of a map entry that joins its parts with `+`: their texts separated by a space, a number as its
+    JSON text (RFC 8259 §6), so the money normalizer reads an amount and a currency as one value."""
+    return " ".join(part if isinstance(part, str) else json.dumps(part) for part in parts)
+
+
+def read_map(path: str, document: JsonValue) -> Scalar | None:
+    """The raw value a map entry reads in `document`: the one scalar its path selects, or its joined parts'
+    `joined_raw`; `None` when a part selects anything but exactly one scalar."""
+    found = _read(path, document, json_doc.ROOT)
+    return None if found is None else found[0]
+
+
+def _read(path: str, document: JsonValue, at: str) -> tuple[Scalar, str] | None:
+    """`read_map` of `document`, whose own path is `at`, with the normalized paths of the parts joined by `+`."""
+    parts: list[Scalar] = []
+    paths: list[str] = []
+    for part in map_paths(path):
+        nodes = json_doc.select(part, document, at)
+        if len(nodes) != 1 or not json_doc.is_scalar(value := nodes[0][1]):
+            return None
+        parts.append(value)
+        paths.append(nodes[0][0])
+    return (parts[0] if len(parts) == 1 else joined_raw(parts)), "+".join(paths)
+
+
+@dataclass(frozen=True)
+class ApiCollector:
+    """The collector of the captures one recipe fetched. `recipe_id` names the recipe in locators (no `:` and no
+    whitespace); `map` is its field -> path map, and `rows` its listing's row query (`pagination.rows`), if any."""
+
+    recipe_id: str
+    map: Mapping[str, str]
+    rows: str | None = None
+
+    def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
+        try:
+            document = json_doc.parse(page.html)
+        except ValueError as e:
+            return Executed(rows=(), candidates=(), diagnostics=(f"api:{self.recipe_id}: not JSON ({e})",))
+        reading = _Reading(self.recipe_id, schema, ctx)
+        known = {name: path for name, path in self.map.items() if name in schema.fields}
+        reading.diagnostics.extend(
+            f"api:{self.recipe_id}:{name}: not a field of the schema" for name in self.map if name not in known
+        )
+        listing = self.rows is not None and schema.page_kind == "listing"
+        # On a detail page every field describes the page's one entity (SPEC-05 §4.7: detail fields are row-scoped).
+        page_fields = {n: p for n, p in known.items() if not listing or schema.fields[n].scope == "page"}
+        candidates = reading.candidates(page_fields, document, json_doc.ROOT, PAGE)
+        rows: list[Entity] = []
+        if listing and self.rows is not None:
+            row_fields = {n: p for n, p in known.items() if n not in page_fields}
+            for path, row in json_doc.select(self.rows, document):
+                # A row is a JSON object (RFC 8259 §4); an item of another kind holds no fields.
+                if isinstance(row, dict):
+                    owner = f"api:{self.recipe_id}:{path}"
+                    rows.append(Entity(id=owner, kind=ROW_KIND, urls=(), parent=None))
+                    candidates.extend(reading.candidates(row_fields, row, path, owner))
+        return Executed(rows=tuple(rows), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
+
+
+@dataclass
+class _Reading:
+    """One recipe capture read for one schema."""
+
+    recipe_id: str
+    schema: SchemaDef
+    ctx: Context
+    diagnostics: list[str] = field(default_factory=list)
+
+    def candidates(self, fields: Mapping[str, str], document: JsonValue, at: str, owner: str) -> list[Candidate]:
+        found: list[Candidate] = []
+        for name, path in fields.items():
+            read = _read(path, document, at)
+            if read is None:
+                continue  # the value is absent or not one scalar here: no candidate, as for any source
+            raw, located = read
+            locator = format_locator("api", self.recipe_id, located)
+            made = candidate(name, self.schema.fields[name], owner, "api", raw, locator, self.ctx, self.diagnostics)
+            if made is not None:
+                found.append(made)
+        return found
