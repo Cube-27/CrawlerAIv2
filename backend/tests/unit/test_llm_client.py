@@ -13,6 +13,8 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from crawlerai.core.ids import uuid7
+from crawlerai.db.models import JobId
 from crawlerai.llm.client import (
     LLMRequest,
     LLMResponse,
@@ -117,7 +119,7 @@ def test_each_part_of_the_request_changes_the_hash(field: str, value: Any) -> No
 
 def test_the_token_cap_and_the_job_do_not_change_the_hash() -> None:
     # A recording replays for any job, and the cap bounds the reply rather than shaping the prompt.
-    other = REQUEST.model_copy(update={"max_output_tokens": 1, "job_id": None})
+    other = REQUEST.model_copy(update={"max_output_tokens": 1, "job_id": JobId(uuid7())})
     assert request_hash(other) == request_hash(REQUEST)
 
 

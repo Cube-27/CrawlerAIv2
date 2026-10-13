@@ -5,7 +5,8 @@ and usage.
 retries once with the validation error appended. Before every provider call it checks the job's `llm_calls` budget;
 after every call that answered, it records `llm_calls`, `llm_tokens_in` and `llm_tokens_out` (INV-23). Usage is
 committed in a transaction of its own, never the caller's: a task that fails afterwards rolls its transaction back,
-and the calls it made must still count against the job's budget (D-0151).
+and the calls it made must still count against the job's budget (D-0151). So a caller must not hold an uncommitted
+write to the job's row when it calls the client: the client's own `UPDATE job` would wait on that lock.
 
 Model output is data: it is parsed as JSON and validated, never executed (INV-17, §18).
 """
@@ -178,13 +179,7 @@ class MeteredClient:
             raise ProviderUnavailable(f"{self._provider.name}: {error}") from error
         latency_ms = round((time.monotonic() - started) * 1000)
         if req.job_id is not None:
-            metadata: dict[str, str | int] = {
-                "prompt_kind": req.prompt_kind,
-                "model": reply.model,
-                "request_hash": key,
-                "latency_ms": latency_ms,
-            }
-            await self._record(req.job_id, reply, metadata)
+            await self._record(req.job_id, req, key, reply, latency_ms)
         return reply, latency_ms
 
     async def _check_budget(self, job_id: JobId) -> None:
@@ -193,8 +188,9 @@ class MeteredClient:
         if remaining == 0:
             raise BudgetExhausted(f"job {job_id} has no llm_calls budget left")
 
-    async def _record(self, job_id: JobId, reply: ProviderReply, metadata: dict[str, str | int]) -> None:
+    async def _record(self, job_id: JobId, req: LLMRequest, key: str, reply: ProviderReply, latency_ms: int) -> None:
         # Its own transaction: see the module docstring.
+        metadata = {"prompt_kind": req.prompt_kind, "model": reply.model, "request_hash": key, "latency_ms": latency_ms}
         usage: tuple[tuple[UsageResource, int], ...] = (
             ("llm_calls", 1),
             ("llm_tokens_in", reply.tokens_in),

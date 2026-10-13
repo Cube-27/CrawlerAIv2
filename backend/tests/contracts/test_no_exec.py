@@ -3,6 +3,7 @@ calls; this scan also catches `compile` and imports of `subprocess`, which ruff'
 
 import ast
 from pathlib import Path
+from typing import TypeGuard
 
 import pytest
 
@@ -21,11 +22,11 @@ def violations(path: Path, tree: ast.AST) -> list[str]:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in CODE_BUILTINS:
             found.append(f"{relative}:{node.lineno} calls {node.func.id}")
         if relative not in SUBPROCESS_ALLOWED and _imports_subprocess(node):
-            found.append(f"{relative}:{getattr(node, 'lineno', 0)} imports subprocess")
+            found.append(f"{relative}:{node.lineno} imports subprocess")
     return found
 
 
-def _imports_subprocess(node: ast.AST) -> bool:
+def _imports_subprocess(node: ast.AST) -> TypeGuard[ast.Import | ast.ImportFrom]:
     if isinstance(node, ast.Import):
         return any(alias.name.split(".")[0] == "subprocess" for alias in node.names)
     return isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "subprocess"

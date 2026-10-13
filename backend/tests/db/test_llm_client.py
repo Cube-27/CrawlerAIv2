@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import Job, JobId, Project, UsageEvent
 from crawlerai.llm.client import (
@@ -150,14 +150,11 @@ async def test_usage_survives_a_task_transaction_that_rolls_back(engine: AsyncEn
     job_id = await _job(engine)
     client = MeteredClient(FakeProvider([reply("not json", 9, 1), reply("still not json", 9, 1)]), engine)
 
-    async def failing_task(conn: AsyncConnection) -> None:
-        await conn.execute(select(1))
-        await client.complete_json(request(job_id))
-
     async with engine.connect() as conn:
         task = await conn.begin()
+        call = client.complete_json(request(job_id))
         with pytest.raises(OutputInvalid):
-            await failing_task(conn)
+            await call
         await task.rollback()
 
     assert await _usage(engine, job_id) == {"llm_calls": 2, "llm_tokens_in": 18, "llm_tokens_out": 2}
