@@ -268,3 +268,34 @@ def test_an_unexpected_failure_on_the_dev_split_keeps_its_details(
 ) -> None:
     with pytest.raises(RuntimeError, match="DETAIL: Key"):
         _capture_raising(monkeypatch, "dev")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["eval", "promote", "--from", "hidden", "--to", "dev"],
+        ["eval", "promote", "--from", "fresh", "--to", "hidden"],
+        ["eval", "promote", "--to", "dev"],
+        ["eval", "rotate-hidden", "--fraction", "0"],
+        ["eval", "rotate-hidden", "--fraction", "1"],
+        ["eval", "rotate-hidden", "--fraction", "a third"],
+    ],
+)
+def test_promote_and_rotate_accept_only_the_moves_into_dev_the_spec_defines(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(argv)
+
+    assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "argv", [["eval", "promote", "--from", "fresh", "--to", "dev"], ["eval", "rotate-hidden", "--fraction", "0.33"]]
+)
+def test_promote_and_rotate_without_custodian_settings_exit_with_the_reason(
+    settings_env: None, capsys: pytest.CaptureFixture[str], argv: list[str]
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(argv)
+
+    assert exit_info.value.code == 2
+    assert "expected on any other machine" in capsys.readouterr().err

@@ -6,7 +6,7 @@ import json
 import signal
 import sys
 from collections.abc import Sequence
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
@@ -19,8 +19,14 @@ from crawlerai.api.app import create_app
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.db.models import EvalCategory, PageKind, Split
+from crawlerai.eval import promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
-from crawlerai.eval.store import PrivateCredentialsMissing, PrivateStoreNotSeparate
+from crawlerai.eval.store import (
+    PrivateCredentialsMissing,
+    PrivateStoreNotSeparate,
+    dev_store,
+    private_store,
+)
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
@@ -92,8 +98,24 @@ async def _eval_import_sites(split: Split, file: Path, pages_per_site: int) -> N
     sys.stdout.write(report([*await run_capture(Settings(), split, sites.requests), *sites.over_limit]))
 
 
+async def _eval_promote(all_pages: bool) -> None:
+    settings = Settings()
+    async with (
+        aclosing(private_store("fresh", settings)) as fresh,
+        aclosing(private_store("hidden", settings)) as hidden,
+        aclosing(dev_store(settings)) as dev,
+    ):
+        sys.stdout.write(promote.report(await promote.promote(fresh, hidden, dev, all_pages)))
+
+
+async def _eval_rotate_hidden(fraction: float) -> None:
+    settings = Settings()
+    async with aclosing(private_store("hidden", settings)) as hidden, aclosing(dev_store(settings)) as dev:
+        sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, dev, fraction)))
+
+
 def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    eval_commands = commands.add_parser("eval", help="evaluation: capture pages into a split").add_subparsers(
+    eval_commands = commands.add_parser("eval", help="evaluation: capture pages, move them into dev").add_subparsers(
         dest="eval_command", required=True
     )
     splits, categories, page_kinds = get_args(Split), get_args(EvalCategory), get_args(PageKind)
@@ -111,12 +133,33 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     import_sites.add_argument("--split", choices=splits, required=True)
     import_sites.add_argument("--file", type=Path, required=True)
     import_sites.add_argument("--pages-per-site", type=_positive_int, required=True)
+    promote_command = eval_commands.add_parser(
+        "promote", help="move the fresh sites whose pages are all checked into dev, keeping their labels"
+    )
+    # The one move §16.1 defines for fresh; hidden moves only by `rotate-hidden`.
+    promote_command.add_argument("--from", dest="source", choices=["fresh"], required=True)
+    promote_command.add_argument("--to", dest="target", choices=["dev"], required=True)
+    promote_command.add_argument("--all", action="store_true", help="move every fresh site, checked or not")
+    # The split a failure is reported against: both commands read private splits, so their failures withhold details.
+    promote_command.set_defaults(split="fresh")
+    rotate = eval_commands.add_parser(
+        "rotate-hidden", help="move a fraction of the hidden sites, chosen per category, into dev"
+    )
+    rotate.add_argument("--fraction", type=_fraction, required=True)
+    rotate.set_defaults(split="hidden")
 
 
 def _positive_int(value: str) -> int:
     number = int(value)
     if number < 1:
         raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
+def _fraction(value: str) -> float:
+    number = float(value)
+    if not 0 < number < 1:
+        raise argparse.ArgumentTypeError("must be between 0 and 1, exclusive")
     return number
 
 
@@ -153,6 +196,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         try:
             if args.eval_command == "capture":
                 asyncio.run(_eval_capture(args.split, args.schema, args.page_kind, args.category, args.urls))
+            elif args.eval_command == "promote":
+                asyncio.run(_eval_promote(args.all))
+            elif args.eval_command == "rotate-hidden":
+                asyncio.run(_eval_rotate_hidden(args.fraction))
             else:
                 # The site list is read only from under the working directory, as `fetch --out` is written there.
                 cwd = Path.cwd().resolve()
