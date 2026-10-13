@@ -65,7 +65,7 @@ async def _work() -> None:
 async def _schedule() -> None:
     settings = Settings()
     fetch = partial(
-        fetch_http, policy=FetchPolicy(), engine_version=ENGINE_VERSION, impersonate=AcquireSettings().impersonate
+        fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, pools=settings.proxy_pools
     )
     await run_scheduler(settings, periodic(open_store(settings.object_store), fetch), _stop_on_signals())
 

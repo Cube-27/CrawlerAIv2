@@ -14,6 +14,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.scheduler.loop import periodic
 from crawlerai.storage.fs import FsStore
@@ -92,6 +93,7 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _environment(monkeypatch)
+    monkeypatch.setenv("CRAWLERAI_PROXY_POOLS", '{"dc": "http://proxy.example.com:3128"}')
     calls: list[tuple[str, object, bool]] = []
 
     async def run(settings: Settings, entries: object, stop: asyncio.Event) -> None:
@@ -115,14 +117,14 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     assert isinstance(fetch, partial)
     assert (fetch.func, fetch.args) == (fetch_http, ())
     assert fetch.keywords == {
-        "policy": FetchPolicy(),
         "engine_version": ENGINE_VERSION,
         "impersonate": AcquireSettings().impersonate,
+        "pools": {"dc": ProxyEndpoint("proxy.example.com", 3128)},
     }
 
 
 def test_the_scheduler_releases_leases_every_minute_and_expires_and_rechecks_hourly() -> None:
-    async def fetch(url: str) -> FetchResult:
+    async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("not called")
 
     entries = periodic(FsStore(Path("unused")), fetch)
