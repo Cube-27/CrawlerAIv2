@@ -1,8 +1,11 @@
+import { Typography } from "@heroui/react";
+import { EmptyView } from "../../components/EmptyView";
+
 export function EvalUiOff() {
   return (
-    <output className="block">
-      The labeling API is off. Start the backend with <code>CRAWLERAI_EVAL_UI=true</code> to label
+    <EmptyView title="The labeling API is off.">
+      Start the backend with <Typography.Code>CRAWLERAI_EVAL_UI=true</Typography.Code> to label
       pages.
-    </output>
+    </EmptyView>
   );
 }

@@ -146,8 +146,9 @@ describe("labeling list", () => {
     stubApi({ "GET /v1/eval/pages": [json({ detail: "Not Found" }, { status: 404 })] });
     renderAt("/labeling");
 
-    expect(await screen.findByText(/The labeling API is off/)).toHaveTextContent(
-      "CRAWLERAI_EVAL_UI=true",
+    expect(await screen.findByText("The labeling API is off.")).toBeInTheDocument();
+    expect(screen.getByText(/to label pages/)).toHaveTextContent(
+      "Start the backend with CRAWLERAI_EVAL_UI=true to label pages.",
     );
   });
 });
