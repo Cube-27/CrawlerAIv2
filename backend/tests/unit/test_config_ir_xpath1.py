@@ -1,6 +1,8 @@
 """The XPath 1.0 check (SPEC-08 §4.2, D-0034): expressions libxml2 compiles that use only the W3C XPath 1.0 core
 function library pass; XPath 2+ syntax and functions, variables and namespace prefixes are refused."""
 
+import re
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -13,7 +15,7 @@ ACCEPTED = [
     "normalize-space(//h1[@data-testid='title'])",
     "//a[@rel='next']/@href",
     "//ul[@class='grid']/li",
-    "string(//meta[@property=\"og:title\"]/@content)",
+    'string(//meta[@property="og:title"]/@content)',
     "descendant-or-self::li[count(preceding-sibling::*) mod 2 = 0]",
     "descendant-or-self::input[(@checked and name(.) = 'input')and (@type = 'radio')]",
     "count(//li) div (2) * 3",
@@ -63,7 +65,7 @@ def test_xpath2_syntax_is_refused(expression: str) -> None:
     ],
 )
 def test_refusals_name_the_construct(expression: str, message: str) -> None:
-    with pytest.raises(XPath1Error, match=message):
+    with pytest.raises(XPath1Error, match=re.escape(message)):
         check_xpath1(expression)
 
 
@@ -78,6 +80,6 @@ def test_any_function_outside_the_core_library_is_refused(name: str) -> None:
 
 
 def test_core_library_is_the_w3c_list() -> None:
-    # XPath 1.0 §4.1–§4.4: 7 node-set, 10 string, 5 boolean and 5 number functions.
+    # XPath 1.0 §4.1 to 4.4: 7 node-set, 10 string, 5 boolean and 5 number functions.
     assert len(XPATH1_FUNCTIONS) == 27
     assert {"last", "id", "substring-before", "lang", "ceiling"} <= XPATH1_FUNCTIONS

@@ -26,7 +26,7 @@ _xpath = st.sampled_from(
 _css = st.sampled_from(["div.x > span", "a#i1", "li[data-k='v']", "ul li:nth-child(2)", "p:not(.y)"])
 _jsonpath = st.from_regex(r"\$(\.[a-z][A-Za-z]{0,8}){1,3}", fullmatch=True)
 _regex = st.sampled_from([r"sku:\s*(\w+)", r"(\d+)", r"^\s*(.+?)\s*$"])
-_post = st.lists(
+_post: st.SearchStrategy[list[dict[str, Any]]] = st.lists(
     st.one_of(
         st.sampled_from([t.value for t in FieldType if t not in (FieldType.LIST, FieldType.OBJECT)]).map(
             lambda name: {name: {}}
@@ -107,7 +107,7 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
             "fetch": {"method": "http"},
             "fields": {
                 "price": {
-                    "steps": [{"css": "span.now", "post": [{"money": {}}, {"trim": {}}]}],
+                    "steps": [{"css": "span.p1", "post": [{"money": {}}, {"trim": {}}]}],
                     "status": "uncorroborated",
                     "yield": 0.5,
                 }
@@ -125,9 +125,9 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
     assert dumped["fields"]["price"] == {
         "steps": [
             {
-                "css": "span.now",
-                "xpath": "descendant-or-self::span[@class and contains(concat(' ', normalize-space(@class), ' '), "
-                "' now ')]",
+                "css": "span.p1",
+                "xpath": "descendant-or-self::span[@class and contains(@class, 'p1') "
+                "and contains(concat(' ', normalize-space(@class), ' '), ' p1 ')]",
                 "post": [{"money": {}}, {"trim": {}}],
             }
         ],
@@ -135,13 +135,15 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
         "yield": 0.5,
         "validity": None,
     }
-    assert ir.fields["price"].steps[0] == CssStep.model_validate({"css": "span.now", "post": [{"money": {}}, {"trim": {}}]})
+    assert ir.fields["price"].steps[0] == CssStep.model_validate(
+        {"css": "span.p1", "post": [{"money": {}}, {"trim": {}}]}
+    )
 
 
 # --- CSS → XPath equivalence ----------------------------------------------------------------------------------------
 
 # A compound selector: a tag or `*`, then classes, an id and attribute tests; a selector chains compounds with the
-# descendant or child combinator (Selectors Level 3 §5–§8).
+# descendant or child combinator (Selectors Level 3 §5 to 8).
 _compound = st.builds(
     lambda tag, classes, id_: {"tag": tag, "classes": classes, "id": id_},
     st.sampled_from([*_TAGS, "*"]),
@@ -166,7 +168,7 @@ _element = st.builds(
     st.lists(st.sampled_from(_CLASSES), max_size=3, unique=True),
     st.none() | st.sampled_from(_IDS),
 )
-_tree = st.recursive(
+_tree: st.SearchStrategy[tuple[Any, list[Any]]] = st.recursive(
     st.builds(lambda element: (element, []), _element),
     lambda children: st.builds(lambda element, kids: (element, kids), _element, st.lists(children, max_size=3)),
     max_leaves=12,
@@ -219,6 +221,7 @@ def test_css_translation_selects_what_the_selector_matches(
 
 # --- rejections -----------------------------------------------------------------------------------------------------
 
+
 def _validate_step(step: object) -> None:
     FieldSteps.model_validate({"steps": [step], "status": "operator"})
 
@@ -261,7 +264,7 @@ def test_malformed_steps_are_refused(step: dict[str, Any]) -> None:
         {"uppercase": {}},
         {"regex_replace": {"pattern": "(a)"}},
         {"regex_replace": {"pattern": "(a)", "repl": r"\2"}},
-        {"regex_replace": {"pattern": r"A", "repl": ""}},
+        {"regex_replace": {"pattern": r"\Z", "repl": ""}},
     ],
 )
 def test_malformed_post_ops_are_refused(post: dict[str, Any]) -> None:
@@ -292,7 +295,12 @@ def test_malformed_fields_are_refused(fields: dict[str, Any]) -> None:
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": fields,
-        "provenance": {"origin": "operator", "validated_on": [], "learned_at": "2026-10-13T00:00:00Z", "engine_version": "x"},
+        "provenance": {
+            "origin": "operator",
+            "validated_on": [],
+            "learned_at": "2026-10-13T00:00:00Z",
+            "engine_version": "x",
+        },
     }
     with pytest.raises(ValidationError):
         ExtractionConfigIR.model_validate(document)

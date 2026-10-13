@@ -27,7 +27,7 @@ ACCEPTED = [
 # Each is accepted by Python `re` (or compiles there with a different meaning) but is outside the shared subset.
 REFUSED = [
     (r"\d+\Z", r"\\Z"),  # Python: end of string; PCRE: end or before a final newline
-    (r"A", r"\\u"),  # Python only; PCRE writes \x{41}
+    ("\\u" + "0041", r"\\u"),  # Python only; PCRE writes \x{41}
     (r"\N{EM DASH}", r"\\N"),
     (r"a\vb", r"\\v"),  # PCRE: any vertical whitespace
     (r"\0", r"\\0"),
@@ -43,7 +43,7 @@ REFUSED = [
     (r"[a--b]", r"--"),
     (r"[]a]", r"\]"),
     (r"[\b]", r"\\b"),
-    (r"(?P<n" + "x" * 32 + r">a)", "name"),
+    (r"(?P<n" + "x" * 32 + r">a)", r"\(\?P<"),  # PCRE2 group names are at most 32 characters
 ]
 
 

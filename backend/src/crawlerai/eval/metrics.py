@@ -14,6 +14,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
+from crawlerai.config_ir.model import FieldStatus
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, PageKind, Split
 from crawlerai.eval.labels import FieldLabel, LabelRow, Labels, parse_labels
@@ -26,9 +27,8 @@ _URL = FieldSpec(type=FieldType.URL)
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
 MIN_CELL = 10
 
-# ARCHITECTURE §6 `extraction_config.field_status`.
+# ARCHITECTURE §10: the evidence buckets of config candidates.
 CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
-ConfigFieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
 Cell = Literal["TP", "FP", "FN", "TN"]
 
 
@@ -72,7 +72,7 @@ class EvalCase(_Model):
     schema_def: SchemaFields
     labels: Labels
     output: PageOutput | ReplayFailed
-    config_status: dict[str, ConfigFieldStatus] = {}
+    config_status: dict[str, FieldStatus] = {}
 
     @model_validator(mode="after")
     def _labels_fit_schema(self) -> Self:
@@ -253,7 +253,7 @@ def generalization_gap(dev: Report, fresh: Report) -> dict[str, float]:
     return gap
 
 
-def _config_status(case: EvalCase, judgment: Judgment) -> ConfigFieldStatus | None:
+def _config_status(case: EvalCase, judgment: Judgment) -> FieldStatus | None:
     # Fields published from a config are measured per the field's status in the page's config snapshot (§4.5).
     if judgment.evidence not in CONFIG_EVIDENCE:
         return None

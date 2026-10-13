@@ -1,0 +1,274 @@
+"""The extraction config IR (SPEC-08 §4.2, ARCHITECTURE §12.1): everything learned about a site, as one versioned
+document that the engine executes and the exporters translate.
+
+These models are the boundary every config crosses (induction, role A, operator corrections, the DB row), so a
+document that validates here is one both executors can run: each step has exactly one selector, XPath is XPath 1.0,
+regexes are in the portable subset and CSS carries its XPath translation. Site strings live in IR documents only
+(C3); this module holds none.
+"""
+
+from typing import Annotated, Any, Literal, Self
+
+from cssselect import HTMLTranslator, SelectorError
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    StringConstraints,
+    Tag,
+    model_serializer,
+    model_validator,
+)
+
+from crawlerai.config_ir.portable_regex import check_pattern, check_replacement, compile_portable
+from crawlerai.config_ir.xpath1 import check_xpath1
+from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, PageKind
+from crawlerai.schemas.types import FieldType, Name
+
+# ARCHITECTURE §6 `extraction_config.field_status`, §8.3 step 4.
+FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
+# Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, a captured network body, an API response.
+JsonSource = Literal["jsonld", "js_state", "xhr", "api"]
+
+XPath1 = Annotated[str, AfterValidator(check_xpath1)]
+PortableRegex = Annotated[str, AfterValidator(check_pattern)]
+# RFC 9535 §2.2: a JSONPath query starts with the root identifier `$`.
+JsonPath = Annotated[str, StringConstraints(pattern=r"^\$")]
+# schema.org naming conventions: a type is UpperCamelCase.
+SchemaOrgType = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Za-z0-9]*$")]
+# An HTML attribute name an XPath `@name` test can reach: an XML NCName (Namespaces in XML §3), ASCII here.
+AttrName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_.\-]*$")]
+Ratio = Annotated[float, Field(ge=0, le=1)]
+
+_HTML_CSS = HTMLTranslator()
+
+
+class _Model(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+# --- post ops -------------------------------------------------------------------------------------------------------
+
+
+class _NoParams(_Model):
+    """`{}`: the op takes no parameters."""
+
+
+def _has_own_values(type_: FieldType) -> FieldType:
+    # SPEC-04 §4.1: `list` and `object` have no values of their own, so no normalizer runs on them.
+    if type_ in (FieldType.LIST, FieldType.OBJECT):
+        raise ValueError(f"{type_} has no normalizer of its own")
+    return type_
+
+
+class NormalizeOp(_Model):
+    """`{"<field type>": {}}`: the type's normalizer (SPEC-04) runs on the value."""
+
+    type: Annotated[FieldType, AfterValidator(_has_own_values)]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_document(cls, data: Any) -> Any:
+        if isinstance(data, dict) and len(data) == 1 and "type" not in data:
+            ((type_, params),) = data.items()
+            _NoParams.model_validate(params)
+            return {"type": type_}
+        return data
+
+    @model_serializer
+    def _to_document(self) -> dict[str, dict[str, Any]]:
+        return {self.type.value: {}}
+
+
+class TrimOp(_Model):
+    trim: _NoParams
+
+
+class AbsolutizeUrlOp(_Model):
+    """Resolves the value against the page's base URL (RFC 3986 §5)."""
+
+    absolutize_url: _NoParams
+
+
+class RegexReplaceParams(_Model):
+    pattern: PortableRegex
+    repl: str
+
+    @model_validator(mode="after")
+    def _replacement_is_portable(self) -> Self:
+        check_replacement(self.repl, compile_portable(self.pattern))
+        return self
+
+
+class RegexReplaceOp(_Model):
+    regex_replace: RegexReplaceParams
+
+
+_FIELD_TYPES = frozenset(FieldType)
+
+
+def _post_op_kind(value: Any) -> str | None:
+    """The op a post-op document names by its one key: a field type, `trim`, `regex_replace` or `absolutize_url`."""
+    keys = list(value) if isinstance(value, dict) else [_model_key(value)]
+    if len(keys) != 1:
+        return None
+    return "normalize" if keys[0] in _FIELD_TYPES else keys[0]
+
+
+def _model_key(value: Any) -> str | None:
+    if isinstance(value, NormalizeOp):
+        return value.type.value
+    fields = type(value).model_fields if isinstance(value, BaseModel) else {}
+    return next(iter(fields), None)
+
+
+PostOp = Annotated[
+    Annotated[NormalizeOp, Tag("normalize")]
+    | Annotated[TrimOp, Tag("trim")]
+    | Annotated[AbsolutizeUrlOp, Tag("absolutize_url")]
+    | Annotated[RegexReplaceOp, Tag("regex_replace")],
+    Discriminator(
+        _post_op_kind,
+        custom_error_type="post_op",
+        custom_error_message="a post op has one key: a field type, trim, regex_replace or absolutize_url",
+    ),
+]
+
+
+# --- steps ----------------------------------------------------------------------------------------------------------
+
+
+class _Step(_Model):
+    post: list[PostOp] = []
+
+
+class XPathStep(_Step):
+    xpath: XPath1
+
+
+class CssStep(_Step):
+    """A CSS selector, kept for readability, and its XPath 1.0 translation, which is what executors run."""
+
+    css: str
+    xpath: XPath1
+
+    @model_validator(mode="before")
+    @classmethod
+    def _translate(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not isinstance(data.get("css"), str):
+            return data
+        try:
+            xpath = _HTML_CSS.css_to_xpath(data["css"])
+        except SelectorError as error:
+            raise ValueError(f"not a CSS selector cssselect translates: {error}") from None
+        if data.get("xpath", xpath) != xpath:
+            raise ValueError("xpath is not the translation of css")
+        return {**data, "xpath": xpath}
+
+
+class JsonLdStep(_Step):
+    """A JSONPath into the page's expanded JSON-LD nodes, optionally only those of one schema.org type."""
+
+    jsonld: JsonPath
+    when_type: SchemaOrgType | None = None
+
+
+class JsonPathStep(_Step):
+    jsonpath: JsonPath
+    source: JsonSource
+
+
+class RegexStep(_Step):
+    regex: PortableRegex
+
+
+class AttrStep(_Step):
+    """An attribute of the context node: the row in a listing."""
+
+    attr: AttrName
+
+
+_SELECTOR_KEYS = ("xpath", "css", "jsonld", "jsonpath", "regex", "attr")
+
+
+def _selector_key(value: Any) -> str | None:
+    """The step's one selector key. A CSS step also carries `xpath`, its translation."""
+    present = {key for key in _SELECTOR_KEYS if _has_key(value, key)}
+    if "css" in present:
+        present.discard("xpath")
+    return present.pop() if len(present) == 1 else None
+
+
+def _has_key(value: Any, key: str) -> bool:
+    return key in value if isinstance(value, dict) else getattr(value, key, None) is not None
+
+
+Step = Annotated[
+    Annotated[XPathStep, Tag("xpath")]
+    | Annotated[CssStep, Tag("css")]
+    | Annotated[JsonLdStep, Tag("jsonld")]
+    | Annotated[JsonPathStep, Tag("jsonpath")]
+    | Annotated[RegexStep, Tag("regex")]
+    | Annotated[AttrStep, Tag("attr")],
+    Discriminator(
+        _selector_key,
+        custom_error_type="step",
+        custom_error_message="a step has exactly one selector key: xpath, css, jsonld, jsonpath, regex or attr",
+    ),
+]
+
+
+# --- the IR ---------------------------------------------------------------------------------------------------------
+
+
+class FieldSteps(_Model):
+    """A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
+    (SPEC-08 §4.7) once validated."""
+
+    model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
+
+    steps: list[Step] = Field(min_length=1)
+    status: FieldStatus
+    yield_: Ratio | None = Field(default=None, alias="yield")
+    validity: Ratio | None = None
+
+
+class ListingSpec(_Model):
+    """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next
+    page's URL."""
+
+    row: Step
+    fields: dict[Name, FieldSteps]
+    next: Step | None = None
+
+
+class SchemaRef(_Model):
+    name: Name
+    version: int = Field(ge=1)
+
+
+class Fetch(_Model):
+    method: FetchMethod
+
+
+class Provenance(_Model):
+    origin: ConfigOrigin
+    validated_on: list[CaptureId]
+    learned_at: AwareDatetime
+    engine_version: str = Field(min_length=1)
+
+
+class ExtractionConfigIR(_Model):
+    model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
+
+    ir_version: Literal["1"]
+    site: str = Field(min_length=1)
+    schema_: SchemaRef = Field(alias="schema")
+    page_kind: PageKind
+    fetch: Fetch
+    fields: dict[Name, FieldSteps]
+    listing: ListingSpec | None = None
+    provenance: Provenance
