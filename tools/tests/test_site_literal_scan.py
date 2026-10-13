@@ -4,6 +4,7 @@ Every host here is reserved by RFC 2606 or RFC 6761. Detection tests pass an exp
 reserved names are not exempted.
 """
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -470,19 +471,20 @@ PRODUCT_NAME = ".".join(["Product", "name"])
 BRAND_NAME = ".".join(["Product", "brand", "name"])
 OFFER_NAME = ".".join(["Offer", "name"])
 # A host in the place of a schema.org path; it is in no allowlist the tests pass.
-SHOP = ".".join(["Shop", "example", "com"])
+SHOP = ".".join(["shop", "example", "com"])
 
 
-def schema_document(fields: str) -> str:
-    """A JSON schema document (SPEC-04 §4.2) with the given `fields` object body."""
-    return '{"name": "p", "version": 1, "page_kind": "listing",\n  "fields": {' + fields + "}\n}\n"
+def schema_document(fields: dict[str, object], **extra: object) -> str:
+    """A JSON schema document (SPEC-04 §4.2) with the given fields, on one line."""
+    return json.dumps({"name": "p", "version": 1, "page_kind": "listing", "fields": fields, **extra}) + "\n"
 
 
 PRESET = schema_document(
-    f'\n  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},'
-    '\n  "rows": {"type": "list", "item": {"type": "object",'
-    f' "fields": {{"brand": {{"schema_org": "{BRAND_NAME}"}}}}}}}},'
-    '\n  "price": {"type": "money", "schema_org": "Offer.price+priceCurrency"}'
+    {
+        "title": {"type": "text", "schema_org": PRODUCT_NAME},
+        "rows": {"type": "list", "item": {"type": "object", "fields": {"brand": {"schema_org": BRAND_NAME}}}},
+        "price": {"type": "money", "schema_org": "Offer.price+priceCurrency"},
+    }
 )
 
 
@@ -520,15 +522,10 @@ def test_schema_org_shapes_no_schema_document_defines_are_hosts(tmp_path: Path) 
 @pytest.mark.parametrize(
     "document",
     [
-        pytest.param(f'{{"schema_org": "{OFFER_NAME}"}}\n', id="not-a-schema-document"),
-        pytest.param(f'{{"fields": {{"a": {{"schema_org": "{OFFER_NAME}"}}}}}}\n', id="no-name-version-page-kind"),
-        pytest.param(
-            f'{{"name": "p", "version": 1, "page_kind": "detail", "fields": {{}}, "schema_org": "{OFFER_NAME}"}}\n',
-            id="outside-a-field",
-        ),
-        pytest.param(
-            schema_document(f'"a": {{"description": {{"schema_org": "{OFFER_NAME}"}}}}'), id="not-a-field-key"
-        ),
+        pytest.param(json.dumps({"schema_org": OFFER_NAME}), id="not-a-schema-document"),
+        pytest.param(json.dumps({"fields": {"a": {"schema_org": OFFER_NAME}}}), id="no-name-version-page-kind"),
+        pytest.param(schema_document({}, schema_org=OFFER_NAME), id="outside-a-field"),
+        pytest.param(schema_document({"a": {"description": {"schema_org": OFFER_NAME}}}), id="not-a-field-key"),
     ],
 )
 def test_schema_org_values_outside_field_specs_of_schema_documents_are_hosts(tmp_path: Path, document: str) -> None:
@@ -547,8 +544,8 @@ def test_schema_org_paths_follow_schema_org_naming_and_match_as_written(tmp_path
         tmp_path / "repo",
         {
             "schemas/p.json": PRESET,
-            "d.json": schema_document(f'"a": {{"type": "text", "schema_org": "{SHOP.lower()}"}}'),
-            "refs.py": f'A = "{SHOP.lower()}"\nB = "{PRODUCT_NAME.lower()}"\n',
+            "d.json": schema_document({"a": {"type": "text", "schema_org": SHOP}}),
+            "refs.py": f'A = "{SHOP}"\nB = "{PRODUCT_NAME.lower()}"\n',
         },
     )
 
@@ -556,7 +553,7 @@ def test_schema_org_paths_follow_schema_org_naming_and_match_as_written(tmp_path
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == [
-        f"d.json:2: {SHOP.lower()}",
-        f"refs.py:1: {SHOP.lower()}",
+        f"d.json:1: {SHOP}",
+        f"refs.py:1: {SHOP}",
         f"refs.py:2: {PRODUCT_NAME.lower()}",
     ]
