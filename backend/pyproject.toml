@@ -12,6 +12,7 @@ dependencies = [
     "curl-cffi>=0.16,<1",
     "dateparser>=1.2,<2",
     "fastapi>=0.115,<1",
+    "lxml>=5,<7",
     "patchright>=1.63,<2",
     "price-parser>=0.4,<1",
     "protego>=0.4,<1",
@@ -82,6 +83,7 @@ dev = [
     "pytest>=8,<10",
     "ruff>=0.17,<1",
     "types-dateparser>=1.2,<2",
+    "types-lxml>=2026.2,<2027",
     "types-pyyaml>=6,<7",
 ]
 licenses = [

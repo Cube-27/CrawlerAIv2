@@ -44,13 +44,25 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
     return isinstance(left, Ok) and left == right
 
 
+def compose(s: str) -> str:
+    """Unicode NFC (UAX #15), so one text has one form, with the non-whitespace control characters removed. Text a
+    parser has already decoded (DOM text) takes this step without the entity decoding."""
+    return unicodedata.normalize("NFC", s).translate(_CONTROLS)
+
+
+def text_form(s: str) -> str:
+    """The text normalization without its declines: entity-decoded, composed, whitespace-collapsed. The form in which
+    page text and values are compared (the content layer's visibility index)."""
+    return _collapse(compose(html.unescape(s)))
+
+
 def _text(raw: Raw, type_: FieldType) -> NormalizeResult:
     if not isinstance(raw, str):
         return Invalid("not_a_string")
     if has_surrogate(raw):
         return Invalid("surrogate")
-    # HTML Standard, named and numeric character references; then Unicode NFC (UAX #15), so one text has one form.
-    decoded = unicodedata.normalize("NFC", html.unescape(raw)).translate(_CONTROLS)
+    # HTML Standard, named and numeric character references; then the composed form.
+    decoded = compose(html.unescape(raw))
     value = _collapse_lines(decoded) if type_ is FieldType.LONG_TEXT else _collapse(decoded)
     if not value:
         return Invalid("empty")

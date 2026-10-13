@@ -12,7 +12,6 @@ import json
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from email.message import Message
 from typing import Annotated, Literal, Protocol, assert_never, get_args
 from urllib.parse import urljoin
 
@@ -39,7 +38,7 @@ from crawlerai.eval.labels import (
 from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
 from crawlerai.schemas.types import FieldSpec
 from crawlerai.storage import open_store
-from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle, decode_body, sha256_hex
 
 # `POST /capture` fetches within the request, one polite fetch at a time, so a request stays short.
 MAX_CAPTURE_URLS = 20
@@ -398,7 +397,7 @@ def sanitize_html(bundle: CaptureBundle) -> str:
     """The captured page, safe to show in a sandboxed `srcdoc` iframe: no script or embedded content, no event
     handler attributes (HTML §8.1.8.2: `on*`), no `javascript:` URLs (HTML §7.11.1), and one `<base href>` at the
     capture's final URL, or at the page's own base resolved against it, so relative images load (D-0012)."""
-    tree = LexborHTMLParser(_decode(bundle))
+    tree = LexborHTMLParser(decode_body(bundle))
     base_url = bundle.manifest.final_url
     page_base = tree.css_first("base[href]")
     if page_base is not None:
@@ -415,17 +414,3 @@ def sanitize_html(bundle: CaptureBundle) -> str:
     base.attrs["href"] = base_url
     head.insert_child(base)
     return tree.html or ""
-
-
-def _decode(bundle: CaptureBundle) -> str:
-    """The body as text, in the charset its Content-Type names (RFC 9110 §8.3.2), else UTF-8 (the HTML default,
-    §13.2.3.2); undecodable bytes become U+FFFD."""
-    header = Message()
-    for name, value in bundle.manifest.headers.response:
-        if name.lower() == "content-type":
-            header["content-type"] = value
-            break
-    try:
-        return bundle.body.decode(header.get_content_charset() or "utf-8", errors="replace")
-    except LookupError:  # a charset Python doesn't know
-        return bundle.body.decode("utf-8", errors="replace")
