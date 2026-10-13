@@ -10,13 +10,13 @@ function renderApp() {
 }
 
 describe("app shell", () => {
-  it("renders the top bar, the navigation and the placeholder screen", () => {
+  it("renders the top bar, the navigation and, without a key, the connect screen", () => {
     renderApp();
 
     expect(screen.getByRole("banner")).toHaveTextContent("CrawlerAI");
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("main")).toContainElement(
-      screen.getByRole("heading", { level: 1, name: "Overview" }),
+      screen.getByRole("heading", { level: 1, name: "Connect" }),
     );
   });
 });
