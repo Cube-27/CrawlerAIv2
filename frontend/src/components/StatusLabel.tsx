@@ -6,7 +6,7 @@ import {
   CircleXmark,
   TriangleExclamation,
 } from "@gravity-ui/icons";
-import type { ComponentType, SVGProps } from "react";
+import type { ComponentProps, ComponentType, SVGProps } from "react";
 
 /** What a status means, independent of the domain: each domain maps each of its status values to one tone, once. */
 export type StatusTone = "neutral" | "accent" | "success" | "warning" | "danger";
@@ -16,7 +16,7 @@ const TONES: Record<
   StatusTone,
   {
     icon: ComponentType<SVGProps<SVGSVGElement>>;
-    color: "default" | "accent" | "success" | "warning" | "danger";
+    color: ComponentProps<typeof Chip>["color"];
   }
 > = {
   neutral: { icon: CircleDashed, color: "default" },
