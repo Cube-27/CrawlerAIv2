@@ -1,9 +1,9 @@
 """The replay harness (SPEC-03 §4.5, ARCHITECTURE §15, G7, INV-10): the only path from eval captures to metrics.
 
 `replay_split` replays every checked page of a store's split through an `Engine` and returns the cases that
-`build_report` (`crawlerai.eval.metrics`) scores. Every LLM call goes through `RecordedLLM`, which answers from the split's recorded
-responses, so a replay reads nothing but the bundle, the page's config snapshot and the recordings: two replays of
-one engine version give byte-identical results.
+`build_report` (`crawlerai.eval.metrics`) scores. Every LLM call goes through `RecordedLLM`, which answers from the
+split's recorded responses, so a replay reads nothing but the bundle, the page's config snapshot and the
+recordings: two replays of one engine version give byte-identical results.
 
 `Engine` is the seam for SPEC-05: its `replay_page` is the function the worker calls, with SPEC-03's signature; the
 engine holds its calibration, which `version` names (`core.engine_version`). `LLMRequest`, `LLMResponse` and
