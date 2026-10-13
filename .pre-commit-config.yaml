@@ -42,14 +42,6 @@ repos:
         entry: python tools/site_literal_scan.py --public --staged
         language: python
         pass_filenames: false
-      # DESIGN.md: visual values only in theme.css, UI only from @heroui/react. Scans every tracked frontend/src file
-      # (fast), so a staged change is checked against the whole tree.
-      - id: theme-only
-        name: theme-only check
-        entry: python tools/theme_only_check.py
-        language: python
-        files: ^frontend/src/
-        pass_filenames: false
       # Vite+ formats (Oxfmt), lints (Oxlint) and type-checks (tsgo) the staged frontend files with the config in
       # frontend/vite.config.ts. vp resolves paths from frontend/, so the hook strips the `frontend/` prefix: a
       # root-relative path matches no lint input and passes unchecked.

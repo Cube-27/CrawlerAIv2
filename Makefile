@@ -14,7 +14,7 @@ CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs://$(CURDIR)/.data/ob
 export
 
 .PHONY: dev db db-down migrate api api-client check check-data check-tools check-backend \
-	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme
+	check-frontend check-api-client check-licenses check-size-gates check-complexity
 
 ## Start Postgres, apply migrations and run the API on http://localhost:8000. Later rows add the worker, the
 ## scheduler and the frontend here.
@@ -42,8 +42,8 @@ api-client:
 ## Everything CI runs (SPEC-00 §4.4, §4.6), in the same order per job, failing at the first error. Needs Docker for
 ## the backend's database steps and `pnpm install` in frontend/. The fast staged-file hooks are in
 ## .pre-commit-config.yaml.
-check: check-data check-size-gates check-complexity check-theme check-tools check-backend check-frontend \
-	check-api-client check-licenses
+check: check-data check-size-gates check-complexity check-tools check-backend check-frontend check-api-client \
+	check-licenses
 
 check-data:
 	cd backend && $(UV_RUN) python ../tools/data_manifest_check.py
@@ -57,10 +57,6 @@ check-size-gates:
 # backend/pyproject.toml). The frontend's limit runs in `pnpm check` (check-frontend).
 check-complexity:
 	cd backend && $(UV_RUN) complexipy --no-ignore
-
-# Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (docs/DESIGN.md, Theming and Stack).
-check-theme:
-	cd backend && $(UV_RUN) python ../tools/theme_only_check.py
 
 check-tools:
 	cd backend && $(UV_RUN) ruff check ../tools

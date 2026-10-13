@@ -1,4 +1,4 @@
-import { Button, Label, Link, RouterProvider, Switch, Toast, Typography } from "@heroui/react";
+import { Button, Label, Link, RouterProvider, Switch } from "@heroui/react";
 import { Outlet, useHref, useNavigate } from "react-router";
 import { useAuth } from "./auth";
 import { useTheme } from "./theme";
@@ -13,7 +13,7 @@ export function Shell() {
     <RouterProvider navigate={(to) => void navigate(to)} useHref={useHref}>
       <div className="min-h-dvh bg-background text-foreground">
         <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
-          <Typography.Paragraph weight="semibold">CrawlerAI</Typography.Paragraph>
+          <span className="font-semibold">CrawlerAI</span>
           <div className="flex items-center gap-4">
             {apiKey === null ? null : (
               <Button variant="secondary" onPress={disconnect}>
@@ -35,7 +35,7 @@ export function Shell() {
             </Switch>
           </div>
         </header>
-        <div className="mx-auto flex max-w-content flex-col gap-6 px-4 py-6 sm:flex-row">
+        <div className="mx-auto flex max-w-[1280px] flex-col gap-6 px-4 py-6 sm:flex-row">
           <nav aria-label="Main" className="sm:w-48 sm:shrink-0">
             <ul className="flex flex-row gap-4 sm:flex-col sm:gap-2">
               <li>
@@ -47,8 +47,6 @@ export function Shell() {
             <Outlet />
           </main>
         </div>
-        {/* The one toast region: screens notify with `toast` from @heroui/react (DESIGN.md, Patterns). */}
-        <Toast.Provider />
       </div>
     </RouterProvider>
   );

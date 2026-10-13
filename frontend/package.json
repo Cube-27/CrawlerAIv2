@@ -17,7 +17,6 @@
     "gen:api": "openapi-typescript openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
-    "@gravity-ui/icons": "2.22.0",
     "@heroui/react": "3.2.6",
     "@heroui/styles": "3.2.6",
     "openapi-fetch": "0.17.0",

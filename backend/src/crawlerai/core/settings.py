@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from curl_cffi.requests import BrowserTypeLiteral
 from pydantic import BeforeValidator, Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from crawlerai.core.proxy import ProxyEndpoint
 
@@ -57,7 +57,40 @@ class ApiSettings(_Base):
     eval_ui: bool = False
 
 
-class Settings(DatabaseSettings, AcquireSettings, ApiSettings):
+LLMProviderName = Literal["anthropic", "gemini"]
+
+
+def _comma_separated(value: object) -> object:
+    """`a,b` as `("a", "b")`; duplicates are refused, since the order is the failover order."""
+    if not isinstance(value, str):
+        return value
+    names = tuple(name.strip() for name in value.split(","))
+    if len(set(names)) != len(names):
+        raise ValueError("a provider is listed twice")
+    return names
+
+
+class LLMSettings(_Base):
+    """The LLM providers (SPEC-06 §4.2, OPEN_QUESTIONS #5): which, in failover order, and a model per model class.
+
+    The model ids are the current Haiku- and Flash-Lite-class models for `fast` (role C) and Sonnet- and Flash-class
+    models for `strong` (A, D, S) (ARCHITECTURE Appendix C); change them here, not in code.
+    """
+
+    llm_providers: Annotated[tuple[LLMProviderName, ...], NoDecode, BeforeValidator(_comma_separated)] = (
+        "anthropic",
+        "gemini",
+    )
+    llm_fast_model_anthropic: str = "claude-haiku-5-5"
+    llm_strong_model_anthropic: str = "claude-sonnet-5-5"
+    llm_fast_model_gemini: str = "gemini-3.5-flash-lite"
+    llm_strong_model_gemini: str = "gemini-3.8-flash"
+    # From the secret store (ARCHITECTURE §18); required for each listed provider when a client is built.
+    llm_api_key_anthropic: SecretStr | None = None
+    llm_api_key_gemini: SecretStr | None = None
+
+
+class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings):
     eval_private_database_url: SecretStr | None = None
     object_store: ObjectStoreUrl
     eval_private_object_store: ObjectStoreUrl | None = None

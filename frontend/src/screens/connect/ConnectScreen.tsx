@@ -2,7 +2,6 @@ import { Button, FieldError, Form, Input, Label, TextField, Typography } from "@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useAuth } from "../../app/auth";
-import { FormActions } from "../../components/FormActions";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
 
@@ -51,9 +50,9 @@ export function ConnectScreen() {
           <Input autoComplete="off" />
           <FieldError />
         </TextField>
-        <FormActions>
-          <Button type="submit">Connect</Button>
-        </FormActions>
+        <Button type="submit" className="self-start">
+          Connect
+        </Button>
       </Form>
     </section>
   );

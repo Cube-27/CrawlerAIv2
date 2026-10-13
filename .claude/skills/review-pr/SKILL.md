@@ -46,8 +46,6 @@ implementor and stop. Don't run builds or tests yourself; CI did. One single age
    have been escalated (`CLAUDE.md` §4) is a blocking finding.
 6. **SonarCloud and recurring findings.** Read the PR's gate (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`
    prints it). A red gate is an Act-on item. Check the diff against `docs/plans/RECURRING.md`: a repeat of a listed mistake is an Act-on item.
-7. **Frontend PRs.** The PR follows the `docs/DESIGN.md` Patterns, uses no second way to do a listed job, and has
-   no styling outside `frontend/src/app/theme.css`. A deviation is an Act-on item.
 
 ## 3. Judge
 

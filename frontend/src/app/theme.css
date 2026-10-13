@@ -2,14 +2,6 @@
 @import "@heroui/styles";
 
 /*
- * The theme layer (DESIGN.md, Theming): every visual value the app sets lives here, so a visual change is an edit
- * to this file only. HeroUI's own variables are overridden under `:root` and `[data-theme="dark"]`; none are yet,
- * so the HeroUI default theme applies. Layout sizes outside Tailwind's default scale are Tailwind theme variables,
- * used through the utilities they generate (`max-w-content`, `h-page-view`).
+ * Project theme overrides (DESIGN.md): HeroUI CSS variables only, under `:root` and `[data-theme="dark"]`.
+ * None yet; the HeroUI default theme applies.
  */
-@theme {
-  /* The content column's maximum width (DESIGN.md, Layout). */
-  --container-content: 80rem;
-  /* The captured page's frame on the labeling screen: most of the viewport's height. */
-  --height-page-view: 70dvh;
-}

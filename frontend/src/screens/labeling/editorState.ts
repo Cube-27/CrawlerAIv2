@@ -1,4 +1,3 @@
-import { toast } from "@heroui/react";
 import { useRef, useState } from "react";
 import { useRevalidator } from "react-router";
 import { sameOriginClient } from "../../api/client";
@@ -175,7 +174,7 @@ export function savedNotice(
 }
 
 /** Saving one pass: the save in flight, and what the last save's answer was when it failed. */
-export function useSave(pageId: string, etag: string | null) {
+export function useSave(pageId: string, etag: string | null, onSaved: (notice: string) => void) {
   const revalidator = useRevalidator();
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -197,8 +196,7 @@ export function useSave(pageId: string, etag: string | null) {
     });
     setSaving(false);
     if (error === undefined) {
-      // A toast outlives the editor, which the reload below remounts with the new ETag.
-      toast.success(notice);
+      onSaved(notice);
       await revalidator.revalidate();
       return;
     }
