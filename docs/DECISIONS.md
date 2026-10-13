@@ -1297,3 +1297,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Options: (a) a custodian-only process: the same app run on the custodian machine with a private backend, never deployed; (b) this router gains a private backend behind a custodian-only setting; (c) label hidden/fresh with a separate CLI.
 - Recommendation: (a). It keeps the main deployment unable to reach private data, and it reuses the screen.
 - Blocked: nothing now. Needed before H3 (milestone M).
+
+### D-0215 — `RecordedLLM` keys on the requested model class
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 4 (#33) · Status: decided
+- Decision: sha256 of the canonical JSON array `[prompt_kind, model_class, system, user, output_schema]` (sorted keys, no whitespace); SPEC-06's `request_hash` should use the same function.
+- Alternatives: The concrete model name.
+- Why: The provider picks the concrete model after the request exists (SPEC-06 failover); an array keeps parts from running together.
+- Reversible: yes (re-records the cache)
+
+### D-0216 — `replay_split` builds the `RecordedLLM` itself
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 4 (#33) · Status: decided
+- Decision: `replay_split` takes `live: LLMClient | None` and returns `list[EvalCase]` (§4.5's `PageResult`).
+- Alternatives: A separate `PageResult` type; the caller builds the `RecordedLLM`.
+- Why: Every replay LLM call goes through recording by construction; `EvalCase` is what `build_report` scores.
+- Reversible: yes
+
+### D-0217 — `replay_page` takes no `calibration` argument (spec clarification)
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 4 (#33) · Status: decided
+- Decision: The engine holds calibration and `engine.version` names it, so SPEC-03 §4.5's `replay_page(..., calibration: Calibration, ...)` drops that parameter. SPEC-05 implements this signature.
+- Alternatives: Pass calibration separately.
+- Why: Matches ARCHITECTURE §15: `(capture, engine_version, config, schema_version) → record`.
+- Reversible: yes
+
+### D-0218 — Interim LLM and engine protocols live in `eval/replay`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 4 (#33) · Status: decided
+- Decision: `LLMRequest`/`LLMResponse`/`LLMClient` and the `Engine` protocol stay in `eval/replay` until SPEC-05/06 bring the real types.
+- Alternatives: Create `crawlerai.llm.client` now.
+- Why: Building SPEC-06's module here would pre-empt its PR (same pattern as `metrics.PageOutput`).
+- Reversible: yes
+
+### D-0219 — Replay drops pages on data problems and stops on setup errors
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 4 (#33) · Status: decided
+- Decision: A missing recording or an invalid `config_snapshot` drops the page (`ReplayFailed`); an unknown schema, a page-kind mismatch or labels that don't fit the schema stop the run.
+- Alternatives: Drop on everything; raise on everything.
+- Why: Per-page problems trip the `n_pages` gate as §4.11 intends; setup errors would silently drop every page.
+- Reversible: yes

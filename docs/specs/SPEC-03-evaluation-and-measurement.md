@@ -142,8 +142,9 @@ deletes the source row, in that order; a promoted page keeps its labels.
 
 ```python
 async def replay_page(bundle: CaptureBundle, schema: SchemaDef, config: ExtractionConfigIR | None,
-                      calibration: Calibration, llm: LLMClient, mode: Mode) -> ExtractionResult
+                      llm: LLMClient, mode: Mode) -> ExtractionResult
 ```
+Calibration is part of the engine, named by `engine_version` (ARCHITECTURE §15; D-0217).
 
 - Identical to the live path: `replay_page` *is* the function the worker calls (SPEC-05 implements it; this spec
   defines the signature and the harness around it).
