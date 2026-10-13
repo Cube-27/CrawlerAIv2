@@ -23,6 +23,7 @@ from crawlerai.llm.client import (
     ProviderError,
     ProviderReply,
     ProviderUnavailable,
+    is_transient,
     request_hash,
 )
 from crawlerai.llm.providers.fake import FakeProvider
@@ -50,8 +51,12 @@ def reply(text: str, tokens_in: int = 10, tokens_out: int = 3) -> ProviderReply:
 
 
 def complete(provider: FakeProvider, req: LLMRequest = REQUEST) -> LLMResponse:
+    return complete_with([provider], req)
+
+
+def complete_with(providers: list[FakeProvider], req: LLMRequest = REQUEST) -> LLMResponse:
     # The engine is never connected: a request without a job has no budget and records no usage.
-    client = MeteredClient(provider, create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))
+    client = MeteredClient(providers, create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))
     return asyncio.run(client.complete_json(req))
 
 
@@ -204,3 +209,61 @@ def test_the_fake_provider_fails_when_its_script_runs_out() -> None:
     provider = FakeProvider([])
     with pytest.raises(ProviderUnavailable, match="no scripted reply"):
         complete(provider)
+
+
+# --- failover (§4.2) ---
+
+
+def test_a_provider_that_does_not_answer_fails_over_to_the_next() -> None:
+    down = FakeProvider([ProviderError("429 rate limited")], name="first")
+    up = FakeProvider([reply('{"summary": "s"}')], name="second")
+
+    response = complete_with([down, up])
+
+    assert (response.provider, response.data) == ("second", {"summary": "s"})
+    assert (len(down.calls), up.calls) == (1, down.calls)
+
+
+def test_the_first_provider_answers_without_asking_the_next() -> None:
+    first = FakeProvider([reply('{"summary": "s"}')], name="first")
+    second = FakeProvider([], name="second")
+
+    assert complete_with([first, second]).provider == "first"
+    assert second.calls == []
+
+
+def test_a_failover_happens_at_most_once() -> None:
+    providers = [FakeProvider([ProviderError(f"503 from {name}")], name=name) for name in ("a", "b", "c")]
+
+    with pytest.raises(ProviderUnavailable, match=r"^a: 503 from a; b: 503 from b$"):
+        complete_with(providers)
+    assert [len(provider.calls) for provider in providers] == [1, 1, 0]
+
+
+def test_the_retry_after_an_invalid_reply_asks_the_first_provider_again() -> None:
+    first = FakeProvider([reply("not json"), reply('{"summary": "fixed"}')], name="first")
+    second = FakeProvider([], name="second")
+
+    response = complete_with([first, second])
+
+    assert (response.provider, response.data, len(first.calls), second.calls) == (
+        "first",
+        {"summary": "fixed"},
+        2,
+        [],
+    )
+
+
+def test_a_client_needs_a_provider() -> None:
+    engine = create_async_engine("postgresql+asyncpg://127.0.0.1/unused")
+    with pytest.raises(ValueError, match="at least one provider"):
+        MeteredClient([], engine)
+
+
+@pytest.mark.parametrize(
+    ("status", "transient"),
+    [(408, True), (429, True), (500, True), (503, True), (529, True), (599, True)]
+    + [(status, False) for status in (200, 400, 401, 403, 404, 413, 422, 600)],
+)
+def test_only_timeouts_rate_limits_and_server_errors_are_transient(status: int, transient: bool) -> None:
+    assert is_transient(status) is transient

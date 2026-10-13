@@ -10,9 +10,8 @@ from crawlerai.llm.client import ProviderCall, ProviderError, ProviderReply
 
 
 class FakeProvider:
-    name = "fake"
-
-    def __init__(self, script: Iterable[ProviderReply | ProviderError]) -> None:
+    def __init__(self, script: Iterable[ProviderReply | ProviderError], name: str = "fake") -> None:
+        self.name = name
         self._script = list(script)
         self.calls: list[ProviderCall] = []
 
