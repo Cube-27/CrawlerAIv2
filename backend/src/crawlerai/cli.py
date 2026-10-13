@@ -110,8 +110,12 @@ async def _eval_promote(all_pages: bool) -> None:
 
 async def _eval_rotate_hidden(fraction: float) -> None:
     settings = Settings()
-    async with aclosing(private_store("hidden", settings)) as hidden, aclosing(dev_store(settings)) as dev:
-        sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, dev, fraction)))
+    async with (
+        aclosing(private_store("hidden", settings)) as hidden,
+        aclosing(private_store("fresh", settings)) as fresh,
+        aclosing(dev_store(settings)) as dev,
+    ):
+        sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, fresh, dev, fraction)))
 
 
 def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

@@ -47,11 +47,14 @@ async def promote(fresh: PrivateEvalStore, hidden: PrivateEvalStore, dev: DevEva
     return await _move(fresh, dev, sites, chosen)
 
 
-async def rotate_hidden(hidden: PrivateEvalStore, dev: DevEvalStore, fraction: float) -> Move:
+async def rotate_hidden(hidden: PrivateEvalStore, fresh: PrivateEvalStore, dev: DevEvalStore, fraction: float) -> Move:
     """Move `fraction` of the hidden sites to dev, chosen at random within each category (§16.1 stratifies hidden by
-    category). A site's category is its first page's."""
+    category). A site's category is its first page's. A hidden site whose host also has fresh pages stays and is not
+    counted in the fraction: moving it would put a fresh host in dev, and fresh is sites nobody has seen (§16.1)."""
     sites = await hidden.pages_by_host()
-    chosen = choose_sites({host: pages[0].category for host, pages in sites.items()}, fraction)
+    fresh_hosts = (await fresh.pages_by_host()).keys()
+    rotatable = {host: pages[0].category for host, pages in sites.items() if host not in fresh_hosts}
+    chosen = choose_sites(rotatable, fraction)
     return await _move(hidden, dev, sites, chosen)
 
 

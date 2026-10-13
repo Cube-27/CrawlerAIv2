@@ -1367,3 +1367,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: keep lessons in session memory only; one `herdr agent wait` per agent.
 - Why: The owner asked that repeated mistakes, visible in SonarCloud, become checks or skills that survive new sessions, and that the orchestrator manage processes so the machine never hangs. S8707, S5778 and red-gate DONE reports each recurred; the low-memory reaper killed per-agent watchers twice.
 - Reversible: yes
+
+### D-0225 — Rotation skips a hidden host that also has fresh pages
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 10 follow-up (#37) · Status: decided
+- Decision: `rotate_hidden` leaves out hidden hosts that have fresh pages before choosing, and the per-category fraction is a share of the hosts that can rotate. `import-sites` is unchanged. A host in both hidden and fresh stays in both until one copy is removed by hand, since `promote` skips it too.
+- Alternatives: (b) `import-sites` refuses a fresh host already in hidden or dev; (c) both.
+- Why: Fresh means sites nobody has seen, and a site moves whole (§16.1). This mirrors `promote`'s guard and changes no input contract; (b) changes the custodian's import and needs a lookup across stores at capture time.
+- Reversible: yes
