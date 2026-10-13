@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, model_validator
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -25,6 +25,13 @@ class FetchPolicy(_Frozen):
     max_decompressed_bytes: PositiveInt = 50_000_000
     capture_network_json: bool = True  # browser only
     locale_hint: str | None = None  # request locale, for the normalizers' context
+
+    @model_validator(mode="after")
+    def _override_has_a_reason(self) -> "FetchPolicy":
+        # Ignoring robots.txt is an operator's decision, recorded with its reason (ARCHITECTURE §7.1).
+        if not self.respect_robots and not (self.robots_override_reason or "").strip():
+            raise ValueError("respect_robots=false needs a robots_override_reason")
+        return self
 
 
 class AttemptRecord(_Frozen):

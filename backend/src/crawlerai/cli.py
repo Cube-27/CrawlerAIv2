@@ -14,6 +14,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
+from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.storage import open_store
@@ -53,8 +54,7 @@ async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) ->
     result = await fetch_http(
         url,
         FetchPolicy(),
-        # The package version until SPEC-01 PR 7 provides ENGINE_VERSION.
-        engine_version=version("crawlerai"),
+        engine_version=ENGINE_VERSION,
         impersonate=AcquireSettings().impersonate,
         connector=connector,
     )

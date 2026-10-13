@@ -31,7 +31,7 @@ from crawlerai.db.jobs import (
     transition_job,
     transition_task,
 )
-from crawlerai.db.models import FinishedOutcome, Job, JobId, PageKind, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.models import FinishedOutcome, Job, JobId, PageKind, TaskOutcome, TaskStatus, UrlTask, UrlTaskId
 
 LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
@@ -96,19 +96,40 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     return sorted(tasks, key=lambda task: (-task.priority, task.id))
 
 
-async def complete_task(conn: AsyncConnection, task: ClaimedTask, outcome: FinishedOutcome) -> None:
-    await _finish(conn, task, "done", outcome=outcome)
+async def complete_task(
+    conn: AsyncConnection, task: ClaimedTask, outcome: FinishedOutcome, *, reason: str | None = None
+) -> None:
+    """Finish a task with `outcome`; `reason`, kept in `last_error`, says why when the outcome alone does not (a
+    `blocked` task's `robots`, SPEC-02 §4.6)."""
+    await _finish(conn, task, "done", outcome=outcome, last_error=reason)
 
 
-async def fail_task(conn: AsyncConnection, task: ClaimedTask, error: str, *, transient: bool) -> None:
-    """Record a failure. A transient one is retried after an exponential backoff until `MAX_ATTEMPTS` (D-0006);
-    anything else fails the task."""
-    last_error = error.encode()[:LAST_ERROR_BYTES].decode(errors="ignore")
+def retry_delay(attempts: int) -> timedelta:
+    """The backoff before retrying a task that failed transiently on attempt `attempts` (1 for the first)."""
+    delay: timedelta = BACKOFF_BASE * 2 ** (attempts - 1)
+    return delay
+
+
+async def fail_task(
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    error: str,
+    *,
+    transient: bool,
+    after: timedelta | None = None,
+    exhausted: TaskOutcome = "failed",
+) -> None:
+    """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
+    asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `retry_delay`. A permanent failure, or the last
+    attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`)."""
+    last_error = _cut(error)
     if transient and task.attempts < MAX_ATTEMPTS:
-        backoff = BACKOFF_BASE * 2 ** (task.attempts - 1)
-        await _move(conn, task, "queued", last_error=last_error, next_attempt_at=func.now() + backoff)
-    else:
+        delay = retry_delay(task.attempts) if after is None else after
+        await _move(conn, task, "queued", last_error=last_error, next_attempt_at=func.now() + delay)
+    elif exhausted == "failed":
         await _finish(conn, task, "failed", outcome="failed", last_error=last_error)
+    else:
+        await _finish(conn, task, "done", outcome=exhausted, last_error=last_error)
 
 
 async def cancel_task(conn: AsyncConnection, task: ClaimedTask) -> None:
@@ -116,9 +137,10 @@ async def cancel_task(conn: AsyncConnection, task: ClaimedTask) -> None:
     await _finish(conn, task, "cancelled")
 
 
-async def release_task(conn: AsyncConnection, task: ClaimedTask) -> None:
-    """Return a claimed task that was never started, giving back the attempt its claim counted."""
-    await _move(conn, task, "queued", attempts=UrlTask.attempts - 1)
+async def release_task(conn: AsyncConnection, task: ClaimedTask, *, after: timedelta = timedelta(0)) -> None:
+    """Return a claimed task that was never started, due again `after` from now, giving back the attempt its claim
+    counted."""
+    await _move(conn, task, "queued", attempts=UrlTask.attempts - 1, next_attempt_at=func.now() + after)
 
 
 async def release_expired_leases(conn: AsyncConnection) -> int:
@@ -136,6 +158,10 @@ async def release_expired_leases(conn: AsyncConnection) -> int:
     for task in tasks:
         await fail_task(conn, task, "lease expired", transient=True)
     return len(tasks)
+
+
+def _cut(error: str) -> str:
+    return error.encode()[:LAST_ERROR_BYTES].decode(errors="ignore")
 
 
 async def _claimed(conn: AsyncConnection, statement: Executable) -> list[ClaimedTask]:

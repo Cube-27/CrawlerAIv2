@@ -3,6 +3,7 @@
 import asyncio
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -12,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
-from crawlerai.db.queue import ClaimedTask, claim_tasks
-from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, run_worker
+from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
+from crawlerai.worker.loop import Failed, Finished, Postpone, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -137,6 +138,42 @@ async def test_a_permanent_failure_result_fails_the_task_and_the_job(engine: Asy
 
     assert await _tasks(engine) == [("failed", "failed", 1, "budget_exhausted")]
     assert await _job_state(engine, job_id) == ("failed", ["failed"])
+
+
+async def test_a_finished_result_records_its_reason(engine: AsyncEngine) -> None:
+    job_id, _ = await _job(engine, 1)
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        return Finished("blocked", reason="robots")
+
+    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+
+    assert await _tasks(engine) == [("done", "blocked", 1, "robots")]
+
+
+async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engine: AsyncEngine) -> None:
+    job_id, _ = await _job(engine, 1)
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        return Failed("http 429", transient=True, after=timedelta(0), exhausted="blocked")
+
+    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+
+    assert await _tasks(engine) == [("done", "blocked", MAX_ATTEMPTS, "http 429")]
+
+
+async def test_a_postponed_task_runs_later_without_spending_attempts(engine: AsyncEngine) -> None:
+    job_id, _ = await _job(engine, 1)
+    runs: list[int] = []
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        runs.append(task.attempts)
+        return Postpone(timedelta(0)) if len(runs) < 5 else Finished("extracted")
+
+    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+
+    assert runs == [1, 1, 1, 1, 1]
+    assert await _tasks(engine) == [("done", "extracted", 1, None)]
 
 
 async def test_a_task_without_a_handler_for_its_job_kind_fails(engine: AsyncEngine) -> None:

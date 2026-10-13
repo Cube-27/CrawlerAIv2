@@ -292,6 +292,61 @@ async def test_releasing_an_unstarted_task_returns_it_without_spending_an_attemp
     assert (await _claim_one(conn)).id == task_id
 
 
+async def test_a_release_can_postpone_the_task(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    [task_id] = await _tasks(conn, job_id, 1)
+    task = await _claim_one(conn)
+    now = await _now(conn)
+
+    await release_task(conn, task, after=timedelta(seconds=7))
+
+    row = await _row(conn, task_id)
+    assert (row.status, row.attempts, row.next_attempt_at - now) == ("queued", 0, timedelta(seconds=7))
+    assert await claim_tasks(conn, "w1", 1) == []
+
+
+async def test_a_finished_task_can_record_why_it_ended(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    [task_id] = await _tasks(conn, job_id, 1)
+
+    await complete_task(conn, await _claim_one(conn), "blocked", reason="robots")
+
+    row = await _row(conn, task_id)
+    assert (row.status, row.outcome, row.last_error) == ("done", "blocked", "robots")
+    assert await _job_state(conn, job_id) == ("completed", ["completed"])
+
+
+async def test_a_retry_requeues_after_the_given_delay_and_spends_the_attempt(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    [task_id] = await _tasks(conn, job_id, 1)
+    task = await _claim_one(conn)
+    now = await _now(conn)
+
+    await fail_task(conn, task, "http 429", transient=True, after=timedelta(seconds=120), exhausted="blocked")
+
+    row = await _row(conn, task_id)
+    assert (row.status, row.outcome, row.attempts, row.last_error, row.claimed_by) == (
+        "queued",
+        None,
+        1,
+        "http 429",
+        None,
+    )
+    assert row.next_attempt_at - now == timedelta(seconds=120)
+
+
+async def test_a_retry_on_the_last_attempt_finishes_with_the_exhausted_outcome(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    [task_id] = await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
+    task = await _claim_one(conn)
+
+    await fail_task(conn, task, "http 503", transient=True, after=timedelta(seconds=30), exhausted="blocked")
+
+    row = await _row(conn, task_id)
+    assert (row.status, row.outcome, row.attempts, row.last_error) == ("done", "blocked", MAX_ATTEMPTS, "http 503")
+    assert await _job_state(conn, job_id) == ("completed", ["completed"])
+
+
 async def test_after_a_release_and_a_reclaim_by_the_same_worker_the_old_claim_cannot_finish(
     conn: AsyncConnection,
 ) -> None:

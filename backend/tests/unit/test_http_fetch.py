@@ -15,7 +15,6 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from importlib.metadata import version
 from ipaddress import IPv4Address, ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -27,6 +26,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.cli import main
+from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.storage.capture_bundle import decode, encode
 
@@ -399,7 +399,7 @@ def test_the_fetch_command_writes_a_bundle_that_decodes(
     manifest = bundle.manifest
     assert (manifest.url, manifest.status_code, manifest.block_class) == (server.url("/p"), status, block_class)
     assert bundle.body == reply.body
-    assert manifest.engine_version == version("crawlerai")
+    assert manifest.engine_version == ENGINE_VERSION
     assert json.loads(capsys.readouterr().out) == {
         "capture_id": str(manifest.capture_id),
         "final_url": server.url("/p"),

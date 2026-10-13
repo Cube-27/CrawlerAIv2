@@ -32,9 +32,9 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-02 PR 4 (#26, re-review); SPEC-03 PR 5 (in progress); SPEC-02 PR 5; SPEC-03 PRs 3, 4, 6–11.
+- Next: SPEC-03 PR 5 (#29, in review); SPEC-02 PR 5; SPEC-03 PRs 3, 4, 6–11.
+- Note (from #26): the robots snapshot is per site, but robots.txt is per scheme, host and port (RFC 9309 §2.3); a site served on both `http` and `https` or a non-default port shares one snapshot.
 - Follow-ups from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment; SPEC-03 PR 5 decides whether an empty `labeled`/`checked` listing scores.
-- Follow-ups for SPEC-02 PR 4 (from #23): `crawlerai fetch` should stamp captures with `ENGINE_VERSION` instead of `version("crawlerai")` (D-0143); in `tests/unit/test_engine_version.py:46` build the tree before `pytest.raises` (Sonar S5778); drop the deprecated `Result.tuples()` in `tests/db/test_check_names.py`.
 - Open (SPEC-04 PR 7 / SPEC-05): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Decide how runtime data ships (package data or a settings path) together with GeoNames data and calibration; the build must write `VERSION`.
 - Note for SPEC-06: usage recorded in a task's transaction is lost if the handler then raises (transient retries roll back). Catch provider errors and return a result, or record usage in its own transaction.
 - Done: `claim_tasks` no longer claims more than `n` tasks (#24, D-0153).
@@ -79,7 +79,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | Acquisition types, classify, SSRF guard | done (#16) | Ran ahead of SPEC-01 PRs 3–8; it needs no SPEC-01 table. |
 | 2 | HTTP fetch (curl_cffi) with manual redirects and caps | done (#18) | |
 | 3 | Persist capture + `crawlerai fetch` CLI | done (#22) | Also closed #18's follow-ups. |
-| 4 | Politeness + robots + backoff via requeue | todo | |
+| 4 | Politeness + robots + backoff via requeue | done (#26) | Also closed #23's follow-ups. |
 | 5 | Rung selection + fetch_method memory + re-check scheduler task | todo | |
 | 6 | Patchright browser rung with network capture | todo | |
 | 7 | Proxy pools | todo | |

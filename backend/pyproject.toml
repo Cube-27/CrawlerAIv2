@@ -10,6 +10,7 @@ dependencies = [
     "boto3>=1.35,<2",
     "curl-cffi>=0.16,<1",
     "fastapi>=0.115,<1",
+    "protego>=0.4,<1",
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
     "selectolax>=0.3,<1",

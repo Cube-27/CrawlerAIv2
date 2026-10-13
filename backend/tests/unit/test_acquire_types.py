@@ -60,3 +60,14 @@ def test_policy_round_trips_through_the_manifest_json() -> None:
 def test_policy_limits_must_be_positive(field: str) -> None:
     with pytest.raises(ValidationError, match=field):
         FetchPolicy.model_validate({field: 0})
+
+
+@pytest.mark.parametrize("reason", [None, "", "  "])
+def test_ignoring_robots_needs_a_reason(reason: str | None) -> None:
+    with pytest.raises(ValidationError, match="robots_override_reason"):
+        FetchPolicy(respect_robots=False, robots_override_reason=reason)
+
+
+def test_an_override_with_a_reason_is_kept() -> None:
+    policy = FetchPolicy(respect_robots=False, robots_override_reason="owner of the site asked for a full crawl")
+    assert FetchPolicy.model_validate(policy.model_dump(mode="json")) == policy

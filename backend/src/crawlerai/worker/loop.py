@@ -26,8 +26,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import FinishedOutcome, Job, JobKind
-from crawlerai.db.queue import ClaimedTask, LeaseLost, cancel_task, claim_tasks, complete_task, fail_task, release_task
+from crawlerai.db.models import FinishedOutcome, Job, JobKind, TaskOutcome
+from crawlerai.db.queue import (
+    ClaimedTask,
+    LeaseLost,
+    cancel_task,
+    claim_tasks,
+    complete_task,
+    fail_task,
+    release_task,
+)
 
 log = logging.getLogger(__name__)
 
@@ -40,15 +48,29 @@ URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 @dataclass(frozen=True)
 class Finished:
     outcome: FinishedOutcome
+    reason: str | None = None  # why, when the outcome alone does not say: a `blocked` task's `robots`
 
 
 @dataclass(frozen=True)
 class Failed:
+    """A failure (`fail_task`). `after` is the delay the target asked for before a retry (a `Retry-After`, SPEC-02
+    §4.6); `exhausted` the outcome once no attempt is left."""
+
     error: str
     transient: bool
+    after: timedelta | None = None
+    exhausted: TaskOutcome = "failed"
 
 
-TaskResult = Finished | Failed
+@dataclass(frozen=True)
+class Postpone:
+    """The task did not run, because its site is not admitted yet (SPEC-02 §4.6): run it `after` from now, without
+    spending an attempt. The worker moves on instead of sleeping."""
+
+    after: timedelta
+
+
+TaskResult = Finished | Failed | Postpone
 TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]
 
 
@@ -101,10 +123,13 @@ async def _execute(
         await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False)
         return
     match await handler(task, conn):
-        case Finished(outcome):
-            await complete_task(conn, task, outcome)
-        case Failed(error, transient):
-            await fail_task(conn, task, _error_text(error, redact_urls=redact_urls), transient=transient)
+        case Finished(outcome, reason):
+            await complete_task(conn, task, outcome, reason=reason)
+        case Failed(error, transient, after, exhausted):
+            text = _error_text(error, redact_urls=redact_urls)
+            await fail_task(conn, task, text, transient=transient, after=after, exhausted=exhausted)
+        case Postpone(after):
+            await release_task(conn, task, after=after)
         case unreachable:
             assert_never(unreachable)
 

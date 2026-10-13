@@ -18,14 +18,14 @@ from crawlerai.db.models import Base
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 CHECKS = text(
-    "SELECT conrelid::regclass::text, conname FROM pg_constraint"
+    "SELECT conrelid::regclass::text AS table_name, conname FROM pg_constraint"
     " WHERE contype = 'c' AND connamespace = 'public'::regnamespace"
 )
 
 
 async def _checks(conn: AsyncConnection, *tables: str) -> set[str]:
-    rows = (await conn.execute(CHECKS)).tuples().all()
-    return {str(name) for table, name in rows if not tables or table in tables}
+    rows = (await conn.execute(CHECKS)).all()
+    return {str(row.conname) for row in rows if not tables or row.table_name in tables}
 
 
 @pytest.mark.anyio

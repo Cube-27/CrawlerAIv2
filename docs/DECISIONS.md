@@ -904,7 +904,54 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Why: Keeps `Periodic.run` as `(conn) -> …` with the store explicit; retention needs both `db` and `storage`, independent siblings in the layering.
 - Reversible: yes
 
-<!-- D-0159–D-0165 are reserved for SPEC-02 PR 4 (#26), merged after this entry. -->
+### D-0159 — The robots.txt snapshot is JSON in `site.robots_snapshot`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: `{fetched_at, status_code, body}`, fresh for 24 h.
+- Alternatives: A `robots_fetched_at` column (migration); a per-process cache only.
+- Why: The 24 h rule needs a fetch time; avoids a schema change.
+- Reversible: yes
+
+### D-0160 — Only the `*` robots group applies
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: Rules and `Crawl-delay` are read for user agent `*`.
+- Alternatives: A `crawlerai` product token.
+- Why: Fetches impersonate Chrome and announce no token of their own (RFC 9309 §2.2.1).
+- Reversible: yes
+
+### D-0161 — robots.txt matching follows RFC 9309 (spec clarification)
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: SPEC-02 §4.1's "stdlib `urllib.robotparser` semantics" means rules, `Crawl-delay` and `Sitemap:`; matching follows RFC 9309 §2.2.2–2.2.3 (longest match, `allow` on a tie, `*`/`$`), using Protego 0.7 (BSD-3-Clause). SPEC-02 §4.1 wording updated.
+- Alternatives: `urllib.robotparser` (first match in file order, wildcards literal); our own matcher beside robotparser.
+- Why: ARCHITECTURE §7.1 says robots.txt is honoured; robotparser fetches pages common files disallow (#26 review).
+- Reversible: yes
+
+### D-0162 — robots.txt status handling
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: 2xx is parsed (first 500 KiB, UTF-8); 4xx or more than 5 redirects means allow all; 5xx, network error, timeout or SSRF rejection means unreachable: a transient task failure with nothing stored, and `blocked` once attempts run out.
+- Alternatives: Block the task as `robots` at once; end it `failed` after retries.
+- Why: RFC 9309 §2.3.1.4 reads unreachable as "disallow all"; a blip shouldn't end tasks or cache "disallow all" for 24 h.
+- Reversible: yes
+
+### D-0163 — A 429/503 spends an attempt; once attempts run out the task ends `blocked`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: `Failed(transient=True, after=<Retry-After>, exhausted='blocked')` requeues after Retry-After or the usual backoff while `attempts < MAX_ATTEMPTS`, then ends `done`/`blocked` with `last_error='http 429'`.
+- Alternatives: Requeue without counting; end as `failed`.
+- Why: §4.3 bounds retries; §7.1 classes 429/503 as `blocked`.
+- Reversible: yes
+
+### D-0164 — A Retry-After beyond 15 min ends the task `blocked`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: No retry; the limiter pauses the host for 15 min. A delay too large for `timedelta` or `int()` counts as the longest pause.
+- Alternatives: Honour any value; clamp to 15 min.
+- Why: Neither retries before the server allows nor holds the job open.
+- Reversible: yes
+
+### D-0165 — Request interval and rate waits
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 4 (#26) · Status: decided
+- Decision: Interval = the site's `crawl_delay_ms` or 1 s, never below the robots `Crawl-delay`. Any wait > 0 returns `Postpone` (attempt given back), never a sleep. robots.txt fetches skip the limiter.
+- Alternatives: Let the site setting override robots; sleep through short waits; count robots fetches.
+- Why: The operator may go faster than the default but not faster than robots.txt asks; the worker runs tasks one at a time, so a sleep stalls other sites; at most one robots fetch per site per 24 h per worker.
+- Reversible: yes
 
 ### D-0166 — Normalizer `equal` stubs are exact JSON equality
 - Date: 2026-10-13 · Spec/PR: SPEC-03 PR 2 (#27) · Status: decided
