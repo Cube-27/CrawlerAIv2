@@ -43,8 +43,10 @@ def test_no_backend_tree_says_so() -> None:
 
 @pytest.mark.parametrize("content", ["", "main", "0123abz", "0123", f"{SHA} dirty"])
 def test_a_version_file_that_is_not_a_git_sha_is_refused(tmp_path: Path, content: str) -> None:
+    backend = _backend(tmp_path, content, None)
+
     with pytest.raises(ValueError, match="VERSION"):
-        engine_version(_backend(tmp_path, content, None))
+        engine_version(backend)
 
 
 def test_a_source_tree_is_found_from_the_module_path(tmp_path: Path) -> None:
