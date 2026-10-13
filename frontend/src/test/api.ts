@@ -10,11 +10,21 @@ interface Call {
   body: unknown;
 }
 
-/** Stubs `fetch` with one reply per `METHOD /path`; records every request. */
+/** What `/healthz` answers by default: the API is up and does not serve the labeling API. */
+export function healthReply(): Response {
+  return Response.json({ status: "ok", eval_ui: false });
+}
+
+const HEALTH = "GET /healthz";
+
+/** Stubs `fetch` with one reply per `METHOD /path`; records every request. The shell asks `GET /healthz` on every
+ * screen: unless `replies` names it, it gets `healthReply()` and is not recorded. */
 export function stubApi(replies: Record<string, () => Response>): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", async (request: Request) => {
     const url = new URL(request.url);
+    if (`${request.method} ${url.pathname}` === HEALTH && !(HEALTH in replies))
+      return healthReply();
     const text = await request.text();
     calls.push({
       method: request.method,
