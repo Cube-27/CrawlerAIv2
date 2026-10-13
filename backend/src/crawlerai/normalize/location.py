@@ -196,25 +196,33 @@ def _text(text: str, gazetteer: Gazetteer | None, ctx: Context, *, remote: bool 
     spans = _spans(words, gazetteer, gazetteer.country_names(vocab.context_languages(ctx)))
     if not spans:
         return _nothing(remote)
-    # A place is read from the text when every name in it fits that place: the place lies in it, or it lies in the
-    # place ("Harwick, Eastvale": the city in that region). A name that is a country and a region both counts as
-    # either. Of the places that fit, the most specific stand; a city settles its region and country.
-    fitting = {p for span in spans for p in span if all(any(p.covers(q) or q.covers(p) for q in s) for s in spans)}
-    places = {p for p in fitting if not any(p != q and p.covers(q) for q in fitting)}
+    places = _most_specific_fitting(spans)
     if not places:
         return Invalid("inconsistent")
-    # SPEC-04 §4.4: a city name in exactly one country is that city. Where the name is in several of its regions and
-    # the text names none, the region is unknown, not guessed.
-    by_city: dict[tuple[str, str | None], set[str | None]] = defaultdict(set)
-    for p in places:
-        by_city[p.country, p.locality].add(p.region)
-    merged = sorted(
-        Place(country, next(iter(regions)) if len(regions) == 1 else None, locality)
-        for (country, locality), regions in by_city.items()
-    )
+    merged = _merged_by_city(places)
     if len(merged) > 1:
         return Ambiguous("several_places", tuple(_value(p, remote) for p in merged))
     return Ok(_value(merged[0], remote))
+
+
+def _most_specific_fitting(spans: list[frozenset[Place]]) -> set[Place]:
+    """A place is read from the text when every name in it fits that place: the place lies in it, or it lies in the
+    place ("Harwick, Eastvale": the city in that region). A name that is a country and a region both counts as
+    either. Of the places that fit, the most specific stand; a city settles its region and country."""
+    fitting = {p for span in spans for p in span if all(any(p.covers(q) or q.covers(p) for q in s) for s in spans)}
+    return {p for p in fitting if not any(p != q and p.covers(q) for q in fitting)}
+
+
+def _merged_by_city(places: set[Place]) -> list[Place]:
+    """SPEC-04 §4.4: a city name in exactly one country is that city. Where the name is in several of its regions and
+    the text names none, the region is unknown, not guessed."""
+    by_city: dict[tuple[str, str | None], set[str | None]] = defaultdict(set)
+    for p in places:
+        by_city[p.country, p.locality].add(p.region)
+    return sorted(
+        Place(country, next(iter(regions)) if len(regions) == 1 else None, locality)
+        for (country, locality), regions in by_city.items()
+    )
 
 
 def _spans(words: vocab.Tokens, gazetteer: Gazetteer, countries: Mapping[vocab.Tokens, str]) -> list[frozenset[Place]]:
