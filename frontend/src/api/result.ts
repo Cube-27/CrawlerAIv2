@@ -10,7 +10,7 @@ interface Answer<T> {
   response: Response;
 }
 
-export function failure(
+function failure(
   title: string,
   detail: string | null,
   retryAfter: string | null = null,

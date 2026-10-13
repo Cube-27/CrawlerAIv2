@@ -1,7 +1,7 @@
 import { vi } from "vite-plus/test";
 
 /** One request a screen sent, as the stubbed API saw it. */
-export interface Call {
+interface Call {
   method: string;
   path: string;
   /** The query string, without `?`; empty when there is none. */

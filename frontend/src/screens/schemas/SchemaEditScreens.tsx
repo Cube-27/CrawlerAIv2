@@ -33,12 +33,13 @@ function SchemaEditor({
 }: Readonly<{
   title: string;
   mode: FormMode;
-  initial: SchemaFormState;
+  /** The schema the form starts from; null for a blank one. */
+  initial: SchemaDef | null;
   save: Save;
   cancelTo: string;
 }>) {
   const navigate = useNavigate();
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState(() => (initial === null ? EMPTY_FORM : formOf(initial)));
   const [isPending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
 
@@ -101,7 +102,7 @@ export function NewSchemaScreen() {
     <SchemaEditor
       title="New schema"
       mode="create"
-      initial={source === null ? EMPTY_FORM : formOf(source)}
+      initial={source}
       save={save}
       cancelTo={source === null ? "/schemas" : schemaPath(source.id)}
     />
@@ -125,7 +126,7 @@ export function EditSchemaScreen() {
     <SchemaEditor
       title={`Edit ${name}`}
       mode="edit"
-      initial={formOf(query.value)}
+      initial={query.value}
       save={save}
       cancelTo={schemaPath(id)}
     />

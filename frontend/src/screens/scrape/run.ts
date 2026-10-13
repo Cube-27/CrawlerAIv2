@@ -3,6 +3,7 @@ import { parseFieldTypes, type FieldTypeSpec } from "../../api/field";
 import type { Problem } from "../../api/problem";
 import { apiResult } from "../../api/result";
 import type { components } from "../../api/schema";
+import { getSchema } from "../../api/schemas";
 import type { ScrapeRequest, ScrapeResponse } from "../../api/scrape";
 
 type ScrapeRequestBody = components["schemas"]["ScrapeRequest"];
@@ -15,14 +16,8 @@ export type ScrapeRun =
 
 /** The stored schema's field types; empty when it can't be read, so the records still show. */
 async function storedSchemaTypes(client: ApiClient, schemaId: string): Promise<FieldTypes> {
-  try {
-    const { data } = await client.GET("/v1/schemas/{schema_id}", {
-      params: { path: { schema_id: schemaId } },
-    });
-    return parseFieldTypes(data?.fields);
-  } catch {
-    return {};
-  }
+  const schema = await getSchema(client, schemaId);
+  return schema.kind === "done" ? parseFieldTypes(schema.value.fields) : {};
 }
 
 /** The field types to show the records by: the schema the server drafted, the inline one sent, or the stored one.

@@ -11,8 +11,8 @@ import type {
 /** What `SchemaForm` edits: a schema document (SPEC-04 §4.1) with its fields as ordered rows. The UI checks only what
  * it needs to build the request; every schema rule is the server's (ARCHITECTURE §3), and its 422 is shown. */
 
-export type Scheme = NonNullable<FieldSpecInput["scheme"]>;
-export type Scope = FieldSpecInput["scope"];
+type Scheme = NonNullable<FieldSpecInput["scheme"]>;
+type Scope = FieldSpecInput["scope"];
 
 /** The generated `FieldType` enum with a label each; a `Record` so a type the API adds fails the build here. */
 export const FIELD_TYPES: Readonly<Record<FieldType, string>> = {
@@ -40,8 +40,15 @@ export const SCHEMES: Readonly<Record<Scheme, string>> = {
   custom: "Custom",
 };
 
-const PAGE_KINDS: readonly SchemaPageKind[] = ["detail", "listing"];
-const SCOPES: readonly Scope[] = ["row", "page"];
+/** The generated page kinds and scopes, labelled, as `Choices` takes them. */
+export const PAGE_KIND_OPTIONS: readonly (readonly [SchemaPageKind, string])[] = [
+  ["detail", "Detail"],
+  ["listing", "Listing"],
+];
+export const SCOPE_OPTIONS: readonly (readonly [Scope, string])[] = [
+  ["row", "Row"],
+  ["page", "Page"],
+];
 
 export interface FieldRow {
   /** Stable across renames, for React keys. */
@@ -62,7 +69,8 @@ export interface SchemaFormState {
 /** A stored or drafted schema document, as `formOf` reads it. */
 interface SchemaDocument {
   name: string;
-  page_kind: SchemaPageKind;
+  /** Null in the JSON tab until a page kind is chosen. */
+  page_kind: SchemaPageKind | null;
   required_groups?: string[][];
   fields: Readonly<Record<string, FieldSpecInput>>;
 }
@@ -181,7 +189,7 @@ function hasValidMembers(value: JsonObject): boolean {
   return (
     isFieldType(value.type) &&
     (value.required === undefined || typeof value.required === "boolean") &&
-    (value.scope === undefined || SCOPES.some((scope) => scope === value.scope)) &&
+    (value.scope === undefined || SCOPE_OPTIONS.some(([scope]) => scope === value.scope)) &&
     isOptionalString(value.description) &&
     isOptionalString(value.schema_org) &&
     isOptionalString(value.vocab) &&
@@ -212,12 +220,10 @@ function isGroups(value: unknown): value is string[][] {
 }
 
 function isPageKind(value: unknown): value is SchemaPageKind {
-  return PAGE_KINDS.some((kind) => kind === value);
+  return PAGE_KIND_OPTIONS.some(([kind]) => kind === value);
 }
 
-export type ParsedForm =
-  | { kind: "ok"; form: SchemaFormState }
-  | { kind: "invalid"; reason: string };
+type ParsedForm = { kind: "ok"; form: SchemaFormState } | { kind: "invalid"; reason: string };
 
 function invalid(reason: string): ParsedForm {
   return { kind: "invalid", reason };
@@ -246,14 +252,10 @@ export function parseForm(text: string, mode: FormMode, current: SchemaFormState
   if (!isGroups(groups)) return invalid("`required_groups` must be lists of field names.");
   if (!isFieldSpecs(value.fields))
     return invalid("`fields` must map names to field specs with a known type.");
+  const name = typeof value.name === "string" && mode === "create" ? value.name : current.name;
   return {
     kind: "ok",
-    form: {
-      name: typeof value.name === "string" && mode === "create" ? value.name : current.name,
-      pageKind,
-      requiredGroups: groupsText(groups),
-      fields: Object.entries(value.fields).map(([name, spec]) => ({ key: rowKey(), name, spec })),
-    },
+    form: formOf({ name, page_kind: pageKind, required_groups: groups, fields: value.fields }),
   };
 }
 

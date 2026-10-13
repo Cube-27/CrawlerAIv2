@@ -6,14 +6,13 @@ import {
   Form,
   Input,
   Label,
-  Radio,
-  RadioGroup,
   Tabs,
   TextArea,
   TextField,
 } from "@heroui/react";
 import { useMemo, useState, type Key } from "react";
 import type { Problem } from "../api/problem";
+import { Choices } from "./Choices";
 import { FormActions } from "./FormActions";
 import { ProblemAlert } from "./ProblemAlert";
 import { SchemaFieldEditor } from "./SchemaFieldEditor";
@@ -22,6 +21,7 @@ import {
   isDuplicateName,
   jsonOf,
   newRow,
+  PAGE_KIND_OPTIONS,
   parseForm,
   type FieldRow,
   type FormMode,
@@ -53,28 +53,16 @@ function DocumentInputs({ form, mode, onChange }: Readonly<FormProps>) {
           <FieldError />
         </TextField>
       ) : null}
-      <RadioGroup
-        isRequired
+      <Choices
+        label="Page kind"
         name="page_kind"
+        options={PAGE_KIND_OPTIONS}
         value={form.pageKind}
-        orientation="horizontal"
+        isRequired
         onChange={(pageKind) => {
-          if (pageKind === "detail" || pageKind === "listing") onChange({ ...form, pageKind });
+          onChange({ ...form, pageKind });
         }}
-      >
-        <Label>Page kind</Label>
-        {(["detail", "listing"] as const).map((kind) => (
-          <Radio key={kind} value={kind}>
-            <Radio.Content>
-              <Radio.Control>
-                <Radio.Indicator />
-              </Radio.Control>
-              <Label>{kind === "detail" ? "Detail" : "Listing"}</Label>
-            </Radio.Content>
-          </Radio>
-        ))}
-        <FieldError />
-      </RadioGroup>
+      />
       <TextField
         name="required_groups"
         value={form.requiredGroups}

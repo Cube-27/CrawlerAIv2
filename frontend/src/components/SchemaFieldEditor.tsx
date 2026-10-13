@@ -6,8 +6,6 @@ import {
   Input,
   Label,
   ListBox,
-  Radio,
-  RadioGroup,
   Select,
   TextArea,
   TextField,
@@ -22,9 +20,11 @@ import {
   isScheme,
   parseJson,
   SCHEMES,
+  SCOPE_OPTIONS,
   withType,
   type FieldRow,
 } from "./schemaDocument";
+import { Choices } from "./Choices";
 
 /** An optional text member: an empty input sends null, which the API reads as not set. */
 function optional(text: string): string | null {
@@ -227,25 +227,14 @@ export function SchemaFieldEditor({
           <Label>Required</Label>
         </Checkbox.Content>
       </Checkbox>
-      <RadioGroup
+      <Choices
+        label="Scope"
+        options={SCOPE_OPTIONS}
         value={spec.scope}
-        orientation="horizontal"
         onChange={(scope) => {
-          if (scope === "row" || scope === "page") setSpec({ ...spec, scope });
+          setSpec({ ...spec, scope });
         }}
-      >
-        <Label>Scope</Label>
-        {(["row", "page"] as const).map((scope) => (
-          <Radio key={scope} value={scope}>
-            <Radio.Content>
-              <Radio.Control>
-                <Radio.Indicator />
-              </Radio.Control>
-              <Label>{scope === "row" ? "Row" : "Page"}</Label>
-            </Radio.Content>
-          </Radio>
-        ))}
-      </RadioGroup>
+      />
       <TextField
         value={spec.description ?? ""}
         onChange={(description) => {
