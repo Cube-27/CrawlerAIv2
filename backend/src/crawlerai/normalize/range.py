@@ -122,30 +122,45 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
     text, periods = _strip_periods(raw, vocab.context_languages(ctx))
     if len(periods) > 1:
         return Invalid("period_mismatch")
+    bounds = _split_bounds(text)
+    if bounds is None:
+        return Invalid("not_a_range")
+    texts = _bound_texts(*bounds)
+    if texts is None:
+        return Ambiguous("currency_missing", ())
+    return _monetary(money(texts[0], ctx), money(texts[1], ctx), periods.pop() if periods else None)
+
+
+Parts = tuple[str, str, str]
+
+
+def _split_bounds(text: str) -> tuple[Parts, Parts] | None:
+    """The two bounds of `text`, each as (text before, amount, text after), or `None` unless it is one range."""
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
     starts = [m.start() for m in _AMOUNT.finditer(text)]
     splits = [m for m in _SEPARATOR.finditer(text) if starts and starts[0] < m.start() and m.end() <= starts[-1]]
     if len(splits) != 1:
-        return Invalid("not_a_range")
-    left_parts = _around_amount(text[: splits[0].start()].strip())
-    right_parts = _around_amount(text[splits[0].end() :].strip())
-    if left_parts is None or right_parts is None:
-        return Invalid("not_a_range")
-    (left_before, left_amount, left_after), (right_before, right_amount, right_after) = left_parts, right_parts
+        return None
+    left = _around_amount(text[: splits[0].start()].strip())
+    right = _around_amount(text[splits[0].end() :].strip())
+    if left is None or right is None:
+        return None
+    return left, right
+
+
+def _bound_texts(left: Parts, right: Parts) -> tuple[str, str] | None:
+    """The text of each bound with its currency, or `None` when neither bound writes one."""
+    (left_before, left_amount, left_after), (right_before, right_amount, right_after) = left, right
     left_has, right_has = bool(left_before or left_after), bool(right_before or right_after)
     if not (left_has or right_has):
-        return Ambiguous("currency_missing", ())
+        return None
     # Structural: a range written with its currency once ("€10-20", "10-20 EUR") states it for both bounds, so the
     # bound without one takes the other bound's text around its amount.
     if not left_has:
         left_before, left_after = right_before, right_after
     elif not right_has:
         right_before, right_after = left_before, left_after
-    return _monetary(
-        money(left_before + left_amount + left_after, ctx),
-        money(right_before + right_amount + right_after, ctx),
-        periods.pop() if periods else None,
-    )
+    return left_before + left_amount + left_after, right_before + right_amount + right_after
 
 
 def _strip_periods(raw: str, languages: frozenset[str]) -> tuple[str, set[str]]:

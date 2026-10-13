@@ -150,33 +150,51 @@ def _from_text(
     written = {int(run) for run in _DIGITS.findall(text)}
     readings: set[datetime] = set()
     for order in orders:
-        reading = _parse(text, languages, order, _ANCHOR)
+        reading = _day_reading(text, languages, order, base, stated)
         if reading is None:
             continue
-        value, period = reading
-        if period not in _DAY_PERIODS or (stated is not None and value.date() != stated):
-            continue
-        # A relative date moves with its base and an absolute one does not: a structural test, not a phrase list.
-        moved = _parse(text, languages, order, _ANCHOR + _ONE_DAY)
-        relative = moved != reading
-        if relative:
-            if moved != (value + _ONE_DAY, period):
-                continue  # not a fixed offset from its base, so moving it onto the capture time would misread it
-            value += base.replace(tzinfo=None) - _ANCHOR
-        if want_time:
-            if relative:
-                # "2 days ago" carries no time of day, and `dateparser` reports "2 hours ago" with the same period.
-                return Invalid("relative_datetime")
-            if period != "time":
-                return Invalid("no_time")
-            if value.tzinfo is None or _NUMERIC_OFFSET.search(text) is None:
-                return Invalid("no_offset")
+        value, period, relative = reading
+        if want_time and (problem := _datetime_problem(text, value, period, relative)) is not None:
+            return problem
         if relative or value.year in written:
             readings.add(value)
         else:
             # The year is not written in full, so it was a two-digit year that `dateparser` put in a century.
             readings.update(_with_years(value))
     return _decide(readings, want_time)
+
+
+def _day_reading(
+    text: str, languages: tuple[str, ...], order: Order, base: datetime, stated: date | None
+) -> tuple[datetime, str | None, bool] | None:
+    """`text` read in `order` as a day, moved onto `base` when relative, and whether it is relative; None when this
+    order gives no reading of a day (or of the `stated` day)."""
+    reading = _parse(text, languages, order, _ANCHOR)
+    if reading is None:
+        return None
+    value, period = reading
+    if period not in _DAY_PERIODS or (stated is not None and value.date() != stated):
+        return None
+    # A relative date moves with its base and an absolute one does not: a structural test, not a phrase list.
+    moved = _parse(text, languages, order, _ANCHOR + _ONE_DAY)
+    relative = moved != reading
+    if relative:
+        if moved != (value + _ONE_DAY, period):
+            return None  # not a fixed offset from its base, so moving it onto the capture time would misread it
+        value += base.replace(tzinfo=None) - _ANCHOR
+    return value, period, relative
+
+
+def _datetime_problem(text: str, value: datetime, period: str | None, relative: bool) -> Invalid | None:
+    """Why a day reading is not a datetime: it needs a time and a numeric UTC offset; None when it is one."""
+    if relative:
+        # "2 days ago" carries no time of day, and `dateparser` reports "2 hours ago" with the same period.
+        return Invalid("relative_datetime")
+    if period != "time":
+        return Invalid("no_time")
+    if value.tzinfo is None or _NUMERIC_OFFSET.search(text) is None:
+        return Invalid("no_offset")
+    return None
 
 
 def _with_years(value: datetime) -> set[datetime]:

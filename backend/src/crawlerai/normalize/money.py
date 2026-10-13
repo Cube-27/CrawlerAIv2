@@ -79,30 +79,19 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     text = unicodedata.normalize("NFKC", raw).strip()
     if not text:
         return Invalid("empty")
-    runs = list(_AMOUNT_RUN.finditer(text))
-    if not runs:
-        return Invalid("no_amount")
-    if len(runs) > 1:
-        return Invalid("range")
-    run = runs[0]
+    run = _amount_run(text)
+    if isinstance(run, Invalid):
+        return run
     before, after = text[: run.start()], text[run.end() :]
     if any(minus in before for minus in _MINUS):
         return Invalid("not_positive")
-    signs = _adjacent_signs(before.rstrip(), after.lstrip())
-    if not signs:
-        located = Price.fromstring(text).currency
-        if located is None:
-            return Invalid("no_currency")
-        if not _whole_sign(text, located):
-            return Invalid("unknown_currency")
-        signs = [located]
+    signs = _signs(text, before, after)
+    if isinstance(signs, Invalid):
+        return signs
     locales = _locale_set(ctx)
-    # A sign on each side of the amount (`$5 USD`) must agree: the currencies both can denote. Two signs that share
-    # none (`USD 12 EUR`) state two currencies, never one money value.
-    each = [_currencies_for(sign, locales, ctx.page_currencies) for sign in signs]
-    currencies = sorted(set(each[0]).intersection(*each[1:]))
-    if not currencies:
-        return Invalid("currency_conflict" if len(each) > 1 and all(each) else "unknown_currency")
+    currencies = _agreed_currencies(signs, locales, ctx)
+    if isinstance(currencies, Invalid):
+        return currencies
     amounts = _amounts(run.group(), locales)
     if not amounts:
         return Invalid("unparsable_amount")
@@ -111,6 +100,41 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     options = [_value(a, c) for c in currencies for a in amounts]
     reason = "decimal_separator" if len(currencies) == 1 else "currency_symbol"
     return Ambiguous(reason, tuple(options))
+
+
+def _amount_run(text: str) -> re.Match[str] | Invalid:
+    """The one run of amount characters in `text`; none is no amount, and two are a range, not one value."""
+    runs = list(_AMOUNT_RUN.finditer(text))
+    if not runs:
+        return Invalid("no_amount")
+    if len(runs) > 1:
+        return Invalid("range")
+    return runs[0]
+
+
+def _signs(text: str, before: str, after: str) -> list[str] | Invalid:
+    """The currency signs written next to the amount, or else the one `price-parser` locates in `text` when it is
+    written on its own."""
+    signs = _adjacent_signs(before.rstrip(), after.lstrip())
+    if signs:
+        return signs
+    located = Price.fromstring(text).currency
+    if located is None:
+        return Invalid("no_currency")
+    if not _whole_sign(text, located):
+        return Invalid("unknown_currency")
+    return [located]
+
+
+def _agreed_currencies(signs: list[str], locales: frozenset[str], ctx: Context) -> list[str] | Invalid:
+    """The ISO 4217 codes every sign can denote, sorted."""
+    # A sign on each side of the amount (`$5 USD`) must agree: the currencies both can denote. Two signs that share
+    # none (`USD 12 EUR`) state two currencies, never one money value.
+    each = [_currencies_for(sign, locales, ctx.page_currencies) for sign in signs]
+    currencies = sorted(set(each[0]).intersection(*each[1:]))
+    if not currencies:
+        return Invalid("currency_conflict" if len(each) > 1 and all(each) else "unknown_currency")
+    return currencies
 
 
 def _adjacent_signs(before: str, after: str) -> list[str]:
