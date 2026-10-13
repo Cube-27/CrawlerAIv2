@@ -4,7 +4,7 @@ They serve the dev split only. Hidden and fresh cases never reach the main API (
 `DevEvalStore` and nothing else, and a request naming another split is refused before any store is touched.
 
 Labels are validated before anything is stored (`parse_labels`), and every error comes back with its field and
-reason as an RFC 9457 problem (§4.11). SPEC-07 moves the problem model to `api.dto` and adds API-key auth.
+reason as an RFC 9457 problem (§4.11). SPEC-07 PR 2 adds API-key auth.
 """
 
 import asyncio
@@ -16,12 +16,13 @@ from typing import Annotated, Literal, Protocol, assert_never, get_args
 from urllib.parse import urljoin
 
 from fastapi import APIRouter, Body, Depends, FastAPI, Header, Query, Request, Response
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import Field, JsonValue
 from selectolax.lexbor import LexborHTMLParser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from crawlerai.api.dto import PROBLEM_RESPONSE, Model
+from crawlerai.api.problems import ProblemError
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
@@ -38,7 +39,8 @@ from crawlerai.eval.labels import (
 from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
 from crawlerai.schemas.types import FieldSpec
 from crawlerai.storage import open_store
-from crawlerai.storage.capture_bundle import CaptureBundle, decode_body, sha256_hex
+from crawlerai.storage.base import ObjectNotFound
+from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle, decode_body, sha256_hex
 
 # `POST /capture` fetches within the request, one polite fetch at a time, so a request stays short.
 MAX_CAPTURE_URLS = 20
@@ -99,51 +101,26 @@ def labeling_backend(request: Request) -> LabelingBackend:
 
 Backend = Annotated[LabelingBackend, Depends(labeling_backend)]
 
-router = APIRouter(prefix="/v1/eval", tags=["eval"], lifespan=_lifespan)
+# Request validation answers with a problem (`api.problems`), declared here in place of FastAPI's own 422 body.
+router = APIRouter(prefix="/v1/eval", tags=["eval"], lifespan=_lifespan, responses={422: PROBLEM_RESPONSE})
 
 
-class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+def _invalid(detail: str, errors: Sequence[LabelError] = ()) -> ProblemError:
+    return ProblemError(422, "validation", "Invalid request", detail, [(e.path, e.reason) for e in errors])
 
 
-class FieldErrorOut(_Model):
-    field: str  # dotted path in the request body; "" for the whole document
-    reason: str
+def _not_found(page_id: EvalPageId) -> ProblemError:
+    return ProblemError(404, "not_found", "Not found", f"no dev eval page {page_id}")
 
 
-class Problem(_Model):
-    """RFC 9457 problem details (SPEC-07 §4.3)."""
-
-    type: str
-    title: str
-    status: int
-    detail: str
-    errors: list[FieldErrorOut] = []
-
-
-def _problem(status: int, type_: str, title: str, detail: str, errors: Sequence[LabelError] = ()) -> JSONResponse:
-    problem = Problem(
-        type=type_,
-        title=title,
-        status=status,
-        detail=detail,
-        errors=[FieldErrorOut(field=e.path, reason=e.reason) for e in errors],
-    )
-    return JSONResponse(problem.model_dump(), status_code=status, media_type="application/problem+json")
-
-
-def _invalid(detail: str, errors: Sequence[LabelError] = ()) -> JSONResponse:
-    return _problem(422, "validation", "Invalid request", detail, errors)
-
-
-def _not_found(page_id: EvalPageId) -> JSONResponse:
-    return _problem(404, "not_found", "Not found", f"no dev eval page {page_id}")
-
-
-def _labels_changed(status: int) -> JSONResponse:
-    return _problem(
+def _labels_changed(status: int) -> ProblemError:
+    return ProblemError(
         status, "labels_changed", "Labels changed", "another pass was stored since the page was read; reload it"
     )
+
+
+def _not_implemented(detail: str) -> ProblemError:
+    return ProblemError(501, "not_implemented", "Not implemented", detail)
 
 
 def _etag(page: EvalPageRow) -> str:
@@ -166,7 +143,7 @@ def _status(page: EvalPageRow) -> LabelStatus | None:
     return _STATUSES.get(status) if isinstance(status, str) else None
 
 
-class PageSummary(_Model):
+class PageSummary(Model):
     id: EvalPageId
     capture_id: CaptureId
     split: Literal["dev"]
@@ -201,12 +178,12 @@ class PageDetail(PageSummary):
     text: str | None  # the cleaned text that `text:` locators index; arrives with SPEC-05 PR 1
 
 
-class NormalizeRequest(_Model):
+class NormalizeRequest(Model):
     field: str
     raw_text: str
 
 
-class CaptureRequest(_Model):
+class CaptureRequest(Model):
     split: Literal["dev"]
     schema_name: str = Field(alias="schema")
     page_kind: PageKind
@@ -214,7 +191,7 @@ class CaptureRequest(_Model):
     urls: list[str] = Field(min_length=1, max_length=MAX_CAPTURE_URLS)
 
 
-class CapturedOut(_Model):
+class CapturedOut(Model):
     kind: Literal["captured"] = "captured"
     n: int  # the URL's position in the request, from 1
     capture_id: CaptureId
@@ -224,21 +201,14 @@ class CapturedOut(_Model):
     error: str | None
 
 
-class SkippedOut(_Model):
+class SkippedOut(Model):
     kind: Literal["skipped"] = "skipped"
     n: int
     reason: str
 
 
-class CaptureResponse(_Model):
+class CaptureResponse(Model):
     outcomes: list[Annotated[CapturedOut | SkippedOut, Field(discriminator="kind")]]
-
-
-# Typed under both media types, so the generated client types the error body.
-_PROBLEM = {
-    "model": Problem,
-    "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}},
-}
 
 
 @router.get("/pages")
@@ -255,15 +225,20 @@ async def list_pages(
 _ETAG = {"ETag": {"description": "Entity tag of the stored labels (RFC 9110 §8.8.3)", "schema": {"type": "string"}}}
 
 
-@router.get("/pages/{page_id}", response_model=PageDetail, responses={200: {"headers": _ETAG}, 404: _PROBLEM})
-async def get_page(page_id: EvalPageId, backend: Backend, response: Response) -> PageDetail | JSONResponse:
+@router.get("/pages/{page_id}", response_model=PageDetail, responses={200: {"headers": _ETAG}, 404: PROBLEM_RESPONSE})
+async def get_page(page_id: EvalPageId, backend: Backend, response: Response) -> PageDetail:
     try:
         page = await backend.store.get_page(page_id)
-    except EvalNotFound:
-        return _not_found(page_id)
-    bundle, fields = await asyncio.gather(
-        backend.store.get_bundle(page.capture_id), backend.schema_fields(page.schema_id)
-    )
+    except EvalNotFound as e:
+        raise _not_found(page_id) from e
+    try:
+        bundle, fields = await asyncio.gather(
+            backend.store.get_bundle(page.capture_id), backend.schema_fields(page.schema_id)
+        )
+    except (ObjectNotFound, CorruptBundle) as e:
+        # The page's row exists but its stored capture is missing or damaged: the server's fault, not the request's.
+        detail = f"the capture {page.capture_id} of dev eval page {page.id} cannot be read"
+        raise ProblemError(500, "capture_unreadable", "Capture unreadable", detail) from e
     response.headers["ETag"] = _etag(page)
     return PageDetail(
         **PageSummary.of(page).model_dump(),
@@ -284,7 +259,13 @@ _LABELS_BODY = {"content": {"application/json": {"schema": {"$ref": "#/component
 @router.put(
     "/pages/{page_id}/labels",
     response_model=PageSummary,
-    responses={200: {"headers": _ETAG}, 404: _PROBLEM, 409: _PROBLEM, 412: _PROBLEM, 422: _PROBLEM},
+    responses={
+        200: {"headers": _ETAG},
+        404: PROBLEM_RESPONSE,
+        409: PROBLEM_RESPONSE,
+        412: PROBLEM_RESPONSE,
+        422: PROBLEM_RESPONSE,
+    },
     openapi_extra={"requestBody": _LABELS_BODY},
 )
 async def put_labels(
@@ -293,7 +274,7 @@ async def put_labels(
     backend: Backend,
     response: Response,
     if_match: Annotated[str | None, Header()] = None,
-) -> PageSummary | JSONResponse:
+) -> PageSummary:
     """Store one pass of labels (§16.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;
     `checked` is the checker's pass over a labeled page, by someone other than its labeler.
 
@@ -301,24 +282,24 @@ async def put_labels(
     with 412 (RFC 9110 §13.1.1); a pass that races another store between this request's read and write is 409."""
     try:
         page = await backend.store.get_page(page_id)
-    except EvalNotFound:
-        return _not_found(page_id)
+    except EvalNotFound as e:
+        raise _not_found(page_id) from e
     if if_match is not None and not _if_match(if_match, _etag(page)):
-        return _labels_changed(412)
+        raise _labels_changed(412)
     try:
         parsed = parse_labels(labels, page.page_kind, await backend.schema_fields(page.schema_id))
     except InvalidLabels as e:
-        return _invalid("the labels are invalid", e.errors)
+        raise _invalid("the labels are invalid", e.errors) from e
     match _pass(parsed, page):
         case LabelError() as error:
-            return _invalid("the labels are invalid", [error])
+            raise _invalid("the labels are invalid", [error])
         case (who, pass_):
             # A checker pass keeps the labeler's name as stored (`_pass` matches it casefolded).
             stored = parsed.model_dump(mode="json") | ({"labeler": page.labeler} if parsed.status == "checked" else {})
             try:
                 await backend.store.put_labels(page.id, stored, who, pass_, expected=page.labels)
-            except LabelsChanged:
-                return _labels_changed(409)
+            except LabelsChanged as e:
+                raise _labels_changed(409) from e
             # As the store records it: a labeler pass clears the checker.
             people = {pass_: who} | ({"checker": None} if parsed.status != "checked" else {})
             updated = page.model_copy(update={"labels": stored, **people})
@@ -341,21 +322,21 @@ def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelErr
     return labels.checker, "checker"
 
 
-@router.post("/pages/{page_id}/normalize", status_code=200, responses={501: _PROBLEM})
-async def normalize(page_id: EvalPageId, body: NormalizeRequest) -> JSONResponse:
+@router.post("/pages/{page_id}/normalize", status_code=200, responses={501: PROBLEM_RESPONSE})
+async def normalize(page_id: EvalPageId, body: NormalizeRequest) -> None:
     """The field type's normalized value for `raw_text`, or its reason to decline. The normalizers arrive with
     SPEC-04 PRs 2 to 8."""
-    return _problem(501, "not_implemented", "Not implemented", "the type normalizers are not built yet (SPEC-04)")
+    raise _not_implemented("the type normalizers are not built yet (SPEC-04)")
 
 
-@router.post("/pages/{page_id}/prefill", status_code=200, responses={501: _PROBLEM})
-async def prefill(page_id: EvalPageId) -> JSONResponse:
+@router.post("/pages/{page_id}/prefill", status_code=200, responses={501: PROBLEM_RESPONSE})
+async def prefill(page_id: EvalPageId) -> None:
     """Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06."""
-    return _problem(501, "not_implemented", "Not implemented", "the LLM pre-fill hook is not built yet (SPEC-06)")
+    raise _not_implemented("the LLM pre-fill hook is not built yet (SPEC-06)")
 
 
-@router.post("/capture", response_model=CaptureResponse, responses={422: _PROBLEM})
-async def capture(body: CaptureRequest, backend: Backend) -> CaptureResponse | JSONResponse:
+@router.post("/capture", response_model=CaptureResponse, responses={422: PROBLEM_RESPONSE})
+async def capture(body: CaptureRequest, backend: Backend) -> CaptureResponse:
     """`crawlerai eval capture` into dev (§4.4): fetch each URL and store it as an unlabeled dev page."""
     try:
         check_urls(body.urls)
@@ -364,7 +345,7 @@ async def capture(body: CaptureRequest, backend: Backend) -> CaptureResponse | J
             body.page_kind,
         )
     except EvalCliError as e:
-        return _invalid(str(e))
+        raise _invalid(str(e)) from e
     return CaptureResponse(outcomes=[_outcome(outcome) for outcome in outcomes])
 
 

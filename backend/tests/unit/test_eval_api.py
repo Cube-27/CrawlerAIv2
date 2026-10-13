@@ -31,7 +31,8 @@ from crawlerai.eval.store import (
     LabelsChanged,
 )
 from crawlerai.schemas.types import FieldSpec, FieldType
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.storage.base import ObjectNotFound
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, CorruptBundle, Headers, sha256_hex
 
 PAGE_URL = "https://store.test/items/1"
 FINAL_URL = "https://store.test/items/1?ref=a"
@@ -70,7 +71,7 @@ class FakeStore:
     """The dev store's page and label operations, in memory."""
 
     pages: dict[EvalPageId, EvalPageRow] = field(default_factory=dict)
-    bundles: dict[CaptureId, CaptureBundle] = field(default_factory=dict)
+    bundles: dict[CaptureId, CaptureBundle | Exception] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list)
 
     @property
@@ -108,7 +109,10 @@ class FakeStore:
         return self.pages[page_id]
 
     async def get_bundle(self, capture_id: CaptureId) -> CaptureBundle:
-        return self.bundles[capture_id]
+        bundle = self.bundles[capture_id]
+        if isinstance(bundle, Exception):
+            raise bundle
+        return bundle
 
     async def put_labels(
         self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
@@ -346,6 +350,22 @@ def test_get_unknown_page_is_a_404_problem() -> None:
     assert response.status_code == 404
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json()["type"] == "not_found"
+
+
+@pytest.mark.parametrize("error", [ObjectNotFound("no object"), CorruptBundle("not a bundle")])
+def test_get_page_with_an_unreadable_capture_is_a_problem(error: Exception) -> None:
+    backend = FakeBackend()
+    page = backend.store.add()
+    backend.store.bundles[page.capture_id] = error
+
+    response = _request(backend, "GET", f"/v1/eval/pages/{page.id}")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"] == "application/problem+json"
+    assert (response.json()["type"], response.json()["detail"]) == (
+        "capture_unreadable",
+        f"the capture {page.capture_id} of dev eval page {page.id} cannot be read",
+    )
 
 
 def test_labeler_pass_stores_the_validated_labels() -> None:
