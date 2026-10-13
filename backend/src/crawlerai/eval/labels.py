@@ -5,20 +5,18 @@ the fields against the page's schema, and reports every error with its path and 
 saved (§4.11). Whether each `value` is a valid normalized value is the type normalizer's call (SPEC-04), made by
 the labeling API (SPEC-03 PR 8).
 
-`FieldShape` is the part of a schema field that labels need: its type, nesting and scope. `schemas.types.FieldSpec`
-now exists; SPEC-04 PR 9 moves callers to it with the list/object recursion, and `FieldShape` goes (D-0167).
+Values compare by type equality (SPEC-04 §4.5), `crawlerai.normalize.dispatch.equal`.
 """
 
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Literal, Self, assert_never
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
-    Field,
     JsonValue,
     StringConstraints,
     TypeAdapter,
@@ -28,111 +26,22 @@ from pydantic import (
 from pydantic_core import ErrorDetails
 
 from crawlerai.db.models import PageKind
-from crawlerai.normalize import date, enum, identifier, location, money, text, url
-from crawlerai.normalize import range as range_
-from crawlerai.schemas.types import Scope
+from crawlerai.normalize.dispatch import equal
+from crawlerai.schemas.types import FieldSpec
 
 LabelStatus = Literal["draft", "labeled", "checked"]
-# The §5.1 types that have values of their own (SPEC-04 §4.1); `list` and `object` recurse into them.
-ScalarType = Literal[
-    "text", "long_text", "money", "enum", "url", "image_url", "identifier", "date", "datetime", "location", "range"
-]
 
 
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class ScalarShape(_Model):
-    type: ScalarType
-    scope: Scope = "row"
+_FIELD_SPECS: TypeAdapter[dict[str, FieldSpec]] = TypeAdapter(dict[str, FieldSpec])
 
 
-class ListShape(_Model):
-    type: Literal["list"]
-    item: "FieldShape"
-    scope: Scope = "row"
-
-
-class ObjectShape(_Model):
-    type: Literal["object"]
-    fields: dict[str, "FieldShape"]
-    scope: Scope = "row"
-
-
-FieldShape = Annotated[ScalarShape | ListShape | ObjectShape, Field(discriminator="type")]
-_FIELD_SHAPES: TypeAdapter[dict[str, FieldShape]] = TypeAdapter(dict[str, FieldShape])
-
-
-def field_shapes(fields: Mapping[str, JsonValue]) -> dict[str, FieldShape]:
-    """The shapes of a schema document's `fields` (SPEC-04 §4.2, `schema_def.fields`): each field's type, scope and
-    nesting, without the parts labels don't read (`required`, `description`, `schema_org`, ...)."""
-    return _FIELD_SHAPES.validate_python({name: _shape_part(spec) for name, spec in fields.items()})
-
-
-def _shape_part(spec: JsonValue) -> JsonValue:
-    if not isinstance(spec, dict):
-        return spec  # not a field document: validation rejects it
-    part: dict[str, JsonValue] = {key: spec[key] for key in ("type", "scope") if key in spec}
-    if "item" in spec:
-        part["item"] = _shape_part(spec["item"])
-    if isinstance(nested := spec.get("fields"), dict):
-        part["fields"] = {name: _shape_part(sub) for name, sub in nested.items()}
-    return part
-
-
-def values_equal(a: JsonValue, b: JsonValue, shape: FieldShape) -> bool:
-    """Type equality (SPEC-04 §4.5): each scalar type's normalizer decides; a list is a multiset of its items, an
-    object is equal field by field."""
-    match shape:
-        case ListShape(item=item):
-            return isinstance(a, list) and isinstance(b, list) and _multiset_equal(a, b, item)
-        case ObjectShape(fields=fields):
-            return (
-                isinstance(a, dict)
-                and isinstance(b, dict)
-                and a.keys() == b.keys() <= fields.keys()
-                and all(values_equal(a[name], b[name], fields[name]) for name in a)
-            )
-        case ScalarShape(type=type_):
-            return _scalar_equal(type_)(a, b)
-        case _:
-            assert_never(shape)
-
-
-def _scalar_equal(type_: ScalarType) -> Callable[[JsonValue, JsonValue], bool]:
-    match type_:
-        case "text" | "long_text":
-            return text.equal
-        case "money":
-            return money.equal
-        case "enum":
-            return enum.equal
-        case "url" | "image_url":
-            return url.equal
-        case "identifier":
-            return identifier.equal
-        case "date" | "datetime":
-            return date.equal
-        case "location":
-            return location.equal
-        case "range":
-            return range_.equal
-        case _:
-            assert_never(type_)
-
-
-def _multiset_equal(a: Sequence[JsonValue], b: Sequence[JsonValue], item: FieldShape) -> bool:
-    # Greedy matching is exact because type equality is an equivalence relation.
-    if len(a) != len(b):
-        return False
-    unmatched = list(b)
-    for x in a:
-        match = next((i for i, y in enumerate(unmatched) if values_equal(x, y, item)), None)
-        if match is None:
-            return False
-        del unmatched[match]
-    return True
+def field_specs(fields: Mapping[str, JsonValue]) -> dict[str, FieldSpec]:
+    """A schema document's `fields` (SPEC-04 §4.2, `schema_def.fields`) as field specs."""
+    return _FIELD_SPECS.validate_python(fields)
 
 
 def _check_locator(locator: str) -> str:
@@ -219,8 +128,8 @@ class InvalidLabels(Exception):
         self.errors = tuple(errors)
 
 
-def parse_labels(raw: JsonValue, page_kind: PageKind, shapes: Mapping[str, FieldShape]) -> Labels:
-    """Validate a labels document for a page of `page_kind` whose schema has the fields `shapes`.
+def parse_labels(raw: JsonValue, page_kind: PageKind, specs: Mapping[str, FieldSpec]) -> Labels:
+    """Validate a labels document for a page of `page_kind` whose schema has the fields `specs`.
 
     Raises `InvalidLabels` with every error found. Drafts may leave fields unlabeled; labeled and checked pages
     label every field, because metrics need the label to score the engine's output (§4.6).
@@ -232,15 +141,15 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, shapes: Mapping[str, Field
     complete = labels.status != "draft"
     if page_kind == "detail":
         # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope.
-        errors = list(_check_fields("fields", labels.fields, shapes, shapes, complete))
+        errors = list(_check_fields("fields", labels.fields, specs, specs, complete))
         if labels.rows:
             errors.append(LabelError("rows", "only listing pages have rows"))
     else:
-        page = {name: shape for name, shape in shapes.items() if shape.scope == "page"}
-        row = {name: shape for name, shape in shapes.items() if shape.scope == "row"}
-        errors = list(_check_fields("fields", labels.fields, page, shapes, complete))
+        page = {name: spec for name, spec in specs.items() if spec.scope == "page"}
+        row = {name: spec for name, spec in specs.items() if spec.scope == "row"}
+        errors = list(_check_fields("fields", labels.fields, page, specs, complete))
         for i, label_row in enumerate(labels.rows):
-            errors.extend(_check_fields(f"rows[{i}].fields", label_row.fields, row, shapes, complete))
+            errors.extend(_check_fields(f"rows[{i}].fields", label_row.fields, row, specs, complete))
     if errors:
         raise InvalidLabels(errors)
     return labels
@@ -249,16 +158,16 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, shapes: Mapping[str, Field
 def _check_fields(
     path: str,
     labels: Mapping[str, FieldLabel],
-    expected: Mapping[str, FieldShape],
-    shapes: Mapping[str, FieldShape],
+    expected: Mapping[str, FieldSpec],
+    specs: Mapping[str, FieldSpec],
     complete: bool,
 ) -> Iterator[LabelError]:
     for name, label in labels.items():
-        shape = expected.get(name)
-        if shape is None:
-            if name not in shapes:
+        spec = expected.get(name)
+        if spec is None:
+            if name not in specs:
                 yield LabelError(f"{path}.{name}", "not a field of the schema")
-            elif shapes[name].scope == "row":
+            elif specs[name].scope == "row":
                 yield LabelError(f"{path}.{name}", "a row field belongs in rows")
             else:
                 yield LabelError(f"{path}.{name}", "a page field belongs in fields")
@@ -266,7 +175,7 @@ def _check_fields(
         for i, distractor in enumerate(label.distractors):
             if distractor is None:
                 yield LabelError(f"{path}.{name}.distractors[{i}]", "a distractor has a value")
-            elif label.value is not None and values_equal(distractor, label.value, shape):
+            elif label.value is not None and equal(distractor, label.value, spec):
                 yield LabelError(f"{path}.{name}.distractors[{i}]", "a distractor equals the value")
     if complete:
         for name in expected.keys() - labels.keys():

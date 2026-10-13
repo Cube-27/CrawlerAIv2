@@ -5,30 +5,27 @@ import copy
 from typing import Any
 
 import pytest
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from crawlerai.eval.labels import (
-    FieldShape,
     InvalidLabels,
     LabelError,
-    ListShape,
-    ObjectShape,
-    ScalarShape,
-    field_shapes,
+    field_specs,
     parse_labels,
 )
+from crawlerai.schemas.types import FieldSpec, FieldType
 
-DETAIL_SHAPES: dict[str, FieldShape] = {
-    "title": ScalarShape(type="text"),
-    "price": ScalarShape(type="money"),
-    "brand": ScalarShape(type="text"),
-    "locations": ListShape(type="list", item=ScalarShape(type="location")),
+DETAIL_SPECS: dict[str, FieldSpec] = {
+    "title": FieldSpec(type=FieldType.TEXT),
+    "price": FieldSpec(type=FieldType.MONEY),
+    "brand": FieldSpec(type=FieldType.TEXT),
+    "locations": FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.LOCATION)),
 }
 
-LISTING_SHAPES: dict[str, FieldShape] = {
-    "title": ScalarShape(type="text"),
-    "url": ScalarShape(type="url"),
-    "pagination_url": ScalarShape(type="url", scope="page"),
+LISTING_SPECS: dict[str, FieldSpec] = {
+    "title": FieldSpec(type=FieldType.TEXT),
+    "url": FieldSpec(type=FieldType.URL),
+    "pagination_url": FieldSpec(type=FieldType.URL, scope="page"),
 }
 
 DETAIL: dict[str, Any] = {
@@ -84,10 +81,10 @@ LISTING: dict[str, Any] = {
 
 
 @pytest.mark.parametrize(
-    ("raw", "page_kind", "shapes"), [(DETAIL, "detail", DETAIL_SHAPES), (LISTING, "listing", LISTING_SHAPES)]
+    ("raw", "page_kind", "specs"), [(DETAIL, "detail", DETAIL_SPECS), (LISTING, "listing", LISTING_SPECS)]
 )
-def test_labels_round_trip_through_json(raw: dict[str, Any], page_kind: Any, shapes: dict[str, FieldShape]) -> None:
-    labels = parse_labels(raw, page_kind, shapes)
+def test_labels_round_trip_through_json(raw: dict[str, Any], page_kind: Any, specs: dict[str, FieldSpec]) -> None:
+    labels = parse_labels(raw, page_kind, specs)
 
     assert labels.model_dump(mode="json") == raw
 
@@ -95,16 +92,16 @@ def test_labels_round_trip_through_json(raw: dict[str, Any], page_kind: Any, sha
 def test_a_draft_may_be_partial_and_unattributed() -> None:
     raw: JsonValue = {"label_version": 1, "status": "draft", "prefill_source": "none", "fields": {}}
 
-    labels = parse_labels(raw, "detail", DETAIL_SHAPES)
+    labels = parse_labels(raw, "detail", DETAIL_SPECS)
 
     assert (labels.status, labels.labeler, labels.fields, labels.rows) == ("draft", None, {}, ())
 
 
 def _errors(
-    raw: dict[str, Any], page_kind: Any = "detail", shapes: dict[str, FieldShape] = DETAIL_SHAPES
+    raw: dict[str, Any], page_kind: Any = "detail", specs: dict[str, FieldSpec] = DETAIL_SPECS
 ) -> set[LabelError]:
     with pytest.raises(InvalidLabels) as caught:
-        parse_labels(raw, page_kind, shapes)
+        parse_labels(raw, page_kind, specs)
     return set(caught.value.errors)
 
 
@@ -186,7 +183,7 @@ def test_listing_fields_are_placed_by_scope() -> None:
     raw["fields"]["title"] = raw["rows"][0]["fields"].pop("title")
     raw["rows"][0]["fields"]["pagination_url"] = raw["fields"].pop("pagination_url")
 
-    assert _errors(raw, "listing", LISTING_SHAPES) == {
+    assert _errors(raw, "listing", LISTING_SPECS) == {
         LabelError("fields.title", "a row field belongs in rows"),
         LabelError("rows[0].fields.pagination_url", "a page field belongs in fields"),
         LabelError("fields.pagination_url", "not labeled; mark it absent if the page does not show it"),
@@ -196,22 +193,29 @@ def test_listing_fields_are_placed_by_scope() -> None:
 
 def test_detail_pages_ignore_scope() -> None:
     raw = copy.deepcopy(DETAIL)
-    shapes = {**DETAIL_SHAPES, "brand": ScalarShape(type="text", scope="page")}
+    specs = {**DETAIL_SPECS, "brand": FieldSpec(type=FieldType.TEXT, scope="page")}
 
-    assert parse_labels(raw, "detail", shapes).fields["brand"].absent is True
+    assert parse_labels(raw, "detail", specs).fields["brand"].absent is True
 
 
-def test_field_shapes_keep_type_scope_and_nesting_of_a_schema_document() -> None:
+def test_field_specs_read_a_schema_documents_fields() -> None:
     fields: dict[str, JsonValue] = {
-        "title": {"type": "text", "required": True, "description": "Name"},
         "next_page_url": {"type": "url", "scope": "page", "description": "Next page"},
-        "locations": {"type": "list", "item": {"type": "location", "description": "One"}, "description": "All"},
         "salary": {"type": "object", "fields": {"base": {"type": "money", "required": True}}, "description": "Pay"},
     }
 
-    assert field_shapes(fields) == {
-        "title": ScalarShape(type="text"),
-        "next_page_url": ScalarShape(type="url", scope="page"),
-        "locations": ListShape(type="list", item=ScalarShape(type="location")),
-        "salary": ObjectShape(type="object", fields={"base": ScalarShape(type="money")}),
+    assert field_specs(fields) == {
+        "next_page_url": FieldSpec(type=FieldType.URL, scope="page", description="Next page"),
+        "salary": FieldSpec(
+            type=FieldType.OBJECT,
+            description="Pay",
+            fields={"base": FieldSpec(type=FieldType.MONEY, required=True)},
+        ),
     }
+
+
+def test_field_specs_reject_a_field_that_is_not_a_field_spec() -> None:
+    fields: dict[str, JsonValue] = {"sku": {"type": "identifier"}}
+
+    with pytest.raises(ValidationError):
+        field_specs(fields)

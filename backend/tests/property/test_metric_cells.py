@@ -13,7 +13,7 @@ from typing import Literal, get_args
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.eval.labels import Labels, ScalarShape, ScalarType
+from crawlerai.eval.labels import Labels
 from crawlerai.eval.metrics import (
     MIN_CELL,
     EvalCase,
@@ -30,6 +30,7 @@ from crawlerai.eval.metrics import (
     build_report,
     export_aggregate,
 )
+from crawlerai.schemas.types import FieldSpec, FieldType
 
 Behaviour = Literal["right", "wrong", "distractor", "abstain"]
 
@@ -39,7 +40,7 @@ _HOST = re.compile(r"[a-z0-9-]+\.(?:example|test)\b")
 
 @dataclass(frozen=True)
 class FieldCase:
-    type_: ScalarType
+    type_: FieldType
     present: bool
     behaviour: Behaviour
 
@@ -52,10 +53,21 @@ class FieldCase:
 
 _field = st.builds(
     FieldCase,
-    st.sampled_from(get_args(ScalarType)),
+    st.sampled_from([t for t in FieldType if t not in (FieldType.LIST, FieldType.OBJECT)]),
     st.booleans(),
     st.sampled_from(get_args(Behaviour)),
 )
+
+
+# The parameters a type needs (SPEC-04 §4.2).
+_PARAMETERS: dict[FieldType, dict[str, str]] = {
+    FieldType.ENUM: {"vocab": "schema:ItemAvailability"},
+    FieldType.IDENTIFIER: {"scheme": "sku"},
+}
+
+
+def _spec(type_: FieldType) -> FieldSpec:
+    return FieldSpec.model_validate({"type": type_, **_PARAMETERS.get(type_, {})})
 
 
 def _value(page: int, field: int, kind: str) -> str:
@@ -66,7 +78,7 @@ def _case(page: int, fields: list[FieldCase], category: str) -> EvalCase:
     schema = SchemaFields(
         name="synthetic",
         page_kind="detail",
-        fields={f"f{i}": ScalarShape(type=f.type_) for i, f in enumerate(fields)},
+        fields={f"f{i}": _spec(f.type_) for i, f in enumerate(fields)},
         required=frozenset({"f0"}),
     )
     labels: dict[str, object] = {}

@@ -2,12 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { draftFrom, emptyField, newRow, samePerson, toLabels, type FieldShape } from "./draft";
 
 const detailShapes: Record<string, FieldShape> = {
-  title: { type: "text", scope: "row" },
-  price: { type: "money", scope: "row" },
+  title: { type: "text", scope: "row", required: false },
+  price: { type: "money", scope: "row", required: false },
 };
 const listingShapes: Record<string, FieldShape> = {
-  title: { type: "text", scope: "row" },
-  total: { type: "text", scope: "page" },
+  title: { type: "text", scope: "row", required: false },
+  total: { type: "text", scope: "page", required: false },
 };
 
 describe("draftFrom and toLabels", () => {

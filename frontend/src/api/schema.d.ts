@@ -224,6 +224,46 @@ export interface components {
             locator?: string | null;
             value?: components["schemas"]["JsonValue"];
         };
+        /**
+         * FieldSpec
+         * @description One field of a schema, or the item of a list.
+         *
+         *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
+         *     `item` for `list`, `fields` for `object`.
+         */
+        FieldSpec: {
+            /** Description */
+            description?: string | null;
+            /** Fields */
+            fields?: {
+                [key: string]: components["schemas"]["FieldSpec"];
+            } | null;
+            item?: components["schemas"]["FieldSpec"] | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Schema Org */
+            schema_org?: string | null;
+            /** Scheme */
+            scheme?: ("gtin" | "isbn" | "mpn" | "sku" | "custom") | null;
+            /**
+             * Scope
+             * @default row
+             * @enum {string}
+             */
+            scope: "row" | "page";
+            type: components["schemas"]["FieldType"];
+            /** Vocab */
+            vocab?: string | null;
+        };
+        /**
+         * FieldType
+         * @description The §5.1 field types. A type is added here only together with its normalizer module (C8).
+         * @enum {string}
+         */
+        FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "list" | "object";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -273,46 +313,12 @@ export interface components {
              */
             status: "draft" | "labeled" | "checked";
         };
-        /** ListShape */
-        ListShape: {
-            /** Item */
-            item: components["schemas"]["ScalarShape"] | components["schemas"]["ListShape"] | components["schemas"]["ObjectShape"];
-            /**
-             * Scope
-             * @default row
-             * @enum {string}
-             */
-            scope: "row" | "page";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "list";
-        };
         /** NormalizeRequest */
         NormalizeRequest: {
             /** Field */
             field: string;
             /** Raw Text */
             raw_text: string;
-        };
-        /** ObjectShape */
-        ObjectShape: {
-            /** Fields */
-            fields: {
-                [key: string]: components["schemas"]["ScalarShape"] | components["schemas"]["ListShape"] | components["schemas"]["ObjectShape"];
-            };
-            /**
-             * Scope
-             * @default row
-             * @enum {string}
-             */
-            scope: "row" | "page";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "object";
         };
         /** PageDetail */
         PageDetail: {
@@ -332,7 +338,7 @@ export interface components {
             checker: string | null;
             /** Fields */
             fields: {
-                [key: string]: components["schemas"]["ScalarShape"] | components["schemas"]["ListShape"] | components["schemas"]["ObjectShape"];
+                [key: string]: components["schemas"]["FieldSpec"];
             };
             /** Final Url */
             final_url: string;
@@ -417,20 +423,6 @@ export interface components {
             title: string;
             /** Type */
             type: string;
-        };
-        /** ScalarShape */
-        ScalarShape: {
-            /**
-             * Scope
-             * @default row
-             * @enum {string}
-             */
-            scope: "row" | "page";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "date" | "datetime" | "enum" | "identifier" | "image_url" | "location" | "long_text" | "money" | "range" | "text" | "url";
         };
         /** SkippedOut */
         SkippedOut: {

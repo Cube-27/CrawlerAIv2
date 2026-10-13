@@ -20,7 +20,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, PageKind, SchemaId, Split
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped
-from crawlerai.eval.labels import FieldShape, LabelStatus, ScalarShape
+from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.store import (
     DevEvalStore,
     EvalNotFound,
@@ -30,12 +30,13 @@ from crawlerai.eval.store import (
     Labels,
     LabelsChanged,
 )
+from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 PAGE_URL = "https://store.test/items/1"
 FINAL_URL = "https://store.test/items/1?ref=a"
 SCHEMA_ID = SchemaId(uuid7())
-SHAPES: dict[str, FieldShape] = {"title": ScalarShape(type="text"), "price": ScalarShape(type="money")}
+SPECS: dict[str, FieldSpec] = {"title": FieldSpec(type=FieldType.TEXT), "price": FieldSpec(type=FieldType.MONEY)}
 HTML = (
     b"<html><head><title>Item</title><script>track()</script></head>"
     b'<body onload="boot()"><h1 class="t" onclick="x()">Blue mug</h1>'
@@ -153,9 +154,9 @@ class FakeBackend:
     captures: list[tuple[list[PageRequest], PageKind]] = field(default_factory=list)
     capture_result: list[Outcome] | EvalCliError = field(default_factory=list)
 
-    async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldShape]:
+    async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldSpec]:
         assert schema_id == SCHEMA_ID
-        return SHAPES
+        return SPECS
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]:
         self.captures.append((list(requests), page_kind))
@@ -297,7 +298,9 @@ def test_get_page_returns_sanitized_html_with_a_base_at_the_capture_url() -> Non
         '<body><h1 class="t">Blue mug</h1><a>Buy</a><img src="/mug.png"><p>EUR 19.90</p></body></html>'
     )
     assert (body["url"], body["final_url"], body["labels"], body["text"]) == (PAGE_URL, FINAL_URL, None, None)
-    assert body["fields"] == {"title": {"type": "text", "scope": "row"}, "price": {"type": "money", "scope": "row"}}
+    unset = {"description": None, "required": False, "scope": "row", "schema_org": None, "vocab": None}
+    unset |= {"scheme": None, "item": None, "fields": None}
+    assert body["fields"] == {"title": {"type": "text", **unset}, "price": {"type": "money", **unset}}
 
 
 @pytest.mark.parametrize(
