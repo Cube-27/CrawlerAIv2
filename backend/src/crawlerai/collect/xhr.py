@@ -20,8 +20,7 @@ class XhrCollector:
         diagnostics: list[str] = []
         for index, body in enumerate(page.network):
             try:
-                documents.append(Document(parse(body.decode("utf-8")), f"xhr:{index}"))
+                documents.append(Document(parse(body.decode("utf-8")), str(index)))
             except ValueError as e:  # UnicodeDecodeError is a ValueError
                 diagnostics.append(f"xhr:{index}: not UTF-8 JSON ({e})")
-        candidates = admit(documents, "xhr", schema, ctx, page, others)
-        return Admitted(candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+        return admit("xhr", documents, diagnostics, page, schema, ctx, others)

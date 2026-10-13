@@ -2,7 +2,8 @@
 paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state` and `xhr` locators (SPEC-05 §4.3)."""
 
 import json
-from collections.abc import Iterator
+import re
+from collections.abc import Callable, Iterator
 
 from pydantic import JsonValue
 
@@ -19,24 +20,15 @@ def member(path: str, name: str) -> str:
 
 def parse(text: str) -> JsonValue:
     """`text` as one JSON value; raises `ValueError` when it is not JSON."""
-    try:
-        parsed: JsonValue = json.loads(text, parse_constant=_not_json)
-    except RecursionError:
-        raise ValueError("nested too deeply") from None
-    return parsed
+    return _guarded(lambda: _DECODER.decode(text))
 
 
 def parse_prefix(text: str, start: int) -> JsonValue:
     """The JSON value that starts at `text[start]` after optional whitespace, ignoring what follows it; raises
     `ValueError` when none does."""
-    decoder = json.JSONDecoder(parse_constant=_not_json)
-    while start < len(text) and text[start] in _WHITESPACE:
-        start += 1
-    try:
-        parsed: JsonValue = decoder.raw_decode(text, start)[0]
-    except RecursionError:
-        raise ValueError("nested too deeply") from None
-    return parsed
+    found = _NOT_WHITESPACE.search(text, start)
+    start = len(text) if found is None else found.start()
+    return _guarded(lambda: _DECODER.raw_decode(text, start)[0])
 
 
 def scalars(document: JsonValue) -> Iterator[tuple[str, str | int | float]]:
@@ -49,15 +41,23 @@ def scalars(document: JsonValue) -> Iterator[tuple[str, str | int | float]]:
         if isinstance(value, dict):
             stack.extend((child, member(path, key)) for key, child in reversed(value.items()))
         elif isinstance(value, list):
-            stack.extend((item, f"{path}[{i}]") for i, item in reversed(list(enumerate(value))))
+            stack.extend((value[i], f"{path}[{i}]") for i in range(len(value) - 1, -1, -1))
         elif isinstance(value, (str, int, float)) and not isinstance(value, bool):
             yield path, value
-
-
-# RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
-_WHITESPACE = " \t\n\r"
 
 
 def _not_json(constant: str) -> JsonValue:
     # RFC 8259 §6: `NaN` and `Infinity` are not JSON numbers, though Python's parser reads them.
     raise ValueError(f"{constant} is not JSON")
+
+
+def _guarded(decode: Callable[[], JsonValue]) -> JsonValue:
+    try:
+        return decode()
+    except RecursionError:
+        raise ValueError("nested too deeply") from None
+
+
+_DECODER = json.JSONDecoder(parse_constant=_not_json)
+# RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
+_NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")

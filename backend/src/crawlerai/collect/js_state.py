@@ -15,13 +15,13 @@ from pydantic import JsonValue
 from crawlerai.collect.admission import Admitted, Document, admit
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.json_doc import parse, parse_prefix
+from crawlerai.collect.jsonld import MEDIA_TYPE as JSONLD
 from crawlerai.content.page import ParsedPage, ScriptBlock
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
-# RFC 8259 §1.2 / IANA media types: `application/json` holds JSON text; `application/ld+json` is the JSON-LD
-# collector's.
-_JSON, _JSONLD = "application/json", "application/ld+json"
+# RFC 8259 §1.2 / IANA media types: `application/json` holds JSON text.
+_JSON = "application/json"
 # ECMAScript IdentifierName, its ASCII part plus Unicode letters: `$`, `_` or a letter, then those or digits.
 _IDENT = r"(?:[^\W\d]|\$)[\w$]*"
 # ECMAScript: an assignment to a property of `window` (the global object in a browser, HTML Standard), or a variable
@@ -32,17 +32,12 @@ _ASSIGNMENT = re.compile(rf"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+){_IDENT}\
 class JsStateCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted:
         diagnostics: list[str] = []
-        documents = [
-            Document(data, f"js_state:{script.xpath}")
-            for script in page.scripts
-            for data in _documents(script, diagnostics)
-        ]
-        candidates = admit(documents, "js_state", schema, ctx, page, others)
-        return Admitted(candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+        documents = [Document(data, s.xpath) for s in page.scripts for data in _documents(s, diagnostics)]
+        return admit("js_state", documents, diagnostics, page, schema, ctx, others)
 
 
 def _documents(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonValue]:
-    if script.type == _JSONLD:
+    if script.type == JSONLD:  # the JSON-LD collector's blocks
         return
     if script.type == _JSON:
         try:

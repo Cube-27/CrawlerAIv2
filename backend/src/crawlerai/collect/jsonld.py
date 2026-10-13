@@ -33,7 +33,7 @@ from crawlerai.schemas.types import SchemaDef
 
 # The JSON-LD media type (JSON-LD 1.1, IANA considerations); HTML embeds JSON-LD in a script element of that type
 # (JSON-LD 1.1 §7.3).
-_MEDIA_TYPE = "application/ld+json"
+MEDIA_TYPE = "application/ld+json"
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
 _CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
 # A reference to a node: the entity it is nested in, and that entity's property it is under.
@@ -167,7 +167,7 @@ class JsonLdCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         graph = _Graph(ctx.base_url)
         diagnostics: list[str] = []
-        blocks = [script for script in page.scripts if script.type == _MEDIA_TYPE]
+        blocks = [script for script in page.scripts if script.type == MEDIA_TYPE]
         for index, script in enumerate(blocks):
             try:
                 document = parse(script.text)

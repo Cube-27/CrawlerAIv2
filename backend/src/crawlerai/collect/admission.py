@@ -15,21 +15,22 @@ lacking a candidate or for agreement checks"), so a value both equal and visible
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.json_doc import scalars
+from crawlerai.collect.locator import format_locator
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import VisibleIndex
-from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 # The page entity, which every page-level value belongs to (SPEC-05 §4.6).
 PAGE = "page"
+
+StateKind = Literal["js_state", "xhr"]
 
 
 class Admitted(BaseModel):
@@ -51,59 +52,86 @@ class AdmittingCollector(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class Document:
-    """One parsed JSON document and the locator prefix that addresses it (`js_state:<script_xpath>`, `xhr:<n>`)."""
+    """One parsed JSON document and the locator part that addresses it (a script's XPath, a body's index)."""
 
     data: JsonValue
-    prefix: str
+    address: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Anchor:
+    entity_id: str
+    value: JsonValue
 
 
 def admit(
+    kind: StateKind,
     documents: Sequence[Document],
-    source_kind: SourceKind,
+    diagnostics: Sequence[str],
+    page: ParsedPage,
     schema: SchemaDef,
     ctx: Context,
-    page: ParsedPage,
     others: Sequence[Candidate],
-) -> Iterator[Candidate]:
+) -> Admitted:
     """The candidates of `documents` under the rule above, in document order, then schema field order; one per value,
     field and owner."""
-    anchors = _anchors(others, source_kind)
+    anchors = _anchors(others, kind)
+    candidates: list[Candidate] = []
     for document in documents:
         for path, raw in scalars(document.data):
-            for name, spec in schema.fields.items():
-                normalized = normalize(raw, spec, ctx)
-                if not isinstance(normalized, Ok):
-                    continue
-                for owner, independent in _owners(raw, normalized.value, spec, anchors.get(name), page.visible_values):
-                    yield Candidate(
-                        field=name,
-                        entity_id=owner,
-                        source_kind=source_kind,
-                        raw=raw,
-                        normalized=normalized,
-                        locator=f"{document.prefix}:{path}",
-                        independent=independent,
-                    )
+            locator = format_locator(kind, document.address, path)
+            candidates.extend(_admitted(kind, raw, locator, page, schema, ctx, anchors))
+    return Admitted(candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
-def _anchors(others: Sequence[Candidate], source_kind: SourceKind) -> Mapping[str, list[Candidate]]:
-    """Each field's candidates from another source kind. One that did not normalize still gives its field a
-    candidate, so the field admits by equality only (the conservative reading of "lacking a candidate")."""
-    anchors: dict[str, list[Candidate]] = {}
-    for other in others:
-        if other.source_kind != source_kind:
-            anchors.setdefault(other.field, []).append(other)
-    return anchors
+def _admitted(
+    kind: StateKind,
+    raw: str | int | float,
+    locator: str,
+    page: ParsedPage,
+    schema: SchemaDef,
+    ctx: Context,
+    anchors: Mapping[str, list[_Anchor]],
+) -> Iterator[Candidate]:
+    visible: bool | None = None  # the same for every field, so computed at most once, and only when needed
+    for name, spec in schema.fields.items():
+        field_anchors = anchors.get(name)
+        if field_anchors is None:
+            visible = page.visible_values.visible(str(raw)) if visible is None else visible
+            if not visible:
+                continue
+        normalized = normalize(raw, spec, ctx)
+        if isinstance(normalized, Ok):
+            for owner, independent in _owners(normalized.value, spec, field_anchors):
+                yield Candidate(
+                    field=name,
+                    entity_id=owner,
+                    source_kind=kind,
+                    raw=raw,
+                    normalized=normalized,
+                    locator=locator,
+                    independent=independent,
+                )
 
 
-def _owners(
-    raw: str | int | float, value: JsonValue, spec: FieldSpec, anchors: list[Candidate] | None, visible: VisibleIndex
-) -> Iterator[tuple[str, bool]]:
-    """Who owns an admitted value, and whether it is independent; nothing when the value is not admitted."""
+def _owners(value: JsonValue, spec: FieldSpec, anchors: list[_Anchor] | None) -> Iterator[tuple[str, bool]]:
+    """Who owns an admitted value and whether it is independent: the page for a visible value of a field without
+    anchors; else each owner of an equal anchor once, in the order of `others`."""
     if anchors is None:
-        if visible.visible(str(raw)):
-            yield PAGE, True
+        yield PAGE, True
         return
-    equals = (a for a in anchors if isinstance(a.normalized, Ok) and equal(value, a.normalized.value, spec))
-    for owner in dict.fromkeys(a.entity_id for a in equals):  # each owner once, in the order of `others`
+    for owner in dict.fromkeys(a.entity_id for a in anchors if equal(value, a.value, spec)):
         yield owner, False
+
+
+def _anchors(others: Sequence[Candidate], kind: StateKind) -> Mapping[str, list[_Anchor]]:
+    """Each field's normalized values from another source kind, with their owners. A candidate that did not normalize
+    still gives its field an entry, so the field admits by equality only (the conservative reading of "lacking a
+    candidate")."""
+    anchors: dict[str, list[_Anchor]] = {}
+    for other in others:
+        if other.source_kind != kind:
+            field = anchors.setdefault(other.field, [])
+            if isinstance(other.normalized, Ok):
+                field.append(_Anchor(other.entity_id, other.normalized.value))
+    return anchors
