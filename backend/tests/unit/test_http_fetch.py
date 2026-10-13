@@ -412,8 +412,33 @@ def test_the_fetch_command_writes_a_bundle_that_decodes(
 def test_the_fetch_command_reports_a_failed_fetch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    out = tmp_path / "bundle.zst"
-    main(["fetch", "http://127.0.0.1/", "--out", str(out)])
+    monkeypatch.chdir(tmp_path)
+    main(["fetch", "http://127.0.0.1/", "--out", "bundle.zst"])
 
-    assert decode(out.read_bytes()).manifest.block_class == "error"
+    assert decode((tmp_path / "bundle.zst").read_bytes()).manifest.block_class == "error"
     assert json.loads(capsys.readouterr().out)["error"] == "ssrf_rejected: private_address"
+
+
+@pytest.mark.parametrize("out", ["../bundle.zst", "sub/../../bundle.zst"])
+def test_the_fetch_command_writes_only_under_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out: str
+) -> None:
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fetch", "http://127.0.0.1/", "--out", out])
+
+    assert exit_info.value.code == 2
+    assert list(tmp_path.rglob("*.zst")) == []
+
+
+def test_the_fetch_command_rejects_an_absolute_path_elsewhere(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fetch", "http://127.0.0.1/", "--out", str(tmp_path / "bundle.zst")])
+
+    assert exit_info.value.code == 2
+    assert not (tmp_path / "bundle.zst").exists()

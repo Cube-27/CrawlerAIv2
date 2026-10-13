@@ -77,7 +77,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     commands.add_parser("scheduler", help="run the scheduler: periodic upkeep, such as releasing expired leases")
     fetch = commands.add_parser("fetch", help="fetch one URL over HTTP into a capture bundle file")
     fetch.add_argument("url")
-    fetch.add_argument("--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar)")
+    fetch.add_argument(
+        "--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar), under this directory"
+    )
     args = parser.parse_args(argv)
     if args.command == "openapi":
         _print_openapi()
@@ -86,4 +88,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     elif args.command == "scheduler":
         asyncio.run(_schedule())
     elif args.command == "fetch":
-        asyncio.run(_fetch(args.url, args.out))
+        # The bundle is written only under the working directory: a path argument never reaches elsewhere.
+        cwd = Path.cwd().resolve()
+        out = (cwd / args.out).resolve()
+        if not out.is_relative_to(cwd):
+            parser.error(f"--out must be under the working directory {cwd}")
+        asyncio.run(_fetch(args.url, out))

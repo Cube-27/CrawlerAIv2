@@ -114,7 +114,8 @@ async def test_no_row_is_written_when_the_object_store_fails(conn: AsyncConnecti
             raise OSError("disk full")
 
     site_id = await _site(conn)
+    store, result = FailingStore(tmp_path), _result()
     with pytest.raises(OSError, match="disk full"):
-        await store_capture(conn, FailingStore(tmp_path), _result(), site_id)
+        await store_capture(conn, store, result, site_id)
 
     assert (await conn.execute(select(Capture).where(Capture.site_id == site_id))).all() == []
