@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.api import problems
+from crawlerai.api.auth import RateLimiter
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.api.routers import health
 from crawlerai.core.settings import ApiSettings, DatabaseSettings
@@ -27,7 +28,10 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     """`eval_ui` mounts the labeling endpoints (SPEC-03 §4.10); unset, `CRAWLERAI_EVAL_UI` decides. Settings are
     read at startup, not here, so `crawlerai openapi` builds the document without a database."""
     app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")  # SPEC-07 §4.6
-    app.state.eval_ui = ApiSettings().eval_ui if eval_ui is None else eval_ui
+    settings = ApiSettings()
+    app.state.eval_ui = settings.eval_ui if eval_ui is None else eval_ui
+    app.state.trusted_proxies = settings.trusted_proxies
+    app.state.rate_limiter = RateLimiter(settings.api_rate_per_s, settings.api_rate_burst)
     problems.install(app)
     app.include_router(health.router)
     if app.state.eval_ui:

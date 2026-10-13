@@ -2,7 +2,7 @@
 framework's (unknown path, wrong method, request validation, an unexpected exception)."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
@@ -17,13 +17,15 @@ PROBLEM_JSON = "application/problem+json"  # RFC 9457 §3
 
 @dataclass
 class ProblemError(Exception):
-    """Raised by a router or dependency to answer with a problem; `errors` are (field, reason) pairs."""
+    """Raised by a router or dependency to answer with a problem; `errors` are (field, reason) pairs, `headers` go
+    on the response."""
 
     status: int
     type: str
     title: str
     detail: str
     errors: Sequence[tuple[str, str]] = ()
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 def not_found(detail: str) -> ProblemError:
@@ -34,7 +36,7 @@ def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError
     return ProblemError(422, "validation", "Invalid request", detail, errors)
 
 
-def _problem_response(request: Request, error: ProblemError, headers: Mapping[str, str] | None = None) -> JSONResponse:
+def _problem_response(request: Request, error: ProblemError) -> JSONResponse:
     problem = Problem(
         type=error.type,
         title=error.title,
@@ -43,7 +45,7 @@ def _problem_response(request: Request, error: ProblemError, headers: Mapping[st
         instance=request.url.path,
         errors=[FieldErrorOut(field=field, reason=reason) for field, reason in error.errors],
     )
-    return JSONResponse(problem.model_dump(), status_code=error.status, headers=headers, media_type=PROBLEM_JSON)
+    return JSONResponse(problem.model_dump(), status_code=error.status, headers=error.headers, media_type=PROBLEM_JSON)
 
 
 def _status_only(status: int, detail: str | None = None) -> ProblemError:
@@ -68,7 +70,9 @@ async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
         error = not_found(f"no resource at {request.url.path}")
     else:
         error = _status_only(exc.status_code, exc.detail if isinstance(exc.detail, str) else None)
-    return _problem_response(request, error, exc.headers)  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
+    return _problem_response(
+        request, replace(error, headers=exc.headers or {})
+    )  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
 
 
 async def _on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:

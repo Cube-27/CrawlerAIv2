@@ -173,3 +173,15 @@ def test_data_fetch_exits_2_on_a_refused_entry(
     assert capsys.readouterr().err == (
         "crawlerai data fetch: geonames/countryInfo.txt: sha256 0 does not match the manifest\n"
     )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["apikey", "create"], ["apikey", "revoke", "not-a-uuid"], ["apikey"]],
+    ids=["create-without-label", "revoke-without-uuid", "no-subcommand"],
+)
+def test_apikey_arguments_are_checked_before_the_database_is_opened(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(argv)
+
+    assert exit_info.value.code == 2

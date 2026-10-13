@@ -19,6 +19,9 @@ _OPTIONAL = [
     "CRAWLERAI_LLM_PROVIDERS",
     "CRAWLERAI_LLM_FAST_MODEL_ANTHROPIC",
     "CRAWLERAI_LLM_API_KEY_GEMINI",
+    "CRAWLERAI_TRUSTED_PROXIES",
+    "CRAWLERAI_API_RATE_PER_S",
+    "CRAWLERAI_API_RATE_BURST",
 ]
 
 
@@ -64,6 +67,8 @@ def test_optional_settings_unset_or_empty_take_their_unset_values(env: pytest.Mo
     assert settings.llm_providers == ("anthropic", "gemini")
     assert settings.llm_fast_model_anthropic == "claude-haiku-5-5"
     assert settings.llm_api_key_gemini is None
+    assert settings.trusted_proxies == ()
+    assert (settings.api_rate_per_s, settings.api_rate_burst) == (20, 40)
 
 
 def test_database_url_is_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
@@ -147,3 +152,22 @@ def test_a_repeated_or_unknown_llm_provider_is_rejected(env: pytest.MonkeyPatch,
 def test_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
     env.setenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", "secret-key-value")
     assert "secret-key-value" not in repr(Settings())
+
+
+def test_trusted_proxies_are_a_json_list_of_addresses_or_networks(env: pytest.MonkeyPatch) -> None:
+    env.setenv("CRAWLERAI_TRUSTED_PROXIES", '["10.0.0.0/8", "192.0.2.7", "2001:db8::/32"]')
+    assert [str(network) for network in Settings().trusted_proxies] == ["10.0.0.0/8", "192.0.2.7/32", "2001:db8::/32"]
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("CRAWLERAI_TRUSTED_PROXIES", '["not-an-address"]'),
+        ("CRAWLERAI_API_RATE_PER_S", "0"),
+        ("CRAWLERAI_API_RATE_BURST", "0"),
+    ],
+)
+def test_an_invalid_trusted_proxy_or_rate_limit_is_rejected(env: pytest.MonkeyPatch, name: str, value: str) -> None:
+    env.setenv(name, value)
+    with pytest.raises(ValidationError, match=name.removeprefix("CRAWLERAI_").lower()):
+        Settings()

@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PRs 3, 5, SPEC-07 PR 2. Next: SPEC-05 PR 4, SPEC-07 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
+- In progress: SPEC-05 PRs 3, 5, SPEC-07 PR 3. Next: SPEC-05 PR 4, SPEC-07 PR 4, SPEC-06 PR 4 after SPEC-05 PR 9.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
@@ -160,7 +160,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | App factory, problem details, healthz, OpenAPI export wiring | done (#70) | Also mapped an unreadable capture in `GET /v1/eval/pages/{id}` to a 500 problem (#35 follow-up). |
-| 2 | API keys: CLI, hashing, bearer auth, rate limiter | todo | |
+| 2 | API keys: CLI, hashing, bearer auth, rate limiter | done (#77) | Follow-ups in #77's READY comment: key store to `db/`, one CLI transaction helper, `Forwarded`/XFF precedence and quoted commas. |
 | 3 | Content formats | todo | |
 | 4 | Service layer + `POST /v1/scrape` (formats only) | todo | |
 | 5 | `records` format with schema id/inline + `max_age` | todo | |
