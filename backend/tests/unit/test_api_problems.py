@@ -132,3 +132,15 @@ def test_the_openapi_document_declares_problems_for_validation_errors() -> None:
     assert capture["content"]["application/problem+json"]["schema"] == {"$ref": "#/components/schemas/Problem"}
     assert "HTTPValidationError" not in document["components"]["schemas"]
     assert "422" not in document["paths"]["/healthz"]["get"]["responses"]  # it takes no input
+
+
+def test_the_openapi_document_is_served_under_v1_only() -> None:
+    app = create_app(eval_ui=False)
+
+    served = _request(app, "GET", "/v1/openapi.json")
+    unversioned = _request(app, "GET", "/openapi.json")
+
+    assert served.status_code == 200
+    assert "/healthz" in served.json()["paths"]
+    assert unversioned.status_code == 404
+    assert _problem(unversioned)["type"] == "not_found"

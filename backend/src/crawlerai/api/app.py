@@ -26,7 +26,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(eval_ui: bool | None = None) -> FastAPI:
     """`eval_ui` mounts the labeling endpoints (SPEC-03 §4.10); unset, `CRAWLERAI_EVAL_UI` decides. Settings are
     read at startup, not here, so `crawlerai openapi` builds the document without a database."""
-    app = FastAPI(title="CrawlerAI", lifespan=_lifespan)
+    app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")  # SPEC-07 §4.6
     app.state.eval_ui = ApiSettings().eval_ui if eval_ui is None else eval_ui
     problems.install(app)
     app.include_router(health.router)
