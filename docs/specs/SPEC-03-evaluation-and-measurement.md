@@ -203,6 +203,9 @@ identify a case. The dev report is the same schema plus a `pages: [...]` array w
 and no suppression, and a `by_field` table per (schema, field); `by_field` is empty in a hidden/fresh aggregate (D-0183).
 Each cell is suppressed on its own `n`: field cells count scored fields, bucket and config-status cells count
 published fields, page-level cells (`by_category`, `acquisition`, `usage`) count pages (D-0181).
+In a hidden/fresh aggregate, suppression is also complementary (§16.3, D-0234): within a group of cells that
+sums to a reported total (the `by_bucket` cells of one field type, the `by_config_status` cells of one field type),
+if exactly one cell is suppressed, the next-smallest cell of the group is suppressed too.
 
 ### 4.8 Gate (§16.4)
 
@@ -319,6 +322,7 @@ INV-10 (double-run diff), INV-19 (PR comment), INV-21 (gate), INV-09 (no site na
 | 9 | Labeling screen | `frontend/src/screens/labeling` | vitest | Labeler/checker flow works on a dev page. |
 | 10 | Promote/rotate commands | `eval/cli` | unit (two temp stores) | Bundles move; labels kept. |
 | 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | `eval/calibrate` | unit (refuse non-dev) | Files written with `source_split: dev`. |
+| 12 | Complementary suppression for hidden/fresh aggregates (D-0234) | `eval/metrics` | unit, property | No suppressed cell is derivable from its group's total and visible cells. |
 
 ## 9. Open issues
 

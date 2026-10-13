@@ -24,15 +24,15 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | H1 (M) | Choose the custodian(s) of the hidden and fresh sets (OPEN_QUESTIONS #6). Create the private eval database role and credentials, and store them only in the protected GitHub environment. | Milestone M (CI uses throwaway credentials before then) | deferred |
 | H2 (M) | Create the GitHub protected environment for the eval job, with required reviewers and the secret hidden-host list. GitHub auto-created `eval-protected` on the first run with no protection rules, so add the custodians as required reviewers and set the secrets. | Milestone M (the placeholder job runs without it) | deferred |
 | H3 (M) | Label dev from a review of crawler output, then draw and label hidden from sites development never touched (§21 rule). | Milestone M | deferred |
-| H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | SPEC-06 PR 2 | todo |
-| H5 | Answer the `needs-owner` entries in `DECISIONS.md`, and confirm or override the `pending-owner` entries. | As they come up | todo |
+| H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | SPEC-06 PR 2 | deferred (owner, 2026-10-13: not needed yet) |
+| H5 | Answer the `needs-owner` entries in `DECISIONS.md`, and confirm or override the `pending-owner` entries. | As they come up | done for now (D-0234) |
 | H6 (M) | Monthly: sample and label 20–30 fresh sites (OPEN_QUESTIONS #7). | After M | deferred |
 | H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | SPEC-02 PR 7 (can be tested with a stub) | todo |
 
 ## Current focus
 
-- Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PR 9; after it, every L0 row is `done` except SPEC-03 PR 7 (`human`: H1, H2). Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b), so a host can't sit in both.
+- Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
+- Next: SPEC-03 PRs 9, 12; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
@@ -108,6 +108,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 9 | Labeling screen | todo | |
 | 10 | Promote/rotate commands | done (#34) | `rotate_hidden` skips hosts that also have fresh pages (#37, D-0225). |
 | 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | done (#39) | Interim fits until SPEC-05 PR 13 (D-0229). |
+| 12 | Complementary suppression for hidden/fresh aggregates | todo | Owner answer D-0234 (ARCHITECTURE rev 7 §16.3). |
 
 ## [SPEC-04 — Schemas as data and type normalization](../specs/SPEC-04-schemas-and-normalization.md)
 

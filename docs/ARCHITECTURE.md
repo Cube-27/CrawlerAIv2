@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 6, 2026-10-12. No code exists.
+Status: design, rev 7, 2026-10-13. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -690,7 +690,9 @@ accuracy claim.
 - **Usage:** LLM calls per 1k pages, by mode.
 
 Hidden and fresh aggregates suppress cells with fewer than 10 labeled fields, so aggregates can't identify individual
-cases.
+cases. Suppression is also complementary: when exactly one cell in a group that sums to a reported total is
+suppressed, the next-smallest cell in that group is suppressed too, so no suppressed cell can be recovered by
+subtraction.
 
 ### 16.4 Harness and gate
 
@@ -966,3 +968,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 4 | 2026-10-12 | Core/candidate pass (C13); acquisition cut to core; no porting from v1; review fixes (fitting on dev only, protected scan, sample sizes, evidence buckets). |
 | 5 | 2026-10-12 | **Spec review folded in, repo made public.** <br>• Hidden and fresh data live only in a private DB and store (C1, §6, §15). <br>• Acceptance is dev improvement plus hidden non-regression; improvement claims come from fresh only (C10); small-cell suppression. <br>• Locator defined (§8.1); `required_groups` and `scope` (§5.2); `independent` flag so `agreed` can't count a value agreeing with itself (§8.1, §10). <br>• Block classification by status and structure only (§7.1); SSRF behaviour through proxies stated. <br>• Partial records for caller-supplied URLs, `no_match` for crawl-discovered ones (§10). <br>• Grounding scoped to role C (§11). <br>• Learning counts extracted pages; small-n thresholds (§8.3, §12.3). <br>• Plumbing named: `learn` job kind, `links_only`/`partial` outcomes, record versions, `gone_at`, stored run events. <br>• UI auth by bearer API key, no CSRF (§18). <br>• Repo public under AGPL-3.0: customer names and business terms removed; Appendix B rewritten as anonymized user requirements; eval categories renamed to generic ones; the platform exporter renamed `platform_draft`. <br>• Appendix A #26–#28 added. <br>• Consistency pass: comparable-page rule and floor of 3 for corroboration; `suspended` field status; `schema_version` on `progressive_state`; `operator` fields use the `config_uncorroborated` bucket; glob-expanded `extract` URLs count as caller-supplied; `error` class and robots outcome defined; role C also fills fields an active config doesn't cover; hidden numbers stay with the custodian (PR comments show pass/fail only); PHP-only code hints. |
 | 6 | 2026-10-12 | **Labeling deferred** (Appendix A #29). §21 rewritten: L0–L4 accepted on functional criteria, accuracy claims moved to milestone M; rule for drawing hidden and fresh from untouched sites; C10 notes the `no_baseline` period. |
+| 7 | 2026-10-13 | **Owner answers.** §16.3: complementary suppression for hidden and fresh aggregates (D-0234, OPEN_QUESTIONS #16). |

@@ -6,7 +6,7 @@ which `ARCHITECTURE.md` assumes until someone overrides it.
   external crawler platform.
 - **[Owner]** marks ours.
 
-Revised 2026-10-12 for architecture rev 5.
+Revised 2026-10-12 for architecture rev 5; rows 14–17 resolved 2026-10-13 (rev 7).
 
 Decisions that belong to candidates (ARCHITECTURE §22) are made only when that candidate is admitted. That covers
 CAPTCHA handling, unblocker vendors, the stealth/robots posture and the browser fleet's OS and GPU.
@@ -29,7 +29,7 @@ owner is copied here.
 | 11 | **[User] Can past crawl outputs from a user's platform serve as ground truth?** | Our own public-site eval may not match a user's site mix. | Assume no. If offered, such data goes into hidden and fresh, never only into dev. |
 | 12 | **[User] Which language for code hints?** | Affects the API-backed site deliverable. | An API recipe as data, plus a PHP snippet rendered from a template. |
 | 13 | **[Owner] Which region, and how long do we retain data?** | Object storage and LLM provider region. | One US region. Production captures kept 30 days; eval captures kept forever, privately. |
-| 14 | **[Owner] Confirm the agent decisions marked "pending owner confirmation" in `DECISIONS.md`.** | They were made while writing the specs, and implementation proceeds on them. | Accept them as written unless one is overridden. |
-| 15 | **[Owner] Pre-commit eslint hook over its 10 s budget on Windows: keep type-aware rules or speed the hook?** (D-0110) | SPEC-00 §4.8 sets < 10 s per one-file commit; the hook takes 10.6–17.4 s on Windows for frontend files. | Keep type-aware eslint in the hook for now; revisit the lint config in a frontend row. |
-| 16 | **[Owner] Should hidden/fresh aggregates use secondary (complementary) suppression?** (D-0187) | Bucket and config-status cells are subsets of field-type totals, so one suppressed cell can be recovered by subtraction (§16.3). | Add complementary suppression: when exactly one cell in a group is suppressed, also suppress the next-smallest. |
-| 17 | **[Owner] How are hidden/fresh pages labeled at milestone M?** (D-0214) | The labeling API serves dev only; hidden/fresh labels must never pass through the main deployment (C1). | Run the same app on the custodian machine with a private backend, never deployed. |
+| 14 | ~~**[Owner] Confirm the agent decisions marked "pending owner confirmation" in `DECISIONS.md`.**~~ **Resolved 2026-10-13:** accepted as written (D-0234). | They were made while writing the specs, and implementation proceeds on them. | Accept them as written unless one is overridden. |
+| 15 | ~~**[Owner] Pre-commit eslint hook over its 10 s budget on Windows: keep type-aware rules or speed the hook?**~~ **Resolved 2026-10-13:** moot; the Vite+ hook takes about 4 s (D-0227). (D-0110) | SPEC-00 §4.8 sets < 10 s per one-file commit; the hook takes 10.6–17.4 s on Windows for frontend files. | Keep type-aware eslint in the hook for now; revisit the lint config in a frontend row. |
+| 16 | ~~**[Owner] Should hidden/fresh aggregates use secondary (complementary) suppression?**~~ **Resolved 2026-10-13:** yes, complementary suppression (D-0234, ARCHITECTURE rev 7 §16.3). (D-0187) | Bucket and config-status cells are subsets of field-type totals, so one suppressed cell can be recovered by subtraction (§16.3). | Add complementary suppression: when exactly one cell in a group is suppressed, also suppress the next-smallest. |
+| 17 | ~~**[Owner] How are hidden/fresh pages labeled at milestone M?**~~ **Resolved 2026-10-13:** the same app on the custodian machine with a private backend, never deployed (D-0234). (D-0214) | The labeling API serves dev only; hidden/fresh labels must never pass through the main deployment (C1). | Run the same app on the custodian machine with a private backend, never deployed. |
