@@ -37,7 +37,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
-- Follow-ups for SPEC-03 PR 9 (from #35): guard `PUT labels` against a labeler/checker race (`WHERE labels = <read>` or a version); compare labeler names casefolded, as `parse_labels` does; the `javascript:` strip should drop tab and newline characters first (WHATWG URL parsing). For SPEC-07 PR 1: map `ObjectNotFound`/`CorruptBundle` from `get_bundle` to a problem response.
+- Follow-ups for SPEC-03 PR 9 (from #35): guard `PUT labels` against a labeler/checker race (`WHERE labels = <read>` or a version); compare labeler names casefolded, as `parse_labels` does; the `javascript:` strip should drop tab and newline characters first (WHATWG URL parsing).
 - Follow-ups for SPEC-10's page-fetching handler (from #31): pass `fetch_politely` the HTTP rung for robots.txt and `acquire` for the page (a robots.txt classifies as `shell` and would trigger a browser retry); admit the browser retry through `HostLimiter`, or log that one immediate retry per fetch is accepted; check every attempt, not only the kept result, for `SLOW_DOWN`.
 - Follow-ups for SPEC-03 PR 7 (from #32): run the gate (baseline lookup) before `put_run` on a push to `main`, or exclude the candidate's sha, since otherwise the candidate's own run becomes its baseline; store the unsuppressed report as the run's `metrics` (an exported aggregate makes `gate` raise `GateInputInvalid`); check out with `fetch-depth: 0`.
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
@@ -158,7 +158,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | App factory, problem details, healthz, OpenAPI export wiring | todo | |
+| 1 | App factory, problem details, healthz, OpenAPI export wiring | done (#70) | Also mapped an unreadable capture in `GET /v1/eval/pages/{id}` to a 500 problem (#35 follow-up). |
 | 2 | API keys: CLI, hashing, bearer auth, rate limiter | todo | |
 | 3 | Content formats | todo | |
 | 4 | Service layer + `POST /v1/scrape` (formats only) | todo | |

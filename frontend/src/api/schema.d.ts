@@ -264,10 +264,16 @@ export interface components {
          * @enum {string}
          */
         FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "list" | "object";
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
+        /** Health */
+        Health: {
+            /** Eval Ui */
+            eval_ui: boolean;
+            /**
+             * Status
+             * @default ok
+             * @constant
+             */
+            status: "ok";
         };
         JsonValue: unknown;
         /** LabelRow */
@@ -407,7 +413,8 @@ export interface components {
         };
         /**
          * Problem
-         * @description RFC 9457 problem details (SPEC-07 §4.3).
+         * @description RFC 9457 problem details (SPEC-07 §4.3). `type` is one of the API's problem types, or `about:blank` when the
+         *     HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path (§3.1.5).
          */
         Problem: {
             /** Detail */
@@ -417,6 +424,8 @@ export interface components {
              * @default []
              */
             errors: components["schemas"]["FieldErrorOut"][];
+            /** Instance */
+            instance: string;
             /** Status */
             status: number;
             /** Title */
@@ -435,19 +444,6 @@ export interface components {
             n: number;
             /** Reason */
             reason: string;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
         };
     };
     responses: never;
@@ -473,9 +469,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -536,13 +540,14 @@ export interface operations {
                     "application/json": components["schemas"]["PageSummary"][];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -579,13 +584,14 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -684,13 +690,14 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Not Implemented */
@@ -725,13 +732,14 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Not Implemented */
