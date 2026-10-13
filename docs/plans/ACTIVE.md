@@ -41,7 +41,6 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Follow-ups for SPEC-10's page-fetching handler (from #31): pass `fetch_politely` the HTTP rung for robots.txt and `acquire` for the page (a robots.txt classifies as `shell` and would trigger a browser retry); admit the browser retry through `HostLimiter`, or log that one immediate retry per fetch is accepted; check every attempt, not only the kept result, for `SLOW_DOWN`.
 - Follow-ups for SPEC-03 PR 7 (from #32): run the gate (baseline lookup) before `put_run` on a push to `main`, or exclude the candidate's sha, since otherwise the candidate's own run becomes its baseline; store the unsuppressed report as the run's `metrics` (an exported aggregate makes `gate` raise `GateInputInvalid`); check out with `fetch-depth: 0`.
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
-- Follow-up from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment.
 - Note (from #26): the robots snapshot is per site, but robots.txt is per scheme, host and port (RFC 9309 §2.3); a site served on both `http` and `https` or a non-default port shares one snapshot.
 - Open (SPEC-04 PR 7 / SPEC-05): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Decide how runtime data ships (package data or a settings path) together with GeoNames data and calibration; the build must write `VERSION`.
 - Note for SPEC-06: usage recorded in a task's transaction is lost if the handler then raises (transient retries roll back). Catch provider errors and return a result, or record usage in its own transaction.
@@ -120,11 +119,11 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 2 | Normalizer base, dispatcher, text, url | done (#47) | |
 | 3 | money (CLDR via Babel + price-parser) | done (#58) | |
 | 4 | enum + vocab framework + availability `en` | done (#54) | Follow-up for SPEC-05 or a preset bump: `commerce_detail` availability is `schema:ItemAvailability`, so DOM availability text won't normalize unless the field also reads `type:availability`. |
-| 5 | date/datetime | done (#57) | Follow-up: check a datetime's year range on the UTC value as well (`2100-12-31T23:00-05:00` → `2101-01-01T04:00Z`). |
+| 5 | date/datetime | done (#57) | |
 | 6 | identifier | done (#59) | |
 | 7 | Data manifest + GeoNames fetch + location | done (#60) | |
-| 8 | range | done (#56) | Follow-ups: move the `type:period` words into `vocab/` (PR 4's framework) with a JUSTIFICATION.md; a dispatcher-level property test of range against the real money rules once PR 3 merges. |
-| 9 | `equal` per type + list/object recursion | todo | Also: url's WHATWG forbidden-host-code-point check (from #47). |
+| 8 | range | done (#56) | |
+| 9 | `equal` per type + list/object recursion | done (#66) | Also closed the follow-ups of rows 5 and 8, #47 and #27 (D-0322–D-0329). Optional follow-ups: period words count only in the page's languages; move range's `to` separator into `vocab/`. |
 
 ## [SPEC-05 — Structured extraction, ownership, resolution and confidence](../specs/SPEC-05-extraction-and-resolution.md)
 

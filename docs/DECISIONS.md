@@ -2046,3 +2046,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Drop cookies on every hop (also meets INV-29, but differs from the other fetchers); pin the address at the connection layer so httpx's jar sees host names (a larger change).
 - Why: INV-29. `Domain=` uses the stdlib's heuristic rather than public-suffix data; a follow-up row can add it.
 - Reversible: yes
+
+### D-0322 — `equal` is reflexive and symmetric for every JSON value
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: Identical values are always equal, whatever their shape; each type's `equal` and `dispatch.equal` start from that.
+- Alternatives: Refuse values of the wrong shape, as the old object rule did for unknown keys.
+- Why: Eval compares hand-entered labels, and a non-reflexive equality breaks the multiset match.
+- Reversible: yes
+
+### D-0323 — Location equality also compares `remote_flag`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: Country, casefolded locality, region only when both have one (§4.5), and `remote_flag`.
+- Alternatives: Only §4.5's three parts.
+- Why: A remote job and an on-site one in the same country differ; the conservative reading.
+- Reversible: yes
+
+### D-0324 — GTINs compare in the GS1 14-digit form
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: `identifier.equal` left-pads GTIN-8/12/13 with zeros to 14 digits; other schemes compare exactly.
+- Alternatives: Exact (§4.5).
+- Why: D-0287 left this to PR 9; GS1 General Specifications §3.3.2.
+- Reversible: yes
+
+### D-0325 — List `normalize`: a single value is a list of one; reasons in `Ok.reasons`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: With no item `Ok`, the list is `Ambiguous("no_item")` if any item was ambiguous, else `Invalid("no_item")`; dropped items are reported as `<path>: <reason>`.
+- Alternatives: Refuse non-lists; pick an item's options.
+- Why: JSON-LD 1.1 §4.3.1 treats a value and a one-element array alike; options for a whole list would be a cross product.
+- Reversible: yes
+
+### D-0326 — Object `normalize` ignores unnamed keys and treats `null` as missing
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: The value holds only the sub-fields that normalized; a required one that declines declines the object.
+- Alternatives: Refuse extra keys; emit nulls.
+- Why: Structured sources carry `@type` and more; JSON-LD drops nulls.
+- Reversible: yes
+
+### D-0327 — The labeling API returns `FieldSpec` in `PageDetail.fields`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: `FieldShape` goes (D-0167); `eval` uses `FieldSpec` and `dispatch.equal`; the TS client is regenerated.
+- Alternatives: Keep a separate shape model.
+- Why: One model for schema fields (C8); the response is a superset of the old one.
+- Reversible: yes
+
+### D-0328 — `type:period` phrases are "per <unit>" per language
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: `vocab/type/period/en.json`; the solidus form `/<unit>` takes the phrase's last word; only the page's languages are read (all when it states none).
+- Alternatives: Keep English "per" in code.
+- Why: C4 and §9: language-tagged vocabularies; the solidus is SI/ISO 80000-1 notation for "per". Closes D-0280's follow-up.
+- Reversible: yes
+
+### D-0329 — url percent-decodes a domain host and refuses forbidden domain code points
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 9 (#66) · Status: decided
+- Decision: `Invalid("forbidden_host_code_point")`, or `Invalid("unparsable")` when the host decodes to invalid UTF-8.
+- Alternatives: Keep the host percent-encoded.
+- Why: WHATWG URL Standard, host parsing.
+- Reversible: yes
