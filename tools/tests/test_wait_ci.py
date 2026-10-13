@@ -45,43 +45,39 @@ def run_wait_ci(tmp_path: Path, lines: list[str], no_run_s: int = 300) -> subpro
     )
 
 
-def pr_view(merge: str, runs: int, checks: list[str]) -> list[str]:
-    return ["head abc1234", f"merge {merge}", f"runs {runs}", *checks]
+def pr_view(merge: str, checks: list[str]) -> list[str]:
+    return [f"abc1234 {merge}", *checks]
 
 
 @pytest.mark.parametrize("merge", ["CONFLICTING DIRTY", "CONFLICTING UNKNOWN", "UNKNOWN DIRTY"])
 def test_conflicting_pr_fails_at_once(tmp_path: Path, merge: str) -> None:
-    result = run_wait_ci(tmp_path, pr_view(merge, 0, ["SonarCloud Code Analysis COMPLETED SUCCESS"]))
+    result = run_wait_ci(tmp_path, pr_view(merge, ["SonarCloud Code Analysis COMPLETED SUCCESS"]))
     assert result.returncode == 1
     assert result.stderr.strip() == "ERROR PR #7 conflicts with main: rebase onto origin/main"
     assert result.stdout == ""
 
 
 def test_no_workflow_run_fails_after_grace(tmp_path: Path) -> None:
-    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", 0, []), no_run_s=2)
+    checks = ["SonarCloud Code Analysis COMPLETED SUCCESS"]
+    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", checks), no_run_s=0)
     assert result.returncode == 1
     assert result.stderr.strip() == (
-        "ERROR no workflow run for abc1234 after 2s and the PR does not conflict: "
+        "ERROR no workflow run for abc1234 after 0s and the PR does not conflict: "
         "check the workflow triggers or re-push"
     )
 
 
-def test_green_checks_pass_and_print(tmp_path: Path) -> None:
-    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", 2, GREEN_CHECKS), no_run_s=0)
+@pytest.mark.parametrize("merge", ["MERGEABLE CLEAN", "UNKNOWN UNKNOWN"])
+def test_green_checks_pass_and_print(tmp_path: Path, merge: str) -> None:
+    result = run_wait_ci(tmp_path, pr_view(merge, GREEN_CHECKS), no_run_s=0)
     assert result.returncode == 0
     assert result.stdout.splitlines() == GREEN_CHECKS
     assert result.stderr == ""
 
 
-def test_unknown_mergeability_waits_for_checks(tmp_path: Path) -> None:
-    result = run_wait_ci(tmp_path, pr_view("UNKNOWN UNKNOWN", 2, GREEN_CHECKS))
-    assert result.returncode == 0
-    assert result.stdout.splitlines() == GREEN_CHECKS
-
-
 def test_failed_check_fails(tmp_path: Path) -> None:
     checks = ["backend COMPLETED FAILURE", "SonarCloud Code Analysis COMPLETED SUCCESS"]
-    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", 1, checks))
+    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", checks))
     assert result.returncode == 1
     assert result.stdout.splitlines() == checks
     assert result.stderr.strip() == "ERROR a check did not pass"
