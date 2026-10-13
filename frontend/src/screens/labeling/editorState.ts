@@ -26,8 +26,7 @@ export function pathOf({ row, name }: Target): string {
 }
 
 /**
- * A problem's `detail` (RFC 9457), or null when the error body is not a problem: a proxy's HTML page, or FastAPI's own
- * validation errors, which carry a list.
+ * A problem's `detail` (RFC 9457), or null when the error body is not a problem, such as a proxy's HTML page.
  */
 function problemDetail(error: unknown): string | null {
   const detail =
