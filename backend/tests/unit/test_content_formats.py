@@ -163,3 +163,12 @@ def test_metadata_language_falls_back_to_og_locale() -> None:
 
 def test_metadata_of_a_page_that_states_nothing_is_empty() -> None:
     assert metadata(ParsedPage("<p>text</p>"), FINAL_URL) == PageMetadata()
+
+
+def test_structured_data_types_skip_context_term_definitions_and_value_objects() -> None:
+    page = ParsedPage(
+        '<script type="application/ld+json">{"@context": {"image": {"@type": "@id"}}, "@type": "Product",'
+        ' "releaseDate": {"@value": "2020-01-01", "@type": "http://www.w3.org/2001/XMLSchema#date"}}</script>'
+    )
+
+    assert metadata(page, FINAL_URL).structured_data_types == ("Product",)

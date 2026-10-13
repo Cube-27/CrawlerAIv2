@@ -102,13 +102,15 @@ def _json_ld_types(page: ParsedPage) -> Iterator[str]:
 
 def _type_values(document: JsonValue) -> Iterator[str]:
     # A stack, not recursion: a document nested as deep as the JSON parser allows must not exhaust Python's stack.
+    # JSON-LD 1.1 §4.1: an `@context` holds term definitions, whose `@type` is a type coercion, not a node's type.
+    # §4.2.1: a value object (one with `@value`) types a literal (a datatype), not a node.
     stack = [document]
     while stack:
         value = stack.pop()
         if isinstance(value, dict):
-            types = value.get("@type")
+            types = None if "@value" in value else value.get("@type")
             yield from (t for t in (types if isinstance(types, list) else [types]) if isinstance(t, str))
-            stack.extend(reversed(list(value.values())))
+            stack.extend(reversed([member for key, member in value.items() if key != "@context"]))
         elif isinstance(value, list):
             stack.extend(reversed(value))
 
