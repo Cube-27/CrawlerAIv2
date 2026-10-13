@@ -163,6 +163,7 @@ async def test_new_capture_tables_have_the_indexes_their_queries_need(conn: Asyn
         "pk_capture",
         "uq_capture_object_key",
         "ix_capture_expires_at",
+        "ix_capture_site_id_fetched_at",
         "ix_url_task_capture_id",
         "pk_extraction",
         "ix_extraction_capture_id",

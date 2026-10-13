@@ -27,6 +27,9 @@ from crawlerai.db.models import ApiKey, Job
 from crawlerai.llm.client import MeteredClient, ProviderError, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.scrape import Fetching
 from crawlerai.storage.fs import FsStore
 
@@ -92,8 +95,14 @@ def provider() -> FakeProvider | None:
 
 
 @pytest.fixture
+def data(engine_data: EngineData) -> EngineData | None:
+    """The engine data `records` reads; None stands for a process without the data files."""
+    return engine_data
+
+
+@pytest.fixture
 async def client(
-    database: AsyncEngine, fetching: Fetching, provider: FakeProvider | None
+    database: AsyncEngine, fetching: Fetching, provider: FakeProvider | None, data: EngineData | None
 ) -> AsyncIterator[httpx.AsyncClient]:
     async with database.begin() as conn:
         key = await create_key(conn, "scrape-api-test")
@@ -107,6 +116,7 @@ async def client(
         ) as client,
     ):
         app.state.fetching = fetching
+        app.state.engine_data = data
         if provider is not None:
             app.state.llm = MeteredClient([provider], database)
         yield client
@@ -286,3 +296,122 @@ async def test_a_blank_prompt_is_a_validation_problem_and_starts_no_job(
     assert {"field": "schema.SchemaPrompt.prompt", "reason": "Value error, the prompt is empty"} in problem["errors"]
     async with database.connect() as conn:
         assert (await conn.execute(select(func.count()).select_from(Job))).scalar_one() == jobs_before
+
+
+# --- records (§4.4) ---
+
+TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
+PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
+# §13.1's six attributes, plus `reason`, `source_kind` and `derived_by` from `field_meta` (§4.4).
+FIELD_MEMBERS = {
+    "value",
+    "status",
+    "evidence",
+    "confidence",
+    "calibrated",
+    "locator",
+    "reason",
+    "source_kind",
+    "derived_by",
+}
+
+
+def _product_page(url: str) -> bytes:
+    node = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Blue kettle",
+        "url": url,
+        "offers": {"@type": "Offer", "price": "19.90", "priceCurrency": "EUR"},
+    }
+    return PAGE.replace(b"</head>", f'<script type="application/ld+json">{json.dumps(node)}</script></head>'.encode())
+
+
+@pytest.fixture
+async def kettle_schema(database: AsyncEngine, schema_name: str) -> SchemaDef:
+    document = SchemaDocument.model_validate(
+        {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    )
+    async with database.begin() as conn:
+        return await registry.create(conn, document, "user")
+
+
+def _records(url: str, schema: dict[str, Any]) -> dict[str, Any]:
+    return {"url": url, "formats": ["markdown", "records"], "schema": schema, "page_kind": "detail"}
+
+
+async def test_records_answer_every_field_with_its_attributes(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, kettle_schema: SchemaDef
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, _product_page(url))
+
+    response = await _post(client, _records(url, {"id": str(kettle_schema.id)}))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["outcome"] == "extracted"
+    assert body["markdown"]
+    (record,) = body["records"]
+    assert {k: record[k] for k in ("mode", "complete", "confidence")} == {
+        "mode": "adhoc",
+        "complete": True,
+        "confidence": None,
+    }
+    assert record["fields"]["price"] == {
+        "value": {"amount": "19.90", "currency": "EUR"},
+        "status": "published",
+        "reason": None,
+        "evidence": "structured",
+        "confidence": None,
+        "calibrated": False,
+        "source_kind": "jsonld",
+        "locator": record["fields"]["price"]["locator"],
+        "derived_by": None,
+    }
+    assert [set(field) for field in record["fields"].values()] == [FIELD_MEMBERS, FIELD_MEMBERS]
+
+
+async def test_an_inline_schema_that_differs_from_its_stored_name_is_a_conflict(
+    client: httpx.AsyncClient, own_origin: str, kettle_schema: SchemaDef
+) -> None:
+    inline = {"name": kettle_schema.name, "page_kind": "detail", "fields": {"title": TITLE}}
+
+    response = await _post(client, _records(f"{own_origin}/kettles/blue", {"inline": inline}))
+
+    assert response.status_code == 409
+    assert response.json()["type"] == "conflict"
+
+
+async def test_an_inline_schema_that_breaks_a_schema_rule_is_a_validation_problem(
+    client: httpx.AsyncClient, own_origin: str, schema_name: str
+) -> None:
+    undescribed = {"name": schema_name, "page_kind": "detail", "fields": {"title": {"type": "text"}}}
+
+    response = await _post(client, _records(f"{own_origin}/kettles/blue", {"inline": undescribed}))
+
+    assert response.status_code == 422
+    problem = response.json()
+    assert problem["type"] == "validation"
+    assert [error["field"] for error in problem["errors"]] == ["schema.inline"]
+
+
+async def test_an_unknown_schema_id_is_a_validation_problem(client: httpx.AsyncClient, own_origin: str) -> None:
+    schema_id = "0192f5a4-0000-7000-8000-000000000001"
+
+    response = await _post(client, _records(f"{own_origin}/kettles/blue", {"id": schema_id}))
+
+    assert response.status_code == 422
+    problem = response.json()
+    assert problem["type"] == "validation"
+    assert problem["errors"] == [{"field": "schema", "reason": f"no schema with id {schema_id}"}]
+
+
+@pytest.mark.parametrize("data", [None])
+async def test_records_without_the_engine_data_are_unavailable(
+    client: httpx.AsyncClient, own_origin: str, kettle_schema: SchemaDef
+) -> None:
+    response = await _post(client, _records(f"{own_origin}/kettles/blue", {"id": str(kettle_schema.id)}))
+
+    assert response.status_code == 503
+    assert response.json()["type"] == "records_unavailable"

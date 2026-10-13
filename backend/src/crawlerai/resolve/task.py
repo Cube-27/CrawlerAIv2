@@ -30,7 +30,7 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
-from crawlerai.resolve.records import assemble
+from crawlerai.resolve.records import RecordDraft, assemble
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -38,11 +38,13 @@ from crawlerai.storage.capture_bundle import CaptureBundle
 
 @dataclass(frozen=True, slots=True)
 class Stored:
-    """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`) and the rows written for it."""
+    """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`), the rows written for it, and the
+    record's content when it got one."""
 
     outcome: TaskOutcome
     extraction_id: ExtractionId
     record_id: RecordId | None
+    record: RecordDraft | None
     result: ExtractionResult
 
 
@@ -63,6 +65,23 @@ async def extract_task(
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
     crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome."""
     result = await extract_page(bundle, schema, None, role_c, mode, data=data)
+    return await store_extraction(
+        conn, task, result, capture_id=capture_id, site_id=site_id, schema=schema, caller_supplied=caller_supplied
+    )
+
+
+async def store_extraction(
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    result: ExtractionResult,
+    *,
+    capture_id: CaptureId,
+    site_id: SiteId,
+    schema: SchemaDef,
+    caller_supplied: bool,
+) -> Stored:
+    """Store `result`, `extract_page`'s for the task's capture, as `extract_task` does: for a caller that extracts
+    before it opens the transaction (`scrape`, which holds no connection while the page resolves)."""
     extraction_id: ExtractionId = (
         await conn.execute(
             insert(Extraction)
@@ -81,7 +100,7 @@ async def extract_task(
     if result.candidates:
         await conn.execute(insert(CandidateRow), list(_candidate_rows(extraction_id, result)))
     if result.entity is None:
-        return Stored("failed" if result.outcome == "error" else result.outcome, extraction_id, None, result)
+        return Stored("failed" if result.outcome == "error" else result.outcome, extraction_id, None, None, result)
     outcome, draft = assemble(
         schema, result.entity, site_id=site_id, canonical_url=task.canonical_url, caller_supplied=caller_supplied
     )
@@ -105,7 +124,7 @@ async def extract_task(
                 .returning(Record.id)
             )
         ).scalar_one()
-    return Stored(outcome, extraction_id, record_id, result)
+    return Stored(outcome, extraction_id, record_id, draft, result)
 
 
 def _candidate_rows(extraction_id: ExtractionId, result: ExtractionResult) -> Iterator[dict[str, object]]:

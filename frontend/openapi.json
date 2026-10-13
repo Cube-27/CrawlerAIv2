@@ -1141,6 +1141,133 @@
         "title": "Problem",
         "type": "object"
       },
+      "RecordField": {
+        "additionalProperties": false,
+        "properties": {
+          "calibrated": {
+            "title": "Calibrated",
+            "type": "boolean"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "derived_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "canonical_link",
+                  "final_url",
+                  "absolutize"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived By"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "adapter",
+                  "structured",
+                  "agreed",
+                  "config_corroborated",
+                  "config_uncorroborated",
+                  "llm_grounded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "adapter",
+                  "api",
+                  "jsonld",
+                  "microdata",
+                  "og",
+                  "js_state",
+                  "xhr",
+                  "config",
+                  "llm"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Kind"
+          },
+          "status": {
+            "enum": [
+              "published",
+              "missing",
+              "conflict",
+              "abstained"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "evidence",
+          "confidence",
+          "calibrated",
+          "source_kind",
+          "locator",
+          "derived_by",
+          "value"
+        ],
+        "title": "RecordField",
+        "type": "object"
+      },
       "SchemaById": {
         "additionalProperties": false,
         "properties": {
@@ -1323,7 +1450,7 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records`, with `page_kind` and a schema by id or inline, is SPEC-07\nPR 5; a `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft. `max_age` reuses a\nrecent capture from PR 5, and until then every scrape fetches anew, which any `max_age` allows.",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and\n`budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds.",
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/Budget",
@@ -1509,6 +1636,13 @@
             "title": "Raw Html",
             "type": "string"
           },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ScrapedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
           "schema": {
             "$ref": "#/components/schemas/SchemaDef"
           },
@@ -1531,6 +1665,57 @@
           "usage"
         ],
         "title": "ScrapeResult",
+        "type": "object"
+      },
+      "ScrapedRecord": {
+        "description": "A record (\u00a76 `record`): `complete` when every required field and group published (\u00a710), and its confidence,\nthe minimum over the required fields, `None` when any of them is uncalibrated.",
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "adhoc",
+              "config"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "complete",
+          "confidence",
+          "fields"
+        ],
+        "title": "ScrapedRecord",
         "type": "object"
       },
       "SkippedOut": {
@@ -2617,7 +2802,7 @@
     },
     "/v1/scrape": {
       "post": {
-        "description": "Fetch `url` and return the requested formats; only those are members of the answer. A `schema.prompt` is\ndrafted into a schema, returned as `schema`.",
+        "description": "Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only\nthose are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`\nholds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to its\nname's latest version, and one that differs from that version is a 409.",
         "operationId": "scrape_v1_scrape_post",
         "requestBody": {
           "content": {
@@ -2654,6 +2839,21 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {

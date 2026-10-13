@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { RecordPage, ReplayResult, StoredRecord } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
+import type { ScrapeRecord } from "../../api/scrape";
 import { problem, stubApi } from "../../test/api";
 import { recordField } from "../../test/records";
 
@@ -323,7 +324,7 @@ describe("records screen: the inspector", () => {
   });
 
   it("lists the replay's records without a diff when it made several", async () => {
-    const replayed = {
+    const replayed: Omit<ScrapeRecord, "id"> = {
       mode: "adhoc",
       complete: true,
       confidence: 0.9,

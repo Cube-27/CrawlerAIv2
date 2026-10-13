@@ -201,8 +201,10 @@ export interface paths {
         put?: never;
         /**
          * Scrape
-         * @description Fetch `url` and return the requested formats; only those are members of the answer. A `schema.prompt` is
-         *     drafted into a schema, returned as `schema`.
+         * @description Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only
+         *     those are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`
+         *     holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to its
+         *     name's latest version, and one that differs from that version is a 409.
          */
         post: operations["scrape_v1_scrape_post"];
         delete?: never;
@@ -645,6 +647,29 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** RecordField */
+        RecordField: {
+            /** Calibrated */
+            calibrated: boolean;
+            /** Confidence */
+            confidence: number | null;
+            /** Derived By */
+            derived_by: ("canonical_link" | "final_url" | "absolutize") | null;
+            /** Evidence */
+            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded") | null;
+            /** Locator */
+            locator: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Source Kind */
+            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "published" | "missing" | "conflict" | "abstained";
+            value: components["schemas"]["JsonValue"];
+        };
         /** SchemaById */
         SchemaById: {
             /**
@@ -729,9 +754,9 @@ export interface components {
         };
         /**
          * ScrapeRequest
-         * @description The body of `POST /v1/scrape` (§4.4). `records`, with `page_kind` and a schema by id or inline, is SPEC-07
-         *     PR 5; a `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft. `max_age` reuses a
-         *     recent capture from PR 5, and until then every scrape fetches anew, which any `max_age` allows.
+         * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
+         *     must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
+         *     `budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds.
          */
         ScrapeRequest: {
             /**
@@ -800,10 +825,37 @@ export interface components {
             outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "failed";
             /** Raw Html */
             raw_html?: string;
+            /** Records */
+            records?: components["schemas"]["ScrapedRecord"][];
             schema?: components["schemas"]["SchemaDef"];
             /** Url */
             url: string;
             usage: components["schemas"]["Usage"];
+        };
+        /**
+         * ScrapedRecord
+         * @description A record (§6 `record`): `complete` when every required field and group published (§10), and its confidence,
+         *     the minimum over the required fields, `None` when any of them is uncalibrated.
+         */
+        ScrapedRecord: {
+            /** Complete */
+            complete: boolean;
+            /** Confidence */
+            confidence: number | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["RecordField"];
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "adhoc" | "config";
         };
         /** SkippedOut */
         SkippedOut: {
@@ -1506,6 +1558,16 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

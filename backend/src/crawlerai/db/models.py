@@ -214,6 +214,8 @@ class Capture(Base):
         CheckConstraint("duration_ms >= 0", name="duration_ms_non_negative"),
         # `expire_captures` deletes rows past `expires_at`; dev captures never expire and stay out of the index.
         Index(None, "expires_at", postgresql_where=text("expires_at IS NOT NULL")),
+        # A site's recent captures: `scrape`'s `max_age` reuse (SPEC-07 §4.4).
+        Index(None, "site_id", "fetched_at"),
     )
 
     id: Mapped[CaptureId] = mapped_column(primary_key=True, default=uuid7)

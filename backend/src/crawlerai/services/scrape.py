@@ -9,6 +9,12 @@ events are kept like any job's. The task is fetched as a worker fetches one: rob
 A `schema.prompt` is drafted into a schema by role S (SPEC-06 §4.5) from the cleaned text of the fetched page, and the
 draft is returned; the same prompt returns the stored draft without a call. A page that was not reached is not drafted
 from. A draft the LLM could not give (no provider, no budget, an invalid reply) fails the job, like a timeout.
+
+`records` extracts the page with `extract_page` (SPEC-05) against the schema named by id, given inline, or drafted,
+and stores the extraction and the record (`resolve.task`). A scrape URL is caller-supplied, so a page whose required
+fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10). The formats,
+the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same canonical URL
+that reached its page within that many seconds is read again instead of fetching.
 """
 
 import asyncio
@@ -16,12 +22,12 @@ import math
 import os
 import socket
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Final, Literal, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -39,15 +45,18 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import (
+    Capture,
     CaptureId,
     FetchMethod,
     Job,
     JobId,
     PageKind,
+    ProgressiveState,
     Project,
     SchemaId,
     Site,
     SiteId,
+    UrlTask,
     UsageResource,
 )
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
@@ -55,9 +64,16 @@ from crawlerai.db.usage import record_usage
 from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
 from crawlerai.llm.roles.s_schema import draft_schema, normalize_prompt
 from crawlerai.normalize.url import canonical_url
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.task import store_extraction
+from crawlerai.resolve.types import ExtractionResult
+from crawlerai.schemas.registry import SchemaNotFound, get_by_id
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.services import schemas
+from crawlerai.services.records import ScrapedRecord
 from crawlerai.services.schemas import NewSchema
-from crawlerai.storage.base import ObjectStore
+from crawlerai.storage.base import ObjectNotFound, ObjectStore
+from crawlerai.storage.capture_bundle import decode
 
 ScrapeFormat = Literal["markdown", "html", "raw_html", "links", "metadata", "records"]
 # `url_task.outcome` as a scrape reports it (§4.4).
@@ -65,7 +81,7 @@ ScrapeOutcome = Literal["extracted", "partial", "blocked", "shell", "not_found",
 
 MAX_TIMEOUT_S: Final = 120  # D-0028
 _OUTCOMES: Final[dict[BlockClass, ScrapeOutcome]] = {
-    # Without `records` the page is extracted once it is fetched; PR 5 adds `partial` for records.
+    # Without `records` the page is extracted once it is fetched; with them, its record decides (`partial`).
     "ok": "extracted",
     "blocked": "blocked",
     "shell": "shell",
@@ -122,9 +138,9 @@ class Budget(_Input):
 
 
 class ScrapeRequest(_Input):
-    """The body of `POST /v1/scrape` (§4.4). `records`, with `page_kind` and a schema by id or inline, is SPEC-07
-    PR 5; a `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft. `max_age` reuses a
-    recent capture from PR 5, and until then every scrape fetches anew, which any `max_age` allows."""
+    """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
+    must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
+    `budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds."""
 
     url: str
     formats: list[ScrapeFormat] = Field(min_length=1)
@@ -143,12 +159,19 @@ class ScrapeRequest(_Input):
             raise ValueError("not an absolute http or https URL")
         return url
 
-    @field_validator("formats")
-    @classmethod
-    def _formats_available(cls, formats: list[ScrapeFormat]) -> list[ScrapeFormat]:
-        if "records" in formats:
-            raise ValueError("the records format is not available yet")
-        return formats
+    @model_validator(mode="after")
+    def _records_have_a_schema(self) -> Self:
+        if "records" not in self.formats:
+            return self
+        if self.schema_ is None:
+            raise ValueError("the records format needs a schema")
+        if self.page_kind is None:
+            raise ValueError("the records format needs a page_kind")
+        if self.page_kind == "listing":
+            raise ValueError("records of listing pages are not available yet")
+        if isinstance(self.schema_, SchemaInline) and self.schema_.inline.page_kind != self.page_kind:
+            raise ValueError(f"the inline schema is for {self.schema_.inline.page_kind} pages, not {self.page_kind}")
+        return self
 
 
 def _absent(value: object) -> bool:
@@ -213,6 +236,7 @@ class ScrapeResult(BaseModel):
     links: list[str] | None = _format()
     metadata: PageMetadata | None = _format()
     schema_: SchemaDef | None = _format(alias="schema")
+    records: list[ScrapedRecord] | None = _format()
     usage: Usage
 
 
@@ -240,13 +264,47 @@ class ScrapeTimedOut(Exception):
         super().__init__(f"the scrape did not finish within {timeout_s:g} s")
 
 
+class ScrapeInvalid(Exception):
+    """The request's `schema` is one `records` cannot use: no such id, a retired version, or another page kind."""
+
+
+class RecordsUnavailable(Exception):
+    """`records` was asked of a process without the engine's data files (`EngineData`, D-0492)."""
+
+
 _SiteRow = Row[SiteId, FetchMethod, str | None, str | None, int | None]
 
 
 @dataclass(frozen=True)
-class _Fetched:
-    result: FetchResult
+class _Recent:
+    """A capture `max_age` lets the scrape read again instead of fetching: its id, and the fetch that made it."""
+
     capture_id: CaptureId
+    result: FetchResult
+
+
+@dataclass(frozen=True)
+class _Work:
+    """What a scrape works with besides fetching: the LLM client, the engine's data, and the schema `records`
+    extracts with when the request names it (a prompt's is drafted after the fetch)."""
+
+    llm: LLMClient
+    data: EngineData | None
+    schema: SchemaDef | None
+
+
+@dataclass(frozen=True)
+class _Derived:
+    """What a scrape makes of a page it reached: the formats, the draft of a prompt, and the page's extraction with
+    the schema it extracted against."""
+
+    formats: _Formats
+    drafted: SchemaDef | None = None
+    schema: SchemaDef | None = None
+    extraction: ExtractionResult | None = None
+
+
+_NOTHING: Final = _Derived(_Formats())
 
 
 class _FetchMembers(TypedDict):
@@ -260,31 +318,71 @@ _NOT_FETCHED = _FetchMembers(capture_id=None, final_url=None, fetched_at=None, f
 
 
 async def scrape(
-    engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, *, llm: LLMClient = _NO_LLM
+    engine: AsyncEngine,
+    fetching: Fetching,
+    request: ScrapeRequest,
+    *,
+    llm: LLMClient = _NO_LLM,
+    data: EngineData | None = None,
 ) -> ScrapeResult:
-    """Run `request` as a scrape job. Raises `ScrapeRejected` when the target is refused, before any job is created
-    for a target refused outright, `ScrapeTimedOut` past `request.timeout_s`, and the LLM client's `LLMFailure` when
-    a prompt could not be drafted; the job is failed in each case."""
+    """Run `request` as a scrape job; `records` reads `data`. Raises, before any job is created: `ScrapeRejected`
+    for a target refused outright, `RecordsUnavailable` for `records` without `data`, `ScrapeInvalid` for a schema id
+    `records` cannot use, and the schemas service's `SchemaConflict` or `InvalidSchema` for an inline schema. Raises,
+    failing the job: `ScrapeRejected` for a refused redirect, `ScrapeTimedOut` past `request.timeout_s`, the LLM
+    client's `LLMFailure` when a prompt could not be drafted, and `ScrapeInvalid` for a draft of another page kind."""
     try:
         await fetching.connector.check(request.url)
     except SsrfRejected as e:
         raise ScrapeRejected(str(e)) from e
-    task = await _start(engine, request)
+    work = _Work(llm, data, await _named_schema(engine, request, data))
+    task = await _start(engine, request, work.schema)
     try:
         async with asyncio.timeout(request.timeout_s):
-            return await _run(engine, fetching, llm, request, task)
+            return await _run(engine, fetching, work, request, task)
     except TimeoutError as e:
         await _fail(engine, task, "timeout")
         raise ScrapeTimedOut(request.timeout_s) from e
     except ScrapeRejected as e:
         await _fail(engine, task, e.reason)
         raise
+    except ScrapeInvalid:
+        await _fail(engine, task, "invalid_schema")
+        raise
     except LLMFailure as e:
         await _fail(engine, task, e.code)
         raise
 
 
-async def _start(engine: AsyncEngine, request: ScrapeRequest) -> ClaimedTask:
+async def _named_schema(engine: AsyncEngine, request: ScrapeRequest, data: EngineData | None) -> SchemaDef | None:
+    """The schema `records` extracts with when the request names it by id or inline; None without `records`, and
+    for a prompt, whose draft needs the page."""
+    if "records" not in request.formats:
+        return None
+    if data is None:
+        raise RecordsUnavailable("this process has not loaded the engine's data files")
+    match request.schema_:
+        case SchemaById(id=schema_id):
+            async with engine.connect() as conn:
+                try:
+                    schema = await get_by_id(conn, schema_id)
+                except SchemaNotFound as e:
+                    raise ScrapeInvalid(str(e)) from e
+            _check_usable(schema, request.page_kind)
+            return schema
+        case SchemaInline(inline=inline):
+            async with engine.begin() as conn:
+                return await schemas.inline(conn, inline)
+    return None
+
+
+def _check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
+    if schema.status == "retired":
+        raise ScrapeInvalid(f"schema {schema.name} version {schema.version} is retired")
+    if schema.page_kind != page_kind:
+        raise ScrapeInvalid(f"schema {schema.name} is for {schema.page_kind} pages, not {page_kind}")
+
+
+async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None) -> ClaimedTask:
     """The running job, with its task claimed by this process. Committed on its own, so that a scrape that fails
     or times out can still record that on them."""
     async with engine.begin() as conn:
@@ -295,6 +393,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest) -> ClaimedTask:
                     project_id=_DEFAULT_PROJECT,
                     kind="scrape",
                     request=request.model_dump(mode="json", by_alias=True),
+                    schema_id=None if schema is None else schema.id,
                     status="running",
                     started_at=func.now(),
                     engine_version=ENGINE_VERSION,
@@ -312,53 +411,121 @@ async def _fail(engine: AsyncEngine, task: ClaimedTask, error: str) -> None:
 
 
 async def _run(
-    engine: AsyncEngine, fetching: Fetching, llm: LLMClient, request: ScrapeRequest, task: ClaimedTask
+    engine: AsyncEngine, fetching: Fetching, work: _Work, request: ScrapeRequest, task: ClaimedTask
 ) -> ScrapeResult:
     """The fetch runs outside any transaction, so a slow page holds no connection or row lock; what it found is
-    written in one transaction after it."""
+    written in one transaction after it. A recent capture `max_age` allows is read instead of fetching."""
     host = urlsplit(request.url).hostname or ""
     async with engine.begin() as conn:
         site = await _site(conn, host)
+        row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age) if request.max_age else None
+    recent = None if row is None else await _reread(fetching.store, row)
     policy = _policy(request, site.proxy_pool)
     fetches: list[FetchResult] = []
-    page = await _fetch(engine, fetching, request.url, host, policy, site, fetches)
-    # Formats and the draft come before the write, so a timeout or an LLM failure while they are made still finds the
-    # task claimed. They are made only from a page that was reached (§4.8: no partial formats on failure).
-    formats, drafted = _Formats(), None
-    if isinstance(page, FetchResult) and _OUTCOMES[page.block_class] == "extracted":
-        prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
-        formats, sample = await asyncio.to_thread(_content, page, request.formats, sample=prompt is not None)
-        if prompt is not None and sample is not None:
-            # Role S's one sample page is the page's cleaned text (SPEC-06 §4.5).
-            drafted = await draft_schema(engine, llm, prompt=prompt, samples=[sample], job_id=task.job_id)
-    members = _NOT_FETCHED
+    page = recent.result if recent else await _fetch(engine, fetching, request.url, host, policy, site, fetches)
+    # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
+    # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
+    derived = _NOTHING
+    if isinstance(page, FetchResult) and page.block_class == "ok":
+        derived = await _derive(engine, work, request, task, page)
+    members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
-            await remember_fetch_method(conn, site.id, page)
-            fetched = _Fetched(page, await store_capture(conn, fetching.store, page, site.id))
-            outcome = await _finish(conn, task, fetched)
-            members = _fetch_members(fetched)
+            capture_id = recent.capture_id if recent else await _new_capture(conn, fetching.store, site.id, page)
+            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived)
+            members = _fetch_members(page, capture_id)
         else:
             outcome = "blocked"
             await complete_task(conn, task, outcome, reason=page)
         await _record_usage(conn, task.job_id, fetches, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
+    if outcome == "failed":
+        derived = _NOTHING  # §4.8: nothing derived from the page is returned on failure
     return ScrapeResult(
-        job_id=task.job_id, url=request.url, outcome=outcome, usage=usage, schema_=drafted, **members, **formats
+        job_id=task.job_id,
+        url=request.url,
+        outcome=outcome,
+        usage=usage,
+        schema_=derived.drafted,
+        records=records,
+        **members,
+        **derived.formats,
     )
 
 
-def _fetch_members(fetched: _Fetched) -> _FetchMembers:
-    manifest = fetched.result.bundle.manifest
+_CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
+
+
+async def _recent_capture(conn: AsyncConnection, site_id: SiteId, canonical: str, max_age: int) -> _CaptureRow | None:
+    """The latest capture of `canonical` that reached its page (§4.8) within `max_age` seconds and has not expired.
+    Captures are found through the tasks that fetched them, which hold the canonical URL."""
+    query = (
+        select(Capture.id, Capture.object_key, Capture.duration_ms, Capture.fetch_policy)
+        .join(UrlTask, UrlTask.capture_id == Capture.id)
+        .where(
+            Capture.site_id == site_id,
+            Capture.fetched_at >= func.now() - timedelta(seconds=max_age),
+            Capture.block_class == "ok",
+            or_(Capture.expires_at.is_(None), Capture.expires_at > func.now()),
+            UrlTask.canonical_url == canonical,
+        )
+        .order_by(Capture.fetched_at.desc())
+        .limit(1)
+    )
+    return (await conn.execute(query)).one_or_none()
+
+
+async def _reread(store: ObjectStore, row: _CaptureRow) -> _Recent | None:
+    """The capture's bundle, with the attempts its row keeps (SPEC-02 §4.4); None when its bundle is gone."""
+    capture_id, object_key, duration_ms, fetch_policy = row
+    try:
+        blob = await asyncio.to_thread(store.get, object_key)
+    except ObjectNotFound:
+        return None
+    bundle = await asyncio.to_thread(decode, blob)
+    attempts = tuple(AttemptRecord.model_validate(attempt) for attempt in fetch_policy["attempts"])
+    return _Recent(capture_id, FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts))
+
+
+async def _new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:
+    await remember_fetch_method(conn, site_id, page)
+    return await store_capture(conn, store, page, site_id)
+
+
+async def _derive(
+    engine: AsyncEngine, work: _Work, request: ScrapeRequest, task: ClaimedTask, result: FetchResult
+) -> _Derived:
+    """The requested formats, the draft of a prompt, and the extraction for `records`, from one parse of the page
+    (INV-26)."""
+    page = ParsedPage.of(result.bundle)
+    prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
+    final_url = result.bundle.manifest.final_url
+    formats, sample = await asyncio.to_thread(_content, page, final_url, request.formats, sample=prompt is not None)
+    drafted = None
+    if prompt is not None and sample is not None:
+        # Role S's one sample page is the page's cleaned text (SPEC-06 §4.5).
+        drafted = await draft_schema(engine, work.llm, prompt=prompt, samples=[sample], job_id=task.job_id)
+    schema = work.schema if drafted is None else drafted
+    if "records" not in request.formats or schema is None or work.data is None:
+        return _Derived(formats, drafted)
+    if drafted is not None:
+        _check_usable(drafted, request.page_kind)
+    # Cold progressive mode: `adhoc` until SPEC-08 wires configs. Role C is bound here when SPEC-06 PR 4 adds it.
+    extraction = await extract_page(result.bundle, schema, None, None, "adhoc", data=work.data, parsed=page)
+    return _Derived(formats, drafted, schema, extraction)
+
+
+def _fetch_members(result: FetchResult, capture_id: CaptureId) -> _FetchMembers:
+    manifest = result.bundle.manifest
     return _FetchMembers(
-        capture_id=fetched.capture_id,
+        capture_id=capture_id,
         final_url=manifest.final_url,
         fetched_at=manifest.fetched_at,
         fetch=FetchSummary(
             method=manifest.method,
             status_code=manifest.status_code or None,
             block_class=manifest.block_class,
-            attempts=fetched.result.attempts,
+            attempts=result.attempts,
         ),
     )
 
@@ -428,22 +595,70 @@ async def _admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None,
         await asyncio.sleep(wait.total_seconds())
 
 
-async def _finish(conn: AsyncConnection, task: ClaimedTask, fetched: _Fetched) -> ScrapeOutcome:
-    outcome = _OUTCOMES[fetched.result.block_class]
+async def _finish(
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    site_id: SiteId,
+    result: FetchResult,
+    capture_id: CaptureId,
+    derived: _Derived,
+) -> tuple[ScrapeOutcome, list[ScrapedRecord] | None]:
+    """Settle the task with the page's outcome, after storing its extraction and record when `records` asked."""
+    outcome = _OUTCOMES[result.block_class]
     if outcome == "failed":
-        error = fetched.result.attempts[-1].error or outcome
-        await fail_task(conn, task, error, transient=False, capture_id=fetched.capture_id)
-    else:
-        await complete_task(conn, task, outcome, capture_id=fetched.capture_id)
-    return outcome
+        error = result.attempts[-1].error or outcome
+        await fail_task(conn, task, error, transient=False, capture_id=capture_id)
+        return outcome, None
+    if derived.extraction is None or derived.schema is None:
+        await complete_task(conn, task, outcome, capture_id=capture_id)
+        return outcome, None
+    stored = await store_extraction(
+        conn,
+        task,
+        derived.extraction,
+        capture_id=capture_id,
+        site_id=site_id,
+        schema=derived.schema,
+        caller_supplied=True,
+    )
+    if stored.record_id is None or stored.record is None:
+        # A scrape URL is caller-supplied, so a page it reached has a record unless resolution failed (SPEC-05 §4.14).
+        await fail_task(conn, task, "extraction_error", transient=False, capture_id=capture_id)
+        return "failed", None
+    outcome = "extracted" if stored.record.complete else "partial"
+    await complete_task(conn, task, outcome, capture_id=capture_id)
+    await _count_page(conn, site_id, derived.schema)
+    record = ScrapedRecord.of(
+        stored.record_id, stored.record, mode=derived.extraction.mode, confidence=derived.extraction.record_confidence
+    )
+    return outcome, [record]
 
 
-def _content(result: FetchResult, requested: list[ScrapeFormat], *, sample: bool) -> tuple[_Formats, str | None]:
-    """The requested content formats of the page and, when `sample`, its cleaned text, from one parse of its body
-    (INV-26)."""
-    page = ParsedPage.of(result.bundle)
-    formats = _formats(page, result.bundle.manifest.final_url, requested)
-    return formats, page.cleaned_text.text if sample else None
+async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
+    """An extracted or partial page counts toward the progressive state of its site, schema version and page kind
+    (ARCHITECTURE §8.3; SPEC-08 reads it)."""
+    state = ProgressiveState
+    await conn.execute(
+        pg_insert(state)
+        .values(
+            site_id=site_id,
+            schema_id=schema.id,
+            schema_version=schema.version,
+            page_kind=schema.page_kind,
+            pages_extracted=1,
+        )
+        .on_conflict_do_update(
+            index_elements=[state.site_id, state.schema_id, state.schema_version, state.page_kind],
+            set_={"pages_extracted": state.pages_extracted + 1},
+        )
+    )
+
+
+def _content(
+    page: ParsedPage, final_url: str, requested: list[ScrapeFormat], *, sample: bool
+) -> tuple[_Formats, str | None]:
+    """The requested content formats of the page and, when `sample`, its cleaned text."""
+    return _formats(page, final_url, requested), page.cleaned_text.text if sample else None
 
 
 def _formats(page: ParsedPage, final_url: str, requested: list[ScrapeFormat]) -> _Formats:
