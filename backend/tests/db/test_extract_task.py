@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import AttemptRecord, FetchResult
+from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -201,3 +202,21 @@ async def test_a_page_that_was_not_served_stores_an_extraction_and_nothing_else(
     stored = await setup.run(_page(_product("Widget One", PAGE_URL)), block_class="shell")
     assert (stored.outcome, stored.record_id) == ("shell", None)
     assert await setup.candidates(stored) == []
+
+
+async def test_the_extraction_keeps_the_collectors_diagnostics(setup: _Setup, monkeypatch: pytest.MonkeyPatch) -> None:
+    # SPEC-05 §4.14: a collector that raises is recorded on the extraction row, and the page still resolves.
+    def broken(*_args: object) -> None:
+        raise RuntimeError("collector bug")
+
+    monkeypatch.setattr(OpenGraphCollector, "collect", broken)
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
+    diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
+    assert diagnostics == ["OpenGraphCollector: RuntimeError: collector bug"]
+    assert stored.outcome == "extracted"
+
+
+async def test_an_extraction_without_diagnostics_stores_an_empty_list(setup: _Setup) -> None:
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
+    diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
+    assert diagnostics == []

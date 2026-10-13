@@ -6,7 +6,6 @@ and crawl tasks (SPEC-10). Storing only serializes what resolution decided (INV-
 was chosen or why it was rejected, and the record holds the published values.
 """
 
-import logging
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
@@ -36,8 +35,6 @@ from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-log = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True, slots=True)
 class Stored:
@@ -66,8 +63,6 @@ async def extract_task(
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
     crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome."""
     result = await extract_page(bundle, schema, None, role_c, mode, data=data)
-    for diagnostic in result.diagnostics:
-        log.info("url_task %s: %s", task.id, diagnostic)
     extraction_id: ExtractionId = (
         await conn.execute(
             insert(Extraction)
@@ -78,6 +73,7 @@ async def extract_task(
                 config_version=None,
                 mode=result.mode,
                 llm_calls=len(result.llm_calls),
+                diagnostics=list(result.diagnostics),
             )
             .returning(Extraction.id)
         )

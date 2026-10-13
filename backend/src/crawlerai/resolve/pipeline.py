@@ -142,7 +142,9 @@ async def extract_page(
             fields = await asyncio.to_thread(page.resolve, candidates)
         except Exception:
             log.exception("extraction failed")
-            return _result("error", mode, candidates=candidates, llm_calls=llm_calls)
+            return _result(
+                "error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=page.collected.diagnostics
+            )
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -234,6 +236,7 @@ def _result(
     *,
     candidates: tuple[Candidate, ...] = (),
     llm_calls: tuple[LLMCallRecord, ...] = (),
+    diagnostics: tuple[str, ...] = (),
 ) -> ExtractionResult:
     return ExtractionResult(
         outcome=outcome,
@@ -243,4 +246,5 @@ def _result(
         llm_calls=llm_calls,
         mode=mode,
         record_confidence=None,
+        diagnostics=diagnostics,
     )

@@ -409,6 +409,8 @@ class Extraction(Base):
     config_version: Mapped[int | None] = mapped_column(Integer)
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     llm_calls: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # What the collectors skipped and why (SPEC-05 §4.14): an invalid JSON block, a collector that raised.
+    diagnostics: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
 
 
 class Candidate(Base):
