@@ -3,7 +3,7 @@
 Callers (the resolver, eval, the API) normalize through `normalize` and never pick a type module themselves.
 """
 
-from crawlerai.normalize import text, url
+from crawlerai.normalize import enum, text, url
 from crawlerai.normalize.base import Context, Invalid, Normalizer, NormalizeResult, Raw
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -11,6 +11,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 _NORMALIZERS: dict[FieldType, Normalizer] = {
     FieldType.TEXT: text.normalize,
     FieldType.LONG_TEXT: text.normalize,
+    FieldType.ENUM: enum.normalize,
     FieldType.URL: url.normalize,
     FieldType.IMAGE_URL: url.normalize,
 }
