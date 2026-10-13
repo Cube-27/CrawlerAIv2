@@ -108,7 +108,9 @@ def test_fetched_must_be_a_boolean(tmp_path: Path, value: object) -> None:
     result = run_check(root)
 
     assert result.returncode == 1
-    assert result.stdout.splitlines() == ["backend/data/manifest.json: entry 0 has a 'fetched' that is not true or false"]
+    assert result.stdout.splitlines() == [
+        "backend/data/manifest.json: entry 0 has a 'fetched' that is not true or false"
+    ]
 
 
 @pytest.mark.parametrize("field", ["url", "version", "sha256", "license", "justification"])

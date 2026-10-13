@@ -13,6 +13,7 @@ from crawlerai import cli
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
+from crawlerai.core.data import DataFetchError
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.core.settings import AcquireSettings, Settings
@@ -135,3 +136,37 @@ def test_the_scheduler_releases_leases_every_minute_and_expires_and_rechecks_hou
         ("expire_candidates", timedelta(hours=1), 1000),
         ("recheck_fetch_method", timedelta(hours=1), 1),
     ]
+
+
+def test_data_fetch_reports_each_fetched_entry(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[Path] = []
+
+    def fetch_data(directory: Path) -> list[str]:
+        calls.append(directory)
+        return ["present geonames/countryInfo.txt", "fetched geonames/cities15000.zip"]
+
+    monkeypatch.setattr(cli, "fetch_data", fetch_data)
+
+    main(["data", "fetch"])
+
+    assert calls == [Path(cli.__file__).resolve().parents[2] / "data"]
+    assert capsys.readouterr().out == "present geonames/countryInfo.txt\nfetched geonames/cities15000.zip\n"
+
+
+def test_data_fetch_exits_2_on_a_refused_entry(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fetch_data(directory: Path) -> list[str]:
+        raise DataFetchError("geonames/countryInfo.txt: sha256 0 does not match the manifest")
+
+    monkeypatch.setattr(cli, "fetch_data", fetch_data)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["data", "fetch"])
+
+    assert exit_info.value.code == 2
+    assert capsys.readouterr().err == (
+        "crawlerai data fetch: geonames/countryInfo.txt: sha256 0 does not match the manifest\n"
+    )
