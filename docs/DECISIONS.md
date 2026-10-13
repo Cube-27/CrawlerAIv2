@@ -1437,3 +1437,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: the other options listed in D-0187 and D-0214.
 - Why: Owner instruction, 2026-10-13.
 - Reversible: yes
+
+### D-0235 — Labels carry an ETag; `PUT labels` takes `If-Match`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 9 (#42) · Status: decided
+- Decision: The ETag is sha256 of the stored labels' canonical JSON. `If-Match` is optional (`*` or a list of tags); a mismatch is 412. The store also writes only `WHERE labels = <labels the API read>`, and a miss is 409. `EvalStore.put_labels` gains a required keyword `expected`.
+- Alternatives: Only the in-request `WHERE` guard; a version column (a migration on a shared table).
+- Why: The #35 review follow-up; standard HTTP conditional requests (RFC 9110 §13.1.1), additive to §4.10's API.
+- Reversible: yes
+
+### D-0236 — `GET /v1/eval/pages/{id}` returns the schema's field shapes
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 9 (#42) · Status: decided
+- Decision: `PageDetail.fields` holds the page's schema fields (type, scope, nesting), which the form renders.
+- Alternatives: Wait for `/v1/schemas` (SPEC-07 PR 7).
+- Why: §4.10's form needs one row per schema field, and nothing else serves them before SPEC-07.
+- Reversible: yes
+
+### D-0237 — The labeling frame is `sandbox="allow-same-origin"`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 9 (#42) · Status: decided
+- Decision: No `allow-scripts`, forms, popups or top navigation; the same origin lets the screen read clicks for click-to-copy, and it prevents link navigation. SPEC-03 §4.10 is clarified to match.
+- Alternatives: `sandbox=""`, under which click-to-copy cannot work.
+- Why: §4.10 asks for both a sandboxed frame and click-to-copy; this is the narrowest sandbox that allows both, and the API strips script (D-0213).
+- Reversible: yes
+
+### D-0238 — Label values are entered as JSON until `/normalize` exists
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 9 (#42) · Status: decided
+- Decision: The value field takes a JSON value; `/normalize`'s `{value}` or `{reason}` fills it when it answers.
+- Alternatives: Per-type inputs (client-side normalization, out of scope, C8).
+- Why: The most conservative reading.
+- Reversible: yes
+
+### D-0239 — The labeling screen calls its own origin; `pnpm dev` proxies `/v1`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 9 (#42) · Status: decided
+- Decision: `sameOriginClient()` uses `window.location.origin`; the Vite dev server forwards `/v1` to the local API.
+- Alternatives: CORS on the API; a configured base URL (SPEC-12 PR 1's connect screen).
+- Why: No CORS and no connect screen exist yet.
+- Reversible: yes

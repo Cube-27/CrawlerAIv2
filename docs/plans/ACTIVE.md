@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
-- Next: SPEC-03 PRs 9, 12; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
+- Next: SPEC-03 PR 12 and the #42 follow-up; L1: SPEC-04 PR 1, SPEC-02 PR 6, then their successors. Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b).
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
@@ -105,7 +105,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 6 | Gate + baseline lookup | done (#32) | |
 | 7 | Protected job wired (replace placeholder) + dev report in `backend` job | human (H1, H2) | Needs the private eval credentials and the protected environment; changes the protected job (CLAUDE.md §4). Follow-ups from #32 below. |
 | 8 | Labeling API | done (#35) | Dev split only (D-0207); hidden/fresh labeling at M is D-0214. |
-| 9 | Labeling screen | todo | |
+| 9 | Labeling screen | done (#42) | Follow-up: the save path assumes a problem body (`setErrors(error.errors ?? [])`, plus a message for non-JSON errors). |
 | 10 | Promote/rotate commands | done (#34) | `rotate_hidden` skips hosts that also have fresh pages (#37, D-0225). |
 | 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | done (#39) | Interim fits until SPEC-05 PR 13 (D-0229). |
 | 12 | Complementary suppression for hidden/fresh aggregates | todo | Owner answer D-0234 (ARCHITECTURE rev 7 §16.3). Cover every group that sums to a reported total (including `by_category` if it does), and add an INVARIANTS row. |

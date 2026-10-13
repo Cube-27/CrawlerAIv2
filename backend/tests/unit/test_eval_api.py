@@ -21,7 +21,15 @@ from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, PageKind, SchemaId, Split
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped
 from crawlerai.eval.labels import FieldShape, LabelStatus, ScalarShape
-from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
+from crawlerai.eval.store import (
+    DevEvalStore,
+    EvalNotFound,
+    EvalPageRow,
+    EvalRunRow,
+    LabelPass,
+    Labels,
+    LabelsChanged,
+)
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 PAGE_URL = "https://store.test/items/1"
@@ -101,7 +109,11 @@ class FakeStore:
     async def get_bundle(self, capture_id: CaptureId) -> CaptureBundle:
         return self.bundles[capture_id]
 
-    async def put_labels(self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass) -> None:
+    async def put_labels(
+        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+    ) -> None:
+        if self.pages[page_id].labels != expected:
+            raise LabelsChanged(f"the labels of dev eval page {page_id} changed since they were read")
         self.calls.append(f"put_labels:{pass_}:{who}")
         # As the store does: a labeler pass clears the checker.
         update: dict[str, object] = {"labels": labels, pass_: who}
@@ -155,14 +167,16 @@ class FakeBackend:
         pass
 
 
-def _request(backend: FakeBackend | None, method: str, path: str, body: Any = None) -> httpx.Response:
+def _request(
+    backend: FakeBackend | None, method: str, path: str, body: Any = None, headers: dict[str, str] | None = None
+) -> httpx.Response:
     app = create_app(eval_ui=backend is not None)
     if backend is not None:
         app.dependency_overrides[eval_router.labeling_backend] = lambda: backend
 
     async def send() -> httpx.Response:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api.test") as client:
-            return await client.request(method, path, json=body)
+            return await client.request(method, path, json=body, headers=headers)
 
     return asyncio.run(send())
 
@@ -283,6 +297,31 @@ def test_get_page_returns_sanitized_html_with_a_base_at_the_capture_url() -> Non
         '<body><h1 class="t">Blue mug</h1><a>Buy</a><img src="/mug.png"><p>EUR 19.90</p></body></html>'
     )
     assert (body["url"], body["final_url"], body["labels"], body["text"]) == (PAGE_URL, FINAL_URL, None, None)
+    assert body["fields"] == {"title": {"type": "text", "scope": "row"}, "price": {"type": "money", "scope": "row"}}
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "javascript:buy()",
+        " JavaScript:buy()",
+        "java\tscript:buy()",
+        "java\nscript:buy()",
+        "\x01java\r\nscript:buy()",
+        "java&#x09;script:buy()",
+        "&#x0A;javascript:buy()",
+    ],
+)
+def test_get_page_drops_javascript_urls_as_url_parsing_reads_them(href: str) -> None:
+    # WHATWG URL parsing strips leading C0 controls and spaces and removes every tab and newline, so each of these
+    # is a `javascript:` URL in a browser.
+    backend = FakeBackend()
+    page = backend.store.add()
+    backend.store.bundles[page.capture_id] = _bundle(f'<html><body><a href="{href}">Buy</a></body></html>'.encode())
+
+    response = _request(backend, "GET", f"/v1/eval/pages/{page.id}")
+
+    assert response.json()["bundle_html"].endswith("<body><a>Buy</a></body></html>")
 
 
 def test_get_page_resolves_the_page_own_base_against_the_capture_url() -> None:
@@ -373,6 +412,64 @@ def test_checker_cannot_be_the_labeler() -> None:
     problem = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", checker="Ana")).json()
 
     assert problem["errors"] == [{"field": "", "reason": "a checked page is checked by someone other than its labeler"}]
+
+
+def test_checker_pass_matches_the_labeler_casefolded_and_keeps_the_stored_name() -> None:
+    backend = FakeBackend()
+    page = backend.store.add(_stored(_labels()), labeler="ana")
+
+    response = _request(
+        backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", labeler="ANA", checker="ben")
+    )
+
+    assert response.status_code == 200
+    assert backend.store.pages[page.id].labels["labeler"] == "ana"
+
+
+def test_get_page_sends_an_etag_that_a_put_must_match() -> None:
+    backend = FakeBackend()
+    page = backend.store.add()
+    etag = _request(backend, "GET", f"/v1/eval/pages/{page.id}").headers["etag"]
+
+    first = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels(), {"If-Match": etag})
+    stale = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("draft"), {"If-Match": etag})
+    current = _request(backend, "GET", f"/v1/eval/pages/{page.id}").headers["etag"]
+
+    assert first.status_code == 200
+    assert first.headers["etag"] == current != etag
+    assert stale.status_code == 412
+    assert (stale.headers["content-type"], stale.json()["type"]) == ("application/problem+json", "labels_changed")
+    assert _writes(backend) == ["put_labels:labeler:ana"]
+    assert backend.store.pages[page.id].labels["status"] == "labeled"
+
+
+@pytest.mark.parametrize(("if_match", "status"), [("*", 200), ('"other", W/"x"', 412)])
+def test_if_match_takes_a_star_or_a_list_of_strong_tags(if_match: str, status: int) -> None:
+    backend = FakeBackend()
+    page = backend.store.add()
+
+    response = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels(), {"If-Match": if_match})
+
+    assert response.status_code == status
+
+
+def test_a_pass_racing_another_store_is_a_conflict() -> None:
+    backend = FakeBackend()
+    page = backend.store.add(_stored(_labels()), labeler="ana")
+    get_page = backend.store.get_page
+
+    async def read_then_relabel(page_id: EvalPageId) -> EvalPageRow:
+        read = await get_page(page_id)  # the labeler stores a new pass right after the checker's read
+        backend.store.pages[page_id] = read.model_copy(update={"labels": _stored(_labels(labeler="cleo"))})
+        return read
+
+    backend.store.get_page = read_then_relabel  # type: ignore[method-assign]
+
+    response = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", checker="ben"))
+
+    assert response.status_code == 409
+    assert response.json()["type"] == "labels_changed"
+    assert backend.store.pages[page.id].labels["labeler"] == "cleo"
 
 
 @pytest.mark.parametrize(

@@ -258,7 +258,8 @@ Backend (`/v1/eval/...`, mounted only with `CRAWLERAI_EVAL_UI=true`; same API-ke
 - `POST /v1/eval/capture` — `{split, schema, page_kind, category, urls[]}`; runs `eval capture`.
 
 Frontend screen `/labeling`:
-- Left: the sanitized page in a sandboxed `<iframe sandbox="" srcdoc=…>`; clicking an element copies its text and a
+- Left: the sanitized page in a sandboxed `<iframe sandbox="allow-same-origin" srcdoc=…>` (no scripts, forms, popups or top navigation; the
+  same origin lets the screen read clicks, D-0237); clicking an element copies its text and a
   computed XPath (ids and `data-*` anchors preferred) into the focused field.
 - Right: a form with one row per schema field: raw text, normalized value (live via `/normalize`), `absent`
   toggle, locator, distractor list; listing pages show a rows table with add/remove.
