@@ -3123,3 +3123,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `kill -0` only; any process with that Windows pid.
 - Why: `kill -0` sees only its own MSYS runtime's processes, and Windows reuses pids.
 - Reversible: yes
+
+### D-0475 — The pipeline takes a config executor bound to its IR
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: `crawlerai.collect.config.ConfigExecutor` is `execute(page, schema, ctx) -> Executed` plus `field_status`, implemented by `EngineExecutor(ir, vocabulary)`; SPEC-05 §4.5 and SPEC-08 §4.3 now state this signature (clarifying edit).
+- Alternatives: SPEC-05 §4.5's literal `execute(ir, page, schema) -> list[Candidate]`.
+- Why: `.importlinter` puts `config_ir` above `collect` and `resolve`, so the pipeline cannot name the IR type; candidates need `ctx` to normalize, listings need row entities, resolution needs field status (§10).
+- Reversible: yes — only the PR 8 wiring uses it
+
+### D-0476 — Config candidates carry no `page` entity
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: `Executed.rows` holds only listing rows (`config:row:<n>`, kind `ListItem`, roots); page-level candidates name `page`.
+- Alternatives: Return a `CollectResult` that includes `page`.
+- Why: The OpenGraph collector emits `page` and `EntityGraph.of` adds it when missing; a second one would be a duplicate id (as `Admitted` for js_state/xhr).
+- Reversible: yes
+
+### D-0477 — The engine reads JSONPath with `json_doc`'s RFC 9535 subset, not jsonpath-ng
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: Queries outside the name/wildcard/index subset are refused per step with an `unsupported_jsonpath` diagnostic.
+- Alternatives: Add jsonpath-ng to the engine as SPEC-08 §4.1 lists.
+- Why: C8: one JSONPath reader in the engine; locator paths are in the subset; the release executor (PR 3) uses jsonpath-ng, keeping the two independent (INV-20).
+- Reversible: yes — swap the reader in `_select_all`
+
+### D-0478 — Post ops: a normalizer op checks, it does not transform
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: `{"<type>": {}}` requires the value to be `Ok` for its type and passes it on unchanged; `trim`, `regex_replace` and `absolutize_url` take text only; `absolutize_url` without a base URL declines `no_base_url` (C7); a failed post op declines the step and the next step runs.
+- Alternatives: Let the normalizer op transform the value.
+- Why: SPEC-04 owns normalization (C8); normalizing twice is not idempotent for every type.
+- Reversible: yes
+
+### D-0479 — Without a valid step, the first match is proposed with its decline
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: If no step gives `Ok`, the first step that matched is proposed with its `Invalid`/`Ambiguous` result (a multi-match carries the matches as `raw`); no match gives no candidate; selector errors are diagnostics.
+- Alternatives: Propose only `Ok` values.
+- Why: Other collectors propose invalid candidates too; drift (§4.9) and validation (§4.7) need "matched but not valid".
+- Reversible: yes
+
+### D-0480 — Scope of config steps
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: `regex`, `jsonld` and `jsonpath` read the whole page and are refused in a listing row; a row step is an `xpath`/`css` step selecting elements; `when_type` matches subtypes through the JSON-LD collector's vocabulary; `next` fills the schema's `next_page_url` field (ARCHITECTURE §5.3) when present.
+- Alternatives: Run regex on a row's serialized HTML.
+- Why: Most conservative reading of SPEC-08 §4.3; a serialization the release executor cannot reproduce exactly.
+- Reversible: yes
+
+### D-0481 — A config for another schema version or page kind raises `ConfigMismatch`
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: `EngineExecutor.execute` refuses a schema whose name, version or page kind differs from the IR's.
+- Alternatives: Run it anyway.
+- Why: Configs are per schema version (ARCHITECTURE §5.2, §6); a mismatch is a wiring bug, not page content.
+- Reversible: yes
+
+### D-0482 — Config candidates are never independent
+- Date: 2026-10-13 · Spec/PR: SPEC-08 PR 2 (#98) · Status: decided
+- Decision: Every `source_kind='config'` candidate has `independent=False`.
+- Alternatives: `independent=True`.
+- Why: A config is learned from the page's other sources and a `jsonld` step reads the node the JSON-LD collector reads, so an equal value is one piece of evidence, not `agreed` (ARCHITECTURE §8.1, §10) (#98 review).
+- Reversible: yes
