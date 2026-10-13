@@ -15,8 +15,8 @@ from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.url import canonical_url
 
-# A page number: ASCII digits (str.isdigit would also take other scripts' digits).
-_INTEGER = re.compile(r"[0-9]+")
+# A page number: ASCII digits (without re.ASCII, `\d` would also take other scripts' digits).
+_INTEGER = re.compile(r"\d+", re.ASCII)
 
 
 def next_page_candidates(page: ParsedPage, final_url: str) -> tuple[str, ...]:

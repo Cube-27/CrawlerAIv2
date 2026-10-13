@@ -49,6 +49,7 @@ from crawlerai.schemas.types import SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 log = logging.getLogger(__name__)
+_FAILED = "extraction failed"
 
 # D-0444: until an order is fitted on dev, no source kind is ranked, so text, long_text, url and image_url fields
 # decline as `unranked` rather than follow an unmeasured order (C7).
@@ -137,7 +138,7 @@ async def extract_page(
         # Parsing and resolution are CPU work: a thread keeps the event loop serving other tasks meanwhile.
         page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data, parsed)
     except Exception:  # §4.14: a resolution bug fails the page, never part of it
-        log.exception("extraction failed")
+        log.exception(_FAILED)
         return _result("error", mode)
     candidates = page.collected.candidates
     llm_calls: tuple[LLMCallRecord, ...] = ()
@@ -148,7 +149,7 @@ async def extract_page(
         try:
             fields = await asyncio.to_thread(page.resolve, candidates)
         except Exception:
-            log.exception("extraction failed")
+            log.exception(_FAILED)
             return _result(
                 "error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=page.collected.diagnostics
             )
@@ -263,7 +264,7 @@ async def _extract_listing(
     try:
         listing = await asyncio.to_thread(_Listing.read, bundle, schema, data, parsed)
     except Exception:  # §4.14, as for a detail page
-        log.exception("extraction failed")
+        log.exception(_FAILED)
         return _result("error", mode)
     # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
     records = [{**listing.fields, **row} for row in listing.rows]
