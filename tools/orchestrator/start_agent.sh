@@ -1,7 +1,7 @@
 #!/bin/bash
 # start_agent.sh NAME WORKTREE PROMPT [MIN_FREE_MB]
-# Refuses when MAX_AGENTS (default 4, set by the owner) named agents are already alive: workers and reviewers;
-# the orchestrator's own unnamed agent doesn't count.
+# A worker (any NAME not starting with "reviewer") is refused when MAX_WORKERS (default 4, set by the owner) workers
+# are already alive. Reviewers don't count: they run no builds or tests, so their memory use is small.
 # Starts a claude herdr agent in <main>/../CrawlerAIv2-worktrees/WORKTREE, checks that the pane's cwd really is
 # that worktree (a wrong cwd stops at a trust prompt in the home folder), refuses when free memory is low, then
 # sends PROMPT. Prints "<pane> <status>", or "ERROR ..." on stderr and exits 1.
@@ -17,9 +17,11 @@ free=$(powershell -NoProfile -c "[int]((Get-CimInstance Win32_OperatingSystem).F
 [[ $free =~ ^[0-9]+$ ]] || err "could not read free memory"
 (( free >= min_free )) || err "low memory: ${free}MB free < ${min_free}MB"
 [[ -d "$root_fwd/$wt" ]] || err "no worktree $root_fwd/$wt"
-alive=$(herdr agent list 2>/dev/null | python -c "import json,sys;print(sum(1 for a in json.load(sys.stdin)['result']['agents'] if a.get('name')))")
-[[ $alive =~ ^[0-9]+$ ]] || err "could not count live agents"
-(( alive < ${MAX_AGENTS:-4} )) || err "agent limit: $alive alive, max ${MAX_AGENTS:-4}"
+if [[ $name != reviewer* ]]; then
+  workers=$(herdr agent list 2>/dev/null | python -c "import json,sys;print(sum(1 for a in json.load(sys.stdin)['result']['agents'] if a.get('name') and not a['name'].startswith('reviewer')))")
+  [[ $workers =~ ^[0-9]+$ ]] || err "could not count live workers"
+  (( workers < ${MAX_WORKERS:-4} )) || err "worker limit: $workers alive, max ${MAX_WORKERS:-4}"
+fi
 
 pane=$(herdr pane split --current --direction down --cwd "$path" --no-focus 2>/dev/null \
   | python -c "import json,sys;print(json.load(sys.stdin)['result']['pane']['pane_id'])")

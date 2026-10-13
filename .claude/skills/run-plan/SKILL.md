@@ -29,9 +29,10 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
 1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, its spec's dependencies are `done`, and the earlier rows in its
    spec are `done`, unless the rows don't really depend on each other (the earlier row's output isn't an input to the
    later one). Rows that are `human` or `blocked` are skipped.
-2. **Assign.** At most **4 agents** (workers and reviewers together, not counting the orchestrator) are alive at
-   once, and each start needs at least 1.5 GB free (owner, 2026-10-13). `start_agent.sh` refuses past either limit.
-   Prefer a reviewer for a ready PR over a new worker. Within the limit, run ready rows that can proceed
+2. **Assign.** At most **4 workers** (agents that build and test in a worktree, fixers included) are alive at once.
+   Reviewers don't count, because they use little memory. Every start needs at least 1.5 GB free (owner,
+   2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*` and everything else as a
+   worker. Within the limit, run ready rows that can proceed
    independently in parallel. Two workers never run rows that edit the same migration. For each assignment:
    - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
      `spec-NN/pr-M-<short-name>`, and start the worker with `tools/orchestrator/start_agent.sh <name> <worktree>
