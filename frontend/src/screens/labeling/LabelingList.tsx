@@ -1,11 +1,25 @@
-import { Chip, Table } from "@heroui/react";
+import { Chip, Table, Typography } from "@heroui/react";
 import { PageHeader } from "../../components/PageHeader";
 import { useLoaderData } from "react-router";
+import { EmptyView } from "../../components/EmptyView";
+import { StatusLabel, type StatusTone } from "../../components/StatusLabel";
 import { EvalUiOff } from "./EvalUiOff";
 import type { listLoader, PageSummary } from "./loaders";
 
 export function statusText(status: PageSummary["status"]): string {
   return status ?? "not labeled";
+}
+
+// One tone per label status (DESIGN.md, Patterns: status display).
+const STATUS_TONES: Record<NonNullable<PageSummary["status"]> | "none", StatusTone> = {
+  none: "neutral",
+  draft: "warning",
+  labeled: "accent",
+  checked: "success",
+};
+
+export function LabelStatusChip({ status }: Readonly<{ status: PageSummary["status"] }>) {
+  return <StatusLabel text={statusText(status)} tone={STATUS_TONES[status ?? "none"]} />;
 }
 
 export function pageHref({ id }: PageSummary): string {
@@ -21,9 +35,9 @@ export function SplitBadge({ split }: Readonly<{ split: PageSummary["split"] }>)
 function PageList({ pages }: Readonly<{ pages: PageSummary[] }>) {
   if (pages.length === 0) {
     return (
-      <p className="text-muted">
-        No dev pages yet. Capture some with <code>crawlerai eval capture --split dev</code>.
-      </p>
+      <EmptyView title="No dev pages yet">
+        Capture some with <Typography.Code>crawlerai eval capture --split dev</Typography.Code>.
+      </EmptyView>
     );
   }
   return (
@@ -46,7 +60,9 @@ function PageList({ pages }: Readonly<{ pages: PageSummary[] }>) {
                 <Table.Cell>{page.schema_name}</Table.Cell>
                 <Table.Cell>{page.page_kind}</Table.Cell>
                 <Table.Cell>{page.category}</Table.Cell>
-                <Table.Cell>{statusText(page.status)}</Table.Cell>
+                <Table.Cell>
+                  <LabelStatusChip status={page.status} />
+                </Table.Cell>
                 <Table.Cell>{page.labeler ?? "—"}</Table.Cell>
                 <Table.Cell>{page.checker ?? "—"}</Table.Cell>
               </Table.Row>

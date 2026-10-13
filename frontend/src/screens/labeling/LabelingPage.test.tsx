@@ -146,8 +146,9 @@ describe("labeling list", () => {
     stubApi({ "GET /v1/eval/pages": [json({ detail: "Not Found" }, { status: 404 })] });
     renderAt("/labeling");
 
-    expect(await screen.findByText(/The labeling API is off/)).toHaveTextContent(
-      "CRAWLERAI_EVAL_UI=true",
+    expect(await screen.findByText("The labeling API is off.")).toBeInTheDocument();
+    expect(screen.getByText(/to label pages/)).toHaveTextContent(
+      "Start the backend with CRAWLERAI_EVAL_UI=true to label pages.",
     );
   });
 });
@@ -182,6 +183,7 @@ describe("labeler pass", () => {
     ]);
     const exported = await screen.findByRole("link", { name: "Export labels (JSON)" });
     expect(screen.getByText(/· labeled by ana/)).toBeInTheDocument();
+    expect(screen.getByText("labeled", { exact: true })).toBeInTheDocument();
     expect(exported).toHaveAttribute("download", `labels-${PAGE_ID}.json`);
     const href = exported.getAttribute("href") ?? "";
     expect(JSON.parse(decodeURIComponent(href.slice(href.indexOf(",") + 1)))).toEqual(labeled);
