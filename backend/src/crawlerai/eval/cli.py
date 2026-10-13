@@ -4,7 +4,8 @@ an eval capture and an unlabeled eval page of one split.
 Each page goes to the store of its split (`get_store`): hidden and fresh captures never touch the main database or
 object store (C1). Fetches are polite as the worker's are (SPEC-02 §4.6): robots.txt is read once per origin and
 obeyed, and requests to one host are spaced by the default interval or the robots `Crawl-delay`, whichever is longer.
-The CLI waits out that interval; it runs one page at a time.
+The CLI waits out that interval; it runs one page at a time. A host with pages in another split is refused before
+anything is fetched, so a site sits in one split only (ARCHITECTURE §16.1).
 
 Nothing printed or raised names a URL or host, so a hidden or fresh site does not reach a log (C1): outcomes are
 reported by their position in the input.
@@ -13,7 +14,7 @@ reported by their position in the input.
 import asyncio
 import json
 from collections import Counter
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence, Set
 from contextlib import aclosing
 from dataclasses import dataclass
 from functools import partial
@@ -138,6 +139,39 @@ def _host(url: str) -> str | None:
     return host if parts.scheme in _SCHEMES and host else None
 
 
+def check_hosts(requests: Sequence[PageRequest], taken: Mapping[Split, Set[str]]) -> None:
+    """Refuse every request when a host of the input has pages in another split: a site sits in one split only, fresh
+    being sites nobody has seen and hidden sites absent from dev (ARCHITECTURE §16.1). The refusal gives counts, never
+    a host or a line, so it names no hidden or fresh site (C1)."""
+    hosts = {host for request in requests if (host := _host(request.url)) is not None}
+    overlaps = {split: hosts & taken[split] for split in sorted(taken)}
+    refused = set[str]().union(*overlaps.values())
+    if refused:
+        counts = ", ".join(f"{split}: {len(overlap)}" for split, overlap in overlaps.items() if overlap)
+        raise EvalCliError(
+            f"{len(refused)} host(s) of the input already have pages in another split ({counts}); a host belongs to"
+            " one split (ARCHITECTURE §16.1), so nothing was fetched"
+        )
+
+
+async def hosts_elsewhere(settings: Settings, split: Split) -> dict[Split, set[str]]:
+    """The hosts with pages in each split other than `split`. A dev capture reads the private splits only on a
+    custodian's machine: elsewhere their hosts are unreadable by design (C1), and a dev capture is not checked
+    against them."""
+    others = [other for other in get_args(Split) if other != split]
+    if split == "dev" and (settings.eval_private_database_url is None or settings.eval_private_object_store is None):
+        others = []
+    taken: dict[Split, set[str]] = {}
+    for other in others:
+        async with aclosing(get_store(other, settings)) as store:
+            try:
+                taken[other] = await store.hosts()
+            except Exception as e:
+                # By type only: a dev command shows its failures, and this one comes from a private database (C1).
+                raise EvalCliError(f"reading the hosts of the {other} split failed with {type(e).__name__}") from None
+    return taken
+
+
 async def resolve_schemas(database_url: str, names: set[str]) -> dict[str, SchemaRef]:
     """The active version of each schema named, from the main database's `schema_def`. Hidden and fresh pages name
     their schema too; the private database records the id and name only (D-0172)."""
@@ -226,6 +260,7 @@ async def run_capture(
         for schema in schemas.values():
             if schema.page_kind != page_kind:
                 raise EvalCliError(f"schema {schema.name} is for {schema.page_kind} pages, not {page_kind}")
+    check_hosts(requests, await hosts_elsewhere(settings, split))
     store = get_store(split, settings)
     fetch = partial(
         fetch_http,

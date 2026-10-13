@@ -134,7 +134,7 @@ class EvalStore(Protocol):
         """Close the store's database connections."""
 
 
-def get_store(split: Split, settings: Settings) -> EvalStore:
+def get_store(split: Split, settings: Settings) -> "DevEvalStore | PrivateEvalStore":
     match split:
         case "dev":
             return dev_store(settings)
@@ -242,6 +242,10 @@ class _SqlEvalStore(ABC):
     @abstractmethod
     async def _capture_key(self, conn: AsyncConnection, capture_id: CaptureId) -> str | None:
         """The object key of this store's capture `capture_id`, if it has one."""
+
+    @abstractmethod
+    async def hosts(self) -> set[str]:
+        """The hosts of this split's pages' captures. For comparing splits only: callers never print them (C1)."""
 
     async def list_pages(self, schema_name: str | None = None, status: LabelStatus | None = None) -> list[EvalPageRow]:
         page = self._page.c
@@ -356,6 +360,18 @@ class DevEvalStore(_SqlEvalStore):
         )
         return (await conn.execute(query)).scalar_one_or_none()
 
+    async def hosts(self) -> set[str]:
+        page = self._page.c
+        query = (
+            select(Site.host)
+            .distinct()
+            .join(Capture, Capture.site_id == Site.id)
+            .join(self._page, page.capture_id == Capture.id)
+            .where(page.split == self._split)
+        )
+        async with self._engine.connect() as conn:
+            return set((await conn.execute(query)).scalars())
+
     async def put_capture(self, bundle: CaptureBundle, category: EvalCategory) -> CaptureId:
         """`category` is kept on the page (`put_page`); the main database records sites without one."""
         key = dev_eval_capture_key(bundle.manifest.capture_id)
@@ -421,6 +437,17 @@ class PrivateEvalStore(_SqlEvalStore):
                 .on_conflict_do_nothing(index_elements=[EvalCapture.id])
             )
         return CaptureId(bundle.manifest.capture_id)
+
+    async def hosts(self) -> set[str]:
+        page = self._page.c
+        query = (
+            select(EvalCapture.host)
+            .distinct()
+            .join(self._page, (page.capture_id == EvalCapture.id) & (page.split == EvalCapture.split))
+            .where(EvalCapture.split == self._split)
+        )
+        async with self._engine.connect() as conn:
+            return set((await conn.execute(query)).scalars())
 
     async def pages_by_host(self) -> dict[str, list[EvalPageRow]]:
         """This split's pages grouped by the host of their capture, in page order. Hosts are for grouping only: callers
