@@ -1,0 +1,131 @@
+"""The `metadata` content format (SPEC-07 §4.5, ARCHITECTURE §8.5): what the page states about itself.
+
+Each member is `None` (or empty) when the page does not state it; nothing is inferred from the URL or the host (C7).
+"""
+
+import json
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+
+from pydantic import JsonValue
+
+from crawlerai.content.links import absolute_url, document_base_url, rel_types
+from crawlerai.content.page import ParsedPage
+
+# HTML Living Standard §2.3.1: "strip and collapse ASCII whitespace", as `document.title` does (§3.1.3).
+_ASCII_WHITESPACE = re.compile(r"[\t\n\f\r ]+")
+_ASCII_WHITESPACE_CHARS = "\t\n\f\r "
+# The Open Graph protocol: `og:` properties, and the `product:` namespace of its `product` object type.
+_OG_PREFIXES = ("og:", "product:")
+# RFC 3987 §2.2 and RFC 3986 §3: an IRI's last path segment or its fragment follows the last `/` or `#`.
+_IRI_SEPARATOR = re.compile(r"[/#]")
+
+
+@dataclass(frozen=True)
+class PageMetadata:
+    title: str | None = None
+    description: str | None = None
+    language: str | None = None
+    canonical: str | None = None
+    og: dict[str, str] = field(default_factory=dict[str, str])
+    structured_data_types: tuple[str, ...] = ()
+
+
+def metadata(page: ParsedPage, final_url: str) -> PageMetadata:
+    """`title` (the first `<title>`), `description` (`meta[name=description]`), `language` (`<html lang>`, else
+    `og:locale`), `canonical` (`link[rel=canonical]`, absolute), `og` (every `og:*` and `product:*` property, the
+    first value of each) and `structured_data_types` (distinct JSON-LD `@type` values, then microdata `itemtype`
+    names, in document order)."""
+    og = _open_graph(page)
+    return PageMetadata(
+        title=_title(page),
+        description=_meta_name(page, "description"),
+        language=_stripped(_html_lang(page)) or _stripped(og.get("og:locale")),
+        canonical=_canonical(page, final_url),
+        og=og,
+        structured_data_types=tuple(
+            dict.fromkeys(name for name in (*_json_ld_types(page), *_microdata_types(page)) if name)
+        ),
+    )
+
+
+def _stripped(value: str | None) -> str | None:
+    return (value or "").strip(_ASCII_WHITESPACE_CHARS) or None
+
+
+def _title(page: ParsedPage) -> str | None:
+    node = page.tree.css_first("title")
+    return _stripped(_ASCII_WHITESPACE.sub(" ", node.text(deep=True))) if node is not None else None
+
+
+def _meta_name(page: ParsedPage, name: str) -> str | None:
+    # HTML Living Standard §4.2.5.1: standard metadata names compare ASCII case-insensitively.
+    for node in page.tree.css("meta[name][content]"):
+        if (node.attributes.get("name") or "").lower() == name:
+            return _stripped(node.attributes.get("content"))
+    return None
+
+
+def _html_lang(page: ParsedPage) -> str | None:
+    root = page.tree.root
+    return root.attributes.get("lang") if root is not None else None
+
+
+def _open_graph(page: ParsedPage) -> dict[str, str]:
+    # The Open Graph protocol: properties are `<meta property=… content=…>`; `name` is read too, as SPEC-05 §4.2's
+    # `meta:` locator does. "The first tag (from top to bottom) is given preference during conflicts."
+    og: dict[str, str] = {}
+    for node in page.tree.css("meta[content]"):
+        key = node.attributes.get("property") or node.attributes.get("name") or ""
+        content = node.attributes.get("content")
+        if key.startswith(_OG_PREFIXES) and content is not None:
+            og.setdefault(key, content)
+    return og
+
+
+def _canonical(page: ParsedPage, final_url: str) -> str | None:
+    # RFC 6596: the canonical link relation.
+    for node in page.tree.css("link[href]"):
+        if "canonical" in rel_types(node):
+            return absolute_url(node.attributes.get("href") or "", document_base_url(page, final_url))
+    return None
+
+
+def _json_ld_types(page: ParsedPage) -> Iterator[str]:
+    # JSON-LD 1.1 §9.3: a script of type application/ld+json carries JSON-LD; §3.5: `@type` is a string or an array
+    # of strings, on any node object, nested ones and `@graph` members included.
+    for block in page.scripts:
+        if block.type != "application/ld+json":
+            continue
+        try:
+            document: JsonValue = json.loads(block.text)
+        except (ValueError, RecursionError):
+            continue
+        yield from map(_type_name, _type_values(document))
+
+
+def _type_values(document: JsonValue) -> Iterator[str]:
+    # A stack, not recursion: a document nested as deep as the JSON parser allows must not exhaust Python's stack.
+    stack = [document]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            types = value.get("@type")
+            yield from (t for t in (types if isinstance(types, list) else [types]) if isinstance(t, str))
+            stack.extend(reversed(list(value.values())))
+        elif isinstance(value, list):
+            stack.extend(reversed(value))
+
+
+def _microdata_types(page: ParsedPage) -> Iterator[str]:
+    # HTML Living Standard §5.2.2: `itemtype`, on an element with `itemscope`, is a set of space-separated absolute
+    # URLs.
+    for node in page.tree.css("[itemscope][itemtype]"):
+        yield from map(_type_name, _ASCII_WHITESPACE.split(node.attributes.get("itemtype") or ""))
+
+
+def _type_name(value: str) -> str:
+    """A type IRI's name, its last path segment or fragment (`https://schema.org/Product` → `Product`); a JSON-LD
+    term (`Product`) is already a name."""
+    return _IRI_SEPARATOR.split(value)[-1]
