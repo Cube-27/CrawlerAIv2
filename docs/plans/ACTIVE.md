@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PRs 4 (#33) and 10 (#34) in review; workflow self-improvement PR; Vite+ toolchain PR (owner request); SPEC-03 PRs 9, 11.
+- Next: SPEC-03 PR 10 (#34) to merge; workflow self-improvement PR; Vite+ toolchain PR (owner request); SPEC-03 PRs 9, 11; fix row: `rotate_hidden` must skip hosts that also have fresh pages (from #34).
+- Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
 - Follow-ups for SPEC-03 PR 9 (from #35): guard `PUT labels` against a labeler/checker race (`WHERE labels = <read>` or a version); compare labeler names casefolded, as `parse_labels` does; the `javascript:` strip should drop tab and newline characters first (WHATWG URL parsing). For SPEC-07 PR 1: map `ObjectNotFound`/`CorruptBundle` from `get_bundle` to a problem response.
 - Follow-ups for SPEC-10's page-fetching handler (from #31): pass `fetch_politely` the HTTP rung for robots.txt and `acquire` for the page (a robots.txt classifies as `shell` and would trigger a browser retry); admit the browser retry through `HostLimiter`, or log that one immediate retry per fetch is accepted; check every attempt, not only the kept result, for `SLOW_DOWN`.
 - Follow-ups for SPEC-03 PR 7 (from #32): run the gate (baseline lookup) before `put_run` on a push to `main`, or exclude the candidate's sha, since otherwise the candidate's own run becomes its baseline; store the unsuppressed report as the run's `metrics` (an exported aggregate makes `gate` raise `GateInputInvalid`); check out with `fetch-depth: 0`.
@@ -97,7 +98,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | Private database, roles, `EvalStore` protocol + both stores | done (#28) | Private chain `p0001`; agents never hold custodian credentials (D-0178). |
 | 2 | Label model + validation + equality | done (#27) | `equal` hooks are exact-equality stubs until SPEC-04 PR 9. |
 | 3 | `eval capture` and `import-sites` CLI | done (#30) | Obeys robots.txt and per-host spacing (D-0195). |
-| 4 | Replay harness + RecordedLLM + determinism test | todo | |
+| 4 | Replay harness + RecordedLLM + determinism test | done (#33) | Interim LLM/engine protocols until SPEC-05/06 (D-0218). |
 | 5 | Metrics + aggregate report + min-cell suppression | done (#29) | Secondary suppression: D-0187 (needs-owner, not blocking). |
 | 6 | Gate + baseline lookup | done (#32) | |
 | 7 | Protected job wired (replace placeholder) + dev report in `backend` job | human (H1, H2) | Needs the private eval credentials and the protected environment; changes the protected job (CLAUDE.md §4). Follow-ups from #32 below. |

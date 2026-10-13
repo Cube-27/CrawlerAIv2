@@ -223,7 +223,7 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, shapes: Mapping[str, Field
     try:
         labels = Labels.model_validate(raw)
     except ValidationError as e:
-        raise InvalidLabels([_from_pydantic(err) for err in e.errors()]) from None
+        raise InvalidLabels([from_pydantic(err) for err in e.errors()]) from None
     complete = labels.status != "draft"
     if page_kind == "detail":
         # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope.
@@ -268,7 +268,7 @@ def _check_fields(
             yield LabelError(f"{path}.{name}", "not labeled; mark it absent if the page does not show it")
 
 
-def _from_pydantic(err: ErrorDetails) -> LabelError:
+def from_pydantic(err: ErrorDetails) -> LabelError:
     path = "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in err["loc"]).removeprefix(".")
     # Our own validators raise ValueError; pydantic prefixes its message with "Value error, ".
     reason = str(err["ctx"]["error"]) if err["type"] == "value_error" else err["msg"]
