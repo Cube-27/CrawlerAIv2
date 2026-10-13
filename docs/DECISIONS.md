@@ -903,3 +903,26 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Open the store inside `expire_captures` from settings.
 - Why: Keeps `Periodic.run` as `(conn) -> …` with the store explicit; retention needs both `db` and `storage`, independent siblings in the layering.
 - Reversible: yes
+
+<!-- D-0159–D-0165 are reserved for SPEC-02 PR 4 (#26), merged after this entry. -->
+
+### D-0166 — Normalizer `equal` stubs are exact JSON equality
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 2 (#27) · Status: decided
+- Decision: Each type module's `equal(a, b)` returns `a == b` on normalized values until SPEC-04 PR 9 implements §4.5.
+- Alternatives: Raise `NotImplementedError`.
+- Why: Metrics (SPEC-03 PR 5) land in L0 before SPEC-04; exact equality only undercounts matches, never invents one.
+- Reversible: yes; SPEC-04 PR 9 replaces the bodies
+
+### D-0167 — `FieldShape` stands in for SPEC-04's `FieldSpec`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 2 (#27) · Status: decided
+- Decision: `eval.labels` defines `ScalarShape | ListShape | ObjectShape`; list/object recursion lives in `values_equal` for now. SPEC-04 PRs 1/9 migrate callers and delete `FieldShape`.
+- Alternatives: Add `schemas.types.FieldSpec` and `normalize.base` now.
+- Why: Keeps this row inside `eval/labels` and the hook stubs.
+- Reversible: yes
+
+### D-0168 — Labeled and checked pages label every schema field; drafts may be partial
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 2 (#27) · Status: decided
+- Decision: Missing fields are an error unless `status == "draft"`; a missing field is labeled `absent: true` explicitly.
+- Alternatives: Allow partial labels at any status.
+- Why: §4.6 scores every field of a checked page.
+- Reversible: yes
