@@ -1,4 +1,5 @@
 import { Button, Input, Label, Link, Radio, RadioGroup, TextArea, TextField } from "@heroui/react";
+import { PageHeader } from "../../components/PageHeader";
 import { useState, type ReactNode } from "react";
 import { useLoaderData } from "react-router";
 import {
@@ -91,14 +92,13 @@ function checkerBlockReason(page: PageDetail, checker: string): string | null {
   return null;
 }
 
-function PageHeader({ page }: Readonly<{ page: PageDetail }>) {
+function LabelingHeader({ page }: Readonly<{ page: PageDetail }>) {
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Labeling</h1>
+      <PageHeader title="Labeling">
         <SplitBadge split={page.split} />
         <Link href="/labeling">All pages</Link>
-      </div>
+      </PageHeader>
       <p className="text-sm text-muted">
         {page.schema_name} · {page.page_kind} · {page.category} · {statusText(page.status)}
         {page.labeler === null ? "" : ` · labeled by ${page.labeler}`}
@@ -326,7 +326,7 @@ function PageEditor({
 
   return (
     <section className="flex flex-col gap-4">
-      <PageHeader page={page} />
+      <LabelingHeader page={page} />
       {notice === null ? null : <output className="block">{notice}</output>}
       {saver.conflict ? <ConflictAlert onReload={() => void saver.reload()} /> : null}
       <SaveProblems
