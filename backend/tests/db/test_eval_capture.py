@@ -3,7 +3,7 @@ split, and only there (C1, INV-01). Synthetic pages under `.test` hosts on 127.0
 databases (`CRAWLERAI_TEST_DATABASE_URL`, `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`) and temporary object roots."""
 
 import threading
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from functools import partial
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.ssrf import SafeConnector, Target
-from crawlerai.acquire.types import FetchPolicy
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.models import Capture, EvalPage, SchemaDef, SchemaId, Site, Split
 from crawlerai.db.private_models import PrivateBase
@@ -333,3 +333,78 @@ async def test_the_newest_active_version_of_a_schema_is_used(env: Env, server: S
     assert isinstance(outcome, Captured)
     async with aclosing(get_store("dev", env.settings)) as store:
         assert (await store.get_page(outcome.page_id)).schema_id == newer
+
+
+async def _seed(env: Env, split: Split, host: str, fetch_result: Callable[..., FetchResult]) -> None:
+    """One captured page of `host` in `split`'s store."""
+    bundle = fetch_result(f"https://{host}/seed", body=_PAGE).bundle
+    async with aclosing(get_store(split, env.settings)) as store:
+        capture_id = await store.put_capture(bundle, "custom_store")
+        await store.put_page(
+            EvalPageRow(
+                capture_id=capture_id,
+                split=split,
+                schema_id=env.schema_ids[SCHEMA],
+                schema_name=SCHEMA,
+                page_kind="detail",
+                category="custom_store",
+            )
+        )
+
+
+async def _pages(env: Env, split: Split) -> list[EvalPageRow]:
+    async with aclosing(get_store(split, env.settings)) as store:
+        return await store.list_pages()
+
+
+OTHER_HOST = "other.eval-capture.example.test"
+
+
+@pytest.mark.parametrize(
+    ("split", "other"),
+    [
+        ("fresh", "hidden"),
+        ("fresh", "dev"),
+        ("hidden", "fresh"),
+        ("hidden", "dev"),
+        ("dev", "hidden"),
+        ("dev", "fresh"),
+    ],
+)
+async def test_a_host_with_pages_in_another_split_is_refused_before_any_fetch(
+    env: Env,
+    server: Server,
+    private_database_url: str,
+    fetch_result: Callable[..., FetchResult],
+    split: Split,
+    other: Split,
+) -> None:
+    # A host sits in one split only: fresh is sites nobody has seen, hidden is sites absent from dev (§16.1).
+    await _seed(env, other, HOST, fetch_result)
+    server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE)}
+    requests = [*_requests(server, "/p/1"), PageRequest(2, server.url("/p/1", OTHER_HOST), SCHEMA, "custom_store")]
+    connector = LoopbackConnector(server.port)
+
+    with pytest.raises(EvalCliError) as error:
+        await run_capture(env.settings, split, requests, None, connector)
+
+    assert str(error.value) == (
+        f"1 host(s) of the input already have pages in another split ({other}: 1); a host belongs to one split"
+        " (ARCHITECTURE §16.1), so nothing was fetched"
+    )
+    assert server.requests == []
+    assert await _pages(env, split) == []
+
+
+async def test_a_host_already_in_the_same_split_is_captured_again(
+    env: Env, server: Server, private_database_url: str, fetch_result: Callable[..., FetchResult]
+) -> None:
+    await _seed(env, "fresh", HOST, fetch_result)
+    server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE)}
+
+    (outcome,) = await run_capture(
+        env.settings, "fresh", _requests(server, "/p/1"), None, LoopbackConnector(server.port)
+    )
+
+    assert isinstance(outcome, Captured)
+    assert len(await _pages(env, "fresh")) == 2
