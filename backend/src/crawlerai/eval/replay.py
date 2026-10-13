@@ -18,7 +18,7 @@ from crawlerai.db.models import ExtractionMode
 from crawlerai.eval.labels import from_pydantic, parse_labels
 from crawlerai.eval.metrics import ConfigFieldStatus, EvalCase, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
-from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, request_hash
+from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
 
@@ -38,14 +38,14 @@ class RecordedLLM:
         self._store = store
         self._live = live
 
-    async def complete_json(self, req: LLMRequest) -> LLMResponse:
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         key = request_hash(req)
         recorded = await self._store.llm_cache_get(key)
         if recorded is not None:
             return LLMResponse.model_validate_json(recorded)
         if self._live is None:
             raise RecordingMissing(f"no recorded response for {key}")
-        response = await self._live.complete_json(req)
+        response = await self._live.complete_json(req, check)
         await self._store.llm_cache_put(key, response.model_dump_json().encode())
         return response
 
