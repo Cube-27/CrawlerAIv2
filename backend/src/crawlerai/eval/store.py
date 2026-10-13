@@ -121,6 +121,9 @@ class EvalStore(Protocol):
 
     async def llm_cache_put(self, key: str, value: bytes) -> None: ...
 
+    async def aclose(self) -> None:
+        """Close the store's database connections."""
+
 
 def get_store(split: Split, settings: Settings) -> EvalStore:
     match split:
@@ -217,6 +220,9 @@ class _SqlEvalStore(ABC):
             return len(blob)
 
         return await asyncio.to_thread(write)
+
+    async def aclose(self) -> None:
+        await self._engine.dispose()
 
     @abstractmethod
     async def _capture_key(self, conn: AsyncConnection, capture_id: CaptureId) -> str | None:
