@@ -25,8 +25,12 @@ async def fetch_politely(
     policy: FetchPolicy,
     fetch: Fetch,
     limiter: HostLimiter,
+    *,
+    fetch_robots: Fetch,
 ) -> FetchResult | TaskResult:
-    """The fetched page, or the result the task ends this run with:
+    """The page as `fetch` fetched it, or the result the task ends this run with. robots.txt is fetched with
+    `fetch_robots`, a plain HTTP rung: through `acquire`, a robots.txt would classify as a shell and be fetched again
+    in the browser. The task ends this run with:
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page;
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
@@ -36,7 +40,7 @@ async def fetch_politely(
     site = (await conn.execute(select(Site.robots_snapshot, Site.crawl_delay_ms).where(Site.id == site_id))).one()
     robots = None
     if policy.respect_robots:
-        robots = await site_robots(conn, site_id, site.robots_snapshot, task.url, fetch)
+        robots = await site_robots(conn, site_id, site.robots_snapshot, task.url, fetch_robots)
         if robots is None:
             return Failed("robots_unreachable", transient=True, exhausted="blocked")
         if not robots.allows(task.url):

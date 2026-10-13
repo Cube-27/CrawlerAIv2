@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import FinishedOutcome, Job, JobKind, TaskOutcome
+from crawlerai.db.models import CaptureId, FinishedOutcome, Job, JobKind, TaskOutcome
 from crawlerai.db.queue import (
     ClaimedTask,
     LeaseLost,
@@ -49,17 +49,19 @@ URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 class Finished:
     outcome: FinishedOutcome
     reason: str | None = None  # why, when the outcome alone does not say: a `blocked` task's `robots`
+    capture_id: CaptureId | None = None  # the page the task fetched, if it fetched one
 
 
 @dataclass(frozen=True)
 class Failed:
     """A failure (`fail_task`). `after` is the delay the target asked for before a retry (a `Retry-After`, SPEC-02
-    §4.6); `exhausted` the outcome once no attempt is left."""
+    §4.6); `exhausted` the outcome once no attempt is left; `capture_id` the page the attempt fetched, if any."""
 
     error: str
     transient: bool
     after: timedelta | None = None
     exhausted: TaskOutcome = "failed"
+    capture_id: CaptureId | None = None
 
 
 @dataclass(frozen=True)
@@ -123,11 +125,13 @@ async def _execute(
         await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False)
         return
     match await handler(task, conn):
-        case Finished(outcome, reason):
-            await complete_task(conn, task, outcome, reason=reason)
-        case Failed(error, transient, after, exhausted):
+        case Finished(outcome, reason, capture_id):
+            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id)
+        case Failed(error, transient, after, exhausted, capture_id):
             text = _error_text(error, redact_urls=redact_urls)
-            await fail_task(conn, task, text, transient=transient, after=after, exhausted=exhausted)
+            await fail_task(
+                conn, task, text, transient=transient, after=after, exhausted=exhausted, capture_id=capture_id
+            )
         case Postpone(after):
             await release_task(conn, task, after=after)
         case unreachable:
