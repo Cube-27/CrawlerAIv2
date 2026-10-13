@@ -7,6 +7,7 @@ regexes are in the portable subset and CSS carries its XPath translation. Site s
 (C3); this module holds none.
 """
 
+import re
 from typing import Annotated, Any, Literal, Self
 
 from cssselect import HTMLTranslator, SelectorError
@@ -23,13 +24,11 @@ from pydantic import (
     model_validator,
 )
 
-from crawlerai.config_ir.portable_regex import check_pattern, check_replacement, compile_portable
+from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern, check_replacement
 from crawlerai.config_ir.xpath1 import check_xpath1
-from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, PageKind
+from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatus, PageKind
 from crawlerai.schemas.types import FieldType, Name
 
-# ARCHITECTURE §6 `extraction_config.field_status`, §8.3 step 4.
-FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
 # Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, a captured network body, an API response.
 JsonSource = Literal["jsonld", "js_state", "xhr", "api"]
 
@@ -47,7 +46,7 @@ _HTML_CSS = HTMLTranslator()
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
 
 # --- post ops -------------------------------------------------------------------------------------------------------
@@ -99,7 +98,7 @@ class RegexReplaceParams(_Model):
 
     @model_validator(mode="after")
     def _replacement_is_portable(self) -> Self:
-        check_replacement(self.repl, compile_portable(self.pattern))
+        check_replacement(self.repl, re.compile(self.pattern, PCRE_FLAGS))
         return self
 
 
@@ -228,8 +227,6 @@ class FieldSteps(_Model):
     """A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
     (SPEC-08 §4.7) once validated."""
 
-    model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
-
     steps: list[Step] = Field(min_length=1)
     status: FieldStatus
     yield_: Ratio | None = Field(default=None, alias="yield")
@@ -262,8 +259,6 @@ class Provenance(_Model):
 
 
 class ExtractionConfigIR(_Model):
-    model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
-
     ir_version: Literal["1"]
     site: str = Field(min_length=1)
     schema_: SchemaRef = Field(alias="schema")

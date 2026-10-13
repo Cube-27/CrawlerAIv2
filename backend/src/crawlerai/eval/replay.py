@@ -14,8 +14,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
-from crawlerai.config_ir.model import FieldStatus
-from crawlerai.db.models import ExtractionMode
+from crawlerai.db.models import ExtractionMode, FieldStatus
 from crawlerai.eval.labels import from_pydantic, parse_labels
 from crawlerai.eval.metrics import EvalCase, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore

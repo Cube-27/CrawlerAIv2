@@ -14,9 +14,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
-from crawlerai.config_ir.model import FieldStatus
 from crawlerai.core.capture import BlockClass
-from crawlerai.db.models import EvalCategory, ExtractionMode, PageKind, Split
+from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, Split
 from crawlerai.eval.labels import FieldLabel, LabelRow, Labels, parse_labels
 from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.types import Evidence

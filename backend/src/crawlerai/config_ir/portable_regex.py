@@ -6,13 +6,15 @@ not translated. The check is a conservative scan (Python `re` syntax; PCRE2 `pcr
 engines share are refused too.
 
 Both engines treat `\\d`, `\\w`, `\\s` and `\\b` as ASCII classes only when Python compiles with `re.ASCII` (PCRE2 does
-without the UCP option), so `compile_portable` does.
+without the UCP option), so Python compiles these patterns with `PCRE_FLAGS`.
 """
 
 import re
 import string
 from typing import Final
 
+# The flags that give Python PCRE2's reading of a portable pattern.
+PCRE_FLAGS: Final = re.ASCII
 # Escapes with the same meaning in both: classes, anchors other than the end of string, and control characters.
 _LETTER_ESCAPES: Final = frozenset("dDsSwWbBntrfA")
 # Inside a class `\b` is a backspace in Python and PCRE, but reads like a word boundary; refused there.
@@ -35,19 +37,13 @@ class RegexError(ValueError):
     """A pattern or replacement outside the portable subset; the message names the construct."""
 
 
-def compile_portable(pattern: str) -> re.Pattern[str]:
-    """`pattern` compiled with the flags that give Python PCRE2's reading of it."""
-    check_pattern(pattern)
-    return re.compile(pattern, re.ASCII)
-
-
 def check_pattern(pattern: str) -> str:
     """`pattern` unchanged when Python compiles it and both engines read every construct in it alike."""
     position = 0
     while position < len(pattern):
         position = _skip_construct(pattern, position)
     try:
-        re.compile(pattern, re.ASCII)
+        re.compile(pattern, PCRE_FLAGS)
     except re.error as error:
         raise RegexError(f"not a valid pattern: {error}") from None
     return pattern

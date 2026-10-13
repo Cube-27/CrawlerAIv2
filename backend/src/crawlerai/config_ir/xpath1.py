@@ -24,6 +24,7 @@ XPATH1_FUNCTIONS: Final = frozenset(
 )
 # XPath 1.0 §2.3 NodeType: written like a call, but a node test.
 _NODE_TYPES: Final = frozenset({"comment", "text", "processing-instruction", "node"})
+_CALLABLE: Final = XPATH1_FUNCTIONS | _NODE_TYPES
 # XPath 1.0 §3.7 OperatorName.
 _OPERATOR_NAMES: Final = frozenset({"and", "or", "mod", "div"})
 # XPath 1.0 §3.7 ExprToken. NCName is approximated by word characters plus `.` and `-` (XML Names §3).
@@ -81,5 +82,5 @@ def _tokens(expression: str) -> Iterator[tuple[str, str]]:
 def _check_name(name: str, *, calls: bool) -> None:
     if ":" in name:
         raise XPath1Error(f"namespace prefix in {name}")
-    if calls and name not in XPATH1_FUNCTIONS | _NODE_TYPES:
+    if calls and name not in _CALLABLE:
         raise XPath1Error(f"{name}() is not an XPath 1.0 function")
