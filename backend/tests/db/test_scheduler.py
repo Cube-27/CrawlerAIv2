@@ -3,18 +3,20 @@
 import asyncio
 from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Job, JobEvent, JobId, Project, UrlTask
+from crawlerai.db.models import Capture, Job, JobEvent, JobId, Project, Site, UrlTask
 from crawlerai.db.queue import claim_tasks
-from crawlerai.scheduler.loop import PERIODIC, Periodic, run_scheduler
+from crawlerai.scheduler.loop import Periodic, periodic, run_scheduler
+from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
 
@@ -51,7 +53,7 @@ async def _scheduler_until(
         await loop
 
 
-async def test_the_scheduler_requeues_tasks_whose_lease_expired(engine: AsyncEngine) -> None:
+async def test_the_scheduler_requeues_tasks_whose_lease_expired(engine: AsyncEngine, tmp_path: Path) -> None:
     await _job(engine, 2)
     async with engine.begin() as conn:
         expired, live = await claim_tasks(conn, "a-worker-that-died", 2)
@@ -66,9 +68,49 @@ async def test_the_scheduler_requeues_tasks_whose_lease_expired(engine: AsyncEng
     async def requeued() -> bool:
         return (await statuses())[expired.id][0] == "queued"
 
-    await _scheduler_until(engine, PERIODIC, requeued)
+    await _scheduler_until(engine, periodic(FsStore(tmp_path)), requeued)
 
     assert await statuses() == {expired.id: ("queued", "lease expired"), live.id: ("claimed", None)}
+
+
+async def test_the_scheduler_expires_production_captures_past_expires_at(engine: AsyncEngine, tmp_path: Path) -> None:
+    store = FsStore(tmp_path)
+    key = "captures/2026/09/expired.bundle.zst"
+    store.put(key, b"blob")
+    url = "https://example.test/p/1"
+    default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
+    async with engine.begin() as conn:
+        site_id = (
+            await conn.execute(
+                insert(Site).values(project_id=default_project, host="retention.example.test").returning(Site.id)
+            )
+        ).scalar_one()
+        values = {"site_id": site_id, "url": url, "final_url": url, "method": "http", "status_code": 200}
+        await conn.execute(
+            insert(Capture).values(
+                **values,
+                fetched_at=datetime(2026, 9, 1, tzinfo=UTC),
+                block_class="ok",
+                object_key=key,
+                html_sha256="0" * 64,
+                size_bytes=4,
+                duration_ms=5,
+                expires_at=func.now() - timedelta(seconds=1),
+            )
+        )
+
+    async def expired() -> bool:
+        async with engine.connect() as conn:
+            return (await conn.execute(select(func.count()).where(Capture.site_id == site_id))).scalar_one() == 0
+
+    try:
+        await _scheduler_until(engine, periodic(store), expired)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(delete(Capture).where(Capture.site_id == site_id))
+            await conn.execute(delete(Site).where(Site.id == site_id))
+
+    assert store.list("") == []
 
 
 async def test_entries_repeat_at_their_interval_and_a_failing_one_neither_stops_the_others_nor_commits(

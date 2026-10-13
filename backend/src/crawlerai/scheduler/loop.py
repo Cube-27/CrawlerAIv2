@@ -11,12 +11,14 @@ from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Final
+from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import release_expired_leases
+from crawlerai.scheduler.retention import expire_candidates, expire_captures
+from crawlerai.storage.base import ObjectStore
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +30,13 @@ class Periodic:
     run: Callable[[AsyncConnection], Awaitable[object]]
 
 
-# `expire_captures` and `expire_candidates` (1 h) arrive with the retention jobs (SPEC-01 PR 8).
-PERIODIC: Final = (Periodic("release_expired_leases", timedelta(minutes=1), release_expired_leases),)
+def periodic(store: ObjectStore) -> tuple[Periodic, ...]:
+    """The scheduler's entries (SPEC-01 §4.3). `store` is the main object store, where production captures live."""
+    return (
+        Periodic("release_expired_leases", timedelta(minutes=1), release_expired_leases),
+        Periodic("expire_captures", timedelta(hours=1), partial(expire_captures, store=store)),
+        Periodic("expire_candidates", timedelta(hours=1), expire_candidates),
+    )
 
 
 async def run_scheduler(settings: Settings, entries: Sequence[Periodic], stop: asyncio.Event) -> None:

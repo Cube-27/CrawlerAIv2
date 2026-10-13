@@ -4,13 +4,15 @@ import shutil
 import subprocess
 import sysconfig
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
 from crawlerai import cli
 from crawlerai.cli import main
 from crawlerai.core.settings import Settings
-from crawlerai.scheduler.loop import PERIODIC
+from crawlerai.scheduler.loop import periodic
+from crawlerai.storage.fs import FsStore
 
 
 def test_version_flag_prints_package_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -55,26 +57,49 @@ def test_installed_console_script_writes_identical_lf_only_openapi_on_every_run(
     assert runs[0].endswith(b"}\n")
 
 
-@pytest.mark.parametrize(
-    ("command", "loop", "table"),
-    [("worker", "run_worker", {}), ("scheduler", "run_scheduler", PERIODIC)],
-)
-def test_a_process_command_runs_its_loop_with_settings_from_the_environment(
-    monkeypatch: pytest.MonkeyPatch, command: str, loop: str, table: object
-) -> None:
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
+def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    _environment(monkeypatch)
     calls: list[tuple[str, object, bool]] = []
 
-    async def run(settings: Settings, handlers_or_entries: object, stop: asyncio.Event) -> None:
-        calls.append((settings.database_url.get_secret_value(), handlers_or_entries, stop.is_set()))
+    async def run(settings: Settings, handlers: object, stop: asyncio.Event) -> None:
+        calls.append((settings.database_url.get_secret_value(), handlers, stop.is_set()))
 
-    monkeypatch.setattr(cli, loop, run)
+    monkeypatch.setattr(cli, "run_worker", run)
 
-    main([command])
+    main(["worker"])
 
-    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", table, False)]
+    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", {}, False)]
 
 
-def test_the_scheduler_releases_expired_leases_every_minute() -> None:
-    assert [(entry.name, entry.interval) for entry in PERIODIC] == [("release_expired_leases", timedelta(minutes=1))]
+def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _environment(monkeypatch)
+    calls: list[tuple[str, object, bool]] = []
+
+    async def run(settings: Settings, entries: object, stop: asyncio.Event) -> None:
+        calls.append((settings.database_url.get_secret_value(), entries, stop.is_set()))
+
+    monkeypatch.setattr(cli, "run_scheduler", run)
+    monkeypatch.setattr(cli, "open_store", lambda url: ("store at", url))
+    monkeypatch.setattr(cli, "periodic", lambda store: ("entries for", store))
+
+    main(["scheduler"])
+
+    expected_entries = ("entries for", ("store at", "fs:///srv/objects"))
+    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", expected_entries, False)]
+
+
+def _environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
+
+
+def test_the_scheduler_releases_leases_every_minute_and_expires_captures_and_candidates_hourly() -> None:
+    entries = periodic(FsStore(Path("unused")))
+
+    assert [(entry.name, entry.interval) for entry in entries] == [
+        ("release_expired_leases", timedelta(minutes=1)),
+        ("expire_captures", timedelta(hours=1)),
+        ("expire_candidates", timedelta(hours=1)),
+    ]
