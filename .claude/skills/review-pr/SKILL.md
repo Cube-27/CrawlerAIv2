@@ -79,8 +79,9 @@ these verdicts:
 
 Never approve with an Act-on item open, and never approve on red CI. Link each Act-on item to the code at the head
 commit (`https://github.com/<owner>/<repo>/blob/<full-sha>/<path>#L<a>-L<b>`). Send the verdict and the Act-on list
-to the implementor with `herdr agent prompt <implementor> "…"`, then exit. There is no re-review (owner,
-2026-10-13).
+to the implementor with `herdr agent prompt <implementor> "…"`. Then close your own pane:
+`herdr pane close "$HERDR_PANE_ID"`. An idle reviewer pane holds about 400 MB, and idle reviewers caused low-memory
+reaping. There is no re-review (owner, 2026-10-13).
 
 End the comment with one line naming the category of each Act-on item, for example
 `Categories: path-traversal, sonar-gate`. The orchestrator tallies these lines to spot recurring mistakes.
