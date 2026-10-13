@@ -2443,3 +2443,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Raw HTTP.
 - Why: The spec names the official SDKs.
 - Reversible: yes
+
+### D-0378 — Row-level readiness
+- Date: 2026-10-13 · Spec/PR: none, workflow chore (#75) · Status: confirmed
+- Decision: A row is ready when the code it touches is merged, or what it needs from unmerged work is fully specified, even if its spec's other dependencies or earlier rows aren't `done`. `/run-plan` §1.1, `/implement-pr` §0 and ACTIVE.md say so.
+- Alternatives: A row waits until its spec's dependencies and earlier rows are `done` (the old rule).
+- Why: The old rule left worker slots idle on rows whose inputs already existed.
+- Reversible: yes — restore the old rule in the three places.
+- Owner answer: owner direction, 2026-10-13.
