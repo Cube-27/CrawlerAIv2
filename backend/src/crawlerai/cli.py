@@ -6,7 +6,7 @@ import json
 import signal
 import sys
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from contextlib import aclosing, suppress
 from functools import partial
 from importlib.metadata import version
@@ -167,6 +167,7 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     capture = eval_commands.add_parser(
         "capture", help="fetch pages and store each as an unlabeled eval page of the split"
     )
+    capture.set_defaults(handler=_run_eval, eval_handler=_run_eval_capture)
     capture.add_argument("--split", choices=splits, required=True)
     capture.add_argument("--schema", required=True, help="the name of an active schema")
     capture.add_argument("--page-kind", choices=page_kinds, required=True)
@@ -175,12 +176,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     import_sites = eval_commands.add_parser(
         "import-sites", help="capture the pages of a site list (`<category> <schema> <url>` per line) into the split"
     )
+    import_sites.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_sites)
     import_sites.add_argument("--split", choices=splits, required=True)
     import_sites.add_argument("--file", type=Path, required=True)
     import_sites.add_argument("--pages-per-site", type=_positive_int, required=True)
     promote_command = eval_commands.add_parser(
         "promote", help="move the fresh sites whose pages are all checked into dev, keeping their labels"
     )
+    promote_command.set_defaults(handler=_run_eval, eval_handler=_run_eval_promote)
     # The one move §16.1 defines for fresh; hidden moves only by `rotate-hidden`.
     promote_command.add_argument("--from", dest="source", choices=["fresh"], required=True)
     promote_command.add_argument("--to", dest="target", choices=["dev"], required=True)
@@ -188,12 +191,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     rotate = eval_commands.add_parser(
         "rotate-hidden", help="move a fraction of the hidden sites, chosen per category, into dev"
     )
+    rotate.set_defaults(handler=_run_eval, eval_handler=_run_eval_rotate_hidden)
     rotate.add_argument("--fraction", type=_fraction, required=True)
     for name, help_ in (
         ("calibrate", "write backend/data/calibration.json from a dev eval run"),
         ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval run"),
     ):
         fit = eval_commands.add_parser(name, help=help_)
+        fit.set_defaults(handler=_run_eval, eval_handler=_run_eval_fit)
         # Every split is accepted here so that the refusal is the command's own, stated and tested (INV-02).
         fit.add_argument("--split", choices=splits, required=True, help="dev; any other split is refused")
         fit.add_argument("--run", type=uuid.UUID, required=True, help="the id of the dev eval run to fit on")
@@ -216,21 +221,25 @@ def _fraction(value: str) -> float:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _parser()
     args = parser.parse_args(argv)
-    command = _COMMANDS.get(args.command)
-    if command is not None:
-        command(parser, args)
+    # Each command's parser names its handler (`set_defaults(handler=...)`); no command runs nothing.
+    handler = getattr(args, "handler", None)
+    if handler is not None:
+        handler(parser, args)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="crawlerai")
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('crawlerai')}")
     commands = parser.add_subparsers(dest="command")
-    commands.add_parser("openapi", help="print the API's OpenAPI document as JSON")
-    commands.add_parser("worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM")
+    commands.add_parser("openapi", help="print the API's OpenAPI document as JSON").set_defaults(handler=_run_openapi)
+    commands.add_parser(
+        "worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM"
+    ).set_defaults(handler=_run_worker)
     commands.add_parser(
         "scheduler", help="run the scheduler: release expired leases, expire old data, re-check fetch methods"
-    )
+    ).set_defaults(handler=_run_scheduler)
     fetch = commands.add_parser("fetch", help="fetch one URL over HTTP into a capture bundle file")
+    fetch.set_defaults(handler=_run_fetch)
     fetch.add_argument("url")
     fetch.add_argument(
         "--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar), under this directory"
@@ -238,11 +247,15 @@ def _parser() -> argparse.ArgumentParser:
     schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
         dest="schemas_command", required=True
     )
-    schemas.add_parser("sync", help="insert the preset schema versions the database lacks (after migrating)")
+    schemas.add_parser(
+        "sync", help="insert the preset schema versions the database lacks (after migrating)"
+    ).set_defaults(handler=_run_schemas)
     data = commands.add_parser("data", help="the pinned data files of backend/data/manifest.json").add_subparsers(
         dest="data_command", required=True
     )
-    data.add_parser("fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256")
+    data.add_parser(
+        "fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256"
+    ).set_defaults(handler=_run_data)
     _add_eval_commands(commands)
     return parser
 
@@ -290,7 +303,7 @@ def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> Non
 
 def _run_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     try:
-        _EVAL_COMMANDS[args.eval_command](parser, args)
+        args.eval_handler(parser, args)
     except (EvalCliError, EvalNotFound, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
         parser.exit(2, f"crawlerai eval: {e}\n")
     except Exception as e:
@@ -325,25 +338,3 @@ def _run_eval_fit(_parser: argparse.ArgumentParser, args: argparse.Namespace) ->
     # Refused before any store is opened: a private split's run is never read here (C1).
     calibrate.require_dev(args.split)
     asyncio.run(_eval_fit(args.eval_command, EvalRunId(args.run)))
-
-
-Command = Callable[[argparse.ArgumentParser, argparse.Namespace], None]
-
-_COMMANDS: dict[str, Command] = {
-    "openapi": _run_openapi,
-    "worker": _run_worker,
-    "scheduler": _run_scheduler,
-    "fetch": _run_fetch,
-    "schemas": _run_schemas,
-    "data": _run_data,
-    "eval": _run_eval,
-}
-
-_EVAL_COMMANDS: dict[str, Command] = {
-    "capture": _run_eval_capture,
-    "import-sites": _run_eval_import_sites,
-    "promote": _run_eval_promote,
-    "rotate-hidden": _run_eval_rotate_hidden,
-    "calibrate": _run_eval_fit,
-    "fit-precedence": _run_eval_fit,
-}

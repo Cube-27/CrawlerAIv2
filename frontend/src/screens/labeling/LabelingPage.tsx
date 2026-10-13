@@ -216,15 +216,13 @@ function RowsEditor({
 }
 
 function LabelerActions({
-  page,
+  clearsCheck,
   disabled,
   onSave,
-}: Readonly<{ page: PageDetail; disabled: boolean; onSave: (status: LabelStatus) => void }>) {
+}: Readonly<{ clearsCheck: boolean; disabled: boolean; onSave: (status: LabelStatus) => void }>) {
   return (
     <>
-      {page.status === "checked" ? (
-        <p className="text-sm text-muted">A labeler pass clears the check.</p>
-      ) : null}
+      {clearsCheck ? <p className="text-sm text-muted">A labeler pass clears the check.</p> : null}
       <div className="flex flex-wrap gap-2">
         <Button
           variant="secondary"
@@ -250,15 +248,15 @@ function LabelerActions({
 
 function CheckerActions({
   blocked,
-  saving,
+  disabled,
   onSave,
-}: Readonly<{ blocked: string | null; saving: boolean; onSave: (status: LabelStatus) => void }>) {
+}: Readonly<{ blocked: string | null; disabled: boolean; onSave: (status: LabelStatus) => void }>) {
   return (
     <>
       {blocked === null ? null : <p className="text-sm">{blocked}</p>}
       <div>
         <Button
-          isDisabled={saving || blocked !== null}
+          isDisabled={disabled}
           onPress={() => {
             onSave("checked");
           }}
@@ -288,6 +286,7 @@ function PageEditor({
   const [pass, setPass] = useState<Pass>("labeler");
   const [labeler, setLabeler] = useState(page.labeler ?? "");
   const [checker, setChecker] = useState("");
+  const checkerBlocked = checkerBlockReason(page, checker);
 
   function save(status: LabelStatus): void {
     const built = toLabels({
@@ -367,14 +366,14 @@ function PageEditor({
           </TextField>
           {pass === "labeler" ? (
             <LabelerActions
-              page={page}
+              clearsCheck={page.status === "checked"}
               disabled={saver.saving || labeler.trim() === ""}
               onSave={save}
             />
           ) : (
             <CheckerActions
-              blocked={checkerBlockReason(page, checker)}
-              saving={saver.saving}
+              blocked={checkerBlocked}
+              disabled={saver.saving || checkerBlocked !== null}
               onSave={save}
             />
           )}

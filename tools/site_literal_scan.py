@@ -369,28 +369,20 @@ def paths_to_scan(root: Path, tracked: list[str], *, staged: bool) -> list[str]:
     return [path for path in tracked if (root / path).is_file()]
 
 
-@dataclass(frozen=True)
-class Scanner:
-    """What decides whether a host in a file is a finding: the allowlist, the TLDs and the repository's own names."""
-
-    allowlist: Allowlist
-    tlds: frozenset[str]
-    repo_names: RepoNames
-
-    def findings(self, path: str, text: str) -> list[str]:
-        """One `path:line: host` per host not allowed, once per line."""
-        reported: dict[tuple[int, str], None] = {}
-        for number, segment in segments_of(path, text):
-            for host in hosts_in(segment, self.tlds, self.repo_names):
-                if not self.allowlist.allows(host):
-                    reported.setdefault((number, host))
-        return [f"{path}:{number}: {host}" for number, host in reported]
+def file_findings(path: str, text: str, allowlist: Allowlist, tlds: frozenset[str], repo_names: RepoNames) -> list[str]:
+    """One `path:line: host` per host the allowlist doesn't allow, once per line."""
+    reported: dict[tuple[int, str], None] = {}
+    for number, segment in segments_of(path, text):
+        for host in hosts_in(segment, tlds, repo_names):
+            if (number, host) not in reported and not allowlist.allows(host):
+                reported[number, host] = None
+    return [f"{path}:{number}: {host}" for number, host in reported]
 
 
 def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool) -> tuple[list[str], int]:
     """Return the findings and the number of files scanned."""
     tracked = tracked_files(root)
-    scanner = Scanner(allowlist, tlds, RepoNames.of(root, tracked))
+    repo_names = RepoNames.of(root, tracked)
     findings: list[str] = []
     scanned = 0
     for path in paths_to_scan(root, tracked, staged=staged):
@@ -400,7 +392,8 @@ def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool
         if b"\0" in data:
             continue
         scanned += 1
-        findings.extend(scanner.findings(path, data.decode("utf-8", errors="replace")))
+        text = data.decode("utf-8", errors="replace")
+        findings.extend(file_findings(path, text, allowlist, tlds, repo_names))
     return findings, scanned
 
 

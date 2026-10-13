@@ -19,13 +19,13 @@ GENERATED = frozenset({"frontend/src/api/schema.d.ts"})
 
 
 def source_files(root: Path) -> list[str]:
-    tracked = subprocess.run(  # noqa: S603
+    # Git writes paths as UTF-8 bytes; decoding them with the locale's encoding would misread non-ASCII names.
+    output = subprocess.run(  # noqa: S603
         ["git", "-C", str(root), "ls-files", "-z"],  # noqa: S607
         capture_output=True,
         check=True,
-        text=True,
-    ).stdout.split("\0")
-    return [path for path in tracked if path.endswith(SOURCE_SUFFIXES) and path not in GENERATED]
+    ).stdout.decode("utf-8")
+    return [path for path in output.split("\0") if path.endswith(SOURCE_SUFFIXES) and path not in GENERATED]
 
 
 def line_count(path: Path) -> int:

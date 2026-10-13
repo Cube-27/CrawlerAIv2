@@ -29,11 +29,11 @@ repos:
         entry: uv run --project backend --frozen ruff format --force-exclude
         language: system
         types_or: [python, pyi]
-      # C11: cognitive complexity of at most 15 per function, on the staged Python files. The hook runs from the repo
-      # root, where [tool.complexipy] in backend/pyproject.toml isn't read, so it passes the same limit.
+      # C11: cognitive complexity of at most 15 per function, on the staged Python files. complexipy runs from
+      # backend/ so it reads the limit from [tool.complexipy] there; the paths get a `../` prefix to match.
       - id: complexipy
         name: complexipy
-        entry: uv run --project backend --frozen complexipy --no-ignore --failed --max-complexity-allowed 15
+        entry: sh -c 'cd backend && for f; do set -- "$@" "../$f"; shift; done && exec uv run --frozen complexipy --no-ignore --failed "$@"' --
         language: system
         types: [python]
       # C3, INV-03: the index content of every staged file, with the same exemptions as CI.

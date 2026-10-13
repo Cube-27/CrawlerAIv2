@@ -64,11 +64,13 @@ GATES = re.compile(
     )
 )
 
-# The allowed form of each complexity setting, removed from a line before it is searched: complexipy's threshold
-# (`max-complexity-allowed = 15` in backend/pyproject.toml, or the flag of the same name), and the Oxlint rule in
-# frontend/vite.config.ts. Any other value, severity or form still matches GATES.
+# The allowed form of each complexity setting, removed from a line before it is searched: complexipy's threshold in
+# config (`max-complexity-allowed = 15` in backend/pyproject.toml), and the Oxlint rule at "error" with `max: 15`
+# (frontend/vite.config.ts), whatever the spacing. Any other value, severity or form, the command-line flag
+# included, still matches GATES: the limit is set in one place per language.
 ALLOWED = re.compile(
-    r'max-complexity-allowed(?: = |[ =])15(?![\w.])|"crawlerai/cognitive-complexity": \["error", \{ max: 15 \}\]'
+    r"max-complexity-allowed\s*=\s*15(?![\w.])"
+    r'|"crawlerai/cognitive-complexity"\s*:\s*\[\s*"error"\s*,\s*\{\s*max\s*:\s*15\s*\}\s*\]'
 )
 
 

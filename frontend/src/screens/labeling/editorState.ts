@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRevalidator } from "react-router";
 import { sameOriginClient } from "../../api/client";
 import {
@@ -28,7 +28,7 @@ export function pathOf({ row, name }: Target): string {
  * A problem's `detail` (RFC 9457), or null when the error body is not a problem: a proxy's HTML page, or FastAPI's own
  * validation errors, which carry a list.
  */
-export function problemDetail(error: unknown): string | null {
+function problemDetail(error: unknown): string | null {
   const detail =
     typeof error === "object" && error !== null ? (error as { detail?: unknown }).detail : null;
   return typeof detail === "string" ? detail : null;
@@ -67,20 +67,15 @@ function withField(draft: Draft, at: Target, field: FieldDraft): Draft {
   };
 }
 
-// Rows have no identity in the labels document, so the form gives each one a key of its own, for React only.
-let lastRowKey = 0;
-function rowKey(): number {
-  lastRowKey += 1;
-  return lastRowKey;
-}
-
 /** The labels being edited, the field that page clicks fill, and the listing rows' keys. */
 export function useDraft(page: PageDetail, firstName: string | undefined) {
   const [draft, setDraft] = useState<Draft>(() =>
     draftFrom(page.page_kind, page.fields, page.labels),
   );
-  const [rowKeys, setRowKeys] = useState<number[]>(() => draft.rows.map(rowKey));
-  const [target, setTarget] = useState<Target | null>(
+  // Rows have no identity in the labels document, so the form numbers them, for React's keys only.
+  const rowsMade = useRef(draft.rows.length);
+  const [rowKeys, setRowKeys] = useState<number[]>(() => draft.rows.map((_row, i) => i));
+  const [target, setTarget] = useState<Target | null>(() =>
     firstName === undefined ? null : { row: null, name: firstName },
   );
 
@@ -94,12 +89,13 @@ export function useDraft(page: PageDetail, firstName: string | undefined) {
 
   function pick({ text, locator }: Pick): void {
     if (target === null) return;
-    const field = fieldOf(draft, target);
+    const field = fieldAt(target);
     if (field !== undefined) setField(target, { ...field, rawText: text, locator });
   }
 
   function addRow(): void {
-    const key = rowKey();
+    const key = rowsMade.current;
+    rowsMade.current += 1;
     setDraft((current) => ({
       ...current,
       rows: [...current.rows, newRow(page.page_kind, page.fields)],

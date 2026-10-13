@@ -67,6 +67,8 @@ def test_checks_without_gates_pass(tmp_path: Path) -> None:
         # The complexity check with any threshold but 15, or with complexipy's ratchet or report-only modes.
         ("backend/pyproject.toml", "max-complexity-allowed = 20"),
         ("Makefile", "\tcd backend && uv run complexipy --max-complexity-allowed 16"),
+        # The limit is set only in config: a flag would be a second place to change it.
+        (".pre-commit-config.yaml", "        entry: uv run complexipy --max-complexity-allowed 15"),
         ("Makefile", "\tcd backend && uv run complexipy --max-complexity-allowed=150"),
         ("backend/pyproject.toml", "snapshot-create = true"),
         (".github/workflows/ci.yml", "      - run: uv run complexipy --snapshot-ignore"),
@@ -135,11 +137,12 @@ def test_the_complexity_limit_of_15_and_the_file_length_warning_pass(tmp_path: P
     root = make_root(
         tmp_path,
         {
-            "backend/pyproject.toml": "[tool.complexipy]\nmax-complexity-allowed = 15\nfailed = true\n",
+            "backend/pyproject.toml": "[tool.complexipy]\nmax-complexity-allowed=15\nfailed = true\n",
             "Makefile": "check-complexity:\n\tcd backend && uv run complexipy --no-ignore\n",
             "frontend/vite.config.ts": (
                 '    jsPlugins: [{ name: "crawlerai", specifier: "./lint/cognitive-complexity.js" }],\n'
                 '      "crawlerai/cognitive-complexity": ["error", { max: 15 }],\n'
+                '      "crawlerai/cognitive-complexity": [ "error", {max:15} ],\n'
             ),
             ".github/workflows/ci.yml": "      - run: python3 tools/file_length.py\n",
         },

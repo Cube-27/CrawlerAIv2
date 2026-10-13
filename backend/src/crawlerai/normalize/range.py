@@ -196,7 +196,7 @@ def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[st
     return re.compile("|".join(alternatives), re.IGNORECASE), codes
 
 
-def _around_amount(bound: str) -> tuple[str, str, str] | None:
+def _around_amount(bound: str) -> Parts | None:
     """`bound` as (text before, amount, text after), or `None` unless it holds exactly one amount."""
     amounts = list(_AMOUNT.finditer(bound))
     if len(amounts) != 1:
