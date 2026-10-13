@@ -19,7 +19,7 @@ async function storedSchemaTypes(client: ApiClient, schemaId: string): Promise<F
     const { data } = await client.GET("/v1/schemas/{schema_id}", {
       params: { path: { schema_id: schemaId } },
     });
-    return data?.fields ?? {};
+    return parseFieldTypes(data?.fields);
   } catch {
     return {};
   }

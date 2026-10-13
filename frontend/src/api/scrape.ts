@@ -1,7 +1,6 @@
-/** `POST /v1/scrape` and `GET /v1/schemas/{schema_id}` as SPEC-07 §4.4 and §4.6 define them, narrowed by hand until
- * SPEC-07 PRs 4–7 put them in `openapi.json`. The module augmentation below adds them to the generated `paths`, so the
- * calls go through the authenticated client (and its 401 handling); delete it, and these types, once `make
- * api-client` generates them. */
+/** `POST /v1/scrape` as SPEC-07 §4.4 defines it, narrowed by hand until SPEC-07 PRs 4–6 put it in `openapi.json`. The
+ * module augmentation below adds it to the generated `paths`, so the call goes through the authenticated client (and
+ * its 401 handling); delete it, and these types, once `make api-client` generates it. */
 import type { FieldResult, FieldTypeSpec } from "./field";
 
 export type ScrapeFormat = "markdown" | "html" | "raw_html" | "links" | "metadata" | "records";
@@ -117,7 +116,7 @@ interface JsonBody<T> {
   content: { "application/json": T };
 }
 
-/** Any error answer: an RFC 9457 problem (SPEC-07 §4.3), read by `parseProblem`. */
+/** Any error answer: an RFC 9457 problem (SPEC-07 §4.3), read by `problemOf`. */
 interface ProblemBody {
   headers: Readonly<Record<string, unknown>>;
   content: { "application/problem+json": unknown };
@@ -131,14 +130,6 @@ declare module "./schema" {
         parameters: NoParameters;
         requestBody: { content: { "application/json": ScrapeRequest } };
         responses: { 200: JsonBody<ScrapeResponse>; default: ProblemBody };
-      };
-    };
-    "/v1/schemas/{schema_id}": {
-      parameters: NoParameters;
-      get: {
-        parameters: Omit<NoParameters, "path"> & { path: { schema_id: string } };
-        requestBody?: never;
-        responses: { 200: JsonBody<SchemaSummary>; default: ProblemBody };
       };
     };
   }
