@@ -117,7 +117,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | Schema models, registry, presets, sync | done (#43) | C3 `schema_org` exemption tightened in #48 (D-0248). |
 | 2 | Normalizer base, dispatcher, text, url | done (#47) | |
 | 3 | money (CLDR via Babel + price-parser) | todo | |
-| 4 | enum + vocab framework + availability `en` | todo | |
+| 4 | enum + vocab framework + availability `en` | done (#54) | Follow-up for SPEC-05 or a preset bump: `commerce_detail` availability is `schema:ItemAvailability`, so DOM availability text won't normalize unless the field also reads `type:availability`. |
 | 5 | date/datetime | todo | |
 | 6 | identifier | todo | |
 | 7 | Data manifest + GeoNames fetch + location | todo | |

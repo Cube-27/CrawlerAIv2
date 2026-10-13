@@ -1,0 +1,14 @@
+[
+  "BackOrder",
+  "Discontinued",
+  "InStock",
+  "InStoreOnly",
+  "LimitedAvailability",
+  "MadeToOrder",
+  "OnlineOnly",
+  "OutOfStock",
+  "PreOrder",
+  "PreSale",
+  "Reserved",
+  "SoldOut"
+]
