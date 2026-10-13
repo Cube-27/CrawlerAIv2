@@ -12,7 +12,7 @@ from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import SLOW_DOWN
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
+from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult, policy_with_attempts
 from crawlerai.db.models import FetchMethod, Site, SiteId
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
@@ -33,11 +33,13 @@ async def acquire(url: str, policy: FetchPolicy, remembered: FetchMethod, rungs:
     every attempt, in its bundle's manifest too."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
+    kept, attempts, duration_ms = result, result.attempts, result.duration_ms
     if policy.method_hint == "auto" and method == "http" and _browser_may_pass(result):
         retry = await rungs.browser(url, policy)
-        kept = retry if retry.block_class == "ok" else result
-        result = _with_attempts(kept, result.attempts + retry.attempts, result.duration_ms + retry.duration_ms)
-    return _with_attempts(result, result.attempts, result.duration_ms)
+        if retry.block_class == "ok":
+            kept = retry
+        attempts, duration_ms = attempts + retry.attempts, duration_ms + retry.duration_ms
+    return _with_attempts(kept, attempts, duration_ms)
 
 
 def _browser_may_pass(result: FetchResult) -> bool:
@@ -48,7 +50,7 @@ def _browser_may_pass(result: FetchResult) -> bool:
 
 def _with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], duration_ms: int) -> FetchResult:
     manifest = result.bundle.manifest
-    fetch_policy = {**manifest.fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
+    fetch_policy = policy_with_attempts(manifest.fetch_policy, attempts)
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"fetch_policy": fetch_policy})})
     return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts)
 

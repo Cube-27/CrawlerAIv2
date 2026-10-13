@@ -2,12 +2,12 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveFloat, PositiveInt, model_validator
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-__all__ = ["AttemptRecord", "BlockClass", "FetchPolicy", "FetchResult"]
+__all__ = ["AttemptRecord", "BlockClass", "FetchPolicy", "FetchResult", "policy_with_attempts"]
 
 
 class _Frozen(BaseModel):
@@ -56,3 +56,11 @@ class FetchResult(_Frozen):
     @property
     def block_class(self) -> BlockClass:
         return self.bundle.manifest.block_class
+
+
+def policy_with_attempts(
+    fetch_policy: dict[str, JsonValue], attempts: tuple[AttemptRecord, ...]
+) -> dict[str, JsonValue]:
+    """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it
+    (SPEC-02 §4.4)."""
+    return {**fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
