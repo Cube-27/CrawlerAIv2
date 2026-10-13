@@ -4032,3 +4032,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: discover rows from listing samples in PR 5.
 - Why: it needs listing records and successive captured requests, which nothing produces yet; §6 tests pagination on execution only.
 - Reversible: yes
+
+### D-0605 — The release check runs on the config's validated-on captures
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 11 (#124) · Status: decided
+- Decision: The release check runs on the `provenance.validated_on` captures that are still stored and have a record of the config's schema version (`held_out.load_captures`); a field with no engine value on any of them is `manual`.
+- Alternatives: The site's 8 most recent extracted pages (as a correction validates).
+- Why: §12.3 checks the exported config on its held-out pages; an expired page can only make fields `manual`.
+- Reversible: yes
+
+### D-0606 — `platform_draft` keeps every step of a field, in order
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 11 (#124) · Status: decided
+- Decision: Each field is `{steps, manual}`: steps in IR order as `xpath` (CSS as its translation, `attr` as `@name`), `regex` or `jsonpath`/`jsonld`, post ops as in the IR; a listing is `{row_xpath, fields, next: {steps, manual}}`; the draft carries `draft: true`, `regex_flags: "u"` and `api_recipe` as stored, and no `params` member.
+- Alternatives: One `{xpath, regex?, params?, post}` per field (SPEC-08 §4.11 text).
+- Why: The first valid step wins (§12.1), so one selector per field would export something other than what the engine runs; the IR has no named params outside `api_recipe`, whose PHP hint is SPEC-09 PR 7. A draft until OPEN_QUESTIONS #1.
+- Reversible: yes
+
+### D-0607 — One release check, on the IR, for both export formats
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 11 (#124) · Status: decided
+- Decision: The release check runs on the IR; the draft's CSS-as-XPath and `attr`-as-`@name` steps read the same values in the release executor (tested).
+- Alternatives: Rewrite the IR into its XPath form and check that.
+- Why: One check, no IR-to-IR translation layer; INV-20 holds because the drafted steps are equivalent.
+- Reversible: yes
+
+### D-0608 — The `json` export marks `manual` in the report only
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 11 (#124) · Status: decided
+- Decision: The `json` export is the IR unchanged; `manual` per field is in the response's `release` report.
+- Alternatives: Add `manual` to the IR document.
+- Why: §4.11: `json` is the IR as stored, and the IR model forbids extra keys.
+- Reversible: yes
+
+### D-0609 — Exported regexes run with PHP `/u`; caseless patterns are ASCII
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 11 (#124) · Status: decided
+- Decision: Exported regexes run in PCRE2 UTF mode (`/u`, no UCP); the portable subset refuses a pattern that names the `i` flag and has a non-ASCII character or a `\xhh` escape above 0x7F.
+- Alternatives: No `/u` (`.` and classes match bytes, unlike Python).
+- Why: In UTF mode `.` and classes match code points as in Python, but PCRE2 folds case for non-ASCII letters and Python with `re.ASCII` does not. Settles the #95 follow-up (D-0463).
+- Reversible: yes
+
+### D-0610 — Config exports live in the configs router and service
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 11 (#124) · Status: decided
+- Decision: `POST /v1/configs/{id}/export` is in `api/routers/configs.py` and `services/configs.export`; `held_out.load_captures` shares `load_held_out`'s latest-extraction query and page assembly; the dispatcher is `config_ir/exporters/configs.py`, the draft `exporters/platform_draft.py`.
+- Alternatives: A separate router and loader (the PR's state before #123 merged); an `exporters/json.py`.
+- Why: One loader for held-out pages (C8); the `json` export is the IR itself.
+- Reversible: yes

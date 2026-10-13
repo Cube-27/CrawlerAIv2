@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 11 (#124), SPEC-09 PR 6 (#126), SPEC-08 PR 8. Next: SPEC-09 PR 7, SPEC-12 PR 6 (owner design check).
+- L1 complete (2026-10-14). Working on L2, filling slots with L3. In progress: SPEC-09 PR 6 (#126), SPEC-08 PR 8, SPEC-10 PR 2 (L3). Next: SPEC-09 PR 7, SPEC-12 PR 6 (owner design check).
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -184,7 +184,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 8 | Active-mode extraction (role C only for uncovered fields) | todo | |
 | 9 | Drift tracking + suspension + re-learn | done (#119) | D-0571–D-0576. Migration 0012 adds `extraction_config.drift_window`. `drift_margins.json` not committed: nothing is suspended until OQ #19 / D-0576 is answered. Follow-ups for PR 8: call `observe` + `record_run` after each active-config page and load the margins with `load_margins`; measure a listing's per-page yield the way §4.7 does (an empty listing page counts row fields as misses). |
 | 10 | Config API + operator corrections | done (#123) | D-0592–D-0598. `POST /v1/sites/{host}/learn` takes `{schema_id, force}` (D-0592). Follow-ups for PR 8: reuse `config_ir/held_out.py` for held-out pages (D-0597); decide whether a learning run may replace an operator's active config (D-0598). |
-| 11 | Exporters json/platform_draft + release check + export endpoint | todo | |
+| 11 | Exporters json/platform_draft + release check + export endpoint | done (#124) | D-0605–D-0610. Follow-up: a clarifying edit to SPEC-08 §4.11 for the `platform_draft` shape (D-0606). |
 | 12 | Record exporters (json/csv/markdown) | done (#115) | D-0544–D-0545. Follow-up for SPEC-10/12: CSV formula injection, if CSV is served as a download. |
 
 ## [SPEC-09 — API-backed pages: discovery, recipe binding (role D), validation, execution](../specs/SPEC-09-api-backed-pages.md)
