@@ -463,3 +463,47 @@ def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Pa
     result = run_scan(repo, "--staged", allowlist=[])
 
     assert (result.returncode, result.stdout) == (0, "site-literals: ok, 1 files scanned\n")
+
+
+# schema.org paths ending in a TLD (`.name`), joined at run time like the names above.
+PRODUCT_NAME = ".".join(["Product", "name"])
+BRAND_NAME = ".".join(["Product", "brand", "name"])
+OFFER_NAME = ".".join(["Offer", "name"])
+PRESET = (
+    "{\n"
+    f'  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},\n'
+    f'  "rows": {{"item": {{"fields": {{"brand": {{"schema_org": "{BRAND_NAME}"}}}}}}}},\n'
+    '  "price": {"schema_org": "Offer.price+priceCurrency"}\n'
+    "}\n"
+)
+
+
+def test_schema_org_paths_the_schema_documents_define_are_not_hosts(tmp_path: Path) -> None:
+    refs = f'A = "{PRODUCT_NAME.lower()}"\n# maps to {BRAND_NAME}\n'
+    repo = make_repo(tmp_path / "repo", {"schemas/presets/p.json": PRESET, "refs.py": refs})
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_schema_org_shapes_no_schema_document_defines_are_hosts(tmp_path: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo",
+        {
+            "schemas/presets/p.json": PRESET,
+            "q.json": f'{{"same_as": "{OFFER_NAME}"}}\n',  # another key
+            "broken.json": f'{{"schema_org": "{OFFER_NAME}"\n',  # not JSON
+            "refs.py": f'A = "{OFFER_NAME}"\nB = "shop.{PRODUCT_NAME}"\n',
+        },
+    )
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        f"broken.json:1: {OFFER_NAME.lower()}",
+        f"q.json:1: {OFFER_NAME.lower()}",
+        f"refs.py:1: {OFFER_NAME.lower()}",
+        f"refs.py:2: shop.{PRODUCT_NAME.lower()}",
+    ]

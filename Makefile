@@ -28,6 +28,7 @@ db-down:
 
 migrate:
 	cd backend && uv run alembic upgrade head
+	cd backend && uv run crawlerai schemas sync
 
 api:
 	cd backend && CRAWLERAI_ROLE=api uv run uvicorn --factory crawlerai.api.app:create_app --reload --port 8000

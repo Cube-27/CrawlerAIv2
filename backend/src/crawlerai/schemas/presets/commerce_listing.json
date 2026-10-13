@@ -1,0 +1,29 @@
+{
+  "name": "commerce_listing",
+  "version": 1,
+  "page_kind": "listing",
+  "fields": {
+    "title": {
+      "type": "text",
+      "required": true,
+      "description": "Product name shown in the listing row",
+      "schema_org": "Product.name"
+    },
+    "url": {
+      "type": "url",
+      "required": true,
+      "description": "URL of the product page the row links to",
+      "schema_org": "Product.url"
+    },
+    "price": {
+      "type": "money",
+      "description": "Price shown in the listing row, with its currency, when the row shows one",
+      "schema_org": "Offer.price+priceCurrency"
+    },
+    "next_page_url": {
+      "type": "url",
+      "scope": "page",
+      "description": "URL of the next page of this listing, when there is one"
+    }
+  }
+}

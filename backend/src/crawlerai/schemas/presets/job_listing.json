@@ -1,0 +1,29 @@
+{
+  "name": "job_listing",
+  "version": 1,
+  "page_kind": "listing",
+  "fields": {
+    "title": {
+      "type": "text",
+      "required": true,
+      "description": "Title of the job shown in the listing row",
+      "schema_org": "JobPosting.title"
+    },
+    "url": {
+      "type": "url",
+      "required": true,
+      "description": "URL of the job page the row links to",
+      "schema_org": "JobPosting.url"
+    },
+    "location": {
+      "type": "location",
+      "description": "Place where the job is based, when the row shows one",
+      "schema_org": "JobPosting.jobLocation"
+    },
+    "next_page_url": {
+      "type": "url",
+      "scope": "page",
+      "description": "URL of the next page of this listing, when there is one"
+    }
+  }
+}

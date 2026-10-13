@@ -1,0 +1,44 @@
+{
+  "name": "job_detail",
+  "version": 1,
+  "page_kind": "detail",
+  "fields": {
+    "title": {
+      "type": "text",
+      "required": true,
+      "description": "Title of the job, without the company name or location",
+      "schema_org": "JobPosting.title"
+    },
+    "company": {
+      "type": "text",
+      "required": true,
+      "description": "Name of the organization that is hiring",
+      "schema_org": "JobPosting.hiringOrganization.name"
+    },
+    "locations": {
+      "type": "list",
+      "item": { "type": "location" },
+      "required": true,
+      "description": "Places where the job is based, including whether it is remote",
+      "schema_org": "JobPosting.jobLocation"
+    },
+    "description": {
+      "type": "long_text",
+      "required": true,
+      "description": "Full description of the job: duties, requirements and benefits",
+      "schema_org": "JobPosting.description"
+    },
+    "apply_url": {
+      "type": "url",
+      "required": true,
+      "description": "URL where a candidate applies for the job",
+      "schema_org": "JobPosting.url"
+    },
+    "date_posted": {
+      "type": "date",
+      "required": true,
+      "description": "Date the job was first published",
+      "schema_org": "JobPosting.datePosted"
+    }
+  }
+}

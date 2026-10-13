@@ -10,7 +10,10 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - a token that is the dotted path of a tracked Python module is a module name;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
-  Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes.
+  Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
+- a token that is a schema.org property path some tracked schema document maps a field to (a `schema_org` value in a
+  JSON file, SPEC-04 §4.2, up to any `+`) is that path. The paths are read from the documents, as columns are read
+  from the schema.
 URL hosts are always checked.
 
 With `--public`, `--staged` (the pre-commit hook) scans only the files staged for commit, as the index holds
@@ -32,6 +35,7 @@ import argparse
 import ast
 import io
 import ipaddress
+import json
 import os
 import re
 import subprocess
@@ -159,6 +163,22 @@ def declarative_columns(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
                     yield table, string_arg(value) or target.id
 
 
+def schema_org_values(file: Path) -> Iterator[str]:
+    """The `schema_org` values of a JSON file's schema documents, at any depth; none when it does not parse."""
+    try:
+        stack = [json.loads(file.read_text(encoding="utf-8"))]
+    except (OSError, UnicodeDecodeError, ValueError):
+        return
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if isinstance(value := node.get("schema_org"), str):
+                yield value
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+
+
 @dataclass(frozen=True)
 class RepoNames:
     """Names the repository itself defines, which dotted tokens may refer to instead of a host."""
@@ -166,12 +186,14 @@ class RepoNames:
     extensions: frozenset[str]
     modules: frozenset[str]
     columns: frozenset[tuple[str, str]]
+    schema_paths: frozenset[str]
 
     @classmethod
     def of(cls, root: Path, paths: list[str]) -> "RepoNames":
         extensions: set[str] = set()
         modules: set[str] = set()
         columns: set[tuple[str, str]] = set()
+        schema_paths: set[str] = set()
         for path in paths:
             pure = PurePosixPath(path)
             if pure.suffix:
@@ -180,11 +202,15 @@ class RepoNames:
                 parts = [*pure.parent.parts, pure.stem] if pure.stem != "__init__" else list(pure.parent.parts)
                 modules.update(".".join(parts[start:]).lower() for start in range(len(parts)))
                 columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
-        return cls(frozenset(extensions), frozenset(modules), frozenset(columns))
+            if pure.suffix == ".json":
+                schema_paths.update(value.split("+")[0].lower() for value in schema_org_values(root / path))
+        return cls(frozenset(extensions), frozenset(modules), frozenset(columns), frozenset(schema_paths))
 
     def names(self, token: str) -> bool:
         labels = token.split(".")
-        return (len(labels) == 2 and labels[1] in self.extensions) or token in self.modules
+        return (
+            (len(labels) == 2 and labels[1] in self.extensions) or token in self.modules or token in self.schema_paths
+        )
 
     def without_column_references(self, text: str) -> str:
         """The text with each `table.column` reference to a column the schema defines blanked out."""

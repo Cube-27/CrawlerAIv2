@@ -1472,3 +1472,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: CORS on the API; a configured base URL (SPEC-12 PR 1's connect screen).
 - Why: No CORS and no connect screen exist yet.
 - Reversible: yes
+
+### D-0240 — `schema_org` and `vocab` are checked for syntax only until the schema.org file is in the manifest
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Decision: Syntax per schema.org naming (`schema:<Type>` / `type:<name>`); checking against the pinned vocabulary waits for SPEC-04 PR 7 (§4.6).
+- Alternatives: Commit the schema.org file now; hand-type the members.
+- Why: The file isn't fetched yet, and §4.6 says data files aren't committed.
+- Reversible: yes
+
+### D-0241 — Schema depth and naming rules
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Decision: A top-level field is depth 1 and each `item`/`fields` level adds 1, max 3. A list item needs no description; object sub-fields do. Schema and field names match `^[a-z][a-z0-9_]{0,63}$`.
+- Alternatives: Count only container levels; require item descriptions; free-form names.
+- Why: The most conservative reading; names are keys in records, configs and API payloads.
+- Reversible: yes
+
+### D-0242 — Presets sync through `crawlerai schemas sync`, run by `make migrate`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Decision: Not an Alembic data migration or a startup hook. It refuses (`PresetConflict`, nothing inserted) when a stored (name, version) differs from the file, belongs to a non-preset row, or is newer than the file.
+- Alternatives: A data migration; sync on API startup.
+- Why: The preset files stay the single source, and a changed file without a version bump fails loudly.
+- Reversible: yes
+
+### D-0243 — `create` inserts version 1; `new_version` inserts latest+1
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Decision: `create` refuses an existing name. `new_version(name, SchemaChanges, origin)` applies the given changes to the latest version, validates the whole document and inserts latest+1; older versions stay `active`. The function is `list_schemas`, not `list`.
+- Alternatives: `new_version` retires the previous version; `create` takes any version.
+- Why: Records and configs reference older versions; retiring is SPEC-07's decision.
+- Reversible: yes
+
+### D-0244 — The C3 scan reads `schema_org` paths from schema documents as non-hosts
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Decision: A dotted token is a schema.org path, not a host, when a tracked JSON schema document maps a field to it (up to any `+`). Extends D-0111.
+- Alternatives: A shape test on any `schema_org`-like value; an allowlist of paths (C4).
+- Why: Derived from the repo, as D-0111's columns are. A tightening is a follow-up (ACTIVE, SPEC-04 PR 1).
+- Reversible: yes
+
+### D-0245 — Preset mappings the spec leaves open
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Decision: `url` → `Product.url`, `image_url` → `Product.image`, `brand` → `Product.brand.name`; listings use the same row paths; `next_page_url` has no schema.org mapping.
+- Alternatives: `Offer.url`; `Product.brand`.
+- Why: schema.org `brand` is a `Brand`/`Organization`, so the text is its `name`; schema.org has no next-page property.
+- Reversible: yes
