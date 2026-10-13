@@ -38,7 +38,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 
 | ID | Title | Status |
 |---|---|---|
-| — | None open (answered in D-0234) | — |
+| D-0311 | GeoNames has no versioned download URL | needs-owner |
 
 ---
 
@@ -1967,4 +1967,61 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The URL path-segment pattern and the RFC 9535 bracket-notation builder are shared by the adapters.
 - Alternatives: A copy per adapter.
 - Why: C8: the same logic was needed twice.
+- Reversible: yes
+
+### D-0311 — GeoNames has no versioned download URL
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: needs-owner
+- Decision: Needed: a stable source for the four pinned GeoNames files (SPEC-04 §4.6). `download.geonames.org/export/dump/*` is rewritten daily, so the pinned sha256 (the 2026-10-13 snapshot) stops matching and `crawlerai data fetch` refuses ("the entry needs re-pinning").
+- Alternatives: (a) re-pin in a PR whenever a fetch is needed; (b) mirror the pinned snapshot as a release asset of this repo (CC BY 4.0 allows it with attribution) and point `url` at it; (c) an owner-run object-store mirror.
+- Why: Recommendation (b), a one-time owner action. Blocked: SPEC-05's first real run; tests use a synthetic gazetteer and CI never fetches.
+- Reversible: yes — change the manifest `url`.
+- Owner answer:
+
+### D-0312 — Fetched entries in the data manifest
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: A `"fetched": true` entry is absent from git: `data_manifest_check` allows it to be missing and checks its hash when present; `crawlerai data fetch` writes it only after the hash matches.
+- Alternatives: Commit the files.
+- Why: SPEC-04 §4.6 keeps the GeoNames files out of git.
+- Reversible: yes
+
+### D-0313 — The gazetteer is read from the source tree's `backend/data/geonames/`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: Read once per process from `backend/data/geonames/`, the rule calibration follows (`core.engine_version.data_dir`). Without the files, text location input raises `GazetteerMissing` ("run `crawlerai data fetch`"); input that declines on its own never loads it.
+- Alternatives: Decline every location silently.
+- Why: A missing deployment file should be loud. Follow-up for the image build: run `crawlerai data fetch` and ship `backend/data` (or a settings path) with `VERSION` and calibration.
+- Reversible: yes
+
+### D-0314 — Country codes are not read in free text
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: ISO 3166-1 codes are accepted only in structured `addressCountry` (alpha-2 or alpha-3), not in location text.
+- Alternatives: Match codes in text too.
+- Why: The conservative reading of SPEC-04 §4.4's "country name/code match": alpha-2 codes collide with ISO 3166-2 subdivision abbreviations and short words.
+- Reversible: yes
+
+### D-0315 — The country is not implied from the page context
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: `cctld_territory` and the page language never settle a homonym; the languages only choose which CLDR country names and `type:remote` phrases are read.
+- Alternatives: Prefer the page's territory.
+- Why: C7: no values from URL codes.
+- Reversible: yes
+
+### D-0316 — Every place name in location text must fit the value
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: Text naming places no single place fits (a city and a country it is not in, or two countries) is `Invalid("inconsistent")`. A city in several regions of one country, with no region named, gives country and locality with `region: null`.
+- Alternatives: Keep the first match.
+- Why: SPEC-04 §4.4 ("exists in exactly one country → Ok"); C7.
+- Reversible: yes
+
+### D-0317 — A structured address without `addressCountry` is read as text
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: It is read as the text "locality, region" through the text rules.
+- Alternatives: Decline it.
+- Why: The text rules already resolve or decline homonyms (§4.4).
+- Reversible: yes
+
+### D-0318 — `jobLocationType` is read as JSON-LD allows
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: decided
+- Decision: A string, an array of values, or a node object with `@id`; any one TELECOMMUTE value makes the job remote. Any other shape is not remote and never raises.
+- Alternatives: Accept strings only.
+- Why: JSON-LD 1.1 §4.1 and §4.3; SPEC-04 §4.7 (normalizers never raise on bad input).
 - Reversible: yes
