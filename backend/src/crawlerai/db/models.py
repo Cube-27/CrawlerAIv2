@@ -43,6 +43,8 @@ CandidateId = NewType("CandidateId", uuid.UUID)
 RecordId = NewType("RecordId", uuid.UUID)
 ExtractionConfigId = NewType("ExtractionConfigId", uuid.UUID)
 UsageEventId = NewType("UsageEventId", uuid.UUID)
+EvalPageId = NewType("EvalPageId", uuid.UUID)
+EvalRunId = NewType("EvalRunId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
@@ -66,44 +68,54 @@ ProgressiveMode = Literal["cold", "learning", "active"]
 UsageResource = Literal[
     "llm_calls", "llm_tokens_in", "llm_tokens_out", "browser_seconds", "proxy_bytes", "http_requests"
 ]
+# Evaluation splits and stratification categories (ARCHITECTURE §16.1). Dev cases live in this database; hidden and
+# fresh cases only in the private one (C1, `crawlerai.db.private_models`).
+Split = Literal["dev", "hidden", "fresh"]
+PrivateSplit = Literal["hidden", "fresh"]
+EvalCategory = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]
 
 
-def _one_of(column: str, values: Any) -> str:
+def one_of(column: str, values: Any) -> str:
     """The CHECK expression restricting `column` to the members of a `Literal`."""
     return f"{column} IN ({', '.join(repr(value) for value in get_args(values))})"
 
 
-class Base(DeclarativeBase):
-    type_annotation_map: ClassVar[dict[Any, Any]] = {
-        id_type: Uuid
-        for id_type in (
-            ProjectId,
-            ApiKeyId,
-            SiteId,
-            SchemaId,
-            JobId,
-            UrlTaskId,
-            JobEventId,
-            CaptureId,
-            ExtractionId,
-            CandidateId,
-            RecordId,
-            ExtractionConfigId,
-            UsageEventId,
-        )
-    }
-    metadata = MetaData(
-        naming_convention={
-            "pk": "pk_%(table_name)s",
-            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-            "uq": "uq_%(table_name)s_%(column_0_N_name)s",
-            "ck": "ck_%(table_name)s_%(constraint_name)s",
-            "ix": "ix_%(table_name)s_%(column_0_N_name)s",
-        }
+# Shared with the private eval database's models, so both databases name and type things alike.
+TYPE_ANNOTATION_MAP: dict[Any, Any] = {
+    id_type: Uuid
+    for id_type in (
+        ProjectId,
+        ApiKeyId,
+        SiteId,
+        SchemaId,
+        JobId,
+        UrlTaskId,
+        JobEventId,
+        CaptureId,
+        ExtractionId,
+        CandidateId,
+        RecordId,
+        ExtractionConfigId,
+        UsageEventId,
+        EvalPageId,
+        EvalRunId,
     )
+}
+NAMING_CONVENTION = {
+    "pk": "pk_%(table_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "ix": "ix_%(table_name)s_%(column_0_N_name)s",
+}
 
 
-def _created_at() -> Mapped[datetime]:
+class Base(DeclarativeBase):
+    type_annotation_map: ClassVar[dict[Any, Any]] = TYPE_ANNOTATION_MAP
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+def created_at_column() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -112,7 +124,7 @@ class Project(Base):
 
     id: Mapped[ProjectId] = mapped_column(primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(Text, unique=True)
-    created_at: Mapped[datetime] = _created_at()
+    created_at: Mapped[datetime] = created_at_column()
 
 
 class ApiKey(Base):
@@ -122,7 +134,7 @@ class ApiKey(Base):
     hashed_key: Mapped[str] = mapped_column(Text, unique=True)
     label: Mapped[str] = mapped_column(Text)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = _created_at()
+    created_at: Mapped[datetime] = created_at_column()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     webhook_secret: Mapped[str] = mapped_column(Text)
 
@@ -131,7 +143,7 @@ class Site(Base):
     __tablename__ = "site"
     __table_args__ = (
         CheckConstraint("host = lower(host)", name="host_lowercase"),
-        CheckConstraint(_one_of("fetch_method", FetchMethod), name="fetch_method"),
+        CheckConstraint(one_of("fetch_method", FetchMethod), name="fetch_method"),
         CheckConstraint("crawl_delay_ms >= 0", name="crawl_delay_ms_non_negative"),
     )
 
@@ -143,7 +155,7 @@ class Site(Base):
     proxy_pool: Mapped[str | None] = mapped_column(Text)
     robots_snapshot: Mapped[str | None] = mapped_column(Text)
     crawl_delay_ms: Mapped[int | None] = mapped_column(Integer)
-    created_at: Mapped[datetime] = _created_at()
+    created_at: Mapped[datetime] = created_at_column()
     fetch_method_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -154,10 +166,12 @@ class SchemaDef(Base):
         # The target of the (`schema_id`, `schema_version`) foreign keys below: a row naming a schema version names
         # the version that `schema_id` is (ARCHITECTURE §5.2).
         UniqueConstraint("id", "version"),
+        # The target of `eval_page`'s (`schema_id`, `schema_name`) foreign key.
+        UniqueConstraint("id", "name"),
         CheckConstraint("version >= 1", name="version_positive"),
-        CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(_one_of("origin", SchemaOrigin), name="origin"),
-        CheckConstraint(_one_of("status", SchemaStatus), name="status"),
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("origin", SchemaOrigin), name="origin"),
+        CheckConstraint(one_of("status", SchemaStatus), name="status"),
     )
 
     id: Mapped[SchemaId] = mapped_column(primary_key=True, default=uuid7)
@@ -181,8 +195,8 @@ class Capture(Base):
 
     __tablename__ = "capture"
     __table_args__ = (
-        CheckConstraint(_one_of("method", CaptureMethod), name="method"),
-        CheckConstraint(_one_of("block_class", BlockClass), name="block_class"),
+        CheckConstraint(one_of("method", CaptureMethod), name="method"),
+        CheckConstraint(one_of("block_class", BlockClass), name="block_class"),
         CheckConstraint("size_bytes >= 0", name="size_bytes_non_negative"),
         CheckConstraint("duration_ms >= 0", name="duration_ms_non_negative"),
         # `expire_captures` deletes rows past `expires_at`; dev captures never expire and stay out of the index.
@@ -211,9 +225,9 @@ class ExtractionConfig(Base):
         _schema_version_fk(),
         UniqueConstraint("site_id", "schema_id", "page_kind", "version"),
         CheckConstraint("version >= 1", name="version_positive"),
-        CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(_one_of("status", ConfigStatus), name="status"),
-        CheckConstraint(_one_of("origin", ConfigOrigin), name="origin"),
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("status", ConfigStatus), name="status"),
+        CheckConstraint(one_of("origin", ConfigOrigin), name="origin"),
         # ARCHITECTURE §6: one `active` config per (site, schema, page_kind).
         Index(
             "uq_extraction_config_active",
@@ -244,8 +258,8 @@ class ProgressiveState(Base):
     __tablename__ = "progressive_state"
     __table_args__ = (
         _schema_version_fk(),
-        CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(_one_of("mode", ProgressiveMode), name="mode"),
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("mode", ProgressiveMode), name="mode"),
         CheckConstraint("pages_extracted >= 0", name="pages_extracted_non_negative"),
     )
 
@@ -279,8 +293,8 @@ class UrlState(Base):
 class Job(Base):
     __tablename__ = "job"
     __table_args__ = (
-        CheckConstraint(_one_of("kind", JobKind), name="kind"),
-        CheckConstraint(_one_of("status", JobStatus), name="status"),
+        CheckConstraint(one_of("kind", JobKind), name="kind"),
+        CheckConstraint(one_of("status", JobStatus), name="status"),
     )
 
     id: Mapped[JobId] = mapped_column(primary_key=True, default=uuid7)
@@ -292,7 +306,7 @@ class Job(Base):
     webhook_url: Mapped[str | None] = mapped_column(Text)
     engine_version: Mapped[str] = mapped_column(Text)
     usage: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    created_at: Mapped[datetime] = _created_at()
+    created_at: Mapped[datetime] = created_at_column()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
@@ -301,9 +315,9 @@ class Job(Base):
 class UrlTask(Base):
     __tablename__ = "url_task"
     __table_args__ = (
-        CheckConstraint(_one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(_one_of("status", TaskStatus), name="status"),
-        CheckConstraint(_one_of("outcome", TaskOutcome), name="outcome"),
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("status", TaskStatus), name="status"),
+        CheckConstraint(one_of("outcome", TaskOutcome), name="outcome"),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint("depth >= 0", name="depth_non_negative"),
         Index(None, "status", "next_attempt_at", "priority"),
@@ -350,7 +364,7 @@ class UsageEvent(Base):
 
     __tablename__ = "usage_event"
     __table_args__ = (
-        CheckConstraint(_one_of("resource", UsageResource), name="resource"),
+        CheckConstraint(one_of("resource", UsageResource), name="resource"),
         CheckConstraint("quantity >= 0", name="quantity_non_negative"),
     )
 
@@ -369,7 +383,7 @@ class Extraction(Base):
 
     __tablename__ = "extraction"
     __table_args__ = (
-        CheckConstraint(_one_of("mode", ExtractionMode), name="mode"),
+        CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
         CheckConstraint("llm_calls >= 0", name="llm_calls_non_negative"),
     )
 
@@ -389,8 +403,8 @@ class Candidate(Base):
 
     __tablename__ = "candidate"
     __table_args__ = (
-        CheckConstraint(_one_of("normalize_status", NormalizeStatus), name="normalize_status"),
-        CheckConstraint(_one_of("source_kind", SourceKind), name="source_kind"),
+        CheckConstraint(one_of("normalize_status", NormalizeStatus), name="normalize_status"),
+        CheckConstraint(one_of("source_kind", SourceKind), name="source_kind"),
         # `expire_candidates` deletes rows older than 30 days.
         Index(None, "created_at"),
     )
@@ -407,7 +421,7 @@ class Candidate(Base):
     locator: Mapped[str] = mapped_column(Text)
     chosen: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     reject_reason: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = _created_at()
+    created_at: Mapped[datetime] = created_at_column()
 
 
 class Record(Base):
@@ -417,7 +431,7 @@ class Record(Base):
     __tablename__ = "record"
     __table_args__ = (
         _schema_version_fk(),
-        CheckConstraint(_one_of("mode", ExtractionMode), name="mode"),
+        CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
         CheckConstraint("version >= 1", name="version_positive"),
         # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4).
         Index(None, "site_id", "entity_key", "schema_id"),
@@ -437,5 +451,71 @@ class Record(Base):
     changed_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     fingerprint: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = _created_at()
+    created_at: Mapped[datetime] = created_at_column()
     supersedes_record_id: Mapped[RecordId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
+
+
+class EvalPageColumns:
+    """The `eval_page` columns both eval databases share (ARCHITECTURE §6, SPEC-03 §4.3). Each database adds the
+    split it may hold and the capture its rows reference.
+
+    `schema_name` is plumbing: the private database has no `schema_def` to join, and pages are listed by schema name.
+    `labels` is the label document of SPEC-03 §4.3; `labeler` and `checker` are the two passes (§16.2), which must
+    be different people.
+    """
+
+    id: Mapped[EvalPageId] = mapped_column(primary_key=True, default=uuid7)
+    split: Mapped[Split] = mapped_column(Text)
+    schema_id: Mapped[SchemaId] = mapped_column()
+    schema_name: Mapped[str] = mapped_column(Text)
+    page_kind: Mapped[PageKind] = mapped_column(Text)
+    category: Mapped[EvalCategory] = mapped_column(Text)
+    labels: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    labeler: Mapped[str | None] = mapped_column(Text)
+    checker: Mapped[str | None] = mapped_column(Text)
+    # The active config of the page's site when it was captured, if any, to measure config fields (SPEC-03 §4.5).
+    config_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_at_column()
+
+
+def eval_page_checks() -> tuple[CheckConstraint, ...]:
+    return (
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("category", EvalCategory), name="category"),
+        CheckConstraint("checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler)", name="two_people"),
+    )
+
+
+class EvalRunColumns:
+    """The `eval_run` columns both eval databases share (ARCHITECTURE §6). `git_sha` is plumbing for the baseline
+    lookup (SPEC-03 §4.8): the latest run of a split whose commit is on `main`."""
+
+    id: Mapped[EvalRunId] = mapped_column(primary_key=True, default=uuid7)
+    split: Mapped[Split] = mapped_column(Text)
+    engine_version: Mapped[str] = mapped_column(Text)
+    git_sha: Mapped[str] = mapped_column(Text)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class EvalPage(EvalPageColumns, Base):
+    """A labeled dev page (SPEC-03 §4.2). Hidden and fresh pages never enter this database (C1): the CHECK on
+    `split` makes that structural."""
+
+    __tablename__ = "eval_page"
+    __table_args__ = (
+        CheckConstraint("split = 'dev'", name="split"),
+        *eval_page_checks(),
+        # `schema_name` names the schema `schema_id` is.
+        ForeignKeyConstraint(["schema_id", "schema_name"], [SchemaDef.id, SchemaDef.name]),
+    )
+
+    # A dev eval capture never expires (SPEC-01 §4.4); the reference keeps it from being deleted.
+    capture_id: Mapped[CaptureId] = mapped_column(ForeignKey(Capture.id), index=True)
+
+
+class EvalRun(EvalRunColumns, Base):
+    """A dev evaluation run (SPEC-03 §4.2). Hidden and fresh runs are kept in the private database."""
+
+    __tablename__ = "eval_run"
+    __table_args__ = (CheckConstraint("split = 'dev'", name="split"),)

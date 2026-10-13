@@ -31,6 +31,12 @@ class DatabaseSettings(_Base):
     database_url: SecretStr
 
 
+class EvalPrivateDatabaseSettings(_Base):
+    """What migrating the private eval database needs (`alembic -n private`). Custodian machines only (C1)."""
+
+    eval_private_database_url: SecretStr
+
+
 class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 

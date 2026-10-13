@@ -4,6 +4,10 @@
 The tests own that database: they delete every job and task in it, and the queue tests claim and run every due task
 in it, not only their own, which is why they never use `CRAWLERAI_DATABASE_URL`. Never point it at data you want.
 
+`CRAWLERAI_TEST_PRIVATE_DATABASE_URL` names a second throwaway database, migrated with the private eval revisions
+(`alembic -n private`), for the private eval store's tests. It is never the private eval database itself (C1), and
+without it those tests are skipped.
+
 The database is migrated to head once per session. Each test runs in a transaction that is rolled back (`conn`),
 or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
 """
@@ -21,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.db.models import Job, JobEvent, UrlTask, UsageEvent
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
+TEST_PRIVATE_DATABASE_URL = "CRAWLERAI_TEST_PRIVATE_DATABASE_URL"
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
@@ -35,6 +40,17 @@ def database_url() -> str:
     if not url:
         pytest.skip(f"{TEST_DATABASE_URL} is not set")
     config = Config(ALEMBIC_INI)
+    config.attributes["database_url"] = url
+    command.upgrade(config, "head")
+    return url
+
+
+@pytest.fixture(scope="session")
+def private_database_url() -> str:
+    url = os.environ.get(TEST_PRIVATE_DATABASE_URL)
+    if not url:
+        pytest.skip(f"{TEST_PRIVATE_DATABASE_URL} is not set")
+    config = Config(ALEMBIC_INI, ini_section="private")
     config.attributes["database_url"] = url
     command.upgrade(config, "head")
     return url
