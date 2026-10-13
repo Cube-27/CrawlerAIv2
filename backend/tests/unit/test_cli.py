@@ -57,6 +57,11 @@ def test_installed_console_script_writes_identical_lf_only_openapi_on_every_run(
     assert runs[0].endswith(b"}\n")
 
 
+def _environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
+
+
 def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     _environment(monkeypatch)
     calls: list[tuple[str, object, bool]] = []
@@ -88,11 +93,6 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store(
 
     expected_entries = ("entries for", ("store at", "fs:///srv/objects"))
     assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", expected_entries, False)]
-
-
-def _environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
 
 
 def test_the_scheduler_releases_leases_every_minute_and_expires_captures_and_candidates_hourly() -> None:

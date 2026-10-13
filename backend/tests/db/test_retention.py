@@ -17,24 +17,24 @@ from crawlerai.storage.fs import FsStore
 pytestmark = pytest.mark.anyio
 
 FETCHED_AT = datetime(2026, 9, 1, tzinfo=UTC)
+URL = "https://example.test/p/1"
+DEFAULT_PROJECT = select(Project.id).where(Project.name == "default").scalar_subquery()
 
 
 async def _capture(conn: AsyncConnection, store: FsStore, key: str, expires_at: Any) -> CaptureId:
     """A capture row and the object it names. `expires_at` is a SQL expression or None."""
-    default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
     site_id = (
         await conn.execute(
-            insert(Site).values(project_id=default_project, host=f"{uuid.uuid4()}.example.test").returning(Site.id)
+            insert(Site).values(project_id=DEFAULT_PROJECT, host=f"{uuid.uuid4()}.example.test").returning(Site.id)
         )
     ).scalar_one()
-    url = "https://example.test/p/1"
     values = {
         "site_id": site_id,
-        "url": url,
+        "url": URL,
         "fetched_at": FETCHED_AT,
         "method": "http",
         "status_code": 200,
-        "final_url": url,
+        "final_url": URL,
         "block_class": "ok",
         "object_key": key,
         "html_sha256": "0" * 64,
@@ -48,17 +48,15 @@ async def _capture(conn: AsyncConnection, store: FsStore, key: str, expires_at: 
 
 
 async def _extraction(conn: AsyncConnection) -> ExtractionId:
-    default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
     job_id = (
         await conn.execute(
             insert(Job)
-            .values(project_id=default_project, kind="scrape", request={}, engine_version="0+cal.0")
+            .values(project_id=DEFAULT_PROJECT, kind="scrape", request={}, engine_version="0+cal.0")
             .returning(Job.id)
         )
     ).scalar_one()
-    url = "https://example.test/p/1"
     task_id = (
-        await conn.execute(insert(UrlTask).values(job_id=job_id, url=url, canonical_url=url).returning(UrlTask.id))
+        await conn.execute(insert(UrlTask).values(job_id=job_id, url=URL, canonical_url=URL).returning(UrlTask.id))
     ).scalar_one()
     extraction_id: ExtractionId = (
         await conn.execute(

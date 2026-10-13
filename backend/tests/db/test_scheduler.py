@@ -85,10 +85,13 @@ async def test_the_scheduler_expires_production_captures_past_expires_at(engine:
                 insert(Site).values(project_id=default_project, host="retention.example.test").returning(Site.id)
             )
         ).scalar_one()
-        values = {"site_id": site_id, "url": url, "final_url": url, "method": "http", "status_code": 200}
         await conn.execute(
             insert(Capture).values(
-                **values,
+                site_id=site_id,
+                url=url,
+                final_url=url,
+                method="http",
+                status_code=200,
                 fetched_at=datetime(2026, 9, 1, tzinfo=UTC),
                 block_class="ok",
                 object_key=key,
