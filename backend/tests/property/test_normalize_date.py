@@ -5,7 +5,7 @@ datetimes, missing offsets and years outside 1970 to 2100."""
 from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
@@ -21,6 +21,9 @@ DATETIME = FieldSpec(type=FieldType.DATETIME)
 _dates = st.dates(min_value=date(1970, 1, 1), max_value=date(2100, 12, 31))
 _offsets = st.integers(min_value=-14 * 60, max_value=14 * 60).map(lambda m: timezone(timedelta(minutes=m)))
 _datetimes = st.datetimes(min_value=datetime(1970, 1, 2), max_value=datetime(2100, 12, 30), timezones=_offsets)
+# The first call for a locale loads its CLDR and `dateparser` data from disk, once per process, which can take longer
+# than Hypothesis's default deadline; the tests that read locale data have no deadline.
+_LOADS_LOCALE_DATA = settings(deadline=None)
 _whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 
 
@@ -73,6 +76,7 @@ def test_empty_or_whitespace_input_is_invalid(spec: FieldSpec, raw: str) -> None
     assert normalize(raw, spec, _ctx("en-GB")) == Invalid("empty")
 
 
+@_LOADS_LOCALE_DATA
 @given(
     st.integers(min_value=1, max_value=12),
     st.integers(min_value=1, max_value=12),
@@ -223,6 +227,7 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
         normalize("2026-03-04", spec)
 
 
+@_LOADS_LOCALE_DATA
 @given(st.sampled_from([DATE, DATETIME]), st.text(max_size=30) | _dates.map(str))
 def test_the_result_depends_only_on_the_arguments_and_never_raises(spec: FieldSpec, raw: str) -> None:
     ctx = _ctx("en", "en_GB")
