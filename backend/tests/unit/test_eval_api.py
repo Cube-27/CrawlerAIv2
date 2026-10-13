@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -21,7 +22,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, PageKind, SchemaId, Split
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped
-from crawlerai.eval.labels import LabelStatus
+from crawlerai.eval.labels import LabelStatus, parse_labels
 from crawlerai.eval.store import (
     DevEvalStore,
     EvalNotFound,
@@ -30,6 +31,14 @@ from crawlerai.eval.store import (
     LabelPass,
     Labels,
     LabelsChanged,
+)
+from crawlerai.llm.client import (
+    LLMRequest,
+    LLMResponse,
+    OutputInvalid,
+    ProviderUnavailable,
+    ReplyCheck,
+    request_hash,
 )
 from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.base import ObjectNotFound
@@ -79,7 +88,9 @@ class FakeStore:
     def split(self) -> Split:
         return "dev"
 
-    def add(self, labels: Labels | None = None, labeler: str | None = None) -> EvalPageRow:
+    def add(
+        self, labels: Labels | None = None, labeler: str | None = None, page_kind: PageKind = "detail"
+    ) -> EvalPageRow:
         bundle = _bundle()
         capture_id = CaptureId(bundle.manifest.capture_id)
         page = EvalPageRow(
@@ -87,7 +98,7 @@ class FakeStore:
             split="dev",
             schema_id=SCHEMA_ID,
             schema_name="item_detail",
-            page_kind="detail",
+            page_kind=page_kind,
             category="custom_store",
             labels=labels or {},
             labeler=labeler,
@@ -116,7 +127,7 @@ class FakeStore:
         return bundle
 
     async def put_labels(
-        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+        self, page_id: EvalPageId, labels: Labels, who: str | None, pass_: LabelPass, *, expected: Labels
     ) -> None:
         if self.pages[page_id].labels != expected:
             raise LabelsChanged(f"the labels of dev eval page {page_id} changed since they were read")
@@ -153,15 +164,41 @@ class FakeStore:
         pass
 
 
+class ScriptedClient:
+    """Answers each call with the next scripted reply, or raises the next scripted failure; keeps the requests."""
+
+    def __init__(self, *script: dict[str, JsonValue] | Exception) -> None:
+        self._script = list(script)
+        self.requests: list[LLMRequest] = []
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        self.requests.append(req)
+        step = self._script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        Draft202012Validator(req.output_schema).validate(step)  # as the real client does
+        return LLMResponse(
+            data=step,
+            provider="fake",
+            model="fake-fast",
+            tokens_in=10,
+            tokens_out=5,
+            latency_ms=1,
+            request_hash=request_hash(req),
+        )
+
+
 @dataclass
 class FakeBackend:
     store: FakeStore = field(default_factory=FakeStore)
     captures: list[tuple[list[PageRequest], PageKind]] = field(default_factory=list)
     capture_result: list[Outcome] | EvalCliError = field(default_factory=list)
+    llm: "ScriptedClient" = field(default_factory=lambda: ScriptedClient())
+    specs: dict[str, FieldSpec] = field(default_factory=lambda: SPECS)
 
     async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldSpec]:
         assert schema_id == SCHEMA_ID
-        return SPECS
+        return self.specs
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]:
         self.captures.append((list(requests), page_kind))
@@ -282,7 +319,7 @@ def test_backend_serves_the_dev_store_even_with_private_settings(tmp_path: Path)
 
     engine = create_async_engine(settings.database_url.get_secret_value())
 
-    backend = eval_router.DevLabelingBackend(settings, engine)
+    backend = eval_router.DevLabelingBackend(settings, engine, ScriptedClient())
 
     assert type(backend.store) is DevEvalStore
     assert backend.store.split == "dev"
@@ -518,16 +555,153 @@ def test_checker_pass_needs_a_labeled_page_and_keeps_its_labeler(
     assert _writes(backend) == []
 
 
-@pytest.mark.parametrize("action", ["normalize", "prefill"])
-def test_normalize_and_prefill_are_not_implemented_yet(action: str) -> None:
+def test_normalize_is_not_implemented_yet() -> None:
     backend = FakeBackend()
     page = backend.store.add()
-    body = {"field": "price", "raw_text": "EUR 19.90"} if action == "normalize" else None
 
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/{action}", body)
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/normalize", {"field": "price", "raw_text": "x"})
 
     assert response.status_code == 501
     assert response.json()["type"] == "not_implemented"
+
+
+# --- pre-fill (§4.10, SPEC-06 §4.4) ---
+
+# The cleaned text of `HTML` is "Blue mug\nBuy\nEUR 19.90".
+
+
+def _span(value: str, start: int) -> dict[str, JsonValue]:
+    return {"value": value, "start": start, "end": start + len(value)}
+
+
+def test_prefill_stores_and_returns_a_draft_of_the_grounded_normalized_values() -> None:
+    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": _span("EUR 19.90", 13)}})
+    backend = FakeBackend(llm=client)
+    page = backend.store.add()
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 200
+    draft: dict[str, JsonValue] = {
+        "label_version": 1,
+        "status": "draft",
+        "labeler": None,
+        "checker": None,
+        "prefill_source": "llm:fake-fast",
+        "fields": {
+            "title": {"value": "Blue mug", "absent": False, "locator": "text:0-8", "distractors": []},
+            "price": {
+                "value": {"amount": "19.90", "currency": "EUR"},
+                "absent": False,
+                "locator": "text:13-22",
+                "distractors": [],
+            },
+        },
+        "rows": [],
+        "notes": "",
+    }
+    assert response.json() == draft
+    assert (backend.store.pages[page.id].labels, _writes(backend)) == (draft, ["put_labels:labeler:None"])
+    # The stored draft is valid labels, and its tag is what a labeler's PUT sends back.
+    parse_labels(draft, "detail", SPECS)
+    tag = _request(backend, "GET", f"/v1/eval/pages/{page.id}").headers["ETag"]
+    assert response.headers["ETag"] == tag
+    (request,) = client.requests
+    assert (request.prompt_kind, request.model_class, request.job_id) == ("c_prefill", "fast", None)
+    assert "<page_text>\nBlue mug\nBuy\nEUR 19.90\n</page_text>" in request.user
+
+
+def test_prefill_leaves_null_ungrounded_and_declined_values_unlabeled() -> None:
+    # A pre-fill never claims a field is absent: that is the labeler's call (G2).
+    specs = SPECS | {"sku": FieldSpec(type=FieldType.IDENTIFIER, scheme="sku")}
+    client = ScriptedClient({"fields": {"title": None, "price": _span("Buy", 9), "sku": _span("Q-9", 0)}})
+    backend = FakeBackend(llm=client, specs=specs)
+    page = backend.store.add()
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 200
+    assert (response.json()["fields"], response.json()["prefill_source"]) == ({}, "llm:fake-fast")
+
+
+def test_prefill_of_a_listing_labels_rows_in_page_order_and_page_fields() -> None:
+    specs = {
+        "title": FieldSpec(type=FieldType.TEXT, scope="row"),
+        "heading": FieldSpec(type=FieldType.TEXT, scope="page"),
+    }
+    reply: dict[str, JsonValue] = {
+        "rows": [{"title": _span("Buy", 9)}, {"title": None}, {"title": _span("Blue mug", 0)}],
+        "page": {"heading": _span("EUR 19.90", 13)},
+    }
+    client = ScriptedClient(reply)
+    backend = FakeBackend(llm=client, specs=specs)
+    page = backend.store.add(page_kind="listing")
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["fields"]["title"]["value"] for row in body["rows"]] == ["Buy", "Blue mug"]
+    assert body["fields"] == {
+        "heading": {"value": "EUR 19.90", "absent": False, "locator": "text:13-22", "distractors": []}
+    }
+    parse_labels(body, "listing", specs)
+    assert client.requests[0].prompt_kind == "c_prefill"
+
+
+def test_prefill_replaces_a_draft() -> None:
+    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": None}})
+    backend = FakeBackend(llm=client)
+    page = backend.store.add(_stored(_labels("draft")), labeler="ana")
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 200
+    stored = backend.store.pages[page.id]
+    assert (stored.labels["prefill_source"], stored.labeler) == ("llm:fake-fast", None)
+
+
+@pytest.mark.parametrize("status", ["labeled", "checked"])
+def test_prefill_never_replaces_a_labeled_pass(status: str) -> None:
+    backend = FakeBackend()
+    labels = _stored(_labels(status, checker="ben" if status == "checked" else None))
+    page = backend.store.add(labels, labeler="ana")
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 409
+    assert (backend.llm.requests, _writes(backend)) == ([], [])
+
+
+def test_prefill_with_a_stale_if_match_is_refused_before_the_call() -> None:
+    backend = FakeBackend()
+    page = backend.store.add(_stored(_labels("draft")), labeler="ana")
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill", headers={"If-Match": '"stale"'})
+
+    assert response.status_code == 412
+    assert (backend.llm.requests, _writes(backend)) == ([], [])
+
+
+@pytest.mark.parametrize(
+    ("failure", "status"),
+    [(ProviderUnavailable("no provider answered"), 503), (OutputInvalid("at $: not an object"), 502)],
+)
+def test_prefill_without_a_valid_reply_stores_nothing(failure: Exception, status: int) -> None:
+    backend = FakeBackend(llm=ScriptedClient(failure))
+    page = backend.store.add()
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == status
+    assert response.json()["detail"] == str(failure)
+    assert _writes(backend) == []
+
+
+def test_prefill_of_an_unknown_page_is_not_found() -> None:
+    response = _request(FakeBackend(), "POST", f"/v1/eval/pages/{uuid7()}/prefill")
+
+    assert response.status_code == 404
 
 
 def test_capture_runs_eval_capture_into_dev_and_reports_outcomes() -> None:

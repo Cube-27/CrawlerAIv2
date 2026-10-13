@@ -152,7 +152,9 @@ export interface paths {
         put?: never;
         /**
          * Prefill
-         * @description Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06.
+         * @description Store and return a `draft` that role C fills from the page's cleaned text (`crawlerai.eval.prefill`), with
+         *     `prefill_source=llm:<model>` and no labeler. It replaces a draft, never a labeled or checked page (409), and
+         *     `If-Match` works as for `PUT labels`. 503 or 502 when the model gives no valid reply; nothing is stored then.
          */
         post: operations["prefill_v1_eval_pages__page_id__prefill_post"];
         delete?: never;
@@ -1375,7 +1377,9 @@ export interface operations {
     prefill_v1_eval_pages__page_id__prefill_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "if-match"?: string | null;
+            };
             path: {
                 page_id: string;
             };
@@ -1386,10 +1390,42 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Entity tag of the stored labels (RFC 9110 §8.8.3) */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Labels"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -1402,8 +1438,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

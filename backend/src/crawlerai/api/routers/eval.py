@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.dto import PROBLEM_RESPONSE, Model
-from crawlerai.api.problems import ProblemError, invalid, not_found
+from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, not_found
 from crawlerai.content.html import remove_scripting_attributes
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
@@ -37,7 +37,9 @@ from crawlerai.eval.labels import (
     parse_labels,
     same_person,
 )
+from crawlerai.eval.prefill import prefill as prefill_labels
 from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
+from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.schemas.types import FieldSpec
 from crawlerai.storage import open_store
 from crawlerai.storage.base import ObjectNotFound
@@ -55,19 +57,29 @@ class LabelingBackend(Protocol):
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]: ...
 
+    @property
+    def llm(self) -> LLMClient:
+        """The client the pre-fill calls (role C, SPEC-06 §4.4)."""
+        ...
+
 
 class DevLabelingBackend:
     """The dev store, `schema_def` in the main database, and `eval capture` into dev. Private settings, even when
     present, are never read."""
 
-    def __init__(self, settings: Settings, engine: AsyncEngine) -> None:
+    def __init__(self, settings: Settings, engine: AsyncEngine, llm: LLMClient) -> None:
         self._settings = settings
         self._engine = engine
         self._store = DevEvalStore(self._engine, open_store(settings.object_store))
+        self._llm = llm
 
     @property
     def store(self) -> DevEvalStore:
         return self._store
+
+    @property
+    def llm(self) -> LLMClient:
+        return self._llm
 
     async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldSpec]:
         async with self._engine.connect() as conn:
@@ -83,7 +95,7 @@ class DevLabelingBackend:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Runs inside the app's lifespan, which owns the database engine (`api.app`).
-    app.state.labeling_backend = DevLabelingBackend(Settings(), app.state.database)
+    app.state.labeling_backend = DevLabelingBackend(Settings(), app.state.database, app.state.llm)
     yield
 
 
@@ -224,14 +236,7 @@ async def get_page(page_id: EvalPageId, backend: Backend, response: Response) ->
         page = await backend.store.get_page(page_id)
     except EvalNotFound as e:
         raise _not_found(page_id) from e
-    try:
-        bundle, fields = await asyncio.gather(
-            backend.store.get_bundle(page.capture_id), backend.schema_fields(page.schema_id)
-        )
-    except (ObjectNotFound, CorruptBundle) as e:
-        # The page's row exists but its stored capture is missing or damaged: the server's fault, not the request's.
-        detail = f"the capture {page.capture_id} of dev eval page {page.id} cannot be read"
-        raise ProblemError(500, "capture_unreadable", "Capture unreadable", detail) from e
+    bundle, fields = await _read_capture(backend, page)
     response.headers["ETag"] = _etag(page)
     return PageDetail(
         **PageSummary.of(page).model_dump(),
@@ -242,6 +247,19 @@ async def get_page(page_id: EvalPageId, backend: Backend, response: Response) ->
         bundle_html=await asyncio.to_thread(sanitize_html, bundle),  # parsing is synchronous
         text=None,
     )
+
+
+async def _read_capture(backend: LabelingBackend, page: EvalPageRow) -> tuple[CaptureBundle, dict[str, FieldSpec]]:
+    """The page's capture and its schema's fields."""
+    try:
+        bundle, fields = await asyncio.gather(
+            backend.store.get_bundle(page.capture_id), backend.schema_fields(page.schema_id)
+        )
+    except (ObjectNotFound, CorruptBundle) as e:
+        # The page's row exists but its stored capture is missing or damaged: the server's fault, not the request's.
+        detail = f"the capture {page.capture_id} of dev eval page {page.id} cannot be read"
+        raise ProblemError(500, "capture_unreadable", "Capture unreadable", detail) from e
+    return bundle, fields
 
 
 # The body is read as plain JSON so that `parse_labels` reports every error with its path (§4.11); the document
@@ -321,10 +339,49 @@ async def normalize(page_id: EvalPageId, body: NormalizeRequest) -> None:
     raise _not_implemented("the type normalizers are not built yet (SPEC-04)")
 
 
-@router.post("/pages/{page_id}/prefill", status_code=200, responses={501: PROBLEM_RESPONSE})
-async def prefill(page_id: EvalPageId) -> None:
-    """Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06."""
-    raise _not_implemented("the LLM pre-fill hook is not built yet (SPEC-06)")
+@router.post(
+    "/pages/{page_id}/prefill",
+    response_model=Labels,
+    responses={
+        200: {"headers": _ETAG},
+        404: PROBLEM_RESPONSE,
+        409: PROBLEM_RESPONSE,
+        412: PROBLEM_RESPONSE,
+        500: PROBLEM_RESPONSE,
+        502: PROBLEM_RESPONSE,
+        503: PROBLEM_RESPONSE,
+    },
+)
+async def prefill(
+    page_id: EvalPageId,
+    backend: Backend,
+    response: Response,
+    if_match: Annotated[str | None, Header()] = None,
+) -> Labels:
+    """Store and return a `draft` that role C fills from the page's cleaned text (`crawlerai.eval.prefill`), with
+    `prefill_source=llm:<model>` and no labeler. It replaces a draft, never a labeled or checked page (409), and
+    `If-Match` works as for `PUT labels`. 503 or 502 when the model gives no valid reply; nothing is stored then."""
+    try:
+        page = await backend.store.get_page(page_id)
+    except EvalNotFound as e:
+        raise _not_found(page_id) from e
+    if if_match is not None and not _if_match(if_match, _etag(page)):
+        raise _labels_changed(412)
+    if _status(page) in ("labeled", "checked"):
+        raise conflict(f"dev eval page {page_id} is {_status(page)}; only a page without a labeled pass is pre-filled")
+    bundle, fields = await _read_capture(backend, page)
+    # The call is charged to no job, so the store's write below holds no lock the client waits on (D-0346).
+    try:
+        labels = await prefill_labels(backend.llm, bundle, page.page_kind, fields)
+    except LLMFailure as e:
+        raise llm_problem(e) from e
+    stored = labels.model_dump(mode="json")
+    try:
+        await backend.store.put_labels(page.id, stored, None, "labeler", expected=page.labels)
+    except LabelsChanged as e:
+        raise _labels_changed(409) from e
+    response.headers["ETag"] = _etag(page.model_copy(update={"labels": stored}))
+    return labels
 
 
 @router.post("/capture", response_model=CaptureResponse)

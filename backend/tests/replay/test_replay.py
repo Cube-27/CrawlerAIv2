@@ -102,7 +102,7 @@ class MemoryStore:
         return page.id
 
     async def put_labels(
-        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+        self, page_id: EvalPageId, labels: Labels, who: str | None, pass_: LabelPass, *, expected: Labels
     ) -> None:
         raise NotImplementedError
 

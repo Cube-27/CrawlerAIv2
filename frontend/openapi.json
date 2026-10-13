@@ -2547,7 +2547,7 @@
     },
     "/v1/eval/pages/{page_id}/prefill": {
       "post": {
-        "description": "Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06.",
+        "description": "Store and return a `draft` that role C fills from the page's cleaned text (`crawlerai.eval.prefill`), with\n`prefill_source=llm:<model>` and no labeler. It replaces a draft, never a labeled or checked page (409), and\n`If-Match` works as for `PUT labels`. 503 or 502 when the model gives no valid reply; nothing is stored then.",
         "operationId": "prefill_v1_eval_pages__page_id__prefill_post",
         "parameters": [
           {
@@ -2559,16 +2559,87 @@
               "title": "Page Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Labels"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Entity tag of the stored labels (RFC 9110 \u00a78.8.3)",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Precondition Failed"
           },
           "422": {
             "content": {
@@ -2585,7 +2656,7 @@
             },
             "description": "Unprocessable Entity"
           },
-          "501": {
+          "500": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2598,7 +2669,37 @@
                 }
               }
             },
-            "description": "Not Implemented"
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Prefill",
