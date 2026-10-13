@@ -193,7 +193,7 @@ class AttrStep(_Step):
 _SELECTOR_KEYS = ("xpath", "css", "jsonld", "jsonpath", "regex", "attr")
 
 
-def _selector_key(value: Any) -> str | None:
+def selector_key(value: Any) -> str | None:
     """The step's one selector key. A CSS step also carries `xpath`, its translation."""
     present = {key for key in _SELECTOR_KEYS if _has_key(value, key)}
     if "css" in present:
@@ -213,7 +213,7 @@ Step = Annotated[
     | Annotated[RegexStep, Tag("regex")]
     | Annotated[AttrStep, Tag("attr")],
     Discriminator(
-        _selector_key,
+        selector_key,
         custom_error_type="step",
         custom_error_message="a step has exactly one selector key: xpath, css, jsonld, jsonpath, regex or attr",
     ),

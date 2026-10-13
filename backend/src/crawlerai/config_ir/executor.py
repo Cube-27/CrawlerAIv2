@@ -13,6 +13,7 @@ import math
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import cast
 from urllib.parse import urljoin
 
 from lxml import etree
@@ -33,6 +34,7 @@ from crawlerai.config_ir.model import (
     FieldSteps,
     JsonLdStep,
     JsonPathStep,
+    JsonSource,
     ListingSpec,
     NormalizeOp,
     PostOp,
@@ -41,6 +43,7 @@ from crawlerai.config_ir.model import (
     Step,
     TrimOp,
     XPathStep,
+    selector_key,
 )
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS
 from crawlerai.content.page import ParsedPage
@@ -60,18 +63,13 @@ class ConfigMismatch(ValueError):
 
 
 class _Refused(Exception):
-    """A step the engine cannot run here; the reason becomes a diagnostic and the next step runs."""
-
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
+    """A step the engine cannot run here; its message becomes a diagnostic and the next step runs."""
 
 
 @dataclass(frozen=True, slots=True)
 class _Scope:
-    """Where a step runs: the page, with its document element as context node, or one listing row."""
+    """Where a step runs: the page's document element, or one listing row."""
 
-    page: ParsedPage
     node: HtmlElement
     in_row: bool
 
@@ -96,7 +94,7 @@ class EngineExecutor:
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         self._check(schema)
         run = _Run(page, schema, ctx, self.vocabulary)
-        document = _Scope(page, page.lxml_tree, in_row=False)
+        document = _Scope(page.lxml_tree, in_row=False)
         candidates = list(run.fields(self.ir.fields, document, PAGE))
         rows: list[Entity] = []
         if self.ir.listing is not None:
@@ -121,15 +119,26 @@ class _Run:
     ctx: Context
     vocabulary: Vocabulary
     diagnostics: list[str] = field(default_factory=list)
+    # Each JSON source's documents and the JSON-LD nodes, read once per page however many steps read them.
+    _documents: dict[JsonSource, list[JsonValue]] = field(default_factory=dict)
+    _nodes: list[tuple[tuple[str, ...], JsonValue]] | None = None
 
-    def note(self, text: str) -> None:
-        self.diagnostics.append(text)
+    def documents(self, source: JsonSource) -> list[JsonValue]:
+        if source not in self._documents:
+            self._documents[source] = _documents(source, self.page)
+        return self._documents[source]
+
+    def nodes(self) -> list[tuple[tuple[str, ...], JsonValue]]:
+        if self._nodes is None:
+            found = jsonld.JsonLdCollector(self.vocabulary).nodes(self.page)
+            self._nodes = [(types, dict(data)) for types, data in found]
+        return self._nodes
 
     def fields(self, fields: Mapping[str, FieldSteps], scope: _Scope, owner: str) -> Iterator[Candidate]:
         for name, steps in fields.items():
             spec = self.schema.fields.get(name)
             if spec is None:
-                self.note(f"config:{name}: not a field of the schema")
+                self.diagnostics.append(f"config:{name}: not a field of the schema")
             # §8.3: a suspended field falls back to cold-mode resolution
             elif steps.status != "suspended" and (found := self.first_value(name, steps.steps, spec, scope, owner)):
                 yield found
@@ -143,7 +152,7 @@ class _Run:
             try:
                 values = _matches(step, scope, self)
             except _Refused as refused:
-                self.note(f"config:{name}:{index}: {refused.reason}")
+                self.diagnostics.append(f"config:{name}:{index}: {refused}")
                 continue
             if not values:
                 continue
@@ -173,7 +182,7 @@ class _Run:
             failed = next((item for item in items if isinstance(item, Invalid)), None)
             if failed is not None:
                 return values, failed
-            processed: Raw = [item for item in items if not isinstance(item, Invalid)]
+            processed = cast(list[Raw], items)
             return processed, normalize(processed, spec, self.ctx)
         if len(values) > 1:
             return values, Invalid("multi_match")
@@ -188,23 +197,25 @@ class _Run:
         rows: list[Entity] = []
         candidates: list[Candidate] = []
         for n, node in enumerate(self.rows(listing)):
-            rows.append(Entity(id=f"config:row:{n}", kind=ROW_KIND, urls=(), parent=None))
-            candidates.extend(self.fields(listing.fields, _Scope(self.page, node, in_row=True), rows[-1].id))
+            row_id = f"config:row:{n}"
+            rows.append(Entity(id=row_id, kind=ROW_KIND, urls=(), parent=None))
+            candidates.extend(self.fields(listing.fields, _Scope(node, in_row=True), row_id))
         next_spec = self.schema.fields.get(NEXT_PAGE_FIELD)
         if listing.next is not None and next_spec is not None:
             found = self.first_value(NEXT_PAGE_FIELD, [listing.next], next_spec, document, PAGE)
-            candidates.extend([found] if found is not None else [])
+            if found is not None:
+                candidates.append(found)
         return rows, candidates
 
     def rows(self, listing: ListingSpec) -> list[HtmlElement]:
         step = listing.row
         if not isinstance(step, (XPathStep, CssStep)):
-            self.note("config:row: a row step selects elements, so it is an xpath or css step")
+            self.diagnostics.append("config:row: a row step selects elements, so it is an xpath or css step")
             return []
         try:
             found = _evaluate(step.xpath, self.page.lxml_tree)
         except _Refused as refused:
-            self.note(f"config:row: {refused.reason}")
+            self.diagnostics.append(f"config:row: {refused}")
             return []
         return [node for node in found if isinstance(node, HtmlElement)] if isinstance(found, list) else []
 
@@ -218,18 +229,20 @@ def _matches(step: Step, scope: _Scope, run: _Run) -> list[Raw]:
             value = scope.node.get(step.attr)
             return [] if value is None else [str(value)]
         case RegexStep():
-            return _regex_values(step.regex, _page_only(scope).html)
+            _page_only(scope)
+            return _regex_values(step.regex, run.page.html)
         case JsonLdStep():
-            return _jsonld_values(step, _page_only(scope), run.vocabulary)
+            _page_only(scope)
+            return _jsonld_values(step, run)
         case JsonPathStep():
-            return _jsonpath_values(step, _page_only(scope))
+            _page_only(scope)
+            return _select_all(step.jsonpath, run.documents(step.source))
 
 
-def _page_only(scope: _Scope) -> ParsedPage:
+def _page_only(scope: _Scope) -> None:
     # §4.3: `regex` reads the body text and `jsonld`/`jsonpath` the page's documents; none has a row to be relative to.
     if scope.in_row:
         raise _Refused("not relative to a row: regex, jsonld and jsonpath steps read the whole page")
-    return scope.page
 
 
 def _evaluate(xpath: str, node: HtmlElement) -> object:
@@ -254,9 +267,13 @@ def _xpath_values(xpath: str, node: HtmlElement) -> list[Raw]:
     return [_string_value(item) for item in result]
 
 
+# XPath 1.0 §4.2: `string()` is the context node's string-value.
+_STRING_VALUE = etree.XPath("string()")
+
+
 def _string_value(item: object) -> str:
     if isinstance(item, etree._Element):
-        return str(item.xpath("string()"))
+        return str(_STRING_VALUE(item))
     return str(item)  # an attribute or text node, which lxml returns as its string
 
 
@@ -268,28 +285,21 @@ def _regex_values(pattern: str, text: str) -> list[Raw]:
     return [found for m in compiled.finditer(text) if (found := m.group(group)) is not None]
 
 
-def _jsonld_values(step: JsonLdStep, page: ParsedPage, vocabulary: Vocabulary) -> list[Raw]:
-    nodes: list[JsonValue] = [
-        dict(data)
-        for types, data in jsonld.JsonLdCollector(vocabulary).nodes(page)
-        if step.when_type is None or any(vocabulary.is_a(t, step.when_type) for t in types)
-    ]
+def _jsonld_values(step: JsonLdStep, run: _Run) -> list[Raw]:
+    when = step.when_type
+    nodes = [data for types, data in run.nodes() if when is None or any(run.vocabulary.is_a(t, when) for t in types)]
     return _select_all(step.jsonld, nodes)
 
 
-def _jsonpath_values(step: JsonPathStep, page: ParsedPage) -> list[Raw]:
-    return _select_all(step.jsonpath, list(_documents(step, page)))
-
-
-def _documents(step: JsonPathStep, page: ParsedPage) -> Iterator[JsonValue]:
+def _documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
     # Unreadable documents are skipped here; the jsonld, js_state and xhr collectors report them for the page.
-    match step.source:
+    match source:
         case "jsonld":
-            yield from (document for _, document in jsonld.blocks(page, []))
+            return [document for _, document in jsonld.blocks(page, [])]
         case "js_state":
-            yield from (document.data for document in js_state.state_documents(page, []))
+            return [document.data for document in js_state.state_documents(page, [])]
         case "xhr":
-            yield from (document.data for document in xhr.network_documents(page, []))
+            return [document.data for document in xhr.network_documents(page, [])]
         case "api":
             raise _Refused("an api source is read through SPEC-09's api recipe executor")
 
@@ -347,16 +357,4 @@ def _absolutize(value: str, ctx: Context) -> Raw | Invalid:
 
 
 def _selector(step: Step) -> str:
-    match step:
-        case CssStep():
-            return step.css
-        case XPathStep():
-            return step.xpath
-        case JsonLdStep():
-            return step.jsonld
-        case JsonPathStep():
-            return step.jsonpath
-        case RegexStep():
-            return step.regex
-        case AttrStep():
-            return step.attr
+    return str(getattr(step, selector_key(step) or ""))
