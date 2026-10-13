@@ -16,8 +16,7 @@ endpoint per config, D-0035).
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from itertools import chain, permutations
-from typing import Final, TypeGuard
+from typing import Final
 
 from pydantic import JsonValue
 
@@ -62,13 +61,14 @@ def discover(samples: Sequence[DiscoverySample], schema: SchemaDef) -> list[Endp
     """The candidate endpoints of `samples`, best first (by score; ties keep the first page's capture order)."""
     if not samples:
         return []
-    pages = [_bodies(sample, schema) for sample in samples]
+    required = required_fields(schema)
+    pages = [_bodies(sample, schema, required) for sample in samples]
     candidates: list[EndpointCandidate] = []
     for key in pages[0]:
-        found = [page.get(key) for page in pages]
-        bodies = [body for body in found if body is not None]
-        if len(bodies) == len(pages) and (candidate := _candidate(bodies, schema)) is not None:
-            candidates.append(candidate)
+        if all(key in page for page in pages[1:]):
+            candidate = _candidate([page[key] for page in pages], schema, required)
+            if candidate is not None:
+                candidates.append(candidate)
     return sorted(candidates, key=lambda candidate: -candidate.score)
 
 
@@ -80,50 +80,55 @@ class _Reading:
     raw: Scalar
 
 
+# The readings of a body that normalize as one field's type, each with its normalized value.
+_Normalized = list[tuple[_Reading, JsonValue]]
+
+
 @dataclass(frozen=True)
 class _Body:
     request: CapturedRequest
-    hits: dict[str, list[str]]  # field -> the map paths that read its published value
+    hits: dict[str, dict[str, None]]  # field -> the map paths that read its published value, in document order
     score: int
 
 
-def _candidate(bodies: list[_Body], schema: SchemaDef) -> EndpointCandidate | None:
+def _candidate(bodies: list[_Body], schema: SchemaDef, required: frozenset[str]) -> EndpointCandidate | None:
     paths: dict[str, str] = {}
     for name in schema.fields:
         shared = [
-            path for path in bodies[0].hits.get(name, []) if all(path in body.hits.get(name, []) for body in bodies)
+            path for path in bodies[0].hits.get(name, {}) if all(path in body.hits.get(name, {}) for body in bodies)
         ]
         if shared:
             paths[name] = shared[0]
-    if not required_fields(schema) & paths.keys():
+    if not required & paths.keys():
         return None
     return EndpointCandidate(
         requests=tuple(body.request for body in bodies), map=paths, score=sum(body.score for body in bodies)
     )
 
 
-def _bodies(sample: DiscoverySample, schema: SchemaDef) -> dict[_EndpointKey, _Body]:
+def _bodies(sample: DiscoverySample, schema: SchemaDef, required: frozenset[str]) -> dict[_EndpointKey, _Body]:
     """The page's readable bodies, the best-scoring one per endpoint, in capture order of first appearance."""
     page = ParsedPage.of(sample.bundle)
     best: dict[_EndpointKey, _Body] = {}
     for entry, data in zip(sample.bundle.manifest.network_bodies, sample.bundle.network, strict=True):
-        request, document = _readable(entry, data)
-        if request is None:
+        readable = _readable(entry, data)
+        if readable is None:
             continue
-        body = _scored(request, document, page, sample, schema)
+        request, document = readable
+        body = _scored(request, document, page, sample, schema, required)
         key = _key(request)
         if key not in best or body.score > best[key].score:
             best[key] = body
     return best
 
 
-def _readable(entry: NetworkBody, data: bytes) -> tuple[CapturedRequest, JsonValue] | tuple[None, None]:
+def _readable(entry: NetworkBody, data: bytes) -> tuple[CapturedRequest, JsonValue] | None:
     if entry.method is None or entry.status not in _SUCCESS:
-        return None, None
+        return None
     try:
         document = json_doc.parse(data.decode("utf-8"))
     except ValueError:  # UnicodeDecodeError is a ValueError
-        return None, None
+        return None
     return CapturedRequest(entry.method.upper(), entry.url, entry.request_body), document
 
 
@@ -140,69 +145,79 @@ def _body_shape(body: str | None) -> tuple[str, ...] | None:
         document = json_doc.parse(body)
     except ValueError:
         return (body,)
-    return tuple(
-        sorted({path for path, value in _nodes(document, wildcard=True) if not isinstance(value, (dict, list))})
-    )
+    leaves = {path for path, value in json_doc.nodes(document, wildcard=True) if not isinstance(value, (dict, list))}
+    return tuple(sorted(leaves))
 
 
 def _scored(
-    request: CapturedRequest, document: JsonValue, page: ParsedPage, sample: DiscoverySample, schema: SchemaDef
+    request: CapturedRequest,
+    document: JsonValue,
+    page: ParsedPage,
+    sample: DiscoverySample,
+    schema: SchemaDef,
+    required: frozenset[str],
 ) -> _Body:
     leaves = [_Reading(path, raw) for path, raw in json_doc.scalars(document)]
-    hits = {
-        name: paths
-        for name, spec in schema.fields.items()
-        if name in sample.values and (paths := _hits(document, leaves, sample.values[name], spec, sample.ctx))
-    }
-    matched = required_fields(schema) & hits.keys()
+    # Each leaf is normalized once per field: for equality with the published value and for the visible-type count.
+    typed = {name: _normalized(leaves, spec, sample.ctx) for name, spec in schema.fields.items()}
+    hits = _field_hits(typed, document, sample, schema)
+    matched = required & hits.keys()
+    others = [name for name in schema.fields if name not in matched]
     used = {leaf for name in matched for path in hits[name] for leaf in map_paths(path)}
-    visible = [r for r in leaves if r.path not in used and page.visible_values.visible(str(r.raw))]
-    typed = [
-        name for name, spec in schema.fields.items() if name not in matched and _any_typed(visible, spec, sample.ctx)
+    visible = {r.path for r in leaves if others and r.path not in used and page.visible_values.visible(str(r.raw))}
+    shown = [name for name in others if any(reading.path in visible for reading, _ in typed[name])]
+    return _Body(request, hits, len(matched) + len(shown))
+
+
+def _field_hits(
+    typed: Mapping[str, _Normalized], document: JsonValue, sample: DiscoverySample, schema: SchemaDef
+) -> dict[str, dict[str, None]]:
+    """Each published field's map paths in the body; money also reads joined member pairs."""
+    money = any(spec.type is FieldType.MONEY for spec in schema.fields.values())
+    pairs = list(_member_pairs(document)) if money else []
+    hits: dict[str, dict[str, None]] = {}
+    for name, spec in schema.fields.items():
+        if name not in sample.values:
+            continue
+        joined = _normalized(pairs, spec, sample.ctx) if spec.type is FieldType.MONEY else []
+        if paths := _hits(typed[name] + joined, sample.values[name], spec):
+            hits[name] = paths
+    return hits
+
+
+def _normalized(readings: list[_Reading], spec: FieldSpec, ctx: Context) -> _Normalized:
+    return [
+        (reading, result.value) for reading in readings if isinstance(result := normalize(reading.raw, spec, ctx), Ok)
     ]
-    return _Body(request, hits, len(matched) + len(typed))
 
 
-def _hits(document: JsonValue, leaves: list[_Reading], value: JsonValue, spec: FieldSpec, ctx: Context) -> list[str]:
-    """The map paths, in document order, whose reading normalizes to a value `equal` to `value`."""
-    readings: Iterator[_Reading] = iter(leaves)
-    if spec.type is FieldType.MONEY:
-        readings = chain(leaves, _member_pairs(document))
-    return [reading.path for reading in readings if _reads(reading.raw, value, spec, ctx)]
-
-
-def _reads(raw: Scalar, value: JsonValue, spec: FieldSpec, ctx: Context) -> bool:
-    result = normalize(raw, spec, ctx)
-    return isinstance(result, Ok) and equal(result.value, value, spec)
-
-
-def _any_typed(readings: list[_Reading], spec: FieldSpec, ctx: Context) -> bool:
-    return any(isinstance(normalize(reading.raw, spec, ctx), Ok) for reading in readings)
+def _hits(readings: _Normalized, value: JsonValue, spec: FieldSpec) -> dict[str, None]:
+    """The map paths, in document order, whose reading is `equal` to `value`."""
+    return dict.fromkeys(reading.path for reading, normalized in readings if equal(normalized, value, spec))
 
 
 def _member_pairs(document: JsonValue) -> Iterator[_Reading]:
-    """Every ordered pair of distinct scalar members of one object, joined (`+`, §4.2)."""
-    for path, value in _nodes(document):
+    """The ordered pairs of scalar members of one object that may join into one money value (`+`, §4.2), in
+    document order: one member holds a digit and the other none.
+
+    SPEC-04 money text reading (`normalize/money.py`, `_AMOUNT_RUN`): a money value holds exactly one run of amount
+    digits, so a joined pair is an amount member and a currency member without digits. Two digit-free members state
+    no amount, and two amounts are two runs (a range or a list). So an object gives amounts x digit-free members
+    pairs, not the square of its size.
+    """
+    for path, value in json_doc.nodes(document):
         if isinstance(value, dict):
-            scalars = [(json_doc.member(path, key), child) for key, child in value.items() if _is_scalar(child)]
-            for (first, a), (second, b) in permutations(scalars, 2):
-                yield _Reading(f"{first}+{second}", joined_raw([a, b]))
+            members = [(json_doc.member(path, key), child) for key, child in value.items() if json_doc.is_scalar(child)]
+            yield from _amount_pairs(members)
 
 
-def _nodes(document: JsonValue, *, wildcard: bool = False) -> Iterator[tuple[str, JsonValue]]:
-    """Every node of `document` with its normalized path, in document order; with `wildcard`, array indices are
-    written `[*]`. Iterative, like `json_doc.scalars`."""
-    stack: list[tuple[str, JsonValue]] = [(json_doc.ROOT, document)]
-    while stack:
-        path, value = stack.pop()
-        yield path, value
-        children: list[tuple[str, JsonValue]] = []
-        if isinstance(value, dict):
-            children = [(json_doc.member(path, key), child) for key, child in value.items()]
-        elif isinstance(value, list):
-            children = [(f"{path}[{'*' if wildcard else i}]", child) for i, child in enumerate(value)]
-        stack.extend(reversed(children))
+def _amount_pairs(members: list[tuple[str, Scalar]]) -> Iterator[_Reading]:
+    amounts = [member for member in members if _has_digit(member[1])]
+    plain = [member for member in members if not _has_digit(member[1])]
+    for first, a in members:
+        for second, b in plain if _has_digit(a) else amounts:
+            yield _Reading(f"{first}+{second}", joined_raw([a, b]))
 
 
-def _is_scalar(value: JsonValue) -> TypeGuard[Scalar]:
-    return isinstance(value, (str, int, float)) and not isinstance(value, bool)
+def _has_digit(value: Scalar) -> bool:
+    return not isinstance(value, str) or any(c.isdigit() for c in value)

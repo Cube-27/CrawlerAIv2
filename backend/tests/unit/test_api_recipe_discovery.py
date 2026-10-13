@@ -7,6 +7,7 @@ Captures are built in memory with synthetic `.test` hosts; the browser-marked en
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -37,20 +38,19 @@ SITE = "https://shop.example.test"
 API = "https://api.example.test"
 
 
+@dataclass(frozen=True)
 class Body:
     """A captured JSON response and the request behind it."""
 
-    def __init__(
-        self,
-        url: str,
-        data: JsonValue | bytes,
-        *,
-        method: str | None = "GET",
-        status: int = 200,
-        request_body: str | None = None,
-    ) -> None:
-        self.url, self.method, self.status, self.request_body = url, method, status, request_body
-        self.data = data if isinstance(data, bytes) else json.dumps(data).encode()
+    url: str
+    content: JsonValue | bytes
+    method: str | None = "GET"
+    status: int = 200
+    request_body: str | None = None
+
+    @property
+    def data(self) -> bytes:
+        return self.content if isinstance(self.content, bytes) else json.dumps(self.content).encode()
 
 
 def _bundle(page_url: str, html: str, bodies: Sequence[Body]) -> CaptureBundle:
@@ -149,6 +149,21 @@ def test_a_path_shared_by_every_page_wins_over_an_earlier_one_that_is_not() -> N
     (candidate,) = discover([lamp, chair], SCHEMA)
 
     assert candidate.map == {"title": "$['b']"}
+
+
+def test_a_large_object_of_text_members_next_to_the_money_pair_is_searched_in_bounded_time() -> None:
+    def page(slug: str, title: str, amount: float) -> DiscoverySample:
+        data: JsonValue = {
+            **{f"label_{i}": "Menu entry" for i in range(3_000)},
+            "name": title,
+            "price": amount,
+            "currency": "EUR",
+        }
+        return _sample(slug, _values(title, str(amount)), [Body(f"{API}/products/{slug}", data)])
+
+    (candidate,) = discover([page("lamp-1", "Desk Lamp", 19.5), page("chair-2", "Oak Chair", 120.0)], SCHEMA)
+
+    assert candidate.map == {"title": "$['name']", "price": "$['price']+$['currency']"}
 
 
 def test_endpoints_rank_by_score_and_visible_values_of_unpublished_fields_count() -> None:
