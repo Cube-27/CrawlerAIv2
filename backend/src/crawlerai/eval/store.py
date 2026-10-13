@@ -13,7 +13,7 @@ from typing import Any, Literal, Protocol, assert_never
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
-from sqlalchemy import Table, insert, select, update
+from sqlalchemy import Table, delete, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
@@ -128,27 +128,33 @@ class EvalStore(Protocol):
 def get_store(split: Split, settings: Settings) -> EvalStore:
     match split:
         case "dev":
-            return DevEvalStore(
-                create_async_engine(settings.database_url.get_secret_value()), open_store(settings.object_store)
-            )
+            return dev_store(settings)
         case "hidden" | "fresh":
-            database_url, object_store = settings.eval_private_database_url, settings.eval_private_object_store
-            if database_url is None or object_store is None:
-                raise PrivateCredentialsMissing(
-                    f"the {split} split needs CRAWLERAI_EVAL_PRIVATE_DATABASE_URL and"
-                    " CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE. They are set only for custodians (C1), so this is"
-                    " expected on any other machine."
-                )
-            # A sanity check against misconfiguration; what keeps `app` out is the role grant (init.sql).
-            if _same_database(settings.database_url.get_secret_value(), database_url.get_secret_value()):
-                raise PrivateStoreNotSeparate("the private eval database is the main database")
-            if _nested(settings.object_store, object_store):
-                raise PrivateStoreNotSeparate("the private object store overlaps the main one")
-            return PrivateEvalStore(
-                split, create_async_engine(database_url.get_secret_value()), open_store(object_store)
-            )
+            return private_store(split, settings)
         case _:
             assert_never(split)
+
+
+def dev_store(settings: Settings) -> "DevEvalStore":
+    return DevEvalStore(
+        create_async_engine(settings.database_url.get_secret_value()), open_store(settings.object_store)
+    )
+
+
+def private_store(split: PrivateSplit, settings: Settings) -> "PrivateEvalStore":
+    database_url, object_store = settings.eval_private_database_url, settings.eval_private_object_store
+    if database_url is None or object_store is None:
+        raise PrivateCredentialsMissing(
+            f"the {split} split needs CRAWLERAI_EVAL_PRIVATE_DATABASE_URL and"
+            " CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE. They are set only for custodians (C1), so this is"
+            " expected on any other machine."
+        )
+    # A sanity check against misconfiguration; what keeps `app` out is the role grant (init.sql).
+    if _same_database(settings.database_url.get_secret_value(), database_url.get_secret_value()):
+        raise PrivateStoreNotSeparate("the private eval database is the main database")
+    if _nested(settings.object_store, object_store):
+        raise PrivateStoreNotSeparate("the private object store overlaps the main one")
+    return PrivateEvalStore(split, create_async_engine(database_url.get_secret_value()), open_store(object_store))
 
 
 def _same_database(a_url: str, b_url: str) -> bool:
@@ -392,6 +398,47 @@ class PrivateEvalStore(_SqlEvalStore):
                 .on_conflict_do_nothing(index_elements=[EvalCapture.id])
             )
         return CaptureId(bundle.manifest.capture_id)
+
+    async def pages_by_host(self) -> dict[str, list[EvalPageRow]]:
+        """This split's pages grouped by the host of their capture, in page order. Hosts are for grouping only: callers
+        never print them (C1)."""
+        page = self._page.c
+        query = (
+            select(self._page, EvalCapture.host)
+            .join(EvalCapture, (EvalCapture.id == page.capture_id) & (EvalCapture.split == page.split))
+            .where(page.split == self._split)
+            .order_by(page.id)
+        )
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(query)).mappings().all()
+        sites: dict[str, list[EvalPageRow]] = {}
+        for row in rows:
+            sites.setdefault(row["host"], []).append(_row(EvalPageRow, row))
+        return sites
+
+    async def remove_page(self, page_id: EvalPageId) -> None:
+        """Delete the page, and its capture and bundle once no page of this split names the capture. Removing a
+        missing page is a no-op, so an interrupted move can be re-run."""
+        page = self._page.c
+        async with self._engine.begin() as conn:
+            capture_id = (
+                await conn.execute(
+                    delete(self._page).where(page.id == page_id, page.split == self._split).returning(page.capture_id)
+                )
+            ).scalar_one_or_none()
+            if capture_id is None:
+                return
+            still_named = select(page.id).where(page.capture_id == capture_id).exists()
+            object_key = (
+                await conn.execute(
+                    delete(EvalCapture)
+                    .where(EvalCapture.id == capture_id, EvalCapture.split == self._split, ~still_named)
+                    .returning(EvalCapture.object_key)
+                )
+            ).scalar_one_or_none()
+        # After the row: a failure here leaves an unreferenced object, which nothing reads.
+        if object_key is not None:
+            await asyncio.to_thread(self._objects.delete, object_key)
 
     async def llm_cache_get(self, key: str) -> bytes | None:
         query = select(EvalLlmCache.object_key).where(EvalLlmCache.key == _check_llm_key(key))
