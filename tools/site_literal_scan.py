@@ -17,7 +17,8 @@ With `--public`, `--staged` (the pre-commit hook) scans only the files staged fo
 them. Names of tracked files, modules and schema columns still come from the whole repository.
 
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
-allowlist or the TLD list cannot be used.
+allowlist or the TLD list cannot be used, or when `--allowlist` lies outside the scanned repository (`--root`);
+the default is that repository's `tools/site_literal_allowlist.txt`.
 
 `--hidden-hosts-from-env VAR` (the protected job, INV-04) reads hidden hosts from the environment variable VAR,
 separated by whitespace or commas, and scans every tracked file, with no path exemption and no allowlist. A host
@@ -42,7 +43,7 @@ from pathlib import Path, PurePosixPath
 
 REPO = Path(__file__).resolve().parents[1]
 TLD_LIST = REPO / "backend/data/iana/tlds-alpha-by-domain.txt"
-DEFAULT_ALLOWLIST = REPO / "tools/site_literal_allowlist.txt"
+DEFAULT_ALLOWLIST = PurePosixPath("tools/site_literal_allowlist.txt")
 
 EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", ".github/")
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
@@ -368,6 +369,14 @@ def run_hidden(root: Path, variable: str) -> int:
     return 0
 
 
+def inside(root: Path, path: Path) -> Path:
+    """`path` resolved, when it lies inside the resolved `root`: the allowlist is part of the repository it governs."""
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root):
+        raise UsageError(f"{path} is outside the repository {root}")
+    return resolved
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -375,20 +384,21 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--hidden-hosts-from-env", metavar="VAR", help="scan everything for the hosts listed in VAR")
     parser.add_argument("--staged", action="store_true", help="public mode only: scan staged files (hooks)")
     parser.add_argument("--root", type=Path, default=REPO, help="repository to scan")
-    parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST, help="public mode only")
+    parser.add_argument("--allowlist", type=Path, help=f"public mode only; default: <root>/{DEFAULT_ALLOWLIST}")
     args = parser.parse_args(argv)
 
+    root = args.root.resolve()
     if args.hidden_hosts_from_env is not None:
-        return run_hidden(args.root.resolve(), args.hidden_hosts_from_env)
+        return run_hidden(root, args.hidden_hosts_from_env)
 
     try:
-        allowlist = Allowlist.load(args.allowlist)
+        allowlist = Allowlist.load(inside(root, args.allowlist or root / DEFAULT_ALLOWLIST))
         tlds = load_tlds(TLD_LIST)
     except (OSError, UsageError) as error:
         print(f"site-literals: {error}", file=sys.stderr)
         return 2
 
-    findings, scanned = scan(args.root.resolve(), allowlist, tlds, staged=args.staged)
+    findings, scanned = scan(root, allowlist, tlds, staged=args.staged)
     for finding in findings:
         print(finding)
     if findings:

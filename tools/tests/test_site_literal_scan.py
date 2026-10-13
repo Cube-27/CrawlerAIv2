@@ -4,6 +4,7 @@ Every host here is reserved by RFC 2606 or RFC 6761. Detection tests pass an exp
 reserved names are not exempted.
 """
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,12 +13,12 @@ import pytest
 from scan_repo import SCAN, commit, git, make_repo
 
 
-def write_allowlist(path: Path, lines: list[str]) -> Path:
-    path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
-    return path
-
-
-def run_scan(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def run_scan(root: Path, *args: str, allowlist: list[str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the scan on `root`; `allowlist` lines go to an untracked file inside `root`, passed as `--allowlist`."""
+    if allowlist is not None:
+        path = root / "allowlist.txt"
+        path.write_text("".join(f"{line}\n" for line in allowlist), encoding="utf-8")
+        args = (*args, "--allowlist", str(path))
     return subprocess.run(  # noqa: S603
         [sys.executable, str(SCAN), "--public", "--root", str(root), *args],
         capture_output=True,
@@ -26,46 +27,41 @@ def run_scan(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-@pytest.fixture
-def empty_allowlist(tmp_path: Path) -> Path:
-    return write_allowlist(tmp_path / "allowlist.txt", [])
-
-
-def test_hostname_in_generic_code_fails_with_path_line_and_host(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_hostname_in_generic_code_fails_with_path_line_and_host(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {"backend/src/crawlerai/collect/hosts.py": 'X = 1\nHOST = "shop.example.com"\n'},
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["backend/src/crawlerai/collect/hosts.py:2: shop.example.com"]
 
 
-def test_url_host_outside_the_tld_list_fails(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_url_host_outside_the_tld_list_fails(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo", {"backend/src/crawlerai/acquire/fetch.py": 'U = "https://shop.retailer.test/p?q=1"\n'}
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["backend/src/crawlerai/acquire/fetch.py:1: shop.retailer.test"]
 
 
-def test_hosts_are_reported_lowercase_once_per_line(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_hosts_are_reported_lowercase_once_per_line(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"a.txt": "see https://SHOP.EXAMPLE.COM/x and shop.example.com\n"})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.stdout.splitlines() == ["a.txt:1: shop.example.com"]
 
 
-def test_tests_are_not_exempt(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_tests_are_not_exempt(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"backend/tests/unit/test_x.py": 'URL = "https://jobs.example.net/1"\n'})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["backend/tests/unit/test_x.py:1: jobs.example.net"]
@@ -86,15 +82,15 @@ def test_tests_are_not_exempt(tmp_path: Path, empty_allowlist: Path) -> None:
         "backend/data/manifest.json",
     ],
 )
-def test_exempt_paths_pass(tmp_path: Path, empty_allowlist: Path, path: str) -> None:
+def test_exempt_paths_pass(tmp_path: Path, path: str) -> None:
     repo = make_repo(tmp_path / "repo", {path: "https://shop.example.com/\n"})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_path_exemptions_do_not_leak_to_similar_paths(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_path_exemptions_do_not_leak_to_similar_paths(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {
@@ -103,7 +99,7 @@ def test_path_exemptions_do_not_leak_to_similar_paths(tmp_path: Path, empty_allo
         },
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert sorted(result.stdout.splitlines()) == [
@@ -126,6 +122,8 @@ def test_default_allowlist_exempts_reserved_names(tmp_path: Path) -> None:
             )
         },
     )
+    (repo / "tools").mkdir()
+    shutil.copy(SCAN.parent / "site_literal_allowlist.txt", repo / "tools")
 
     result = run_scan(repo)
 
@@ -133,60 +131,71 @@ def test_default_allowlist_exempts_reserved_names(tmp_path: Path) -> None:
 
 
 def test_dotted_entry_covers_the_name_and_its_subdomains_only(tmp_path: Path) -> None:
-    allowlist = write_allowlist(tmp_path / "allowlist.txt", [".shop.example  # reserved test name"])
     repo = make_repo(
         tmp_path / "repo",
         {"a.txt": "https://shop.example/\nhttps://a.shop.example/\nhttps://othershop.example/\n"},
     )
 
-    result = run_scan(repo, "--allowlist", str(allowlist))
+    result = run_scan(repo, allowlist=[".shop.example  # reserved test name"])
 
     assert result.stdout.splitlines() == ["a.txt:3: othershop.example"]
 
 
 def test_plain_entry_matches_exactly(tmp_path: Path) -> None:
-    allowlist = write_allowlist(tmp_path / "allowlist.txt", ["shop.example  # reserved test name"])
     repo = make_repo(tmp_path / "repo", {"a.txt": "https://shop.example/\nhttps://a.shop.example/\n"})
 
-    result = run_scan(repo, "--allowlist", str(allowlist))
+    result = run_scan(repo, allowlist=["shop.example  # reserved test name"])
 
     assert result.stdout.splitlines() == ["a.txt:2: a.shop.example"]
 
 
 def test_allowlist_entry_without_justification_is_rejected(tmp_path: Path) -> None:
-    allowlist = write_allowlist(tmp_path / "allowlist.txt", ["shop.example"])
     repo = make_repo(tmp_path / "repo", {"a.txt": "nothing here\n"})
 
-    result = run_scan(repo, "--allowlist", str(allowlist))
+    result = run_scan(repo, allowlist=["shop.example"])
 
     assert result.returncode == 2
     assert "justification" in result.stderr
 
 
-def test_non_public_url_hosts_pass(tmp_path: Path, empty_allowlist: Path) -> None:
+@pytest.mark.parametrize("relative", [False, True])
+def test_allowlist_outside_the_scanned_repository_is_rejected(tmp_path: Path, relative: bool) -> None:
+    outside = tmp_path / "allowlist.txt"
+    outside.write_text("shop.example  # reserved test name\n", encoding="utf-8")
+    repo = make_repo(tmp_path / "repo", {"a.txt": "https://shop.example/\n"})
+    path = repo / ".." / "allowlist.txt" if relative else outside
+
+    result = run_scan(repo, "--allowlist", str(path))
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "outside the repository" in result.stderr
+
+
+def test_non_public_url_hosts_pass(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {"infra/env.txt": "A=http://127.0.0.1:8000\nB=http://api:8000/healthz\nC=http://192.0.2.10/\n"},
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_untracked_and_binary_files_are_skipped(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_untracked_and_binary_files_are_skipped(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"blob.bin": b"\x00\x01shop.example.com\x00"})
     (repo / "untracked.txt").write_text("shop.example.com\n", encoding="utf-8")
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_clean_repo_passes_with_one_summary_line(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_clean_repo_passes_with_one_summary_line(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"a.txt": "no hosts\n", "b.txt": "still none\n"})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0
     assert result.stdout == "site-literals: ok, 2 files scanned\n"
@@ -199,7 +208,7 @@ MODULE_PATH = ["pkg", "api", "app"]
 STDLIB_MODULE = ".".join(["collections", "abc"])
 
 
-def test_python_code_is_read_only_in_strings_and_comments(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_python_code_is_read_only_in_strings_and_comments(tmp_path: Path) -> None:
     source = (
         f"values = {CALL}(f)\n"
         'URL = f"https://shop.example.com/{x}"\n'
@@ -208,7 +217,7 @@ def test_python_code_is_read_only_in_strings_and_comments(tmp_path: Path, empty_
     )
     repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/collect/c.py": source})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.stdout.splitlines() == [
         "backend/src/crawlerai/collect/c.py:2: shop.example.com",
@@ -217,15 +226,15 @@ def test_python_code_is_read_only_in_strings_and_comments(tmp_path: Path, empty_
     ]
 
 
-def test_python_that_does_not_tokenize_is_read_whole(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_python_that_does_not_tokenize_is_read_whole(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"broken.py": 'x = (\nhost = "shop.example.com"\n'})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.stdout.splitlines() == ["broken.py:2: shop.example.com"]
 
 
-def test_typescript_code_is_read_only_in_strings_and_comments(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_typescript_code_is_read_only_in_strings_and_comments(tmp_path: Path) -> None:
     source = (
         f"const rows = {CALL}((r) => r);\n"
         'const base = "https://api.example.com/v1";\n'
@@ -236,7 +245,7 @@ def test_typescript_code_is_read_only_in_strings_and_comments(tmp_path: Path, em
     )
     repo = make_repo(tmp_path / "repo", {"frontend/src/a.tsx": source})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.stdout.splitlines() == [
         "frontend/src/a.tsx:2: api.example.com",
@@ -246,7 +255,7 @@ def test_typescript_code_is_read_only_in_strings_and_comments(tmp_path: Path, em
     ]
 
 
-def test_names_of_tracked_files_and_modules_are_not_hosts(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_names_of_tracked_files_and_modules_are_not_hosts(tmp_path: Path) -> None:
     module_file = "backend/src/" + "/".join(MODULE_PATH) + ".py"
     repo = make_repo(
         tmp_path / "repo",
@@ -258,31 +267,31 @@ def test_names_of_tracked_files_and_modules_are_not_hosts(tmp_path: Path, empty_
         },
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_url_hosts_are_checked_even_when_they_look_like_file_names(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_url_hosts_are_checked_even_when_they_look_like_file_names(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"README.md": "", "notes.txt": "https://readme.example/\n"})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.stdout.splitlines() == ["notes.txt:1: readme.example"]
 
 
-def test_python_templates_are_read_as_python(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_python_templates_are_read_as_python(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {"migrations/script.py.mako": f"from {STDLIB_MODULE} import Sequence\n# mail: email.example.com\n"},
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.stdout.splitlines() == ["migrations/script.py.mako:2: email.example.com"]
 
 
-def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path) -> None:
     source = (
         'SUFFIX = ".shop.example.com"\n'
         'URL = f"https://{sub}.jobs.example.net/"\n'
@@ -294,7 +303,7 @@ def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path, empty_allowl
         {"backend/src/crawlerai/collect/hosts.py": source, "infra/config.yml": "host: .api.example.com\n"},
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert sorted(result.stdout.splitlines()) == [
         "backend/src/crawlerai/collect/hosts.py:1: shop.example.com",
@@ -305,12 +314,12 @@ def test_hosts_written_with_a_leading_dot_are_found(tmp_path: Path, empty_allowl
     ]
 
 
-def test_hosts_joined_to_underscores_are_found(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_hosts_joined_to_underscores_are_found(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo", {"a.txt": "foo_shop.example.com_v2\n", "b.py": 'NAME = "cache_jobs.example.net"\n'}
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["a.txt:1: shop.example.com", "b.py:1: jobs.example.net"]
@@ -330,7 +339,7 @@ MIGRATION = (
 )
 
 
-def test_references_to_columns_the_schema_defines_are_not_hosts(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_references_to_columns_the_schema_defines_are_not_hosts(tmp_path: Path) -> None:
     models = (
         "from sqlalchemy import ForeignKey\n"
         f'A = ForeignKey("{WIDGET_ID}")\n'
@@ -342,12 +351,12 @@ def test_references_to_columns_the_schema_defines_are_not_hosts(tmp_path: Path, 
         {"backend/migrations/versions/0001_widgets.py": MIGRATION, "backend/src/crawlerai/db/models.py": models},
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_declarative_models_and_added_columns_define_the_schema(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_declarative_models_and_added_columns_define_the_schema(tmp_path: Path) -> None:
     models = (
         "class Gadget(Base):\n"
         '    __tablename__ = "gadget"\n'
@@ -361,12 +370,12 @@ def test_declarative_models_and_added_columns_define_the_schema(tmp_path: Path, 
     notes = f"{GADGET_ID}, {WIDGET_PART_ID} and {WIDGET_IO}\n"
     repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/db/models.py": models, "notes.txt": notes})
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_table_column_shapes_the_schema_does_not_define_are_hosts(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_table_column_shapes_the_schema_does_not_define_are_hosts(tmp_path: Path) -> None:
     repo = make_repo(
         tmp_path / "repo",
         {
@@ -375,7 +384,7 @@ def test_table_column_shapes_the_schema_does_not_define_are_hosts(tmp_path: Path
         },
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == [
@@ -384,7 +393,7 @@ def test_table_column_shapes_the_schema_does_not_define_are_hosts(tmp_path: Path
     ]
 
 
-def test_hosts_that_start_with_a_table_name_are_still_found(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_hosts_that_start_with_a_table_name_are_still_found(tmp_path: Path) -> None:
     hosts = (
         'A = "widget.example.com"\n'
         f'B = "https://{WIDGET_ID}/p"\n'
@@ -396,7 +405,7 @@ def test_hosts_that_start_with_a_table_name_are_still_found(tmp_path: Path, empt
         {"backend/migrations/versions/0001_widgets.py": MIGRATION, "backend/src/crawlerai/collect/hosts.py": hosts},
     )
 
-    result = run_scan(repo, "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == [
@@ -407,42 +416,42 @@ def test_hosts_that_start_with_a_table_name_are_still_found(tmp_path: Path, empt
     ]
 
 
-def test_staged_mode_scans_only_staged_files(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_staged_mode_scans_only_staged_files(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"old.txt": "shop.example.com\n", "new.txt": "clean\n"})
     commit(repo)
     (repo / "new.txt").write_text("clean\njobs.example.net\n", encoding="utf-8")
     git(repo, "add", "new.txt")
 
-    result = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, "--staged", allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["new.txt:2: jobs.example.net"]
 
 
-def test_staged_mode_reads_the_index_not_the_working_tree(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_staged_mode_reads_the_index_not_the_working_tree(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"a.txt": "shop.example.com\n", "b.txt": "clean\n"})
     (repo / "a.txt").write_text("clean now\n", encoding="utf-8")
     (repo / "b.txt").write_text("jobs.example.net\n", encoding="utf-8")
 
-    result = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, "--staged", allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["a.txt:1: shop.example.com"]
 
 
-def test_staged_mode_passes_with_nothing_staged_or_only_deletions(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_staged_mode_passes_with_nothing_staged_or_only_deletions(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"old.txt": "shop.example.com\n"})
     commit(repo)
 
-    nothing = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+    nothing = run_scan(repo, "--staged", allowlist=[])
     git(repo, "rm", "-q", "old.txt")
-    deletion = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+    deletion = run_scan(repo, "--staged", allowlist=[])
 
     assert (nothing.returncode, nothing.stdout) == (0, "site-literals: ok, 0 files scanned\n")
     assert (deletion.returncode, deletion.stdout) == (0, "site-literals: ok, 0 files scanned\n")
 
 
-def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Path, empty_allowlist: Path) -> None:
+def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/collect/hosts.py": "X = 1\n"})
     commit(repo)
     make_repo(
@@ -453,6 +462,6 @@ def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Pa
         },
     )
 
-    result = run_scan(repo, "--staged", "--allowlist", str(empty_allowlist))
+    result = run_scan(repo, "--staged", allowlist=[])
 
     assert (result.returncode, result.stdout) == (0, "site-literals: ok, 1 files scanned\n")
