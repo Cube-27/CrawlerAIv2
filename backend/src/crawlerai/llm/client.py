@@ -16,7 +16,7 @@ import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Final, Literal, Protocol
+from typing import ClassVar, Final, Literal, Protocol
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, best_match
@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, field_validator
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import JobId, UsageResource
-from crawlerai.db.usage import budget_remaining, record_usage
+from crawlerai.db.usage import BUDGET_EXHAUSTED, budget_remaining, record_usage
 from crawlerai.storage.capture_bundle import sha256_hex
 
 # The role of each call (SPEC-06 §4.2); `usage_event.metadata.prompt_kind` and the replay key carry it.
@@ -132,16 +132,28 @@ def is_transient(status: int) -> bool:
     return status in (408, 429) or 500 <= status <= 599
 
 
-class BudgetExhausted(Exception):
+class LLMFailure(Exception):
+    """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type."""
+
+    code: ClassVar[str]
+
+
+class BudgetExhausted(LLMFailure):
     """The job has no `llm_calls` budget left; the call was not made (§4.7)."""
 
+    code = BUDGET_EXHAUSTED
 
-class ProviderUnavailable(Exception):
+
+class ProviderUnavailable(LLMFailure):
     """No provider answered (§4.7)."""
 
+    code = "llm_unavailable"
 
-class OutputInvalid(Exception):
+
+class OutputInvalid(LLMFailure):
     """The reply did not match the output schema, after the one retry (§4.7)."""
+
+    code = "llm_output_invalid"
 
 
 class Unconfigured:

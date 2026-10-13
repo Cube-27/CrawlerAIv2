@@ -51,8 +51,8 @@ from crawlerai.db.models import (
     UsageResource,
 )
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
-from crawlerai.db.usage import BUDGET_EXHAUSTED, record_usage
-from crawlerai.llm.client import BudgetExhausted, LLMClient, OutputInvalid, ProviderUnavailable, Unconfigured
+from crawlerai.db.usage import record_usage
+from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
 from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import SchemaDef
@@ -78,12 +78,6 @@ _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
 _CLAIMANT: Final = f"api:{socket.gethostname()}:{os.getpid()}"
 # Jobs and sites belong to the project migrations create (single tenant, ARCHITECTURE §1).
 _DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
-# The `last_error` of a scrape whose draft schema the LLM could not give, named as SPEC-06 §4.7 names its reasons.
-_LLM_ERRORS: Final[dict[type[Exception], str]] = {
-    BudgetExhausted: BUDGET_EXHAUSTED,
-    ProviderUnavailable: "llm_unavailable",
-    OutputInvalid: "llm_output_invalid",
-}
 _NO_LLM: Final = Unconfigured("no LLM provider is configured")
 
 
@@ -261,9 +255,8 @@ async def scrape(
     engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, *, llm: LLMClient = _NO_LLM
 ) -> ScrapeResult:
     """Run `request` as a scrape job. Raises `ScrapeRejected` when the target is refused, before any job is created
-    for a target refused outright, `ScrapeTimedOut` past `request.timeout_s`, and the LLM client's
-    `BudgetExhausted`, `ProviderUnavailable` or `OutputInvalid` when a prompt could not be drafted; the job is failed
-    in each case."""
+    for a target refused outright, `ScrapeTimedOut` past `request.timeout_s`, and the LLM client's `LLMFailure` when
+    a prompt could not be drafted; the job is failed in each case."""
     try:
         await fetching.connector.check(request.url)
     except SsrfRejected as e:
@@ -278,8 +271,8 @@ async def scrape(
     except ScrapeRejected as e:
         await _fail(engine, task, e.reason)
         raise
-    except (BudgetExhausted, ProviderUnavailable, OutputInvalid) as e:
-        await _fail(engine, task, _LLM_ERRORS[type(e)])
+    except LLMFailure as e:
+        await _fail(engine, task, e.code)
         raise
 
 
@@ -325,10 +318,11 @@ async def _run(
     # task claimed. They are made only from a page that was reached (§4.8: no partial formats on failure).
     formats, drafted = _Formats(), None
     if isinstance(page, FetchResult) and _OUTCOMES[page.block_class] == "extracted":
-        parsed = await asyncio.to_thread(ParsedPage.of, page.bundle)
-        formats = await asyncio.to_thread(_formats, parsed, page.bundle.manifest.final_url, request.formats)
-        if isinstance(request.schema_, SchemaPrompt):
-            drafted = await _draft(engine, llm, request.schema_.prompt, parsed, task.job_id)
+        prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
+        formats, sample = await asyncio.to_thread(_content, page, request.formats, sample=prompt is not None)
+        if prompt is not None and sample is not None:
+            # Role S's one sample page is the page's cleaned text (SPEC-06 §4.5).
+            drafted = await draft_schema(engine, llm, prompt=prompt, samples=[sample], job_id=task.job_id)
     members = _NOT_FETCHED
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
@@ -436,8 +430,15 @@ async def _finish(conn: AsyncConnection, task: ClaimedTask, fetched: _Fetched) -
     return outcome
 
 
+def _content(result: FetchResult, requested: list[ScrapeFormat], *, sample: bool) -> tuple[_Formats, str | None]:
+    """The requested content formats of the page and, when `sample`, its cleaned text, from one parse of its body
+    (INV-26)."""
+    page = ParsedPage.of(result.bundle)
+    formats = _formats(page, result.bundle.manifest.final_url, requested)
+    return formats, page.cleaned_text.text if sample else None
+
+
 def _formats(page: ParsedPage, final_url: str, requested: list[ScrapeFormat]) -> _Formats:
-    """The requested content formats of the page, from one parse of its body (INV-26)."""
     formats: _Formats = {}
     if "markdown" in requested:
         formats["markdown"] = markdown(page)
@@ -450,12 +451,6 @@ def _formats(page: ParsedPage, final_url: str, requested: list[ScrapeFormat]) ->
     if "metadata" in requested:
         formats["metadata"] = metadata(page, final_url)
     return formats
-
-
-async def _draft(engine: AsyncEngine, llm: LLMClient, prompt: str, page: ParsedPage, job_id: JobId) -> SchemaDef:
-    """Role S's draft for `prompt`, with the page's cleaned text as its one sample (SPEC-06 §4.5)."""
-    sample = await asyncio.to_thread(lambda: page.cleaned_text.text)
-    return await draft_schema(engine, llm, prompt=prompt, samples=[sample], job_id=job_id)
 
 
 async def _record_usage(

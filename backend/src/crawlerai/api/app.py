@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from functools import partial
 
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.acquire.browser import fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
@@ -19,9 +19,8 @@ from crawlerai.api.auth import RateLimiter
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.api.routers import health, schemas, scrape
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.settings import ApiSettings, LLMSettings, Settings
-from crawlerai.llm.client import LLMClient, MeteredClient, Unconfigured
-from crawlerai.llm.providers.from_settings import providers_from_settings
+from crawlerai.core.settings import ApiSettings, Settings
+from crawlerai.llm.providers.from_settings import client_from_settings
 from crawlerai.services.scrape import Fetching
 from crawlerai.storage import open_store
 
@@ -45,22 +44,13 @@ def _fetching(settings: Settings) -> Fetching:
     return Fetching(Rungs(http=http, browser=browser), connector, open_store(settings.object_store), HostLimiter())
 
 
-def _llm(settings: LLMSettings, engine: AsyncEngine) -> LLMClient:
-    """The configured providers' client. Without an API key for a listed provider the API still starts: a call then
-    fails with that reason, and work that needs no call (a stored draft) still runs."""
-    try:
-        return MeteredClient(providers_from_settings(settings), engine)
-    except ValueError as e:
-        return Unconfigured(str(e))
-
-
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
     engine = create_async_engine(settings.database_url.get_secret_value())
     app.state.database = engine
     app.state.fetching = _fetching(settings)
-    app.state.llm = _llm(settings, engine)
+    app.state.llm = client_from_settings(settings, engine)
     try:
         yield
     finally:

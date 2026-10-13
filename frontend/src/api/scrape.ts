@@ -54,9 +54,6 @@ export type ScrapeResponse = Schemas["ScrapeResult"] & {
   records?: ScrapeRecord[];
 };
 
-/** The schema role S drafted from the request's prompt. */
-export type DraftSchema = Schemas["SchemaDef"];
-
 export type ScrapeOutcome = ScrapeResponse["outcome"];
 export type FetchAttempt = Schemas["AttemptRecord"];
 export type PageMetadata = Schemas["PageMetadata"];

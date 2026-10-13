@@ -7,7 +7,6 @@ pages on RFC 2606 hosts and a stub resolver, so nothing leaves the process.
 
 import asyncio
 import json
-import uuid
 from collections.abc import AsyncIterator, Callable
 from ipaddress import ip_address
 from pathlib import Path
@@ -24,7 +23,7 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key
-from crawlerai.db.models import ApiKey, SchemaDef
+from crawlerai.db.models import ApiKey
 from crawlerai.llm.client import MeteredClient, ProviderError, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
@@ -90,15 +89,6 @@ def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[in
 def provider() -> FakeProvider | None:
     """The LLM provider the app's client asks: one role S draft, scripted. None keeps the app's own client."""
     return FakeProvider([DRAFT_REPLY])
-
-
-@pytest.fixture
-async def prompt(database: AsyncEngine) -> AsyncIterator[str]:
-    """A prompt no other test drafts; its draft schema is deleted afterwards."""
-    text = f"Product names {uuid.uuid4()}"
-    yield text
-    async with database.begin() as conn:
-        await conn.execute(delete(SchemaDef).where(SchemaDef.name == draft_name(text)))
 
 
 @pytest.fixture

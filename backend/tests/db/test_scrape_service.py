@@ -7,8 +7,7 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolv
 import asyncio
 import json
 import time
-import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
@@ -16,7 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -25,7 +24,7 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.db.models import Capture, Job, SchemaDef, Site, UrlTask, UsageEvent
+from crawlerai.db.models import Capture, Job, Site, UrlTask, UsageEvent
 from crawlerai.llm.client import (
     BudgetExhausted,
     MeteredClient,
@@ -59,10 +58,21 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue  kettle</title>
 
 
 # A role S reply: a draft schema document without name and version (SPEC-06 §4.5).
-DRAFT: dict[str, Any] = {
-    "page_kind": "detail",
-    "fields": {"title": {"type": "text", "required": True, "description": "Name of the product"}},
-}
+DRAFT_REPLY = ProviderReply(
+    model="fake-strong",
+    text=json.dumps(
+        {"page_kind": "detail", "fields": {"title": {"type": "text", "required": True, "description": "Product name"}}}
+    ),
+    tokens_in=900,
+    tokens_out=80,
+)
+# Valid JSON for the output schema, but a field without a description, which the draft check refuses.
+UNDESCRIBED = ProviderReply(
+    model="fake-strong",
+    text=json.dumps({"page_kind": "detail", "fields": {"title": {"type": "text"}}}),
+    tokens_in=1,
+    tokens_out=1,
+)
 
 
 @dataclass
@@ -404,25 +414,12 @@ async def test_a_timeout_while_the_formats_are_computed_fails_the_job(
     assert (task.status, task.last_error, job_status) == ("failed", "timeout", "failed")
 
 
-def draft_reply() -> ProviderReply:
-    return ProviderReply(model="fake-strong", text=json.dumps(DRAFT), tokens_in=900, tokens_out=80)
-
-
-@pytest.fixture
-async def prompt(engine: AsyncEngine) -> AsyncIterator[str]:
-    """A prompt no other test drafts; its draft schema is deleted afterwards."""
-    text = f"Product names {uuid.uuid4()}"
-    yield text
-    async with engine.begin() as conn:
-        await conn.execute(delete(SchemaDef).where(SchemaDef.name == draft_name(text)))
-
-
 async def test_a_prompt_is_drafted_from_the_page_and_returned(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
-    provider = FakeProvider([draft_reply()])
+    provider = FakeProvider([DRAFT_REPLY])
 
     result = await scrape(
         engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=MeteredClient([provider], engine)
@@ -447,7 +444,7 @@ async def test_a_prompt_scraped_again_reuses_its_draft_without_a_call(
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
-    provider = FakeProvider([draft_reply()])
+    provider = FakeProvider([DRAFT_REPLY])
     llm = MeteredClient([provider], engine)
 
     first = await scrape(engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=llm)
@@ -467,7 +464,7 @@ async def test_a_stored_draft_needs_no_configured_provider(
         engine,
         fetching,
         request(url, "links", schema={"prompt": prompt}),
-        llm=MeteredClient([FakeProvider([draft_reply()])], engine),
+        llm=MeteredClient([FakeProvider([DRAFT_REPLY])], engine),
     )
 
     second = await scrape(
@@ -482,7 +479,7 @@ async def test_a_page_not_reached_is_not_drafted_from(
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (403, b"<html><body>no</body></html>", "blocked", None)
-    provider = FakeProvider([draft_reply()])
+    provider = FakeProvider([DRAFT_REPLY])
 
     result = await scrape(
         engine,
@@ -503,19 +500,12 @@ async def _failed(engine: AsyncEngine, url: str) -> tuple[str, str | None, str]:
     return task.status, task.last_error, job_status
 
 
-UNDESCRIBED = ProviderReply(
-    model="fake-strong",
-    text=json.dumps({"page_kind": "detail", "fields": {"title": {"type": "text"}}}),
-    tokens_in=1,
-    tokens_out=1,
-)
-
-
 @pytest.mark.parametrize(
-    ("script", "error", "last_error"),
+    ("script", "budget", "error", "last_error"),
     [
-        ([ProviderError("overloaded")], ProviderUnavailable, "llm_unavailable"),
-        ([UNDESCRIBED, UNDESCRIBED], OutputInvalid, "llm_output_invalid"),
+        ([ProviderError("overloaded")], 10, ProviderUnavailable, "llm_unavailable"),
+        ([UNDESCRIBED, UNDESCRIBED], 10, OutputInvalid, "llm_output_invalid"),
+        ([DRAFT_REPLY], 0, BudgetExhausted, "budget_exhausted"),
     ],
 )
 async def test_a_draft_the_llm_cannot_give_fails_the_job(
@@ -525,30 +515,16 @@ async def test_a_draft_the_llm_cannot_give_fails_the_job(
     own_origin: str,
     prompt: str,
     script: list[ProviderReply | ProviderError],
+    budget: int,
     error: type[Exception],
     last_error: str,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
     llm = MeteredClient([FakeProvider(script)], engine)
-    scrape_request = request(url, "links", schema={"prompt": prompt})
+    scrape_request = request(url, "links", schema={"prompt": prompt}, budget={"llm_calls": budget})
 
     with pytest.raises(error):
         await scrape(engine, fetching, scrape_request, llm=llm)
 
     assert await _failed(engine, url) == ("failed", last_error, "failed")
-
-
-async def test_a_prompt_without_llm_budget_fails_the_job(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    provider = FakeProvider([draft_reply()])
-    scrape_request = request(url, "links", schema={"prompt": prompt}, budget={"llm_calls": 0})
-
-    with pytest.raises(BudgetExhausted):
-        await scrape(engine, fetching, scrape_request, llm=MeteredClient([provider], engine))
-
-    assert provider.calls == []
-    assert await _failed(engine, url) == ("failed", "budget_exhausted", "failed")

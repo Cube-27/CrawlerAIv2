@@ -4,9 +4,10 @@ each, and each one's API key."""
 from typing import assert_never
 
 from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.core.settings import LLMProviderName, LLMSettings
-from crawlerai.llm.client import ModelClass
+from crawlerai.llm.client import LLMClient, MeteredClient, ModelClass, Unconfigured
 from crawlerai.llm.providers.anthropic import AnthropicProvider
 from crawlerai.llm.providers.gemini import GeminiProvider
 
@@ -14,6 +15,15 @@ from crawlerai.llm.providers.gemini import GeminiProvider
 def providers_from_settings(settings: LLMSettings) -> list[AnthropicProvider | GeminiProvider]:
     """Raises `ValueError` when a listed provider has no API key: the client is not built half-configured."""
     return [_provider(name, settings) for name in settings.llm_providers]
+
+
+def client_from_settings(settings: LLMSettings, engine: AsyncEngine) -> LLMClient:
+    """The configured providers' client, or, when a listed provider has no API key, an `Unconfigured` one that names
+    the missing key on every call: a process starts without keys, and work that needs no call still runs."""
+    try:
+        return MeteredClient(providers_from_settings(settings), engine)
+    except ValueError as e:
+        return Unconfigured(str(e))
 
 
 def _provider(name: LLMProviderName, settings: LLMSettings) -> AnthropicProvider | GeminiProvider:

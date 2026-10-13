@@ -1,15 +1,25 @@
 """`POST /v1/scrape` (SPEC-07 §4.4): the scrape service over HTTP. A page that could not be fetched is an outcome in
 a 200 answer; a refused target and a timeout are problems (§4.8)."""
 
+from typing import Final
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError
-from crawlerai.llm.client import BudgetExhausted, LLMClient, OutputInvalid, ProviderUnavailable
+from crawlerai.llm.client import BudgetExhausted, LLMClient, LLMFailure, OutputInvalid, ProviderUnavailable
 from crawlerai.services import scrape as scrape_service
 from crawlerai.services.scrape import Fetching, ScrapeRejected, ScrapeRequest, ScrapeResult, ScrapeTimedOut
+
+# 422: the request's own `budget.llm_calls` does not cover its work. 503: no provider answered. 502: the model
+# answered, but not validly, after the one retry.
+_LLM_PROBLEMS: Final[dict[str, tuple[int, str]]] = {
+    BudgetExhausted.code: (422, "Budget exhausted"),
+    ProviderUnavailable.code: (503, "LLM unavailable"),
+    OutputInvalid.code: (502, "LLM output invalid"),
+}
 
 router = APIRouter(
     prefix="/v1/scrape",
@@ -33,11 +43,6 @@ async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
         raise ProblemError(422, "ssrf_rejected", "Target refused", e.reason) from e
     except ScrapeTimedOut as e:
         raise ProblemError(504, "timeout", "Timed out", str(e)) from e
-    except BudgetExhausted as e:
-        # 422: the request's own `budget.llm_calls` does not cover the work it asks for.
-        raise ProblemError(422, "budget_exhausted", "Budget exhausted", "budget.llm_calls is spent") from e
-    except ProviderUnavailable as e:
-        raise ProblemError(503, "llm_unavailable", "LLM unavailable", str(e)) from e
-    except OutputInvalid as e:
-        # 502: the model answered, but not with a valid schema, after the one retry.
-        raise ProblemError(502, "llm_output_invalid", "LLM output invalid", str(e)) from e
+    except LLMFailure as e:
+        status, title = _LLM_PROBLEMS[e.code]
+        raise ProblemError(status, e.code, title, str(e)) from e
