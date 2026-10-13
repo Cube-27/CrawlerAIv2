@@ -78,18 +78,20 @@ hold the procedures:
 
 | Skill | Who runs it | Does |
 |---|---|---|
-| `/run-plan` | The orchestrator | Assigns ready rows to workers (at most 4 workers at once; reviewers don't count), reviews, merges one at a time on green CI, keeps the tracker and log current, escalates. |
+| `/run-plan` | The orchestrator | Assigns ready rows to workers (at most 4 workers at once; reviewers don't count), sequences `YOUR TURN`, merges one at a time on green CI, keeps the tracker and log current, escalates. |
 | `/implement-pr` | A worker | Takes one row from `todo` to an open, verified PR: tests first, then code, self-review, PR body. |
-| `/review-pr` | A fresh reviewer agent | Verdict against the spec row, §2 and `docs/ENGINEERING.md`: `MERGE`, `FIX` or `ESCALATE`. |
+| `/review-pr` | A fresh reviewer agent | Verdict against the spec row, §2 and `docs/ENGINEERING.md`: `MERGE`, `MERGE AFTER FIX` or `ESCALATE`, once per PR. |
 | `/pickup` | Anyone starting a session | Resumes in-flight rows from the trail, or pauses cleanly. |
 
-**Shared files have one writer.** With an orchestrator running, only the orchestrator edits `ACTIVE.md` and
-`DECISIONS.md`. Workers put their decisions in the PR body (`## Decisions`), and the orchestrator copies them
-across on merge. A solo agent with no orchestrator updates both files itself, in its PR.
+**Shared files have one writer.** With an orchestrator running, the orchestrator decides the tracker content
+(decision IDs, "Current focus") and sends it with `YOUR TURN`; the implementor writes it to `ACTIVE.md` and
+`DECISIONS.md` in the PR's last commit, one PR at a time. Workers put their decisions in the PR body
+(`## Decisions`). A solo agent with no orchestrator updates both files itself, in its PR.
 
 `main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
-`spec-*` branches, not from ACTIVE.md. Never use an admin bypass of the branch rules. Never merge without a `MERGE`
-verdict from someone other than the author and green CI. Never skip hooks or weaken checks.
+`spec-*` branches, not from ACTIVE.md. Never use an admin bypass of the branch rules. Never merge without a `MERGE` or
+`MERGE AFTER FIX` verdict from someone other than the author (with every listed fix made) and green CI. There is
+one review per PR, with no re-review (owner, 2026-10-13). Never skip hooks or weaken checks.
 
 ## 4. Decisions: decide and log, or escalate
 

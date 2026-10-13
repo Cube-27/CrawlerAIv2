@@ -24,15 +24,16 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
 
    | Situation | Action |
    |---|---|
-   | Open PR, CI green, no review | `/review-pr` |
-   | Open PR with a `FIX` verdict | A worker addresses the Act-on list |
+   | Open PR, CI green, no review | Its implementor starts one reviewer (`/implement-pr` §6.1); if the implementor is gone, start a fresh one in the worktree to do it |
+| Open PR with a latest `READY <sha7>` comment matching the head | Queue it for `YOUR TURN` (`/run-plan` §1.3) |
+   | Open PR with a `MERGE AFTER FIX` (or older `FIX`) verdict | Its implementor makes the listed fixes, gets CI green and comments `READY`; no second review |
    | Branch with commits, no PR | A worker continues `/implement-pr` from §3 Verify |
    | Branch with no commits, or abandoned for more than 7 days with no PR | Remove the worktree and delete the branch; the row is `todo` again |
 
    Don't re-run checks that already passed in CI on the same head SHA.
 4. **Verify inherited claims against the real thing.** Check the PR's CI status on its current head SHA, not a
    self-report in a note.
-5. Continue with `/run-plan` or `/implement-pr`. ACTIVE.md changes only in tracker commits on PRs (`/run-plan`).
+5. Continue with `/run-plan` or `/implement-pr`. ACTIVE.md changes only in the implementor's tracker commit on `YOUR TURN` (`/run-plan` §1.3).
 
 **Report:** where the earlier agent stopped, what you inherited, what you reset, and the resume point.
 
