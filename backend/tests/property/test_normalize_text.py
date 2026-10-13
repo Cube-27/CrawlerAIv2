@@ -48,6 +48,24 @@ def test_a_text_value_is_nfc_trimmed_and_on_one_line_with_single_spaces(raw: str
         assert value == " ".join(value.split())
 
 
+@given(st.sampled_from([TEXT, LONG]), st.text(max_size=200))
+def test_an_ok_value_has_no_control_characters_but_line_breaks(spec: FieldSpec, raw: str) -> None:
+    result = text.normalize(raw, spec, CTX)
+
+    if isinstance(result, Ok):
+        assert isinstance(result.value, str)
+        assert all(unicodedata.category(c) != "Cc" or c == "\n" for c in result.value)
+
+
+@pytest.mark.parametrize("raw", ["\x00", "\x01\x7f", " \x1b \x9f "])
+def test_input_of_control_characters_only_is_empty(raw: str) -> None:
+    assert text.normalize(raw, TEXT, CTX) == Invalid("empty")
+
+
+def test_control_characters_are_removed_from_a_value() -> None:
+    assert text.normalize("a\x00b\x07 c", TEXT, CTX) == Ok("ab c")
+
+
 @given(st.lists(_words, min_size=1, max_size=5), _whitespace)
 def test_text_joins_words_with_one_space_whatever_whitespace_separates_them(words: list[str], gap: str) -> None:
     raw = (" " + gap).join(words)

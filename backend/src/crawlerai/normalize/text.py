@@ -26,6 +26,9 @@ _MAX_LEN = {FieldType.TEXT: 512, FieldType.LONG_TEXT: 100_000}
 _DELIMITED_PLACEHOLDERS = (("{{", "}}"), ("${", "}"))
 _PRINTF_PLACEHOLDER = re.compile(r"%(?:\(\w+\)|\d+\$)?[sd]\b")
 _BLANK_LINE_RUN = re.compile(r"\n{3,}")
+# Unicode general category Cc (U+0000 to U+001F, U+007F to U+009F): control characters are not text. Those that are
+# Unicode White_Space (tab, line breaks, NEL) are kept for the whitespace collapse; the rest are removed.
+_CONTROLS = dict.fromkeys(c for c in [*range(0x20), *range(0x7F, 0xA0)] if not chr(c).isspace())
 
 
 def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
@@ -35,7 +38,7 @@ def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
     if not isinstance(raw, str):
         return Invalid("not_a_string")
     # HTML Standard, named and numeric character references; then Unicode NFC (UAX #15), so one text has one form.
-    decoded = unicodedata.normalize("NFC", html.unescape(raw))
+    decoded = unicodedata.normalize("NFC", html.unescape(raw)).translate(_CONTROLS)
     value = _collapse_lines(decoded) if spec.type is FieldType.LONG_TEXT else _collapse(decoded)
     if not value:
         return Invalid("empty")
