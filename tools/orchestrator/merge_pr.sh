@@ -6,5 +6,5 @@ set -eu
 pr=$1; sha=$2
 bash "$(dirname "$0")/wait_ci.sh" "$pr" "$sha"
 full=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
-case $full in "$sha"*) ;; *) echo "ERROR head is $full, not $sha"; exit 1;; esac
+if [[ $full != "$sha"* ]]; then echo "ERROR head is $full, not $sha" >&2; exit 1; fi
 gh pr merge "$pr" --squash --match-head-commit "$full"

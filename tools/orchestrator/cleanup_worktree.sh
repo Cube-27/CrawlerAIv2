@@ -6,7 +6,7 @@ set -u
 wt=$1; branch=$2
 main=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 dir="$(dirname "$main")/CrawlerAIv2-worktrees/$wt"
-short=$(echo "$wt" | tr -d '-')   # spec-03-pr-8 -> spec03pr8
+short=${wt//-/}   # spec-03-pr-8 -> spec03pr8
 for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^crawlerai-($wt|$short)(-|$)"); do
   docker rm -f "$c" >/dev/null && echo "removed container $c"
 done

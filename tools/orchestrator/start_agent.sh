@@ -2,31 +2,37 @@
 # start_agent.sh NAME WORKTREE PROMPT [MIN_FREE_MB]
 # Starts a claude herdr agent in <main>/../CrawlerAIv2-worktrees/WORKTREE, checks that the pane's cwd really is
 # that worktree (a wrong cwd stops at a trust prompt in the home folder), refuses when free memory is low, then
-# sends PROMPT. Prints "<pane> <status>", or "ERROR ..." and exits 1.
+# sends PROMPT. Prints "<pane> <status>", or "ERROR ..." on stderr and exits 1.
 # Build paths here, never inline: in bash double quotes "...\$wt" collapses to a literal "$wt".
 set -u
 name=$1; wt=$2; prompt=$3; min_free=${4:-1500}
+err() { echo "ERROR $*" >&2; exit 1; }
 main=$(git worktree list --porcelain | sed -n '1s/^worktree //p')   # e.g. C:/Projects/CrawlerAIv2
 root_fwd="$(dirname "$main")/CrawlerAIv2-worktrees"
 path=$(cygpath -w "$root_fwd/$wt" 2>/dev/null || echo "$root_fwd/$wt" | tr '/' '\')
 
 free=$(powershell -NoProfile -c "[int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024)" | tr -d '\r')
-case $free in ""|*[!0-9]*) echo "ERROR could not read free memory"; exit 1;; esac
-if [ "$free" -lt "$min_free" ]; then echo "ERROR low memory: ${free}MB free < ${min_free}MB"; exit 1; fi
-[ -d "$root_fwd/$wt" ] || { echo "ERROR no worktree $root_fwd/$wt"; exit 1; }
+[[ $free =~ ^[0-9]+$ ]] || err "could not read free memory"
+(( free >= min_free )) || err "low memory: ${free}MB free < ${min_free}MB"
+[[ -d "$root_fwd/$wt" ]] || err "no worktree $root_fwd/$wt"
 
 pane=$(herdr pane split --current --direction down --cwd "$path" --no-focus 2>/dev/null \
   | python -c "import json,sys;print(json.load(sys.stdin)['result']['pane']['pane_id'])")
-[ -n "$pane" ] || { echo "ERROR pane split failed"; exit 1; }
+[[ -n $pane ]] || err "pane split failed"
+close_and_fail() { herdr pane close "$pane" >/dev/null 2>&1; err "$1; closed pane $pane"; }
 herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 >/dev/null 2>&1
 cwd=$(herdr agent get "$name" 2>/dev/null | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent'].get('cwd',''))")
-if [ "$cwd" != "$path" ]; then
-  echo "ERROR $name cwd is '$cwd', expected '$path'; closing pane $pane"
-  herdr pane close "$pane" >/dev/null 2>&1; exit 1
-fi
-if ! herdr agent prompt "$name" "$prompt" >/dev/null 2>&1; then
-  echo "ERROR prompt to $name failed; closing pane $pane"; herdr pane close "$pane" >/dev/null 2>&1; exit 1
-fi
-status() { herdr agent get "$name" | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent']['agent_status'])"; }
-for _ in 1 2 3 4 5 6 7 8 9 10; do case $(status) in working|blocked) break;; esac; sleep 1; done
+[[ $cwd == "$path" ]] || close_and_fail "$name cwd is '$cwd', expected '$path'"
+herdr agent prompt "$name" "$prompt" >/dev/null 2>&1 || close_and_fail "prompt to $name failed"
+status() {
+  herdr agent get "$name" | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent']['agent_status'])"
+  return 0
+}
+# Wait up to 10 s for the prompt to start a turn.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  case $(status) in
+    working|blocked) break ;;
+    *) sleep 1 ;;
+  esac
+done
 echo "$pane $(status)"
