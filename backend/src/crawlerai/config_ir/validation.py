@@ -96,13 +96,31 @@ class ListingReport(_Report):
     dropped: str | None = None
 
 
+class RecipeFieldReport(_Report):
+    """One field of an API recipe's map (SPEC-09 §4.7). `published`: held-out pages where the engine published the
+    field; `reproduced`: those where the replayed response gave that value."""
+
+    published: int
+    reproduced: int
+
+
+class RecipeReport(_Report):
+    """The API recipe's held-out validation (SPEC-09 §4.7). `refused` says why the recipe did not enter the config."""
+
+    held_out: list[CaptureId]
+    fields: dict[str, RecipeFieldReport]
+    refused: str | None = None
+
+
 class ValidationReport(_Report):
-    """The `extraction_config.validation_report` (SPEC-08 §4.7). `refused` says why nothing can activate."""
+    """The `extraction_config.validation_report` (SPEC-08 §4.7). `refused` says why nothing can activate; `api_recipe`
+    is the recipe's validation when the site has one (SPEC-09 §4.7)."""
 
     held_out: list[CaptureId]
     fields: dict[str, FieldReport]
     listing: ListingReport | None
     refused: str | None = None
+    api_recipe: RecipeReport | None = None
 
 
 @dataclass(frozen=True, slots=True)

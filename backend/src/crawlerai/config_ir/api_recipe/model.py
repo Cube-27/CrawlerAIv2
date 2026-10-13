@@ -25,6 +25,8 @@ from crawlerai.schemas.types import NAME_PATTERN, Name
 BinderKind = Literal["path", "query", "regex", "jsonld", "js_state"]
 PageDataKind = Literal["jsonld", "js_state"]
 PAGE_DATA_KINDS: Final = frozenset(get_args(PageDataKind))
+# What produced a recipe's request: deterministic binding (§4.4) or role D (§4.5).
+BoundBy = Literal["deterministic", "role_d"]
 
 # `{name}`: a parameter's place in the URL, the body or a header value (RFC 6570 level 1 expression syntax).
 PLACEHOLDER: Final = re.compile(rf"\{{({NAME_PATTERN})\}}")
@@ -247,7 +249,7 @@ class Proof(_Model):
 
     validated_on: list[CaptureId] = Field(min_length=1)
     headers_tried: int = Field(ge=0)
-    bound_by: Literal["deterministic", "role_d"]
+    bound_by: BoundBy
 
 
 class ApiRecipe(RequestSpec):

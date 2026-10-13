@@ -66,8 +66,20 @@ _fields = st.dictionaries(st.from_regex(r"[a-z][a-z0-9_]{0,10}", fullmatch=True)
 _listing = st.none() | st.builds(
     lambda row, fields, next_: {"row": row, "fields": fields, "next": next_}, _step, _fields, st.none() | _step
 )
+_RECIPE = {
+    "method": "GET",
+    "url": "https://api.example.test/v1/products/{p1}",
+    "params_from_url": {"p1": "path:1"},
+    "headers": {"Accept": "application/json"},
+    "map": {"title": "$['data']['name']"},
+    "proof": {
+        "validated_on": ["0190b2a0-0000-7000-8000-000000000002"],
+        "headers_tried": 0,
+        "bound_by": "deterministic",
+    },
+}
 _ir = st.builds(
-    lambda fields, listing, origin, kind, method: {
+    lambda fields, listing, origin, kind, method, recipe: {
         "ir_version": "1",
         "site": "shop.example.com",
         "schema": {"name": "commerce_detail", "version": 2},
@@ -75,6 +87,7 @@ _ir = st.builds(
         "fetch": {"method": method},
         "fields": fields,
         "listing": listing,
+        "api_recipe": recipe,
         "provenance": {
             "origin": origin,
             "validated_on": ["0190b2a0-0000-7000-8000-000000000001"],
@@ -87,6 +100,7 @@ _ir = st.builds(
     st.sampled_from(["adapter", "induced", "llm_synth", "operator"]),
     st.sampled_from(["detail", "listing"]),
     st.sampled_from(["http", "browser"]),
+    st.sampled_from([None, _RECIPE]),
 )
 
 
@@ -95,6 +109,33 @@ def test_ir_survives_a_json_round_trip(document: dict[str, Any]) -> None:
     ir = ExtractionConfigIR.model_validate(document)
     assert ExtractionConfigIR.model_validate_json(ir.model_dump_json()) == ir
     assert ExtractionConfigIR.model_validate(ir.model_dump(mode="json")) == ir
+
+
+@pytest.mark.parametrize(
+    "recipe",
+    [
+        {**_RECIPE, "headers": {"Cookie": "a=b"}},  # a recipe never carries credentials (SPEC-09 §4.6)
+        {key: value for key, value in _RECIPE.items() if key != "proof"},  # an IR recipe is a validated one (§4.7)
+    ],
+)
+def test_ir_refuses_a_recipe_the_recipe_model_refuses(recipe: dict[str, Any]) -> None:
+    document = {
+        "ir_version": "1",
+        "site": "shop.example.test",
+        "schema": {"name": "commerce_detail", "version": 1},
+        "page_kind": "detail",
+        "fetch": {"method": "http"},
+        "fields": {},
+        "api_recipe": recipe,
+        "provenance": {
+            "origin": "induced",
+            "validated_on": [],
+            "learned_at": "2026-10-14T00:00:00Z",
+            "engine_version": "abc1234+cal.none",
+        },
+    }
+    with pytest.raises(ValidationError, match="api_recipe"):
+        ExtractionConfigIR.model_validate(document)
 
 
 def test_ir_serializes_in_the_architecture_shape() -> None:

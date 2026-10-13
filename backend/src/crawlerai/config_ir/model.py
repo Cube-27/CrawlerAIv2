@@ -24,6 +24,7 @@ from pydantic import (
     model_validator,
 )
 
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern, check_replacement
 from crawlerai.config_ir.xpath1 import check_xpath1
 from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatus, PageKind
@@ -270,4 +271,6 @@ class ExtractionConfigIR(_Model):
     fetch: Fetch
     fields: dict[Name, FieldSteps]
     listing: ListingSpec | None = None
+    # The recipe held-out validation accepted (SPEC-09 §4.7), served by the acquisition's API rung (§7.1).
+    api_recipe: ApiRecipe | None = None
     provenance: Provenance
