@@ -101,7 +101,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0044 | `.gitignore`, CLAUDE.md | Agent worktrees live under `.worktrees/` or `.claude/worktrees/`, ignored by git. Superseded by D-0045. | Elsewhere. | yes |
 
 ### D-0045 — Agent worktrees live outside the repo
-- Date: 2026-10-12 · Spec/PR: tooling (skills `implement-pr`, `pickup`) · Status: decided (owner direction)
+- Date: 2026-10-12 · Spec/PR: tooling (skills `implement-pr`, `pickup`) · Status: decided
 - Decision: Worktrees go in `CrawlerAIv2-worktrees/<name>`, a directory beside the main checkout (the first entry of `git worktree list`), never inside the repo. Supersedes D-0044.
 - Alternatives: `.worktrees/` inside the repo, ignored by git (D-0044).
 - Why: The owner ruled that worktrees cannot be inside the repo.
@@ -136,7 +136,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0050 — CI backend job lands in SPEC-00 PR 1
-- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided (owner direction)
+- Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided
 - Decision: `ci.yml` runs `uv sync --frozen`, ruff (lint and format check), `mypy src tests` and `pytest`. Actions are pinned to commit SHAs and uv to 0.11.28. Later SPEC-00 rows add `lint-imports`, the replay split, alembic and the other jobs.
 - Alternatives: wait for later SPEC-00 rows to add CI.
 - Why: The owner asked for the first PR to carry the setup, so CI gates every later row.
@@ -2260,4 +2260,67 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `jsonschema` (MIT) validates replies against draft 2020-12 schemas; `types-jsonschema` (Apache-2.0) is a dev dependency for mypy.
 - Alternatives: A hand-written validator.
 - Why: The standard implementation; licence-clean.
+- Reversible: yes
+
+### D-0352 — Locator grammar
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 2 (#72) · Status: decided
+- Decision: Locator address parts split on `:` and the last part takes the rest (XPath, JSONPath, CSS and `og:` names hold `:`); `js_state` splits after the first `script[n]` step, which `ParsedPage` ends a script path with. Indices are ASCII digits without a leading zero, a `text:` span is non-empty (`start < end`), JSONPath starts with `$` (RFC 9535) and XPath with `/`.
+- Alternatives: Escaping `:` inside parts.
+- Why: Every SPEC-05 §4.3 form stays readable as written, and each locator has one spelling.
+- Reversible: yes, until collectors persist locators
+
+### D-0353 — `collect` sits above `content` in the layering
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 2 (#72) · Status: decided
+- Decision: `collect` and `content` were independent siblings in `.importlinter`; `collect` now sits one layer above `content`.
+- Alternatives: A page protocol inside `collect`.
+- Why: SPEC-05 §4.1 and INV-26: every collector takes the `ParsedPage`.
+- Reversible: yes
+
+### D-0354 — Extraction model shapes
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 2 (#72) · Status: decided
+- Decision: `Candidate.raw` is SPEC-04's `Raw` (any JSON value: JSON-LD prices are numbers), not `str | dict | list`; sequences are tuples; `FieldSet = dict[str, FieldOutcome]`; `LLMCallRecord` has SPEC-06 §4.2's fields; `Evidence` moves to `resolve.types`. An unpublished field holds no value and states a reason; `blocked`/`shell`/`not_found` results have no candidates and no fields (INV-11); an `error` result has no fields but keeps its candidates (§4.14).
+- Alternatives: The spec's literal annotations.
+- Why: The most conservative reading that the later rows can rely on.
+- Reversible: yes
+
+### D-0355 — Derived `url` values and INV-22
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 2 (#72) · Status: needs-owner
+- Decision: Question: INV-22 requires `evidence`, `source_kind` and `locator` on every published field, but the `canonical_link` and `final_url` derivations (SPEC-05 §4.8, D-0019) have no candidate, no §6 `SourceKind` and no §10 bucket. Options: (a) a `derived` source kind and evidence bucket, with locators for the link and the final URL (ARCHITECTURE §6/§10 and a migration); (b) exempt `derived_by` fields from those INV-22 attributes; (c) keep a derived `url` in `field_meta` only. Recommendation: (a). Blocked: SPEC-05 PR 7 and PR 8. The models enforce INV-22 as written.
+- Alternatives: See options.
+- Why: Every published value keeps its provenance and is calibrated like any other bucket.
+- Reversible: yes
+
+### D-0356 — Theme-only check as a Python tool with an import allow-list
+- Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided
+- Decision: `tools/theme_only_check.py` scans tracked `frontend/src` files line by line with regexes. The UI-import rule is an allow-list of runtime packages; a new runtime dependency is added to it in the PR that adds it to package.json.
+- Alternatives: An Oxlint JS plugin rule (can't see `.css` files or class strings without extra parsing); a deny-list of named UI libraries (grows one library at a time, C4).
+- Why: One stdlib script covers the CSS-file rule and the TSX rules, runs in CI, make and pre-commit, and names its structural property next to each pattern (C2).
+- Reversible: yes. Delete the tool and its three call sites
+
+### D-0357 — Layout sizes as Tailwind `@theme` variables
+- Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided
+- Decision: Sizes outside Tailwind's default scale are `@theme` variables in theme.css (`--container-content: 80rem`, `--height-page-view: 70dvh`), used through the utilities Tailwind generates for them.
+- Alternatives: `max-w-(--var)` references in class strings; the default `max-w-7xl`.
+- Why: The screen names a role and theme.css holds the value, so a resize is a one-file edit.
+- Reversible: yes
+
+### D-0358 — One icon set: @gravity-ui/icons 2.22.0 (MIT)
+- Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided
+- Decision: Status display needs an icon (DESIGN.md: never color alone) and `@heroui/react` exports none, so `@gravity-ui/icons`, the set HeroUI's documentation uses, is added, pinned exact at a release older than two weeks.
+- Alternatives: Unicode glyphs (inconsistent rendering); a second icon library.
+- Why: Icons only, no components or CSS, so it is not a second UI layer.
+- Reversible: yes. Swap the five imports in `StatusLabel`
+
+### D-0359 — Linear as the layout and pattern reference
+- Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided
+- Decision: DESIGN.md names Linear as the reference for layout, density and pattern choices only (left sidebar, list- and table-first screens, compact page header, subtle borders, neutral palette with one accent, keyboard-first, few modals). No styles or brand assets are copied; visual values stay HeroUI defaults, with any tweak in theme.css.
+- Alternatives: Stripe's dashboard; no named reference.
+- Why: The owner asked for one reference with consistency as the goal; Linear's table-first application UI matches the operator screens (SPEC-12). Prose only, so C3 is untouched.
+- Reversible: yes. Edit the Reference section and the Patterns column
+
+### D-0360 — Save notice is a toast; empty/off/missing states are EmptyView
+- Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided
+- Decision: The labeling save notice moved from an `<output>` in `LabelingPage` state to `toast.success` inside `useSave`. The off, missing and no-pages states use `EmptyView`; save/conflict errors use `ProblemAlert`/`Alert`.
+- Alternatives: Keep the screen-local notice (a second way to notify).
+- Why: One way per job (DESIGN.md, Patterns); the toast also outlives the editor's remount.
 - Reversible: yes
