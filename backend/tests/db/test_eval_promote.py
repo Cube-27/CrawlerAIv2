@@ -192,7 +192,7 @@ async def test_rotate_moves_the_fraction_of_hidden_sites_of_each_category_whole(
     for host, category, count in sites:
         pages[host] = [await stores.add(stores.hidden, host, CHECKED, category=category) for _ in range(count)]
 
-    move = await rotate_hidden(stores.hidden, stores.dev, 0.5)
+    move = await rotate_hidden(stores.hidden, stores.fresh, stores.dev, 0.5)
 
     # Half of 3 custom_store sites rounds to 2, half of 2 job_board sites to 1.
     moved_hosts = await _main_hosts(stores)
@@ -209,6 +209,20 @@ async def test_rotate_moves_the_fraction_of_hidden_sites_of_each_category_whole(
     assert await stores.hidden.list_pages() == sorted(kept_pages, key=lambda p: p.id)
     assert move.kept == len(kept_pages)
     assert _files(stores.private_root) == sorted(f"hidden/{p.capture_id}.bundle.zst" for p in kept_pages)
+
+
+async def test_a_hidden_site_whose_host_has_fresh_pages_is_not_rotated(stores: Stores) -> None:
+    hidden = await stores.add(stores.hidden, "h.example.test", CHECKED)
+    fresh = await stores.add(stores.fresh, "h.example.test", CHECKED)
+
+    # A fraction this close to 1 chooses every rotatable site.
+    move = await rotate_hidden(stores.hidden, stores.fresh, stores.dev, 0.99)
+
+    assert move == Move((), sites=0, kept=1)
+    assert await stores.hidden.list_pages() == [hidden]
+    assert await stores.fresh.list_pages() == [fresh]
+    assert await _main_hosts(stores) == []
+    assert _files(stores.main_root) == []
 
 
 async def test_a_move_interrupted_after_the_copy_finishes_on_the_next_run(stores: Stores) -> None:
@@ -253,6 +267,28 @@ async def test_the_promote_command_reports_ids_and_counts_and_no_host(
 
     # In a thread: the command runs its own event loop.
     await anyio.to_thread.run_sync(main, ["eval", "promote", "--from", "fresh", "--to", "dev"])
+
+    out = capsys.readouterr().out
+    assert [json.loads(line) for line in out.splitlines()] == [
+        {"page_id": str(page.id), "capture_id": str(page.capture_id)},
+        {"moved_pages": 1, "moved_sites": 1, "kept_pages": 1},
+    ]
+    assert "example.test" not in out
+    assert await stores.dev.list_pages(schema_name=SCHEMA) == [_as_dev(page)]
+
+
+async def test_the_rotate_command_skips_a_host_with_fresh_pages_and_reports_no_host(
+    stores: Stores, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    page = await stores.add(stores.hidden, "a.example.test", CHECKED)
+    await stores.add(stores.hidden, "h.example.test", CHECKED)
+    await stores.add(stores.fresh, "h.example.test", DRAFT)
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", stores.database_url)
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", _fs(stores.main_root))
+    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_DATABASE_URL", stores.private_database_url)
+    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE", _fs(stores.private_root))
+
+    await anyio.to_thread.run_sync(main, ["eval", "rotate-hidden", "--fraction", "0.99"])
 
     out = capsys.readouterr().out
     assert [json.loads(line) for line in out.splitlines()] == [
