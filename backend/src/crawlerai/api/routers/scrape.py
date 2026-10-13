@@ -1,15 +1,13 @@
 """`POST /v1/scrape` (SPEC-07 §4.4): the scrape service over HTTP. A page that could not be fetched is an outcome in
 a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems (§4.8)."""
 
-from typing import Final
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
-from crawlerai.api.problems import ProblemError, conflict, invalid, records_unavailable
-from crawlerai.llm.client import BudgetExhausted, LLMClient, LLMFailure, OutputInvalid, ProviderUnavailable
+from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable
+from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import scrape as scrape_service
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
@@ -22,14 +20,6 @@ from crawlerai.services.scrape import (
     ScrapeResult,
     ScrapeTimedOut,
 )
-
-# 422: the request's own `budget.llm_calls` does not cover its work. 503: no provider answered. 502: the model
-# answered, but not validly, after the one retry.
-_LLM_PROBLEMS: Final[dict[str, tuple[int, str]]] = {
-    BudgetExhausted.code: (422, "Budget exhausted"),
-    ProviderUnavailable.code: (503, "LLM unavailable"),
-    OutputInvalid.code: (502, "LLM output invalid"),
-}
 
 router = APIRouter(
     prefix="/v1/scrape",
@@ -68,5 +58,4 @@ async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
     except ScrapeTimedOut as e:
         raise ProblemError(504, "timeout", "Timed out", str(e)) from e
     except LLMFailure as e:
-        status, title = _LLM_PROBLEMS[e.code]
-        raise ProblemError(status, e.code, title, str(e)) from e
+        raise llm_problem(e) from e

@@ -4,6 +4,7 @@ framework's (unknown path, wrong method, request validation, an unexpected excep
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from http import HTTPStatus
+from typing import Final
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from crawlerai.api.dto import FieldErrorOut, Problem
+from crawlerai.llm.client import BudgetExhausted, LLMFailure, OutputInvalid, ProviderUnavailable
 
 PROBLEM_JSON = "application/problem+json"  # RFC 9457 §3
 
@@ -43,6 +45,21 @@ def records_unavailable(detail: str) -> ProblemError:
 
 def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError:
     return ProblemError(422, "validation", "Invalid request", detail, errors)
+
+
+# 422: the request's own `budget.llm_calls` does not cover its work. 503: no provider answered. 502: the model
+# answered, but not validly, after the one retry.
+_LLM_PROBLEMS: Final[dict[str, tuple[int, str]]] = {
+    BudgetExhausted.code: (422, "Budget exhausted"),
+    ProviderUnavailable.code: (503, "LLM unavailable"),
+    OutputInvalid.code: (502, "LLM output invalid"),
+}
+
+
+def llm_problem(failure: LLMFailure) -> ProblemError:
+    """An LLM call that gave no valid reply (SPEC-06 §4.7), as a problem typed with the failure's code."""
+    status, title = _LLM_PROBLEMS[failure.code]
+    return ProblemError(status, failure.code, title, str(failure))
 
 
 def _problem_response(request: Request, error: ProblemError) -> JSONResponse:

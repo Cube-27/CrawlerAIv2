@@ -1,6 +1,6 @@
-"""Role C on a detail page (SPEC-06 §4.4, §4.7, §6, INV-12): a deterministic request, grounded candidates, dropped
-ungrounded values, and failures that leave fields missing with their reason. The client is scripted; no provider is
-called. Pages are synthetic (`example.test`)."""
+"""Role C on a detail page and a listing (SPEC-06 §4.4, §4.7, §6, INV-12): a deterministic request, grounded
+candidates, dropped ungrounded values, capped rows, and failures that leave fields missing with their reason. The
+client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 
 import asyncio
 from collections.abc import Sequence
@@ -12,7 +12,7 @@ from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -27,9 +27,23 @@ from crawlerai.llm.client import (
     ReplyCheck,
     request_hash,
 )
-from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS, Filled, detail_request, extract_detail, output_schema
+from crawlerai.llm.roles.c_extract import (
+    DETAIL_MAX_CHARS,
+    LISTING_MAX_CHARS,
+    LISTING_MAX_ROWS,
+    SYSTEM,
+    Filled,
+    FilledListing,
+    detail_request,
+    extract_detail,
+    extract_listing,
+    listing_output_schema,
+    listing_request,
+    output_schema,
+    row_entity,
+)
 from crawlerai.normalize.base import Context, Invalid, Ok
-from crawlerai.resolve.pipeline import GapReply, GapRequest
+from crawlerai.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 JOB = JobId(uuid7())
@@ -81,8 +95,12 @@ class ScriptedClient:
         )
 
 
+def specs(*names: str) -> dict[str, FieldSpec]:
+    return {name: SCHEMA.fields[name] for name in names}
+
+
 def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"), text: str = TEXT) -> Filled:
-    return asyncio.run(extract_detail(client, text, SCHEMA, CTX, owner=OWNER, fields=fields, job_id=JOB))
+    return asyncio.run(extract_detail(client, text, specs(*fields), CTX, owner=OWNER, job_id=JOB))
 
 
 def reply(**fields: dict[str, JsonValue] | None) -> dict[str, JsonValue]:
@@ -93,13 +111,13 @@ def reply(**fields: dict[str, JsonValue] | None) -> dict[str, JsonValue]:
 
 
 def test_the_request_is_a_fast_detail_call_charged_to_the_job() -> None:
-    req = detail_request(TEXT, SCHEMA, ["title"], page_url=PAGE_URL, job_id=JOB)
+    req = detail_request(TEXT, specs("title"), page_url=PAGE_URL, job_id=JOB)
 
     assert (req.prompt_kind, req.model_class, req.job_id) == ("c_extract_detail", "fast", JOB)
 
 
 def test_the_request_names_each_field_with_its_type_and_description_and_holds_the_text() -> None:
-    user = detail_request(TEXT, SCHEMA, ["title", "sku"], page_url=PAGE_URL, job_id=JOB).user
+    user = detail_request(TEXT, specs("title", "sku"), page_url=PAGE_URL, job_id=JOB).user
 
     assert "- sku (identifier, scheme sku): Stock keeping unit\n- title (text): Name of the item\n" in user
     assert f"<page_text>\n{TEXT}\n</page_text>" in user
@@ -108,8 +126,8 @@ def test_the_request_names_each_field_with_its_type_and_description_and_holds_th
 
 
 def test_the_same_fields_in_any_order_give_the_same_request_hash() -> None:
-    first = detail_request(TEXT, SCHEMA, ["title", "released"], page_url=PAGE_URL, job_id=JOB)
-    second = detail_request(TEXT, SCHEMA, ["released", "title"], page_url=PAGE_URL, job_id=JOB)
+    first = detail_request(TEXT, specs("title", "released"), page_url=PAGE_URL, job_id=JOB)
+    second = detail_request(TEXT, specs("released", "title"), page_url=PAGE_URL, job_id=JOB)
 
     assert request_hash(first) == request_hash(second)
 
@@ -151,7 +169,7 @@ def test_a_grounded_value_becomes_an_llm_candidate_owned_by_the_target() -> None
             independent=True,
         ),
     )
-    assert (filled.failure, filled.diagnostics) == (None, ())
+    assert filled.diagnostics == ()
 
 
 def test_wrong_offsets_are_corrected_to_where_the_value_is() -> None:
@@ -179,7 +197,7 @@ def test_a_value_past_the_cut_is_ungrounded() -> None:
 def test_null_proposes_nothing() -> None:
     filled = extract(ScriptedClient(reply(title=None, released=None)))
 
-    assert (filled.candidates, filled.diagnostics, filled.failure) == ((), (), None)
+    assert (filled.candidates, filled.diagnostics) == ((), ())
 
 
 def test_a_value_its_normalizer_declines_stays_a_candidate_with_the_decline() -> None:
@@ -220,7 +238,7 @@ def test_a_candidate_is_always_the_text_at_its_locator(text: str, data: st.DataO
 def test_a_call_without_a_valid_reply_leaves_the_reason_and_no_candidates(failure: LLMFailure, reason: str) -> None:
     filled = extract(ScriptedClient(failure))
 
-    assert (filled.candidates, filled.response, filled.failure) == ((), None, reason)
+    assert (filled.candidates, filled.reply) == ((), failure)
     assert filled.diagnostics == (f"role C: {reason}",)
 
 
@@ -236,7 +254,7 @@ def test_other_errors_propagate() -> None:
 
 def fill(client: ScriptedClient, request: GapRequest) -> GapReply:
     async def run() -> GapReply:
-        return await role_c(client, job_id=JOB)(request)
+        return await role_c(client, job_id=JOB).detail(request)
 
     return asyncio.run(run())
 
@@ -272,3 +290,135 @@ def test_a_failed_call_is_recorded_as_the_hooks_failure_without_a_call() -> None
     answer = fill(ScriptedClient(BudgetExhausted("none left")), request)
 
     assert (answer.candidates, answer.llm_calls, answer.failure) == ((), (), "llm_budget")
+
+
+# --- listings (§4.4, ARCHITECTURE §8.6) ---
+
+LISTING_TEXT = "Widget One 19.90\nWidget Two 24.90\nAll widgets"
+ROW_SPECS = {
+    "title": FieldSpec(type=FieldType.TEXT, description="Name of the item", required=True, scope="row"),
+    "sku": FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="Stock keeping unit", scope="row"),
+}
+PAGE_SPECS = {"heading": FieldSpec(type=FieldType.TEXT, description="Heading of the list", scope="page")}
+
+
+def extract_rows(
+    client: ScriptedClient,
+    text: str = LISTING_TEXT,
+    page: dict[str, FieldSpec] = PAGE_SPECS,
+) -> FilledListing:
+    return asyncio.run(extract_listing(client, text, ROW_SPECS, page, CTX, job_id=JOB))
+
+
+def rows_reply(*rows: dict[str, JsonValue], **page: dict[str, JsonValue] | None) -> dict[str, JsonValue]:
+    return {"rows": list(rows), "page": dict(page)}
+
+
+def test_the_listing_request_is_a_fast_listing_call_with_row_and_page_fields() -> None:
+    req = listing_request(LISTING_TEXT, ROW_SPECS, PAGE_SPECS, page_url=PAGE_URL, job_id=JOB)
+
+    assert (req.prompt_kind, req.model_class, req.job_id) == ("c_extract_listing", "fast", JOB)
+    assert req.system.startswith(SYSTEM) and req.system != SYSTEM
+    assert (
+        f"Row fields, for each listed item (at most {LISTING_MAX_ROWS} rows):\n"
+        "- sku (identifier, scheme sku): Stock keeping unit\n- title (text): Name of the item\n\n"
+        "Page fields:\n- heading (text): Heading of the list\n\n"
+    ) in req.user
+    assert f"<page_text>\n{LISTING_TEXT}\n</page_text>" in req.user
+
+
+def test_a_listing_request_without_page_fields_asks_for_rows_only() -> None:
+    req = listing_request(LISTING_TEXT, ROW_SPECS, {}, page_url=None, job_id=JOB)
+    validator = Draft202012Validator(req.output_schema)
+
+    assert "Page fields" not in req.user
+    assert validator.is_valid({"rows": []})
+    assert not validator.is_valid(rows_reply())
+
+
+def test_the_listing_output_schema_takes_rows_of_spans_and_the_page_fields() -> None:
+    validator = Draft202012Validator(listing_output_schema(["title", "sku"], ["heading"]))
+
+    assert validator.is_valid(rows_reply({"title": span("Widget One", 0), "sku": None}, heading=None))
+    assert not validator.is_valid(rows_reply({"title": span("Widget One", 0)}, heading=None))  # every row field
+    assert not validator.is_valid(rows_reply({"title": None, "sku": None, "price": None}, heading=None))
+    assert not validator.is_valid({"rows": []})  # the page fields asked
+
+
+def test_each_row_that_proposes_a_value_is_an_entity_owning_its_values() -> None:
+    client = ScriptedClient(
+        rows_reply(
+            {"title": span("Widget One", 0), "sku": None},
+            {"title": None, "sku": None},
+            {"title": span("Widget Two", 17), "sku": None},
+            heading=span("All widgets", 34),
+        )
+    )
+
+    filled = extract_rows(client)
+
+    assert [row.id for row in filled.rows] == ["llm:rows[0]", "llm:rows[2]"]
+    assert filled.rows[0] == row_entity(0)
+    assert [(c.entity_id, c.field, c.raw, c.locator) for c in filled.candidates] == [
+        (PAGE, "heading", "All widgets", "text:34-45"),
+        ("llm:rows[0]", "title", "Widget One", "text:0-10"),
+        ("llm:rows[2]", "title", "Widget Two", "text:17-27"),
+    ]
+    assert filled.diagnostics == ()
+
+
+def test_an_ungrounded_row_value_is_dropped_with_its_row_and_field() -> None:
+    client = ScriptedClient(rows_reply({"title": span("Widget Nine", 0), "sku": None}, heading=None))
+
+    filled = extract_rows(client)
+
+    assert (filled.rows, filled.candidates, filled.diagnostics) == ((), (), ("role C: rows[0].title ungrounded",))
+
+
+def test_rows_past_the_cap_are_cut_and_the_cut_is_recorded() -> None:
+    row: dict[str, JsonValue] = {"title": span("Widget One", 0), "sku": None}
+    client = ScriptedClient(rows_reply(*[row] * (LISTING_MAX_ROWS + 3), heading=None))
+
+    filled = extract_rows(client)
+
+    assert len(filled.rows) == LISTING_MAX_ROWS
+    assert filled.diagnostics == (f"role C gave {LISTING_MAX_ROWS + 3} rows; kept the first {LISTING_MAX_ROWS}",)
+
+
+def test_a_long_listing_is_cut_at_the_listing_limit() -> None:
+    text = "a" * LISTING_MAX_CHARS + "Widget One"
+    client = ScriptedClient(rows_reply(heading=None))
+
+    filled = extract_rows(client, text)
+
+    assert f"<page_text>\n{'a' * LISTING_MAX_CHARS}\n</page_text>" in client.requests[0].user
+    assert filled.diagnostics == (f"role C read the first {LISTING_MAX_CHARS} of {LISTING_MAX_CHARS + 10} characters",)
+
+
+def test_a_listing_call_without_a_valid_reply_gives_no_rows() -> None:
+    failure = ProviderUnavailable("fake: 503")
+
+    filled = extract_rows(ScriptedClient(failure))
+
+    assert (filled.rows, filled.candidates, filled.reply) == ((), (), failure)
+    assert filled.diagnostics == ("role C: llm_unavailable",)
+
+
+def test_the_listing_hook_asks_the_row_fields_and_missing_page_fields_and_records_the_call() -> None:
+    schema = SCHEMA.model_copy(update={"page_kind": "listing", "fields": ROW_SPECS | PAGE_SPECS})
+    client = ScriptedClient({"rows": [{"title": span("Widget One", 0), "sku": None}]})
+    request = ListingGapRequest(
+        ParsedPage("<html><body><p>Widget One</p></body></html>"), schema, CTX, ("title", "sku"), ()
+    )
+
+    async def run() -> ListingGapReply:
+        return await role_c(client, job_id=JOB).listing(request)
+
+    answer = asyncio.run(run())
+
+    assert "Page fields" not in client.requests[0].user
+    assert answer.rows == (row_entity(0),)
+    assert [(c.entity_id, c.raw) for c in answer.candidates] == [("llm:rows[0]", "Widget One")]
+    (call,) = answer.llm_calls
+    assert (call.prompt_kind, call.request_hash) == ("c_extract_listing", request_hash(client.requests[0]))
+    assert answer.failure is None

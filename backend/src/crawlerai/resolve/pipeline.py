@@ -5,17 +5,19 @@ A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its
 else (INV-11). A served page is parsed once (INV-26); every collector reads that one parse, then resolution runs its
 stages in order: ownership and intent, preference, derivations, evidence and τ. In cold mode, a detail page's required
 fields still missing after that go to role C once, and its candidates are resolved with the others. A listing resolves
-each of its rows (`resolve.listing`) and its page-scoped fields, and lists its next-page candidates (§4.12); role C's
-listing call is SPEC-06's. Resolution never publishes part of a page: if it raises, the outcome is `error` and no field
-is set (§4.14).
+each of its rows (`resolve.listing`) and its page-scoped fields, and lists its next-page candidates (§4.12). A listing
+whose structured data gives no rows asks role C for them (ARCHITECTURE §8.6), with its missing page fields; its rows
+are then the reply's. Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is
+set (§4.14).
 """
 
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Protocol
 
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.run import Adapters, Collected, collect_page
@@ -109,8 +111,32 @@ class GapReply:
     diagnostics: tuple[str, ...] = ()
 
 
-# The LLM hook (§4.13), filled by SPEC-06's role C; the caller binds the LLM client.
-RoleC = Callable[[GapRequest], Awaitable[GapReply]]
+@dataclass(frozen=True, slots=True)
+class ListingGapRequest:
+    """ARCHITECTURE §8.6: a listing whose structured data gives no rows. Role C reads the rows, with `row_fields`
+    each, and the page entity's `page_missing` fields from the page text."""
+
+    page: ParsedPage
+    schema: SchemaDef
+    ctx: Context
+    row_fields: tuple[str, ...]
+    page_missing: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ListingGapReply(GapReply):
+    """A listing's `GapReply`: `rows` are the entities of the rows role C read, in page order, and `candidates` are
+    owned by them or by the page entity. `failure` leaves the asked page fields `missing` with it."""
+
+    rows: tuple[Entity, ...] = ()
+
+
+class RoleC(Protocol):
+    """The LLM hook (§4.13), filled by SPEC-06's role C; the caller binds the LLM client."""
+
+    async def detail(self, request: GapRequest) -> GapReply: ...
+
+    async def listing(self, request: ListingGapRequest) -> ListingGapReply: ...
 
 
 class ModeNotSupported(ValueError):
@@ -137,7 +163,7 @@ async def extract_page(
     if not_served is not None:
         return _result(not_served, mode)
     if schema.page_kind == "listing":
-        return await _extract_listing(bundle, schema, mode, data, parsed)
+        return await _extract_listing(bundle, schema, role_c, mode, data, parsed)
     try:
         # Parsing and resolution are CPU work: a thread keeps the event loop serving other tasks meanwhile.
         page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data, parsed)
@@ -148,7 +174,7 @@ async def extract_page(
     llm_calls: tuple[LLMCallRecord, ...] = ()
     missing = _gaps(schema, fields)
     if role_c is not None and missing and isinstance(page.target, Entity):
-        reply = await role_c(GapRequest(page.page, schema, page.ctx, page.target, missing))
+        reply = await role_c.detail(GapRequest(page.page, schema, page.ctx, page.target, missing))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
         diagnostics = (*diagnostics, *reply.diagnostics)
         if reply.candidates:  # without new candidates, resolution would decide the same
@@ -204,11 +230,11 @@ class _Page:
         """A detail page's fields, for its target."""
         return self.resolve_for(self.target, candidates, page_values=True)
 
-    def resolve_listing(self) -> tuple[FieldSet, tuple[FieldSet, ...]]:
+    def resolve_listing(
+        self, candidates: Sequence[Candidate], rows: Sequence[Entity]
+    ) -> tuple[FieldSet, tuple[FieldSet, ...]]:
         """A listing's page-scoped fields, for the page entity, and each row's row-scoped fields (§4.7)."""
-        candidates = self.collected.candidates
         page_fields = self.resolve_for(self.graph.page, candidates, page_values=True)
-        rows = listing_rows(self.graph, self.primary, self.target)
         return _scoped(self.schema, page_fields, "page"), tuple(
             _scoped(self.schema, self.resolve_for(row, candidates, page_values=False), "row") for row in rows
         )
@@ -256,36 +282,90 @@ class _Listing:
     fields: FieldSet
     rows: tuple[FieldSet, ...]
     next_pages: tuple[str, ...]
+    candidates: tuple[Candidate, ...]
+    diagnostics: tuple[str, ...]
+    llm_calls: tuple[LLMCallRecord, ...] = ()
 
     @classmethod
     def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None) -> "_Listing":
         page = _Page.read(bundle, schema, data, parsed)
-        fields, rows = page.resolve_listing()
-        return cls(page, fields, rows, next_page_candidates(page.page, bundle.manifest.final_url))
+        candidates = page.collected.candidates
+        fields, rows = page.resolve_listing(candidates, listing_rows(page.graph, page.primary, page.target))
+        next_pages = next_page_candidates(page.page, bundle.manifest.final_url)
+        return cls(page, fields, rows, next_pages, candidates, page.collected.diagnostics)
+
+    def gap(self) -> ListingGapRequest | None:
+        """The role C request when structured data gives no rows (ARCHITECTURE §8.6): every row field, and the page
+        fields still `missing`; None with rows, or for a schema without row fields."""
+        schema = self.page.schema
+        row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
+        if self.rows or not row_fields:
+            return None
+        page_missing = tuple(name for name, outcome in self.fields.items() if outcome.status == "missing")
+        return ListingGapRequest(self.page.page, schema, self.page.ctx, row_fields, page_missing)
+
+    def with_reply(self, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
+        """The listing with role C's rows: each row entity joins the graph and resolves its row fields from the
+        candidates, and the page fields resolve again with the reply's."""
+        page = self.page
+        graph = EntityGraph.of((*page.graph.entities.values(), *reply.rows), page.data.vocabulary)
+        page = replace(page, graph=graph)
+        candidates = (*self.candidates, *reply.candidates)
+        fields, rows = page.resolve_listing(candidates, reply.rows)
+        if reply.failure is not None:
+            fields = _unanswered(fields, asked, reply.failure)
+        diagnostics = (*self.diagnostics, *reply.diagnostics)
+        return replace(
+            self,
+            page=page,
+            fields=fields,
+            rows=rows,
+            candidates=candidates,
+            diagnostics=diagnostics,
+            llm_calls=reply.llm_calls,
+        )
+
+    def result(self, mode: ExtractionMode) -> ExtractionResult:
+        schema = self.page.schema
+        # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
+        records = [{**self.fields, **row} for row in self.rows]
+        complete = bool(records) and all(is_complete(schema, record) for record in records)
+        return ExtractionResult(
+            outcome="extracted" if complete else "partial",
+            entity=self.fields,
+            rows=self.rows,
+            candidates=self.candidates,
+            llm_calls=self.llm_calls,
+            mode=mode,
+            record_confidence=_least_confident(record_confidence(schema, record) for record in records),
+            diagnostics=self.diagnostics,
+            next_pages=self.next_pages,
+        )
 
 
 async def _extract_listing(
-    bundle: CaptureBundle, schema: SchemaDef, mode: ExtractionMode, data: EngineData, parsed: ParsedPage | None
+    bundle: CaptureBundle,
+    schema: SchemaDef,
+    role_c: RoleC | None,
+    mode: ExtractionMode,
+    data: EngineData,
+    parsed: ParsedPage | None,
 ) -> ExtractionResult:
     try:
         listing = await asyncio.to_thread(_Listing.read, bundle, schema, data, parsed)
     except Exception:  # §4.14, as for a detail page
         log.exception(_FAILED)
         return _result("error", mode)
-    # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
-    records = [{**listing.fields, **row} for row in listing.rows]
-    complete = bool(records) and all(is_complete(schema, record) for record in records)
-    return ExtractionResult(
-        outcome="extracted" if complete else "partial",
-        entity=listing.fields,
-        rows=listing.rows,
-        candidates=listing.page.collected.candidates,
-        llm_calls=(),
-        mode=mode,
-        record_confidence=_least_confident(record_confidence(schema, record) for record in records),
-        diagnostics=listing.page.collected.diagnostics,
-        next_pages=listing.next_pages,
-    )
+    if role_c is not None and (request := listing.gap()) is not None:
+        reply = await role_c.listing(request)
+        try:
+            listing = await asyncio.to_thread(listing.with_reply, reply, request.page_missing)
+        except Exception:
+            log.exception(_FAILED)
+            candidates = (*listing.candidates, *reply.candidates)
+            diagnostics = (*listing.diagnostics, *reply.diagnostics)
+            return _result("error", mode, candidates=candidates, llm_calls=reply.llm_calls, diagnostics=diagnostics)
+    return listing.result(mode)
 
 
 def _least_confident(confidences: Iterable[float | None]) -> float | None:

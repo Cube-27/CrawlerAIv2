@@ -32,8 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-06 PR 5 (the last L1 row), SPEC-09 PR 2 (L2). Next: SPEC-08 PR 4, SPEC-09 PR 3 (L2).
+- L1 complete: every L1 row is done or human. Next: L2 rows - SPEC-08 PR 4 (migration), SPEC-09 PR 2 (#113 in flight) then PR 3, SPEC-12 PR 6. Human: H7 todo; H1-H4, H6 deferred.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -154,7 +153,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 2 | Anthropic and Gemini providers with JSON-schema output + failover | done (#74) | Fails over once on 408/429/5xx/timeout (D-0371); Anthropic sends no temperature (D-0370). |
 | 3 | Grounding alignment | done (#76) | |
 | 4 | Role C detail + pipeline hook wiring | done (#107) | Bound in `config_ir.role_c` (D-0518); a failed call leaves fields `missing` with `LLMFailure.field_reason` (D-0519); missing optional fields ride along with a required gap (D-0520). |
-| 5 | Role C listing + labeling pre-fill endpoint | todo | |
+| 5 | Role C listing + labeling pre-fill endpoint | done (#111) | D-0534–D-0538. Role C reads a listing's rows only when structured data gives none. Follow-ups from review: `max_output_tokens` 16,384 may not hold 200 rows on wide schemas (a cut reply fails as `OutputInvalid`); the pre-fill's diagnostics (truncation, ungrounded values) are not returned to the labeler. |
 | 6 | Role S + prompt-hash reuse | done (#92) | `complete_json` takes an optional reply check sharing the one retry (D-0448); drafts keyed on the normalized prompt (D-0449). |
 
 ## [SPEC-07 — API foundation, authentication, page content formats and `scrape`](../specs/SPEC-07-api-foundation-and-scrape.md)

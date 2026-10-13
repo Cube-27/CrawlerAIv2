@@ -16,7 +16,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.registry import Registry
-from crawlerai.collect.base import Candidate
+from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
@@ -30,6 +30,8 @@ from crawlerai.resolve.pipeline import (
     EngineData,
     GapReply,
     GapRequest,
+    ListingGapReply,
+    ListingGapRequest,
     ModeNotSupported,
     RoleC,
     extract_page,
@@ -253,13 +255,34 @@ CALL = LLMCallRecord(
 
 
 class FakeRoleC:
-    """Answers each missing field with the money value the page text shows, grounded on the target."""
+    """On a detail page, answers each missing field with the money value the page text shows, grounded on the target,
+    or with `failure`; on a listing, gives `listing_reply`. `error` is raised instead of either."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        failure: str | None = None,
+        listing_reply: ListingGapReply | None = None,
+        error: Exception | None = None,
+    ) -> None:
         self.requests: list[GapRequest] = []
+        self.listing_requests: list[ListingGapRequest] = []
+        self._failure = failure
+        self._listing_reply = listing_reply or ListingGapReply(candidates=(), llm_calls=())
+        self._error = error
 
-    async def __call__(self, request: GapRequest) -> GapReply:
+    async def listing(self, request: ListingGapRequest) -> ListingGapReply:
+        self.listing_requests.append(request)
+        if self._error is not None:
+            raise self._error
+        return self._listing_reply
+
+    async def detail(self, request: GapRequest) -> GapReply:
         self.requests.append(request)
+        if self._error is not None:
+            raise self._error
+        if self._failure is not None:
+            return GapReply((), (), failure=self._failure, diagnostics=(f"role C: {self._failure}",))
         candidates = tuple(
             Candidate(
                 field=name,
@@ -333,13 +356,9 @@ def test_missing_optional_fields_alone_do_not_call_role_c() -> None:
     assert (role_c.requests, result.llm_calls) == ([], ())
 
 
-async def _budget_spent(request: GapRequest) -> GapReply:
-    return GapReply(candidates=(), llm_calls=(), failure="llm_budget", diagnostics=("role C: llm_budget",))
-
-
 def test_a_role_c_call_without_a_reply_leaves_the_asked_fields_missing_with_its_reason() -> None:
     # SPEC-06 §4.7: never a published guess; the page is partial and says why.
-    result = _extract(_bundle(_html(_product(price=None))), role_c=_budget_spent)
+    result = _extract(_bundle(_html(_product(price=None))), role_c=FakeRoleC(failure="llm_budget"))
     assert _statuses(result) == {
         "title": ("published", None),
         "price": ("missing", "llm_budget"),
@@ -350,11 +369,9 @@ def test_a_role_c_call_without_a_reply_leaves_the_asked_fields_missing_with_its_
 
 def test_a_role_c_failure_is_not_a_resolution_error() -> None:
     # A replay's missing recording must reach the harness, which drops the page (SPEC-03 §4.5).
-    async def failing(_request: GapRequest) -> GapReply:
-        raise LookupError("no recorded response")
-
+    role_c = FakeRoleC(error=LookupError("no recorded response"))
     with pytest.raises(LookupError, match="no recorded response"):
-        _extract(_bundle(_html(_product(price=None))), role_c=failing)
+        _extract(_bundle(_html(_product(price=None))), role_c=role_c)
 
 
 # --- api captures (D-0445) ---
@@ -501,10 +518,93 @@ def test_the_next_pages_come_with_the_listing() -> None:
     assert result.entity["next_page_url"].status == "missing"
 
 
-def test_role_c_is_not_asked_for_listing_rows() -> None:
+def test_role_c_is_not_asked_for_a_listing_whose_structured_data_gives_rows() -> None:
+    # ARCHITECTURE §8.6: rows come from structured data or from role C; a row's own gaps stay missing (D-0516).
     role_c = FakeRoleC()
     _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
-    assert role_c.requests == []
+    assert (role_c.requests, role_c.listing_requests) == ([], [])
+
+
+LISTING_CALL = CALL.model_copy(update={"prompt_kind": "c_extract_listing"})
+
+
+def _llm(field: str, owner: str, raw: str, start: int) -> Candidate:
+    return Candidate(
+        field=field,
+        entity_id=owner,
+        source_kind="llm",
+        raw=raw,
+        normalized=Ok(raw),
+        locator=f"text:{start}-{start + len(raw)}",
+        independent=True,
+    )
+
+
+def _llm_row(position: int) -> Entity:
+    return Entity(id=f"llm:rows[{position}]", kind="page", urls=(), parent=None)
+
+
+ROWS_REPLY = ListingGapReply(
+    candidates=(
+        _llm("title", "llm:rows[0]", "Widget 1", 0),
+        _llm("url", "llm:rows[0]", "https://shop.example.test/p/1", 9),
+        _llm("title", "llm:rows[1]", "Widget 2", 40),
+        _llm("page_title", "page", "All widgets", 60),
+    ),
+    llm_calls=(LISTING_CALL,),
+    diagnostics=("role C: rows[1].url ungrounded",),
+    rows=(_llm_row(0), _llm_row(1)),
+)
+
+
+def test_a_listing_without_structured_rows_takes_its_rows_from_role_c() -> None:
+    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+    result = _listing(_html(body="<p>Widget 1</p>"), role_c=role_c)
+
+    (request,) = role_c.listing_requests
+    assert (request.row_fields, request.page_missing) == (("title", "url", "price"), ("page_title", "next_page_url"))
+    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}, {"title": "Widget 2"}]
+    assert [(row["title"].evidence, row["title"].locator) for row in result.rows] == [
+        ("llm_grounded", "text:0-8"),
+        ("llm_grounded", "text:40-48"),
+    ]
+    # A row owns only its own values, and the page field is the page's, not a row's.
+    assert [(row["url"].status, row["url"].reason) for row in result.rows][1] == ("missing", "not_owned")
+    assert result.entity is not None
+    assert (result.entity["page_title"].value, result.entity["next_page_url"].status) == ("All widgets", "missing")
+    assert (result.llm_calls, result.diagnostics[-1]) == ((LISTING_CALL,), "role C: rows[1].url ungrounded")
+    assert result.candidates[-4:] == ROWS_REPLY.candidates
+    # The second row lacks its required url, so the page is partial (§10 "Incomplete pages").
+    assert result.outcome == "partial"
+
+
+def test_a_page_field_the_page_states_is_not_asked_again() -> None:
+    role_c = FakeRoleC()
+    _listing(_html(head='<meta property="og:title" content="All widgets">'), role_c=role_c)
+    assert [r.page_missing for r in role_c.listing_requests] == [("next_page_url",)]
+
+
+def test_a_listing_role_c_failure_leaves_the_asked_page_fields_missing_with_its_reason() -> None:
+    failed = ListingGapReply(candidates=(), llm_calls=(), failure="llm_unavailable", diagnostics=("role C: x",))
+    result = _listing(_html(), role_c=FakeRoleC(listing_reply=failed))
+    assert result.entity is not None
+    assert {name: (o.status, o.reason) for name, o in result.entity.items()} == {
+        "page_title": ("missing", "llm_unavailable"),
+        "next_page_url": ("missing", "llm_unavailable"),
+    }
+    assert (result.rows, result.outcome, result.diagnostics) == ((), "partial", ("role C: x",))
+
+
+def test_a_listing_schema_without_row_fields_does_not_call_role_c() -> None:
+    role_c = FakeRoleC()
+    schema = _schema("listing", page_title=LISTING.fields["page_title"])
+    _listing(_html(), schema, role_c=role_c)
+    assert role_c.listing_requests == []
+
+
+def test_a_listing_role_c_error_propagates() -> None:
+    with pytest.raises(LookupError, match="no recorded response"):
+        _listing(_html(), role_c=FakeRoleC(error=LookupError("no recorded response")))
 
 
 def test_a_listing_parses_the_capture_once_per_parser(parses: Parses) -> None:

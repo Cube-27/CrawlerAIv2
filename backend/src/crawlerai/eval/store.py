@@ -114,10 +114,11 @@ class EvalStore(Protocol):
     async def put_page(self, page: EvalPageRow) -> EvalPageId: ...
 
     async def put_labels(
-        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+        self, page_id: EvalPageId, labels: Labels, who: str | None, pass_: LabelPass, *, expected: Labels
     ) -> None:
         """Store `labels` as `who`'s pass over the page's labels `expected`, or raise `LabelsChanged` when the page
-        holds others by then. A labeler pass clears the checker: the labels it checked have changed."""
+        holds others by then. A labeler pass clears the checker: the labels it checked have changed. `who` is None
+        only for a pre-fill draft, which no person made."""
 
     async def put_run(self, run: EvalRunRow) -> EvalRunId: ...
 
@@ -290,7 +291,7 @@ class _SqlEvalStore(ABC):
         return page.id
 
     async def put_labels(
-        self, page_id: EvalPageId, labels: Labels, who: str, pass_: LabelPass, *, expected: Labels
+        self, page_id: EvalPageId, labels: Labels, who: str | None, pass_: LabelPass, *, expected: Labels
     ) -> None:
         match pass_:
             case "labeler":
