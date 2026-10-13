@@ -192,14 +192,16 @@ published field; unmatched label rows are FN.
   "by_config_status": { "money|corroborated": {"precision": 0.99, "n": 20} },
   "by_category": { "custom_store": {"zero_touch": 0.62, "n": 30} },
   "acquisition": { "custom_store": {"ok": 28, "blocked": 1, "shell": 1} },
-  "usage": { "llm_calls_per_1k_pages": {"adhoc": 420, "config": 0} },
+  "usage": { "adhoc": {"llm_calls_per_1k_pages": 420, "n": 120}, "config": {"llm_calls_per_1k_pages": 0, "n": 30} },
   "gate": { "baseline_git_sha": "...", "passed": true, "reasons": [] } }
 ```
 
 No URLs, hosts, labels, values or per-page rows appear in a hidden/fresh aggregate. Minimum cell size (§16.3): a
 cell with fewer than 10 labeled fields is reported as `{"n": <n>}` only, with no metrics, so small cells cannot
 identify a case. The dev report is the same schema plus a `pages: [...]` array with per-page, per-field detail
-and no suppression.
+and no suppression, and a `by_field` table per (schema, field); `by_field` is empty in a hidden/fresh aggregate (D-0183).
+Each cell is suppressed on its own `n`: field cells count scored fields, bucket and config-status cells count
+published fields, page-level cells (`by_category`, `acquisition`, `usage`) count pages (D-0181).
 
 ### 4.8 Gate (§16.4)
 
