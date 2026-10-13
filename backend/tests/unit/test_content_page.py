@@ -9,6 +9,10 @@ import pytest
 from lxml import html as lxml_html
 from selectolax import lexbor
 
+from crawlerai.content.html import cleaned_html
+from crawlerai.content.links import links
+from crawlerai.content.markdown import markdown
+from crawlerai.content.metadata import metadata
 from crawlerai.content.page import ParsedPage, ScriptBlock
 from crawlerai.core.ids import uuid7
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
@@ -92,10 +96,12 @@ def test_the_lxml_tree_accepts_an_xml_declaration_and_an_empty_document(html: st
 class _Counter:
     def __init__(self) -> None:
         self.calls = 0
+        self.inputs: list[object] = []
 
     def wrap(self, constructor: Callable[..., Any]) -> Callable[..., Any]:
         def counted(*args: Any, **kwargs: Any) -> Any:
             self.calls += 1
+            self.inputs.append(args[0] if args else None)
             return constructor(*args, **kwargs)
 
         return counted
@@ -120,6 +126,28 @@ def test_every_consumer_reads_one_parse_per_parser(parses: dict[str, _Counter]) 
         assert page.lxml_tree.xpath("count(//script)") == 4
 
     assert {name: counter.calls for name, counter in parses.items()} == {"selectolax": 1, "lxml": 1}
+
+
+def _holds_head_script(parser_input: object) -> bool:
+    text = parser_input.decode() if isinstance(parser_input, bytes) else parser_input
+    return isinstance(text, str) and "application/ld+json" in text
+
+
+def test_the_content_formats_read_one_parse_per_parser(parses: dict[str, _Counter]) -> None:
+    # INV-26 across SPEC-07 §4.5's formats: they read the page's trees, and none parses the body again.
+    # trafilatura's readability fallback parses readability's own output, a new document with the main content
+    # only, so a parse of the body is one whose input still holds the `<head>`'s JSON-LD block.
+    page = ParsedPage.of(_bundle(DOC.encode(), (("Content-Type", "text/html"),)))
+    final_url = "https://shop.example.test/p/1"
+
+    assert page.lxml_tree.xpath("count(//p)") == 1  # another consumer of the lxml tree, as an XPath step is
+    assert markdown(page) == "Hello **world**"
+    assert "<script" not in cleaned_html(page)
+    assert links(page, final_url) == ()
+    assert metadata(page, final_url).structured_data_types == ("Product",)
+
+    body_parses = {name: sum(map(_holds_head_script, counter.inputs)) for name, counter in parses.items()}
+    assert body_parses == {"selectolax": 1, "lxml": 1}
 
 
 def test_lxml_parses_only_when_a_consumer_asks(parses: dict[str, _Counter]) -> None:
