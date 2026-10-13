@@ -86,29 +86,37 @@ def server() -> Iterator[Server]:
 
 
 class LoopbackConnector(SafeConnector):
-    """Admits `.test` hosts on the local server's port; everything else goes through the real guard."""
+    """Admits `.test` hosts on the local server's port, pinned to `pins[host]` (127.0.0.1 by default); everything
+    else goes through the real guard."""
 
-    def __init__(self, port: int, dns: dict[str, str]) -> None:
+    def __init__(
+        self, port: int, dns: dict[str, str], pins: dict[str, IPAddress] | None = None, dns_delay_s: float = 0.0
+    ) -> None:
         async def resolve(host: str) -> list[IPAddress]:
+            await asyncio.sleep(dns_delay_s)
             if host not in dns:
                 raise OSError("no such host")
             return [ip_address(dns[host])]
 
         super().__init__(resolve)
         self._port = port
+        self._pins = pins or {}
 
     async def check(self, url: str) -> Target:
         parts = urlsplit(url)
         if parts.hostname and parts.hostname.endswith(".test") and parts.port == self._port:
-            return Target(url=url, host=parts.hostname, port=self._port, ip=_LOOPBACK)
+            ip = self._pins.get(parts.hostname, _LOOPBACK)
+            return Target(url=url, host=parts.hostname, port=self._port, ip=ip)
         return await super().check(url)
 
 
 _DNS = {"internal.example.com": "10.0.0.1", "public.example.com": "93.184.215.14"}
 
 
-def fetch(server: Server, url: str, policy: FetchPolicy | None = None) -> FetchResult:
-    connector = LoopbackConnector(server.port, _DNS)
+def fetch(
+    server: Server, url: str, policy: FetchPolicy | None = None, connector: SafeConnector | None = None
+) -> FetchResult:
+    connector = connector or LoopbackConnector(server.port, _DNS)
     return asyncio.run(
         fetch_http(
             url, policy or FetchPolicy(), engine_version="test", impersonate=IMPERSONATE_DEFAULT, connector=connector
@@ -201,14 +209,15 @@ def test_redirects_are_followed(server: Server, status: int) -> None:
     ]
 
 
-def test_a_redirect_to_another_host_is_pinned_to_that_hosts_checked_address(server: Server) -> None:
-    server.route(
-        "/p", lambda host: redirect(server.url("/p", "cdn.example.test")) if host.startswith("shop") else html(_PAGE)
-    )
-    result = fetch(server, server.url("/p"))
-    assert outcome(result) == (200, "ok", None)
-    assert result.bundle.manifest.final_url == server.url("/p", "cdn.example.test")
-    assert [r for r, _ in server.requests] == ["shop.example.test/p", "cdn.example.test/p"]
+def test_a_redirect_to_another_host_connects_to_that_hosts_checked_address(server: Server) -> None:
+    # The second host is pinned to a loopback address with nothing listening. Reusing the first host's address would
+    # reach the server (200), and resolving the name through DNS would fail to resolve it (curl 6): only a connection
+    # to the second host's own checked address is refused (curl 7).
+    server.route("/p", redirect(server.url("/p", "cdn.example.test")))
+    connector = LoopbackConnector(server.port, _DNS, pins={"cdn.example.test": IPv4Address("127.0.0.2")})
+    result = fetch(server, server.url("/p"), connector=connector)
+    assert outcome(result) == (0, "error", "network_error: curl 7")
+    assert [r for r, _ in server.requests] == ["shop.example.test/p"]
 
 
 def test_five_redirects_are_followed_and_a_sixth_is_an_error(server: Server) -> None:
@@ -319,6 +328,23 @@ def test_the_time_budget_covers_every_hop(server: Server) -> None:
     server.route("/b", Reply(302, (("Location", "/c"),), delay_s=0.4))
     server.route("/c", html(_PAGE))
     assert outcome(fetch(server, server.url("/a"), FetchPolicy(timeout_s=0.6)))[1:] == ("error", "timeout")
+
+
+def test_name_resolution_counts_against_the_time_budget(server: Server) -> None:
+    started = time.monotonic()
+    connector = LoopbackConnector(server.port, _DNS, dns_delay_s=3.0)
+    result = fetch(server, "http://public.example.com/", FetchPolicy(timeout_s=0.5), connector)
+    assert outcome(result) == (0, "error", "timeout")
+    assert time.monotonic() - started < 2.5
+
+
+def test_name_resolution_of_a_redirect_hop_counts_against_the_time_budget(server: Server) -> None:
+    server.route("/p", redirect("http://public.example.com/"))
+    started = time.monotonic()
+    connector = LoopbackConnector(server.port, _DNS, dns_delay_s=3.0)
+    result = fetch(server, server.url("/p"), FetchPolicy(timeout_s=0.5), connector)
+    assert outcome(result) == (302, "error", "timeout")
+    assert time.monotonic() - started < 2.5
 
 
 def test_a_refused_connection_is_a_network_error() -> None:
