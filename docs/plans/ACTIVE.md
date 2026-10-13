@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 13, SPEC-06 PR 4, SPEC-07 PR 8. Next: SPEC-06 PR 5 after PR 4; SPEC-08 PR 3, SPEC-09 PR 2 (L2).
+- In progress: SPEC-05 PR 13, SPEC-07 PR 8, SPEC-08 PR 3 (L2). Next: SPEC-06 PR 5 (last L1 row), SPEC-09 PR 2 (L2).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -153,7 +153,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | Client protocol, request/response models, fake provider, budgets, usage | done (#69) | Usage commits in its own transaction (D-0346); replay uses `llm.client` (D-0218 retired). |
 | 2 | Anthropic and Gemini providers with JSON-schema output + failover | done (#74) | Fails over once on 408/429/5xx/timeout (D-0371); Anthropic sends no temperature (D-0370). |
 | 3 | Grounding alignment | done (#76) | |
-| 4 | Role C detail + pipeline hook wiring | todo | |
+| 4 | Role C detail + pipeline hook wiring | done (#107) | Bound in `config_ir.role_c` (D-0518); a failed call leaves fields `missing` with `LLMFailure.field_reason` (D-0519); missing optional fields ride along with a required gap (D-0520). |
 | 5 | Role C listing + labeling pre-fill endpoint | todo | |
 | 6 | Role S + prompt-hash reuse | done (#92) | `complete_json` takes an optional reply check sharing the one retry (D-0448); drafts keyed on the normalized prompt (D-0449). |
 

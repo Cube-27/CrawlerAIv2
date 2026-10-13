@@ -3422,3 +3422,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep `record_id`/`record` and add listing fields beside them.
 - Why: One shape for both page kinds.
 - Reversible: yes
+
+### D-0518 — Role C is bound in `config_ir.role_c`
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 4 (#107) · Status: decided
+- Decision: `role_c(client, *, job_id) -> RoleC` lives in `crawlerai.config_ir.role_c`; `llm.roles.c_extract` returns `Filled` (lower-layer types only). `eval.engine.PipelineEngine` binds it on the harness's `RecordedLLM` with `job_id=None`.
+- Alternatives: `eval.engine` (production code would import eval); a new top-level package; changing the layering contract.
+- Why: `resolve | llm` are independent (D-0483); `config_ir` is the first layer above both, and both the replay engine and the worker (services) can import it.
+- Reversible: yes
+
+### D-0519 — Role C failure reasons
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 4 (#107) · Status: decided
+- Decision: Each `LLMFailure` carries a `field_reason`: `BudgetExhausted` → `llm_budget`, `ProviderUnavailable` → `llm_unavailable`, `OutputInvalid` → `llm_output_invalid`. The asked fields stay `missing` with it, plus a diagnostic `role C: <reason>`; a failed call adds no `llm_calls` record.
+- Alternatives: Fold `OutputInvalid` into `llm_unavailable`; map the reason inside each role.
+- Why: SPEC-06 §4.7 names two reasons for three exceptions; keeping the client's own code is more informative, and one mapping on the failure serves every role.
+- Reversible: yes
+
+### D-0520 — Missing optional fields ride along with a required gap
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 4 (#107) · Status: decided
+- Decision: When a required field (or a member of an unmet required group) is `missing`, every `missing` optional field joins the same role C call; optional gaps alone never trigger a call. Partly supersedes D-0489.
+- Alternatives: Required fields only (D-0489 as written).
+- Why: SPEC-06 §4.4 and D-0025; one call either way.
+- Reversible: yes
+
+### D-0521 — Type-invalid role C values stay candidates
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 4 (#107) · Status: decided
+- Decision: An aligned value its normalizer declines is proposed with its `Invalid`/`Ambiguous` result; preference rejects it and the candidate row keeps the reason. Ungrounded values are dropped with the diagnostic `role C: <field> ungrounded` (no value text, which is page content).
+- Alternatives: Drop them before resolution, as SPEC-06 §4.4/§6 words it ("dropped").
+- Why: Same as every collector; the reason reaches `candidate.reject_reason`. A clarifying spec edit may follow.
+- Reversible: yes
+
+### D-0522 — Role C truncation and limits
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 4 (#107) · Status: decided
+- Decision: `DETAIL_MAX_CHARS = 40_000` is a constant (D-0025; role S's `SAMPLE_MAX_CHARS` reuses it). Spans are aligned to the text the model read, so a value past the cut is ungrounded; truncation is recorded as a diagnostic. `max_output_tokens = 4096`; fields are listed sorted by name.
+- Alternatives: A `CRAWLERAI_LLM_C_MAX_CHARS` setting now; record truncation on `LLMCallRecord`.
+- Why: Matches role S's precedent; `extraction.llm_calls` stores a count, so a diagnostic is what persists.
+- Reversible: yes
