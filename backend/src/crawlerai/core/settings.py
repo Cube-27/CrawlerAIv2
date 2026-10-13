@@ -21,18 +21,25 @@ Role = Literal["api", "worker", "scheduler"]
 IMPERSONATE_DEFAULT: BrowserTypeLiteral = "chrome150"
 
 
-class DatabaseSettings(BaseSettings):
-    """The subset that migrations need, so running them does not require the rest."""
-
+class _Base(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CRAWLERAI_", env_ignore_empty=True, frozen=True)
+
+
+class DatabaseSettings(_Base):
+    """The subset that migrations need, so running them does not require the rest."""
 
     database_url: SecretStr
 
 
-class Settings(DatabaseSettings):
+class AcquireSettings(_Base):
+    """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
+
+    impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
+
+
+class Settings(DatabaseSettings, AcquireSettings):
     eval_private_database_url: SecretStr | None = None
     object_store: ObjectStoreUrl
     eval_private_object_store: ObjectStoreUrl | None = None
     log_redact_urls: bool = False
     role: Role | None = None
-    impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT

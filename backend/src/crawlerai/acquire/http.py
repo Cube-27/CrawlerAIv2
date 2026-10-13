@@ -7,6 +7,7 @@ address the guard checked. Every failure becomes an `error` outcome with a short
 import asyncio
 import io
 import time
+from collections.abc import Awaitable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import cast
@@ -101,10 +102,7 @@ async def fetch_http(
 async def _follow(
     url: str, policy: FetchPolicy, impersonate: BrowserTypeLiteral, connector: SafeConnector, deadline: float
 ) -> _Response:
-    try:
-        target = await connector.check(url)
-    except SsrfRejected as e:
-        raise _Failed(str(e), None) from e
+    target = await _checked(connector.check(url), deadline, None)
     # One session per fetch keeps cookies set by one hop for the next, and none across fetches. `trust_env=False`
     # with an empty proxy (below) ignores proxy environment variables: a proxy resolves the host itself, which would
     # bypass the checked address.
@@ -116,12 +114,20 @@ async def _follow(
                 break
             if hop == _MAX_REDIRECTS:
                 raise _Failed("too_many_redirects", response)
-            try:
-                target = await connector.redirect(target, location)
-            except SsrfRejected as e:
-                raise _Failed(str(e), response) from e
+            target = await _checked(connector.redirect(target, location), deadline, response)
             response = await _get(session, target, policy, deadline)
     return response
+
+
+async def _checked(check: Awaitable[Target], deadline: float, last: _Response | None) -> Target:
+    """Run one guard check within the fetch's time budget: name resolution can take as long as the request."""
+    try:
+        async with asyncio.timeout(deadline - time.monotonic()):
+            return await check
+    except SsrfRejected as e:
+        raise _Failed(str(e), last) from e
+    except TimeoutError as e:
+        raise _Failed("timeout", last) from e
 
 
 async def _get(session: AsyncSession[Response], target: Target, policy: FetchPolicy, deadline: float) -> _Response:
@@ -153,6 +159,8 @@ async def _get(session: AsyncSession[Response], target: Target, policy: FetchPol
         # URL (IDNA, case, percent-encoding): CURLOPT_RESOLVE's `*` host matches every name on the port.
         CurlOpt.RESOLVE: [f"*:{target.port}:{ip}"],
         CurlOpt.PROXY: "",  # an empty proxy disables proxies, including the environment's (CURLOPT_PROXY)
+        # curl speaks only the schemes the guard admits, whatever URL reaches it (CURLOPT_PROTOCOLS_STR).
+        CurlOpt.PROTOCOLS_STR: "http,https",
         CurlOpt.MAXFILESIZE_LARGE: policy.max_body_bytes,  # counts body bytes as received, before decoding
         # The debug callback is the only place curl reports the request headers it sent (impersonation sets them in
         # C). It also sees every other debug event, a cost accepted for recording what was sent.

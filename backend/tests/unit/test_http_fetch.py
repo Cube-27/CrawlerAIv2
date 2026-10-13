@@ -7,20 +7,26 @@ resolver, so redirect hops leaving the server are checked exactly as in producti
 
 import asyncio
 import gzip
+import json
+import os
 import socket
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import version
 from ipaddress import IPv4Address, ip_address
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 
+from crawlerai import cli
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.cli import main
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.storage.capture_bundle import decode, encode
 
@@ -86,29 +92,37 @@ def server() -> Iterator[Server]:
 
 
 class LoopbackConnector(SafeConnector):
-    """Admits `.test` hosts on the local server's port; everything else goes through the real guard."""
+    """Admits `.test` hosts on the local server's port, pinned to `pins[host]` (127.0.0.1 by default); everything
+    else goes through the real guard."""
 
-    def __init__(self, port: int, dns: dict[str, str]) -> None:
+    def __init__(
+        self, port: int, dns: dict[str, str], pins: dict[str, IPAddress] | None = None, dns_delay_s: float = 0.0
+    ) -> None:
         async def resolve(host: str) -> list[IPAddress]:
+            await asyncio.sleep(dns_delay_s)
             if host not in dns:
                 raise OSError("no such host")
             return [ip_address(dns[host])]
 
         super().__init__(resolve)
         self._port = port
+        self._pins = pins or {}
 
     async def check(self, url: str) -> Target:
         parts = urlsplit(url)
         if parts.hostname and parts.hostname.endswith(".test") and parts.port == self._port:
-            return Target(url=url, host=parts.hostname, port=self._port, ip=_LOOPBACK)
+            ip = self._pins.get(parts.hostname, _LOOPBACK)
+            return Target(url=url, host=parts.hostname, port=self._port, ip=ip)
         return await super().check(url)
 
 
 _DNS = {"internal.example.com": "10.0.0.1", "public.example.com": "93.184.215.14"}
 
 
-def fetch(server: Server, url: str, policy: FetchPolicy | None = None) -> FetchResult:
-    connector = LoopbackConnector(server.port, _DNS)
+def fetch(
+    server: Server, url: str, policy: FetchPolicy | None = None, connector: SafeConnector | None = None
+) -> FetchResult:
+    connector = connector or LoopbackConnector(server.port, _DNS)
     return asyncio.run(
         fetch_http(
             url, policy or FetchPolicy(), engine_version="test", impersonate=IMPERSONATE_DEFAULT, connector=connector
@@ -201,14 +215,15 @@ def test_redirects_are_followed(server: Server, status: int) -> None:
     ]
 
 
-def test_a_redirect_to_another_host_is_pinned_to_that_hosts_checked_address(server: Server) -> None:
-    server.route(
-        "/p", lambda host: redirect(server.url("/p", "cdn.example.test")) if host.startswith("shop") else html(_PAGE)
-    )
-    result = fetch(server, server.url("/p"))
-    assert outcome(result) == (200, "ok", None)
-    assert result.bundle.manifest.final_url == server.url("/p", "cdn.example.test")
-    assert [r for r, _ in server.requests] == ["shop.example.test/p", "cdn.example.test/p"]
+def test_a_redirect_to_another_host_connects_to_that_hosts_checked_address(server: Server) -> None:
+    # The second host is pinned to a loopback address with nothing listening. Reusing the first host's address would
+    # reach the server (200), and resolving the name through DNS would fail to resolve it (curl 6): only a connection
+    # to the second host's own checked address is refused (curl 7).
+    server.route("/p", redirect(server.url("/p", "cdn.example.test")))
+    connector = LoopbackConnector(server.port, _DNS, pins={"cdn.example.test": IPv4Address("127.0.0.2")})
+    result = fetch(server, server.url("/p"), connector=connector)
+    assert outcome(result) == (0, "error", "network_error: curl 7")
+    assert [r for r, _ in server.requests] == ["shop.example.test/p"]
 
 
 def test_five_redirects_are_followed_and_a_sixth_is_an_error(server: Server) -> None:
@@ -321,6 +336,17 @@ def test_the_time_budget_covers_every_hop(server: Server) -> None:
     assert outcome(fetch(server, server.url("/a"), FetchPolicy(timeout_s=0.6)))[1:] == ("error", "timeout")
 
 
+@pytest.mark.parametrize(("path", "status"), [(None, 0), ("/p", 302)], ids=["first_url", "redirect_hop"])
+def test_name_resolution_counts_against_the_time_budget(server: Server, path: str | None, status: int) -> None:
+    server.route("/p", redirect("http://public.example.com/"))
+    url = server.url(path) if path else "http://public.example.com/"
+    started = time.monotonic()
+    connector = LoopbackConnector(server.port, _DNS, dns_delay_s=3.0)
+    result = fetch(server, url, FetchPolicy(timeout_s=0.5), connector)
+    assert outcome(result) == (status, "error", "timeout")
+    assert time.monotonic() - started < 2.5
+
+
 def test_a_refused_connection_is_a_network_error() -> None:
     closed = Server(port=_closed_port())
     result = fetch(closed, closed.url("/p"))
@@ -342,3 +368,77 @@ def _closed_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
+
+
+# --- the fetch command -------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reply", "status", "block_class"),
+    [(html(_PAGE), 200, "ok"), (html(_SHELL), 200, "shell"), (html(b"gone", 404), 404, "not_found")],
+)
+def test_the_fetch_command_writes_a_bundle_that_decodes(
+    server: Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reply: Reply,
+    status: int,
+    block_class: str,
+) -> None:
+    # It needs no database or object store: the bundle goes to a file.
+    for name in list(os.environ):
+        if name.upper().startswith("CRAWLERAI_"):
+            monkeypatch.delenv(name)
+    server.route("/p", reply)
+    out = tmp_path / "bundle.zst"
+
+    asyncio.run(cli._fetch(server.url("/p"), out, LoopbackConnector(server.port, _DNS)))
+
+    bundle = decode(out.read_bytes())
+    manifest = bundle.manifest
+    assert (manifest.url, manifest.status_code, manifest.block_class) == (server.url("/p"), status, block_class)
+    assert bundle.body == reply.body
+    assert manifest.engine_version == version("crawlerai")
+    assert json.loads(capsys.readouterr().out) == {
+        "capture_id": str(manifest.capture_id),
+        "final_url": server.url("/p"),
+        "status_code": status,
+        "block_class": block_class,
+        "error": None,
+    }
+
+
+def test_the_fetch_command_reports_a_failed_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    main(["fetch", "http://127.0.0.1/", "--out", "bundle.zst"])
+
+    assert decode((tmp_path / "bundle.zst").read_bytes()).manifest.block_class == "error"
+    assert json.loads(capsys.readouterr().out)["error"] == "ssrf_rejected: private_address"
+
+
+@pytest.mark.parametrize("out", ["../bundle.zst", "sub/../../bundle.zst"])
+def test_the_fetch_command_writes_only_under_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out: str
+) -> None:
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fetch", "http://127.0.0.1/", "--out", out])
+
+    assert exit_info.value.code == 2
+    assert list(tmp_path.rglob("*.zst")) == []
+
+
+def test_the_fetch_command_rejects_an_absolute_path_elsewhere(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fetch", "http://127.0.0.1/", "--out", str(tmp_path / "bundle.zst")])
+
+    assert exit_info.value.code == 2
+    assert not (tmp_path / "bundle.zst").exists()
