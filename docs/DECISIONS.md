@@ -3600,7 +3600,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0543 — Listing rows discovery goes to SPEC-09 PR 5
-- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 2 (#113) · Status: decided
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 2 (#113) · Status: superseded by D-0604
 - Decision: Discovery covers detail pages; `pagination.rows` discovery for listings comes with pagination in PR 5.
 - Alternatives: Do it in PR 2.
 - Why: Rows matter only to the pagination executor, and listing samples have many records per page.
@@ -3989,4 +3989,46 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: New progressive event `operator`: cold/learning/active → active, with or without a run in flight (`RUN_IN_FLIGHT` per event); a run in flight continues and may later activate its own config over the operator's.
 - Alternatives: Cancel the run; refuse the correction while learning.
 - Why: A correction must not wait on a run; whether a learned config should yield to an operator's is PR 8's.
+- Reversible: yes
+
+### D-0599 — Recipe execution is a bound rung in `config_ir`
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 (#125) · Status: decided
+- Decision: `config_ir/api_recipe/execute.RecipeRung` binds the recipe to `fetch_json` and the HTTP rung; `acquire(..., recipe=)` takes it as a rung, after adapters and before http/browser.
+- Alternatives: `acquire/api_rung.py` taking an `ApiRecipe` (SPEC-09 §4.1 module list).
+- Why: `.importlinter` layers `acquire` and `collect` below `config_ir`; the same injection as `collect.config.ConfigExecutor` (SPEC-08 PR 2).
+- Reversible: yes
+
+### D-0600 — The `api` collector returns `Executed`; the caller names the recipe
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 (#125) · Status: decided
+- Decision: `collect/api.ApiCollector` gives page-owned values on a detail page; on a listing, `rows` items are `ListItem` rows with row-scoped map paths relative to the row. The recipe id in `api:<id>:<path>` is the id of the config holding it (D-0035).
+- Alternatives: `CollectResult` with schema.org-typed entities; absolute `[*]` map paths.
+- Why: a recipe knows no schema.org type; `Executed` is how config rows reach the pipeline (SPEC-08 PR 8 wires both).
+- Reversible: yes, until recipes with rows are stored
+
+### D-0601 — Recipe fallback rules (SPEC-09 §4.10)
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 (#125) · Status: decided
+- Decision: an `ok` recipe result is kept; a 429/503 (from the endpoint or the HTML page fetch) is kept with no fallback; anything else, including an unbindable parameter, falls back to the configured method with the recipe's attempts recorded first.
+- Alternatives: fall back on 429/503 too.
+- Why: RFC 6585 §4, RFC 9110 §15.6.4: another request inside the backoff is one more, as for the browser retry (review of #125).
+- Reversible: yes
+
+### D-0602 — Binders read page data as lists of documents
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 (#125) · Status: decided
+- Decision: `binding.page_data(page)` = `{"jsonld": [...], "js_state": [...]}` in page order, from `executor.documents`; learning builds `Sample.page_data` with it.
+- Alternatives: one document per kind.
+- Why: a page can hold several blocks; PR 1 tests already use the list form (`jsonld:$[0]['sku']`).
+- Reversible: yes, until recipes with data binders are stored
+
+### D-0603 — Pagination execution
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 (#125) · Status: decided
+- Decision: every request, the first included, sets the query parameter to `start + n·step` (same-name items replaced, others kept as written); a response whose `rows` select nothing ends the listing and is not yielded; a non-`ok` one is yielded last; the HTML page is fetched once.
+- Alternatives: leave the first request as captured.
+- Why: SPEC-09 §4.8 "incrementing the parameter until `rows` is empty"; one rule for every page.
+- Reversible: yes
+
+### D-0604 — Pagination and `rows` discovery are not in SPEC-09 PR 5 (supersedes D-0543)
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 (#125) · Status: decided
+- Decision: a recipe's `pagination` comes from role D (PR 6, whose output includes it) or an operator correction (SPEC-08 PR 10); discovery from listing samples is a follow-up.
+- Alternatives: discover rows from listing samples in PR 5.
+- Why: it needs listing records and successive captured requests, which nothing produces yet; §6 tests pagination on execution only.
 - Reversible: yes
