@@ -1107,3 +1107,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Options: (a) keep primary suppression only, as §16.3 says; (b) add complementary suppression: when exactly one cell in a group is suppressed, suppress the next-smallest too; (c) report bucket and config-status tables only for dev.
 - Recommendation: (b). It closes the subtraction path at little cost, and the gate reads unsuppressed numbers inside the job anyway (D-0182).
 - Blocked: nothing. Ships with primary suppression; changing it touches ARCHITECTURE §16.3, so it needs the owner.
+
+### D-0188 — Wrong products fail the gate even without a baseline
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: A first run with a wrong product gives `["no_baseline", "wrong_product:<t>"]` and fails.
+- Alternatives: Pass every first run with `no_baseline` only.
+- Why: INV-21 (wrong-product count on hidden is 0) needs no baseline; most conservative reading of §4.8.
+- Reversible: yes
+
+### D-0189 — Types without precision on both sides aren't compared
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: A field type with no precision on either side, or missing from one report, is not compared for precision.
+- Alternatives: Fail it.
+- Why: §4.8's rule compares precision; an abstention can't be a wrong publish, and dropped pages are caught by `n_pages_dropped`.
+- Reversible: yes
+
+### D-0190 — The 0.5 pt boundary uses `math.isclose`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: A drop of exactly 0.5 pt passes.
+- Alternatives: Raw float `<`.
+- Why: §16.4 says "more than 0.5 pt"; `0.97 - 0.965 > 0.005` is true in binary floats.
+- Reversible: yes
+
+### D-0191 — The gate refuses suppressed or mismatched input
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: `gate` raises `GateInputInvalid` on a suppressed `by_field_type` cell or a split mismatch.
+- Alternatives: Skip suppressed cells.
+- Why: D-0182: the gate reads the unsuppressed in-job report; a suppressed cell can hide a wrong product.
+- Reversible: yes
+
+### D-0192 — `GateResult` adds per-type pass/fail
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: `GateResult` adds `by_field_type: {type: pass}` to §4.7's `{baseline_git_sha, passed, reasons}`.
+- Alternatives: Derive per-type results from reasons in PR 7.
+- Why: §4.8: "its output is pass/fail per field type and the reasons".
+- Reversible: yes
+
+### D-0193 — Baseline lookup walks `git rev-list`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: Walk `git rev-list <ref>` newest first and take the first commit with a run (`latest_run(sha)`); return `None` at once when the store has no runs. The protected job needs full history.
+- Alternatives: A store query over a sha set.
+- Why: No store or migration change; cheap until milestone M.
+- Reversible: yes
+
+### D-0194 — `REQUIRED_FIELD_TYPES` is a constant until presets exist
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 6 (#32) · Status: decided
+- Decision: The §4.8 list as a constant.
+- Alternatives: Derive from presets now.
+- Why: SPEC-04 PR 1 isn't merged.
+- Reversible: yes; derive from presets later
