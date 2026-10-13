@@ -167,13 +167,7 @@ class JsonLdCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         graph = _Graph(ctx.base_url)
         diagnostics: list[str] = []
-        blocks = [script for script in page.scripts if script.type == MEDIA_TYPE]
-        for index, script in enumerate(blocks):
-            try:
-                document = parse(script.text)
-            except ValueError as e:
-                diagnostics.append(f"jsonld:{index}: invalid JSON ({e})")
-                continue
+        for index, document in blocks(page, diagnostics):
             for found in self._walk(index, document):
                 graph.add(found)
         entities = [found for found in graph.objects if found.types]
@@ -190,6 +184,14 @@ class JsonLdCollector:
             candidates=tuple(candidates),
             diagnostics=tuple(diagnostics),
         )
+
+    def nodes(self, page: ParsedPage) -> Iterator[tuple[tuple[str, ...], Mapping[str, JsonValue]]]:
+        """The page's schema.org nodes in document order, each with its types, most specific first. Invalid blocks
+        are skipped; `collect` reports them."""
+        for index, document in blocks(page, []):
+            for found in self._walk(index, document):
+                if found.types:
+                    yield found.types, found.data
 
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
         """Every object of `document` in document order. Iterative, so that nesting depth is bounded by what the JSON
@@ -220,6 +222,15 @@ class JsonLdCollector:
             if isinstance(item, str) and (name := schema_term(item) or (item if in_schema else None)) is not None:
                 names.append(name)
         return self.vocabulary.specific_first(names)
+
+
+def blocks(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[int, JsonValue]]:
+    """Each `application/ld+json` block's JSON with its index; an invalid block is skipped with a diagnostic."""
+    for index, script in enumerate(s for s in page.scripts if s.type == MEDIA_TYPE):
+        try:
+            yield index, parse(script.text)
+        except ValueError as e:
+            diagnostics.append(f"jsonld:{index}: invalid JSON ({e})")
 
 
 def _member_via(holder: _Object, key: str, via: str | None) -> str | None:

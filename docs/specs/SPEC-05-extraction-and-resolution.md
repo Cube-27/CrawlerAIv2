@@ -153,8 +153,10 @@ an empty result with a diagnostic).
 - **xhr**: the bundle's captured JSON bodies, same admission rule as js_state. (Also feeds SPEC-09 discovery.)
 - **adapter**: `source_kind='adapter'`, entity from the adapter's JSON object, locator `adapter:…`, using the
   adapter's `map(schema)`.
-- **config**: `ConfigExecutor` protocol `execute(ir, page, schema) -> list[Candidate]` with
-  `source_kind='config'`; injected when a config is active (SPEC-08).
+- **config**: `ConfigExecutor` protocol (`crawlerai.collect.config`), bound to its IR because `config_ir` sits above
+  `collect` and `resolve`: `execute(page, schema, ctx) -> Executed` (listing row entities, candidates, diagnostics) and
+  `field_status`; candidates have `source_kind='config'` and `independent=False`; injected when a config is active
+  (SPEC-08).
 
 No collector contains a hostname, a class-name fragment or a phrase list (C2/C3; the scan covers `collect/`).
 
