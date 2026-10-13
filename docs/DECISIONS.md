@@ -2324,3 +2324,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep the screen-local notice (a second way to notify).
 - Why: One way per job (DESIGN.md, Patterns); the toast also outlives the editor's remount.
 - Reversible: yes
+
+### D-0361 — `create_app` keeps `eval_ui` and reads settings at startup
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided
+- Decision: `create_app(eval_ui=None)`; the app lifespan reads `DatabaseSettings()` and creates the one engine the routers share (`app.state.database`).
+- Alternatives: `create_app(settings)` as SPEC-07 §4.1 sketches.
+- Why: `crawlerai openapi` and uvicorn's `--factory` build the app without a database or object store configured.
+- Reversible: yes
+
+### D-0362 — Problem `instance` is the request path; no request-id middleware yet
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided
+- Decision: `Problem.instance` is the request path (RFC 9457 §3.1.5).
+- Alternatives: A per-request id (`urn:uuid:…`) and an `X-Request-ID` header.
+- Why: Nothing logs or reads a request id yet. When logging lands, switch `instance` to the request id (#70 review).
+- Reversible: yes
+
+### D-0363 — Unreadable capture of a labeling page is 500 `capture_unreadable`
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided
+- Decision: `ObjectNotFound`/`CorruptBundle` from `get_bundle` in `GET /v1/eval/pages/{id}` answer 500 with type `capture_unreadable`.
+- Alternatives: 404 `not_found`; the generic 500 problem.
+- Why: The page exists; a missing or damaged stored object is the server's fault, and a distinct type tells the labeling screen why.
+- Reversible: yes
+
+### D-0364 — Problems for framework errors
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided
+- Decision: Unknown path → `not_found`; other HTTP errors and unexpected exceptions → `about:blank` with the status phrase (RFC 9457 §4.2.1), message withheld on 500; `/healthz` without a database → 503 `unavailable`. These extend SPEC-07 §4.3's types for statuses it doesn't name.
+- Alternatives: FastAPI's default bodies.
+- Why: Every error the API answers is one shape the client reads.
+- Reversible: yes
+
+### D-0365 — `/healthz` reports `eval_ui`
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided
+- Decision: `GET /healthz` answers `{"status":"ok","eval_ui":bool}` after a `SELECT 1` bounded at 5 s; `eval_ui` is the plumbing field SPEC-12 §4.3 (D-0042) reads for its labeling nav.
+- Alternatives: A separate endpoint for the flag.
+- Why: One unauthenticated call tells the UI the API is up and which screens to show.
+- Reversible: yes
+
+### D-0366 — 422 problem declared per router; supersedes D-0210
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided
+- Decision: Routers that take input declare `responses={422: PROBLEM_RESPONSE}` (the eval router does), replacing FastAPI's `HTTPValidationError` in OpenAPI; `/healthz`, which takes no input, declares none. The OpenAPI document is served at `/v1/openapi.json` (SPEC-07 §4.6). D-0210 (problems local until SPEC-07) is superseded.
+- Alternatives: One app-level `responses={422: …}`, which also documents a 422 on `/healthz`.
+- Why: The document should list only errors an operation can return.
+- Reversible: yes
