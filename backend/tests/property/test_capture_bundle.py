@@ -186,6 +186,20 @@ def test_manifest_written_before_raw_bodies_existed_still_decodes() -> None:
     assert decode(_tar_zst(members)) == _bundle(method="http")
 
 
+def test_network_entries_written_before_requests_were_recorded_still_decode() -> None:
+    bundle = _bundle(network=(b"{}",))
+    members = _members(encode(bundle))
+    manifest = json.loads(members["manifest.json"])
+    for entry in manifest["network_bodies"]:
+        del entry["method"], entry["request_body"]
+    members["manifest.json"] = json.dumps(manifest).encode()
+
+    decoded = decode(_tar_zst(members))
+
+    assert [(e.method, e.request_body) for e in decoded.manifest.network_bodies] == [(None, None)]
+    assert decoded == bundle
+
+
 def test_bundle_rejects_a_raw_body_on_a_non_browser_capture() -> None:
     browser = _bundle(raw_body=b"<html>raw</html>")
     manifest = browser.manifest.model_copy(update={"method": "http"})

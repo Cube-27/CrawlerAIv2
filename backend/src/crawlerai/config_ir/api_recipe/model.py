@@ -7,8 +7,9 @@ JSONPaths in the subset the engine reads (`select` of `json_doc`). Site strings 
 live in recipe documents only (C3); this module holds none.
 """
 
+import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Annotated, Final, Literal, NamedTuple, Self, get_args
 from urllib.parse import urlsplit
 
@@ -101,6 +102,12 @@ def _check_jsonpath(path: str) -> str:
 def map_paths(path: str) -> list[str]:
     """The JSONPaths a map entry joins with `+`, in order."""
     return _JOIN.split(path)
+
+
+def joined_raw(parts: Sequence[str | int | float]) -> str:
+    """The raw value of a map entry that joins its parts with `+`: their texts separated by a space, a number as its
+    JSON text (RFC 8259 §6), so the money normalizer reads an amount and a currency as one value."""
+    return " ".join(part if isinstance(part, str) else json.dumps(part) for part in parts)
 
 
 def _check_map_path(path: str) -> str:

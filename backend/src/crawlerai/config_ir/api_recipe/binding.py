@@ -134,8 +134,17 @@ class _Url(NamedTuple):
         return cls(f"{parts.scheme}://{parts.netloc}", parts.path, segments, query)
 
     @property
-    def shape(self) -> tuple[str, bool, int, list[str]]:
-        return self.origin, bool(self.path), len(self.segments), [name for name, _ in self.query]
+    def shape(self) -> "UrlShape":
+        return self.origin, bool(self.path), len(self.segments), tuple(name for name, _ in self.query)
+
+
+# What the endpoint URLs of the sample requests share for binding to template them: the origin, whether there is a
+# path, its segment count, and the query names in order.
+UrlShape = tuple[str, bool, int, tuple[str, ...]]
+
+
+def url_shape(url: str) -> UrlShape:
+    return _Url.split(url).shape
 
 
 # --- deterministic binding -------------------------------------------------------------------------------------------

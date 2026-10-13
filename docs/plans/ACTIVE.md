@@ -12,7 +12,7 @@ specified (types, API shapes, table columns). Readiness is per row (owner, 2026-
 - `blocked`: the Notes link a `DECISIONS.md` entry.
 - `human`: waits on a human-only task (below).
 
-Updated: 2026-10-13.
+Updated: 2026-10-14.
 
 ## Human-only tasks
 
@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete: every L1 row is done or human. Next: L2 rows - SPEC-08 PR 4 (migration), SPEC-09 PR 2 (#113 in flight) then PR 3, SPEC-12 PR 6. Human: H7 todo; H1-H4, H6 deferred.
+- L1 complete (2026-10-14): every L1 row is done or human, main green. Working on L2. In progress: SPEC-08 PR 4, SPEC-08 PR 12. Next: SPEC-09 PR 3, SPEC-08 PR 5, SPEC-12 PR 6.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -191,7 +191,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | `ApiRecipe` model + binders + property tests | done (#102) | |
-| 2 | Discovery from network bodies | todo | |
+| 2 | Discovery from network bodies | done (#113) | D-0540–D-0543 |
 | 3 | Header minimization + replay | todo | |
 | 4 | Held-out validation + IR integration | todo | |
 | 5 | Execution rung + `api` collector + pagination | todo | |

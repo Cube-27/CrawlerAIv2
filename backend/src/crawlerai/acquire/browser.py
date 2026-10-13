@@ -273,7 +273,8 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
             data = await response.body()
         except PlaywrightError:
             continue  # no body to read: a redirect, or a request that failed or was evicted
-        if len(data) > _JSON_BODY_MAX_BYTES:
+        sent = response.request.post_data_buffer
+        if len(data) > _JSON_BODY_MAX_BYTES or len(sent or b"") > _JSON_BODY_MAX_BYTES:
             continue
         entry = NetworkBody(
             url=response.url,
@@ -281,9 +282,18 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
             content_type=response.headers.get("content-type"),
             sha256=sha256_hex(data),
             file=network_file(len(captured)),
+            method=response.request.method,
+            request_body=_text_or_none(sent),
         )
         captured.append((entry, data))
     return tuple(captured)
+
+
+def _text_or_none(data: bytes | None) -> str | None:
+    try:
+        return None if data is None else data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def _navigation_error(error: PlaywrightError, rejected: RejectReason | None) -> str:

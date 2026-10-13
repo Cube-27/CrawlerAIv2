@@ -48,13 +48,19 @@ class Headers(_Frozen):
 
 
 class NetworkBody(_Frozen):
-    """Manifest entry for one captured network body; the bytes sit at the same index of the bundle's `network`."""
+    """Manifest entry for one captured network body; the bytes sit at the same index of the bundle's `network`.
+
+    `method` and `request_body` describe the request the body answered, which API discovery groups and binds by
+    (SPEC-09 §4.3); bundles written before they were kept decode with None. `request_body` is None also for a request
+    without a body or with one that is not UTF-8 text."""
 
     url: str
     status: int
     content_type: str | None
     sha256: Sha256
     file: str
+    method: str | None = None
+    request_body: str | None = None
 
 
 class CaptureManifest(_Frozen):
