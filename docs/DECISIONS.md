@@ -2191,3 +2191,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: a drafted design system; an owner-supplied design.
 - Why: owner instruction.
 - Reversible: yes
+
+### D-0342 — Connect accepts the key without a probe request
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 1 (#68) · Status: decided
+- Decision: The Connect screen stores the key as entered; the first 401 drops it and shows the problem on `/connect`.
+- Alternatives: probe `GET /v1/schemas` (not in `openapi.json` yet, so untyped); a key-check endpoint (public API change, escalation).
+- Why: The most conservative reading.
+- Reversible: yes
+
+### D-0343 — `ProblemSummary` is narrowed by hand until the generated schema has the problem type
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 1 (#68) · Status: decided
+- Decision: `api/problem.ts` reads `title` and `detail` from an `application/problem+json` body; replaced by the generated type once SPEC-07's problem schema is in `schema.d.ts`.
+- Alternatives: wait for SPEC-07 PR 1.
+- Why: SPEC-12 §4.1's "no hand-written DTO" targets endpoint shapes; this reads two RFC 9457 members.
+- Reversible: yes
+
+### D-0344 — Labeling routes stay outside `RequireKey`
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 1 (#68) · Status: decided
+- Decision: Only screens that call the API with the key sit behind the key gate; the labeling routes do not.
+- Alternatives: gate them (their loaders take no key and would still run).
+- Why: The eval API is unauthenticated (SPEC-03 §4.10); SPEC-12 PR 9 owns the labeling integration.
+- Reversible: yes
+
+### D-0345 — First shared compositions: `PageHeader` and `ProblemAlert`
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 1 (#68) · Status: decided
+- Decision: `src/components/PageHeader` (h1 and badges left, primary actions right) and `ProblemAlert` (HeroUI `Alert`) are the one way to show a page title and an API problem; the existing screens' titles use `PageHeader`.
+- Alternatives: per-screen headings and error markup.
+- Why: Owner rule D-0341 and "one way per recurring job".
+- Reversible: yes
