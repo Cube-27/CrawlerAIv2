@@ -4,6 +4,9 @@ tried over HTTP again every 7 days, and set back to `http` when HTTP passes.
 The URL tried is the site's latest `ok` capture: a page known to exist, so a miss is evidence about the method, not
 the page. robots.txt is honoured as for any fetch; a page it disallows, or a robots.txt that cannot be read, leaves
 the site on `browser` until the next turn.
+
+The rest of politeness (§4.6) holds by cadence: one page request per site per 7 days is inside any rate limit or
+`Crawl-delay`, and a 429 or 503 is a failed re-check whose next try, a turn later, is longer than any backoff.
 """
 
 from datetime import timedelta
