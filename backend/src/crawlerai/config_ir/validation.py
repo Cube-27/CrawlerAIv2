@@ -191,11 +191,15 @@ class _PageRun:
         )
 
     def released_value(self, values: Mapping[str, Value], name: str) -> JsonValue | None:
-        """The release executor's value for `name`, normalized as the engine normalizes; None when it has none."""
-        if name not in values:
-            return None
-        result = normalize(values[name], self.spec_of[name], self.page.ctx)
-        return result.value if isinstance(result, Ok) else None
+        return release_value(values, name, self.spec_of[name], self.page.ctx)
+
+
+def release_value(values: Mapping[str, Value], name: str, spec: FieldSpec, ctx: Context) -> JsonValue | None:
+    """The release executor's value for `name`, normalized as the engine normalizes; None when it has none."""
+    if name not in values:
+        return None
+    result = normalize(values[name], spec, ctx)
+    return result.value if isinstance(result, Ok) else None
 
 
 @dataclass(frozen=True, slots=True)
