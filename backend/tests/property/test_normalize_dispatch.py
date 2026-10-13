@@ -48,6 +48,13 @@ def test_url_and_image_url_go_to_the_url_module() -> None:
     assert normalize("HTTPS://example.test/p#x", _spec(FieldType.IMAGE_URL), ctx) == Invalid("page_url")
 
 
+def test_date_and_datetime_go_to_the_date_module() -> None:
+    raw = "2026-03-04T23:30:00-02:00"
+
+    assert normalize(raw, _spec(FieldType.DATE), CTX) == Ok("2026-03-04")
+    assert normalize(raw, _spec(FieldType.DATETIME), CTX) == Ok("2026-03-05T01:30:00Z")
+
+
 def test_a_type_without_a_normalizer_yet_declines_as_unknown_type() -> None:
     # `list` and `object` recursion arrives with SPEC-04 PR 9, the last normalizer PR.
     assert normalize(["a"], _spec(FieldType.LIST), CTX) == Invalid("unknown_type")
