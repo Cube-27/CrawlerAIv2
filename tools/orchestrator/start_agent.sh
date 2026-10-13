@@ -23,16 +23,25 @@ close_and_fail() { herdr pane close "$pane" >/dev/null 2>&1; err "$1; closed pan
 herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 >/dev/null 2>&1
 cwd=$(herdr agent get "$name" 2>/dev/null | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent'].get('cwd',''))")
 [[ $cwd == "$path" ]] || close_and_fail "$name cwd is '$cwd', expected '$path'"
-herdr agent prompt "$name" "$prompt" >/dev/null 2>&1 || close_and_fail "prompt to $name failed"
 status() {
   herdr agent get "$name" | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent']['agent_status'])"
   return 0
 }
-# Wait up to 10 s for the prompt to start a turn.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  case $(status) in
-    working|blocked) break ;;
-    *) sleep 1 ;;
-  esac
+# A prompt sent while the agent is still loading can be dropped, so it stays idle: wait up to 15 s for a turn to
+# start, resend once, and fail if it still hasn't started.
+started() {
+  local _
+  for _ in $(seq 15); do
+    case $(status) in
+      working|blocked) return 0 ;;
+      *) sleep 1 ;;
+    esac
+  done
+  return 1
+}
+for attempt in 1 2; do
+  herdr agent prompt "$name" "$prompt" >/dev/null 2>&1 || close_and_fail "prompt to $name failed"
+  if started; then echo "$pane $(status)"; exit 0; fi
+  [[ $attempt == 1 ]] && echo "WARN $name idle after the prompt; resending" >&2
 done
-echo "$pane $(status)"
+close_and_fail "$name never started a turn"
