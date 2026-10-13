@@ -1571,3 +1571,79 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Why: A site sits in one split (§16.1); counts-only output keeps C1. Remaining gap by design: a non-custodian dev capture of a hidden/fresh host can't be detected; `promote` and `rotate-hidden` still guard moves.
 - Reversible: yes
 
+### D-0254 — Normalizer `base` holds the shared types; `dispatch` holds the dispatcher
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: SPEC-04 §4.1 puts both in `base`, but the dispatcher imports the type modules, which import the result types; one module would cycle.
+- Alternatives: The dispatcher in `normalize/__init__`; lazy imports in `base`.
+- Why: Avoids an import cycle; C8 holds.
+- Reversible: yes
+
+### D-0255 — Import contracts: normalize above schemas, an explicit independence list, a `normalize-internals` layers contract
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: D-0056 anticipated the relaxation of D-0055's wildcard, which can't hold because type modules import `base`. Each new type module joins both normalize contracts in its PR.
+- Alternatives: normalize defines its own spec protocol (duplicates `FieldType`).
+- Why: Keeps C8's one-module-per-type enforced by `lint-imports`.
+- Reversible: yes
+
+### D-0256 — `Context` gains `base_url` and `page_url`; every field except `captured_at` is optional
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: §4.4 resolves URLs against the document base and checks images against the page URL, which §4.3's `Context` lacks. `None` means "no evidence", not a default (C7).
+- Alternatives: Pass them as separate arguments.
+- Why: The spec's own §4.4 needs them.
+- Reversible: yes
+
+### D-0257 — text and url accept only JSON strings
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: Other JSON values, including JSON-LD value objects (`@value`, `@id`), are `Invalid("not_a_string")`; unwrapping is the collector's job.
+- Alternatives: Unwrap value objects in the normalizer.
+- Why: schema.org Text and URL values are JSON strings; C8.
+- Reversible: yes
+
+### D-0258 — long_text keeps line breaks, collapsing runs of blank lines to one
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: trafilatura runs in the content layer, before normalization.
+- Alternatives: Keep only paragraph breaks.
+- Why: Preserves structure without guessing.
+- Reversible: yes
+
+### D-0259 — Placeholder syntaxes for text
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: `{{…}}`, `${…}`, and printf `%s`/`%d` with an optional `%1$`/`%(name)` prefix, no flags, ending at a word boundary.
+- Alternatives: Allow printf flags (reads "100% sure" as `% s`).
+- Why: Template placeholders by their syntax (structural), not a word list (C4).
+- Reversible: yes
+
+### D-0260 — url keeps an empty query's `?`; hosts lowercased, not IDNA-converted
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: RFC 3986 §6.2.3 removes an empty component's delimiter only where the scheme allows it.
+- Alternatives: Drop the `?`; IDNA-encode hosts.
+- Why: RFC 3986; SPEC-04 PR 9 (url `equal`) may revisit IDNA.
+- Reversible: yes
+
+### D-0261 — url declines input empty after WHATWG trimming
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: The empty check runs after the WHATWG trim and tab/newline removal; only C0 controls, spaces and Unicode White_Space is `Invalid("empty")`.
+- Alternatives: Check before trimming (C0-only input resolved to the base).
+- Why: INV-06 (review fix).
+- Reversible: yes
+
+### D-0262 — text removes Cc controls that are not White_Space
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: Control-only input is `Invalid("empty")`. Default_Ignorable-only strings (ZWSP, BOM) are still accepted pending a separate decision.
+- Alternatives: Keep controls.
+- Why: Controls are not text, and Postgres `text`/`jsonb` can't store NUL.
+- Reversible: yes
+
+### D-0263 — url and text decline lone surrogates
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: A string holding a Unicode Cs code point is `Invalid("surrogate")`, via `base.has_surrogate` (shared, C8); url checks the base only when it resolves against it.
+- Alternatives: Replace with U+FFFD.
+- Why: It has no UTF-8 encoding (url's `quote()` raised); JSON-LD may carry one as an escape (RFC 8259 §8.2). C7: decline rather than guess.
+- Reversible: yes
+
+### D-0264 — Hypothesis `ci` profile and mypy `explicit_package_bases`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 2 (#47) · Status: decided
+- Decision: `tests/conftest.py` registers `ci` (`max_examples=200`, SPEC-04 §6), loaded when `CI` is set; `explicit_package_bases = true` lets mypy tell the two conftest files apart.
+- Alternatives: `__init__.py` files in test directories.
+- Why: SPEC-04 §6's example count in CI.
+- Reversible: yes
