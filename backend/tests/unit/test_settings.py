@@ -15,6 +15,7 @@ _OPTIONAL = [
     "CRAWLERAI_LOG_REDACT_URLS",
     "CRAWLERAI_ROLE",
     "CRAWLERAI_IMPERSONATE",
+    "CRAWLERAI_EVAL_UI",
 ]
 
 
@@ -31,6 +32,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
 def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     env.setenv("CRAWLERAI_LOG_REDACT_URLS", "true")
     env.setenv("CRAWLERAI_ROLE", "worker")
+    env.setenv("CRAWLERAI_EVAL_UI", "true")
 
     settings = Settings()
 
@@ -38,6 +40,7 @@ def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     assert settings.object_store == "fs:///srv/objects"
     assert settings.log_redact_urls is True
     assert settings.role == "worker"
+    assert settings.eval_ui is True
 
 
 @pytest.mark.parametrize("empty", [False, True], ids=["unset", "empty"])
@@ -54,6 +57,7 @@ def test_optional_settings_unset_or_empty_take_their_unset_values(env: pytest.Mo
     assert settings.log_redact_urls is False
     assert settings.role is None
     assert settings.impersonate == "chrome150"
+    assert settings.eval_ui is False
 
 
 def test_database_url_is_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:

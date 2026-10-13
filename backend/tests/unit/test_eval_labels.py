@@ -203,7 +203,7 @@ def test_detail_pages_ignore_scope() -> None:
 
 def test_field_shapes_keep_type_scope_and_nesting_of_a_schema_document() -> None:
     fields: dict[str, JsonValue] = {
-        "title": {"type": "text", "required": True, "description": "Name", "schema_org": "Product.name"},
+        "title": {"type": "text", "required": True, "description": "Name"},
         "next_page_url": {"type": "url", "scope": "page", "description": "Next page"},
         "locations": {"type": "list", "item": {"type": "location", "description": "One"}, "description": "All"},
         "salary": {"type": "object", "fields": {"base": {"type": "money", "required": True}}, "description": "Pay"},

@@ -46,7 +46,15 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
     document = json.loads(out)
     assert document["openapi"].startswith("3.")
     assert document["info"]["title"] == "CrawlerAI"
-    assert list(document["paths"]) == ["/healthz"]
+    assert sorted(document["paths"]) == [
+        "/healthz",
+        "/v1/eval/capture",
+        "/v1/eval/pages",
+        "/v1/eval/pages/{page_id}",
+        "/v1/eval/pages/{page_id}/labels",
+        "/v1/eval/pages/{page_id}/normalize",
+        "/v1/eval/pages/{page_id}/prefill",
+    ]
     assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
 
 
