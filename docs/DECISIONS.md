@@ -3737,3 +3737,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Bump `bundle_version`.
 - Why: §4.6 replays "headers from the captured request"; consistent with D-0540.
 - Reversible: yes
+
+### D-0563 — Validation reproduces with both executors
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: A field is reproduced on a held-out page only when the engine executor and the release executor both give the engine's published value (`equal`).
+- Alternatives: Engine executor only (§4.7 "the executor").
+- Why: ARCHITECTURE §8.3 step 3 names the independent release executor; the stricter reading.
+- Reversible: yes
+
+### D-0564 — A field published on no held-out page is dropped
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: Such a field is reported `dropped: never_published` and does not activate.
+- Alternatives: Keep it unchecked.
+- Why: Nothing activates without validation (§4.13).
+- Reversible: yes
+
+### D-0565 — Corroboration compares with the caller's structured or adapter values
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: Each held-out entity carries `Facts(published, references)`; `references` are the field's valid structured or adapter candidate values. A page is comparable with at least one; it agrees when the config's valid value equals every one.
+- Alternatives: Compare only with the published value's source.
+- Why: §8.3 step 4 "pages that have such a value"; disagreeing references count against corroboration (conservative).
+- Reversible: yes
+
+### D-0566 — Listing validation is row by row, in document order
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: The listing is dropped when `row` selects fewer than 3 rows on any held-out page or no row field is kept. Row fields are compared with the engine's rows in document order and are reproduced only when the config, the release executor and the engine have the same row count. `next` is validated as the page-level `next_page_url` field and dropped on its own.
+- Alternatives: Match rows by value.
+- Why: Most conservative reading of §4.7; an extra or missing row changes the records.
+- Reversible: yes
+
+### D-0567 — Validation report shape
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: Besides §4.7's members, each field reports `published`, `comparable` and `dropped`; `corroborated_on` is a count. The report adds `held_out` (capture ids), a `listing` section and `refused` (`too_few_held_out`, `no_field_kept`).
+- Alternatives: §4.7's members only.
+- Why: §4.10 returns the report so an operator sees why a field did not activate.
+- Reversible: yes
+
+### D-0568 — Validation keeps `operator` status
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: A kept field whose input status is `operator` stays `operator`; other kept fields get `corroborated` or `uncorroborated`.
+- Alternatives: Recompute every status.
+- Why: §4.7; PR 10 sets `operator`.
+- Reversible: yes
+
+### D-0569 — Activation lives in `config_ir/activation.py` and needs a learning run in flight
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: `activate` locks the state row, checks that the IR's site host, schema name and version and page kind match the key, suspends the previous active config, inserts version max+1 per (site, schema, page kind) and calls `learning_activated`.
+- Alternatives: Put it in `progressive.py`; activate without a run.
+- Why: Keeps the state machine module unchanged; PR 10's operator path adds its own entry.
+- Reversible: yes
+
+### D-0570 — `release_rules` in src
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 6 (#118) · Status: decided
+- Decision: The D-0527 rule builder moves from the release-executor property test to `config_ir/release_rules.py`.
+- Alternatives: Keep a copy per caller.
+- Why: C8; validation and the PR 11 release check need the same rules.
+- Reversible: yes
