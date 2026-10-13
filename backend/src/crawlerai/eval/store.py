@@ -55,7 +55,7 @@ LabelPass = Literal["labeler", "checker"]
 
 
 class EvalNotFound(LookupError):
-    """No eval page, or no eval capture of this store's split, has the id."""
+    """No eval page, eval capture or eval run of this store's split has the id."""
 
 
 class PrivateCredentialsMissing(Exception):
@@ -113,6 +113,8 @@ class EvalStore(Protocol):
         """Store `labels` as `who`'s pass. A labeler pass clears the checker: the labels it checked have changed."""
 
     async def put_run(self, run: EvalRunRow) -> EvalRunId: ...
+
+    async def get_run(self, run_id: EvalRunId) -> EvalRunRow: ...
 
     async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
         """The latest run of this split, of commit `git_sha_on_main` when given."""
@@ -296,6 +298,14 @@ class _SqlEvalStore(ABC):
         async with self._engine.begin() as conn:
             await conn.execute(insert(self._run).values(run.model_dump()))
         return run.id
+
+    async def get_run(self, run_id: EvalRunId) -> EvalRunRow:
+        query = select(self._run).where(self._run.c.id == run_id, self._run.c.split == self._split)
+        async with self._engine.connect() as conn:
+            row = (await conn.execute(query)).mappings().one_or_none()
+        if row is None:
+            raise EvalNotFound(f"no {self._split} eval run {run_id}")
+        return _row(EvalRunRow, row)
 
     async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
         run = self._run.c

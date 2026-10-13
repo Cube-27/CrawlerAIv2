@@ -1394,3 +1394,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: read the resolved Oxlint config.
 - Why: C11 must hold after the lint tool changes; text matching is enough for the configs we have.
 - Reversible: yes
+
+### D-0229 — Interim calibration and precedence fits in `eval/calibrate` until SPEC-05
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 11 (#39) · Status: decided
+- Decision: Calibration is the dev run's `by_bucket` cells (`n`, precision; a suppressed cell keeps `n` with no precision). Precedence is the current order, unchanged. Both are default parameters that SPEC-05 PR 13 replaces.
+- Alternatives: The commands exit "not available until SPEC-05".
+- Why: Both follow SPEC-05 §4.11's rules applied to the data the report has today, so the commands are usable and tested end to end.
+- Reversible: yes
+
+### D-0230 — `fit-precedence` refuses without a current `source_precedence.yaml`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 11 (#39) · Status: decided
+- Decision: With no current file it exits 2 and does not invent an initial order.
+- Alternatives: Write SPEC-05 §4.7's default order.
+- Why: The initial order is SPEC-05's to commit (D-0020); a default here would be a guess (C7).
+- Reversible: yes
+
+### D-0231 — `calibrate`/`fit-precedence` refuse non-dev splits themselves
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 11 (#39) · Status: decided
+- Decision: `--split` accepts dev, hidden or fresh; non-dev exits 2 with an INV-02 message before any store is opened.
+- Alternatives: `choices=["dev"]` in argparse.
+- Why: The refusal is the command's own, stated and tested, as INV-02 requires.
+- Reversible: yes
+
+### D-0232 — `EvalStore.get_run(run_id)`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 11 (#39) · Status: decided
+- Decision: A protocol method on both stores that reads one run of the store's split by id, raising `EvalNotFound`.
+- Alternatives: A dev-store-only method.
+- Why: `--run <id>` needs it, and both stores share the run table code.
+- Reversible: yes
+
+### D-0233 — PyYAML is a direct dependency
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 11 (#39) · Status: decided
+- Decision: `pyyaml>=6,<7` (MIT), with `types-pyyaml` for mypy; only `safe_load`/`safe_dump`.
+- Alternatives: Write YAML by hand.
+- Why: SPEC-05 reads the file with a YAML parser; the safe functions never construct objects.
+- Reversible: yes

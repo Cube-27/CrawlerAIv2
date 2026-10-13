@@ -14,6 +14,7 @@ from typing import Final
 # A git object name: 7 to 40 hex digits (SHA-1, abbreviated or full) or 64 (SHA-256 repositories).
 _GIT_SHA: Final = re.compile(r"[0-9a-f]{7,40}|[0-9a-f]{64}")
 _CALIBRATION_HASH_DIGITS: Final = 12
+CALIBRATION_FILE: Final = "calibration.json"
 
 
 def backend_dir(module_file: Path) -> Path | None:
@@ -21,6 +22,11 @@ def backend_dir(module_file: Path) -> Path | None:
     recognised by its `pyproject.toml`; `None` for an installed package."""
     candidate = module_file.resolve().parents[3]
     return candidate if (candidate / "pyproject.toml").is_file() else None
+
+
+def data_dir(backend: Path) -> Path:
+    """Where the engine's data files live under `backend`: its calibration, precedence and vocabularies."""
+    return backend / "data"
 
 
 def engine_version(backend: Path | None) -> str:
@@ -36,7 +42,7 @@ def engine_version(backend: Path | None) -> str:
         if not _GIT_SHA.fullmatch(sha):
             raise ValueError(f"{version_file.name} does not hold a git SHA: {sha!r}")
     try:
-        calibration_bytes = (backend / "data" / "calibration.json").read_bytes()
+        calibration_bytes = (data_dir(backend) / CALIBRATION_FILE).read_bytes()
     except FileNotFoundError:
         calibration = "none"
     else:
