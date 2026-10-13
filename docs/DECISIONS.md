@@ -1156,3 +1156,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Derive from presets now.
 - Why: SPEC-04 PR 1 isn't merged.
 - Reversible: yes; derive from presets later
+
+### D-0195 — Eval capture obeys robots.txt and spaces requests per host
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: `eval capture` and `import-sites` read robots.txt once per origin per run; a disallowed page, or any page on an origin whose robots.txt is unreachable (RFC 9309 §2.3.1.4), is skipped. Pages of one host are spaced by `politeness.interval(None, Crawl-delay)`, and the CLI sleeps through the wait. Nothing is written to `site.robots_snapshot`.
+- Alternatives: Fetch with no robots check (the literal reading of §4.4); an override flag.
+- Why: ARCHITECTURE §7.1 / SPEC-02 §4.6 politeness applies to every fetch we make; no hidden host enters the main DB.
+- Reversible: yes
+
+### D-0196 — Every fetched page is stored, whatever its outcome
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: Blocked, shell, not_found and error outcomes are stored as eval captures and pages; the command exits 0 and reports each outcome.
+- Alternatives: Store only `ok` captures; exit non-zero on a non-`ok` outcome.
+- Why: §4.6 reports the acquisition outcome mix per category; dropping failures would hide them.
+- Reversible: yes
+
+### D-0197 — Site list format: `<category> <schema> <url>` per line
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: `#` comments and blank lines are ignored; `--pages-per-site N` (required) keeps a host's first N pages; any malformed line, unknown category, non-http(s) URL or duplicate URL rejects the whole file before fetching; errors give line numbers only.
+- Alternatives: Site URLs with page discovery (SPEC-10); a CSV with a header.
+- Why: §16.1 stratifies by category and page kind; leaving content out of errors keeps hidden hosts out of logs (C1).
+- Reversible: yes
+
+### D-0198 — Schemas resolve to their newest active version for every split
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: `--schema NAME` resolves to the highest active `version` in the main `schema_def`; `capture --page-kind` must equal the schema's page kind. Private pages store the resolved id and name (D-0172).
+- Alternatives: A `--schema-version` flag; let `--page-kind` override.
+- Why: The private DB has no `schema_def`; a mismatched page kind would mislabel pages.
+- Reversible: yes
+
+### D-0199 — Eval CLI output names pages by input position, never by URL
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: Each output line is `{n, capture_id, page_id, status_code, block_class, error}` or `{n, skipped}`.
+- Alternatives: Print the URL.
+- Why: C1: a hidden host must not reach a log or CI transcript.
+- Reversible: yes
+
+### D-0200 — `EvalStore.aclose()`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: The protocol gains `aclose()`, which disposes the store's engine; use with `contextlib.aclosing(get_store(...))`.
+- Alternatives: Callers reach into the engine; leave engines undisposed.
+- Why: `get_store` created an engine nobody could close, leaking connections.
+- Reversible: yes
+
+### D-0201 — `import-sites --file` is read only from under the working directory
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: Resolved against the working directory; exit 2 if outside.
+- Alternatives: Read any path; mark the Sonar finding safe.
+- Why: Same rule as `fetch --out` (D-0146); a real fix for S8707.
+- Reversible: yes
+
+### D-0202 — Unexpected failures on private splits report their type only
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 3 (#30) · Status: decided
+- Decision: On `hidden`/`fresh`, an unexpected exception exits 1 with `failed with <Type>; details withheld for the <split> split`; on `dev` it propagates with its traceback.
+- Alternatives: Print tracebacks for every split.
+- Why: C1: a DB error's `DETAIL` or an exception message could carry a hidden URL or row values.
+- Reversible: yes
