@@ -16,7 +16,7 @@ from crawlerai.db.models import EvalRunId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.preference import Chosen, Preference
-from crawlerai.resolve.types import Evidence, FieldOutcome, FieldSet, Probability
+from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, Probability
 from crawlerai.schemas.types import FieldType, SchemaDef
 
 # ARCHITECTURE §10, OPEN_QUESTIONS #3: a calibrated bucket below τ abstains.
@@ -119,53 +119,68 @@ def assess(
 ) -> FieldOutcome:
     """One field's outcome: a chosen or derived value publishes with its bucket's measurement unless that bucket is
     calibrated below `tau`; a declined field keeps its status and reason."""
-    derived: Derived | None = None
+    derived_by: Derivation | None = None
     if isinstance(decision, Derived):
         if decision.source is None:
             # D-0355: a page-URL derivation has no candidate, source kind or bucket, which INV-22 requires.
             return _unpublished("missing", "no_provenance", ())
-        derived, decision = decision, Chosen(decision.source, (), ())
-    if not isinstance(decision, Chosen):
+        value, derived_by = decision.value, decision.derived_by
+        decision = Chosen(decision.source, (), ())
+    elif isinstance(decision, Chosen):
+        value = _value(decision.chosen)
+    else:
         return _unpublished(decision.status, decision.reason, decision.rejected)
-    evidence = evidence_of(decision.chosen, decision.agreeing, corroborated=corroborated)
+    chosen, rejected = decision.chosen, decision.rejected
+    evidence = evidence_of(chosen, decision.agreeing, corroborated=corroborated)
     if evidence is None:
-        return _unpublished("abstained", "no_bucket", (*decision.rejected, (decision.chosen, "no_bucket")))
+        return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")))
     confidence, calibrated = calibration.measure(type_, evidence) if calibration else (None, False)
     if calibrated and confidence is not None and confidence < tau:
-        return FieldOutcome(
-            **_EMPTY,
-            status="abstained",
-            reason="below_tau",
+        return _unpublished(
+            "abstained",
+            "below_tau",
+            (*rejected, (chosen, "below_tau")),
             evidence=evidence,
             confidence=confidence,
             calibrated=True,
-            rejected=(*decision.rejected, (decision.chosen, "below_tau")),
         )
-    chosen = decision.chosen
     return FieldOutcome(
         status="published",
         reason=None,
-        value=derived.value if derived else _value(chosen),
+        value=value,
         evidence=evidence,
         confidence=confidence,
         calibrated=calibrated,
         source_kind=chosen.source_kind,
         locator=chosen.locator,
-        derived_by=derived.derived_by if derived else None,
+        derived_by=derived_by,
         chosen=chosen,
-        rejected=decision.rejected,
+        rejected=rejected,
     )
 
 
-# An unpublished field's attributes: no value and none of a published value's provenance.
-_EMPTY: Final = {"value": None, "source_kind": None, "locator": None, "derived_by": None, "chosen": None}
-
-
 def _unpublished(
-    status: Literal["missing", "conflict", "abstained"], reason: str, rejected: tuple[tuple[Candidate, str], ...]
+    status: Literal["missing", "conflict", "abstained"],
+    reason: str,
+    rejected: tuple[tuple[Candidate, str], ...],
+    *,
+    evidence: Evidence | None = None,
+    confidence: float | None = None,
+    calibrated: bool = False,
 ) -> FieldOutcome:
+    # No value and none of a published value's provenance; an abstention keeps the measurement that caused it.
     return FieldOutcome(
-        **_EMPTY, status=status, reason=reason, evidence=None, confidence=None, calibrated=False, rejected=rejected
+        status=status,
+        reason=reason,
+        value=None,
+        evidence=evidence,
+        confidence=confidence,
+        calibrated=calibrated,
+        source_kind=None,
+        locator=None,
+        derived_by=None,
+        chosen=None,
+        rejected=rejected,
     )
 
 

@@ -7,7 +7,6 @@ URL still gets its record, `complete=false`, with outcome `partial`, and a crawl
 record. Records only serialize what resolution published (INV-27).
 """
 
-import hashlib
 from collections.abc import Mapping
 from typing import Literal
 
@@ -18,6 +17,7 @@ from crawlerai.db.models import SiteId, SourceKind
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.storage.capture_bundle import sha256_hex
 
 PageOutcome = Literal["extracted", "partial", "no_match"]
 
@@ -40,7 +40,7 @@ class FieldMeta(_Model):
 
     @classmethod
     def of(cls, outcome: FieldOutcome) -> "FieldMeta":
-        return cls.model_validate(outcome.model_dump(include=set(cls.model_fields)))
+        return cls(**{name: getattr(outcome, name) for name in cls.model_fields})
 
 
 class RecordDraft(_Model):
@@ -55,7 +55,7 @@ class RecordDraft(_Model):
 def entity_key(site_id: SiteId, canonical_url: str) -> str:
     """`sha256(site_id + canonical url)` (§4.10), hex: the entity's identity across runs of one site. A UUID has one
     length, so the concatenation is unambiguous."""
-    return hashlib.sha256(f"{site_id}{canonical_url}".encode()).hexdigest()
+    return sha256_hex(f"{site_id}{canonical_url}".encode())
 
 
 def is_complete(schema: SchemaDef, fields: Mapping[str, FieldOutcome]) -> bool:
