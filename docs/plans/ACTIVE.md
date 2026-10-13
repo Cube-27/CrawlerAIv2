@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PR 3 (#30, re-review); SPEC-02 PR 5 (#31); SPEC-03 PRs 4, 7–11.
+- Next: SPEC-02 PR 5 (#31); SPEC-03 PRs 4, 7–11.
 - Follow-ups for SPEC-03 PR 7 (from #32): run the gate (baseline lookup) before `put_run` on a push to `main`, or exclude the candidate's sha, since otherwise the candidate's own run becomes its baseline; store the unsuppressed report as the run's `metrics` (an exported aggregate makes `gate` raise `GateInputInvalid`); check out with `fetch-depth: 0`.
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
 - Follow-up from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment.
@@ -94,7 +94,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | Private database, roles, `EvalStore` protocol + both stores | done (#28) | Private chain `p0001`; agents never hold custodian credentials (D-0178). |
 | 2 | Label model + validation + equality | done (#27) | `equal` hooks are exact-equality stubs until SPEC-04 PR 9. |
-| 3 | `eval capture` and `import-sites` CLI | todo | |
+| 3 | `eval capture` and `import-sites` CLI | done (#30) | Obeys robots.txt and per-host spacing (D-0195). |
 | 4 | Replay harness + RecordedLLM + determinism test | todo | |
 | 5 | Metrics + aggregate report + min-cell suppression | done (#29) | Secondary suppression: D-0187 (needs-owner, not blocking). |
 | 6 | Gate + baseline lookup | done (#32) | |
