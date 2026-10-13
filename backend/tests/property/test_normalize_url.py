@@ -31,7 +31,11 @@ _urls = st.builds(
     st.sampled_from(["", "?", "?a=1&b=%7e", "?q=café x"]),
     st.sampled_from(["", "#", "#top", "#a?b"]),
 )
-_whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
+# Unicode White_Space, plus every C0 control and space: what the WHATWG URL parser trims from the ends.
+_whitespace = st.text(
+    alphabet=st.characters(max_codepoint=0x20) | st.characters(categories=["Zs", "Cc"]).filter(str.isspace),
+    max_size=8,
+)
 
 
 @given(st.sampled_from([URL, IMAGE]), _urls)
@@ -58,6 +62,13 @@ def test_empty_or_whitespace_input_is_invalid_even_with_a_base(spec: FieldSpec, 
 
     assert url.normalize(raw, spec, CTX) == Invalid("empty")
     assert url.normalize(raw, spec, ctx) == Invalid("empty")
+
+
+@pytest.mark.parametrize("raw", ["\x00", "\x01\x02", " \x1f\t\n", "\x0b\x0c"])
+def test_input_of_c0_controls_only_is_invalid_even_with_a_base(raw: str) -> None:
+    ctx = Context(captured_at=AT, base_url="https://example.test/x")
+
+    assert url.normalize(raw, URL, ctx) == Invalid("empty")
 
 
 @given(
