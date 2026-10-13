@@ -56,6 +56,12 @@ def test_checks_without_gates_pass(tmp_path: Path) -> None:
         ("frontend/eslint.config.js", '  rules: { complexity: ["error", 10] },'),
         ("frontend/eslint.config.js", '  rules: { "max-statements": ["error", 20] },'),
         ("frontend/vite.config.ts", "  test: { coverage: { thresholds: { lines: 80 } } },"),
+        ("frontend/vite.config.ts", '  lint: { rules: { "eslint/max-lines": ["error", 300] } },'),
+        ("frontend/vite.config.ts", '    categories: { pedantic: "error" },'),
+        ("frontend/vite.config.ts", '      style: "warn",'),
+        ("frontend/.oxlintrc.json", '  "categories": { "restriction": "error" },'),
+        ("frontend/oxlint.config.ts", '  rules: { "eslint/complexity": ["error", 10] },'),
+        ("frontend/package.json", '    "check": "vp lint -D pedantic",'),
         ("frontend/package.json", '  "jest": { "coverageThreshold": { "global": { "lines": 80 } } }'),
     ],
 )
