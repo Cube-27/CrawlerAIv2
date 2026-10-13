@@ -29,8 +29,9 @@ from crawlerai.worker.loop import run_worker
 
 def _print_openapi() -> None:
     # Sorted keys and LF bytes on every platform keep `frontend/openapi.json` byte-identical across regenerations,
-    # which the CI freshness check (SPEC-00 §4.5) relies on.
-    text = json.dumps(create_app().openapi(), indent=2, sort_keys=True) + "\n"
+    # which the CI freshness check (SPEC-00 §4.5) relies on. The document includes the labeling endpoints whatever
+    # `CRAWLERAI_EVAL_UI` says, so the generated client has their types for the labeling screen.
+    text = json.dumps(create_app(eval_ui=True).openapi(), indent=2, sort_keys=True) + "\n"
     sys.stdout.buffer.write(text.encode())
 
 

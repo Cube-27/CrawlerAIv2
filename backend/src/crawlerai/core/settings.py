@@ -43,7 +43,14 @@ class AcquireSettings(_Base):
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
 
 
-class Settings(DatabaseSettings, AcquireSettings):
+class ApiSettings(_Base):
+    """What the app factory reads to decide which routers to mount."""
+
+    # Mounts the labeling endpoints (SPEC-03 §4.10). They serve the dev split only (C1).
+    eval_ui: bool = False
+
+
+class Settings(DatabaseSettings, AcquireSettings, ApiSettings):
     eval_private_database_url: SecretStr | None = None
     object_store: ObjectStoreUrl
     eval_private_object_store: ObjectStoreUrl | None = None
