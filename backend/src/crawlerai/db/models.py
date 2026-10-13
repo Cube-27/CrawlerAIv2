@@ -452,6 +452,10 @@ class Record(Base):
         version_positive(),
         # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4).
         Index(None, "site_id", "entity_key", "schema_id"),
+        # `GET /v1/records` by job or by schema, newest first by id (SPEC-07 §4.6), and a capture's records for replay.
+        Index(None, "job_id", "id"),
+        Index(None, "schema_id", "id"),
+        Index(None, "extraction_id"),
     )
 
     id: Mapped[RecordId] = mapped_column(primary_key=True, default=uuid7)

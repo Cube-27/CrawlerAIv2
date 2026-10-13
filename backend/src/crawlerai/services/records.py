@@ -15,14 +15,20 @@ from sqlalchemy import RowMapping, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import CaptureId, Extraction, ExtractionMode, JobId, Record, RecordId, SchemaId, Site
-from crawlerai.resolve.records import FieldMeta, RecordDraft, record_confidence
+from crawlerai.resolve.records import FieldMeta, RecordContent, record_confidence
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 
 MAX_PAGE = 200
 _COLUMNS = (
-    *(Record.id, Record.schema_id, Record.version, Record.mode, Record.complete, Record.data, Record.field_meta),
+    Record.id,
+    Record.schema_id,
+    Record.version,
+    Record.mode,
+    Record.complete,
+    Record.data,
+    Record.field_meta,
     Extraction.capture_id,
 )
 
@@ -44,10 +50,9 @@ class ExtractedRecord(BaseModel):
     fields: dict[str, RecordField]
 
     @classmethod
-    def from_draft(cls, draft: RecordDraft, *, mode: ExtractionMode, confidence: float | None) -> Self:
-        return cls(
-            mode=mode, complete=draft.complete, confidence=confidence, fields=_fields(draft.data, draft.field_meta)
-        )
+    def of_content(cls, content: RecordContent, *, mode: ExtractionMode, confidence: float | None) -> Self:
+        fields = _fields(content.data, content.field_meta)
+        return cls(mode=mode, complete=content.complete, confidence=confidence, fields=fields)
 
 
 class ScrapedRecord(ExtractedRecord):
@@ -56,9 +61,9 @@ class ScrapedRecord(ExtractedRecord):
     id: RecordId
 
     @classmethod
-    def of(cls, record_id: RecordId, draft: RecordDraft, *, mode: ExtractionMode, confidence: float | None) -> Self:
-        content = ExtractedRecord.from_draft(draft, mode=mode, confidence=confidence)
-        return cls(id=record_id, **dict(content))
+    def of(cls, record_id: RecordId, draft: RecordContent, *, mode: ExtractionMode, confidence: float | None) -> Self:
+        fields = _fields(draft.data, draft.field_meta)
+        return cls(id=record_id, mode=mode, complete=draft.complete, confidence=confidence, fields=fields)
 
 
 class StoredRecord(ScrapedRecord):
@@ -116,9 +121,12 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
 
 
 def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
-    meta = {name: FieldMeta.model_validate(value) for name, value in row["field_meta"].items()}
+    data = row["data"]
+    fields = {
+        name: RecordField.model_validate({**meta, "value": data.get(name)}) for name, meta in row["field_meta"].items()
+    }
     columns = {name: row[name] for name in ("id", "capture_id", "schema_id", "version", "mode", "complete")}
-    return StoredRecord(**columns, confidence=record_confidence(schema, meta), fields=_fields(row["data"], meta))
+    return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields)
 
 
 def _fields(data: Mapping[str, Any], meta: Mapping[str, FieldMeta]) -> dict[str, RecordField]:

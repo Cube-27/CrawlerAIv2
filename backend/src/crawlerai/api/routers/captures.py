@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE, ReplayRequest, ReplayResult
-from crawlerai.api.problems import ProblemError, conflict, not_found
+from crawlerai.api.problems import conflict, not_found, records_unavailable
 from crawlerai.db.models import CaptureId
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import captures
@@ -27,9 +27,7 @@ async def replay_capture(capture_id: CaptureId, body: ReplayRequest, request: Re
     not extracted yet."""
     data: EngineData | None = request.app.state.engine_data
     if data is None:
-        raise ProblemError(
-            503, "records_unavailable", "Records unavailable", "the engine's data files are not installed"
-        )
+        raise records_unavailable("the engine's data files are not installed")
     fetching: Fetching = request.app.state.fetching
     try:
         made = await captures.replay(request.app.state.database, fetching.store, data, capture_id)

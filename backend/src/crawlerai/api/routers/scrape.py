@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
-from crawlerai.api.problems import ProblemError, conflict, invalid
+from crawlerai.api.problems import ProblemError, conflict, invalid, records_unavailable
 from crawlerai.llm.client import BudgetExhausted, LLMClient, LLMFailure, OutputInvalid, ProviderUnavailable
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import scrape as scrape_service
@@ -64,7 +64,7 @@ async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
     except SchemaConflict as e:
         raise conflict(str(e)) from e
     except RecordsUnavailable as e:
-        raise ProblemError(503, "records_unavailable", "Records unavailable", str(e)) from e
+        raise records_unavailable(str(e)) from e
     except ScrapeTimedOut as e:
         raise ProblemError(504, "timeout", "Timed out", str(e)) from e
     except LLMFailure as e:

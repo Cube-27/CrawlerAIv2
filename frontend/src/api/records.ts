@@ -1,7 +1,7 @@
 /** `GET /v1/records` and `POST /v1/captures/{id}/replay` (SPEC-07 §4.6), typed from the generated client. */
 import type { ApiClient } from "./client";
 import { apiResult, type ApiResult } from "./result";
-import type { components } from "./schema";
+import type { components, operations } from "./schema";
 
 type Schemas = components["schemas"];
 
@@ -25,12 +25,7 @@ export type ExtractedRecord = Schemas["ExtractedRecord"];
 /** What a replay extracted from the capture now. */
 export type ReplayResult = Schemas["ReplayResult"];
 
-interface RecordQuery {
-  schema_id?: string;
-  job_id?: string;
-  site?: string;
-  cursor?: string;
-}
+type RecordQuery = NonNullable<operations["list_records_v1_records_get"]["parameters"]["query"]>;
 
 /** The filters that are set, by name: an empty one is left out of a query. */
 export function activeFilters(filters: RecordFilters): Partial<RecordFilters> {

@@ -13,17 +13,17 @@ import asyncio
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
+from crawlerai.db.models import Capture, CaptureId, Extraction, Record
 from crawlerai.resolve.pipeline import EngineData, ModeNotSupported, extract_page
-from crawlerai.resolve.records import assemble
+from crawlerai.resolve.records import RecordContent
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.records import ExtractedRecord
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
-_COLUMNS = (Capture.id, Capture.site_id, Capture.url, Capture.object_key)
-_Capture = Row[CaptureId, SiteId, str, str]
+_COLUMNS = (Capture.id, Capture.object_key)
+_Capture = Row[CaptureId, str]
 
 
 class CaptureNotFound(LookupError):
@@ -58,10 +58,8 @@ async def replay(
     if not schemas:
         raise NotReplayable(f"no record was made from capture {capture_id}, so no schema says what to extract")
     bundle = await _bundle(store, capture)
-    records: list[ExtractedRecord] = []
-    for schema in schemas:
-        records.extend(await _replay(bundle, schema, data, capture))
-    return records
+    made = [await _replay(bundle, schema, data) for schema in schemas]
+    return [record for record in made if record is not None]
 
 
 async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
@@ -72,17 +70,12 @@ async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
     return await asyncio.to_thread(decode, blob)
 
 
-async def _replay(
-    bundle: CaptureBundle, schema: SchemaDef, data: EngineData, capture: _Capture
-) -> list[ExtractedRecord]:
+async def _replay(bundle: CaptureBundle, schema: SchemaDef, data: EngineData) -> ExtractedRecord | None:
     try:
         result = await extract_page(bundle, schema, None, None, "adhoc", data=data)
     except ModeNotSupported as e:
         raise NotReplayable(f"schema {schema.name} version {schema.version}: {e}") from e
     if result.entity is None:
-        return []
-    # The entity key `assemble` derives is not returned, so the capture's URL stands in for the canonical one.
-    _, draft = assemble(schema, result.entity, site_id=capture.site_id, canonical_url=capture.url, caller_supplied=True)
-    if draft is None:  # not reached: a caller-supplied page keeps its record, complete or not
-        return []
-    return [ExtractedRecord.from_draft(draft, mode=result.mode, confidence=result.record_confidence)]
+        return None
+    content = RecordContent.of(schema, result.entity)
+    return ExtractedRecord.of_content(content, mode=result.mode, confidence=result.record_confidence)
