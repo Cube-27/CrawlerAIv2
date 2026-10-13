@@ -144,6 +144,17 @@ class OutputInvalid(Exception):
     """The reply did not match the output schema, after the one retry (§4.7)."""
 
 
+class Unconfigured:
+    """The client of a process without a configured provider: every call raises `ProviderUnavailable` with `reason`.
+    Work that needs no call, such as a stored draft (role S), still runs."""
+
+    def __init__(self, reason: str) -> None:
+        self._reason = reason
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        raise ProviderUnavailable(self._reason)
+
+
 @dataclass(frozen=True)
 class _Invalid:
     error: str
