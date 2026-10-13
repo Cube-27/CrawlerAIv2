@@ -9,12 +9,13 @@ function literal(value: string): string | null {
   return null;
 }
 
-function countWith(doc: Document, name: string, value: string): number {
+/** Whether exactly one element of `doc` has the attribute `name` set to `value`; stops at a second one. */
+function unique(doc: Document, name: string, value: string): boolean {
   let n = 0;
   for (const element of doc.getElementsByTagName("*")) {
-    if (element.getAttribute(name) === value) n += 1;
+    if (element.getAttribute(name) === value && ++n > 1) return false;
   }
-  return n;
+  return n === 1;
 }
 
 /** A step that selects `element` alone in its document, from its `id` or one of its `data-*` attributes. */
@@ -23,12 +24,12 @@ function anchor(element: Element): string | null {
   const id = element.getAttribute("id");
   if (id !== null && id !== "") {
     const quoted = literal(id);
-    if (quoted !== null && countWith(doc, "id", id) === 1) return `//*[@id=${quoted}]`;
+    if (quoted !== null && unique(doc, "id", id)) return `//*[@id=${quoted}]`;
   }
   for (const { name, value } of element.attributes) {
     if (!name.startsWith("data-") || value === "") continue;
     const quoted = literal(value);
-    if (quoted !== null && countWith(doc, name, value) === 1) {
+    if (quoted !== null && unique(doc, name, value)) {
       return `//${element.localName}[@${name}=${quoted}]`;
     }
   }

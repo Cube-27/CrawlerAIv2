@@ -48,8 +48,16 @@ export function LabelingPage() {
   }
 }
 
+const PASSES: [Pass, string][] = [
+  ["labeler", "Labeler"],
+  ["checker", "Checker"],
+];
+
 /** Where a click on the page goes: a top-level field, or a field of one listing row. */
-type Target = { row: null; name: string } | { row: number; name: string };
+interface Target {
+  row: number | null;
+  name: string;
+}
 
 function pathOf({ row, name }: Target): string {
   return row === null ? `fields.${name}` : `rows[${String(row)}].fields.${name}`;
@@ -206,6 +214,7 @@ function PageEditor({
       : page.labeler !== null && samePerson(checker, page.labeler)
         ? `The checker must be someone other than the labeler (${page.labeler}).`
         : null;
+  const labelerBlocked = labeler.trim() === "";
   const documentErrors = errors.filter((e) => !isFieldPath(e.field));
 
   function editor(at: Target, group: string) {
@@ -284,22 +293,16 @@ function PageEditor({
             orientation="horizontal"
           >
             <Label>Pass</Label>
-            <Radio value="labeler">
-              <Radio.Content>
-                <Radio.Control>
-                  <Radio.Indicator />
-                </Radio.Control>
-                <Label>Labeler</Label>
-              </Radio.Content>
-            </Radio>
-            <Radio value="checker">
-              <Radio.Content>
-                <Radio.Control>
-                  <Radio.Indicator />
-                </Radio.Control>
-                <Label>Checker</Label>
-              </Radio.Content>
-            </Radio>
+            {PASSES.map(([value, label]) => (
+              <Radio key={value} value={value}>
+                <Radio.Content>
+                  <Radio.Control>
+                    <Radio.Indicator />
+                  </Radio.Control>
+                  <Label>{label}</Label>
+                </Radio.Content>
+              </Radio>
+            ))}
           </RadioGroup>
           {pass === "labeler" ? (
             <TextField value={labeler} onChange={setLabeler}>
@@ -369,15 +372,12 @@ function PageEditor({
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="secondary"
-                  isDisabled={saving || labeler.trim() === ""}
+                  isDisabled={saving || labelerBlocked}
                   onPress={() => void save("draft")}
                 >
                   Save draft
                 </Button>
-                <Button
-                  isDisabled={saving || labeler.trim() === ""}
-                  onPress={() => void save("labeled")}
-                >
+                <Button isDisabled={saving || labelerBlocked} onPress={() => void save("labeled")}>
                   Mark labeled
                 </Button>
               </div>

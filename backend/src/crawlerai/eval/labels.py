@@ -154,6 +154,11 @@ def _check_prefill_source(source: str) -> str:
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
+def same_person(a: str, b: str) -> bool:
+    """Whether two names are one person's (§16.2's two passes): equal after Unicode case folding."""
+    return a.casefold() == b.casefold()
+
+
 class FieldLabel(_Model):
     """One field's label. `absent` means the field is genuinely not on the page (G2); `distractors` are values of the
     same field shown for another entity on the page, which drive the wrong-product metric (§16.3)."""
@@ -194,7 +199,7 @@ class Labels(_Model):
         if self.status != "draft" and self.labeler is None:
             raise ValueError("a labeled or checked page names its labeler")
         if self.status == "checked" and (
-            self.labeler is None or self.checker is None or self.checker.casefold() == self.labeler.casefold()
+            self.labeler is None or self.checker is None or same_person(self.checker, self.labeler)
         ):
             raise ValueError("a checked page is checked by someone other than its labeler")
         if self.status != "checked" and self.checker is not None:

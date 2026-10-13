@@ -8,7 +8,6 @@ reason as an RFC 9457 problem (§4.11). SPEC-07 moves the problem model to `api.
 """
 
 import asyncio
-import hashlib
 import json
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -28,10 +27,19 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped, check_urls, run_capture
-from crawlerai.eval.labels import FieldShape, InvalidLabels, LabelError, Labels, LabelStatus, field_shapes, parse_labels
+from crawlerai.eval.labels import (
+    FieldShape,
+    InvalidLabels,
+    LabelError,
+    Labels,
+    LabelStatus,
+    field_shapes,
+    parse_labels,
+    same_person,
+)
 from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
 from crawlerai.storage import open_store
-from crawlerai.storage.capture_bundle import CaptureBundle
+from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
 
 # `POST /capture` fetches within the request, one polite fetch at a time, so a request stays short.
 MAX_CAPTURE_URLS = 20
@@ -142,7 +150,7 @@ def _labels_changed(status: int) -> JSONResponse:
 def _etag(page: EvalPageRow) -> str:
     """A strong entity tag of the page's stored labels (RFC 9110 §8.8.3): sha256 of their canonical JSON."""
     canonical = json.dumps(page.labels, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return f'"{hashlib.sha256(canonical.encode()).hexdigest()}"'
+    return f'"{sha256_hex(canonical.encode())}"'
 
 
 def _if_match(header: str, etag: str) -> bool:
@@ -254,12 +262,14 @@ async def get_page(page_id: EvalPageId, backend: Backend, response: Response) ->
         page = await backend.store.get_page(page_id)
     except EvalNotFound:
         return _not_found(page_id)
-    bundle = await backend.store.get_bundle(page.capture_id)
+    bundle, fields = await asyncio.gather(
+        backend.store.get_bundle(page.capture_id), backend.schema_fields(page.schema_id)
+    )
     response.headers["ETag"] = _etag(page)
     return PageDetail(
         **PageSummary.of(page).model_dump(),
         labels=Labels.model_validate(page.labels) if page.labels else None,
-        fields=await backend.schema_fields(page.schema_id),
+        fields=fields,
         url=bundle.manifest.url,
         final_url=bundle.manifest.final_url,
         bundle_html=await asyncio.to_thread(sanitize_html, bundle),  # parsing is synchronous
@@ -325,8 +335,7 @@ def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelErr
         return labels.labeler, "labeler"
     if _status(page) not in ("labeled", "checked"):
         return LabelError("status", "only a labeled page can be checked")
-    # Names compare casefolded, as `Labels` compares labeler and checker.
-    if page.labeler is None or labels.labeler is None or labels.labeler.casefold() != page.labeler.casefold():
+    if page.labeler is None or labels.labeler is None or not same_person(labels.labeler, page.labeler):
         return LabelError("labeler", f"a checker pass keeps the page's labeler ({page.labeler})")
     if labels.checker is None:  # `parse_labels` refuses a checked page without a checker
         return LabelError("checker", "a checker pass names its checker")

@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { components } from "../../api/schema";
 
+// These tests type into many fields with user-event, which is slow in jsdom; the default 5 s is too tight on a
+// loaded machine.
+vi.setConfig({ testTimeout: 20_000 });
+
 type PageDetail = components["schemas"]["PageDetail"];
 type Labels = components["schemas"]["Labels"];
 
@@ -70,7 +74,7 @@ function stubApi(replies: Record<string, Reply[]>): Call[] {
       body: text === "" ? null : (JSON.parse(text) as unknown),
     });
     const list = replies[key];
-    if (list === undefined || list.length === 0) throw new Error(`unexpected ${key}`);
+    if (list === undefined) throw new Error(`unexpected ${key}`);
     const n = served[key] ?? 0;
     served[key] = n + 1;
     const reply = list[Math.min(n, list.length - 1)];
