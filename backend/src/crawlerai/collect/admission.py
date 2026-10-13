@@ -19,16 +19,13 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
-from crawlerai.collect.base import Candidate
+from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.locator import format_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import FieldSpec, SchemaDef
-
-# The page entity, which every page-level value belongs to (SPEC-05 §4.6).
-PAGE = "page"
 
 StateKind = Literal["js_state", "xhr"]
 
