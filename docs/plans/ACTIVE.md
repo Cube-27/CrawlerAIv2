@@ -2,8 +2,9 @@
 
 The live state of implementation. The orchestrator (`/run-plan`) is its only writer; a solo agent with no orchestrator updates it in its PR
 (`CLAUDE.md` §3). One row
-is one PR from a spec's PR plan. Spec dependencies are listed in `specs/README.md`. A row can start once every row
-it depends on is `done`. Within a spec, rows run in order unless the spec says otherwise.
+is one PR from a spec's PR plan. Spec dependencies are listed in `specs/README.md`. A row is ready when everything
+it needs is available: the code it touches or builds on is merged, or what it needs from unmerged work is fully
+specified (types, API shapes, table columns). Readiness is per row (owner, 2026-10-13).
 
 **Statuses:**
 - `todo`
@@ -11,7 +12,7 @@ it depends on is `done`. Within a spec, rows run in order unless the spec says o
 - `blocked`: the Notes link a `DECISIONS.md` entry.
 - `human`: waits on a human-only task (below).
 
-Updated: 2026-10-12.
+Updated: 2026-10-13.
 
 ## Human-only tasks
 
@@ -31,8 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- Exit predicate (run-plan, extended 2026-10-13): every L0 and L1 row is `done` or `human`, and CI on `main` is green. L0 is done except SPEC-03 PR 7 (`human`).
-- Next: SPEC-04 PR 2 (#47) in review, then SPEC-04 PRs 3–8 in parallel; SPEC-02 PRs 7, 8 in progress, then 9; SPEC-05 after SPEC-04.
+- Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
+- In progress: SPEC-05 PR 3, SPEC-06 PR 3, SPEC-07 PR 2. Next: SPEC-05 PRs 4–5, SPEC-07 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.

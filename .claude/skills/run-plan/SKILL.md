@@ -27,9 +27,10 @@ Repeat until the predicate holds, or nothing is runnable:
 PRs, and work in flight is read from GitHub, not from ACTIVE.md: open PRs and `spec-*` branches. ACTIVE.md
 records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
 
-1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, its spec's dependencies are `done`, and the earlier rows in its
-   spec are `done`, unless the rows don't really depend on each other (the earlier row's output isn't an input to the
-   later one). Rows that are `human` or `blocked` are skipped.
+1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, and everything it needs is
+   available: the code it touches or builds on is merged, or what it needs from unmerged work is fully specified
+   (types, API shapes, table columns). Readiness is per row (owner, 2026-10-13): a row can be ready while its spec's
+   other dependencies, or earlier rows of its spec, are not `done`. Rows that are `human` or `blocked` are skipped.
 2. **Assign.** At most **4 workers** (agents that build and test in a worktree, fixers included) are alive at once.
    Reviewers don't count, because they use little memory. Every start needs at least 1.5 GB free (owner,
    2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*` and everything else as a

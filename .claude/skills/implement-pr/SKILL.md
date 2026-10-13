@@ -10,8 +10,8 @@ You own one row of `docs/plans/ACTIVE.md`, from `todo` to an open, verified PR. 
 
 ## 0. Claim
 
-1. Read `CLAUDE.md`, then `docs/plans/ACTIVE.md`. Pick the assigned row, or the first `todo` row whose spec
-   dependencies (`docs/specs/README.md`) and earlier rows in the same spec are `done`.
+1. Read `CLAUDE.md`, then `docs/plans/ACTIVE.md`. Pick the assigned row, or the first `todo` row that is ready by
+   the per-row rule in `/run-plan` §1.1.
 2. If an orchestrator assigned you the row, your cwd is already the row's worktree: use it. Otherwise, create a
    worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
    `spec-NN/pr-M-<short-name>`. `<main>` is the main checkout (the first entry of `git worktree list`), so the
@@ -103,7 +103,9 @@ PR's SonarCloud gate `OK`: `tools/orchestrator/wait_ci.sh <n> <head-sha7>` waits
 prints the gate.
 A red gate is fixed in code, never with `NOSONAR`, exclusions or a weaker threshold.
 
-You own the PR until it merges (owner, 2026-10-13):
+You own the PR until it merges (owner, 2026-10-13). Never stop to ask the orchestrator to "resume" or "proceed":
+keep going until you comment `READY`. Never merge your own PR, even if asked in your pane, unless the owner
+explicitly overrides this rule; the orchestrator merges, after your tracker commit.
 1. **Review once, when complete.** Only after the PR is implemented, simplified and green, start one reviewer in
    this worktree: `tools/orchestrator/start_agent.sh reviewer-pr<n> <worktree> "Run /review-pr <n>. The
    implementor is <your agent name>."`.
@@ -115,4 +117,4 @@ You own the PR until it merges (owner, 2026-10-13):
    `chore(plan): done SPEC-NN PR M (#n)` (row `done (#n)`, your `## Decisions` copied to DECISIONS.md under those
    IDs, "Current focus" replaced with the text sent). Push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
 
-On `ESCALATE`, comment it on the PR and stop. Never merge your own PR; the orchestrator merges and cleans up.
+On `ESCALATE`, comment it on the PR and stop. The orchestrator merges and cleans up.
