@@ -5,9 +5,9 @@ import uuid
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, RequestSpec, map_paths, parse_binder
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, RequestSpec, map_paths, parse_binder, read_map
 
 _CAPTURE = str(uuid.UUID(int=1))
 
@@ -113,3 +113,22 @@ def test_a_request_spec_needs_no_map_or_proof() -> None:
     spec = RequestSpec.model_validate({"method": "GET", "url": "https://api.example.test/items"})
 
     assert (spec.params_from_url, spec.headers, spec.body, spec.requires_page_fetch) == ({}, {}, None, False)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("$['data']['name']", "Desk Lamp"),
+        ("$['data']['price']", 19.5),
+        ("$['data']['price']+$['data']['currency']", "19.5 EUR"),
+        ("$['data']['missing']", None),
+        ("$['data']['tags'][*]", None),  # two nodes
+        ("$['data']", None),  # not a scalar
+        ("$['data']['price']+$['data']['sale']", None),  # one part is null
+    ],
+)
+def test_a_map_entry_reads_one_scalar_or_its_joined_parts(path: str, expected: object) -> None:
+    data: JsonValue = {"name": "Desk Lamp", "price": 19.5, "currency": "EUR", "tags": ["a", "b"], "sale": None}
+    document: JsonValue = {"data": data}
+
+    assert read_map(path, document) == expected

@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from typing import Annotated, Final, Literal, NamedTuple, Self, get_args
 from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue, StringConstraints, model_validator
 
 from crawlerai.collect import json_doc
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern
@@ -36,7 +36,7 @@ _INDEX: Final = re.compile(r"0|[1-9][0-9]*")
 _TOKEN: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Fields that carry credentials: RFC 9110 §11.6.2 and §11.7.2, RFC 6265 §5.4. A recipe that needs one is not
 # learnable (§4.6), so a recipe never holds one.
-_CREDENTIAL_FIELDS: Final = frozenset({"authorization", "proxy-authorization", "cookie"})
+CREDENTIAL_FIELDS: Final = frozenset({"authorization", "proxy-authorization", "cookie"})
 # §4.2: a money field joins the amount and currency paths with `+`; each part starts at the root `$` (RFC 9535 §2.2).
 _JOIN: Final = re.compile(r"\+(?=\$)")
 
@@ -108,6 +108,18 @@ def joined_raw(parts: Sequence[str | int | float]) -> str:
     """The raw value of a map entry that joins its parts with `+`: their texts separated by a space, a number as its
     JSON text (RFC 8259 §6), so the money normalizer reads an amount and a currency as one value."""
     return " ".join(part if isinstance(part, str) else json.dumps(part) for part in parts)
+
+
+def read_map(path: str, document: JsonValue) -> str | int | float | None:
+    """The raw value a map entry reads in `document`: the one scalar its path selects, or its joined parts'
+    `joined_raw`; `None` when a part selects anything but exactly one scalar."""
+    parts: list[str | int | float] = []
+    for part in map_paths(path):
+        nodes = json_doc.select(part, document)
+        if len(nodes) != 1 or not json_doc.is_scalar(value := nodes[0][1]):
+            return None
+        parts.append(value)
+    return parts[0] if len(parts) == 1 else joined_raw(parts)
 
 
 def _check_map_path(path: str) -> str:
@@ -196,7 +208,7 @@ class RequestSpec(_Model):
         names = [name.lower() for name in self.headers]
         if len(set(names)) != len(names):
             raise ValueError("a header named twice")  # RFC 9110 §5.1: field names are case-insensitive
-        if _CREDENTIAL_FIELDS.intersection(names):
+        if CREDENTIAL_FIELDS.intersection(names):
             raise ValueError("a recipe carries no credentials")
         if self.requires_page_fetch != self.reads_page_data:
             raise ValueError("requires_page_fetch is true exactly when a binder reads the page's JSON documents")
