@@ -83,7 +83,7 @@ syntax check). In config-only execution the first step whose value passes its po
 
 ### 4.3 Executor
 
-`execute(ir, page, schema) -> list[Candidate]` (SPEC-05 protocol): for each field, run steps in order over the
+`EngineExecutor(ir, vocabulary).execute(page, schema, ctx) -> Executed` (SPEC-05's `ConfigExecutor` protocol): for each field, run steps in order over the
 `ParsedPage`, with no second parse (INV-26): `xpath`/`css`/`attr` on the page's lxml tree, `regex` on the body
 text, `jsonld` over the page's script blocks expanded and filtered by `when_type`, `jsonpath` over the chosen source; the first `Ok` value becomes a `Candidate(source_kind='config',
 locator=config:<field>:<i>:<selector>)`. Listings: `row` step selects row nodes; field steps are evaluated

@@ -18,7 +18,7 @@ from crawlerai.config_ir.executor import ConfigMismatch, EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
+from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.normalize.base import Context, Invalid, Ok
 from crawlerai.resolve.evidence import assess_fields
 from crawlerai.resolve.ownership import EntityGraph
@@ -89,7 +89,7 @@ def _config(field: str, raw: Any, normalized: Any, locator: str, entity_id: str 
         raw=raw,
         normalized=normalized,
         locator=locator,
-        independent=True,
+        independent=False,
     )
 
 
@@ -363,3 +363,31 @@ def test_config_candidates_enter_resolution_with_their_field_status_bucket() -> 
         "title": ("Blue mug", "config_corroborated", "config:title:0://h1"),
         "price": ({"amount": "12.50", "currency": "EUR"}, "config_uncorroborated", "config:price:0://p"),
     }
+
+
+@pytest.mark.parametrize(
+    ("order", "evidence", "locator"),
+    [
+        (("config", "jsonld"), "config_corroborated", "config:title:0:$['name']"),
+        (("jsonld", "config"), "structured", "jsonld:0:$['name']"),
+    ],
+)
+def test_a_config_value_equal_to_its_source_never_counts_as_agreement(
+    order: tuple[SourceKind, ...], evidence: str, locator: str
+) -> None:
+    """§8.1, §10: config candidates are not independent, so a `jsonld` step reading the node the JSON-LD collector
+    reads is the same evidence once, not `agreed`."""
+    page = ParsedPage(_ld({"@context": "https://schema.org", "@type": "Product", "name": "Mug"}))
+    schema = _schema("detail", title=FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.name"))
+    executor = _ir({"title": {"steps": [{"jsonld": "$['name']", "when_type": "Product"}], "status": "corroborated"}})
+    collected, executed = JsonLdCollector(VOCABULARY).collect(page, schema, CTX), executor.execute(page, schema, CTX)
+    (product,) = collected.entities
+    resolver = Resolver(
+        graph=EntityGraph.of(collected.entities, VOCABULARY),
+        target=product,
+        page=PageFacts.of(PAGE_URL, lambda _: True),
+        orders=dict.fromkeys(PRECEDENCE_TYPES, order),
+    )
+    decisions = resolver.prefer(schema, (*collected.candidates, *executed.candidates))
+    outcome = assess_fields(schema, decisions, None, corroborated=frozenset({"title"}))["title"]
+    assert (outcome.value, outcome.evidence, outcome.locator) == ("Mug", evidence, locator)

@@ -171,7 +171,9 @@ class _Run:
             raw=raw,
             normalized=normalized,
             locator=format_locator("config", name, str(index), _selector(step)),
-            independent=True,
+            # §8.1, §10: a config is learned from the page's other sources, and a `jsonld` step reads the very node the
+            # JSON-LD collector reads, so a config value never counts toward `agreed`.
+            independent=False,
         )
 
     def value(self, step: Step, values: list[Raw], spec: FieldSpec) -> tuple[Raw, NormalizeResult]:
