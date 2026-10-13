@@ -54,8 +54,8 @@ Out of scope (§22 unless noted):
 - `crawlerai.acquire.api` — `fetch_json(request_spec, policy) -> FetchResult` (httpx; used by adapters and SPEC-09).
 - `crawlerai.acquire.classify` — `classify(status, headers, body) -> BlockClass`.
 - `crawlerai.acquire.politeness` — per-site limiter and backoff state (in-process; see 4.6).
-- `crawlerai.acquire.robots` — fetch/parse/cache robots.txt (stdlib `urllib.robotparser` semantics with
-  `Crawl-delay` and `Sitemap:` extraction).
+- `crawlerai.acquire.robots` — fetch/parse/cache robots.txt (RFC 9309 matching: longest match, `*` and `$`; with
+  `Crawl-delay` and `Sitemap:` extraction; D-0161).
 - `crawlerai.acquire.rungs` — `acquire(url, site, policy) -> FetchResult` selecting adapter / API recipe → http →
   browser.
 - `crawlerai.acquire.persist` — `store_capture(result, site) -> Capture` (bundle to object store + row).
