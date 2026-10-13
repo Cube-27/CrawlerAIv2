@@ -3864,3 +3864,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Store page outputs in this row.
 - Why: Nothing stores them yet; outside this row's scope.
 - Reversible: yes
+
+### D-0581 — An API recipe validates whole
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 4 (#121) · Status: decided
+- Decision: A recipe is accepted only when every map field reproduces on every held-out page where the engine published it; one failing field refuses the recipe, and fields are not dropped from the map.
+- Alternatives: Drop failing fields, as SPEC-08 §4.7 does for config fields.
+- Why: SPEC-09 §4.7 accepts "when every field reproduces on every held-out page"; the conservative reading.
+- Reversible: yes
+
+### D-0582 — A map field published on no held-out page refuses the recipe
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 4 (#121) · Status: decided
+- Decision: `never_published: <fields>`, which also covers a map field outside the schema.
+- Alternatives: Accept it unchecked.
+- Why: Nothing activates without validation (SPEC-08 §4.13); consistent with #118's `never_published`.
+- Reversible: yes
+
+### D-0583 — The recipe's report is part of `validation_report`
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 4 (#121) · Status: decided
+- Decision: `ValidationReport.api_recipe = {held_out, fields: {<name>: {published, reproduced}}, refused}`, set by `api_recipe.validate.attach` whether or not the recipe was accepted; the recipe enters `Validated.ir.api_recipe` only when both the config and the recipe validated.
+- Alternatives: A separate report column; drop the report of a refused recipe.
+- Why: SPEC-09 §2 integrates the recipe into SPEC-08's validation report; an operator sees why a recipe did not enter (SPEC-08 §4.10).
+- Reversible: yes
+
+### D-0584 — A null published value is no value in replay
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 4 (#121) · Status: decided
+- Decision: `replay.compare` compares only fields whose published value is not `null`.
+- Alternatives: Compare against `null` (always fails).
+- Why: D-0561 compares "every map field the page has a value for".
+- Reversible: yes
