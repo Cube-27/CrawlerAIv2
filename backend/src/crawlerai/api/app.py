@@ -20,6 +20,7 @@ from crawlerai.api.routers import eval as eval_router
 from crawlerai.api.routers import health, schemas, scrape
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import ApiSettings, Settings
+from crawlerai.llm.providers.from_settings import client_from_settings
 from crawlerai.services.scrape import Fetching
 from crawlerai.storage import open_store
 
@@ -49,6 +50,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = create_async_engine(settings.database_url.get_secret_value())
     app.state.database = engine
     app.state.fetching = _fetching(settings)
+    app.state.llm = client_from_settings(settings, engine)
     try:
         yield
     finally:

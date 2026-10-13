@@ -27,7 +27,7 @@ async function fieldTypes(
   request: ScrapeRequest,
   response: ScrapeResponse,
 ): Promise<FieldTypes> {
-  if (response.schema !== undefined) return response.schema.fields;
+  if (response.schema !== undefined) return parseFieldTypes(response.schema.fields);
   if (response.records === undefined || request.schema === null) return {};
   if ("inline" in request.schema) return parseFieldTypes(request.schema.inline.fields);
   if ("id" in request.schema) return storedSchemaTypes(client, request.schema.id);

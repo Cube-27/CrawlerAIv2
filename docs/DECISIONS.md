@@ -3060,3 +3060,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Empty step lists; a second `FieldStatus` copy in `eval`.
 - Why: An empty step list carries a status for nothing; C8, one definition.
 - Reversible: yes
+
+### D-0466 — A prompt is drafted only from a reached page
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 6 (#96) · Status: decided
+- Decision: `scrape` drafts a `schema.prompt` only when the page was fetched with outcome `extracted`, with its cleaned text as role S's one sample; otherwise the answer has no `schema` member and no call is made.
+- Alternatives: Return a stored draft for a page not reached; draft before fetching.
+- Why: Role S needs 1–3 sample pages (SPEC-06 §4.5), and §4.8 returns nothing derived from a page that was not reached, as for formats.
+- Reversible: yes
+
+### D-0467 — LLM failures on `scrape` are problems and fail the job
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 6 (#96) · Status: decided
+- Decision: The client's errors share `LLMFailure`, whose `code` is the task's `last_error` and the problem type: 422 `budget_exhausted`, 503 `llm_unavailable`, 502 `llm_output_invalid`. The last two extend SPEC-07 §4.3's types, as D-0364 did. A blank `schema.prompt` is a 422 `validation` before any job.
+- Alternatives: 200 without `schema`; one generic 500.
+- Why: The request asked for a schema it cannot get; §4.8 makes that a request-level failure with nothing partial.
+- Reversible: yes
+
+### D-0468 — The API starts without LLM provider keys
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 6 (#96) · Status: decided
+- Decision: `client_from_settings` returns `Unconfigured(reason)` when a listed provider has no key; its calls raise `ProviderUnavailable(reason)`, and stored drafts are still served.
+- Alternatives: Fail startup; build the client per request.
+- Why: Scrape without a prompt needs no LLM, and provider keys are deferred (H4).
+- Reversible: yes

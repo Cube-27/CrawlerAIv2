@@ -6,6 +6,7 @@ pages on RFC 2606 hosts and a stub resolver, so nothing leaves the process.
 """
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable
 from ipaddress import ip_address
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -22,7 +23,10 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key
-from crawlerai.db.models import ApiKey
+from crawlerai.db.models import ApiKey, Job
+from crawlerai.llm.client import MeteredClient, ProviderError, ProviderReply
+from crawlerai.llm.providers.fake import FakeProvider
+from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.services.scrape import Fetching
 from crawlerai.storage.fs import FsStore
 
@@ -31,17 +35,27 @@ pytestmark = pytest.mark.anyio
 PRIVATE_HOST = "intranet.example.test"
 PAGE = b"""<!doctype html><html lang="en"><head><title>Blue kettle</title></head>
 <body><h1>Blue kettle</h1><a href="/kettles/red">Red kettle</a></body></html>"""
+DRAFT_REPLY = ProviderReply(
+    model="fake-strong",
+    text=json.dumps(
+        {"page_kind": "detail", "fields": {"title": {"type": "text", "required": True, "description": "Product name"}}}
+    ),
+    tokens_in=900,
+    tokens_out=80,
+)
 
 
 @pytest.fixture
 async def database(
     database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> AsyncIterator[AsyncEngine]:
-    """The app's settings pointed at the test database. `engine` deletes the jobs afterwards; the keys a test added
-    are deleted here."""
+    """The app's settings pointed at the test database, with no LLM provider key. `engine` deletes the jobs
+    afterwards; the keys a test added are deleted here."""
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
+    monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    monkeypatch.delenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", raising=False)
     keys_engine = create_async_engine(database_url)
     async with keys_engine.connect() as conn:
         keys = set((await conn.execute(select(ApiKey.id))).scalars())
@@ -72,7 +86,15 @@ def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[in
 
 
 @pytest.fixture
-async def client(database: AsyncEngine, fetching: Fetching) -> AsyncIterator[httpx.AsyncClient]:
+def provider() -> FakeProvider | None:
+    """The LLM provider the app's client asks: one role S draft, scripted. None keeps the app's own client."""
+    return FakeProvider([DRAFT_REPLY])
+
+
+@pytest.fixture
+async def client(
+    database: AsyncEngine, fetching: Fetching, provider: FakeProvider | None
+) -> AsyncIterator[httpx.AsyncClient]:
     async with database.begin() as conn:
         key = await create_key(conn, "scrape-api-test")
     app = create_app(eval_ui=False)
@@ -85,6 +107,8 @@ async def client(database: AsyncEngine, fetching: Fetching) -> AsyncIterator[htt
         ) as client,
     ):
         app.state.fetching = fetching
+        if provider is not None:
+            app.state.llm = MeteredClient([provider], database)
         yield client
 
 
@@ -174,3 +198,91 @@ async def test_a_request_without_a_key_is_unauthorized(client: httpx.AsyncClient
 
     assert response.status_code == 401
     assert response.json()["type"] == "unauthorized"
+
+
+async def test_a_prompt_returns_its_draft_and_reuses_it(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, prompt: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, PAGE)
+    body = {"url": url, "formats": ["links"], "schema": {"prompt": prompt}}
+
+    first, second = await _post(client, body), await _post(client, body)
+
+    assert (first.status_code, second.status_code) == (200, 200), first.text
+    schema = first.json()["schema"]
+    assert {k: schema[k] for k in ("name", "version", "origin", "status", "page_kind")} == {
+        "name": draft_name(prompt),
+        "version": 1,
+        "origin": "prompt_draft",
+        "status": "active",
+        "page_kind": "detail",
+    }
+    assert list(schema["fields"]) == ["title"]
+    assert second.json()["schema"] == schema
+    assert (first.json()["usage"]["llm_calls"], second.json()["usage"]["llm_calls"]) == (1, 0)
+
+
+async def test_a_prompt_without_llm_budget_is_a_budget_problem(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, prompt: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, PAGE)
+
+    response = await _post(
+        client, {"url": url, "formats": ["links"], "schema": {"prompt": prompt}, "budget": {"llm_calls": 0}}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "budget_exhausted"
+
+
+@pytest.mark.parametrize("provider", [FakeProvider([ProviderError("overloaded")])])
+async def test_a_prompt_no_provider_answers_is_an_llm_problem(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, prompt: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, PAGE)
+
+    response = await _post(client, {"url": url, "formats": ["links"], "schema": {"prompt": prompt}})
+
+    assert response.status_code == 503
+    assert {k: response.json()[k] for k in ("type", "detail")} == {
+        "type": "llm_unavailable",
+        "detail": "fake: overloaded",
+    }
+
+
+@pytest.mark.parametrize("provider", [None])
+async def test_an_app_without_a_provider_key_serves_and_refuses_a_new_prompt(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, prompt: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, PAGE)
+
+    plain = await _post(client, {"url": url, "formats": ["links"]})
+    drafted = await _post(client, {"url": url, "formats": ["links"], "schema": {"prompt": prompt}})
+
+    assert plain.status_code == 200
+    assert drafted.status_code == 503
+    assert {k: drafted.json()[k] for k in ("type", "detail")} == {
+        "type": "llm_unavailable",
+        "detail": "CRAWLERAI_LLM_API_KEY_ANTHROPIC is not set",
+    }
+
+
+async def test_a_blank_prompt_is_a_validation_problem_and_starts_no_job(
+    client: httpx.AsyncClient, database: AsyncEngine, own_origin: str
+) -> None:
+    async with database.connect() as conn:
+        jobs_before = (await conn.execute(select(func.count()).select_from(Job))).scalar_one()
+
+    response = await _post(client, {"url": f"{own_origin}/", "formats": ["links"], "schema": {"prompt": " \n\t "}})
+
+    assert response.status_code == 422
+    problem = response.json()
+    assert problem["type"] == "validation"
+    # The union reports each schema form's error; the prompt form's is that the prompt is empty.
+    assert {"field": "schema.SchemaPrompt.prompt", "reason": "Value error, the prompt is empty"} in problem["errors"]
+    async with database.connect() as conn:
+        assert (await conn.execute(select(func.count()).select_from(Job))).scalar_one() == jobs_before

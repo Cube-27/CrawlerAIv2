@@ -13,6 +13,7 @@ or, when several connections must see each other's work, commits through `engine
 """
 
 import os
+import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,7 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Capture, Job, JobEvent, Site, UrlTask, UsageEvent
+from crawlerai.db.models import Capture, Job, JobEvent, SchemaDef, Site, UrlTask, UsageEvent
+from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
@@ -93,6 +95,15 @@ async def own_origin(database_url: str) -> AsyncIterator[str]:
         await connection.execute(delete(Capture).where(Capture.site_id.in_(site_ids)))
         await connection.execute(delete(Site).where(Site.host == host))
     await engine.dispose()
+
+
+@pytest.fixture
+async def prompt(engine: AsyncEngine) -> AsyncIterator[str]:
+    """A prompt no other test drafts; its draft schema is deleted afterwards."""
+    text = f"Product names {uuid.uuid4()}"
+    yield text
+    async with engine.begin() as conn:
+        await conn.execute(delete(SchemaDef).where(SchemaDef.name == draft_name(text)))
 
 
 @pytest.fixture
