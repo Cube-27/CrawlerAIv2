@@ -82,6 +82,35 @@ def test_listed_but_missing_file_fails(tmp_path: Path) -> None:
     assert result.stdout.splitlines() == ["backend/data/list.txt: listed in the manifest but missing"]
 
 
+def test_fetched_entry_may_be_absent(tmp_path: Path) -> None:
+    # SPEC-04 §4.6: a fetched file is downloaded by `crawlerai data fetch` and never committed.
+    root = make_root(tmp_path, {}, {"entries": [entry("geo/cities.zip") | {"fetched": True}]})
+
+    result = run_check(root)
+
+    assert result.returncode == 0, result.stdout
+    assert result.stdout == "data-manifest: ok, 1 files\n"
+
+
+def test_fetched_entry_that_is_present_must_match_its_hash(tmp_path: Path) -> None:
+    root = make_root(tmp_path, {"geo/cities.zip": b"other"}, {"entries": [entry("geo/cities.zip") | {"fetched": True}]})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["backend/data/geo/cities.zip: sha256 does not match the manifest"]
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_fetched_must_be_a_boolean(tmp_path: Path, value: object) -> None:
+    root = make_root(tmp_path, {"list.txt": CONTENT}, {"entries": [entry("list.txt") | {"fetched": value}]})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["backend/data/manifest.json: entry 0 has a 'fetched' that is not true or false"]
+
+
 @pytest.mark.parametrize("field", ["url", "version", "sha256", "license", "justification"])
 def test_entry_missing_a_required_field_fails(tmp_path: Path, field: str) -> None:
     bad = entry("list.txt")

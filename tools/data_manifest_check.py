@@ -2,7 +2,8 @@
 
 Vocabularies come from versioned external data. Each file under `backend/data/` must be listed in
 `backend/data/manifest.json` with its source URL, version, sha256, license and justification, and its bytes must
-match the pinned hash. Prints one line per problem and exits 1, or prints one summary line and exits 0.
+match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawlerai data fetch` and not committed
+(SPEC-04 §4.6): its file may be absent, and when present it must match its hash. Prints one line per problem and exits 1, or prints one summary line and exits 0.
 """
 
 import argparse
@@ -36,20 +37,23 @@ def read_entries(manifest_path: Path) -> list[object] | str:
     return entries
 
 
-def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str, str]]:
-    """Return the problems, the claimed paths and the sha256 of each complete entry, by path.
+def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str, str], set[str]]:
+    """Return the problems, the claimed paths, the sha256 of each complete entry by path, and the fetched paths.
 
     Paths of entries that are incomplete are still claimed, so their file is not also reported as unlisted.
     """
     problems: list[str] = []
     claimed: set[str] = set()
     pinned: dict[str, str] = {}
+    fetched: set[str] = set()
     for index, item in enumerate(entries):
         if not isinstance(item, dict):
             problems.append(f"{MANIFEST}: entry {index} is not an object")
             continue
         missing = [field for field in REQUIRED_FIELDS if not str(item.get(field) or "").strip()]
         problems.extend(f"{MANIFEST}: entry {index} has no '{field}'" for field in missing)
+        if not isinstance(item.get("fetched", False), bool):
+            problems.append(f"{MANIFEST}: entry {index} has a 'fetched' that is not true or false")
         if "path" in missing:
             continue
         path = str(item["path"])
@@ -61,7 +65,9 @@ def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str,
             claimed.add(path)
             if not missing:
                 pinned[path] = str(item["sha256"]).lower()
-    return problems, claimed, pinned
+            if item.get("fetched") is True:
+                fetched.add(path)
+    return problems, claimed, pinned, fetched
 
 
 def check(root: Path) -> tuple[list[str], int]:
@@ -70,7 +76,7 @@ def check(root: Path) -> tuple[list[str], int]:
     entries = read_entries(manifest_path)
     if isinstance(entries, str):
         return [entries], 0
-    problems, claimed, pinned = check_entries(entries)
+    problems, claimed, pinned, fetched = check_entries(entries)
 
     data_dir = root / DATA_DIR
     files = (file for file in data_dir.rglob("*") if file.is_file() and file != manifest_path)
@@ -79,7 +85,8 @@ def check(root: Path) -> tuple[list[str], int]:
         problems.append(f"{DATA_DIR / path}: not listed in {MANIFEST}")
     for path, sha256 in sorted(pinned.items()):
         if path not in present:
-            problems.append(f"{DATA_DIR / path}: listed in the manifest but missing")
+            if path not in fetched:
+                problems.append(f"{DATA_DIR / path}: listed in the manifest but missing")
         else:
             with (data_dir / path).open("rb") as file:
                 if hashlib.file_digest(file, "sha256").hexdigest() != sha256:
