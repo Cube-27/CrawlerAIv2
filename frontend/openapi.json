@@ -911,7 +911,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Unprocessable Entity"
           }
@@ -1048,7 +1052,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Not Found"
           },
@@ -1142,7 +1150,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Not Found"
           },
@@ -1153,7 +1165,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Conflict"
           },
@@ -1164,7 +1180,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Precondition Failed"
           },
@@ -1175,7 +1195,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Unprocessable Entity"
           }
@@ -1238,7 +1262,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Not Implemented"
           }
@@ -1291,7 +1319,11 @@
                   "$ref": "#/components/schemas/Problem"
                 }
               },
-              "application/problem+json": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
             },
             "description": "Not Implemented"
           }

@@ -227,7 +227,11 @@ class CaptureResponse(_Model):
     outcomes: list[Annotated[CapturedOut | SkippedOut, Field(discriminator="kind")]]
 
 
-_PROBLEM = {"model": Problem, "content": {"application/problem+json": {}}}
+# Typed under both media types, so the generated client types the error body.
+_PROBLEM = {
+    "model": Problem,
+    "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}},
+}
 
 
 @router.get("/pages", response_model=list[PageSummary])

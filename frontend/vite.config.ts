@@ -264,6 +264,10 @@ export default defineConfig({
     ignorePatterns: ["pnpm-lock.yaml", "openapi.json", "src/api/schema.d.ts"],
   },
   plugins: [react(), tailwindcss()],
+  // `pnpm dev` serves the screens and forwards API calls to `make dev`'s backend, so the app calls its own origin.
+  server: {
+    proxy: { "/v1": "http://127.0.0.1:8000" },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

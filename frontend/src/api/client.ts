@@ -14,3 +14,11 @@ export function createApiClient({ baseUrl, apiKey }: ApiClientOptions) {
     headers: apiKey === undefined ? {} : { Authorization: `Bearer ${apiKey}` },
   });
 }
+
+export type ApiClient = ReturnType<typeof createApiClient>;
+
+/** A client of the API on this page's origin: `pnpm dev` proxies `/v1` to the backend (vite.config.ts). Created per
+ * call, so it uses the `fetch` in place at that time. */
+export function sameOriginClient(): ApiClient {
+  return createApiClient({ baseUrl: window.location.origin });
+}

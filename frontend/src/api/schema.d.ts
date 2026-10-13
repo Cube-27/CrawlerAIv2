@@ -517,7 +517,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -584,7 +584,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Validation Error */
@@ -633,7 +633,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Conflict */
@@ -643,7 +643,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Precondition Failed */
@@ -653,7 +653,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -663,7 +663,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -708,7 +708,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -749,7 +749,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
-                    "application/problem+json": unknown;
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
