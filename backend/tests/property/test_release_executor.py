@@ -10,18 +10,17 @@ from typing import Any
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from pydantic import ValidationError
 
 from crawlerai.collect.base import PAGE
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor
+from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.release_executor import FieldRule, ReleasePage, Value, release_run
+from crawlerai.config_ir.release_executor import ReleasePage, release_run
+from crawlerai.config_ir.release_rules import release_rules
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -91,24 +90,6 @@ def _ir(page_kind: str, fields: dict[str, Any], listing: dict[str, Any] | None =
     )
 
 
-def _rules(schema: SchemaDef, ctx: Context) -> dict[str, FieldRule]:
-    """What the release check passes: the field's normalizer, and a post op's type checked as the engine checks it."""
-
-    def rule(spec: FieldSpec) -> FieldRule:
-        own = spec.item or spec
-
-        def accepts(value: Value, type_: str | None) -> bool:
-            try:
-                target = spec if type_ is None else own if own.type == type_ else FieldSpec(type=FieldType(type_))
-            except ValidationError:
-                return False
-            return isinstance(normalize(value, target, ctx), Ok)
-
-        return FieldRule(many=spec.item is not None, accepts=accepts)
-
-    return {name: rule(spec) for name, spec in schema.fields.items()}
-
-
 def _engine_values(
     executor: EngineExecutor, page: ParsedPage, schema: SchemaDef, ctx: Context
 ) -> dict[tuple[str, str], Any]:
@@ -156,7 +137,7 @@ def test_the_executors_agree_on_page_fields(
     html, network = page
     ir, schema, ctx = _ir("detail", fields), _schema("detail", DETAIL_FIELDS), _context(base)
     engine = _engine_values(EngineExecutor(ir, VOCABULARY), ParsedPage(html, network), schema, ctx)
-    released = release_run(ir, ReleasePage(html, network, ctx.base_url), _rules(schema, ctx))
+    released = release_run(ir, ReleasePage(html, network, ctx.base_url), release_rules(schema, ctx))
     assert released.fields == {name: value for (owner, name), value in engine.items() if owner == PAGE}
 
 
@@ -190,9 +171,9 @@ def test_the_executors_agree_on_listing_rows_and_the_next_page(page: str, fields
     }
     ir, schema, ctx = _ir("listing", {}, listing), _schema("listing", LISTING_FIELDS), _context(base)
     engine = _engine_values(EngineExecutor(ir, VOCABULARY), ParsedPage(page), schema, ctx)
-    released = release_run(ir, ReleasePage(page, (), ctx.base_url), _rules(schema, ctx))
+    released = release_run(ir, ReleasePage(page, (), ctx.base_url), release_rules(schema, ctx))
     rows = [
-        {name: value for (owner, name), value in engine.items() if owner == f"config:row:{n}"}
+        {name: value for (owner, name), value in engine.items() if owner == row_id(n)}
         for n in range(len(released.rows))
     ]
     assert list(released.rows) == rows
