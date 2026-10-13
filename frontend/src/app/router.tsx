@@ -35,8 +35,8 @@ export const routes: RouteObject[] = [
           { path: "schemas/:id/edit", element: <EditSchemaScreen /> },
         ],
       },
-      // SPEC-03 §4.10. The eval routes take no API key; SPEC-12 PR 9 adds the nav entry, shown when the backend
-      // reports `eval_ui`.
+      // SPEC-03 §4.10. The eval routes take no API key (D-0344); the shell lists them when `/healthz` reports
+      // `eval_ui`.
       { path: "labeling", loader: listLoader, element: <LabelingList /> },
       { path: "labeling/:pageId", loader: pageLoader, element: <LabelingPage /> },
     ],

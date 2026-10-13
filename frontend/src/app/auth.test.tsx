@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { healthReply } from "../test/api";
 import { RequireKey, useApiClient } from "./auth";
 import { routes } from "./router";
 
@@ -40,10 +41,13 @@ function renderApp(path = "/") {
   render(<RouterProvider router={createMemoryRouter(testRoutes, { initialEntries: [path] })} />);
 }
 
+/** Answers the probe's calls, which carry a key, in order; the shell's own `/healthz` call carries none. */
 function stubFetch(...responses: (() => Promise<Response>)[]) {
   const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
   for (const next of responses) fetchMock.mockImplementationOnce(next);
-  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("fetch", (request: Request) =>
+    request.headers.has("Authorization") ? fetchMock(request) : Promise.resolve(healthReply()),
+  );
   return fetchMock;
 }
 

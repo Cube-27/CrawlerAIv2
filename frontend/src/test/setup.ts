@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { toast } from "@heroui/react";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
+import { stubApi } from "./api";
 import { prefersDark } from "./media";
 
 // jsdom has no ResizeObserver; HeroUI's toasts measure themselves with it. Layout is not under test here.
@@ -19,6 +20,8 @@ if (!("getAnimations" in Element.prototype)) {
 beforeEach(() => {
   prefersDark(false);
   vi.stubGlobal("ResizeObserver", NoResizeObserver);
+  // Answers the shell's `/healthz` call for tests that stub no API; tests that do replace this `fetch`.
+  stubApi({});
 });
 
 afterEach(() => {

@@ -13,3 +13,11 @@
   /* The captured page's frame on the labeling screen: most of the viewport's height. */
   --height-page-view: 70dvh;
 }
+
+@layer components {
+  /* The link to the page shown (WAI-ARIA 1.2 `aria-current="page"`, set by the main nav) keeps the underline HeroUI's
+   * link shows on hover, so the current section is marked by more than color. */
+  .link[aria-current="page"] {
+    @apply underline;
+  }
+}
