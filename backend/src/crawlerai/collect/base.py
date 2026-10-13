@@ -4,7 +4,7 @@ proposes for schema fields, and the `Collector` protocol.
 A collector proposes; it never chooses. Ownership, intent and preference are `crawlerai.resolve`'s.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -14,6 +14,9 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, NormalizeResult, Raw
 from crawlerai.schemas.types import SchemaDef
+
+# The page itself, as an entity: what page-level values (Open Graph, meta, cleaned text) belong to (§4.6).
+PAGE = "page"
 
 
 class _Model(BaseModel):
@@ -28,6 +31,9 @@ class Entity(_Model):
     kind: str  # the schema.org type name when known (`Product`, `Offer`, `ItemList`), else `page`
     urls: tuple[str, ...]  # canonicalized url, @id, mainEntityOfPage and offers.url values found on the entity
     parent: str | None
+    # The schema.org property of the parent whose value holds this entity (`offers`, `isRelatedTo`); None for a root,
+    # or when the source names no schema.org property. Intent reads it (§4.6 step 1).
+    via: str | None = None
 
 
 class Candidate(_Model):
@@ -57,10 +63,19 @@ class CollectResult(_Model):
         for entity in self.entities:
             if entity.parent is not None and entity.parent not in ids:
                 raise ValueError(f"entity {entity.id!r} has unknown parent {entity.parent!r}")
+        _check_tree(self.entities)
         for candidate in self.candidates:
             if candidate.entity_id not in ids:
                 raise ValueError(f"candidate for {candidate.field!r} names unknown entity {candidate.entity_id!r}")
         return self
+
+
+def _check_tree(entities: Sequence[Entity]) -> None:
+    # Entities form a tree (§4.6): walking up the parents from any entity ends at a root.
+    parents = {entity.id: entity.parent for entity in entities}
+    for entity in entities:
+        if descends(entity.parent, entity.id, parents):
+            raise ValueError(f"entity {entity.id!r} is its own ancestor")
 
 
 class Collector(Protocol):
@@ -73,8 +88,10 @@ class Collector(Protocol):
 def descends(entity: str | None, ancestor: str, parents: Mapping[str, str | None]) -> bool:
     """Whether `entity` is `ancestor` or below it in `parents`; a collector checks it before giving a node a parent, so
     that entities stay a tree (§4.6)."""
-    while entity is not None:
+    seen: set[str] = set()
+    while entity is not None and entity not in seen:  # a walk into a cycle without `ancestor` ends
         if entity == ancestor:
             return True
+        seen.add(entity)
         entity = parents[entity]
     return False

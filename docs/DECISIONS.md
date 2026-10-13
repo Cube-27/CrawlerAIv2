@@ -2682,3 +2682,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Other mappings.
 - Why: DESIGN.md "Status display": each domain maps its values to one tone, once.
 - Reversible: yes
+
+### D-0412 — Entity `via`: the parent's schema.org property holding it
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 6 (#85) · Status: decided
+- Decision: `Entity.via` is the schema.org property of the parent entity that holds the entity: a full schema.org IRI anywhere, or a bare term under a schema.org context. Through untyped objects it is the property on the entity, not on the object in between. A node referenced by `@id` takes the property of its one reference, and gets none if its one referrer references it under two properties. Microdata: the one name the holder's element gives the item (or the untyped item on the way); an element naming two properties names none.
+- Alternatives: Exclude every primary entity nested in another primary entity; parse the property out of the locator.
+- Why: §4.6 names relation properties, and an `@id` reference or a microdata item doesn't show its property in its id.
+- Reversible: yes
+
+### D-0413 — Primary types are the required fields' roots without Offer
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 6 (#85) · Status: decided
+- Decision: The root types of the required fields' `schema_org` paths, without Offer (and its subtypes) unless Offer is the only root. `required_groups` members don't count.
+- Alternatives: Include Offer, which would make every Offer of the product a competing candidate.
+- Why: An Offer belongs to the item it offers (schema.org `offers`/`itemOffered`; §4.5, §4.7).
+- Reversible: yes
+
+### D-0414 — Intent excludes entities in lists and under relation properties
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 6 (#85) · Status: decided
+- Decision: An entity is excluded when any ancestor is an `ItemList` or `ListItem` (or a subtype), or when somewhere up its chain it sits under `isRelatedTo`/`isSimilarTo` of a primary entity. A primary entity nested through another property stays a candidate, and the URL decides.
+- Alternatives: Exclude every nested primary entity.
+- Why: The literal reading of §4.6 step 1.
+- Reversible: yes
+
+### D-0415 — All primary entities excluded is `intent_ambiguous`
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 6 (#85) · Status: decided
+- Decision: When primary-type entities exist but all of them are excluded, the result is `AmbiguousTarget(candidates=())`, not the `page` entity. `page` is the target only when the page has no primary-type entity at all.
+- Alternatives: Fall back to `page`.
+- Why: §4.6 step 4 says "primary type absent", and a list of products is not a page about one of them. This is the conservative reading.
+- Reversible: yes
+
+### D-0416 — Only an Offer child of the target is the target's
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 6 (#85) · Status: decided
+- Decision: `owned_by` accepts an Offer (or subtype, so also AggregateOffer) whose parent is the target. An Offer nested inside an AggregateOffer is not owned.
+- Alternatives: Any Offer descendant.
+- Why: §4.5 and §4.7 say "an Offer child of the target". Atomic offers and `lowPrice` belong to PR 7.
+- Reversible: yes
+
+### D-0417 — Page-level candidates belong to the target whatever the field's root
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 6 (#85) · Status: decided
+- Decision: Page-level candidates (OG, meta, text) belong to the target whatever the root type of the field's path, so an `Organization.name` field still gets `og:title`.
+- Alternatives: Own page-level candidates only for fields rooted at the target's type.
+- Why: §4.6 step 4 attributes page values to the target without a type condition; this answers D-0383's review note. Measure on dev before changing it.
+- Reversible: yes

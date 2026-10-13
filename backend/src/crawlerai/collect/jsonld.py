@@ -36,12 +36,14 @@ from crawlerai.schemas.types import SchemaDef
 _MEDIA_TYPE = "application/ld+json"
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
 _CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
+# A reference to a node: the entity it is nested in, and that entity's property it is under.
+_Reference = tuple[str, str | None]
 
 
 @dataclass(frozen=True, slots=True)
 class _Object:
     """A JSON object in a block: where it is, whether schema.org is the vocabulary in its scope, its schema.org types,
-    and the nearest entity it is nested in."""
+    the nearest entity it is nested in, and the schema.org property of that entity it is nested under."""
 
     data: Mapping[str, JsonValue]
     block: int
@@ -49,6 +51,7 @@ class _Object:
     in_schema: bool
     types: tuple[str, ...]
     enclosing: str | None
+    via: str | None
 
     @property
     def id(self) -> str:
@@ -63,7 +66,8 @@ class _Graph:
     objects: list[_Object] = field(default_factory=list)
     at: dict[str, _Object] = field(default_factory=dict)  # by locator
     by_id: dict[str, _Object] = field(default_factory=dict)  # node definitions by resolved @id; the first one wins
-    referrers: defaultdict[str, list[str]] = field(default_factory=lambda: defaultdict(list))  # @id -> entity ids
+    # @id -> (entity id, property) of each reference nested in an entity
+    referrers: defaultdict[str, list[_Reference]] = field(default_factory=lambda: defaultdict(list))
 
     def add(self, found: _Object) -> None:
         self.objects.append(found)
@@ -73,7 +77,7 @@ class _Graph:
             return
         if found.data.keys() == {"@id"}:
             if found.enclosing is not None:
-                self.referrers[node_id].append(found.enclosing)
+                self.referrers[node_id].append((found.enclosing, found.via))
         else:
             self.by_id.setdefault(node_id, found)
 
@@ -182,14 +186,15 @@ class JsonLdCollector:
             for found in self._walk(index, document):
                 graph.add(found)
         entities = [found for found in graph.objects if found.types]
-        parents = _parents(entities, graph)
+        parents, vias = _parents(entities, graph)
         typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
         candidates = field_candidates(
             typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
         )
         return CollectResult(
             entities=tuple(
-                Entity(id=t.id, kind=t.types[0], urls=entity_urls(t.node, ctx), parent=parents[t.id]) for t in typed
+                Entity(id=t.id, kind=t.types[0], urls=entity_urls(t.node, ctx), parent=parents[t.id], via=vias[t.id])
+                for t in typed
             ),
             candidates=tuple(candidates),
             diagnostics=tuple(diagnostics),
@@ -198,22 +203,22 @@ class JsonLdCollector:
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
         """Every object of `document` in document order. Iterative, so that nesting depth is bounded by what the JSON
         parser accepts rather than by the call stack."""
-        stack: list[tuple[JsonValue, str, bool, str | None]] = [(document, "$", False, None)]
+        stack: list[tuple[JsonValue, str, bool, str | None, str | None]] = [(document, "$", False, None, None)]
         while stack:
-            value, path, in_schema, enclosing = stack.pop()
+            value, path, in_schema, enclosing, via = stack.pop()
             if isinstance(value, list):
                 items = reversed(list(enumerate(value)))
-                stack.extend((item, f"{path}[{i}]", in_schema, enclosing) for i, item in items)
+                stack.extend((item, f"{path}[{i}]", in_schema, enclosing, via) for i, item in items)
                 continue
             if not isinstance(value, dict):
                 continue
             if "@context" in value:
                 in_schema = _in_schema(value["@context"], in_schema)
-            found = _Object(value, block, path, in_schema, self._types(value.get("@type"), in_schema), enclosing)
+            found = _Object(value, block, path, in_schema, self._types(value.get("@type"), in_schema), enclosing, via)
             yield found
             inner = found.id if found.types else enclosing
             stack.extend(
-                (child, _member(path, key), in_schema, inner)
+                (child, _member(path, key), in_schema, inner, _member_via(found, key, via))
                 for key, child in reversed(value.items())
                 if key != "@context"
             )
@@ -224,6 +229,15 @@ class JsonLdCollector:
             if isinstance(item, str) and (name := schema_term(item) or (item if in_schema else None)) is not None:
                 names.append(name)
         return self.vocabulary.specific_first(names)
+
+
+def _member_via(holder: _Object, key: str, via: str | None) -> str | None:
+    """The property a member of `holder` is under: an entity's member is under the entity's property of that name (a
+    full schema.org IRI anywhere, a bare term other than a keyword where schema.org is the vocabulary; JSON-LD 1.1
+    §4.1.2); a member of a plain object is under the property the object is under."""
+    if not holder.types:
+        return via
+    return schema_term(key) or (key if holder.in_schema and not key.startswith("@") else None)
 
 
 def _parse(text: str) -> JsonValue:
@@ -239,15 +253,30 @@ def _not_json(constant: str) -> JsonValue:
     raise ValueError(f"{constant} is not JSON")
 
 
-def _parents(entities: Sequence[_Object], graph: _Graph) -> dict[str, str | None]:
-    """Each entity's parent: the entity it is nested in; else, for a node defined on its own, the one entity that
-    references it, unless that would make a cycle. A node two entities reference has no parent."""
+def _parents(entities: Sequence[_Object], graph: _Graph) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """Each entity's parent, and the parent's property it is under: the entity it is nested in; else, for a node
+    defined on its own, the one entity that references it, unless that would make a cycle. A node two entities
+    reference has no parent; a node its one referrer references under two properties is under neither."""
     parents: dict[str, str | None] = {found.id: found.enclosing for found in entities}
+    vias: dict[str, str | None] = {found.id: found.via for found in entities}
     for found in entities:
         node_id = graph.resolve_id(found.data.get("@id"))
-        if found.enclosing is not None or node_id is None:
-            continue
-        referrers = set(graph.referrers.get(node_id, ())) - {found.id}
-        if len(referrers) == 1 and not descends(next(iter(referrers)), found.id, parents):
-            parents[found.id] = next(iter(referrers))
-    return parents
+        if found.enclosing is None and node_id is not None:
+            referenced = _referrer(found.id, graph.referrers.get(node_id, []), parents)
+            if referenced is not None:
+                parents[found.id], vias[found.id] = referenced
+    return parents, vias
+
+
+def _referrer(entity: str, references: Sequence[_Reference], parents: Mapping[str, str | None]) -> _Reference | None:
+    """The one entity other than `entity` itself that references it, unless that would make a cycle, with the
+    property it references it under."""
+    references = [r for r in references if r[0] != entity]
+    referrers = {referrer for referrer, _ in references}
+    if len(referrers) != 1:
+        return None
+    (referrer,) = referrers
+    if descends(referrer, entity, parents):
+        return None
+    properties = {prop for _, prop in references}
+    return (referrer, properties.pop() if len(properties) == 1 else None)

@@ -88,8 +88,8 @@ def test_a_product_with_a_nested_offer() -> None:
     product = Entity(id="jsonld:0:$", kind="Product", urls=(PAGE_URL,), parent=None)
     assert result.entities == (
         product,
-        Entity(id="jsonld:0:$['brand']", kind="Brand", urls=(), parent=product.id),
-        Entity(id="jsonld:0:$['offers']", kind="Offer", urls=(), parent=product.id),
+        Entity(id="jsonld:0:$['brand']", kind="Brand", urls=(), parent=product.id, via="brand"),
+        Entity(id="jsonld:0:$['offers']", kind="Offer", urls=(), parent=product.id, via="offers"),
     )
     assert result.candidates == (
         _candidate("title", product.id, "Widget 9", Ok("Widget 9"), "jsonld:0:$['name']"),
@@ -123,9 +123,9 @@ def test_graph_nodes_and_id_references() -> None:
         }
     )
     product_id, offer_id = "jsonld:0:$['@graph'][0]", "jsonld:0:$['@graph'][1]"
-    assert [(e.id, e.kind, e.parent) for e in result.entities] == [
-        (product_id, "Product", None),
-        (offer_id, "Offer", product_id),
+    assert [(e.id, e.kind, e.parent, e.via) for e in result.entities] == [
+        (product_id, "Product", None, None),
+        (offer_id, "Offer", product_id, "offers"),
     ]
     assert [(c.field, c.entity_id, c.locator) for c in result.candidates] == [
         ("title", product_id, f"{product_id}['name']"),
@@ -139,7 +139,10 @@ def test_references_resolve_across_blocks() -> None:
         "not json",
         {"@context": SCHEMA_ORG, "@type": "Offer", "@id": "#offer", "price": "5", "priceCurrency": "USD"},
     )
-    assert [(e.id, e.parent) for e in result.entities] == [("jsonld:0:$", None), ("jsonld:2:$", "jsonld:0:$")]
+    assert [(e.id, e.parent, e.via) for e in result.entities] == [
+        ("jsonld:0:$", None, None),
+        ("jsonld:2:$", "jsonld:0:$", "offers"),
+    ]
     assert [(c.field, c.entity_id, c.locator) for c in result.candidates] == [
         ("price", "jsonld:2:$", "jsonld:2:$['price']")
     ]
@@ -242,9 +245,26 @@ def test_an_unknown_type_between_entities_is_skipped_for_the_parent() -> None:
     result = _collect(
         {"@context": SCHEMA_ORG, "@type": "Product", "x": {"@type": "Widget", "offers": {"@type": "Offer"}}}
     )
-    assert [(e.id, e.parent) for e in result.entities] == [
+    # The parent's property that holds the Offer is `x`, the one on the Product.
+    assert [(e.id, e.parent, e.via) for e in result.entities] == [
+        ("jsonld:0:$", None, None),
+        ("jsonld:0:$['x']['offers']", "jsonld:0:$", "x"),
+    ]
+
+
+def test_via_names_the_schema_org_property_holding_the_entity() -> None:
+    product = SCHEMA_ORG + "/Product"
+    result = _collect(
+        {"@context": SCHEMA_ORG, "@type": "Product", "isSimilarTo": {"@type": "Product"}},
+        {"@type": product, SCHEMA_ORG + "/isRelatedTo": [{"@type": product}], "related": {"@type": product}},
+    )
+    # Without a schema.org context, only a full IRI names a schema.org property (JSON-LD 1.1 §4.1.2).
+    assert [(e.id, e.via) for e in result.entities] == [
         ("jsonld:0:$", None),
-        ("jsonld:0:$['x']['offers']", "jsonld:0:$"),
+        ("jsonld:0:$['isSimilarTo']", "isSimilarTo"),
+        ("jsonld:1:$", None),
+        ("jsonld:1:$['https://schema.org/isRelatedTo'][0]", "isRelatedTo"),
+        ("jsonld:1:$['related']", None),
     ]
 
 
@@ -289,9 +309,9 @@ def test_reference_cycles_end() -> None:
             ],
         }
     )
-    assert [(e.id, e.parent) for e in result.entities] == [
-        ("jsonld:0:$['@graph'][0]", "jsonld:0:$['@graph'][1]"),
-        ("jsonld:0:$['@graph'][1]", None),
+    assert [(e.id, e.parent, e.via) for e in result.entities] == [
+        ("jsonld:0:$['@graph'][0]", "jsonld:0:$['@graph'][1]", "isRelatedTo"),
+        ("jsonld:0:$['@graph'][1]", None, None),
     ]
 
 
@@ -306,7 +326,7 @@ def test_a_node_referenced_from_two_entities_has_no_parent() -> None:
             ],
         }
     )
-    assert [e.parent for e in result.entities] == [None, None, None]
+    assert [(e.parent, e.via) for e in result.entities] == [(None, None)] * 3
 
 
 def test_null_and_nested_arrays_are_no_values() -> None:
@@ -323,3 +343,16 @@ def test_member_names_are_escaped_as_normalized_paths() -> None:
     # RFC 9535 §2.7: a normalized path writes member names in single quotes, escaping `'` and `\`.
     result = _collect({"a'b\\": {"@context": SCHEMA_ORG, "@type": "Product"}})
     assert [e.id for e in result.entities] == ["jsonld:0:$['a\\'b\\\\']"]
+
+
+def test_a_node_referenced_under_two_properties_of_its_parent_names_neither() -> None:
+    result = _collect(
+        {
+            "@context": SCHEMA_ORG,
+            "@graph": [
+                {"@type": "Product", "isRelatedTo": {"@id": "#p"}, "isSimilarTo": {"@id": "#p"}},
+                {"@type": "Product", "@id": "#p", "offers": {"@id": "#p"}},
+            ],
+        }
+    )
+    assert [(e.parent, e.via) for e in result.entities] == [(None, None), ("jsonld:0:$['@graph'][0]", None)]

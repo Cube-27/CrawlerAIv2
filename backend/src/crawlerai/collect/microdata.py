@@ -125,7 +125,7 @@ class MicrodataCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         document = self._read(page, ctx)
         entities = [item for item in document.items.values() if item.types]
-        parents = _parents(entities)
+        parents, vias = _parents(entities)
         typed = [Typed(item.id, item.types, _Node(item, document)) for item in entities]
         diagnostics: list[str] = []
         candidates = field_candidates(
@@ -133,7 +133,8 @@ class MicrodataCollector:
         )
         return CollectResult(
             entities=tuple(
-                Entity(id=t.id, kind=t.types[0], urls=entity_urls(t.node, ctx), parent=parents[t.id]) for t in typed
+                Entity(id=t.id, kind=t.types[0], urls=entity_urls(t.node, ctx), parent=parents[t.id], via=vias[t.id])
+                for t in typed
             ),
             candidates=tuple(candidates),
             diagnostics=tuple(diagnostics),
@@ -366,25 +367,34 @@ def _write(
     return nested_items
 
 
-def _parents(entities: Sequence[_Item]) -> dict[str, str | None]:
-    """Each entity's parent: the nearest entity up its chain of single holders (an untyped item in between is skipped),
-    unless that would make a cycle. An item two items hold has no parent."""
+def _parents(entities: Sequence[_Item]) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """Each entity's parent, and the parent's property it is under: the nearest entity up its chain of single holders
+    (an untyped item in between is skipped), unless that would make a cycle. An item two items hold has no parent."""
     parents: dict[str, str | None] = dict.fromkeys((item.id for item in entities), None)
+    vias: dict[str, str | None] = dict.fromkeys(parents, None)
     for item in entities:
-        holder = _entity_holder(item, parents)
-        if holder is not None and not descends(holder, item.id, parents):
-            parents[item.id] = holder
-    return parents
+        held = _entity_holder(item, parents)
+        if held is not None and not descends(held[0].id, item.id, parents):
+            parents[item.id] = held[0].id
+            vias[item.id] = _via(*held)
+    return parents, vias
 
 
-def _entity_holder(item: _Item, entities: Mapping[str, str | None]) -> str | None:
+def _entity_holder(item: _Item, entities: Mapping[str, str | None]) -> tuple[_Item, _Item] | None:
+    """The nearest entity up `item`'s chain of single holders, and the item it holds on that chain."""
     seen = {item.id}
     current = item
     while len(current.holders) == 1:
-        current = current.holders[0]
+        below, current = current, current.holders[0]
         if current.id in seen:
             return None
         if current.id in entities:
-            return current.id
+            return current, below
         seen.add(current.id)
     return None
+
+
+def _via(holder: _Item, held: _Item) -> str | None:
+    """The one property name `holder` holds `held` under; an element naming several (`itemprop="a b"`) names none."""
+    names = {name for prop in holder.properties if prop.element is held.element for name in prop.names}
+    return names.pop() if len(names) == 1 else None
