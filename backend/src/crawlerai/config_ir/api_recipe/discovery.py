@@ -129,7 +129,7 @@ def _readable(entry: NetworkBody, data: bytes) -> tuple[CapturedRequest, JsonVal
         document = json_doc.parse(data.decode("utf-8"))
     except ValueError:  # UnicodeDecodeError is a ValueError
         return None
-    return CapturedRequest(entry.method.upper(), entry.url, entry.request_body), document
+    return CapturedRequest(entry.method.upper(), entry.url, entry.request_body, entry.request_headers or ()), document
 
 
 def _key(request: CapturedRequest) -> _EndpointKey:

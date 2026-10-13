@@ -50,9 +50,10 @@ class Headers(_Frozen):
 class NetworkBody(_Frozen):
     """Manifest entry for one captured network body; the bytes sit at the same index of the bundle's `network`.
 
-    `method` and `request_body` describe the request the body answered, which API discovery groups and binds by
-    (SPEC-09 §4.3); bundles written before they were kept decode with None. `request_body` is None also for a request
-    without a body or with one that is not UTF-8 text."""
+    `method`, `request_body` and `request_headers` describe the request the body answered, which API discovery groups
+    and binds by (SPEC-09 §4.3) and header minimization replays (§4.6); bundles written before they were kept decode
+    with None. `request_body` is None also for a request without a body or with one that is not UTF-8 text.
+    `request_headers` are recorded as the page's are (SPEC-02 §4.7: no cookies), in the order sent."""
 
     url: str
     status: int
@@ -61,6 +62,7 @@ class NetworkBody(_Frozen):
     file: str
     method: str | None = None
     request_body: str | None = None
+    request_headers: HeaderList | None = None
 
 
 class CaptureManifest(_Frozen):

@@ -269,6 +269,15 @@ def test_capture_records_the_method_and_body_of_the_request_behind_each_json_bod
     assert decode(encode(result.bundle)) == result.bundle
 
 
+def test_capture_records_the_request_headers_behind_each_json_body(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/search"))
+
+    (entry,) = result.bundle.manifest.network_bodies
+    sent = {name.lower(): value for name, value in entry.request_headers or ()}
+    assert (sent["content-type"], sent["referer"]) == ("application/json", server.url("/search"))
+    assert decode(encode(result.bundle)) == result.bundle
+
+
 def test_redirects_are_followed_within_the_page_host(browser: Browser, server: Server) -> None:
     result = browser.fetch(server.url("/hop"))
 
