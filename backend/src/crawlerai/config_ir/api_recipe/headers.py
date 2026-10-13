@@ -17,28 +17,12 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from crawlerai.config_ir.api_recipe.model import CREDENTIAL_FIELDS, PAGE_URL, RequestSpec
+from crawlerai.config_ir.api_recipe.model import CLIENT_FIELDS, CREDENTIAL_FIELDS, PAGE_URL, RequestSpec
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage, reproduces
 from crawlerai.schemas.types import SchemaDef
 
 # RFC 8259 §11: the JSON media type, the one header a recipe starts with.
 _ACCEPT: Final = {"Accept": "application/json"}
-# Fields the HTTP client sets for the connection it makes, never part of a recipe: Host (RFC 9110 §7.2), the content
-# length and transfer coding of the body (§8.6, RFC 9112 §6.1), the connection options (RFC 9110 §7.6.1: Connection,
-# Keep-Alive, TE, Upgrade, Proxy-Connection) and the content codings the client decodes (RFC 9110 §12.5.3).
-_CLIENT_FIELDS: Final = frozenset(
-    {
-        "host",
-        "content-length",
-        "transfer-encoding",
-        "connection",
-        "keep-alive",
-        "te",
-        "upgrade",
-        "proxy-connection",
-        "accept-encoding",
-    }
-)
 # A value looks like a token when one of its list items (RFC 9110 §5.6.1, §5.6.6: items split at commas, parameters
 # at semicolons, words at whitespace) is 20 or more characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL-
 # and filename-safe; hex, §8, is in both), padding allowed.
@@ -73,7 +57,8 @@ async def minimize(
         return Proven(base, 0)
     candidates, withheld = _candidates(pages)
     for tried, (name, value) in enumerate(candidates, start=1):
-        trial = _with_headers(spec, {**_without(_ACCEPT, name), name: value})
+        # RFC 9110 §5.1: field names are case-insensitive; a captured Accept replaces the recipe's.
+        trial = _with_headers(spec, {name: value} if name.lower() == "accept" else {**_ACCEPT, name: value})
         if trial is not None and await _passes(trial, fields, pages, schema, replay):
             return Proven(trial, tried)
     if withheld:
@@ -102,11 +87,6 @@ def _with_headers(spec: RequestSpec, headers: dict[str, str]) -> RequestSpec | N
         return None
 
 
-def _without(headers: Mapping[str, str], name: str) -> dict[str, str]:
-    # RFC 9110 §5.1: field names are case-insensitive; a captured Accept replaces the recipe's.
-    return {key: value for key, value in headers.items() if key.lower() != name.lower()}
-
-
 def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[tuple[str, str]], list[str]]:
     """The captured headers to try, as (name, recipe value), and the names of those never sent."""
     candidates: list[tuple[str, str]] = []
@@ -115,7 +95,7 @@ def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[tuple[str, str]], lis
     for name, _ in pages[0].sample.request.headers if pages else ():
         key = name.lower()
         # RFC 9113 §8.3: a name starting with `:` is an HTTP/2 pseudo-header, not a field.
-        if key in seen or key in _CLIENT_FIELDS or key.startswith(":"):
+        if key in seen or key in CLIENT_FIELDS or key.startswith(":"):
             continue
         seen.add(key)
         value = _constant(key, pages)

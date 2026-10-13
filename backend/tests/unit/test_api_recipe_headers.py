@@ -164,10 +164,9 @@ def _minimize(port: int, mode: str, extra: Extra = _no_extra) -> Proven | NotLea
 
 
 def test_an_endpoint_that_needs_no_header_keeps_only_accept(port: int, received: list[dict[str, str]]) -> None:
+    result = _minimize(port, "plain")
+
     endpoint = f"http://api.example.test:{port}/plain"
-
-    result = asyncio.run(minimize(_spec(endpoint), MAP, _pages(endpoint), SCHEMA, _replay))
-
     assert result == Proven(
         spec=RequestSpec(
             method="GET",

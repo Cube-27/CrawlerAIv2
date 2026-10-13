@@ -274,12 +274,12 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
         except PlaywrightError:
             continue  # no body to read: a redirect, or a request that failed or was evicted
         sent = response.request.post_data_buffer
+        if len(data) > _JSON_BODY_MAX_BYTES or len(sent or b"") > _JSON_BODY_MAX_BYTES:
+            continue
         try:
             headers = recorded(_header_list(await response.request.headers_array()))
         except PlaywrightError:
             headers = None  # the request is gone from the browser
-        if len(data) > _JSON_BODY_MAX_BYTES or len(sent or b"") > _JSON_BODY_MAX_BYTES:
-            continue
         entry = NetworkBody(
             url=response.url,
             status=response.status,

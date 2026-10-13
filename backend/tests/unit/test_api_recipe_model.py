@@ -88,6 +88,7 @@ _REFUSED: dict[str, dict[str, Any]] = {
     "body on GET": {"body": {"template": "{}"}},
     "cookie header": {"headers": {"Cookie": "a=b"}},
     "authorization header in any case": {"headers": {"authorization": "x"}},
+    "a field the client sets": {"headers": {"Content-Length": "2"}},
     "header named twice": {"headers": {"Accept": "a", "accept": "b"}},
     "header placeholder other than page_url": {"headers": {"X-Id": "{slug}"}},
     "line break in a header value": {"headers": {"X-A": "a\r\nX-B: b"}},

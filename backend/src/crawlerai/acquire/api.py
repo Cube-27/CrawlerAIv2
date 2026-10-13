@@ -32,8 +32,6 @@ _ACCEPT = "application/json"
 # httpx's own jar, which refuses every cookie: it would match them against the request URL, which holds the checked
 # address, so a cookie would follow the address to every host behind it. It never stores one, so one serves all.
 _NO_COOKIES = CookieJar(DefaultCookiePolicy(allowed_domains=[]))
-# Fields the fetch sets itself: the checked host's name (RFC 9110 §7.2) and this fetch's own cookies (INV-29).
-_OWN_FIELDS = frozenset({"host", "cookie"})
 
 
 @dataclass(frozen=True)
@@ -158,16 +156,16 @@ async def _send(
     # httpx's `sni_hostname` extension) keep the name, so virtual hosting and certificate checks see the real host.
     headers = httpx.Headers({"Accept": _ACCEPT})
     for name, value in json_request.headers:
-        if name.lower() not in _OWN_FIELDS:
+        if name.lower() != "cookie":  # the fetch sends only its own cookies (INV-29)
             headers[name] = value
-    headers["Host"] = url.netloc.decode("ascii")
+    headers["Host"] = url.netloc.decode("ascii")  # replaces a caller's Host: the checked host's name
     if "Cookie" in named.headers:
         headers["Cookie"] = named.headers["Cookie"]
     request = client.build_request(
         json_request.method,
         url.copy_with(host=str(target.ip)),
         headers=headers,
-        content=None if json_request.body is None else json_request.body.encode(),
+        content=json_request.body,  # httpx encodes text as UTF-8
         extensions={"sni_hostname": target.host},
     )
     try:

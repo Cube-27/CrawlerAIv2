@@ -37,6 +37,22 @@ _TOKEN: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Fields that carry credentials: RFC 9110 §11.6.2 and §11.7.2, RFC 6265 §5.4. A recipe that needs one is not
 # learnable (§4.6), so a recipe never holds one.
 CREDENTIAL_FIELDS: Final = frozenset({"authorization", "proxy-authorization", "cookie"})
+# Fields the HTTP client sets for the connection it makes, never part of a recipe: Host (RFC 9110 §7.2), the content
+# length and transfer coding of the body (§8.6, RFC 9112 §6.1), the connection options (RFC 9110 §7.6.1: Connection,
+# Keep-Alive, TE, Upgrade, Proxy-Connection) and the content codings the client decodes (RFC 9110 §12.5.3).
+CLIENT_FIELDS: Final = frozenset(
+    {
+        "host",
+        "content-length",
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "te",
+        "upgrade",
+        "proxy-connection",
+        "accept-encoding",
+    }
+)
 # §4.2: a money field joins the amount and currency paths with `+`; each part starts at the root `$` (RFC 9535 §2.2).
 _JOIN: Final = re.compile(r"\+(?=\$)")
 
@@ -210,6 +226,8 @@ class RequestSpec(_Model):
             raise ValueError("a header named twice")  # RFC 9110 §5.1: field names are case-insensitive
         if CREDENTIAL_FIELDS.intersection(names):
             raise ValueError("a recipe carries no credentials")
+        if CLIENT_FIELDS.intersection(names):
+            raise ValueError("a recipe carries no field the HTTP client sets itself")
         if self.requires_page_fetch != self.reads_page_data:
             raise ValueError("requires_page_fetch is true exactly when a binder reads the page's JSON documents")
         return self
