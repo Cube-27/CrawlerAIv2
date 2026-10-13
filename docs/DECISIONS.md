@@ -1794,3 +1794,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A `proxy_error` class.
 - Why: curl gives a refused CONNECT the same code as an unreachable server; separating them needs per-handle state.
 - Reversible: yes
+
+### D-0287 — A GTIN keeps its digits as given
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 6 (#59) · Status: decided
+- Decision: No padding of GTIN-12/13 to 14 digits; PR 9's `equal` may compare zero-padded.
+- Alternatives: Pad to the GS1 14-digit comparison form.
+- Why: §4.4 doesn't require padding; the stored value stays what the page published.
+- Reversible: yes
+
+### D-0288 — No separators inside a GTIN; ISBN separators per ISO 2108 are dropped
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 6 (#59) · Status: decided
+- Decision: Spaces and hyphens in a GTIN are `Invalid("not_digits")`; ISBNs drop ISO 2108 hyphens, spaces and a leading `ISBN ` prefix.
+- Alternatives: Also strip GS1 human-readable spacing.
+- Why: §4.4 "digits only"; conservative, relaxable for a class of failures.
+- Reversible: yes
+
+### D-0289 — Identifiers accept non-negative JSON integers
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 6 (#59) · Status: decided
+- Decision: A non-negative JSON integer is read as its decimal digits; booleans, floats, negatives, lists and objects are `Invalid("not_a_string")`.
+- Alternatives: Strings only.
+- Why: JSON-LD publishers write `gtin13` unquoted; a lost leading zero shows as a length or check-digit failure, never a silent change.
+- Reversible: yes
+
+### D-0290 — An ISBN-13 needs the 978/979 prefix
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 6 (#59) · Status: decided
+- Decision: Any other EAN-13 under scheme `isbn` is `Invalid("prefix")`.
+- Alternatives: Accept any EAN-13.
+- Why: ISO 2108.
+- Reversible: yes
