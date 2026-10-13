@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 8, SPEC-06 PR 6, SPEC-12 PR 9. Next: SPEC-05 PRs 9, 12, SPEC-07 PR 6 after SPEC-06 PR 6, SPEC-06 PR 4 after SPEC-05 PR 9.
+- In progress: SPEC-05 PR 8, SPEC-12 PR 9, SPEC-08 PR 1 (L2, keeps slots full while L1 rows wait on SPEC-05 PR 8). Next: SPEC-07 PR 6, SPEC-05 PRs 9, 12, 13 after PR 8, SPEC-12 PR 5 after PR 9.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -155,7 +155,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 3 | Grounding alignment | done (#76) | |
 | 4 | Role C detail + pipeline hook wiring | todo | |
 | 5 | Role C listing + labeling pre-fill endpoint | todo | |
-| 6 | Role S + prompt-hash reuse | todo | |
+| 6 | Role S + prompt-hash reuse | done (#92) | `complete_json` takes an optional reply check sharing the one retry (D-0448); drafts keyed on the normalized prompt (D-0449). |
 
 ## [SPEC-07 — API foundation, authentication, page content formats and `scrape`](../specs/SPEC-07-api-foundation-and-scrape.md)
 
