@@ -157,4 +157,6 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 def test_the_result_depends_only_on_the_arguments(spec: FieldSpec, raw: str) -> None:
     ctx = Context(captured_at=AT, base_url="https://example.test/a/", page_url="https://example.test/a/")
 
-    assert url.normalize(raw, spec, ctx) == url.normalize(raw, spec, ctx)
+    first = url.normalize(raw, spec, ctx)
+
+    assert url.normalize(raw, spec, ctx) == first

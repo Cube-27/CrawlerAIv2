@@ -113,4 +113,6 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
 @given(st.sampled_from([TEXT, LONG]), st.text(max_size=50))
 def test_the_result_depends_only_on_the_arguments(spec: FieldSpec, raw: str) -> None:
-    assert text.normalize(raw, spec, CTX) == text.normalize(raw, spec, CTX)
+    first = text.normalize(raw, spec, CTX)
+
+    assert text.normalize(raw, spec, CTX) == first

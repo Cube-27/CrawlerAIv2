@@ -22,7 +22,11 @@ _MAX_LEN = {FieldType.TEXT: 512, FieldType.LONG_TEXT: 100_000}
 # `{{ … }}` (Mustache, Handlebars, Jinja, Angular), `${ … }` (JavaScript template literals, shell parameter
 # expansion), and printf conversions without flags (C `printf` `%s`/`%d`, POSIX positional `%1$s`, Python `%(name)s`).
 # A printf conversion must end at a word boundary, so "50%sale" is text.
-_PLACEHOLDER = re.compile(r"\{\{.*?\}\}|\$\{[^}]*\}|%(?:\(\w+\)|\d+\$)?[sd]\b", re.DOTALL)
+_PLACEHOLDERS = (
+    re.compile(r"\{\{.*?\}\}", re.DOTALL),
+    re.compile(r"\$\{[^}]*\}"),
+    re.compile(r"%(?:\(\w+\)|\d+\$)?[sd]\b"),
+)
 
 
 def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
@@ -38,7 +42,7 @@ def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
         return Invalid("empty")
     if len(value) > _MAX_LEN[spec.type]:
         return Invalid("too_long")
-    if _PLACEHOLDER.search(value):
+    if any(placeholder.search(value) for placeholder in _PLACEHOLDERS):
         return Invalid("template_placeholder")
     return Ok(value)
 
