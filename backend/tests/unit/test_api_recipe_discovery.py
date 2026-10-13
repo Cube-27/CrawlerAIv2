@@ -201,13 +201,13 @@ def test_requests_with_a_different_body_shape_are_different_endpoints() -> None:
 def test_bodies_without_a_recorded_method_or_a_success_status_are_not_read() -> None:
     def page(slug: str, title: str) -> DiscoverySample:
         data: JsonValue = {"name": title}
-        return _sample(
-            slug,
-            {"title": title},
-            [Body(f"{API}/old/{slug}", data, method=None), Body(f"{API}/gone/{slug}", data, status=404)],
-        )
+        old = Body(f"{API}/old/{slug}", data, method=None)
+        gone = Body(f"{API}/gone/{slug}", data, status=404)
+        return _sample(slug, {"title": title}, [old, gone, Body(f"{API}/ok/{slug}", data)])
 
-    assert discover([page("lamp-1", "Desk Lamp"), page("chair-2", "Oak Chair")], SCHEMA) == []
+    found = discover([page("lamp-1", "Desk Lamp"), page("chair-2", "Oak Chair")], SCHEMA)
+
+    assert [c.requests[0].url for c in found] == [f"{API}/ok/lamp-1"]
 
 
 def test_bodies_that_are_not_json_are_skipped() -> None:

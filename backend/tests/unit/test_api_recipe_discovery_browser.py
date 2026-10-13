@@ -49,8 +49,9 @@ PRODUCTS = {"desk-lamp": ("Desk Lamp", 19.5), "oak-chair": ("Oak Chair", 120)}
 SHELL = b"""<html><body><main id="root">Loading</main><script>
 const slug = location.pathname.split('/')[2];
 fetch('/api/v1/products/' + slug + '?view=full').then(r => r.json()).then(d => {
+  const item = d['item'], price = item['price'];
   document.getElementById('root').innerHTML =
-    '<h1>' + d.item.name + '</h1><p>' + d.item.price.value + ' ' + d.item.price.currency + '</p>';
+    '<h1>' + item['name'] + '</h1><p>' + price['value'] + ' ' + price['currency'] + '</p>';
 });
 </script></body></html>"""
 

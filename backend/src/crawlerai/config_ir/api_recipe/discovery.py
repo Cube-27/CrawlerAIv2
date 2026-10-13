@@ -1,8 +1,8 @@
 """API discovery (SPEC-09 §4.3, ARCHITECTURE §7.2 step 1): from the learning sample's browser captures, the endpoints
 whose JSON responses carry the page's published values on every sample page, each with a JSONPath per field.
 
-A captured body is read only when the capture recorded the request behind it (method, and body for a POST) and the
-response was a success (RFC 9110 §15.3): a recipe can only replay such a request. Bodies group into endpoints by
+A captured body is read only when the capture recorded the method of the request behind it and the response was a
+success (RFC 9110 §15.3): a recipe can only replay such a request. Bodies group into endpoints by
 request method, URL shape (`binding.url_shape`: path segments may vary, they are what binding parameterizes) and
 request body shape; on each page the best-scoring body of a group stands for it.
 
