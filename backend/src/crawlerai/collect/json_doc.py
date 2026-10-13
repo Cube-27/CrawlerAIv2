@@ -60,6 +60,16 @@ def select(query: str, document: JsonValue, at: str = ROOT) -> list[tuple[str, J
     return nodes
 
 
+def split_at_last_wildcard(query: str) -> tuple[str, str]:
+    """`query` (as `select` takes it) as the query up to and including its last wildcard segment, and the rest as a
+    query of its own; a query without a wildcard splits as `$` and itself."""
+    end = len(ROOT)
+    for found in _SEGMENT.finditer(query, len(ROOT)):
+        if found[2] == _ALL:
+            end = found.end()
+    return query[:end], ROOT + query[end:]
+
+
 def _children(path: str, value: JsonValue, name: str, selector: str) -> Iterator[tuple[str, JsonValue]]:
     """The children of one node that a segment selects: the member `name`, else every child (`selector` `*`) or the
     array item at index `selector` (RFC 9535 §2.3); a node of another kind has none."""
