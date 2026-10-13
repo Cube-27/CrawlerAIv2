@@ -1,12 +1,8 @@
 import { Button, Chip, Tabs, toast } from "@heroui/react";
-import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import type { ApiClient } from "../../api/client";
-import type { Problem } from "../../api/problem";
-import type { ApiResult } from "../../api/result";
-import { getSchema, listSchemas, retireSchema, type SchemaDef } from "../../api/schemas";
-import { useApiQuery } from "../../api/useApiQuery";
-import { useApiClient } from "../../app/auth";
+import { problemOf } from "../../api/hooks/query";
+import { useRetireSchema, useSchema, useSchemaVersions } from "../../api/hooks/schemas";
+import type { SchemaDef } from "../../api/schemas";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
@@ -19,14 +15,6 @@ interface SchemaDetail {
   schema: SchemaDef;
   /** Every version of the schema's name. */
   versions: SchemaDef[];
-}
-
-async function loadDetail(client: ApiClient, id: string): Promise<ApiResult<SchemaDetail>> {
-  const schema = await getSchema(client, id);
-  if (schema.kind === "failed") return schema;
-  const versions = await listSchemas(client, schema.value.name);
-  if (versions.kind === "failed") return versions;
-  return { kind: "done", value: { schema: schema.value, versions: versions.value } };
 }
 
 function versionLabel({ name, version }: SchemaDef): string {
@@ -124,36 +112,35 @@ function SchemaDetailView({
 /** One schema version: its fields, its document as JSON and its other versions, with the changes the server allows
  * for it (SPEC-12 §4.3). */
 export function SchemaScreen() {
-  const client = useApiClient();
   const { id = "" } = useParams();
-  const [query, reload] = useApiQuery(useCallback(() => loadDetail(client, id), [client, id]));
-  const [problem, setProblem] = useState<Problem | null>(null);
+  const schema = useSchema(id);
+  const versions = useSchemaVersions(schema.data?.name);
+  const retire = useRetireSchema();
+  const loadProblem = problemOf(schema.error ?? versions.error);
+  const retireProblem = problemOf(retire.error);
 
-  const retire = (schema: SchemaDef) => {
-    setProblem(null);
-    void retireSchema(client, schema.id).then((result) => {
-      if (result.kind === "failed") {
-        setProblem(result.problem);
-        return;
-      }
-      toast.success(`Retired ${versionLabel(schema)}.`);
-      reload();
+  const onRetire = (version: SchemaDef) => {
+    retire.mutate(version.id, {
+      onSuccess: () => {
+        toast.success(`Retired ${versionLabel(version)}.`);
+      },
     });
   };
 
+  if (loadProblem !== null) return <ProblemAlert problem={loadProblem} />;
+  if (schema.data === undefined || versions.data === undefined) {
+    return <LoadingView label="Loading the schema" />;
+  }
+  const detail = { schema: schema.data, versions: versions.data };
   return (
     <section className="flex flex-col gap-6">
-      {problem === null ? null : <ProblemAlert problem={problem} />}
-      {query.kind === "loading" ? <LoadingView label="Loading the schema" /> : null}
-      {query.kind === "failed" ? <ProblemAlert problem={query.problem} /> : null}
-      {query.kind === "done" ? (
-        <SchemaDetailView
-          detail={query.value}
-          onRetire={() => {
-            retire(query.value.schema);
-          }}
-        />
-      ) : null}
+      {retireProblem === null ? null : <ProblemAlert problem={retireProblem} />}
+      <SchemaDetailView
+        detail={detail}
+        onRetire={() => {
+          onRetire(detail.schema);
+        }}
+      />
     </section>
   );
 }

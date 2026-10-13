@@ -1,4 +1,5 @@
 import type { RouteObject } from "react-router";
+import { ApiQueryProvider } from "../api/hooks/query";
 import { ConnectScreen } from "../screens/connect/ConnectScreen";
 import { HomeScreen } from "../screens/home/HomeScreen";
 import { ScrapeScreen } from "../screens/scrape/ScrapeScreen";
@@ -15,7 +16,9 @@ export const routes: RouteObject[] = [
   {
     element: (
       <AuthProvider>
-        <Shell />
+        <ApiQueryProvider>
+          <Shell />
+        </ApiQueryProvider>
       </AuthProvider>
     ),
     children: [

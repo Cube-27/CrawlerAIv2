@@ -1,9 +1,8 @@
 import { Button, Table } from "@heroui/react";
-import { useCallback } from "react";
 import { useNavigate } from "react-router";
-import { listSchemas, type SchemaDef } from "../../api/schemas";
-import { useApiQuery } from "../../api/useApiQuery";
-import { useApiClient } from "../../app/auth";
+import { problemOf } from "../../api/hooks/query";
+import { useSchemas } from "../../api/hooks/schemas";
+import type { SchemaDef } from "../../api/schemas";
 import { EmptyView } from "../../components/EmptyView";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
@@ -56,15 +55,15 @@ function SchemaTable({ schemas }: Readonly<{ schemas: readonly SchemaDef[] }>) {
 
 /** Every version of every schema (SPEC-12 §4.3), as the API lists them. */
 export function SchemasScreen() {
-  const client = useApiClient();
-  const [query] = useApiQuery(useCallback(() => listSchemas(client), [client]));
+  const query = useSchemas();
+  const problem = problemOf(query.error);
 
   return (
     <section className="flex flex-col gap-6">
       <PageHeader title="Schemas" actions={<NewSchemaButton />} />
-      {query.kind === "loading" ? <LoadingView label="Loading schemas" /> : null}
-      {query.kind === "failed" ? <ProblemAlert problem={query.problem} /> : null}
-      {query.kind === "done" ? <SchemaTable schemas={query.value} /> : null}
+      {query.isPending ? <LoadingView label="Loading schemas" /> : null}
+      {problem === null ? null : <ProblemAlert problem={problem} />}
+      {query.isSuccess ? <SchemaTable schemas={query.data} /> : null}
     </section>
   );
 }
