@@ -38,7 +38,7 @@ async def promote(fresh: PrivateEvalStore, hidden: PrivateEvalStore, dev: DevEva
     """Move each fresh site to dev whose pages are all `checked` (two passes, §16.2), or every fresh site with
     `all_pages`. A fresh site whose host also has hidden pages stays: moving it would put a hidden host in dev."""
     sites = await fresh.pages_by_host()
-    hidden_hosts = (await hidden.pages_by_host()).keys()
+    hidden_hosts = await hidden.hosts()
     chosen = {
         host
         for host, pages in sites.items()
@@ -52,7 +52,7 @@ async def rotate_hidden(hidden: PrivateEvalStore, fresh: PrivateEvalStore, dev: 
     category). A site's category is its first page's. A hidden site whose host also has fresh pages stays and is not
     counted in the fraction: moving it would put a fresh host in dev, and fresh is sites nobody has seen (§16.1)."""
     sites = await hidden.pages_by_host()
-    fresh_hosts = (await fresh.pages_by_host()).keys()
+    fresh_hosts = await fresh.hosts()
     rotatable = {host: pages[0].category for host, pages in sites.items() if host not in fresh_hosts}
     chosen = choose_sites(rotatable, fraction)
     return await _move(hidden, dev, sites, chosen)

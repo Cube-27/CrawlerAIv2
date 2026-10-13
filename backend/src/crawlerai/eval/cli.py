@@ -33,7 +33,7 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId, Split
-from crawlerai.eval.store import EvalPageRow, EvalStore, get_store
+from crawlerai.eval.store import EvalPageRow, EvalStore, PrivateCredentialsMissing, get_store
 
 _CATEGORIES: dict[str, EvalCategory] = {category: category for category in get_args(EvalCategory)}
 _SCHEMES = frozenset({"http", "https"})  # RFC 9110 §4.2: the URI schemes a page is fetched over
@@ -158,12 +158,17 @@ async def hosts_elsewhere(settings: Settings, split: Split) -> dict[Split, set[s
     """The hosts with pages in each split other than `split`. A dev capture reads the private splits only on a
     custodian's machine: elsewhere their hosts are unreadable by design (C1), and a dev capture is not checked
     against them."""
-    others = [other for other in get_args(Split) if other != split]
-    if split == "dev" and (settings.eval_private_database_url is None or settings.eval_private_object_store is None):
-        others = []
     taken: dict[Split, set[str]] = {}
-    for other in others:
-        async with aclosing(get_store(other, settings)) as store:
+    for other in get_args(Split):
+        if other == split:
+            continue
+        try:
+            opened = get_store(other, settings)
+        except PrivateCredentialsMissing:
+            if split != "dev":
+                raise
+            continue
+        async with aclosing(opened) as store:
             try:
                 taken[other] = await store.hosts()
             except Exception as e:

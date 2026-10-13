@@ -90,8 +90,12 @@ def _request(n: int, url: str) -> PageRequest:
 
 
 def test_hosts_with_pages_in_another_split_are_refused_by_count_only() -> None:
-    requests = [_request(1, f"{A}/p/1"), _request(2, f"{A.upper()}/p/2"), _request(3, f"{B}/p/1")]
-    requests.append(_request(4, "https://c.example.test/p/1"))
+    requests = [
+        _request(1, f"{A}/p/1"),
+        _request(2, f"{A.upper()}/p/2"),
+        _request(3, f"{B}/p/1"),
+        _request(4, "https://c.example.test/p/1"),
+    ]
     taken: dict[Split, set[str]] = {
         "hidden": {"a.example.test", "d.example.test"},
         "dev": {"a.example.test", "b.example.test"},
