@@ -52,6 +52,7 @@ def plant(src: Path, files: dict[str, str]) -> None:
         ({"resolve/probe.py": "from crawlerai import adapters\n"}, "Nothing outside adapters imports adapters"),
         ({"core/probe.py": "from crawlerai import db\n"}, "Layering"),
         ({"schemas/probe.py": "from crawlerai import normalize\n"}, "Layering"),
+        ({"services/probe.py": "from crawlerai import api\n"}, "Layering"),
     ],
 )
 def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[str, str], broken_contract: str) -> None:
@@ -73,6 +74,7 @@ def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[s
         {"collect/probe.py": "from crawlerai import adapters\n"},
         {"collect/probe.py": "from crawlerai import normalize\n"},
         {"normalize/money.py": "from crawlerai.normalize import base\nfrom crawlerai.schemas import types\n"},
+        {"api/probe.py": "from crawlerai import services\n", "services/probe.py": "from crawlerai import schemas\n"},
     ],
 )
 def test_permitted_imports_keep_every_contract(package_copy: Path, files: dict[str, str]) -> None:

@@ -12,7 +12,7 @@ from crawlerai.cli import main
 from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.db.models import SchemaId
 from crawlerai.schemas import registry
-from crawlerai.schemas.registry import PresetConflict, SchemaExists, SchemaNotFound, load_presets
+from crawlerai.schemas.registry import NotLatest, PresetConflict, SchemaExists, SchemaNotFound, load_presets
 from crawlerai.schemas.types import FieldSpec, SchemaChanges, SchemaDocument
 
 pytestmark = pytest.mark.anyio
@@ -135,6 +135,43 @@ async def test_list_filters_by_status(conn: AsyncConnection) -> None:
 
     assert [s.name for s in await registry.list_schemas(conn, status="active")] == ["event_listing"]
     assert [s.name for s in await registry.list_schemas(conn, status="retired")] == ["event_detail"]
+
+
+async def test_list_filters_by_name(conn: AsyncConnection) -> None:
+    first = await registry.create(conn, _custom(), "user")
+    await registry.new_version(conn, "event_detail", SchemaChanges(required_groups=[["title"]]), "user")
+    await registry.create(conn, _custom("event_listing"), "user")
+
+    versions = await registry.list_schemas(conn, name="event_detail")
+
+    assert [(s.name, s.version) for s in versions] == [("event_detail", 1), ("event_detail", 2)]
+    assert versions[0] == first
+
+
+async def test_new_version_on_a_base_that_is_not_the_latest_is_refused(conn: AsyncConnection) -> None:
+    await registry.create(conn, _custom(), "user")
+    second = await registry.new_version(conn, "event_detail", SchemaChanges(), "user", base_version=1)
+    from_first = SchemaChanges(required_groups=[["title"]])
+
+    with pytest.raises(NotLatest) as refused:
+        await registry.new_version(conn, "event_detail", from_first, "user", base_version=1)
+    assert refused.value.latest == second
+    assert [s.version for s in await registry.list_schemas(conn, name="event_detail")] == [1, 2]
+
+
+async def test_retire_sets_the_status_of_one_version_and_keeps_its_document(conn: AsyncConnection) -> None:
+    first = await registry.create(conn, _custom(), "user")
+    second = await registry.new_version(conn, "event_detail", SchemaChanges(), "user")
+
+    retired = await registry.retire(conn, first.id)
+    again = await registry.retire(conn, first.id)
+
+    assert retired == first.model_copy(update={"status": "retired"})
+    assert again == retired
+    assert await registry.get_by_id(conn, second.id) == second
+    missing_id = SchemaId(uuid.uuid4())
+    with pytest.raises(SchemaNotFound):
+        await registry.retire(conn, missing_id)
 
 
 def test_the_sync_command_inserts_the_presets(

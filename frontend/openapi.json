@@ -200,7 +200,7 @@
         "title": "FieldLabel",
         "type": "object"
       },
-      "FieldSpec": {
+      "FieldSpec-Input": {
         "additionalProperties": false,
         "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`.",
         "properties": {
@@ -222,7 +222,7 @@
               {
                 "patternProperties": {
                   "^[a-z][a-z0-9_]{0,63}$": {
-                    "$ref": "#/components/schemas/FieldSpec"
+                    "$ref": "#/components/schemas/FieldSpec-Input"
                   }
                 },
                 "type": "object"
@@ -236,7 +236,116 @@
           "item": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FieldSpec"
+                "$ref": "#/components/schemas/FieldSpec-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "schema_org": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Org"
+          },
+          "scheme": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gtin",
+                  "isbn",
+                  "mpn",
+                  "sku",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme"
+          },
+          "scope": {
+            "default": "row",
+            "enum": [
+              "row",
+              "page"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
+          },
+          "vocab": {
+            "anyOf": [
+              {
+                "pattern": "^(schema:[A-Z][A-Za-z0-9]*|type:[a-z][a-z0-9_]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vocab"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "FieldSpec",
+        "type": "object"
+      },
+      "FieldSpec-Output": {
+        "additionalProperties": false,
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[a-z][a-z0-9_]{0,63}$": {
+                    "$ref": "#/components/schemas/FieldSpec-Output"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldSpec-Output"
               },
               {
                 "type": "null"
@@ -448,6 +557,53 @@
         "title": "Labels",
         "type": "object"
       },
+      "NewSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/FieldSpec-Input"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "required_groups": {
+            "default": [],
+            "items": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Required Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "page_kind",
+          "fields",
+          "name"
+        ],
+        "title": "NewSchema",
+        "type": "object"
+      },
       "NormalizeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -503,7 +659,7 @@
           },
           "fields": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/FieldSpec"
+              "$ref": "#/components/schemas/FieldSpec-Output"
             },
             "title": "Fields",
             "type": "object"
@@ -742,6 +898,144 @@
           "instance"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "SchemaContent": {
+        "additionalProperties": false,
+        "description": "A schema document as a caller writes it, without the name and version the registry assigns.",
+        "properties": {
+          "fields": {
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/FieldSpec-Input"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "required_groups": {
+            "default": [],
+            "items": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Required Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "page_kind",
+          "fields"
+        ],
+        "title": "SchemaContent",
+        "type": "object"
+      },
+      "SchemaDef": {
+        "additionalProperties": false,
+        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. Rows are\nimmutable per (name, version); a change is a new version.",
+        "properties": {
+          "fields": {
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/FieldSpec-Output"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "preset",
+              "user",
+              "prompt_draft"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "required_groups": {
+            "default": [],
+            "items": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Required Groups",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "page_kind",
+          "fields",
+          "id",
+          "origin",
+          "status"
+        ],
+        "title": "SchemaDef",
+        "type": "object"
+      },
+      "SchemaList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaDef"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SchemaList",
         "type": "object"
       },
       "SkippedOut": {
@@ -1285,6 +1579,512 @@
         "summary": "Prefill",
         "tags": [
           "eval"
+        ]
+      }
+    },
+    "/v1/schemas": {
+      "get": {
+        "description": "Every version of every schema; only those of `name` and in `status` when given.",
+        "operationId": "list_schemas_v1_schemas_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "retired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Schemas",
+        "tags": [
+          "schemas"
+        ]
+      },
+      "post": {
+        "description": "A `user` schema at version 1.",
+        "operationId": "create_schema_v1_schemas_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Create Schema",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/v1/schemas/{schema_id}": {
+      "delete": {
+        "description": "Retires this version. The row stays, since records and configs reference it; a preset is refused (409).",
+        "operationId": "retire_schema_v1_schemas__schema_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schema_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schema Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Retire Schema",
+        "tags": [
+          "schemas"
+        ]
+      },
+      "get": {
+        "operationId": "get_schema_v1_schemas__schema_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schema_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schema Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Get Schema",
+        "tags": [
+          "schemas"
+        ]
+      },
+      "put": {
+        "description": "Adds the next version with `body` as its whole document and returns it. `schema_id` must be the latest\nversion, active and not a preset; otherwise 409.",
+        "operationId": "update_schema_v1_schemas__schema_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schema_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schema Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaContent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update Schema",
+        "tags": [
+          "schemas"
         ]
       }
     }

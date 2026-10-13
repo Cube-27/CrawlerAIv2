@@ -2556,3 +2556,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Derive and commit a type-hierarchy file.
 - Why: One source for the vocabulary (the manifest pin, D-0018); CI never fetches.
 - Reversible: yes
+
+### D-0394 — `PUT /v1/schemas/{id}` must name the latest version
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Decision: The body is the whole new document without name and version (`SchemaContent`). It becomes version latest+1 with `origin=user`, and the answer is 200 with the new row. If `{id}` is not the latest version, or is retired, the answer is 409 `conflict`, and the detail names the latest version's id. A concurrent insert of the same version is also 409. The registry's `new_version` takes `base_version` and raises `NotLatest`.
+- Alternatives: Build silently on whatever is latest; PATCH-style partial changes.
+- Why: An edit made to an old version would otherwise drop the versions added since without anyone noticing. PUT replaces the whole document (RFC 9110 §9.3.4).
+- Reversible: yes
+
+### D-0395 — `DELETE /v1/schemas/{id}` retires that one version
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Decision: The answer is 204, and a repeated DELETE is also 204. Other versions keep their status. `PUT` doesn't retire the version it builds on. Retiring the latest version freezes the name; that is a follow-up (ACTIVE, from the #81 review).
+- Alternatives: Retire every version of the name; retire the previous version on PUT.
+- Why: The id names a version, and records and configs reference versions (§5.2, D-0029, D-0243).
+- Reversible: yes
+
+### D-0396 — Presets are read-only through the API
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Decision: PUT or DELETE on an `origin=preset` row, and POST with a name from the preset files, answer 409 `conflict`.
+- Alternatives: Allow both.
+- Why: A `user` version under a preset's name would make the next `crawlerai schemas sync` raise `PresetConflict` (D-0242). Presets change only through their files (§5.3).
+- Reversible: yes
+
+### D-0397 — Problem type `conflict` (409)
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Decision: Added to SPEC-07 §4.3's types for a name that is taken, a stale edit, or a change to a preset or retired schema.
+- Alternatives: 422 `validation`.
+- Why: The request is valid, but the stored state doesn't allow it (RFC 9110 §15.5.10). This extends §4.3 the way D-0364 did.
+- Reversible: yes
+
+### D-0398 — `crawlerai.services` is its own layer under `api | mcp_server`
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Decision: Added to the layering contract and to the forbidden-import source lists. Input models (`NewSchema`, `SchemaContent`) live in the service, so REST and MCP share them. `GET /v1/schemas` answers `{items: [...]}` sorted by name then version, with optional `name` and `status` filters. POST answers 201 with `Location`.
+- Alternatives: Services beside `crawl | eval`; input models in `api.dto`.
+- Why: SPEC-07 §4.7 says REST and MCP call the same functions.
+- Reversible: yes

@@ -53,6 +53,7 @@ source_modules =
     crawlerai.resolve
     crawlerai.scheduler
     crawlerai.schemas
+    crawlerai.services
     crawlerai.storage
     crawlerai.worker
 forbidden_modules =
@@ -80,6 +81,7 @@ source_modules =
     crawlerai.resolve
     crawlerai.scheduler
     crawlerai.schemas
+    crawlerai.services
     crawlerai.storage
     crawlerai.worker
 forbidden_modules =
@@ -89,11 +91,13 @@ allow_indirect_imports = True
 # `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
 # contract lets acquire import adapters. normalize sits above schemas because each normalizer reads the field's
 # `FieldSpec` (SPEC-04 §4.3). collect sits above content because every collector reads the `ParsedPage` (INV-26).
+# services sits under the API and the MCP server, which both call it (SPEC-07 §4.7).
 [importlinter:contract:layers]
 name = Layering
 type = layers
 layers =
     crawlerai.api | crawlerai.mcp_server
+    crawlerai.services
     crawlerai.crawl | crawlerai.recurring | crawlerai.eval
     crawlerai.config_ir
     crawlerai.resolve | crawlerai.llm

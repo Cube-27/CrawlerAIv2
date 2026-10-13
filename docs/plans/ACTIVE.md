@@ -33,7 +33,9 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 4, SPEC-07 PRs 3, 7. Next: SPEC-05 PR 6, SPEC-07 PR 4 after PR 3, SPEC-12 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
+- In progress: SPEC-05 PR 4, SPEC-07 PR 3, SPEC-12 PR 3. Next: SPEC-05 PR 6, SPEC-07 PR 4 after PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
+- Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
+- Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
@@ -165,7 +167,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | Service layer + `POST /v1/scrape` (formats only) | todo | |
 | 5 | `records` format with schema id/inline + `max_age` | todo | |
 | 6 | `schema.prompt` via role S | todo | |
-| 7 | `/v1/schemas` CRUD | todo | |
+| 7 | `/v1/schemas` CRUD | done (#81) | Edits name the latest version; DELETE retires one version; presets read-only (D-0394–D-0398). |
 | 8 | `/v1/records`, `/v1/captures/{id}/replay` | todo | |
 
 ## [SPEC-08 — Config IR, executor, learning, progressive mode, drift and exporters](../specs/SPEC-08-config-ir-learning-progressive.md)

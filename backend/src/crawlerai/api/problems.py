@@ -32,6 +32,10 @@ def not_found(detail: str) -> ProblemError:
     return ProblemError(404, "not_found", "Not found", detail)
 
 
+def conflict(detail: str) -> ProblemError:
+    return ProblemError(409, "conflict", "Conflict", detail)
+
+
 def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError:
     return ProblemError(422, "validation", "Invalid request", detail, errors)
 
