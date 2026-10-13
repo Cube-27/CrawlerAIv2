@@ -3457,3 +3457,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A `CRAWLERAI_LLM_C_MAX_CHARS` setting now; record truncation on `LLMCallRecord`.
 - Why: Matches role S's precedent; `extraction.llm_calls` stores a count, so a diagnostic is what persists.
 - Reversible: yes
+
+### D-0523 — Replay uses the records' schema versions, cold
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 8 (#108) · Status: decided
+- Decision: A capture replays against each schema version its stored records follow (the recorded version, not the latest), cold (`adhoc`, no config, no role C), and returns the records a page task would store (`resolve.task.page_records`: one per listing row, deduplicated by row URL). A capture with no record answers 409 `conflict`; an unknown capture or an expired bundle answers 404.
+- Alternatives: A `schema_id` in the replay body (an API member SPEC-07 doesn't define); the latest schema version (the diff would compare different schemas).
+- Why: A capture carries no schema; schemas are immutable per version (§5.2), so the recorded version keeps the replay comparable with the stored record. SPEC-07 §4.4 runs cold until SPEC-08 exists.
+- Reversible: yes
+
+### D-0524 — `allow_llm` accepted, unused until role C binds on replay
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 8 (#108) · Status: decided
+- Decision: The replay body takes `allow_llm` (default false), but no replay calls an LLM yet: replay passes no role C to `extract_page`.
+- Alternatives: Leave the member out until then.
+- Why: SPEC-07 §4.6 defines the body; the default keeps replays cheap and deterministic (D-0029).
+- Reversible: yes
+
+### D-0525 — `GET /v1/records` pages by a keyset cursor, newest first
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 8 (#108) · Status: decided
+- Decision: `{items, next_cursor}`, newest first by record id (UUIDv7), cursor = the last id; `limit` 50 by default, at most 200; every filter optional; `site` is the host, compared without case (RFC 4343). A listed record is the §4.4 record plus `capture_id` (null once the capture expired), `schema_id` and `version`; its `confidence` is recomputed from `field_meta` and the schema (§10). Migration 0010 indexes `record (job_id, id)`, `(schema_id, id)` and `(extraction_id)`.
+- Alternatives: Offset paging; an opaque encoded cursor; requiring a filter.
+- Why: D-0469's envelope; a keyset cursor is stable while records are added; extractions keep a NULL `capture_id` after expiry (SPEC-01 §4.2).
+- Reversible: yes
+
+### D-0526 — The Records screen follows SPEC-07's shapes
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 8 (#108) · Status: decided
+- Decision: Where #97's hand shapes (D-0469) differed, the frontend follows SPEC-07: replayed records carry no `id`; `capture_id` is nullable (the inspector then offers no replay); the generated client marks `allow_llm` required, so the screen sends `{allow_llm: false}`. `RecordList` keys records by their position title. D-0469's module augmentation is deleted.
+- Alternatives: A synthetic id on replayed records.
+- Why: An id would name nothing stored (§13.1: replays are not persisted).
+- Reversible: yes

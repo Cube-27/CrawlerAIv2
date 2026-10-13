@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 13, SPEC-07 PR 8, SPEC-08 PR 3 (L2). Next: SPEC-06 PR 5 (last L1 row), SPEC-09 PR 2 (L2).
+- In progress: SPEC-05 PR 13, SPEC-06 PR 5 (the last L1 rows), SPEC-08 PR 3 (L2). Next: SPEC-09 PR 2, SPEC-08 PR 4 (L2).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -168,7 +168,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | `records` format with schema id/inline + `max_age` | done (#105) | Inline schemas stored or matched by name, 409 on a differing one; `max_age` reuses only `ok` captures; no engine data is a 503 (D-0501–D-0508). Follow-up: two concurrent first uses of one new inline name make the second a 409 (re-read on `SchemaExists`). |
 | 6 | `schema.prompt` via role S | done (#96) | Drafted only from a reached page; LLM failures fail the job as problems; the API starts without provider keys (D-0466–D-0468). PR 5 passes the draft to `records`. |
 | 7 | `/v1/schemas` CRUD | done (#81) | Edits name the latest version; DELETE retires one version; presets read-only (D-0394–D-0398). |
-| 8 | `/v1/records`, `/v1/captures/{id}/replay` | todo | |
+| 8 | `/v1/records`, `/v1/captures/{id}/replay` | done (#108) | Replay uses the records' schema versions, cold, and keeps what a page task stores (listing rows each); D-0469's hand shapes replaced by the generated client (D-0523–D-0526). Migration 0010: `record` indexes for the job/schema filters and replay. |
 
 ## [SPEC-08 — Config IR, executor, learning, progressive mode, drift and exporters](../specs/SPEC-08-config-ir-learning-progressive.md)
 
