@@ -169,7 +169,7 @@ def test_a_spec_still_wrong_after_the_repair_is_rejected_without_a_fetch(stand_i
 
     result, sent = _run(client, _pages(), _api(stand_in_api))
 
-    assert result == Rejected(("page 1: method_mismatch(POST, GET)", "page 2: method_mismatch(POST, GET)"), repairs=1)
+    assert result == Rejected(("page 1: method_mismatch(POST, GET)", "page 2: method_mismatch(POST, GET)"))
     assert sent == []
     assert len(client.requests) == 2
 

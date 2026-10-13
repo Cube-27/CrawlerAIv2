@@ -77,13 +77,34 @@ def resolve(binder: Binder, page_url: str, page_data: PageData) -> str | None:
 
 def resolve_params(spec: RequestSpec, page_url: str, page_data: PageData) -> dict[str, str] | None:
     """Every parameter of `spec` read from the page; `None` when one has no value there."""
+    params = _params_or_missing(spec, page_url, page_data)
+    return params if isinstance(params, dict) else None
+
+
+def _params_or_missing(spec: RequestSpec, page_url: str, page_data: PageData) -> dict[str, str] | str:
+    """Every parameter of `spec` read from the page, or the name of the first one without a value there."""
     params: dict[str, str] = {}
     for name, binder in spec.binders.items():
         value = resolve(binder, page_url, page_data)
         if value is None:
-            return None
+            return name
         params[name] = value
     return params
+
+
+def request_spec(method: str, url: str, params: Mapping[str, str], body: str | None) -> RequestSpec:
+    """The spec with these templates and binders and no headers; it fetches the page first exactly when a binder
+    reads the page's JSON documents. Raises `ValidationError` when they are not a valid request."""
+    reads_page = any(parse_binder(text).kind in _DATA_KINDS for text in params.values())
+    return RequestSpec.model_validate(
+        {
+            "method": method,
+            "url": url,
+            "params_from_url": params,
+            "body": None if body is None else {"template": body},
+            "requires_page_fetch": reads_page,
+        }
+    )
 
 
 def render_url(template: str, params: Mapping[str, str]) -> str:
@@ -211,22 +232,13 @@ class _Binding:
         url = self._url_template()
         body = self._body_template()
         params = {name: text for text, name in self.params.items()}
-        reads_page = any(parse_binder(text).kind in _DATA_KINDS for text in self.params)
         try:
-            spec = RequestSpec.model_validate(
-                {
-                    "method": self.method,
-                    "url": url,
-                    "params_from_url": params,
-                    "body": None if body is None else {"template": body},
-                    "requires_page_fetch": reads_page,
-                }
-            )
+            spec = request_spec(self.method, url, params, body)
         except ValidationError as error:
             raise _Unbound(f"the bound templates are not a valid request: {error.errors()[0]['msg']}") from None
         for number, sample in enumerate(self.samples):
-            if not _reproduces(spec, sample):
-                raise _Unbound(f"the bound templates do not reproduce the request of sample page {number}")
+            if (problem := mismatch(spec, sample)) is not None:
+                raise _Unbound(f"the bound templates do not reproduce the request of sample page {number}: {problem}")
         return spec
 
     def _url_template(self) -> str:
@@ -299,20 +311,14 @@ def _placeholder_or(name: str | None, literal: str) -> str:
     return literal if name is None else "{" + name + "}"
 
 
-def _reproduces(spec: RequestSpec, sample: Sample) -> bool:
-    return mismatch(spec, sample) is None
-
-
 def mismatch(spec: RequestSpec, sample: Sample) -> str | None:
     """Why `spec` does not reproduce the endpoint request of `sample` (its method, URL and JSON body), or `None` when
     it does: `method_mismatch(got, want)`, `no_value(<param>)`, `url_mismatch(got, want)` or `body_mismatch(...)`."""
     if spec.method != sample.request.method.upper():
         return f"method_mismatch({spec.method}, {sample.request.method})"
-    params: dict[str, str] = {}
-    for name, binder in spec.binders.items():
-        if (value := resolve(binder, sample.page_url, sample.page_data)) is None:
-            return f"no_value({name})"
-        params[name] = value
+    params = _params_or_missing(spec, sample.page_url, sample.page_data)
+    if isinstance(params, str):
+        return f"no_value({params})"
     if (url := render_url(spec.url, params)) != sample.request.url:
         return f"url_mismatch({url}, {sample.request.url})"
     return _body_mismatch(spec, params, sample.request.body)

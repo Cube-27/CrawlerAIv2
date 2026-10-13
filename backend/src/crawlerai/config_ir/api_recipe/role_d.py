@@ -23,9 +23,9 @@ from typing import Final, cast
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import json_doc
-from crawlerai.config_ir.api_recipe.binding import Ambiguous, Sample, mismatch
+from crawlerai.config_ir.api_recipe.binding import Ambiguous, Sample, mismatch, request_spec
 from crawlerai.config_ir.api_recipe.headers import NotLearnable, Proven, minimize
-from crawlerai.config_ir.api_recipe.model import PAGE_DATA_KINDS, RequestSpec, parse_binder
+from crawlerai.config_ir.api_recipe.model import RequestSpec
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage
 from crawlerai.config_ir.sample_view import KEYS_MAX_CHARS
 from crawlerai.db.models import JobId
@@ -61,7 +61,6 @@ class Rejected:
     job."""
 
     diagnostics: tuple[str, ...]
-    repairs: int
 
 
 async def bind_by_role_d(
@@ -86,16 +85,17 @@ async def bind_by_role_d(
         if spec is not None:
             return await minimize(spec, fields, pages, schema, replay)
         previous = (response.data, diagnostics)
-    return Rejected(diagnostics, MAX_REPAIRS)
+    return Rejected(diagnostics)
 
 
 def _check(data: Mapping[str, JsonValue], samples: Sequence[Sample]) -> tuple[RequestSpec | None, tuple[str, ...]]:
     """The reply as a spec when it reproduces every sample request, else its diagnostics."""
     try:
         spec = _spec(data)
-    except (ValidationError, ValueError) as error:
-        message = error.errors()[0]["msg"] if isinstance(error, ValidationError) else str(error)
-        return None, (f"invalid_spec({message})",)
+    except ValidationError as error:
+        return None, (f"invalid_spec({error.errors()[0]['msg']})",)
+    except ValueError as error:  # a parameter bound twice, or a binder that does not parse
+        return None, (f"invalid_spec({error})",)
     found = [f"page {n}: {problem}" for n, s in enumerate(samples, 1) if (problem := mismatch(spec, s)) is not None]
     return (None, tuple(found[:MAX_DIAGNOSTICS])) if found else (spec, ())
 
@@ -107,17 +107,7 @@ def _spec(data: Mapping[str, JsonValue]) -> RequestSpec:
         if param["name"] in params:
             raise ValueError(f"parameter {param['name']!r} bound twice")
         params[param["name"]] = param["binder"]
-    reads_page = any(parse_binder(binder).kind in PAGE_DATA_KINDS for binder in params.values())
-    body = data["body"]
-    return RequestSpec.model_validate(
-        {
-            "method": data["method"],
-            "url": data["url"],
-            "params_from_url": params,
-            "body": None if body is None else {"template": body},
-            "requires_page_fetch": reads_page,
-        }
-    )
+    return request_spec(cast(str, data["method"]), cast(str, data["url"]), params, cast(str | None, data["body"]))
 
 
 def _request(
