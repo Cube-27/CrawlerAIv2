@@ -42,6 +42,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description The config's IR and validation report.
+         */
+        get: operations["get_config_v1_configs__config_id__get"];
+        /**
+         * Correct Config
+         * @description Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.
+         *     It is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be
+         *     the latest version of its site, schema version and page kind; otherwise 409.
+         */
+        put: operations["correct_config_v1_configs__config_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/eval/capture": {
         parameters: {
             query?: never;
@@ -304,10 +330,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sites/{host}/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Site Configs
+         * @description Every version of the site's configs, with status, field status and validation report, by schema version, page
+         *     kind and version.
+         */
+        get: operations["list_site_configs_v1_sites__host__configs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sites/{host}/learn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Learn Site
+         * @description Starts learning the site's config for a schema version; 409 while a run is in flight, or when the site has an
+         *     active config and `force` is not set.
+         */
+        post: operations["learn_site_v1_sites__host__learn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AbsolutizeUrlOp
+         * @description Resolves the value against the page's base URL (RFC 3986 §5).
+         */
+        AbsolutizeUrlOp: {
+            absolutize_url: components["schemas"]["_NoParams"];
+        };
+        /** ApiRecipe */
+        ApiRecipe: {
+            body?: components["schemas"]["RequestBody"] | null;
+            /**
+             * Headers
+             * @default {}
+             */
+            headers: {
+                [key: string]: string;
+            };
+            /** Map */
+            map: {
+                [key: string]: string;
+            };
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "GET" | "POST";
+            pagination?: components["schemas"]["Pagination"] | null;
+            /**
+             * Params From Url
+             * @default {}
+             */
+            params_from_url: {
+                [key: string]: string;
+            };
+            proof: components["schemas"]["Proof"];
+            /**
+             * Requires Page Fetch
+             * @default false
+             */
+            requires_page_fetch: boolean;
+            /** Url */
+            url: string;
+        };
         /**
          * AttemptRecord
          * @description One rung tried. `status` is None when no response arrived (network error, timeout, SSRF rejection).
@@ -329,6 +440,32 @@ export interface components {
             method: "http" | "browser" | "api";
             /** Status */
             status: number | null;
+        };
+        /**
+         * AttrStep
+         * @description An attribute of the context node: the row in a listing.
+         */
+        "AttrStep-Input": {
+            /** Attr */
+            attr: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+        };
+        /**
+         * AttrStep
+         * @description An attribute of the context node: the row in a listing.
+         */
+        "AttrStep-Output": {
+            /** Attr */
+            attr: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
         };
         /** Budget */
         Budget: {
@@ -394,6 +531,147 @@ export interface components {
             /** Status Code */
             status_code: number;
         };
+        /** ConfigDetail */
+        ConfigDetail: {
+            /** Field Status */
+            field_status: {
+                [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended";
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            ir: components["schemas"]["ExtractionConfigIR"];
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+            /** Schema Version */
+            schema_version: number;
+            /** Site */
+            site: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "suspended";
+            validation_report: components["schemas"]["ValidationReport"] | null;
+            /** Version */
+            version: number;
+        };
+        /** ConfigList */
+        ConfigList: {
+            /** Items */
+            items: components["schemas"]["ConfigSummary"][];
+        };
+        /**
+         * ConfigSummary
+         * @description One version of a site's config for one schema version and page kind, without its IR.
+         */
+        ConfigSummary: {
+            /** Field Status */
+            field_status: {
+                [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended";
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+            /** Schema Version */
+            schema_version: number;
+            /** Site */
+            site: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "suspended";
+            validation_report: components["schemas"]["ValidationReport"] | null;
+            /** Version */
+            version: number;
+        };
+        /** CorrectedSteps */
+        CorrectedSteps: {
+            /** Steps */
+            steps: (components["schemas"]["XPathStep-Input"] | components["schemas"]["CssStep-Input"] | components["schemas"]["JsonLdStep-Input"] | components["schemas"]["JsonPathStep-Input"] | components["schemas"]["RegexStep-Input"] | components["schemas"]["AttrStep-Input"])[];
+        };
+        /**
+         * Correction
+         * @description The body of `PUT /v1/configs/{id}`: steps per field (`null` removes the field), and fields whose steps the
+         *     operator confirms.
+         */
+        Correction: {
+            /**
+             * Confirm
+             * @default []
+             */
+            confirm: string[];
+            /**
+             * Fields
+             * @default {}
+             */
+            fields: {
+                [key: string]: components["schemas"]["CorrectedSteps"] | null;
+            };
+        };
+        /**
+         * CssStep
+         * @description A CSS selector, kept for readability, and its XPath 1.0 translation, which is what executors run.
+         */
+        "CssStep-Input": {
+            /** Css */
+            css: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** Xpath */
+            xpath: string;
+        };
+        /**
+         * CssStep
+         * @description A CSS selector, kept for readability, and its XPath 1.0 translation, which is what executors run.
+         */
+        "CssStep-Output": {
+            /** Css */
+            css: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** Xpath */
+            xpath: string;
+        };
         /**
          * ExportPage
          * @description One page of a job's records in an export format (SPEC-08 §4.11); `next_cursor` as in `RecordPage`.
@@ -429,6 +707,38 @@ export interface components {
              * @enum {string}
              */
             mode: "adhoc" | "config";
+        };
+        /** ExtractionConfigIR */
+        ExtractionConfigIR: {
+            api_recipe?: components["schemas"]["ApiRecipe"] | null;
+            fetch: components["schemas"]["Fetch"];
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldSteps"];
+            };
+            /**
+             * Ir Version
+             * @constant
+             */
+            ir_version: "1";
+            listing?: components["schemas"]["ListingSpec"] | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            provenance: components["schemas"]["Provenance"];
+            schema: components["schemas"]["SchemaRef"];
+            /** Site */
+            site: string;
+        };
+        /** Fetch */
+        Fetch: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "http" | "browser";
         };
         /** FetchOptions */
         FetchOptions: {
@@ -491,6 +801,37 @@ export interface components {
             /** Locator */
             locator?: string | null;
             value?: components["schemas"]["JsonValue"];
+        };
+        /**
+         * FieldReport
+         * @description One field on the held-out pages. `pages`: held-out pages; `matched`/`valid`: pages where the config matched and
+         *     where every match was valid; `published`/`reproduced`: pages where the engine published the field and where both
+         *     executors gave that value; `comparable`/`corroborated_on`: pages with a structured or adapter value and where the
+         *     config's value equals it. `status` is None for a dropped field, with the check it failed in `dropped`.
+         */
+        FieldReport: {
+            /** Comparable */
+            comparable: number;
+            /** Corroborated On */
+            corroborated_on: number;
+            /** Dropped */
+            dropped?: string | null;
+            /** Matched */
+            matched: number;
+            /** Pages */
+            pages: number;
+            /** Published */
+            published: number;
+            /** Reproduced */
+            reproduced: number;
+            /** Status */
+            status: ("corroborated" | "uncorroborated" | "operator" | "suspended") | null;
+            /** Valid */
+            valid: number;
+            /** Validity */
+            validity: number | null;
+            /** Yield */
+            yield: number;
         };
         /**
          * FieldSpec
@@ -561,6 +902,24 @@ export interface components {
             vocab?: string | null;
         };
         /**
+         * FieldSteps
+         * @description A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
+         *     (SPEC-08 §4.7) once validated.
+         */
+        FieldSteps: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "corroborated" | "uncorroborated" | "operator" | "suspended";
+            /** Steps */
+            steps: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"])[];
+            /** Validity */
+            validity?: number | null;
+            /** Yield */
+            yield?: number | null;
+        };
+        /**
          * FieldType
          * @description The §5.1 field types. A type is added here only together with its normalizer module (C8).
          * @enum {string}
@@ -614,6 +973,66 @@ export interface components {
             /** Webhook Url */
             webhook_url: string | null;
         };
+        /**
+         * JsonLdStep
+         * @description A JSONPath into the page's expanded JSON-LD nodes, optionally only those of one schema.org type.
+         */
+        "JsonLdStep-Input": {
+            /** Jsonld */
+            jsonld: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** When Type */
+            when_type?: string | null;
+        };
+        /**
+         * JsonLdStep
+         * @description A JSONPath into the page's expanded JSON-LD nodes, optionally only those of one schema.org type.
+         */
+        "JsonLdStep-Output": {
+            /** Jsonld */
+            jsonld: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** When Type */
+            when_type?: string | null;
+        };
+        /** JsonPathStep */
+        "JsonPathStep-Input": {
+            /** Jsonpath */
+            jsonpath: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "jsonld" | "js_state" | "xhr" | "api";
+        };
+        /** JsonPathStep */
+        "JsonPathStep-Output": {
+            /** Jsonpath */
+            jsonpath: string;
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "jsonld" | "js_state" | "xhr" | "api";
+        };
         JsonValue: unknown;
         /** LabelRow */
         LabelRow: {
@@ -658,6 +1077,61 @@ export interface components {
              */
             status: "draft" | "labeled" | "checked";
         };
+        /**
+         * LearnRequest
+         * @description `schema_id` names the schema version, and so the page kind, to learn for; `force` re-learns an active one.
+         */
+        LearnRequest: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+        };
+        /** LearnStarted */
+        LearnStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+        };
+        /**
+         * ListingReport
+         * @description `rows_ok`: held-out pages where `row` selected at least `MIN_ROWS` rows; when some page has fewer, the listing is
+         *     dropped (`dropped`) and its fields with it.
+         */
+        ListingReport: {
+            /** Dropped */
+            dropped?: string | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldReport"];
+            };
+            next: components["schemas"]["FieldReport"] | null;
+            /** Rows Ok */
+            rows_ok: number;
+        };
+        /**
+         * ListingSpec
+         * @description Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next
+         *     page's URL.
+         */
+        ListingSpec: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldSteps"];
+            };
+            /** Next */
+            next?: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"]) | null;
+            /** Row */
+            row: components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"];
+        };
         /** NewSchema */
         NewSchema: {
             /** Fields */
@@ -676,6 +1150,18 @@ export interface components {
              * @default []
              */
             required_groups: string[][];
+        };
+        /**
+         * NormalizeOp
+         * @description `{"<field type>": {}}`: the type's normalizer (SPEC-04) runs on the value.
+         */
+        "NormalizeOp-Input": {
+            type: components["schemas"]["FieldType"];
+        };
+        "NormalizeOp-Output": {
+            [key: string]: {
+                [key: string]: unknown;
+            };
         };
         /** NormalizeRequest */
         NormalizeRequest: {
@@ -814,6 +1300,26 @@ export interface components {
             status: ("draft" | "labeled" | "checked") | null;
         };
         /**
+         * Pagination
+         * @description §4.8: the listing's next request sets query parameter `name` to `start`, `start + step`, ... until `rows`
+         *     selects nothing.
+         */
+        Pagination: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "param";
+            /** Name */
+            name: string;
+            /** Rows */
+            rows: string;
+            /** Start */
+            start: number;
+            /** Step */
+            step: number;
+        };
+        /**
          * Problem
          * @description RFC 9457 problem details (SPEC-07 §4.3). `type` is one of the API's problem types, or `about:blank` when the
          *     HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path (§3.1.5).
@@ -834,6 +1340,64 @@ export interface components {
             title: string;
             /** Type */
             type: string;
+        };
+        /**
+         * Proof
+         * @description How the recipe was accepted: the held-out captures it reproduced (§4.7), the headers replay tried (§4.6) and
+         *     what bound it.
+         */
+        Proof: {
+            /**
+             * Bound By
+             * @enum {string}
+             */
+            bound_by: "deterministic" | "role_d";
+            /** Headers Tried */
+            headers_tried: number;
+            /** Validated On */
+            validated_on: string[];
+        };
+        /** Provenance */
+        Provenance: {
+            /** Engine Version */
+            engine_version: string;
+            /**
+             * Learned At
+             * Format: date-time
+             */
+            learned_at: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            /** Validated On */
+            validated_on: string[];
+        };
+        /**
+         * RecipeFieldReport
+         * @description One field of an API recipe's map (SPEC-09 §4.7). `published`: held-out pages where the engine published the
+         *     field; `reproduced`: those where the replayed response gave that value.
+         */
+        RecipeFieldReport: {
+            /** Published */
+            published: number;
+            /** Reproduced */
+            reproduced: number;
+        };
+        /**
+         * RecipeReport
+         * @description The API recipe's held-out validation (SPEC-09 §4.7). `refused` says why the recipe did not enter the config.
+         */
+        RecipeReport: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["RecipeFieldReport"];
+            };
+            /** Held Out */
+            held_out: string[];
+            /** Refused */
+            refused?: string | null;
         };
         /** RecordField */
         RecordField: {
@@ -868,6 +1432,37 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** RegexReplaceOp */
+        RegexReplaceOp: {
+            regex_replace: components["schemas"]["RegexReplaceParams"];
+        };
+        /** RegexReplaceParams */
+        RegexReplaceParams: {
+            /** Pattern */
+            pattern: string;
+            /** Repl */
+            repl: string;
+        };
+        /** RegexStep */
+        "RegexStep-Input": {
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** Regex */
+            regex: string;
+        };
+        /** RegexStep */
+        "RegexStep-Output": {
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** Regex */
+            regex: string;
+        };
         /** ReplayRequest */
         ReplayRequest: {
             /**
@@ -880,6 +1475,14 @@ export interface components {
         ReplayResult: {
             /** Records */
             records: components["schemas"]["ExtractedRecord"][];
+        };
+        /**
+         * RequestBody
+         * @description A JSON request body with `{name}` placeholders; a value is written JSON-escaped where its placeholder stands.
+         */
+        RequestBody: {
+            /** Template */
+            template: string;
         };
         /** SchemaById */
         SchemaById: {
@@ -962,6 +1565,13 @@ export interface components {
         SchemaPrompt: {
             /** Prompt */
             prompt: string;
+        };
+        /** SchemaRef */
+        SchemaRef: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
         };
         /**
          * ScrapeRequest
@@ -1129,6 +1739,10 @@ export interface components {
             /** Queued */
             queued: number;
         };
+        /** TrimOp */
+        TrimOp: {
+            trim: components["schemas"]["_NoParams"];
+        };
         /**
          * Usage
          * @description What the scrape's job used (ARCHITECTURE §17).
@@ -1160,6 +1774,48 @@ export interface components {
              */
             llm_tokens_out: number;
         };
+        /**
+         * ValidationReport
+         * @description The `extraction_config.validation_report` (SPEC-08 §4.7). `refused` says why nothing can activate; `api_recipe`
+         *     is the recipe's validation when the site has one (SPEC-09 §4.7).
+         */
+        ValidationReport: {
+            api_recipe?: components["schemas"]["RecipeReport"] | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldReport"];
+            };
+            /** Held Out */
+            held_out: string[];
+            listing: components["schemas"]["ListingReport"] | null;
+            /** Refused */
+            refused?: string | null;
+        };
+        /** XPathStep */
+        "XPathStep-Input": {
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** Xpath */
+            xpath: string;
+        };
+        /** XPathStep */
+        "XPathStep-Output": {
+            /**
+             * Post
+             * @default []
+             */
+            post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            /** Xpath */
+            xpath: string;
+        };
+        /**
+         * _NoParams
+         * @description `{}`: the op takes no parameters.
+         */
+        _NoParams: Record<string, never>;
     };
     responses: never;
     parameters: never;
@@ -1221,6 +1877,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReplayResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_config_v1_configs__config_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    correct_config_v1_configs__config_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Correction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDetail"];
                 };
             };
             /** @description Unauthorized */
@@ -2284,6 +3088,144 @@ export interface operations {
             };
             /** @description Gateway Timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_site_configs_v1_sites__host__configs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    learn_site_v1_sites__host__learn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnStarted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -51,6 +51,7 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
     assert sorted(document["paths"]) == [
         "/healthz",
         "/v1/captures/{capture_id}/replay",
+        "/v1/configs/{config_id}",
         "/v1/eval/capture",
         "/v1/eval/pages",
         "/v1/eval/pages/{page_id}",
@@ -63,6 +64,8 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
         "/v1/schemas",
         "/v1/schemas/{schema_id}",
         "/v1/scrape",
+        "/v1/sites/{host}/configs",
+        "/v1/sites/{host}/learn",
     ]
     assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
 

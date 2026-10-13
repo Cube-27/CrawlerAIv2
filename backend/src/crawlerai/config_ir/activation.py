@@ -2,18 +2,30 @@
 schema, page kind) config, `active`, with its field statuses and `validation_report`; the config active before it is
 `suspended`, and the learning run in flight ends with the state `active` on the new config.
 
+An operator's correction (§4.10) is stored as the next version whether or not it validates: active as above, without
+ending any learning run, or a `draft` with the report that says why not.
+
 Only a `Validated` with a config activates: nothing activates without validation (§4.13). Everything runs on the
 caller's connection, in its transaction, so a run that cannot end (`NotLearning`) stores nothing.
 """
+
+from collections.abc import Collection
 
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.executor import ConfigMismatch
 from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import NotLearning, StateKey, learning_activated
+from crawlerai.config_ir.progressive import NotLearning, StateKey, learning_activated, operator_activated
 from crawlerai.config_ir.validation import Validated, ValidationReport
-from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, ProgressiveState, SchemaDef, Site
+from crawlerai.db.models import (
+    ConfigStatus,
+    ExtractionConfig,
+    ExtractionConfigId,
+    ProgressiveState,
+    SchemaDef,
+    Site,
+)
 
 
 class NotValidated(ValueError):
@@ -33,9 +45,35 @@ async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -
     if started is None or started.learning_started_at is None:
         raise NotLearning(key, "activate")
     await _check_key(conn, key, ir)
-    config_id = await _store(conn, key, ir, validated.report)
+    await _suspend_active(conn, key)
+    config_id = await _store(conn, key, ir, validated.report, "active")
     await learning_activated(conn, key, config_id)
     return config_id
+
+
+async def store_correction(
+    conn: AsyncConnection,
+    key: StateKey,
+    corrected: ExtractionConfigIR,
+    validated: Validated,
+    operated: Collection[str],
+) -> ExtractionConfigId:
+    """Store an operator's `corrected` config, validated as `validated`, as `key`'s next version, and return its id.
+    It is `validated`'s config, active, only when validation kept every field in `operated` (those the operator gave
+    steps or confirmed): activating without one would drop the operator's work and suspend the version that served.
+    Otherwise it is `corrected` as a `draft`. The caller holds `key`'s state lock (`progressive.lock_state`). Raises
+    `ConfigMismatch` like `activate`."""
+    await _check_key(conn, key, corrected)
+    if validated.ir is None or not set(operated) <= _field_names(validated.ir):
+        return await _store(conn, key, corrected, validated.report, "draft")
+    await _suspend_active(conn, key)
+    config_id = await _store(conn, key, validated.ir, validated.report, "active")
+    await operator_activated(conn, key, config_id)
+    return config_id
+
+
+def _field_names(ir: ExtractionConfigIR) -> set[str]:
+    return set(ir.fields) | (set(ir.listing.fields) if ir.listing is not None else set())
 
 
 async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR) -> None:
@@ -49,20 +87,24 @@ async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigI
         raise ConfigMismatch(f"config for {learned} activated for progressive_state {key}")
 
 
+async def _suspend_active(conn: AsyncConnection, key: StateKey) -> None:
+    # ARCHITECTURE §6: one active config per (site, schema, page kind); the one before is suspended.
+    configs = ExtractionConfig
+    active = (*key.config_scope(), configs.status == "active")
+    await conn.execute(update(configs).where(*active).values(status="suspended"))
+
+
 async def _store(
-    conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR, report: ValidationReport
+    conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR, report: ValidationReport, status: ConfigStatus
 ) -> ExtractionConfigId:
     configs = ExtractionConfig
-    scope = (configs.site_id == key.site_id, configs.schema_id == key.schema_id, configs.page_kind == key.page_kind)
-    # ARCHITECTURE §6: one active config per (site, schema, page kind); the one before is suspended.
-    await conn.execute(update(configs).where(*scope, configs.status == "active").values(status="suspended"))
-    version = select(func.coalesce(func.max(configs.version), 0) + 1).where(*scope).scalar_subquery()
+    version = select(func.coalesce(func.max(configs.version), 0) + 1).where(*key.config_scope()).scalar_subquery()
     listed = ir.listing.fields if ir.listing is not None else {}
     statuses = {name: steps.status for name, steps in (*ir.fields.items(), *listed.items())}
     stored = insert(configs).values(
         **key.columns(),
         version=version,
-        status="active",
+        status=status,
         ir=ir.model_dump(mode="json", by_alias=True),
         origin=ir.provenance.origin,
         field_status=statuses,

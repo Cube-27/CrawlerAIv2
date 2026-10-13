@@ -4,7 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from crawlerai.db.models import JobId
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.services.configs import ConfigSummary
 from crawlerai.services.records import ExtractedRecord
 
 
@@ -52,3 +54,11 @@ class ReplayRequest(Model):
 
 class ReplayResult(Model):
     records: list[ExtractedRecord]  # not stored (ARCHITECTURE §13.1)
+
+
+class ConfigList(Model):
+    items: list[ConfigSummary]  # by schema version, page kind, then version
+
+
+class LearnStarted(Model):
+    job_id: JobId
