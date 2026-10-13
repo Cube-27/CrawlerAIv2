@@ -2219,3 +2219,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: per-screen headings and error markup.
 - Why: Owner rule D-0341 and "one way per recurring job".
 - Reversible: yes
+
+### D-0346 — Usage is committed in its own transaction
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided
+- Decision: `MeteredClient` holds an `AsyncEngine` and records each call's usage with `engine.begin()`, not on the caller's connection; a caller must not hold an uncommitted write to the job row when it calls the client.
+- Alternatives: Return usage in a result for the handler to record; catch provider errors in handlers.
+- Why: Closes the ACTIVE.md note for SPEC-06 for every caller at once; the typed exceptions (§4.7) can propagate without losing usage (D-0151's concern).
+- Reversible: yes
+
+### D-0347 — Only answered LLM calls are charged
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided
+- Decision: A provider error records no usage; an invalid reply that is retried is two charged calls.
+- Alternatives: Charge every attempt.
+- Why: A failed call has no token counts and no cost; the budget is checked before each attempt either way.
+- Reversible: yes
+
+### D-0348 — No LLM budget or usage without a job
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided
+- Decision: `job_id=None` (eval pre-fill only, SPEC-06 §4.2) skips the budget check and usage rows; `usage_event.job_id` is NOT NULL.
+- Alternatives: A synthetic job for pre-fill.
+- Why: Matches the spec's field comment; SPEC-06 PR 5 revisits if pre-fill needs metering.
+- Reversible: yes
+
+### D-0349 — The root output schema is a closed object
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided
+- Decision: `LLMRequest` refuses an `output_schema` whose root is not `{"type": "object", "additionalProperties": false}`, including an omitted `additionalProperties`.
+- Alternatives: Refuse only an explicit `additionalProperties: true` (§4.6's literal wording).
+- Why: An omitted keyword allows extra properties too, which is what §4.6 guards against; the most conservative reading.
+- Reversible: yes
+
+### D-0350 — `request_hash` keeps SPEC-03's key
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided
+- Decision: sha256 of the canonical JSON array (prompt_kind, model_class, system, user, output_schema), excluding `max_output_tokens` and `job_id`; `request_key` renamed `request_hash` and moved to `llm.client`.
+- Alternatives: Hash the concrete model (§4.2's wording).
+- Why: The provider picks the model after the request exists, and existing recordings keep their keys.
+- Reversible: yes
+
+### D-0351 — `jsonschema` for LLM output validation
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided
+- Decision: `jsonschema` (MIT) validates replies against draft 2020-12 schemas; `types-jsonschema` (Apache-2.0) is a dev dependency for mypy.
+- Alternatives: A hand-written validator.
+- Why: The standard implementation; licence-clean.
+- Reversible: yes

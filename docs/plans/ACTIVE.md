@@ -43,7 +43,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
 - Note (from #26): the robots snapshot is per site, but robots.txt is per scheme, host and port (RFC 9309 §2.3); a site served on both `http` and `https` or a non-default port shares one snapshot.
 - Open (SPEC-04 PR 7 / SPEC-05): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Decide how runtime data ships (package data or a settings path) together with GeoNames data and calibration; the build must write `VERSION`.
-- Note for SPEC-06: usage recorded in a task's transaction is lost if the handler then raises (transient retries roll back). Catch provider errors and return a result, or record usage in its own transaction.
+- For SPEC-06 PR 4 (from #69): the LLM client commits usage on its own connection (D-0346), so a handler must not hold an uncommitted write to the job row when it calls the client.
 - Done: `claim_tasks` no longer claims more than `n` tasks (#24, D-0153).
 - Done: SonarCloud security findings that failed the gate on `main` fixed in code (#21, D-0141, D-0142).
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
@@ -147,7 +147,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Client protocol, request/response models, fake provider, budgets, usage | todo | |
+| 1 | Client protocol, request/response models, fake provider, budgets, usage | done (#69) | Usage commits in its own transaction (D-0346); replay uses `llm.client` (D-0218 retired). |
 | 2 | Anthropic and Gemini providers with JSON-schema output + failover | todo | |
 | 3 | Grounding alignment | todo | |
 | 4 | Role C detail + pipeline hook wiring | todo | |
