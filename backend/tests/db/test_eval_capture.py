@@ -6,7 +6,6 @@ import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import aclosing
 from dataclasses import dataclass, field
-from datetime import timedelta
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address
@@ -15,7 +14,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy import delete, insert, select
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.politeness import HostLimiter
@@ -162,13 +161,11 @@ def _requests(server: Server, *paths: str, schema: str = SCHEMA) -> list[PageReq
     return [PageRequest(n, server.url(path), schema, "custom_store") for n, path in enumerate(paths, start=1)]
 
 
-async def _main_rows(database_url: str) -> tuple[list[str], list[str]]:
+async def _main_rows(engine: AsyncEngine) -> tuple[list[str], list[str]]:
     """The hosts in the main `site` table and the object keys in its `capture` table."""
-    engine = create_async_engine(database_url)
     async with engine.connect() as conn:
         hosts = list((await conn.execute(select(Site.host).where(Site.host.like("%.example.test")))).scalars())
         keys = list((await conn.execute(select(Capture.object_key).order_by(Capture.object_key))).scalars())
-    await engine.dispose()
     return hosts, keys
 
 
@@ -207,7 +204,7 @@ async def test_dev_captures_land_in_the_main_store_as_unlabeled_pages(env: Env, 
 
 @pytest.mark.parametrize("split", ["hidden", "fresh"])
 async def test_private_captures_land_only_in_the_private_store(
-    env: Env, server: Server, private_database_url: str, database_url: str, split: Split
+    env: Env, server: Server, private_database_url: str, engine: AsyncEngine, split: Split
 ) -> None:
     server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE)}
 
@@ -217,7 +214,7 @@ async def test_private_captures_land_only_in_the_private_store(
     assert _files(env.private_root) == [f"{split}/{outcome.capture_id}.bundle.zst"]
     assert _files(env.main_root) == []
     # A private host enters neither the main `site` table nor the main `capture` table.
-    assert await _main_rows(database_url) == ([], [])
+    assert await _main_rows(engine) == ([], [])
     async with aclosing(get_store(split, env.settings)) as store:
         (page,) = await store.list_pages()
         bundle = await store.get_bundle(outcome.capture_id)
@@ -294,7 +291,7 @@ async def test_pages_of_one_host_are_spaced_by_the_robots_crawl_delay(env: Env, 
         )
 
     assert [type(o) for o in outcomes] == [Captured] * 3
-    assert slept == [timedelta(seconds=5).total_seconds()] * 2
+    assert slept == [5.0, 5.0]
 
 
 async def test_a_schema_of_another_page_kind_is_refused_before_any_fetch(env: Env, server: Server) -> None:
@@ -317,8 +314,7 @@ async def test_an_unknown_schema_is_refused_before_any_fetch(env: Env, server: S
     assert server.requests == []
 
 
-async def test_the_newest_active_version_of_a_schema_is_used(env: Env, server: Server, database_url: str) -> None:
-    engine = create_async_engine(database_url)
+async def test_the_newest_active_version_of_a_schema_is_used(env: Env, server: Server, engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         newer = (
             await conn.execute(
@@ -332,7 +328,6 @@ async def test_the_newest_active_version_of_a_schema_is_used(env: Env, server: S
                 name=SCHEMA, version=3, page_kind="detail", fields={}, origin="user", status="retired"
             )
         )
-    await engine.dispose()
     server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE)}
 
     (outcome,) = await run_capture(env.settings, "dev", _requests(server, "/p/1"), None, LoopbackConnector(server.port))

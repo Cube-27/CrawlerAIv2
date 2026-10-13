@@ -148,7 +148,7 @@ async def resolve_schemas(database_url: str, names: set[str]) -> dict[str, Schem
                 await conn.execute(
                     select(SchemaDef.id, SchemaDef.name, SchemaDef.page_kind)
                     .where(SchemaDef.name.in_(names), SchemaDef.status == "active")
-                    .order_by(SchemaDef.name, SchemaDef.version)
+                    .order_by(SchemaDef.version)
                 )
             ).all()
     finally:
@@ -240,19 +240,19 @@ async def run_capture(
 
 def report(outcomes: Sequence[Outcome]) -> str:
     """One JSON line per page, in input order."""
-    lines = []
-    for outcome in sorted(outcomes, key=lambda o: o.n):
-        match outcome:
-            case Captured():
-                line = {
-                    "n": outcome.n,
-                    "capture_id": str(outcome.capture_id),
-                    "page_id": str(outcome.page_id),
-                    "status_code": outcome.status_code,
-                    "block_class": outcome.block_class,
-                    "error": outcome.error,
-                }
-            case Skipped():
-                line = {"n": outcome.n, "skipped": outcome.reason}
-        lines.append(json.dumps(line))
-    return "".join(f"{line}\n" for line in lines)
+    return "".join(json.dumps(_line(outcome)) + "\n" for outcome in sorted(outcomes, key=lambda o: o.n))
+
+
+def _line(outcome: Outcome) -> dict[str, object]:
+    match outcome:
+        case Captured():
+            return {
+                "n": outcome.n,
+                "capture_id": str(outcome.capture_id),
+                "page_id": str(outcome.page_id),
+                "status_code": outcome.status_code,
+                "block_class": outcome.block_class,
+                "error": outcome.error,
+            }
+        case Skipped():
+            return {"n": outcome.n, "skipped": outcome.reason}

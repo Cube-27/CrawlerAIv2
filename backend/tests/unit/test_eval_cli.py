@@ -109,10 +109,14 @@ Call = tuple[Split, list[PageRequest], PageKind | None]
 
 
 @pytest.fixture
-def runs(monkeypatch: pytest.MonkeyPatch) -> list[Call]:
-    """Records what the commands ask `run_capture` for, and answers that every page was skipped."""
+def settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
+
+
+@pytest.fixture
+def runs(monkeypatch: pytest.MonkeyPatch, settings_env: None) -> list[Call]:
+    """Records what the commands ask `run_capture` for, and answers that every page was skipped."""
     calls: list[Call] = []
 
     async def run(
@@ -186,14 +190,12 @@ def test_import_sites_needs_a_positive_page_count(runs: list[Call], tmp_path: Pa
 
 
 def test_a_private_split_without_custodian_settings_exits_with_the_reason(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, settings_env: None, capsys: pytest.CaptureFixture[str]
 ) -> None:
     async def run(*args: object) -> list[Outcome]:
         raise PrivateCredentialsMissing("expected on any other machine")
 
     monkeypatch.setattr(cli, "run_capture", run)
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai")
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///srv/objects")
 
     with pytest.raises(SystemExit) as exit_info:
         main(
