@@ -1,5 +1,6 @@
 """robots.txt (SPEC-02 §4.6, RFC 9309): fetched once per site per 24 hours, kept in `site.robots_snapshot`, and read
-with `urllib.robotparser`'s semantics, `Crawl-delay` and `Sitemap:` included.
+with Protego: RFC 9309 matching (§2.2.2: the longest match wins, `allow` on a tie; §2.2.3: `*` and `$`), plus the
+`Crawl-delay` and `Sitemap:` extensions.
 
 Fetches impersonate a browser and announce no product token of their own, so the only group addressed to them is
 `*` (RFC 9309 §2.2.1).
@@ -9,8 +10,8 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Final
 from urllib.parse import urlsplit, urlunsplit
-from urllib.robotparser import RobotFileParser
 
+from protego import Protego
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -38,20 +39,19 @@ class RobotsSnapshot(BaseModel):
 
 class Robots:
     def __init__(self, body: str) -> None:
-        self._parser = RobotFileParser()
-        self._parser.parse(body.splitlines())
+        self._parser = Protego.parse(body)
 
     def allows(self, url: str) -> bool:
-        return self._parser.can_fetch(_USER_AGENT, url)
+        return self._parser.can_fetch(url, _USER_AGENT)
 
     @property
     def crawl_delay(self) -> timedelta | None:
         delay = self._parser.crawl_delay(_USER_AGENT)
-        return None if delay is None else timedelta(seconds=float(delay))
+        return None if delay is None else timedelta(seconds=delay)
 
     @property
     def sitemaps(self) -> tuple[str, ...]:
-        return tuple(self._parser.site_maps() or ())
+        return tuple(self._parser.sitemaps)
 
 
 def robots_url(url: str) -> str:

@@ -28,7 +28,8 @@ async def fetch_politely(
 ) -> FetchResult | TaskResult:
     """The fetched page, or the result the task ends this run with:
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page;
-    - robots.txt unreachable: a transient failure (RFC 9309 §2.3.1.4 allows nothing until it can be read);
+    - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
+      allows nothing);
     - the site not admitted yet: postponed until it is;
     - a 429 or 503: a transient failure, retried after its `Retry-After` or the queue's backoff, then `blocked` once
       attempts run out; `blocked` at once when the server asks for more than the longest backoff."""
@@ -37,7 +38,7 @@ async def fetch_politely(
     if policy.respect_robots:
         robots = await site_robots(conn, site_id, site.robots_snapshot, task.url, fetch)
         if robots is None:
-            return Failed("robots_unreachable", transient=True)
+            return Failed("robots_unreachable", transient=True, exhausted="blocked")
         if not robots.allows(task.url):
             return Finished("blocked", reason="robots")
     host = urlsplit(task.url).hostname or ""

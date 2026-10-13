@@ -161,7 +161,7 @@ async def test_an_unreachable_robots_file_fails_the_attempt_and_stores_nothing(c
 
     result = await fetch_politely(conn, task, site_id, FetchPolicy(), web, HostLimiter())
 
-    assert result == Failed("robots_unreachable", transient=True)
+    assert result == Failed("robots_unreachable", transient=True, exhausted="blocked")
     assert web.fetched == [f"{ORIGIN}/robots.txt"]
     assert await _snapshot(conn, site_id) is None
 
@@ -225,9 +225,10 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     assert await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
 
 
-async def test_a_retry_after_beyond_15_min_blocks_the_task(conn: AsyncConnection, web: Web) -> None:
+@pytest.mark.parametrize("value", ["901", "3600", "99999999999999", "9" * 5000])
+async def test_a_retry_after_beyond_15_min_blocks_the_task(conn: AsyncConnection, web: Web, value: str) -> None:
     site_id = await _site(conn)
-    web.pages[f"{ORIGIN}/item/1"] = (429, b"", (("Retry-After", "3600"),))
+    web.pages[f"{ORIGIN}/item/1"] = (429, b"", (("Retry-After", value),))
     first, second = await _tasks(conn, "/item/1", "/item/2")
     clock = Clock()
     limiter = HostLimiter(clock)

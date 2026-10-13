@@ -34,7 +34,11 @@ def retry_after(headers: HeaderList, now: datetime) -> timedelta | None:
         return None
     value = values[-1]
     if value.isascii() and value.isdigit():
-        return timedelta(seconds=int(value))
+        try:
+            return timedelta(seconds=int(value))
+        except (OverflowError, ValueError):
+            # More seconds than a timedelta holds, or digits than int() parses: as long a pause as can be expressed.
+            return timedelta.max
     try:
         when = parsedate_to_datetime(value)
     except (TypeError, ValueError):

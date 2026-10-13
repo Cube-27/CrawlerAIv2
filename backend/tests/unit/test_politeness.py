@@ -49,6 +49,9 @@ def test_the_interval_is_the_site_setting_or_1s_never_below_the_robots_crawl_del
         ("1.5", None),
         ("soon", None),
         ("", None),
+        # Beyond what a timedelta holds, or what int() parses: the longest pause there is.
+        ("99999999999999", timedelta.max),
+        ("9" * 5000, timedelta.max),
     ],
 )
 def test_retry_after_reads_seconds_or_an_http_date(value: str, expected: timedelta | None) -> None:
