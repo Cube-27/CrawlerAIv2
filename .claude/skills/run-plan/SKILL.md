@@ -70,6 +70,8 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
   deliberately leaving to wait (implementors waiting on CI or for `YOUR TURN`; their PR comment wakes you). Don't run one
   `herdr agent wait` per agent. If the watcher is killed, start it again; a killed watcher means finished agents go
   unnoticed.
+  Start it only as a tracked background task (the Bash tool's `run_in_background`), never with `&`: a detached
+  watcher can't notify you. It is single-instance and exits 2 while another watcher holds its pidfile.
 - **Memory admission.** `start_agent.sh` refuses to start an agent below 1.5 GB free. On `LOWMEM`, close idle
   panes, and remove leftover `crawlerai-*` containers, before anything else. Never touch containers or processes of
   other projects.
