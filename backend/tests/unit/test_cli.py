@@ -50,12 +50,14 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
     assert document["info"]["title"] == "CrawlerAI"
     assert sorted(document["paths"]) == [
         "/healthz",
+        "/v1/captures/{capture_id}/replay",
         "/v1/eval/capture",
         "/v1/eval/pages",
         "/v1/eval/pages/{page_id}",
         "/v1/eval/pages/{page_id}/labels",
         "/v1/eval/pages/{page_id}/normalize",
         "/v1/eval/pages/{page_id}/prefill",
+        "/v1/records",
         "/v1/schemas",
         "/v1/schemas/{schema_id}",
         "/v1/scrape",
