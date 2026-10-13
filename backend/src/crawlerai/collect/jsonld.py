@@ -15,7 +15,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.schema_org_map import Value, Vocabulary, parse_path, select
@@ -177,7 +177,7 @@ class JsonLdCollector:
         parents = _parents(entities, graph)
         return CollectResult(
             entities=tuple(self._entity(found, parents, graph, ctx) for found in entities),
-            candidates=tuple(self._candidates(entities, graph, schema, ctx)),
+            candidates=tuple(self._candidates(entities, graph, schema, ctx, diagnostics)),
             diagnostics=tuple(diagnostics),
         )
 
@@ -222,8 +222,11 @@ class JsonLdCollector:
         return Entity(id=found.id, kind=found.types[0], urls=_urls(_Node(found, graph), ctx), parent=parents[found.id])
 
     def _candidates(
-        self, entities: Sequence[_Object], graph: _Graph, schema: SchemaDef, ctx: Context
+        self, entities: Sequence[_Object], graph: _Graph, schema: SchemaDef, ctx: Context, diagnostics: list[str]
     ) -> Iterator[Candidate]:
+        """A candidate per value each field's path reaches on each entity of its type. A value the candidate model
+        refuses (nested deeper than its validator recurses) is skipped with a diagnostic: a collector never raises on
+        page content (§4.5)."""
         for name, spec in schema.fields.items():
             if spec.schema_org is None:
                 continue
@@ -232,15 +235,20 @@ class JsonLdCollector:
                 if not any(self.vocabulary.is_a(t, path.root) for t in found.types):
                     continue
                 for selected in select(_Node(found, graph), path, as_list=spec.type is FieldType.LIST):
-                    yield Candidate(
-                        field=name,
-                        entity_id=found.id,
-                        source_kind="jsonld",
-                        raw=selected.raw,
-                        normalized=normalize(selected.raw, spec, ctx),
-                        locator=selected.locator,
-                        independent=True,
-                    )
+                    try:
+                        yield Candidate(
+                            field=name,
+                            entity_id=found.id,
+                            source_kind="jsonld",
+                            raw=selected.raw,
+                            normalized=normalize(selected.raw, spec, ctx),
+                            locator=selected.locator,
+                            independent=True,
+                        )
+                    except ValidationError as e:
+                        reason = e.errors()[0]["type"]
+                        block = selected.locator.split(":", 2)[1]
+                        diagnostics.append(f"jsonld:{block}: value at {selected.locator} skipped ({reason})")
 
 
 def _parse(text: str) -> JsonValue:
