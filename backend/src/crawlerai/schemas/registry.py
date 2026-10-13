@@ -1,8 +1,8 @@
 """The schema registry (SPEC-04 §4.1): `schema_def` rows read and written as validated documents.
 
 Rows are immutable per (name, version) (ARCHITECTURE §5.2): nothing here updates a row's document; a change is
-`new_version`. Every document is validated as a `SchemaDocument` before it is written, so a stored row always
-parses.
+`new_version`. Only a row's lifecycle changes in place (`retire`). Every document is validated as a `SchemaDocument`
+before it is written, so a stored row always parses.
 """
 
 import json
@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from importlib.resources import files
 from typing import Any
 
-from sqlalchemy import Row, insert, select
+from sqlalchemy import Row, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -25,6 +25,15 @@ class SchemaNotFound(Exception):
 
 class SchemaExists(Exception):
     """`create` was given a name that already has a schema, or two writers raced for the same version."""
+
+
+class NotLatest(Exception):
+    """`new_version` was asked to build on a version that is no longer the latest one: someone else added a version
+    since it was read."""
+
+    def __init__(self, latest: SchemaDef) -> None:
+        super().__init__(f"schema {latest.name} is at version {latest.version}")
+        self.latest = latest
 
 
 class PresetConflict(Exception):
@@ -64,9 +73,13 @@ async def get_by_id(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
     return _from_row(row)
 
 
-async def list_schemas(conn: AsyncConnection, *, status: SchemaStatus | None = None) -> list[SchemaDef]:
-    """Every version of every schema, by name then version; only those in `status` when it is given."""
+async def list_schemas(
+    conn: AsyncConnection, *, name: str | None = None, status: SchemaStatus | None = None
+) -> list[SchemaDef]:
+    """Every version of every schema, by name then version; only those of `name` and in `status` when given."""
     query = select(*_COLUMNS).order_by(SchemaRow.name, SchemaRow.version)
+    if name is not None:
+        query = query.where(SchemaRow.name == name)
     if status is not None:
         query = query.where(SchemaRow.status == status)
     return [_from_row(row) for row in (await conn.execute(query)).all()]
@@ -82,16 +95,36 @@ async def create(conn: AsyncConnection, document: SchemaDocument, origin: Schema
     return await _insert(conn, document, origin)
 
 
-async def new_version(conn: AsyncConnection, name: str, changes: SchemaChanges, origin: SchemaOrigin) -> SchemaDef:
+async def new_version(
+    conn: AsyncConnection, name: str, changes: SchemaChanges, origin: SchemaOrigin, *, base_version: int | None = None
+) -> SchemaDef:
     """Insert version latest + 1 of `name`: the latest version's document with `changes` applied, validated as a
-    whole. Earlier versions stay as they are, since records and configs reference them (§5.2)."""
+    whole. Earlier versions stay as they are, since records and configs reference them (§5.2).
+
+    `base_version` is the version the caller's changes were made to; when another version has been added since,
+    `NotLatest`. Two writers racing from the same base both read it as latest, and the second insert is
+    `SchemaExists`."""
     latest = await _latest(conn, name)
     if latest is None:
         raise SchemaNotFound(f"no schema {name}")
+    if base_version is not None and latest.version != base_version:
+        raise NotLatest(latest)
     document = SchemaDocument.model_validate(
         {**_document(latest), "version": latest.version + 1, **changes.model_dump(exclude_none=True)}
     )
     return await _insert(conn, document, origin)
+
+
+async def retire(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
+    """Set one version's status to `retired`. The row stays: records and configs reference it (§5.2)."""
+    row = (
+        await conn.execute(
+            update(SchemaRow).where(SchemaRow.id == schema_id).values(status="retired").returning(*_COLUMNS)
+        )
+    ).one_or_none()
+    if row is None:
+        raise SchemaNotFound(f"no schema with id {schema_id}")
+    return _from_row(row)
 
 
 async def _latest(conn: AsyncConnection, name: str) -> SchemaDef | None:
