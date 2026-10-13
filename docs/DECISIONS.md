@@ -2366,3 +2366,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: One app-level `responses={422: …}`, which also documents a 422 on `/healthz`.
 - Why: The document should list only errors an operation can return.
 - Reversible: yes
+
+### D-0367 — The field shape is narrowed by hand until the generated schema has records
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 2 (#73) · Status: decided
+- Decision: `src/api/field.ts` declares `FieldStatus`, `FieldResult` (`status`, `reason`, `value`) and `FieldTypeSpec`; replaced by the generated types once SPEC-07's record and schema DTOs are in `schema.d.ts`.
+- Alternatives: Wait for SPEC-07 records.
+- Why: Same reasoning as D-0343; it reads only the documented SPEC-07 §4.4 members.
+- Reversible: yes
+
+### D-0368 — A published value that formats to nothing renders as "—"
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 2 (#73) · Status: decided
+- Decision: An empty string or empty list shows "—" (named "No value"), and `remote_flag=true` shows as the text `remote` in a location.
+- Alternatives: Render an empty span.
+- Why: DESIGN.md forbids rendering an empty string; the flag is a server value shown as text, not inferred.
+- Reversible: yes
+
+### D-0369 — Field status tones
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 2 (#73) · Status: decided
+- Decision: published → success, missing → neutral, abstained → warning, conflict → danger, in `FieldStatusBadge` next to the status type.
+- Alternatives: Other mappings.
+- Why: DESIGN.md "Status display": each domain maps its values to one tone, once.
+- Reversible: yes
