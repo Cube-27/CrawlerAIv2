@@ -3,8 +3,8 @@
 Agents log the decisions they make while writing specs and implementing them. Owner decisions belong in
 ARCHITECTURE Appendix A; open owner questions belong in OPEN_QUESTIONS.md. What goes here and when to escalate:
 `CLAUDE.md` §4–§5.
-While an orchestrator runs, workers put decisions in their PR body and only the orchestrator writes this file
-(`CLAUDE.md` §3).
+While an orchestrator runs, workers put decisions in their PR body and the implementor copies them here in its
+tracker commit on `YOUR TURN`, under the IDs the orchestrator sends (`CLAUDE.md` §3).
 
 **Statuses:**
 - `decided`: made by an agent within its authority. Stands unless the owner overrides it.
@@ -2024,4 +2024,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: A string, an array of values, or a node object with `@id`; any one TELECOMMUTE value makes the job remote. Any other shape is not remote and never raises.
 - Alternatives: Accept strings only.
 - Why: JSON-LD 1.1 §4.1 and §4.3; SPEC-04 §4.7 (normalizers never raise on bad input).
+- Reversible: yes
+
+### D-0319 — One review per PR; `MERGE AFTER FIX` is not re-reviewed
+- Date: 2026-10-13 · Spec/PR: workflow (#63) · Status: decided (owner)
+- Decision: Each PR gets one review once complete and green. With `MERGE AFTER FIX` the implementor makes the fixes, gets CI green and comments `READY`; no second review.
+- Alternatives: The same reviewer ticks off the fixes.
+- Why: Owner choice, 2026-10-13.
 - Reversible: yes
