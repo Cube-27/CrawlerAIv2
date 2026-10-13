@@ -356,17 +356,14 @@ async def _extract_listing(
     except Exception:  # §4.14, as for a detail page
         log.exception(_FAILED)
         return _result("error", mode)
-    request = None if role_c is None else listing.gap()
-    if role_c is not None and request is not None:
+    if role_c is not None and (request := listing.gap()) is not None:
         reply = await role_c.listing(request)
         try:
             listing = await asyncio.to_thread(listing.with_reply, reply, request.page_missing)
         except Exception:
             log.exception(_FAILED)
-            candidates, diagnostics = (
-                (*listing.candidates, *reply.candidates),
-                (*listing.diagnostics, *reply.diagnostics),
-            )
+            candidates = (*listing.candidates, *reply.candidates)
+            diagnostics = (*listing.diagnostics, *reply.diagnostics)
             return _result("error", mode, candidates=candidates, llm_calls=reply.llm_calls, diagnostics=diagnostics)
     return listing.result(mode)
 

@@ -32,18 +32,18 @@ async def prefill(
     page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
     text = page.cleaned_text.text
     ctx = page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
-    filled: c_extract.Filled
     rows: tuple[str, ...] = ()
     if page_kind == "detail":
-        kind = c_extract.PREFILL_PROMPT_KIND
-        filled = await c_extract.extract_detail(llm, text, fields, ctx, owner=PAGE, job_id=None, kind=kind)
+        filled = await c_extract.extract_detail(
+            llm, text, fields, ctx, owner=PAGE, job_id=None, kind=c_extract.PREFILL_PROMPT_KIND
+        )
     else:
         row_fields = {name: spec for name, spec in fields.items() if spec.scope == "row"}
         page_fields = {name: spec for name, spec in fields.items() if spec.scope == "page"}
-        listing = await c_extract.extract_listing(
+        filled = await c_extract.extract_listing(
             llm, text, row_fields, page_fields, ctx, job_id=None, kind=c_extract.PREFILL_PROMPT_KIND
         )
-        filled, rows = listing, tuple(row.id for row in listing.rows)
+        rows = tuple(row.id for row in filled.rows)
     if isinstance(filled.reply, LLMFailure):
         raise filled.reply
     by_owner = _labels_by_owner(filled.candidates)

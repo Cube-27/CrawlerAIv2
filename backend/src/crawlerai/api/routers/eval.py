@@ -290,12 +290,7 @@ async def put_labels(
 
     With `If-Match` set to the `ETag` of the page as read, a pass over labels that have changed since is refused
     with 412 (RFC 9110 §13.1.1); a pass that races another store between this request's read and write is 409."""
-    try:
-        page = await backend.store.get_page(page_id)
-    except EvalNotFound as e:
-        raise _not_found(page_id) from e
-    if if_match is not None and not _if_match(if_match, _etag(page)):
-        raise _labels_changed(412)
+    page = await _page_to_write(backend, page_id, if_match)
     try:
         parsed = parse_labels(labels, page.page_kind, await backend.schema_fields(page.schema_id))
     except InvalidLabels as e:
@@ -315,6 +310,18 @@ async def put_labels(
             updated = page.model_copy(update={"labels": stored, **people})
             response.headers["ETag"] = _etag(updated)
             return PageSummary.of(updated)
+
+
+async def _page_to_write(backend: LabelingBackend, page_id: EvalPageId, if_match: str | None) -> EvalPageRow:
+    """The page a write goes over; with `If-Match`, refused with 412 when its labels changed since (RFC 9110
+    §13.1.1)."""
+    try:
+        page = await backend.store.get_page(page_id)
+    except EvalNotFound as e:
+        raise _not_found(page_id) from e
+    if if_match is not None and not _if_match(if_match, _etag(page)):
+        raise _labels_changed(412)
+    return page
 
 
 def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelError:
@@ -361,14 +368,10 @@ async def prefill(
     """Store and return a `draft` that role C fills from the page's cleaned text (`crawlerai.eval.prefill`), with
     `prefill_source=llm:<model>` and no labeler. It replaces a draft, never a labeled or checked page (409), and
     `If-Match` works as for `PUT labels`. 503 or 502 when the model gives no valid reply; nothing is stored then."""
-    try:
-        page = await backend.store.get_page(page_id)
-    except EvalNotFound as e:
-        raise _not_found(page_id) from e
-    if if_match is not None and not _if_match(if_match, _etag(page)):
-        raise _labels_changed(412)
-    if _status(page) in ("labeled", "checked"):
-        raise conflict(f"dev eval page {page_id} is {_status(page)}; only a page without a labeled pass is pre-filled")
+    page = await _page_to_write(backend, page_id, if_match)
+    status = _status(page)
+    if status in ("labeled", "checked"):
+        raise conflict(f"dev eval page {page_id} is {status}; only a page without a labeled pass is pre-filled")
     bundle, fields = await _read_capture(backend, page)
     # The call is charged to no job, so the store's write below holds no lock the client waits on (D-0346).
     try:

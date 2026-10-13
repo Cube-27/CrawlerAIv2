@@ -16,6 +16,7 @@ A call that gives no valid reply (§4.7) is not an error of the page: the fields
 reason. Everything else the client raises, a replay's missing recording among them, propagates.
 """
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
@@ -163,7 +164,9 @@ async def extract_detail(
         response = await client.complete_json(request)
     except LLMFailure as failure:
         return Filled((), failure, (*notes, f"role C: {failure.field_reason}"))
-    read_fields = _Reader(fields, read, ctx).read(_object(response.data["fields"]), owner, "")
+    # Aligning and normalizing are CPU work: a thread keeps the event loop serving other tasks meanwhile.
+    reader = _Reader(fields, read, ctx)
+    read_fields = await asyncio.to_thread(reader.read, _object(response.data["fields"]), owner, "")
     return Filled(read_fields.candidates, response, (*notes, *read_fields.dropped))
 
 
@@ -185,6 +188,18 @@ async def extract_listing(
         response = await client.complete_json(request)
     except LLMFailure as failure:
         return FilledListing((), failure, (*notes, f"role C: {failure.field_reason}"), ())
+    # As for a detail page, reading the reply runs in a thread.
+    return await asyncio.to_thread(_read_listing, response, row_fields, page_fields, read, ctx, notes)
+
+
+def _read_listing(
+    response: LLMResponse,
+    row_fields: Mapping[str, FieldSpec],
+    page_fields: Mapping[str, FieldSpec],
+    read: str,
+    ctx: Context,
+    notes: tuple[str, ...],
+) -> FilledListing:
     replies = cast(list[JsonValue], response.data["rows"])  # the client checked it against the output schema
     if len(replies) > LISTING_MAX_ROWS:
         notes = (*notes, f"role C gave {len(replies)} rows; kept the first {LISTING_MAX_ROWS}")
