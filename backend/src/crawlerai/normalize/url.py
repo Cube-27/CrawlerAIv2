@@ -12,7 +12,7 @@ from urllib.parse import SplitResult, quote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw
+from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # WHATWG URL Standard, basic URL parser: strip leading and trailing C0 controls and spaces, and remove every ASCII
@@ -54,6 +54,9 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 
 
 def _canonical(raw: str, base: str | None) -> NormalizeResult:
+    # A URL is percent-encoded as UTF-8 (WHATWG URL Standard), and a lone surrogate has no UTF-8 encoding.
+    if has_surrogate(raw):
+        return Invalid("surrogate")
     reference = _TAB_OR_NEWLINE.sub("", raw.strip(_C0_AND_SPACE))
     # INV-06: a blank reference is empty whatever the base (it would otherwise resolve to the base).
     if _BLANK.fullmatch(reference):
@@ -63,6 +66,8 @@ def _canonical(raw: str, base: str | None) -> NormalizeResult:
         if not parts.scheme:
             if base is None:
                 return Invalid("relative_without_base")
+            if has_surrogate(base):
+                return Invalid("surrogate")
             # RFC 3986 §5.2: reference resolution against the base URI.
             reference = urljoin(base, reference)
             parts = urlsplit(reference)

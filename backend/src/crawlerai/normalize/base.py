@@ -5,6 +5,7 @@ The type modules import this module and nothing else from `crawlerai.normalize`;
 (`crawlerai.normalize.dispatch`) imports the type modules. `.importlinter` keeps both directions.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -41,6 +42,16 @@ NormalizeResult = Ok | Ambiguous | Invalid
 # A string from the DOM or an LLM, or a JSON value from a structured source (JSON-LD, an API). Each normalizer
 # documents the forms it accepts.
 Raw = JsonValue
+
+
+# Unicode general category Cs (U+D800 to U+DFFF): a lone surrogate is not a Unicode scalar value, so no UTF-8 string
+# holds it. JSON text may still carry one as an escape (RFC 8259 §8.2), and `json.loads` keeps it.
+_SURROGATE = re.compile(r"[\ud800-\udfff]")
+
+
+def has_surrogate(s: str) -> bool:
+    """Whether `s` holds a lone surrogate; such a string is not text, and a normalizer declines it."""
+    return _SURROGATE.search(s) is not None
 
 
 class Context(BaseModel):

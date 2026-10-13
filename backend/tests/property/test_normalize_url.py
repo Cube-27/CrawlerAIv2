@@ -71,6 +71,27 @@ def test_input_of_c0_controls_only_is_invalid_even_with_a_base(raw: str) -> None
     assert url.normalize(raw, URL, ctx) == Invalid("empty")
 
 
+# Unicode general category Cs: a lone surrogate is not a Unicode scalar value, so no UTF-8 string holds it. JSON text
+# may still carry one as an escape (RFC 8259 §8.2), and `json.loads` keeps it.
+_surrogate = st.characters(categories=["Cs"])
+
+
+@given(st.sampled_from([URL, IMAGE]), _urls, st.integers(min_value=0), _surrogate)
+def test_input_with_a_lone_surrogate_is_invalid(spec: FieldSpec, raw: str, at: int, surrogate: str) -> None:
+    at %= len(raw) + 1
+    ctx = Context(captured_at=AT, base_url="https://example.test/a/")
+
+    assert url.normalize(raw[:at] + surrogate + raw[at:], spec, ctx) == Invalid("surrogate")
+
+
+@given(_surrogate)
+def test_a_base_with_a_lone_surrogate_declines_only_the_references_it_resolves(surrogate: str) -> None:
+    ctx = Context(captured_at=AT, base_url=f"https://example.test/{surrogate}/")
+
+    assert url.normalize("p.png", URL, ctx) == Invalid("surrogate")
+    assert url.normalize("https://example.test/p.png", URL, ctx) == Ok("https://example.test/p.png")
+
+
 @given(
     st.from_regex(r"[a-z][a-z0-9+.-]{0,8}", fullmatch=True).filter(lambda s: s not in ("http", "https")),
     st.sampled_from(["//a.test/p", "a.test/p", "alert(1)", "image/png;base64,AAAA"]),

@@ -66,6 +66,14 @@ def test_control_characters_are_removed_from_a_value() -> None:
     assert text.normalize("a\x00b\x07 c", TEXT, CTX) == Ok("ab c")
 
 
+@given(st.sampled_from([TEXT, LONG]), st.text(max_size=40), st.integers(min_value=0), st.characters(categories=["Cs"]))
+def test_input_with_a_lone_surrogate_is_invalid(spec: FieldSpec, raw: str, at: int, surrogate: str) -> None:
+    # Unicode general category Cs: a lone surrogate is not a Unicode scalar value and has no UTF-8 encoding.
+    at %= len(raw) + 1
+
+    assert text.normalize(raw[:at] + surrogate + raw[at:], spec, CTX) == Invalid("surrogate")
+
+
 @given(st.lists(_words, min_size=1, max_size=5), _whitespace)
 def test_text_joins_words_with_one_space_whatever_whitespace_separates_them(words: list[str], gap: str) -> None:
     raw = (" " + gap).join(words)
