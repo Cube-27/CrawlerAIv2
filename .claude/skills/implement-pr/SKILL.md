@@ -60,6 +60,9 @@ Stay in scope. Work outside the row becomes a note in ACTIVE.md, not code.
 - If extraction behaviour changed, run the dev eval and capture the delta per field type.
 - If a check fails twice for the same reason, apply "attack the premise" (ENGINEERING). After three honest
   attempts, escalate (`CLAUDE.md` §5).
+- Database tests: point `CRAWLERAI_TEST_DATABASE_URL` (and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`) at a throwaway
+  Postgres on `127.0.0.1` and a free port (`localhost` hangs asyncpg on Windows; 5432 may be taken). Name its
+  container `crawlerai-<worktree>-pg`, and remove it before you hand back.
 
 ## 4. Self-review before the PR
 
@@ -70,6 +73,10 @@ Review your own diff as a hostile reviewer, then fix what you find:
 - **Simplicity:** wrappers with one caller, unused options, speculative guards. Remove them.
 - **Comments:** remove comments that restate the code. Keep the ones that state a *why* or a standard (C2
   justifications).
+- **Recurring findings:** go through `docs/plans/RECURRING.md`. These mistakes reached review more than once; don't
+  repeat them. In particular:
+  - a path taken from a CLI argument is resolved and refused outside its base directory, with a test (S8707);
+  - a `pytest.raises` block contains exactly one call: build its arguments before the `with` (S5778).
 
 ## 5. Open the PR
 
@@ -88,6 +95,11 @@ Review your own diff as a hostile reviewer, then fix what you find:
   decisions to DECISIONS.md in a last commit on this PR, before it merges.
 
 ## 6. Hand back
+
+Before reporting, the PR must be rebased on current `origin/main`, every CI job green on its head commit, and the
+PR's SonarCloud gate `OK`: `tools/orchestrator/wait_ci.sh <n> <head-sha7>` waits for the checks on that commit and
+prints the gate.
+A red gate is fixed in code, never with `NOSONAR`, exclusions or a weaker threshold.
 
 Report:
 - the PR URL;

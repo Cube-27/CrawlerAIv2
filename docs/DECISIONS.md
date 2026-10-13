@@ -1360,3 +1360,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A two-phase commit across databases.
 - Why: The dev and private stores are separate databases (INV-01); §4.4 fixes the order.
 - Reversible: yes
+
+### D-0224 — Recurring agent mistakes become checks or skill rules; orchestrator processes are managed
+- Date: 2026-10-13 · Spec/PR: workflow (owner request) · Status: decided
+- Decision: A finding that recurs is recorded in `docs/plans/RECURRING.md` and gets a check (preferred) or a skill rule in the same change (`/run-plan` §2a); ruff `PT012` is the first such check. Reviews end with a `Categories:` line. Workers report DONE only with the PR's SonarCloud gate `OK`. The orchestrator runs one watcher for all agents, refuses new agents below 1.5 GB free, closes finished panes, and removes a worktree's `crawlerai-*` containers on merge, through `tools/orchestrator/` scripts (`/run-plan` §1a).
+- Alternatives: keep lessons in session memory only; one `herdr agent wait` per agent.
+- Why: The owner asked that repeated mistakes, visible in SonarCloud, become checks or skills that survive new sessions, and that the orchestrator manage processes so the machine never hangs. S8707, S5778 and red-gate DONE reports each recurred; the low-memory reaper killed per-agent watchers twice.
+- Reversible: yes
