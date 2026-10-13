@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PRs 9, 11; small workflow follow-up from the #36 review (`wait_ci.sh` exits nonzero on a failed check, `start_agent.sh` checks the prompt's exit code). Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b), so a host can't sit in both.
+- Next: SPEC-03 PR 9; after it, every L0 row is `done` except SPEC-03 PR 7 (`human`: H1, H2). Possible follow-up from #37: `import-sites` refuses a fresh host already in hidden or dev (D-0225 option b), so a host can't sit in both.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
@@ -107,7 +107,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 8 | Labeling API | done (#35) | Dev split only (D-0207); hidden/fresh labeling at M is D-0214. |
 | 9 | Labeling screen | todo | |
 | 10 | Promote/rotate commands | done (#34) | `rotate_hidden` skips hosts that also have fresh pages (#37, D-0225). |
-| 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | todo | |
+| 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | done (#39) | Interim fits until SPEC-05 PR 13 (D-0229). |
 
 ## [SPEC-04 — Schemas as data and type normalization](../specs/SPEC-04-schemas-and-normalization.md)
 
