@@ -99,7 +99,7 @@ def test_a_query_parameter_value_publishes_only_when_shown(value: str, in_query:
     if in_query and not shown:
         assert result == Unpublished("missing", "url_param", ((candidate, "url_param"),))
     else:
-        assert result == Chosen(candidate, (), ())
+        assert result == Chosen(candidate, (), (), (candidate,))
 
 
 _PRICES = st.sampled_from([{"amount": "10.00", "currency": "USD"}, {"amount": "12.00", "currency": "USD"}])

@@ -141,7 +141,7 @@ def test_only_the_valid_owned_candidate_publishes() -> None:
 
     result = _prefer(_schema(sku=SKU), invalid, related, own)
 
-    assert result == {"sku": Chosen(own, (), ((invalid, "invalid"), (related, "not_owned")))}
+    assert result == {"sku": Chosen(own, (), ((invalid, "invalid"), (related, "not_owned")), (own,))}
 
 
 def test_an_ambiguous_target_makes_every_field_a_conflict() -> None:
@@ -162,7 +162,7 @@ def test_agreeing_exact_candidates_publish_the_first_and_the_rest_agree() -> Non
     jsonld = _candidate("sku", "A-1")
     og = _candidate("sku", "A-1", PAGE, "og")
 
-    assert _prefer(_schema(sku=SKU), jsonld, og)["sku"] == Chosen(jsonld, (og,), ())
+    assert _prefer(_schema(sku=SKU), jsonld, og)["sku"] == Chosen(jsonld, (og,), (), (jsonld, og))
 
 
 def test_disagreeing_exact_candidates_are_a_conflict() -> None:
@@ -171,7 +171,7 @@ def test_disagreeing_exact_candidates_are_a_conflict() -> None:
 
     result = _prefer(_schema(sku=SKU), jsonld, og)
 
-    assert result["sku"] == Unpublished("conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")))
+    assert result["sku"] == Unpublished("conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")), (jsonld, og))
 
 
 def test_exact_values_agree_by_the_types_equality() -> None:
@@ -180,7 +180,7 @@ def test_exact_values_agree_by_the_types_equality() -> None:
     short = _candidate("gtin", {"scheme": "gtin", "value": "4006381333931"})
     padded = _candidate("gtin", {"scheme": "gtin", "value": "04006381333931"}, PAGE, "og")
 
-    assert _prefer(_schema(gtin=spec), short, padded)["gtin"] == Chosen(short, (padded,), ())
+    assert _prefer(_schema(gtin=spec), short, padded)["gtin"] == Chosen(short, (padded,), (), (short, padded))
 
 
 # Text, url and image_url: source precedence
@@ -193,7 +193,7 @@ def test_the_first_ranked_source_kind_wins_and_lower_ones_that_disagree_are_reje
 
     result = _prefer(_schema(title=TITLE), og, jsonld, og_same)
 
-    assert result["title"] == Chosen(jsonld, (og_same,), ((og, "precedence"),))
+    assert result["title"] == Chosen(jsonld, (og_same,), ((og, "precedence"),), (og, jsonld, og_same))
 
 
 def test_the_order_is_the_types_own() -> None:
@@ -201,7 +201,9 @@ def test_the_order_is_the_types_own() -> None:
     og = _candidate("title", "Lamp, the shop", PAGE, "og")
     jsonld = _candidate("title", "Lamp")
 
-    assert resolver.prefer(_schema(title=TITLE), [jsonld, og])["title"] == Chosen(og, (), ((jsonld, "precedence"),))
+    assert resolver.prefer(_schema(title=TITLE), [jsonld, og])["title"] == Chosen(
+        og, (), ((jsonld, "precedence"),), (jsonld, og)
+    )
 
 
 def test_candidates_of_the_winning_kind_that_disagree_are_a_conflict() -> None:
@@ -210,7 +212,9 @@ def test_candidates_of_the_winning_kind_that_disagree_are_a_conflict() -> None:
 
     result = _prefer(_schema(title=TITLE), first, second)
 
-    assert result["title"] == Unpublished("conflict", "disagree", ((first, "disagree"), (second, "disagree")))
+    assert result["title"] == Unpublished(
+        "conflict", "disagree", ((first, "disagree"), (second, "disagree")), (first, second)
+    )
 
 
 def test_a_source_kind_outside_the_order_never_wins() -> None:
@@ -218,14 +222,14 @@ def test_a_source_kind_outside_the_order_never_wins() -> None:
 
     result = _prefer(_schema(title=TITLE), state)
 
-    assert result["title"] == Unpublished("missing", "unranked", ((state, "unranked"),))
+    assert result["title"] == Unpublished("missing", "unranked", ((state, "unranked"),), (state,))
 
 
 def test_an_unranked_kind_that_agrees_with_the_winner_is_agreeing() -> None:
     jsonld = _candidate("title", "Lamp")
     state = _candidate("title", "Lamp", PAGE, "js_state")
 
-    assert _prefer(_schema(title=TITLE), state, jsonld)["title"] == Chosen(jsonld, (state,), ())
+    assert _prefer(_schema(title=TITLE), state, jsonld)["title"] == Chosen(jsonld, (state,), (), (state, jsonld))
 
 
 def test_a_list_field_follows_its_item_types_rule() -> None:
@@ -233,7 +237,9 @@ def test_a_list_field_follows_its_item_types_rule() -> None:
     jsonld = _candidate("images", ["https://shop.example.test/a.jpg"])
     og = _candidate("images", ["https://shop.example.test/b.jpg"], PAGE, "og")
 
-    assert _prefer(_schema(images=IMAGES), og, jsonld)["images"] == Chosen(jsonld, (), ((og, "precedence"),))
+    assert _prefer(_schema(images=IMAGES), og, jsonld)["images"] == Chosen(
+        jsonld, (), ((og, "precedence"),), (og, jsonld)
+    )
 
 
 # Atomic offers (INV-15)
@@ -248,8 +254,8 @@ def test_offer_fields_come_from_one_offer() -> None:
 
     # Offer B states both fields, so both come from it; A's equal price agrees.
     assert result == {
-        "price": Chosen(price_b, (price_a,), ()),
-        "availability": Chosen(stock_b, (), ()),
+        "price": Chosen(price_b, (price_a,), (), (price_a, price_b)),
+        "availability": Chosen(stock_b, (), (), (stock_b,)),
     }
 
 
@@ -260,7 +266,7 @@ def test_offers_that_disagree_are_a_conflict() -> None:
     result = _prefer(_schema(price=PRICE), price_a, price_b)
 
     assert result["price"] == Unpublished(
-        "conflict", "offers_disagree", ((price_a, "offers_disagree"), (price_b, "offers_disagree"))
+        "conflict", "offers_disagree", ((price_a, "offers_disagree"), (price_b, "offers_disagree")), (price_a, price_b)
     )
 
 
@@ -272,8 +278,8 @@ def test_an_offer_field_the_chosen_offer_lacks_is_a_conflict() -> None:
 
     # Each Offer states one field; taking one from each would mix two offers.
     assert result == {
-        "price": Chosen(price_a, (), ()),
-        "availability": Unpublished("conflict", "offer_split", ((stock_b, "offer_split"),)),
+        "price": Chosen(price_a, (), (), (price_a,)),
+        "availability": Unpublished("conflict", "offer_split", ((stock_b, "offer_split"),), (stock_b,)),
     }
 
 
@@ -281,7 +287,7 @@ def test_a_page_level_price_beside_a_structured_offer_agrees_with_it() -> None:
     offer = _candidate("price", {"amount": "10.00", "currency": "USD"}, OFFER_A)
     og = _candidate("price", {"amount": "10.00", "currency": "USD"}, PAGE, "og")
 
-    assert _prefer(_schema(price=PRICE), og, offer)["price"] == Chosen(offer, (og,), ())
+    assert _prefer(_schema(price=PRICE), og, offer)["price"] == Chosen(offer, (og,), (), (og, offer))
 
 
 def test_a_page_level_offer_value_does_not_join_a_structured_offer() -> None:
@@ -290,8 +296,8 @@ def test_a_page_level_offer_value_does_not_join_a_structured_offer() -> None:
 
     result = _prefer(_schema(price=PRICE, availability=AVAILABILITY), og_price, stock)
 
-    assert result["price"] == Unpublished("conflict", "offer_split", ((og_price, "offer_split"),))
-    assert result["availability"] == Chosen(stock, (), ())
+    assert result["price"] == Unpublished("conflict", "offer_split", ((og_price, "offer_split"),), (og_price,))
+    assert result["availability"] == Chosen(stock, (), (), (stock,))
 
 
 def test_an_aggregate_low_price_is_never_the_price() -> None:
@@ -333,7 +339,7 @@ def test_a_value_from_a_query_parameter_is_rejected_unless_shown() -> None:
     shown = _prefer(_schema(sku=SKU), sku, request_url=request_url, shown=("A-77",))
 
     assert hidden["sku"] == Unpublished("missing", "url_param", ((sku, "url_param"),))
-    assert shown["sku"] == Chosen(sku, (), ())
+    assert shown["sku"] == Chosen(sku, (), (), (sku,))
 
 
 def test_a_query_parameter_inside_an_object_value_is_rejected() -> None:
@@ -359,7 +365,7 @@ def test_query_values_are_form_decoded() -> None:
 def test_a_value_that_is_not_a_query_parameter_is_kept() -> None:
     sku = _candidate("sku", "A-77")
 
-    assert _prefer(_schema(sku=SKU), sku, request_url=f"{PAGE_URL}?ref=A-78&q=")["sku"] == Chosen(sku, (), ())
+    assert _prefer(_schema(sku=SKU), sku, request_url=f"{PAGE_URL}?ref=A-78&q=")["sku"] == Chosen(sku, (), (), (sku,))
 
 
 # source_precedence.yaml

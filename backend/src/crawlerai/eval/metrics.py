@@ -15,9 +15,10 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from crawlerai.core.capture import BlockClass
-from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, Split
+from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, SourceKind, Split
 from crawlerai.eval.labels import FieldLabel, LabelRow, Labels, parse_labels
 from crawlerai.normalize.dispatch import equal
+from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -29,6 +30,7 @@ MIN_CELL = 10
 # ARCHITECTURE §10: the evidence buckets of config candidates.
 CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
 Cell = Literal["TP", "FP", "FN", "TN"]
+SourceCell = Literal["TP", "FP"]
 
 
 class _Model(BaseModel):
@@ -39,6 +41,9 @@ class FieldOutput(_Model):
     status: Literal["published", "missing", "conflict", "abstained"]
     value: JsonValue = None
     evidence: Evidence | None = None
+    # The normalized values of the field's kept candidates (valid, owned, not a URL parameter), per source kind,
+    # published or not: what `fit-precedence` scores each kind on (SPEC-05 §4.11).
+    offered: dict[SourceKind, tuple[JsonValue, ...]] = {}
 
 
 class PageOutput(_Model):
@@ -92,6 +97,8 @@ class Judgment(_Model):
     evidence: Evidence | None
     label_value: JsonValue
     output_value: JsonValue
+    # Each kind that offered a value: TP when every value it offered equals the label's value.
+    sources: dict[SourceKind, SourceCell] = {}
 
 
 class PageDetail(_Model):
@@ -115,6 +122,12 @@ class FieldMetrics(_Model):
 class PrecisionMetrics(_Model):
     precision: float | None
     n: int  # published fields: TP + FP
+
+
+class SourceMetrics(_Model):
+    precision: float | None
+    coverage: float | None  # TP over the fields of the type whose label holds a value
+    n: int  # fields the kind offered a value for: TP + FP
 
 
 class ZeroTouch(_Model):
@@ -147,6 +160,8 @@ class Report(_Model):
     acquisition: dict[str, dict[BlockClass, int] | Suppressed]  # per category
     usage: dict[str, Usage | Suppressed]  # per mode
     pages: tuple[PageDetail, ...] | None = None  # dev only, unsuppressed (§4.7)
+    # "rule_type|source_kind" (SPEC-05 §4.11): dev only, like `pages`.
+    by_source: dict[str, SourceMetrics | Suppressed] = {}
 
 
 def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, git_sha: str) -> Report:
@@ -206,6 +221,8 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
             for k, outs in sorted(pages_by_mode.items())
         },
         pages=tuple(details) if split == "dev" else None,
+        # Precedence is fitted on dev only (C1, INV-02), so no other split measures per kind.
+        by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored) if split == "dev" else {},
     )
 
 
@@ -233,6 +250,7 @@ def export_aggregate(report: Report) -> Report:
             },
             "usage": _complement(_suppress_all(report.usage), _whole, dev),
             "pages": None,
+            "by_source": _suppress_all(report.by_source) if dev else {},
         }
     )
 
@@ -250,6 +268,30 @@ def generalization_gap(dev: Report, fresh: Report) -> dict[str, float]:
         ):
             gap[type_] = cell.precision - other.precision
     return gap
+
+
+def _by_source(pages: Iterable[tuple[SchemaFields, Sequence[Judgment]]]) -> dict[str, SourceMetrics | Suppressed]:
+    """Per rule type and source kind, the fields the kind offered a value for, scored against their labels. A list is
+    measured as its item type, whose precedence order ranks it (SPEC-05 §4.7)."""
+    cells: defaultdict[tuple[FieldType, SourceKind], list[SourceCell]] = defaultdict(list)
+    labeled: Counter[FieldType] = Counter()  # per rule type, the judged fields whose label holds a value
+    for schema, judgments in pages:
+        for j in judgments:
+            type_ = rule_type(schema.fields[j.field])
+            labeled[type_] += _labeled(j)
+            for kind, cell in j.sources.items():
+                cells[type_, kind].append(cell)
+    return {f"{type_.value}|{kind}": _source_metrics(v, labeled[type_]) for (type_, kind), v in sorted(cells.items())}
+
+
+def _labeled(judgment: Judgment) -> bool:
+    # An engine row that matched no label row has no label (`extra[j]`, §4.6).
+    return not judgment.on_absent and not judgment.entity.startswith("extra[")
+
+
+def _source_metrics(cells: Sequence[SourceCell], labeled: int) -> SourceMetrics:
+    tp = cells.count("TP")
+    return SourceMetrics(precision=_ratio(tp, len(cells)), coverage=_ratio(tp, labeled), n=len(cells))
 
 
 def _config_status(case: EvalCase, judgment: Judgment) -> FieldStatus | None:
@@ -301,6 +343,7 @@ def _unmatched_row(j: int, row: Mapping[str, FieldOutput], schema: SchemaFields)
                 evidence=out.evidence,
                 label_value=None,
                 output_value=out.value,
+                sources=dict.fromkeys(out.offered, "FP"),
             )
 
 
@@ -337,7 +380,15 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
         evidence=published.evidence if published else None,
         label_value=label.value,
         output_value=value,
+        sources={} if out is None else _source_cells(out, label, spec),
     )
+
+
+def _source_cells(out: FieldOutput, label: FieldLabel, spec: FieldSpec) -> dict[SourceKind, SourceCell]:
+    return {
+        kind: "TP" if not label.absent and all(equal(v, label.value, spec) for v in values) else "FP"
+        for kind, values in out.offered.items()
+    }
 
 
 def _zero_touch(schema: SchemaFields, judgments: Sequence[Judgment]) -> bool:

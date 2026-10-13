@@ -17,6 +17,7 @@ from crawlerai.eval.metrics import (
     ReplayFailed,
     Report,
     SchemaFields,
+    SourceMetrics,
     Suppressed,
     Usage,
     ZeroTouch,
@@ -482,3 +483,79 @@ def test_dev_keeps_primary_suppression_only() -> None:
         "money|agreed": PrecisionMetrics(precision=1.0, n=12),
         "money|adapter": Suppressed(n=4),
     }
+
+
+# Per source kind (SPEC-05 §4.11): every kind that offered a kept value is scored, whether or not it won.
+
+TITLED = SchemaFields(
+    name="titled",
+    page_kind="detail",
+    fields={
+        "title": FieldSpec(type=FieldType.TEXT),
+        "images": FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.IMAGE_URL)),
+    },
+)
+
+
+def titled_case(page_id: str, title: JsonValue, out: dict[str, Any], field: str = "title") -> EvalCase:
+    return EvalCase.model_validate(
+        {
+            "page_id": page_id,
+            "category": "mixed",
+            "schema_def": TITLED,
+            "labels": labels({"title": label(title), "images": label(None)}),
+            "output": {"block_class": "ok", "mode": "adhoc", "fields": {field: out}},
+        }
+    )
+
+
+def test_each_kind_that_offered_a_value_is_scored_against_the_label() -> None:
+    won = titled_case("p1", "A", {**published("A").model_dump(), "offered": {"jsonld": ["A"], "og": ["B"]}})
+    split = titled_case("p2", "A", {"status": "conflict", "offered": {"jsonld": ["A", "C"]}})
+    absent = titled_case("p3", None, {"status": "missing", "offered": {"og": ["X"]}})
+    unlabeled = titled_case("p4", "A", {"status": "missing"})
+
+    r = report(won, split, absent, unlabeled)
+
+    # Three title labels hold a value: coverage is a kind's right values over them.
+    assert r.by_source == {
+        "text|jsonld": SourceMetrics(precision=0.5, coverage=1 / 3, n=2),
+        "text|og": SourceMetrics(precision=0.0, coverage=0.0, n=2),
+    }
+    assert r.pages is not None
+    assert [j.sources for j in r.pages[0].judgments if j.field == "title"] == [{"jsonld": "TP", "og": "FP"}]
+
+
+def test_a_list_is_measured_as_its_item_type() -> None:
+    # A list ranks by its item type's order (SPEC-05 §4.7), so its kinds are measured under that type.
+    case = titled_case("p1", "A", {"status": "missing", "offered": {"og": [["u"]]}}, field="images")
+
+    assert report(case).by_source == {"image_url|og": SourceMetrics(precision=0.0, coverage=None, n=1)}
+
+
+def test_an_unmatched_rows_offering_kinds_are_false() -> None:
+    row = {
+        "url": FieldOutput.model_validate(
+            {
+                **published("https://shop.example.test/x").model_dump(),
+                "offered": {"jsonld": ["https://shop.example.test/x"]},
+            }
+        )
+    }
+    case = listing_case([], [row])
+
+    assert report(case).by_source == {"url|jsonld": SourceMetrics(precision=0.0, coverage=None, n=1)}
+
+
+def test_per_kind_cells_stay_in_dev() -> None:
+    cases = [titled_case(f"p{i:02}", "A", {"status": "missing", "offered": {"og": ["A"]}}) for i in range(12)]
+
+    assert export_aggregate(report(*cases)).by_source == {"text|og": SourceMetrics(precision=1.0, coverage=1.0, n=12)}
+    assert report(*cases, split="hidden").by_source == {}
+    assert export_aggregate(report(*cases, split="hidden")).by_source == {}
+
+
+def test_a_small_per_kind_cell_is_reduced_to_its_n_on_dev() -> None:
+    case = titled_case("p1", "A", {"status": "missing", "offered": {"og": ["A"]}})
+
+    assert export_aggregate(report(case)).by_source == {"text|og": Suppressed(n=1)}
