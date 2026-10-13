@@ -25,7 +25,7 @@ from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Robots, site_robots
 from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method
-from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected
+from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override
 from crawlerai.content.html import cleaned_html
 from crawlerai.content.links import links
@@ -57,8 +57,6 @@ ScrapeFormat = Literal["markdown", "html", "raw_html", "links", "metadata", "rec
 ScrapeOutcome = Literal["extracted", "partial", "blocked", "shell", "not_found", "failed"]
 
 MAX_TIMEOUT_S: Final = 120  # D-0028
-# The prefix of the error a fetcher records for a target the SSRF guard refused (`SsrfRejected`, SPEC-02 §4.11).
-_SSRF_REJECTED: Final = "ssrf_rejected:"
 _OUTCOMES: Final[dict[BlockClass, ScrapeOutcome]] = {
     # Without `records` the page is extracted once it is fetched; PR 5 adds `partial` for records.
     "ok": "extracted",
@@ -69,6 +67,8 @@ _OUTCOMES: Final[dict[BlockClass, ScrapeOutcome]] = {
 }
 # The usage a fetch attempt counts (SPEC-02 §4.7, §4.8): a request per HTTP or API attempt, the seconds of a browser's.
 _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
+# The process that runs a scrape's task, named as a worker names itself (`crawlerai.worker.loop`).
+_CLAIMANT: Final = f"api:{socket.gethostname()}:{os.getpid()}"
 # Jobs and sites belong to the project migrations create (single tenant, ARCHITECTURE §1).
 _DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
 
@@ -230,6 +230,16 @@ class _Fetched:
     capture_id: CaptureId
 
 
+class _FetchMembers(TypedDict):
+    capture_id: CaptureId | None
+    final_url: str | None
+    fetched_at: datetime | None
+    fetch: FetchSummary | None
+
+
+_NOT_FETCHED = _FetchMembers(capture_id=None, final_url=None, fetched_at=None, fetch=None)
+
+
 async def scrape(engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest) -> ScrapeResult:
     """Run `request` as a scrape job. Raises `ScrapeRejected` when the target is refused, before any job is created
     for a target refused outright, and `ScrapeTimedOut` past `request.timeout_s`; the job is failed in both cases."""
@@ -267,12 +277,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest) -> ClaimedTask:
             )
         ).scalar_one()
         canonical = canonical_url(request.url, None) or request.url
-        return await insert_claimed(conn, job_id, request.url, canonical, request.page_kind, _claimant())
-
-
-def _claimant() -> str:
-    # The process that runs the task, as a worker names itself (`crawlerai.worker.loop`).
-    return f"api:{socket.gethostname()}:{os.getpid()}"
+        return await insert_claimed(conn, job_id, request.url, canonical, request.page_kind, _CLAIMANT)
 
 
 async def _fail(engine: AsyncEngine, task: ClaimedTask, error: str) -> None:
@@ -281,49 +286,45 @@ async def _fail(engine: AsyncEngine, task: ClaimedTask, error: str) -> None:
 
 
 async def _run(engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, task: ClaimedTask) -> ScrapeResult:
+    """The fetch runs outside any transaction, so a slow page holds no connection or row lock; what it found is
+    written in one transaction after it."""
+    host = urlsplit(request.url).hostname or ""
     async with engine.begin() as conn:
-        site = await _site(conn, urlsplit(request.url).hostname or "")
-        policy = _policy(request, site.proxy_pool)
-        fetches: list[FetchResult] = []
-        fetched = await _fetch(conn, fetching, request.url, policy, site, fetches)
-        if isinstance(fetched, _Fetched):
+        site = await _site(conn, host)
+    policy = _policy(request, site.proxy_pool)
+    fetches: list[FetchResult] = []
+    page = await _fetch(engine, fetching, request.url, host, policy, site, fetches)
+    members = _NOT_FETCHED
+    async with engine.begin() as conn:
+        if isinstance(page, FetchResult):
+            await remember_fetch_method(conn, site.id, page)
+            fetched = _Fetched(page, await store_capture(conn, fetching.store, page, site.id))
             outcome = await _finish(conn, task, fetched)
+            members = _fetch_members(fetched)
         else:
             outcome = "blocked"
-            await complete_task(conn, task, outcome, reason=fetched)
+            await complete_task(conn, task, outcome, reason=page)
         await _record_usage(conn, task.job_id, fetches, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
-    if not isinstance(fetched, _Fetched):
-        return ScrapeResult(
-            job_id=task.job_id,
-            capture_id=None,
-            url=request.url,
-            final_url=None,
-            fetched_at=None,
-            outcome=outcome,
-            fetch=None,
-            usage=usage,
-        )
-    manifest = fetched.result.bundle.manifest
     # Formats are computed only from a page that was reached (§4.8: no partial formats on failure).
-    formats = (
-        await asyncio.to_thread(_formats, fetched.result, request.formats) if outcome == "extracted" else _Formats()
-    )
-    return ScrapeResult(
-        job_id=task.job_id,
+    formats = _Formats()
+    if isinstance(page, FetchResult) and outcome == "extracted":
+        formats = await asyncio.to_thread(_formats, page, request.formats)
+    return ScrapeResult(job_id=task.job_id, url=request.url, outcome=outcome, usage=usage, **members, **formats)
+
+
+def _fetch_members(fetched: _Fetched) -> _FetchMembers:
+    manifest = fetched.result.bundle.manifest
+    return _FetchMembers(
         capture_id=fetched.capture_id,
-        url=request.url,
         final_url=manifest.final_url,
         fetched_at=manifest.fetched_at,
-        outcome=outcome,
         fetch=FetchSummary(
             method=manifest.method,
             status_code=manifest.status_code or None,
             block_class=manifest.block_class,
             attempts=fetched.result.attempts,
         ),
-        usage=usage,
-        **formats,
     )
 
 
@@ -350,14 +351,15 @@ def _policy(request: ScrapeRequest, site_pool: str | None) -> FetchPolicy:
 
 
 async def _fetch(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     fetching: Fetching,
     url: str,
+    host: str,
     policy: FetchPolicy,
     site: _SiteRow,
     fetches: list[FetchResult],
-) -> _Fetched | str:
-    """The page fetched and stored, or why robots.txt kept it from being fetched (SPEC-02 §4.6). Every fetch made,
+) -> FetchResult | str:
+    """The page as fetched, or why robots.txt kept it from being fetched (SPEC-02 §4.6). Every fetch made,
     robots.txt's too, is added to `fetches`."""
 
     async def fetch_robots(robots_url: str) -> FetchResult:
@@ -367,20 +369,20 @@ async def _fetch(
 
     robots: Robots | None = None
     if policy.respect_robots:
-        robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch_robots)
+        async with engine.begin() as conn:
+            robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch_robots)
         # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing.
         if robots is None:
             return "robots_unreachable"
         if not robots.allows(url):
             return "robots"
-    await _admitted(fetching.limiter, urlsplit(url).hostname or "", site.crawl_delay_ms, robots)
+    await _admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
     result = await acquire(url, policy, site.fetch_method, fetching.rungs)
     fetches.append(result)
     for attempt in result.attempts:
-        if (attempt.error or "").startswith(_SSRF_REJECTED):
+        if (attempt.error or "").startswith(SSRF_REJECTED):
             raise ScrapeRejected(attempt.error or "")
-    await remember_fetch_method(conn, site.id, result)
-    return _Fetched(result, await store_capture(conn, fetching.store, result, site.id))
+    return result
 
 
 async def _admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None) -> None:
@@ -424,8 +426,11 @@ async def _record_usage(
 ) -> None:
     for result in fetches:
         for attempt in result.attempts:
-            resource: UsageResource = "http_requests" if attempt.method in _REQUEST_METHODS else "browser_seconds"
-            quantity = 1 if resource == "http_requests" else math.ceil(attempt.duration_ms / 1000)
+            resource: UsageResource
+            if attempt.method in _REQUEST_METHODS:
+                resource, quantity = "http_requests", 1
+            else:
+                resource, quantity = "browser_seconds", math.ceil(attempt.duration_ms / 1000)
             await record_usage(
                 conn,
                 job_id,

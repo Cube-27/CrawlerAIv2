@@ -5,11 +5,12 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolv
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy import func, select
@@ -97,27 +98,22 @@ def fetching(web: Web, store: ObjectStore, resolver: Resolver) -> Fetching:
     )
 
 
-@pytest.fixture
-async def db(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
-    yield engine
-
-
 def request(url: str, *formats: str, **fields: Any) -> ScrapeRequest:
     return ScrapeRequest.model_validate({"url": url, "formats": list(formats), **fields})
 
 
-async def _row(db: AsyncEngine, statement: Any) -> Any:
-    async with db.connect() as conn:
+async def _row(engine: AsyncEngine, statement: Any) -> Any:
+    async with engine.connect() as conn:
         return (await conn.execute(statement)).one()
 
 
 async def test_returns_the_requested_formats_of_the_fetched_page(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    result = await scrape(db, fetching, request(url, "markdown", "html", "raw_html", "links", "metadata"))
+    result = await scrape(engine, fetching, request(url, "markdown", "html", "raw_html", "links", "metadata"))
 
     assert result.outcome == "extracted"
     assert (result.url, result.final_url) == (url, url)
@@ -135,12 +131,12 @@ async def test_returns_the_requested_formats_of_the_fetched_page(
 
 
 async def test_leaves_out_the_formats_not_requested(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    result = await scrape(db, fetching, request(url, "links"))
+    result = await scrape(engine, fetching, request(url, "links"))
 
     assert result.links == [f"{own_origin}/kettles/red"]
     assert (result.markdown, result.html, result.raw_html, result.metadata) == (None, None, None, None)
@@ -158,41 +154,41 @@ async def test_leaves_out_the_formats_not_requested(
 
 
 async def test_records_a_completed_scrape_job_its_task_and_capture(
-    db: AsyncEngine, fetching: Fetching, store: ObjectStore, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, store: ObjectStore, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    result = await scrape(db, fetching, request(url, "markdown", fetch={"method_hint": "http"}))
+    result = await scrape(engine, fetching, request(url, "markdown", fetch={"method_hint": "http"}))
 
-    job = await _row(db, select(Job.kind, Job.status, Job.request).where(Job.id == result.job_id))
+    job = await _row(engine, select(Job.kind, Job.status, Job.request).where(Job.id == result.job_id))
     assert (job.kind, job.status) == ("scrape", "completed")
     assert job.request["url"] == url and job.request["fetch"]["method_hint"] == "http"
-    task = await _row(db, select(UrlTask).where(UrlTask.job_id == result.job_id))
+    task = await _row(engine, select(UrlTask).where(UrlTask.job_id == result.job_id))
     assert (task.status, task.outcome, task.capture_id, task.canonical_url) == (
         "done",
         "extracted",
         result.capture_id,
         url,
     )
-    capture = await _row(db, select(Capture.url, Capture.fetched_at).where(Capture.id == result.capture_id))
+    capture = await _row(engine, select(Capture.url, Capture.fetched_at).where(Capture.id == result.capture_id))
     assert capture.url == url
     assert result.capture_id is not None
     assert decode(store.get(capture_key(result.capture_id, capture.fetched_at))).body == PAGE
 
 
 async def test_counts_each_request_it_made_as_usage(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    result = await scrape(db, fetching, request(url, "markdown"))
+    result = await scrape(engine, fetching, request(url, "markdown"))
 
     # robots.txt, then the page.
     assert result.usage.http_requests == 2
     assert (result.usage.llm_calls, result.usage.browser_seconds) == (0, 0)
-    used = await _row(db, select(func.sum(UsageEvent.quantity)).where(UsageEvent.job_id == result.job_id))
+    used = await _row(engine, select(func.sum(UsageEvent.quantity)).where(UsageEvent.job_id == result.job_id))
     assert used[0] == 2
 
 
@@ -201,139 +197,142 @@ async def test_counts_each_request_it_made_as_usage(
     [(403, "blocked", "blocked"), (404, "not_found", "not_found"), (200, "shell", "shell")],
 )
 async def test_a_page_that_is_not_ok_is_an_outcome_without_formats(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, status: int, block_class: BlockClass, outcome: str
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    status: int,
+    block_class: BlockClass,
+    outcome: str,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (status, b"<html><body>no</body></html>", block_class, None)
 
-    result = await scrape(db, fetching, request(url, "markdown", "raw_html", fetch={"method_hint": "http"}))
+    result = await scrape(engine, fetching, request(url, "markdown", "raw_html", fetch={"method_hint": "http"}))
 
     assert result.outcome == outcome
     assert result.fetch is not None and result.fetch.status_code == status
     assert (result.markdown, result.raw_html) == (None, None)
-    task = await _row(db, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
+    task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("done", outcome)
 
 
 async def test_a_failed_fetch_fails_the_task_and_the_job(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (0, b"", "error", "network_error: ConnectError")
 
-    result = await scrape(db, fetching, request(url, "markdown"))
+    result = await scrape(engine, fetching, request(url, "markdown"))
 
     assert result.outcome == "failed"
     assert result.fetch is not None
     assert [a.error for a in result.fetch.attempts] == ["network_error: ConnectError"]
     assert result.fetch.status_code is None
-    task = await _row(db, select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == result.job_id))
+    task = await _row(engine, select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("failed", "network_error: ConnectError")
-    job = await _row(db, select(Job.status).where(Job.id == result.job_id))
+    job = await _row(engine, select(Job.status).where(Job.id == result.job_id))
     assert job.status == "failed"
 
 
 async def test_a_shell_over_http_is_fetched_again_in_the_browser(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, fetch_result: Callable[..., FetchResult]
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, fetch_result: Callable[..., FetchResult]
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    shell = (200, b"<html><body></body></html>", "shell", None)
-    rendered = (200, PAGE, "ok", None)
-
-    async def http(target: str, policy: FetchPolicy) -> FetchResult:
-        status, body, block_class, _ = web.pages[target] if target != url else shell
-        return fetch_result(target, status, body, block_class=block_class)
+    web.pages[url] = (200, b"<html><body></body></html>", "shell", None)
 
     async def browser(target: str, policy: FetchPolicy) -> FetchResult:
-        return fetch_result(target, rendered[0], rendered[1], method="browser")
+        return fetch_result(target, 200, PAGE, method="browser")
 
-    fetching = Fetching(Rungs(http=http, browser=browser), fetching.connector, fetching.store, HostLimiter())
+    fetching = Fetching(
+        Rungs(http=web.rung("http"), browser=browser), fetching.connector, fetching.store, HostLimiter()
+    )
 
-    result = await scrape(db, fetching, request(url, "raw_html"))
+    result = await scrape(engine, fetching, request(url, "raw_html"))
 
     assert result.outcome == "extracted"
     assert result.fetch is not None and result.fetch.method == "browser"
     assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
     assert result.raw_html == PAGE.decode()
-    site = await _row(db, select(Site.fetch_method).where(Site.host == url.split("/")[2]))
+    site = await _row(engine, select(Site.fetch_method).where(Site.host == urlsplit(url).hostname))
     assert site.fetch_method == "browser"
 
 
 async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/private/kettle"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    result = await scrape(db, fetching, request(url, "markdown"))
+    result = await scrape(engine, fetching, request(url, "markdown"))
 
     assert web.page_fetches() == []
     assert result.outcome == "blocked"
     assert (result.capture_id, result.fetch, result.final_url, result.markdown) == (None, None, None, None)
     task = await _row(
-        db, select(UrlTask.status, UrlTask.outcome, UrlTask.last_error).where(UrlTask.job_id == result.job_id)
+        engine, select(UrlTask.status, UrlTask.outcome, UrlTask.last_error).where(UrlTask.job_id == result.job_id)
     )
     assert tuple(task) == ("done", "blocked", "robots")
 
 
 async def test_an_unreachable_robots_txt_allows_nothing(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
     web.pages[f"{own_origin}/robots.txt"] = (503, b"", "blocked", None)
 
-    result = await scrape(db, fetching, request(url, "markdown"))
+    result = await scrape(engine, fetching, request(url, "markdown"))
 
     assert web.page_fetches() == []
     assert result.outcome == "blocked"
-    task = await _row(db, select(UrlTask.last_error).where(UrlTask.job_id == result.job_id))
+    task = await _row(engine, select(UrlTask.last_error).where(UrlTask.job_id == result.job_id))
     assert task.last_error == "robots_unreachable"
 
 
 async def test_the_operator_override_skips_robots_txt(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/private/kettle"
     web.pages[url] = (200, PAGE, "ok", None)
     override = {"respect_robots": False, "robots_override_reason": "the site's operator asked for it"}
 
-    result = await scrape(db, fetching, request(url, "raw_html", fetch=override))
+    result = await scrape(engine, fetching, request(url, "raw_html", fetch=override))
 
     assert web.fetched == [("http", url)]
     assert result.outcome == "extracted"
 
 
 async def test_a_private_target_is_rejected_before_any_job_or_fetch(
-    db: AsyncEngine, fetching: Fetching, web: Web, resolver: Resolver, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, resolver: Resolver, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    resolver.private_hosts.add(url.split("/")[2])
-    async with db.connect() as conn:
+    resolver.private_hosts.add(urlsplit(own_origin).netloc)
+    async with engine.connect() as conn:
         jobs_before = (await conn.execute(select(func.count()).select_from(Job))).scalar_one()
     scrape_request = request(url, "markdown")
 
     with pytest.raises(ScrapeRejected) as rejected:
-        await scrape(db, fetching, scrape_request)
+        await scrape(engine, fetching, scrape_request)
 
     assert rejected.value.reason == "ssrf_rejected: private_address"
     assert web.fetched == []
-    async with db.connect() as conn:
+    async with engine.connect() as conn:
         assert (await conn.execute(select(func.count()).select_from(Job))).scalar_one() == jobs_before
 
 
 async def test_a_redirect_to_a_private_target_is_rejected_and_fails_the_job(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (302, b"", "error", "ssrf_rejected: private_address")
     scrape_request = request(url, "markdown")
 
     with pytest.raises(ScrapeRejected) as rejected:
-        await scrape(db, fetching, scrape_request)
+        await scrape(engine, fetching, scrape_request)
 
     assert rejected.value.reason == "ssrf_rejected: private_address"
-    async with db.connect() as conn:
+    async with engine.connect() as conn:
         task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
         job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
         captures = (
@@ -343,7 +342,7 @@ async def test_a_redirect_to_a_private_target_is_rejected_and_fails_the_job(
 
 
 async def test_a_scrape_past_its_timeout_fails_the_job_and_returns_nothing(
-    db: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
@@ -351,9 +350,9 @@ async def test_a_scrape_past_its_timeout_fails_the_job_and_returns_nothing(
     scrape_request = request(url, "markdown", timeout_s=0.2)
 
     with pytest.raises(ScrapeTimedOut):
-        await scrape(db, fetching, scrape_request)
+        await scrape(engine, fetching, scrape_request)
 
-    async with db.connect() as conn:
+    async with engine.connect() as conn:
         task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
         job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
     assert (task.status, task.outcome, task.last_error, job_status) == ("failed", "failed", "timeout", "failed")

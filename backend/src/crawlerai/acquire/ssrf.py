@@ -30,11 +30,15 @@ _ENDS_IN_NUMBER = re.compile(r"(?:^|\.)(?:\d+|0x[0-9a-f]*)\.?$", re.ASCII | re.I
 _NAT64 = IPv6Network("64:ff9b::/96")
 
 
+# How a rejection reads, and so how a fetcher records it as an attempt's `error` (SPEC-02 §4.11): `ssrf_rejected: …`.
+SSRF_REJECTED = "ssrf_rejected:"
+
+
 class SsrfRejected(Exception):
     """The message never contains the URL, so logs stay redacted when configured (SPEC-02 §4.11)."""
 
     def __init__(self, reason: RejectReason) -> None:
-        super().__init__(f"ssrf_rejected: {reason}")
+        super().__init__(f"{SSRF_REJECTED} {reason}")
         self.reason: RejectReason = reason
 
 
