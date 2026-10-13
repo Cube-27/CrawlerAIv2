@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Final
 
 # A git object name: 7 to 40 hex digits (SHA-1, abbreviated or full) or 64 (SHA-256 repositories).
-GIT_SHA: Final = re.compile(r"[0-9a-f]{7,40}|[0-9a-f]{64}")
-CALIBRATION_HASH_DIGITS: Final = 12
+_GIT_SHA: Final = re.compile(r"[0-9a-f]{7,40}|[0-9a-f]{64}")
+_CALIBRATION_HASH_DIGITS: Final = 12
 
 
 def backend_dir(module_file: Path) -> Path | None:
@@ -23,24 +23,25 @@ def backend_dir(module_file: Path) -> Path | None:
     return candidate if (candidate / "pyproject.toml").is_file() else None
 
 
-def engine_version(version_file: Path, calibration_file: Path) -> str:
+def engine_version(backend: Path | None) -> str:
+    """The version of the engine whose build output and calibration are under `backend` (`None`: no backend tree)."""
+    if backend is None:
+        return "unknown+cal.none"
+    version_file = backend / "VERSION"
     try:
         sha = version_file.read_text(encoding="ascii").strip()
     except FileNotFoundError:
         sha = "unknown"
     else:
-        if not GIT_SHA.fullmatch(sha):
+        if not _GIT_SHA.fullmatch(sha):
             raise ValueError(f"{version_file.name} does not hold a git SHA: {sha!r}")
     try:
-        calibration = hashlib.sha256(calibration_file.read_bytes()).hexdigest()[:CALIBRATION_HASH_DIGITS]
+        calibration_bytes = (backend / "data" / "calibration.json").read_bytes()
     except FileNotFoundError:
         calibration = "none"
+    else:
+        calibration = hashlib.sha256(calibration_bytes).hexdigest()[:_CALIBRATION_HASH_DIGITS]
     return f"{sha}+cal.{calibration}"
 
 
-BACKEND_DIR: Final = backend_dir(Path(__file__))
-ENGINE_VERSION: Final = (
-    engine_version(BACKEND_DIR / "VERSION", BACKEND_DIR / "data" / "calibration.json")
-    if BACKEND_DIR
-    else "unknown+cal.none"
-)
+ENGINE_VERSION: Final = engine_version(backend_dir(Path(__file__)))

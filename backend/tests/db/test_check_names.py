@@ -7,10 +7,11 @@ Migrations 0002-0004 passed full names that the naming convention prefixed again
 import asyncio
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import CheckConstraint, text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.db.models import Base
 
@@ -22,22 +23,14 @@ CHECKS = text(
 )
 
 
-async def _checks(database_url: str, *tables: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        rows = (await conn.execute(CHECKS)).tuples().all()
-    await engine.dispose()
+async def _checks(conn: AsyncConnection, *tables: str) -> set[str]:
+    rows = (await conn.execute(CHECKS)).tuples().all()
     return {str(name) for table, name in rows if not tables or table in tables}
 
 
-def _migrate(database_url: str, direction: str, revision: str) -> None:
-    config = Config(ALEMBIC_INI)
-    config.attributes["database_url"] = database_url
-    getattr(command, direction)(config, revision)
-
-
-def test_checks_of_the_first_tables_are_prefixed_once(database_url: str) -> None:
-    assert asyncio.run(_checks(database_url, "site", "schema_def", "job", "url_task")) == {
+@pytest.mark.anyio
+async def test_checks_of_the_first_tables_are_prefixed_once(conn: AsyncConnection) -> None:
+    assert await _checks(conn, "site", "schema_def", "job", "url_task") == {
         "ck_site_host_lowercase",
         "ck_site_fetch_method",
         "ck_site_crawl_delay_ms_non_negative",
@@ -55,14 +48,13 @@ def test_checks_of_the_first_tables_are_prefixed_once(database_url: str) -> None
     }
 
 
-def test_usage_event_checks_are_prefixed_once(database_url: str) -> None:
-    assert asyncio.run(_checks(database_url, "usage_event")) == {
-        "ck_usage_event_resource",
-        "ck_usage_event_quantity_non_negative",
-    }
+@pytest.mark.anyio
+async def test_usage_event_checks_are_prefixed_once(conn: AsyncConnection) -> None:
+    assert await _checks(conn, "usage_event") == {"ck_usage_event_resource", "ck_usage_event_quantity_non_negative"}
 
 
-def test_every_check_in_the_database_has_the_name_the_models_give_it(database_url: str) -> None:
+@pytest.mark.anyio
+async def test_every_check_in_the_database_has_the_name_the_models_give_it(conn: AsyncConnection) -> None:
     modelled = {
         str(constraint.name)
         for table in Base.metadata.tables.values()
@@ -70,15 +62,30 @@ def test_every_check_in_the_database_has_the_name_the_models_give_it(database_ur
         if isinstance(constraint, CheckConstraint)
     }
 
-    assert asyncio.run(_checks(database_url)) == modelled
+    assert await _checks(conn) == modelled
 
 
+async def _job_checks(database_url: str) -> set[str]:
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        names = await _checks(conn, "job")
+    await engine.dispose()
+    return names
+
+
+def _migrate(database_url: str, direction: str, revision: str) -> None:
+    config = Config(ALEMBIC_INI)
+    config.attributes["database_url"] = database_url
+    getattr(command, direction)(config, revision)
+
+
+# Sync: Alembic's env runs its own event loop.
 def test_downgrading_0006_restores_the_names_0005_had(database_url: str) -> None:
     try:
         _migrate(database_url, "downgrade", "0005")
-        downgraded = asyncio.run(_checks(database_url, "job"))
+        downgraded = asyncio.run(_job_checks(database_url))
     finally:
         _migrate(database_url, "upgrade", "head")
 
     assert downgraded == {"ck_job_ck_job_kind", "ck_job_ck_job_status"}
-    assert asyncio.run(_checks(database_url, "job")) == {"ck_job_kind", "ck_job_status"}
+    assert asyncio.run(_job_checks(database_url)) == {"ck_job_kind", "ck_job_status"}

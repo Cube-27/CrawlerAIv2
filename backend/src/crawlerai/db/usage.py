@@ -9,7 +9,7 @@ may both go ahead, so a job can overshoot by the work in flight.
 from collections.abc import Mapping
 from typing import Any, Final, Literal
 
-from sqlalchemy import BigInteger, cast, func, insert, select, update
+from sqlalchemy import BigInteger, ColumnElement, cast, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Job, JobId, UrlTask, UsageEvent, UsageResource
@@ -43,26 +43,33 @@ async def record_usage(
         )
     )
     # One UPDATE reads and writes the counter under the row lock, so concurrent recordings never lose an increment.
-    used = func.coalesce(cast(Job.usage[resource].astext, BigInteger), 0)
     await conn.execute(
         update(Job)
         .where(Job.id == job_id)
-        .values(usage=Job.usage.op("||")(func.jsonb_build_object(resource, used + quantity)))
+        .values(usage=Job.usage.op("||")(func.jsonb_build_object(resource, _used(resource) + quantity)))
     )
+
+
+def _used(resource: str) -> ColumnElement[int]:
+    """The job's counter for `resource`; 0 before its first use."""
+    return func.coalesce(cast(Job.usage[resource].astext, BigInteger), 0)
 
 
 async def budget_remaining(conn: AsyncConnection, job_id: JobId, resource: BudgetResource) -> int | None:
     """What the job may still use of `resource`, never below 0; `None` when its request sets no budget for it."""
-    budget = Job.request["budget"][resource].astext
-    row = (await conn.execute(select(cast(budget, BigInteger).label("limit"), Job.usage).where(Job.id == job_id))).one()
-    limit: int | None = row.limit
-    if limit is None:
-        return None
-    used: int
+    limit = cast(Job.request["budget"][resource].astext, BigInteger)
+    used: ColumnElement[int]
     if resource == "pages":
         # A page is used once its task has ended, whether it extracted or failed; cancelled tasks never ran.
-        ended = select(func.count()).where(UrlTask.job_id == job_id, UrlTask.status.in_(("done", "failed")))
-        used = (await conn.execute(ended)).scalar_one()
+        used = (
+            select(func.count())
+            .where(UrlTask.job_id == job_id, UrlTask.status.in_(("done", "failed")))
+            .scalar_subquery()
+        )
     else:
-        used = row.usage.get(resource, 0)
-    return max(0, limit - used)
+        used = _used(resource)
+    # max(0, limit - used), and NULL without a budget: `least` ignores a NULL limit, the subtraction keeps it.
+    remaining: int | None = (
+        await conn.execute(select(limit - func.least(used, limit)).where(Job.id == job_id))
+    ).scalar_one()
+    return remaining

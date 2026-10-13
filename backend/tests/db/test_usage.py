@@ -139,10 +139,10 @@ async def test_the_remaining_budget_is_what_the_job_has_not_used(
 async def test_the_page_budget_counts_tasks_that_ended(conn: AsyncConnection) -> None:
     job_id = await _job_id(conn, request={"budget": {"pages": 5}})
     statuses = ["queued", "claimed", "done", "done", "failed", "cancelled"]
+    urls = [f"https://example.test/p/{i}" for i in range(len(statuses))]
     rows = [
-        {"job_id": job_id, "url": f"https://example.test/p/{i}", "canonical_url": f"https://example.test/p/{i}"}
-        | {"status": status}
-        for i, status in enumerate(statuses)
+        {"job_id": job_id, "url": url, "canonical_url": url, "status": status}
+        for url, status in zip(urls, statuses, strict=True)
     ]
     await conn.execute(insert(UrlTask), rows)
 
