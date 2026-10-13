@@ -1,12 +1,13 @@
 ---
 name: run-plan
-description: Orchestrate implementation from docs/plans/ACTIVE.md with minimal owner involvement — assign ready PR rows to workers, review, merge on green, keep the tracker and decisions log current, escalate only what CLAUDE.md requires. Use when asked to run, continue or orchestrate the implementation.
+description: Orchestrate implementation from docs/plans/ACTIVE.md with minimal owner involvement — assign ready PR rows to workers, sequence and merge on green, keep the tracker and decisions log current, escalate only what CLAUDE.md requires. Use when asked to run, continue or orchestrate the implementation.
 ---
 
 # Run the plan
 
-You are the orchestrator. You don't write feature code. You assign rows, review, merge, and keep `ACTIVE.md` and
-`DECISIONS.md` true. **You are the only writer of those two files.** Adapted from pstack's autonomous-run and
+You are the orchestrator. You don't write feature code. You assign rows, sequence merges, merge, and keep `ACTIVE.md` and
+`DECISIONS.md` true. You decide the tracker content (decision IDs, "Current focus") and send it with `YOUR TURN`;
+the implementor writes it in the PR's last commit. Adapted from pstack's autonomous-run and
 orchestrate playbooks (MIT, see `NOTICE`), without its multi-model machinery.
 
 ## 0. Frame (once per session)
@@ -37,13 +38,13 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
    - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
      `spec-NN/pr-M-<short-name>`, and start the worker with `tools/orchestrator/start_agent.sh <name> <worktree>
      "<prompt>"` (§1a). Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator assigned you this row.
-     Report the PR URL when done."
+     Own the PR through `/implement-pr` §6 until it merges."
 3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR (`/implement-pr` §6). It starts one
    reviewer in its worktree once the PR is implemented, simplified and green. The review happens once. Its verdict is
    `MERGE` or `MERGE AFTER FIX`. With the second, the implementor fixes the listed items and gets CI green; there is
    no second review. Then it comments `READY <sha7>`. You don't rebase, fix or edit PRs yourself.
    - If CI stays red after 3 honest attempts, escalate.
-   - To merge, pick the next `READY` PR and send its implementor `YOUR TURN` with the next free decision IDs. The
+   - To merge, pick the next `READY` PR and send its implementor `YOUR TURN` with the next free decision IDs and the new "Current focus" text. The
      implementor rebases, adds the tracker commit (row `done (#n)`, `## Decisions` copied to DECISIONS.md, with
      `needs-owner` entries also listed in the index) and comments `READY` again.
 
@@ -56,7 +57,7 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
    - `ESCALATE`: follow §2.
 4. **CI on main.** Before every merge and after it, check that `main` is green. If `main` turns red, fixing it
    comes before any new assignment. Assign a fix row to one worker, and stop other merges until it is green.
-5. **Checkpoint.** Update "Current focus" in ACTIVE.md (next, blocked) in the same tracker commit.
+5. **Checkpoint.** Send the new "Current focus" text (next, blocked) with `YOUR TURN`; the implementor writes it in the tracker commit.
 
 ## 1a. Processes (never hang the machine)
 
@@ -68,7 +69,7 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
 - **Memory admission.** `start_agent.sh` refuses to start an agent below 1.5 GB free. On `LOWMEM`, close idle
   panes, and remove leftover `crawlerai-*` containers, before anything else. Never touch containers or processes of
   other projects.
-- **Close what's done.** Close a worker's pane once its PR is reported. Close a reviewer's pane once its PR merges.
+- **Close what's done.** Close an implementor's and its reviewer's panes once the PR merges (§1.3 cleanup).
   Remove the worktree's containers on merge (`cleanup_worktree.sh`).
 - **Start agents only through `start_agent.sh`.** It builds the cwd and checks it. A wrong cwd leaves the agent
   stuck at a trust prompt.

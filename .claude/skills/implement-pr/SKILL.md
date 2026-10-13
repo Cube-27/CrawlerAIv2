@@ -111,8 +111,8 @@ You own the PR until it merges (owner, 2026-10-13):
    is no second review.
 3. **Ready:** with `MERGE`, or with every fix pushed and CI green, comment `READY <sha7>` on the PR, listing each
    Act-on item with the commit that fixed it. Then stop.
-4. **`YOUR TURN` from the orchestrator,** with decision IDs: rebase onto `origin/main`, then add the tracker commit
+4. **`YOUR TURN` from the orchestrator,** with decision IDs and "Current focus" text: rebase onto `origin/main`, then add the tracker commit
    `chore(plan): done SPEC-NN PR M (#n)` (row `done (#n)`, your `## Decisions` copied to DECISIONS.md under those
-   IDs). Push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
+   IDs, "Current focus" replaced with the text sent). Push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
 
 On `ESCALATE`, comment it on the PR and stop. Never merge your own PR; the orchestrator merges and cleans up.
