@@ -26,7 +26,8 @@ from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResul
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 MoneyRules = Callable[[Raw, Context], NormalizeResult]
-"""The money normalizer for one value: a structured `{"price", "priceCurrency"}` or a text amount (SPEC-04 §4.4)."""
+"""The money normalizer for one value (SPEC-04 §4.4). Range passes it a structured `{"price", "priceCurrency"}` or a
+text amount, and reads each value it returns as `{"amount", "currency"}` (a decimal and an ISO 4217 code)."""
 
 # schema.org `unitText` for a salary period, per the `baseSalary` / `MonetaryAmount` guidance on JobPosting:
 # HOUR, DAY, WEEK, MONTH, YEAR.
@@ -41,7 +42,6 @@ _SEPARATOR = re.compile(r"\s*(?:-|\u2013|\bto\b)\s*", re.IGNORECASE)
 # stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount is the
 # money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
 _AMOUNT = re.compile(r"[0-9](?:[0-9.,' \u00a0\u202f]*[0-9])?")
-_DIGIT = re.compile(r"[0-9]")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> NormalizeResult:
@@ -64,7 +64,8 @@ def _from_structured(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules)
         return bounds
     lo, hi = bounds
     unit_text = _string(quantity.get("unitText"))
-    period = unit_text.upper() if unit_text is not None and unit_text.upper() in _PERIODS else None
+    period = unit_text.upper() if unit_text is not None else None
+    period = period if period in _PERIODS else None
     currency = raw.get("currency")
     if currency is not None:
         if not isinstance(currency, str):
@@ -116,29 +117,39 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         return Invalid("surrogate")
     if not raw.strip():
         return Invalid("empty")
-    periods = {m.group(1).upper() for m in _PERIOD_TOKEN.finditer(raw)}
+    periods: set[str] = set()
+
+    def _drop_period(m: re.Match[str]) -> str:
+        periods.add(m.group(1).upper())
+        return " "
+
+    text = _PERIOD_TOKEN.sub(_drop_period, raw)
     if len(periods) > 1:
         return Invalid("period_mismatch")
-    text = _PERIOD_TOKEN.sub(" ", raw)
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
-    splits = [
-        m for m in _SEPARATOR.finditer(text) if _DIGIT.search(text, 0, m.start()) and _DIGIT.search(text, m.end())
-    ]
+    starts = [m.start() for m in _AMOUNT.finditer(text)]
+    splits = [m for m in _SEPARATOR.finditer(text) if starts and starts[0] < m.start() and m.end() <= starts[-1]]
     if len(splits) != 1:
         return Invalid("not_a_range")
-    left, right = text[: splits[0].start()].strip(), text[splits[0].end() :].strip()
-    left_parts, right_parts = _around_amount(left), _around_amount(right)
+    left_parts = _around_amount(text[: splits[0].start()].strip())
+    right_parts = _around_amount(text[splits[0].end() :].strip())
     if left_parts is None or right_parts is None:
         return Invalid("not_a_range")
-    if not (left_parts[0] + left_parts[2] + right_parts[0] + right_parts[2]):
+    (left_before, left_amount, left_after), (right_before, right_amount, right_after) = left_parts, right_parts
+    left_has, right_has = bool(left_before or left_after), bool(right_before or right_after)
+    if not (left_has or right_has):
         return Ambiguous("currency_missing", ())
     # Structural: a range written with its currency once ("€10-20", "10-20 EUR") states it for both bounds, so the
     # bound without one takes the other bound's text around its amount.
-    if not (left_parts[0] or left_parts[2]):
-        left = right_parts[0] + left_parts[1] + right_parts[2]
-    elif not (right_parts[0] or right_parts[2]):
-        right = left_parts[0] + right_parts[1] + left_parts[2]
-    return _monetary(money(left, ctx), money(right, ctx), periods.pop() if periods else None)
+    if not left_has:
+        left_before, left_after = right_before, right_after
+    elif not right_has:
+        right_before, right_after = left_before, left_after
+    return _monetary(
+        money(left_before + left_amount + left_after, ctx),
+        money(right_before + right_amount + right_after, ctx),
+        periods.pop() if periods else None,
+    )
 
 
 def _around_amount(bound: str) -> tuple[str, str, str] | None:
@@ -152,21 +163,21 @@ def _around_amount(bound: str) -> tuple[str, str, str] | None:
 
 def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> NormalizeResult:
     """Combine the money results of the two bounds: a decline on either is the range's decline (money's reason)."""
-    for result in (lo, hi):
-        if isinstance(result, Invalid):
-            return result
-    for result in (lo, hi):
-        if isinstance(result, Ambiguous):
+    match lo, hi:
+        case (Invalid() as declined, _) | (_, Invalid() as declined):
+            return declined
+        case (Ambiguous(reason=reason), _) | (_, Ambiguous(reason=reason)):
             # Each reading of the range pairs a reading of each bound in the same currency.
+            hi_readings = [_amount(v) for v in _options(hi)]
             options = tuple(
                 _value(a[0], b[0], currency=a[1], unit=None, period=period)
                 for a in map(_amount, _options(lo))
-                for b in map(_amount, _options(hi))
+                for b in hi_readings
                 if a[1] == b[1] and a[0] <= b[0]
             )
-            return Ambiguous(result.reason, options)
-    if not (isinstance(lo, Ok) and isinstance(hi, Ok)):
-        raise TypeError("a normalize result is Ok, Ambiguous or Invalid")
+            return Ambiguous(reason, options)
+        case Ok(), Ok():
+            pass
     (lo_amount, lo_currency), (hi_amount, hi_currency) = _amount(lo.value), _amount(hi.value)
     if lo_currency != hi_currency:
         return Invalid("currency_mismatch")
@@ -187,9 +198,8 @@ def _options(result: NormalizeResult) -> tuple[JsonValue, ...]:
 
 def _amount(money_value: JsonValue) -> tuple[Decimal, str]:
     """A money value (`{amount, currency}`, SPEC-04 §4.4) as (amount, ISO 4217 code)."""
-    if not isinstance(money_value, dict):
-        raise TypeError(f"the money rules returned {money_value!r}, not a money value")
-    amount, currency = _decimal(money_value.get("amount")), money_value.get("currency")
+    fields = money_value if isinstance(money_value, dict) else {}
+    amount, currency = _decimal(fields.get("amount")), fields.get("currency")
     if amount is None or not isinstance(currency, str):
         raise TypeError(f"the money rules returned {money_value!r}, not a money value")
     return amount, currency
