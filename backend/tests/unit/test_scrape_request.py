@@ -53,8 +53,52 @@ def test_refuses_no_format_and_unknown_formats() -> None:
     assert _errors({"url": URL, "formats": ["pdf"]}) == [("formats", "0")]
 
 
-def test_refuses_records_until_it_is_available() -> None:
-    assert _errors({"url": URL, "formats": ["markdown", "records"]}) == [("formats",)]
+INLINE = {
+    "name": "synthetic_kettle",
+    "page_kind": "detail",
+    "fields": {"title": {"type": "text", "required": True, "description": "The product's name"}},
+}
+SCHEMA_ID = "0192f5a4-0000-7000-8000-000000000001"
+
+
+def _messages(body: dict[str, Any]) -> list[str]:
+    with pytest.raises(ValidationError) as invalid:
+        ScrapeRequest.model_validate(body)
+    return [error["msg"] for error in invalid.value.errors()]
+
+
+@pytest.mark.parametrize("schema", [{"id": SCHEMA_ID}, {"inline": INLINE}, {"prompt": "kettle names"}])
+def test_takes_records_with_a_schema_and_a_detail_page_kind(schema: dict[str, Any]) -> None:
+    request = ScrapeRequest.model_validate(
+        {"url": URL, "formats": ["markdown", "records"], "schema": schema, "page_kind": "detail"}
+    )
+
+    assert request.formats == ["markdown", "records"]
+
+
+def test_records_need_a_schema() -> None:
+    assert _messages({"url": URL, "formats": ["records"], "page_kind": "detail"}) == [
+        "Value error, the records format needs a schema"
+    ]
+
+
+def test_records_need_a_page_kind() -> None:
+    assert _messages({"url": URL, "formats": ["records"], "schema": {"id": SCHEMA_ID}}) == [
+        "Value error, the records format needs a page_kind"
+    ]
+
+
+def test_refuses_listing_records_until_they_are_available() -> None:
+    body = {"url": URL, "formats": ["records"], "schema": {"id": SCHEMA_ID}, "page_kind": "listing"}
+
+    assert _messages(body) == ["Value error, records of listing pages are not available yet"]
+
+
+def test_refuses_an_inline_schema_of_another_page_kind() -> None:
+    inline = {**INLINE, "page_kind": "listing"}
+    body = {"url": URL, "formats": ["records"], "schema": {"inline": inline}, "page_kind": "detail"}
+
+    assert _messages(body) == ["Value error, the inline schema is for listing pages, not detail"]
 
 
 def test_a_robots_override_needs_its_reason() -> None:

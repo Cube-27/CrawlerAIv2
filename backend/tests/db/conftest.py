@@ -21,17 +21,36 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Capture, Job, JobEvent, SchemaDef, Site, UrlTask, UsageEvent
+from crawlerai.db.models import (
+    Candidate,
+    Capture,
+    Extraction,
+    Job,
+    JobEvent,
+    ProgressiveState,
+    Record,
+    SchemaDef,
+    Site,
+    SourceKind,
+    UrlTask,
+    UsageEvent,
+)
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
+VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
+# Every source kind ranked, so precedence types resolve (an unfitted order declines them, D-0486).
+ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 TEST_PRIVATE_DATABASE_URL = "CRAWLERAI_TEST_PRIVATE_DATABASE_URL"
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
@@ -78,23 +97,36 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(database_url)
     yield engine
     async with engine.begin() as connection:
-        for model in (UsageEvent, JobEvent, UrlTask, Job):
+        for model in (Candidate, Record, Extraction, ProgressiveState, UsageEvent, JobEvent, UrlTask, Job):
             await connection.execute(delete(model))
     await engine.dispose()
 
 
 @pytest.fixture
 async def own_origin(database_url: str) -> AsyncIterator[str]:
-    """An https origin on a host no other test uses, for tests that commit a site for it. The site and its captures
-    are deleted afterwards (a task that named a capture keeps a NULL, SPEC-01 §4.2)."""
+    """An https origin on a host no other test uses, for tests that commit a site for it. The site, its captures, and
+    its records and progressive state are deleted afterwards (a task or extraction that named a capture keeps a NULL,
+    SPEC-01 §4.2)."""
     host = f"shop-{uuid7().hex[-12:]}.example.test"
     yield f"https://{host}"
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:
         site_ids = select(Site.id).where(Site.host == host).scalar_subquery()
-        await connection.execute(delete(Capture).where(Capture.site_id.in_(site_ids)))
+        for model in (Record, ProgressiveState, Capture):
+            await connection.execute(delete(model).where(model.site_id.in_(site_ids)))
         await connection.execute(delete(Site).where(Site.host == host))
     await engine.dispose()
+
+
+async def _delete_schemas(engine: AsyncEngine, name: str) -> None:
+    """Every version of schema `name`, with the records and progressive state of it; jobs that named it keep a
+    NULL."""
+    async with engine.begin() as conn:
+        ids = select(SchemaDef.id).where(SchemaDef.name == name).scalar_subquery()
+        await conn.execute(update(Job).where(Job.schema_id.in_(ids)).values(schema_id=None))
+        for model in (Record, ProgressiveState):
+            await conn.execute(delete(model).where(model.schema_id.in_(ids)))
+        await conn.execute(delete(SchemaDef).where(SchemaDef.name == name))
 
 
 @pytest.fixture
@@ -102,8 +134,15 @@ async def prompt(engine: AsyncEngine) -> AsyncIterator[str]:
     """A prompt no other test drafts; its draft schema is deleted afterwards."""
     text = f"Product names {uuid.uuid4()}"
     yield text
-    async with engine.begin() as conn:
-        await conn.execute(delete(SchemaDef).where(SchemaDef.name == draft_name(text)))
+    await _delete_schemas(engine, draft_name(text))
+
+
+@pytest.fixture
+async def schema_name(engine: AsyncEngine) -> AsyncIterator[str]:
+    """A schema name no other test uses; every version of it is deleted afterwards."""
+    name = f"synthetic_{uuid.uuid4().hex[:12]}"
+    yield name
+    await _delete_schemas(engine, name)
 
 
 @pytest.fixture
@@ -143,3 +182,12 @@ def fetch_result() -> Callable[..., FetchResult]:
         )
 
     return make
+
+
+@pytest.fixture(scope="session")
+def engine_data() -> EngineData:
+    """What resolution reads besides the page: the synthetic schema.org vocabulary, every precedence type ranked, and
+    no calibration."""
+    return EngineData(
+        vocabulary=Vocabulary.read(VOCABULARY), orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None
+    )
