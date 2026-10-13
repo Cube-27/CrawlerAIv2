@@ -42,7 +42,9 @@ Out of scope:
 - `crawlerai.api.dto` — request/response pydantic models (the OpenAPI contract).
 - `crawlerai.services.{scrape,schemas,records,captures}` — the service layer; pure functions over sessions and
   the engine; no HTTP types.
-- `crawlerai.content.{markdown,html,links,metadata}` — §8.5 formats.
+- `crawlerai.content.{markdown,html,links,metadata}` — §8.5 formats. Each takes the `ParsedPage` (SPEC-05
+  `content.page`); `scrape` builds one per capture and shares it with `records`, and trafilatura gets the page's
+  lxml tree rather than the body (INV-26).
 - `crawlerai.cli` — `crawlerai apikey create --label …`, `apikey revoke <id>`.
 
 ### 4.2 Authentication and rate limiting (§18)
@@ -142,7 +144,7 @@ returned on failure.
 ## 5. Invariants
 
 INV-16 (SSRF rejection surfaces as a problem, never a fetch), INV-22 (field shape), INV-23 (usage returned),
-INV-03 (no literals in `api/`, `content/`).
+INV-03 (no literals in `api/`, `content/`), INV-26 (one parse per parser per request).
 
 ## 6. Testing strategy
 

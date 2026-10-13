@@ -1821,6 +1821,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Any other EAN-13 under scheme `isbn` is `Invalid("prefix")`.
 - Alternatives: Accept any EAN-13.
 - Why: ISO 2108.
+
+### D-0281 — Parse once: one shared `ParsedPage` per capture
+- Date: 2026-10-13 · Spec/PR: owner (ARCHITECTURE rev 8, Appendix A #31) · Status: decided (owner)
+- Decision: A capture body is parsed at most once per parser (selectolax, lxml) per pipeline run or `scrape` request. SPEC-05's `content.page.ParsedPage` holds the trees (lxml lazily), the script blocks, cleaned text and the visibility index. Collectors, content formats, pagination and the engine executor take it instead of the body. The release executor is the only exception (INV-20). New invariant INV-26.
+- Alternatives: let each consumer parse what it needs.
+- Why: Owner, 2026-10-13: "make sure multiple parsing is avoided and parsed html is reused" (seen in earlier products). Before this, the specs had each collector, cleaned text, content formats, pagination and the executor start from the body.
 - Reversible: yes
 
 ### D-0293 — Date order comes from the CLDR locales of `html_lang` and `og_locale`

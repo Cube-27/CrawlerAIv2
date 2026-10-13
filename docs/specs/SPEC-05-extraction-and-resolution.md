@@ -42,9 +42,13 @@ Out of scope (§22 unless noted):
 
 ### 4.1 Modules
 
-- `crawlerai.content.text` — `cleaned_text(bundle) -> CleanedText` (text + `offsets: list[(start, end, node_path)]`),
-  `visible_values(bundle) -> VisibleIndex` (set of normalized text tokens/strings for visibility checks).
-- `crawlerai.collect.base` — `Candidate`, `Entity`, `Collector` protocol: `collect(bundle, schema, ctx) -> CollectResult`.
+- `crawlerai.content.page` — `ParsedPage.of(bundle)`: built once per capture per pipeline run (§8, Appendix A #31,
+  INV-26). It lazily holds the selectolax tree, the lxml tree (only when an XPath step or trafilatura asks), the
+  `<script>` blocks (`application/ld+json`, `application/json`, inline), `cleaned_text` and `visible_values`. Every
+  consumer below takes the `ParsedPage`, never the raw body.
+- `crawlerai.content.text` — `cleaned_text(page) -> CleanedText` (text + `offsets: list[(start, end, node_path)]`),
+  `visible_values(page) -> VisibleIndex` (set of normalized text tokens/strings for visibility checks).
+- `crawlerai.collect.base` — `Candidate`, `Entity`, `Collector` protocol: `collect(page, schema, ctx) -> CollectResult`.
 - `crawlerai.collect.jsonld`, `.microdata`, `.og`, `.js_state`, `.xhr`, `.adapter`, `.config` (protocol only; the
   executor is injected by SPEC-08).
 - `crawlerai.collect.schema_org_map` — resolves `schema_org` paths against entities (shared by jsonld/microdata).
@@ -54,7 +58,7 @@ Out of scope (§22 unless noted):
 - `crawlerai.resolve.evidence` — bucket assignment; `Calibration` loader; τ.
 - `crawlerai.resolve.pipeline` — `extract_page(...)` = `replay_page(...)` (SPEC-03 signature).
 - `crawlerai.resolve.records` — record/field_meta assembly, `no_match`, fingerprint input.
-- `crawlerai.resolve.pagination` — `next_page_candidates(bundle)`.
+- `crawlerai.resolve.pagination` — `next_page_candidates(page)`.
 - `crawlerai.resolve.calibrate` — logic behind SPEC-03's `calibrate`/`fit-precedence`.
 
 ### 4.2 Core types
@@ -115,7 +119,7 @@ Induction (SPEC-08) reads these; the `jsonld`/`microdata`/`meta` forms are alrea
 
 ### 4.4 Cleaned text
 
-Deterministic: parse with selectolax; drop `script`, `style`, `noscript`, `template`, `svg`, hidden elements
+Deterministic, on the `ParsedPage`'s selectolax tree (no second parse); drop `script`, `style`, `noscript`, `template`, `svg`, hidden elements
 (`hidden` attribute, `aria-hidden="true"`, inline `display:none`/`visibility:hidden` — HTML/CSS standards);
 emit text per block element separated by `\n`, inline text joined by space, entity-decoded, whitespace
 collapsed. Each emitted run records `(start, end, node_xpath)`. The `VisibleIndex` holds every emitted run plus
@@ -246,7 +250,7 @@ Bucket of a published field:
 
 ### 4.12 Pagination (§8.6)
 
-`next_page_candidates(bundle) -> list[url]` (ordered):
+`next_page_candidates(page) -> list[url]` (ordered):
 1. `<link rel="next">` and `<a rel="next">` (HTML standard).
 2. Structural numbered links: among same-document-path `<a href>` links, group those that differ from the
    current URL only in one integer path segment or one integer query parameter (parameter name irrelevant);
@@ -272,7 +276,8 @@ a `diagnostics` jsonb — plumbing). The pipeline never partially publishes: an 
 ## 5. Invariants
 
 INV-07, INV-11, INV-12 (consumer side: the pipeline re-checks `text:` locators), INV-13, INV-14, INV-15, INV-22,
-INV-02 (calibration file source split), INV-03 (no literals in `collect/` and `resolve/`).
+INV-02 (calibration file source split), INV-03 (no literals in `collect/` and `resolve/`), INV-26 (one parse per parser per
+pipeline run: a test counts parser constructions in `extract_page`).
 
 ## 6. Testing strategy
 

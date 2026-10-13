@@ -83,8 +83,8 @@ syntax check). In config-only execution the first step whose value passes its po
 
 ### 4.3 Executor
 
-`execute(ir, bundle, schema) -> list[Candidate]` (SPEC-05 protocol): for each field, run steps in order over the
-bundle (`xpath`/`css`/`attr`/`regex` on the body; `jsonld` over expanded JSON-LD nodes filtered by `when_type`;
+`execute(ir, page, schema) -> list[Candidate]` (SPEC-05 protocol): for each field, run steps in order over the
+`ParsedPage` (its lxml tree for `xpath`/`css`, its script blocks for `jsonld`; no second parse, INV-26) (`xpath`/`css`/`attr`/`regex` on the body; `jsonld` over expanded JSON-LD nodes filtered by `when_type`;
 `jsonpath` over the chosen source); the first `Ok` value becomes a `Candidate(source_kind='config',
 locator=config:<field>:<i>:<selector>)`. Listings: `row` step selects row nodes; field steps are evaluated
 relative to each row; `next` yields the page-level `next_page_url` candidate. Steps never match more than
@@ -190,7 +190,7 @@ validity}`; `yield = matched/pages`, `validity = valid/matched`.
 each held-out bundle; per field, it must reproduce the engine's published value on every held-out page with an
 engine value while there are fewer than 10 such pages, and `reproduced / pages_with_engine_value >= 0.95` from
 10 on; otherwise the export marks the field `manual: true`. The release executor shares no code with the engine
-executor beyond the IR model (import-linter contract), so agreement between them is evidence that the export matches the engine (INV-20).
+executor beyond the IR model (import-linter contract), so agreement between them is evidence that the export matches the engine (INV-20). It parses the body itself; that is the one allowed exception to INV-26, and it runs only at release check.
 
 ### 4.13 Error handling
 

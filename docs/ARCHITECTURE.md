@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 7, 2026-10-13. No code exists.
+Status: design, rev 8, 2026-10-13. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -339,6 +339,12 @@ residential proxies, unblockers, a detection bench) are in §22.
 ---
 
 ## 8. Extraction
+
+**Parse once (Appendix A #31).** A capture body is parsed at most once per parser in a pipeline run. One
+`ParsedPage` per capture holds the selectolax tree, the lxml tree (built lazily, and only when an XPath step or
+trafilatura needs it), the extracted `<script>` blocks, the cleaned text and the visibility index. Collectors,
+cleaned text, content formats, pagination and the config executor all read that object, never the raw body. The
+release executor (§12.3) is the one exception: it parses on its own by design, and runs only at release check.
 
 ### 8.1 Collectors
 
@@ -896,6 +902,7 @@ implementation go in `DECISIONS.md`, not here.
 | 28 | Autonomous implementation (2026-10-12) | Implementation runs through orchestrated coding agents with minimal owner involvement. Agents record their decisions in `DECISIONS.md` and state in `plans/ACTIVE.md`. Changes to this document are escalated to the owner. |
 | 29 | Labeling deferred (2026-10-12) | No labeled sets before the crawler works. L0–L4 are accepted on functional criteria; measurement is milestone M (§21), started by the owner from reviewing crawler output. Hidden and fresh are later drawn only from sites development never touched. |
 | 30 | Hidden/fresh privacy answers (2026-10-13) | Hidden and fresh aggregates use complementary suppression as well as the 10-field minimum cell (§16.3). Hidden and fresh pages are labeled only through an instance of the app on the custodian machine with a private backend, never deployed. |
+| 31 | Parse once (2026-10-13) | A capture body is parsed at most once per parser per pipeline run; every consumer reads one shared `ParsedPage` (§8). The release executor is the only exception. |
 
 ---
 
@@ -970,3 +977,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 5 | 2026-10-12 | **Spec review folded in, repo made public.** <br>• Hidden and fresh data live only in a private DB and store (C1, §6, §15). <br>• Acceptance is dev improvement plus hidden non-regression; improvement claims come from fresh only (C10); small-cell suppression. <br>• Locator defined (§8.1); `required_groups` and `scope` (§5.2); `independent` flag so `agreed` can't count a value agreeing with itself (§8.1, §10). <br>• Block classification by status and structure only (§7.1); SSRF behaviour through proxies stated. <br>• Partial records for caller-supplied URLs, `no_match` for crawl-discovered ones (§10). <br>• Grounding scoped to role C (§11). <br>• Learning counts extracted pages; small-n thresholds (§8.3, §12.3). <br>• Plumbing named: `learn` job kind, `links_only`/`partial` outcomes, record versions, `gone_at`, stored run events. <br>• UI auth by bearer API key, no CSRF (§18). <br>• Repo public under AGPL-3.0: customer names and business terms removed; Appendix B rewritten as anonymized user requirements; eval categories renamed to generic ones; the platform exporter renamed `platform_draft`. <br>• Appendix A #26–#28 added. <br>• Consistency pass: comparable-page rule and floor of 3 for corroboration; `suspended` field status; `schema_version` on `progressive_state`; `operator` fields use the `config_uncorroborated` bucket; glob-expanded `extract` URLs count as caller-supplied; `error` class and robots outcome defined; role C also fills fields an active config doesn't cover; hidden numbers stay with the custodian (PR comments show pass/fail only); PHP-only code hints. |
 | 6 | 2026-10-12 | **Labeling deferred** (Appendix A #29). §21 rewritten: L0–L4 accepted on functional criteria, accuracy claims moved to milestone M; rule for drawing hidden and fresh from untouched sites; C10 notes the `no_baseline` period. |
 | 7 | 2026-10-13 | **Owner answers** (Appendix A #30). §16.3: complementary suppression for hidden and fresh aggregates (D-0234, OPEN_QUESTIONS #16). |
+| 8 | 2026-10-13 | **Parse once** (Appendix A #31, owner). §8: one `ParsedPage` per capture, shared by every consumer (INV-26). |
