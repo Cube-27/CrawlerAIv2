@@ -3604,3 +3604,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Do it in PR 2.
 - Why: Rows matter only to the pagination executor, and listing samples have many records per page.
 - Reversible: yes
+
+### D-0544 — Record export columns are in field-name order, values then statuses
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 12 (#115) · Status: decided
+- Decision: All three record formats share one table: the schema's fields sorted by name, then `_status_<field>` for each in the same order. `json_records` is a JSON array of objects with those keys; `markdown` is a GFM table with those columns. A record whose `field_meta` keys are not the schema's fields is refused (`ValueError`).
+- Alternatives: Declaration order; interleaving each field with its status; a per-record markdown section.
+- Why: §4.11 asks for stable CSV columns, and `schema_def.fields` is JSONB, which does not keep key order. Field names start with a lowercase letter (`NAME_PATTERN`), so status columns cannot collide with fields.
+- Reversible: yes
+
+### D-0545 — Record export cells: strings as themselves, everything else compact JSON; no CSV formula escaping
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 12 (#115) · Status: decided
+- Decision: An unpublished field is an empty cell (`null` in `json_records`); a string value is written as is; numbers, booleans, lists and objects are compact JSON (`ensure_ascii=False`, `allow_nan=False`). Cells starting with `=`, `+`, `-` or `@` are not prefixed. Markdown backslash-escapes every ASCII punctuation character (CommonMark §2.4) and turns line endings into `<br>`.
+- Alternatives: JSON-encode every value; prefix formula-like cells with `'` (OWASP CSV injection guidance).
+- Why: §4.11 JSON-encodes nested values only; INV-27 forbids changing a published value. Spreadsheet safety, if wanted, belongs to the caller (SPEC-10/SPEC-12).
+- Reversible: yes
