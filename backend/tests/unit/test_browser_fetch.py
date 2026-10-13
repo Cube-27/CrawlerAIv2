@@ -52,6 +52,10 @@ _MANY = b"""<html><body><p id="done"></p><script>
   document.getElementById('done').textContent = 'loaded';
 })();
 </script></body></html>"""
+_SEARCH = b"""<html><body><p id="done"></p><script>
+fetch('/api/search', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{"q": "lamp"}'})
+  .then(r => r.json()).then(() => { document.getElementById('done').textContent = 'searched'; });
+</script></body></html>"""
 _BUSY = b"""<html><body><p>Polling page</p><script>
 setInterval(() => fetch('/api/n/0'), 100);
 </script></body></html>"""
@@ -104,6 +108,10 @@ def server() -> Iterator[Server]:
             self.end_headers()
             self.wfile.write(reply.body)
 
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            self.do_GET()
+
         def log_message(self, format: str, *args: object) -> None:
             pass
 
@@ -118,6 +126,8 @@ def server() -> Iterator[Server]:
             "/style.css": Reply(content_type="text/css", body=b"p { color: black }"),
             "/api/big": Reply(content_type=_JSON, body=b"[" + b"0," * 1_100_000 + b"0]"),
             "/many": Reply(body=_MANY),
+            "/search": Reply(body=_SEARCH),
+            "/api/search": Reply(content_type=_JSON, body=b'{"hits": []}'),
             "/busy": Reply(body=_BUSY),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
@@ -208,8 +218,8 @@ def test_js_only_page_is_rendered_and_its_json_captured(browser: Browser, server
     assert b"<p>Catalogue item 0 with a short description</p><p>Catalogue item 1 with" in result.bundle.body
     assert result.bundle.raw_body == _APP
     entries = result.bundle.manifest.network_bodies
-    assert [(e.url, e.status, e.content_type, e.file) for e in entries] == [
-        (server.url("/api/items"), 200, _JSON, "network/0001.json")
+    assert [(e.url, e.status, e.content_type, e.file, e.method, e.request_body) for e in entries] == [
+        (server.url("/api/items"), 200, _JSON, "network/0001.json", "GET", None)
     ]
     assert result.bundle.network == (_ITEMS,)
     assert decode(encode(result.bundle)) == result.bundle
@@ -244,6 +254,19 @@ def test_capture_keeps_the_first_fifty_json_bodies_under_two_megabytes_in_order(
     assert b"loaded" in result.bundle.body
     assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url(f"/api/n/{i}") for i in range(50)]
     assert result.bundle.network[49] == b'{"n": 49}'
+
+
+def test_capture_records_the_method_and_body_of_the_request_behind_each_json_body(
+    browser: Browser, server: Server
+) -> None:
+    result = browser.fetch(server.url("/search"))
+
+    assert b"searched" in result.bundle.body
+    entries = result.bundle.manifest.network_bodies
+    assert [(e.url, e.method, e.request_body) for e in entries] == [
+        (server.url("/api/search"), "POST", '{"q": "lamp"}')
+    ]
+    assert decode(encode(result.bundle)) == result.bundle
 
 
 def test_redirects_are_followed_within_the_page_host(browser: Browser, server: Server) -> None:
