@@ -3836,3 +3836,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: See options.
 - Why: The same contradiction as D-0444 (CLAUDE.md §4).
 - Reversible: yes
+
+### D-0577 — Job results: records as `RecordPage`, exports as a JSON envelope
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: decided
+- Decision: `GET /v1/jobs/{id}/results` answers `format=json` with a `RecordPage` (as `/v1/records`) and the export formats with `{format, content, next_cursor}`, the exporter's text in `content`.
+- Alternatives: Raw `text/csv`/`text/markdown` bodies with the cursor in a `Link` header (RFC 8288).
+- Why: One JSON contract for the generated client and MCP; a download endpoint (and CSV formula-injection handling, #115 follow-up) can come with SPEC-12.
+- Reversible: yes
+
+### D-0578 — Job results are newest first; an export needs the job's schema
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: decided
+- Decision: Results are ordered newest first by record id, as `/v1/records`; an export uses the job's pinned `schema_id`, and a job without one answers 409.
+- Alternatives: Oldest first; an empty export.
+- Why: Reuses the records service and its cursor; without a schema there are no columns.
+- Reversible: yes
+
+### D-0579 — Cancel cancels queued tasks at once and settles the job
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: decided
+- Decision: `DELETE /v1/jobs/{id}` cancels the job's queued tasks, then locks the job (the queue's lock order), sets `cancel_requested`, ends a queued job as `cancelled` and settles a running one (cancelled once nothing is claimed). A repeat cancel answers 200 unchanged; a completed or failed job answers 409.
+- Alternatives: Leave queued tasks for workers to cancel on claim; 200 for ended jobs.
+- Why: Counts are right at once and no worker claims a task only to cancel it; DELETE is idempotent (RFC 9110 §9.2.2).
+- Reversible: yes
+
+### D-0580 — Page outputs of format-only jobs come with SPEC-10 PR 2
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: decided
+- Decision: `/results` serves records only; page outputs (formats of a job without a schema) come with `batch/scrape`, which stores them.
+- Alternatives: Store page outputs in this row.
+- Why: Nothing stores them yet; outside this row's scope.
+- Reversible: yes
