@@ -1,0 +1,31 @@
+{
+  "@context": {
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "schema": "https://schema.org/"
+  },
+  "@graph": [
+    { "@id": "schema:Thing", "@type": "rdfs:Class", "rdfs:label": "Thing" },
+    { "@id": "schema:Intangible", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Thing" } },
+    { "@id": "schema:CreativeWork", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Thing" } },
+    { "@id": "schema:WebPage", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:CreativeWork" } },
+    { "@id": "schema:Product", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Thing" } },
+    { "@id": "schema:IndividualProduct", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Product" } },
+    {
+      "@id": "schema:ProductModel",
+      "@type": "rdfs:Class",
+      "rdfs:subClassOf": [{ "@id": "schema:Product" }, { "@id": "schema:CreativeWork" }]
+    },
+    { "@id": "schema:Offer", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:AggregateOffer", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Offer" } },
+    { "@id": "schema:Brand", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:Organization", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Thing" } },
+    { "@id": "schema:ItemList", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:ListItem", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:JobPosting", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:DataType", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "rdfs:Class" } },
+    { "@id": "schema:Text", "@type": ["rdfs:Class", "schema:DataType"] },
+    { "@id": "schema:name", "@type": "rdf:Property", "schema:domainIncludes": { "@id": "schema:Thing" } },
+    { "@id": "schema:InStock", "@type": "schema:ItemAvailability" }
+  ]
+}

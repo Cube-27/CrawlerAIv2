@@ -44,6 +44,8 @@ class Candidate(_Model):
 class CollectResult(_Model):
     entities: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
+    # What the collector skipped and why (an invalid JSON block); a collector never raises on page content (§4.5).
+    diagnostics: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _references_resolve(self) -> Self:

@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 3, SPEC-07 PRs 3, 7. Next: SPEC-05 PR 4 after PR 3, SPEC-07 PR 4 after PR 3, SPEC-12 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
+- In progress: SPEC-05 PR 4, SPEC-07 PRs 3, 7. Next: SPEC-05 PR 6, SPEC-07 PR 4 after PR 3, SPEC-12 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
@@ -132,7 +132,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | Cleaned text + visible index | done (#67) | |
 | 2 | Candidate/Entity/Outcome models, locator format | done (#72) | |
-| 3 | JSON-LD collector + schema.org map | todo | |
+| 3 | JSON-LD collector + schema.org map | done (#78) | Locators address each block as written, not an expanded graph; SPEC-05 §4.3 and the `collect/locator.py` comment say "expanded graph" (needs a spec clarification). |
 | 4 | Microdata/RDFa Lite collector | todo | |
 | 5 | OpenGraph collector | done (#79) | |
 | 6 | Ownership + intent | todo | |

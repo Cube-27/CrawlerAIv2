@@ -2507,3 +2507,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Allowlist the OGP host as a standards body.
 - Why: The smallest change; no allowlist edit for one module.
 - Reversible: yes
+
+### D-0387 — Collector diagnostics
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: `CollectResult` gains `diagnostics: tuple[str, ...] = ()`. A JSON-LD block that is not JSON (including `NaN` and nesting the parser refuses) and a value the `Candidate` model refuses (nested deeper than its validator recurses) are skipped and named there.
+- Alternatives: Log only.
+- Why: SPEC-05 §4.5: a collector never raises and returns a diagnostic; the PR 2 model had no place for one.
+- Reversible: yes
+
+### D-0388 — schema.org scope in JSON-LD
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: A bare term (`Product`, `name`) is read as schema.org only under a schema.org context: the namespace as a string, `@vocab`, or an array of contexts, http or https, with or without the trailing slash. Full `http(s)://schema.org/` IRIs are read anywhere. A block with no context has no entities, and a remote context other than schema.org's is not fetched.
+- Alternatives: Assume schema.org when there is no context.
+- Why: JSON-LD 1.1 §4.1; the most conservative reading (C7).
+- Reversible: yes
+
+### D-0389 — JSON-LD entities and parents
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: Every object typed with a vocabulary type is an entity, at any depth. Its parent is the nearest enclosing entity; a node defined on its own takes the one entity that references it by `@id`, unless that would make a cycle; a node referenced from two or more entities has no parent. For references, the first definition of an `@id` wins. `Entity.kind` is the most specific listed type: the first one that no other listed type is a subtype of.
+- Alternatives: Merge duplicate `@id` definitions (JSON-LD flattening).
+- Why: The simplest rule that keeps entities a tree (SPEC-05 §4.6).
+- Reversible: yes
+
+### D-0390 — Entity URLs from JSON-LD
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: An entity's `urls` are its `url`, its own `@id`, its `mainEntityOfPage` (a string, or that node's `url`/`@id`) and its offers' `url`, canonicalized by the url normalizer. An `@id` with a fragment is left out.
+- Alternatives: Include fragment `@id`s.
+- Why: RFC 3986 §3.5: a fragment names part of a document, not a page; fragment `@id`s would all canonicalize to the page URL and make intent ambiguous.
+- Reversible: yes
+
+### D-0391 — Text standing in for a Thing
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: On a path ending in `.name` (`Product.brand.name`), a text value where the path expects a node (`"brand": "Acme"`) is taken as that thing's name.
+- Alternatives: No candidate.
+- Why: schema.org data model, "Conformance": text is accepted where a Thing is expected.
+- Reversible: yes
+
+### D-0392 — Structured-data candidate shapes and locators
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: Each value of an array property is its own candidate. A `list` field gets one candidate per node, holding all values and located at the first. A `+` path gives one object per value of the first property (`{"price": …, "priceCurrency": …}`), located at the first property; several second values stay an array, so the normalizer declines. JSON-LD locators are RFC 9535 normalized paths into the block as written (SPEC-05 §4.3 says "expanded graph"); a referenced node's values are located where it is defined. `null`, value objects holding a non-scalar, and arrays nested inside an array of values are not values.
+- Alternatives: Locators into an expanded form; one candidate per list item.
+- Why: Locators that read back the raw value from the capture (tested as a property).
+- Reversible: yes
+
+### D-0393 — schema.org vocabulary loading
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 3 (#78) · Status: decided
+- Decision: `collect.schema_org_map.default_vocabulary()` reads `backend/data/schemaorg/schemaorg-all-https.jsonld` once and raises `VocabularyMissing` ("run `crawlerai data fetch`") when it is absent, as the gazetteer does. Tests use a synthetic vocabulary file in the same format.
+- Alternatives: Derive and commit a type-hierarchy file.
+- Why: One source for the vocabulary (the manifest pin, D-0018); CI never fetches.
+- Reversible: yes
