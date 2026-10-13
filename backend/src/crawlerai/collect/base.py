@@ -88,8 +88,10 @@ class Collector(Protocol):
 def descends(entity: str | None, ancestor: str, parents: Mapping[str, str | None]) -> bool:
     """Whether `entity` is `ancestor` or below it in `parents`; a collector checks it before giving a node a parent, so
     that entities stay a tree (§4.6)."""
-    while entity is not None:
+    seen: set[str] = set()
+    while entity is not None and entity not in seen:  # a walk into a cycle without `ancestor` ends
         if entity == ancestor:
             return True
+        seen.add(entity)
         entity = parents[entity]
     return False

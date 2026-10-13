@@ -99,7 +99,9 @@ def test_a_parent_names_an_entity() -> None:
 
 
 def test_parents_form_a_tree() -> None:
+    # The entity below the cycle comes first, so the check walks into a cycle it is not part of.
     entities = (
+        Entity(id="microdata:/c", kind="Offer", urls=(), parent="microdata:/a"),
         Entity(id="microdata:/a", kind="Product", urls=(), parent="microdata:/b"),
         Entity(id="microdata:/b", kind="Product", urls=(), parent="microdata:/a"),
     )
