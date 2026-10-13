@@ -80,7 +80,6 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     )
     claim = (
         update(UrlTask)
-        .add_cte(due)
         .where(UrlTask.id.in_(select(due.c.id)))
         .values(
             status="claimed",
