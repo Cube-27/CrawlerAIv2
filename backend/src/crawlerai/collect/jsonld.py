@@ -15,23 +15,27 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit
 
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate, CollectResult, Entity
-from crawlerai.collect.schema_org_map import Value, Vocabulary, parse_path, select
+from crawlerai.collect.base import CollectResult, Entity, descends
+from crawlerai.collect.schema_org_map import (
+    NAMESPACES,
+    Typed,
+    Value,
+    Vocabulary,
+    entity_urls,
+    field_candidates,
+    schema_term,
+)
 from crawlerai.content.page import ParsedPage
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import normalize
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.normalize.base import Context
+from crawlerai.schemas.types import SchemaDef
 
 # The JSON-LD media type (JSON-LD 1.1, IANA considerations); HTML embeds JSON-LD in a script element of that type
 # (JSON-LD 1.1 §7.3).
 _MEDIA_TYPE = "application/ld+json"
-# schema.org namespaces: https is current, http the earlier one; the vocabulary treats both as the same terms.
-_NAMESPACES = ("https://schema.org/", "http://schema.org/")
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
-_CONTEXTS = frozenset(n.rstrip("/") for n in _NAMESPACES)
-_URL = FieldSpec(type=FieldType.URL)
+_CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +98,10 @@ class _Node:
     found: _Object
     graph: _Graph
 
+    @property
+    def node_id(self) -> str | None:
+        return self.graph.resolve_id(self.found.data.get("@id"))
+
     def values(self, prop: str) -> Sequence[Value]:
         values: list[Value] = []
         for key in _keys(prop, in_schema=self.found.in_schema):
@@ -128,7 +136,7 @@ class _Node:
 def _keys(prop: str, *, in_schema: bool) -> list[str]:
     # A term is a schema.org property only where schema.org is the vocabulary (JSON-LD 1.1 §4.1.2); a full IRI is one
     # anywhere.
-    return ([prop] if in_schema else []) + [namespace + prop for namespace in _NAMESPACES]
+    return ([prop] if in_schema else []) + [namespace + prop for namespace in NAMESPACES]
 
 
 # RFC 9535 §2.7: a normalized path writes a member name in single quotes, escaping `'`, `\` and control characters.
@@ -153,7 +161,7 @@ def _after(context: JsonValue, inherited: bool) -> bool:
     if isinstance(context, str):
         return context.rstrip("/") in _CONTEXTS
     if isinstance(context, dict):
-        return context["@vocab"] in _NAMESPACES if "@vocab" in context else inherited
+        return context["@vocab"] in NAMESPACES if "@vocab" in context else inherited
     return False
 
 
@@ -175,9 +183,15 @@ class JsonLdCollector:
                 graph.add(found)
         entities = [found for found in graph.objects if found.types]
         parents = _parents(entities, graph)
+        typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
+        candidates = field_candidates(
+            typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
+        )
         return CollectResult(
-            entities=tuple(self._entity(found, parents, graph, ctx) for found in entities),
-            candidates=tuple(self._candidates(entities, graph, schema, ctx, diagnostics)),
+            entities=tuple(
+                Entity(id=t.id, kind=t.types[0], urls=entity_urls(t.node, ctx), parent=parents[t.id]) for t in typed
+            ),
+            candidates=tuple(candidates),
             diagnostics=tuple(diagnostics),
         )
 
@@ -205,50 +219,11 @@ class JsonLdCollector:
             )
 
     def _types(self, declared: JsonValue, in_schema: bool) -> tuple[str, ...]:
-        """The schema.org types `declared` names, most specific first: a type that another listed type is a subtype of
-        follows it."""
         names: list[str] = []
         for item in declared if isinstance(declared, list) else [declared]:
-            if not isinstance(item, str):
-                continue
-            name = next((item.removeprefix(n) for n in _NAMESPACES if item.startswith(n)), None)
-            if name is None and in_schema:
-                name = item
-            if name is not None and name in self.vocabulary and name not in names:
+            if isinstance(item, str) and (name := schema_term(item) or (item if in_schema else None)) is not None:
                 names.append(name)
-        return tuple(sorted(names, key=lambda t: any(o != t and self.vocabulary.is_a(o, t) for o in names)))
-
-    def _entity(self, found: _Object, parents: Mapping[str, str | None], graph: _Graph, ctx: Context) -> Entity:
-        return Entity(id=found.id, kind=found.types[0], urls=_urls(_Node(found, graph), ctx), parent=parents[found.id])
-
-    def _candidates(
-        self, entities: Sequence[_Object], graph: _Graph, schema: SchemaDef, ctx: Context, diagnostics: list[str]
-    ) -> Iterator[Candidate]:
-        """A candidate per value each field's path reaches on each entity of its type. A value the candidate model
-        refuses (nested deeper than its validator recurses) is skipped with a diagnostic: a collector never raises on
-        page content (§4.5)."""
-        for name, spec in schema.fields.items():
-            if spec.schema_org is None:
-                continue
-            path = parse_path(spec.schema_org)
-            for found in entities:
-                if not any(self.vocabulary.is_a(t, path.root) for t in found.types):
-                    continue
-                for selected in select(_Node(found, graph), path, as_list=spec.type is FieldType.LIST):
-                    try:
-                        yield Candidate(
-                            field=name,
-                            entity_id=found.id,
-                            source_kind="jsonld",
-                            raw=selected.raw,
-                            normalized=normalize(selected.raw, spec, ctx),
-                            locator=selected.locator,
-                            independent=True,
-                        )
-                    except ValidationError as e:
-                        reason = e.errors()[0]["type"]
-                        block = selected.locator.split(":", 2)[1]
-                        diagnostics.append(f"jsonld:{block}: value at {selected.locator} skipped ({reason})")
+        return self.vocabulary.specific_first(names)
 
 
 def _parse(text: str) -> JsonValue:
@@ -273,40 +248,6 @@ def _parents(entities: Sequence[_Object], graph: _Graph) -> dict[str, str | None
         if found.enclosing is not None or node_id is None:
             continue
         referrers = set(graph.referrers.get(node_id, ())) - {found.id}
-        if len(referrers) == 1 and not _descends(next(iter(referrers)), found.id, parents):
+        if len(referrers) == 1 and not descends(next(iter(referrers)), found.id, parents):
             parents[found.id] = next(iter(referrers))
     return parents
-
-
-def _descends(entity: str | None, ancestor: str, parents: Mapping[str, str | None]) -> bool:
-    while entity is not None:
-        if entity == ancestor:
-            return True
-        entity = parents[entity]
-    return False
-
-
-def _urls(node: _Node, ctx: Context) -> tuple[str, ...]:
-    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its `url` and `@id`, its
-    `mainEntityOfPage`, and its offers' `url`."""
-    written: list[JsonValue] = _page_names(node)
-    for value in node.values("mainEntityOfPage"):
-        written.extend(_page_names(value.node) if isinstance(value.node, _Node) else [value.raw])
-    for value in node.values("offers"):
-        if value.node is not None:
-            written.extend(v.raw for v in value.node.values("url"))
-    urls: list[str] = []
-    for raw in written:
-        result = normalize(raw, _URL, ctx)
-        if isinstance(result, Ok) and isinstance(result.value, str) and result.value not in urls:
-            urls.append(result.value)
-    return tuple(urls)
-
-
-def _page_names(node: _Node) -> list[JsonValue]:
-    names: list[JsonValue] = [v.raw for v in node.values("url")]
-    node_id = node.graph.resolve_id(node.found.data.get("@id"))
-    # RFC 3986 §3.5: an `@id` with a fragment names a part of a document, not the page itself.
-    if node_id is not None and not urlsplit(node_id).fragment:
-        names.append(node_id)
-    return names
