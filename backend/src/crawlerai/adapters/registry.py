@@ -9,11 +9,12 @@ from collections.abc import Collection, Iterable
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.adapters.base import Adapter
 from crawlerai.adapters.greenhouse import Greenhouse
+from crawlerai.adapters.lever import Lever
 
 
 def platform_adapters(fetch: JsonFetcher) -> tuple[Adapter, ...]:
     """Every adapter, active or not, fetching through `fetch`."""
-    return (Greenhouse(fetch),)
+    return Greenhouse(fetch), Lever(fetch)
 
 
 class Registry:
