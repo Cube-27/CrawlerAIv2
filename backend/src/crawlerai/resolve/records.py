@@ -4,19 +4,21 @@ field outcomes become.
 `data` holds the published values and nothing else; `field_meta` says, for every schema field, how it resolved. A
 page whose required fields and groups all publish is `extracted` and its record `complete`. Otherwise a caller-supplied
 URL still gets its record, `complete=false`, with outcome `partial`, and a crawl-discovered URL gets `no_match` and no
-record. Records only serialize what resolution published (INV-27).
+record. A listing's rows are records each, judged the same way (`assemble_listing`). Records only serialize what
+resolution published (INV-27).
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.collect.locator import LocatorText
+from crawlerai.collect.schema_org_map import parse_path
 from crawlerai.db.models import SiteId, SourceKind
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import sha256_hex
 
 PageOutcome = Literal["extracted", "partial", "no_match"]
@@ -92,3 +94,43 @@ def assemble(
         complete=complete,
     )
     return ("extracted" if complete else "partial"), record
+
+
+def assemble_listing(
+    schema: SchemaDef,
+    page_fields: FieldSet,
+    rows: Sequence[FieldSet],
+    *,
+    site_id: SiteId,
+    page_url: str,
+    caller_supplied: bool,
+) -> tuple[PageOutcome, tuple[RecordDraft, ...]]:
+    """A listing's outcome and its records (§4.10): one per row, holding the row's fields and the page's, keyed by
+    the row's URL (`_row_key`); a URL listed twice is one record, the first. Each row keeps or loses its record as a
+    detail page does. `extracted` when every row is complete, `no_match` when no record is kept (or there is no row),
+    else `partial`."""
+    records: dict[str, RecordDraft] = {}
+    complete = bool(rows)
+    for position, row in enumerate(rows, start=1):
+        fields = {**page_fields, **row}
+        key = _row_key(schema, row) or f"{page_url}#{position}"
+        outcome, record = assemble(schema, fields, site_id=site_id, canonical_url=key, caller_supplied=caller_supplied)
+        complete = complete and outcome == "extracted"
+        if record is not None:
+            records.setdefault(record.entity_key, record)
+    if not records:
+        return "no_match", ()
+    return ("extracted" if complete else "partial"), tuple(records.values())
+
+
+def _row_key(schema: SchemaDef, row: FieldSet) -> str | None:
+    """The row's published URL: the first row field of type url whose path is `T.url` (schema.org Thing.url, "URL of
+    the item"). Without one, the row's position on the page stands in."""
+    for name, spec in schema.fields.items():
+        if spec.scope != "row" or spec.type is not FieldType.URL or spec.schema_org is None:
+            continue
+        path = parse_path(spec.schema_org)
+        outcome = row.get(name)
+        if path.steps == ("url",) and path.joined is None and outcome is not None and isinstance(outcome.value, str):
+            return outcome.value
+    return None

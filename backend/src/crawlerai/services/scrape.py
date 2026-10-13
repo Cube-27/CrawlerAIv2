@@ -621,15 +621,20 @@ async def _finish(
         schema=derived.schema,
         caller_supplied=True,
     )
-    if stored.record_id is None or stored.record is None:
+    if not stored.records:
         # A scrape URL is caller-supplied, so a page it reached has a record unless resolution failed (SPEC-05 §4.14).
         await fail_task(conn, task, "extraction_error", transient=False, capture_id=capture_id)
         return "failed", None
-    outcome = "extracted" if stored.record.complete else "partial"
+    # Records of a detail page only: the request refuses listing records (`_records_have_a_schema`).
+    stored_record = stored.records[0]
+    outcome = "extracted" if stored_record.draft.complete else "partial"
     await complete_task(conn, task, outcome, capture_id=capture_id)
     await _count_page(conn, site_id, derived.schema)
     record = ScrapedRecord.of(
-        stored.record_id, stored.record, mode=derived.extraction.mode, confidence=derived.extraction.record_confidence
+        stored_record.id,
+        stored_record.draft,
+        mode=derived.extraction.mode,
+        confidence=derived.extraction.record_confidence,
     )
     return outcome, [record]
 

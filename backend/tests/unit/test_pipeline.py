@@ -21,9 +21,10 @@ from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId, SourceKind
+from crawlerai.db.models import EvalRunId, PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve import pipeline
+from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import (
     UNRANKED,
     EngineData,
@@ -233,15 +234,10 @@ def test_resolution_that_raises_fails_the_page_without_fields(monkeypatch: pytes
     assert (result.outcome, result.entity, result.record_confidence) == ("error", None, None)
 
 
-def test_config_mode_and_listings_are_refused_until_their_rows_land() -> None:
-    bundle = _bundle(_html(_product()))
-    listing = _schema("listing", title=PRODUCT.fields["title"])
-    config_mode = extract_page(bundle, PRODUCT, {"ir": {}}, None, "config", data=DATA)
+def test_config_mode_is_refused_until_its_row_lands() -> None:
+    config_mode = extract_page(_bundle(_html(_product())), PRODUCT, {"ir": {}}, None, "config", data=DATA)
     with pytest.raises(ModeNotSupported, match="config"):
         asyncio.run(config_mode)
-    listing_page = extract_page(bundle, listing, None, None, "adhoc", data=DATA)
-    with pytest.raises(ModeNotSupported, match="listing"):
-        asyncio.run(listing_page)
 
 
 # --- the LLM hook (§4.13) ---
@@ -371,3 +367,129 @@ def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> Non
     result = _extract(_bundle('{"title": "Engineer"}', method="api", url=JOB_URL), JOB, data=data)
     assert not any(c.source_kind == "adapter" for c in result.candidates)
     assert any(d.startswith("adapter: no active adapter") for d in result.diagnostics)
+
+
+# --- cold listings (§4.7 "Listings", §8.6) ---
+
+LISTING_URL = "https://shop.example.test/c/widgets?page=2"
+LISTING = _schema(
+    "listing",
+    title=PRODUCT.fields["title"],
+    url=FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url"),
+    price=FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency"),
+    # og:title fills text fields whose path ends in `.name` (the OGP table, §4.5); on the page, only the page owns it.
+    page_title=FieldSpec(type=FieldType.TEXT, description="d", scope="page", schema_org="Product.name"),
+    next_page_url=FieldSpec(type=FieldType.URL, description="d", scope="page"),
+)
+
+
+def _row(n: int, **extra: Any) -> dict[str, Any]:
+    return {**_product(f"Widget {n}", f"https://shop.example.test/p/{n}", price=f"{n}.50"), **extra}
+
+
+def _item_list(*items: Mapping[str, Any]) -> dict[str, Any]:
+    elements = [{"@type": "ListItem", "position": i + 1, "item": item} for i, item in enumerate(items)]
+    return {"@type": "ItemList", "itemListElement": elements}
+
+
+def _listing(page: str, schema: SchemaDef = LISTING, **kwargs: Any) -> ExtractionResult:
+    return _extract(_bundle(page, url=LISTING_URL), schema, **kwargs)
+
+
+def _row_values(result: ExtractionResult) -> list[dict[str, JsonValue]]:
+    return [{name: o.value for name, o in row.items() if o.status == "published"} for row in result.rows]
+
+
+def test_the_items_of_an_item_list_are_the_rows() -> None:
+    result = _listing(_html(_item_list(_row(1), _row(2))))
+    assert _row_values(result) == [
+        {"title": "Widget 1", "url": "https://shop.example.test/p/1", "price": {"amount": "1.50", "currency": "EUR"}},
+        {"title": "Widget 2", "url": "https://shop.example.test/p/2", "price": {"amount": "2.50", "currency": "EUR"}},
+    ]
+    # Each row holds its row-scoped fields; the page-scoped ones resolve once, against the page.
+    assert {frozenset(row) for row in result.rows} == {frozenset({"title", "url", "price"})}
+    assert result.entity is not None
+    assert set(result.entity) == {"page_title", "next_page_url"}
+    assert result.outcome == "extracted"
+
+
+def test_an_item_list_holding_the_items_directly_and_in_microdata_gives_rows() -> None:
+    body = (
+        '<ul itemscope itemtype="https://schema.org/ItemList">'
+        '<li itemprop="itemListElement" itemscope itemtype="https://schema.org/Product">'
+        '<a itemprop="url" href="/p/3"><span itemprop="name">Widget 3</span></a></li></ul>'
+    )
+    result = _listing(_html({"@type": "ItemList", "itemListElement": [_row(1)]}, body=body))
+    titles = [row["title"].value for row in result.rows]
+    assert titles == ["Widget 1", "Widget 3"]
+
+
+def test_three_top_level_items_no_page_url_names_are_the_rows() -> None:
+    result = _listing(_html(_row(1), _row(2), _row(3)))
+    assert [row["title"].value for row in result.rows] == ["Widget 1", "Widget 2", "Widget 3"]
+
+
+@pytest.mark.parametrize(
+    "nodes",
+    [
+        pytest.param((_row(1), _row(2)), id="fewer-than-three"),
+        pytest.param((_row(1), _row(2), _product("Widget 9", LISTING_URL)), id="the-page-url-names-one"),
+    ],
+)
+def test_top_level_items_are_not_rows_on_a_detail_like_page(nodes: tuple[dict[str, Any], ...]) -> None:
+    result = _listing(_html(*nodes))
+    assert result.rows == ()
+    # No rows: nothing on the page is complete (§10 "Incomplete pages").
+    assert result.outcome == "partial"
+
+
+def test_an_item_related_to_a_row_is_not_a_row() -> None:
+    result = _listing(_html(_item_list(_row(1), _row(2, isRelatedTo=_row(7)))))
+    assert [row["title"].value for row in result.rows] == ["Widget 1", "Widget 2"]
+
+
+def test_a_row_takes_no_page_level_value() -> None:
+    # og:title describes the page, not one of its rows, so it fills the page's field and no row's (§4.6).
+    head = '<meta property="og:title" content="All widgets">'
+    nameless = {key: value for key, value in _row(2).items() if key != "name"}
+    result = _listing(_html(_item_list(_row(1), nameless), head=head))
+    assert [(row["title"].status, row["title"].reason) for row in result.rows] == [
+        ("published", None),
+        ("missing", "not_owned"),
+    ]
+    assert result.entity is not None
+    assert result.entity["page_title"].value == "All widgets"
+    assert result.outcome == "partial"
+
+
+def test_the_next_pages_come_with_the_listing() -> None:
+    head = '<link rel="next" href="/c/widgets?page=3">'
+    result = _listing(_html(_item_list(_row(1)), head=head))
+    assert result.next_pages == ("https://shop.example.test/c/widgets?page=3",)
+    # No source states the next page as a field value, so the page field is not filled from the link (C7, D-0355).
+    assert result.entity is not None
+    assert result.entity["next_page_url"].status == "missing"
+
+
+def test_role_c_is_not_asked_for_listing_rows() -> None:
+    role_c = FakeRoleC()
+    _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
+    assert role_c.requests == []
+
+
+def test_a_listing_parses_the_capture_once_per_parser(parses: Parses) -> None:
+    body = '<a href="/c/widgets?page=3">3</a>'
+    result = _listing(_html(_item_list(_row(1)), head='<meta property="og:title" content="All widgets">', body=body))
+    assert result.next_pages == ("https://shop.example.test/c/widgets?page=3",)
+    assert parses["selectolax"].calls == 1
+    assert parses["lxml"].calls <= 1
+
+
+@pytest.mark.parametrize(("url_n", "expected"), [(40, 0.975), (29, None)])
+def test_a_listings_confidence_is_its_least_confident_rows(url_n: int, expected: float | None) -> None:
+    # §10 per record: a row's confidence is its least confident required field's; one uncalibrated row has none.
+    buckets = {"text|structured": Bucket(n=40, precision=0.99), "url|structured": Bucket(n=url_n, precision=0.975)}
+    calibration = Calibration(eval_run_id=EvalRunId(uuid7()), git_sha="a" * 40, buckets=buckets)
+    data = EngineData(VOCABULARY, DATA.orders, calibration)
+    result = _listing(_html(_item_list(_row(1), _row(2))), data=data)
+    assert result.record_confidence == expected

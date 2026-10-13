@@ -77,12 +77,15 @@ class PageFacts:
 
 @dataclass(frozen=True, slots=True)
 class Resolver:
-    """Preference for one detail entity, `target` (§4.6): its fields' candidates, screened, then chosen per type."""
+    """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
+    Its fields' candidates are screened, then chosen per type. `page_values`: whether page-level candidates are the
+    target's (`EntityGraph.owned_by`)."""
 
     graph: EntityGraph
     target: Entity
     page: PageFacts
     orders: Orders
+    page_values: bool = True
 
     def prefer(self, schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
         screened = {name: self._screen([c for c in candidates if c.field == name]) for name in schema.fields}
@@ -113,7 +116,7 @@ class Resolver:
             return "invalid"
         if isinstance(candidate.normalized, Ambiguous):
             return "ambiguous"
-        if not self.graph.owned_by(candidate, self.target):
+        if not self.graph.owned_by(candidate, self.target, page_values=self.page_values):
             return "not_owned"
         # §8.2 rule 4 (INV-13): a value the request URL carries is not evidence about the page unless the page shows it.
         if any(text_form(s) in self.page.query_values and not self.page.visible(s) for s in _scalars(candidate.raw)):
