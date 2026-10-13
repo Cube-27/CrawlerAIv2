@@ -51,10 +51,8 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      merges only if all passed and the commit is still the PR's head. Never run `gh pr merge` yourself after a
      wait chained with `;`. Then close the PR's herdr panes and run
      `tools/orchestrator/cleanup_worktree.sh <worktree> <branch>`.
-   - **Early tracker commits.** While the review runs, you may write the tracker commit early, but only for the PR
-     that merges next. An early commit on any other PR conflicts as soon as another PR merges first.
-   - **Merge strictly one at a time.** Merge one PR. Rebase the next one onto the new `main`, add its tracker commit,
-     wait for green CI, then merge it, and so on. IDs never clash, and every merge is tested against the real `main`.
+   - **Merge strictly one at a time.** Send `YOUR TURN` to one implementor only, after the previous merge. IDs never
+     clash, and every merge is tested against the real `main`.
    - `ESCALATE`: follow §2.
 4. **CI on main.** Before every merge and after it, check that `main` is green. If `main` turns red, fixing it
    comes before any new assignment. Assign a fix row to one worker, and stop other merges until it is green.
