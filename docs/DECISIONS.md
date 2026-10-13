@@ -1682,3 +1682,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A settings flag now.
 - Why: Settings are SPEC-02 PR 7's scope, and nothing builds the registry in production yet.
 - Reversible: yes
+
+### D-0270 — Cleanup removes all Docker build cache after each merge
+- Date: 2026-10-13 · Spec/PR: workflow (#51, owner request) · Status: decided (owner)
+- Decision: `cleanup_worktree.sh` removes `crawlerai-*` containers with `-v`, all build cache (`docker builder prune -af`) and dangling images after each merge; a failed prune warns on stderr.
+- Alternatives: Cap the cache at 5 GB (`--max-used-space`).
+- Why: Owner, 2026-10-13: "i dont need any cache in docker". The cache is host-wide, so other projects' builds get slower too.
+- Reversible: yes
+
+### D-0271 — schema.org enumeration members ship as typed data until the schema.org file is in the manifest
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 4 (#54) · Status: decided
+- Decision: `normalize/vocab/schema/ItemAvailability.json` lists the 12 members, typed from the standard; its JUSTIFICATION.md says to read them from the pinned schema.org file once SPEC-04 PR 7 adds it.
+- Alternatives: Wait for PR 7 (no enum `Ok` until then); add the file to the manifest here.
+- Why: The spec's open issue names hand-typed members as the fallback; a closed standard enumeration, not an incident list (C4).
+- Reversible: yes
+
+### D-0272 — "Longest match wins" applies to overlapping matches only
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 4 (#54) · Status: decided
+- Decision: A match inside a longer match's span is dropped; matches at separate places all count, and different codes there are `Ambiguous`.
+- Alternatives: The longest match anywhere wins.
+- Why: Choosing by length across places would guess between two members (C7).
+- Reversible: yes
+
+### D-0273 — Vocabulary language comes from the page
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 4 (#54) · Status: decided
+- Decision: Primary subtags of `html_lang`, `og_locale` and `request_locale` (not `hreflang`); with none stated, every language is tried; only languages without a file give `Invalid("no_vocabulary_for_language")`.
+- Alternatives: Always try every language; require a stated language.
+- Why: Vocabularies are language-tagged (§9); cross-language disagreement still shows as `Ambiguous`.
+- Reversible: yes
+
+### D-0274 — `schema:` enum matching is exact and case-sensitive
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 4 (#54) · Status: decided
+- Decision: Only surrounding white space is trimmed; `instock` against `schema:ItemAvailability` is `Invalid("not_a_member")`; a JSON-LD node with keys other than `@id` is `Invalid("not_a_string")`.
+- Alternatives: Casefold; fall back to `type:availability` phrases.
+- Why: schema.org names are case-sensitive; the spec links no `schema:` field to a `type:` vocabulary.
+- Reversible: yes
