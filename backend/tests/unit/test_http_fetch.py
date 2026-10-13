@@ -297,28 +297,28 @@ def test_inv29_a_cookie_set_by_one_fetch_is_absent_from_the_next(server: Server)
 
 
 @pytest.mark.parametrize(
-    ("set_cookie", "next_hop", "sent"),
+    ("set_cookie", "next_hop"),
     [
         # RFC 6265 §5.4: a host-only cookie goes to its own host only; `keep`, for the parent domain, does go
         # (§5.1.3 domain-match), so the hop carries cookies at all.
-        (("other=1", "keep=1; Domain=example.test"), "http://cdn.example.test:{port}/p", "keep=1"),
-        (("other=1", "keep=1; Domain=example.test"), "http://eu.shop.example.test:{port}/p", "keep=1"),
+        (("other=1", "keep=1; Domain=example.test"), "http://cdn.example.test:{port}/p"),
+        (("other=1", "keep=1; Domain=example.test"), "http://eu.shop.example.test:{port}/p"),
         # §5.3 step 6: a Domain attribute that the setting host does not domain-match is ignored with its cookie.
-        (("other=1; Domain=cdn.example.test", "keep=1"), "/p", "keep=1"),
+        (("other=1; Domain=cdn.example.test", "keep=1"), "/p"),
         # §5.1.4: a cookie goes only to request paths its Path matches.
-        (("other=1; Path=/private", "keep=1; Path=/"), "/p", "keep=1"),
+        (("other=1; Path=/private", "keep=1; Path=/"), "/p"),
     ],
     ids=["another_host", "sub_host", "foreign_domain_attribute", "another_path"],
 )
 def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
-    server: Server, set_cookie: tuple[str, str], next_hop: str, sent: str | None
+    server: Server, set_cookie: tuple[str, str], next_hop: str
 ) -> None:
     location = next_hop.format(port=server.port)
     server.route("/start", Reply(302, (("Location", location), *(("Set-Cookie", c) for c in set_cookie))))
     server.route("/p", html(_PAGE))
     assert outcome(fetch(server, server.url("/start"))) == (200, "ok", None)
 
-    assert _cookie(server.requests[1][1]) == sent
+    assert _cookie(server.requests[1][1]) == "keep=1"
 
 
 def _cookie(headers: list[tuple[str, str]]) -> str | None:

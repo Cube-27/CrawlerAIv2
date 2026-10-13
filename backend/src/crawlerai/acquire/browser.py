@@ -222,10 +222,9 @@ async def _navigate(
     idle_end = started + _IDLE_SHARE * policy.browser_timeout_s
     with contextlib.suppress(PlaywrightTimeout):
         await page.wait_for_load_state("networkidle", timeout=_ms_until(idle_end))
-    body, raw_body, network = await asyncio.gather(
-        _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses)
+    body, raw_body, network, wire_size = await asyncio.gather(
+        _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses), _wire_size(response, exchange)
     )
-    wire_size = await _wire_size(response, exchange)
     # The browser hands over bodies after content decoding; `wire_size` counts the body as it arrived, before. Both
     # caps bound what is stored, not memory: the browser has no streaming read, so the bodies are read in full first.
     decoded = max(len(body), len(raw_body or b""))

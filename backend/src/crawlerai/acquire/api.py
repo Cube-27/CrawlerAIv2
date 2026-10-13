@@ -27,6 +27,9 @@ __all__ = ["JsonFetcher", "JsonRequest", "fetch_json"]
 
 # RFC 8259 §11: the JSON media type.
 _ACCEPT = "application/json"
+# httpx's own jar, which refuses every cookie: it would match them against the request URL, which holds the checked
+# address, so a cookie would follow the address to every host behind it. It never stores one, so one serves all.
+_NO_COOKIES = CookieJar(DefaultCookiePolicy(allowed_domains=[]))
 
 
 @dataclass(frozen=True)
@@ -98,15 +101,13 @@ async def _follow(
     url: str, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
 ) -> tuple[Exchange, bytes]:
     target = await _checked(connector.check(url), None)
-    # Cookies live for this fetch only (INV-29), matched on each hop's host name (RFC 6265 §5.4). httpx's own jar
-    # refuses every cookie: it would match them against the request URL, which holds the checked address, so a
-    # cookie would follow the address to every host behind it. Host-only cookies stay on their host (§5.3 step 6).
+    # Cookies live for this fetch only (INV-29), matched on each hop's host name (RFC 6265 §5.4), not by httpx's jar
+    # (`_NO_COOKIES`). Host-only cookies stay on their host (§5.3 step 6).
     cookies = httpx.Cookies(CookieJar(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain)))
-    refused = CookieJar(DefaultCookiePolicy(allowed_domains=[]))
     # `trust_env=False` ignores proxy environment variables: a proxy resolves the host itself, which would bypass the
     # checked address.
     async with httpx.AsyncClient(
-        transport=transport, trust_env=False, timeout=policy.timeout_s, cookies=refused
+        transport=transport, trust_env=False, timeout=policy.timeout_s, cookies=_NO_COOKIES
     ) as client:
         hops = 0
         while True:
