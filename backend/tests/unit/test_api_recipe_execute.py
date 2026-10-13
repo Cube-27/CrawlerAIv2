@@ -280,11 +280,14 @@ def test_a_failed_page_ends_the_listing_and_is_yielded_last() -> None:
 
 
 def test_a_recipe_without_pagination_has_no_pages() -> None:
-    async def first() -> None:
-        await anext(_rung(DETAIL_RECIPE, StandIn(_products)).pages(SITE, POLICY, 3))
+    pages = _rung(DETAIL_RECIPE, StandIn(_products)).pages(SITE, POLICY, 3)
 
+    async def first() -> FetchResult:
+        return await anext(pages)
+
+    coroutine = first()
     with pytest.raises(ValueError, match="without pagination"):
-        asyncio.run(first())
+        asyncio.run(coroutine)
 
 
 _QUERY_TEXT = st.text(st.characters(codec="utf-8", exclude_categories=["Cs"]), min_size=1, max_size=12)
