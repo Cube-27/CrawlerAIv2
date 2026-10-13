@@ -206,6 +206,9 @@ async def test_new_capture_tables_name_their_checks_once(conn: AsyncConnection) 
         "ck_progressive_state_page_kind",
         "ck_progressive_state_mode",
         "ck_progressive_state_pages_extracted_non_negative",
+        "ck_progressive_state_learning_has_started",
+        "ck_progressive_state_active_has_config",
+        "ck_progressive_state_retry_at_pages_non_negative",
         "ck_extraction_config_version_positive",
         "ck_extraction_config_page_kind",
         "ck_extraction_config_status",
@@ -446,7 +449,11 @@ async def test_url_state_rejects_negative_missing_runs(conn: AsyncConnection) ->
 
 @pytest.mark.parametrize("mode", get_args(ProgressiveMode))
 async def test_progressive_state_accepts_every_mode(conn: AsyncConnection, mode: str) -> None:
-    values = _progressive_values(await _site(conn), await _schema(conn), mode=mode)
+    site_id, schema_id = await _site(conn), await _schema(conn)
+    config = insert(ExtractionConfig).values(**_config_values(site_id, schema_id)).returning(ExtractionConfig.id)
+    # A learning state has a run in flight and an active one its config (SPEC-08 §4.4, §4.8).
+    plumbing = {"learning_started_at": FETCHED_AT, "active_config_id": (await conn.execute(config)).scalar_one()}
+    values = _progressive_values(site_id, schema_id, mode=mode, **plumbing)
 
     await conn.execute(insert(ProgressiveState).values(**values))
 

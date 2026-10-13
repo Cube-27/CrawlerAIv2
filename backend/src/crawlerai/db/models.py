@@ -276,6 +276,9 @@ class ProgressiveState(Base):
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("mode", ProgressiveMode), name="mode"),
         CheckConstraint("pages_extracted >= 0", name="pages_extracted_non_negative"),
+        CheckConstraint("mode <> 'learning' OR learning_started_at IS NOT NULL", name="learning_has_started"),
+        CheckConstraint("mode <> 'active' OR active_config_id IS NOT NULL", name="active_has_config"),
+        CheckConstraint("retry_at_pages >= 0", name="retry_at_pages_non_negative"),
     )
 
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
@@ -284,6 +287,13 @@ class ProgressiveState(Base):
     page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
     mode: Mapped[ProgressiveMode] = mapped_column(Text, server_default=text("'cold'"))
     pages_extracted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # Set while a `learn` job runs for this state, in any mode (SPEC-08 §4.4).
+    learning_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When a learning run last activated a config (§4.8).
+    last_learned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active_config_id: Mapped[ExtractionConfigId | None] = mapped_column(ForeignKey(ExtractionConfig.id))
+    # The `pages_extracted` at which learning is tried again after a failed run; NULL until one fails (§4.8, D-0030).
+    retry_at_pages: Mapped[int | None] = mapped_column(Integer)
 
 
 class UrlState(Base):
