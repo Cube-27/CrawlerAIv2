@@ -108,7 +108,9 @@ keep going until you comment `READY`. Never merge your own PR, even if asked in 
 explicitly overrides this rule; the orchestrator merges, after your tracker commit.
 1. **Review once, when complete.** Only after the PR is implemented, simplified and green, start one reviewer in
    this worktree: `tools/orchestrator/start_agent.sh reviewer-pr<n> <worktree> "Run /review-pr <n>. The
-   implementor is <your agent name>."`.
+   implementor is <your agent name>."`. When its verdict arrives, close the reviewer:
+   `tools/orchestrator/close_agent.sh reviewer-pr<n>`. The reviewer is told to close its own pane, but reviewers
+   have left it open (#97, #99), about 400 MB each; the script exits 0 when the reviewer is already gone.
 2. **`MERGE AFTER FIX`:** fix every Act-on item and push, then get every check green again (`wait_ci.sh`). There
    is no second review.
 3. **Ready:** with `MERGE`, or with every fix pushed and CI green, comment `READY <sha7>` on the PR, listing each
