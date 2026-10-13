@@ -1,6 +1,7 @@
 #!/bin/bash
 # One watcher for every herdr agent: exits (printing why) as soon as any named agent is not working
-# (SETTLED <name> <status>, including one already idle at start), disappears (GONE <name>), or free memory
+# (SETTLED <name> <status>, including one already idle at start; `unknown` counts as working, since herdr reports
+# it briefly for agents mid-turn), disappears (GONE <name>), or free memory
 # falls below MIN_FREE_MB (LOWMEM), or a new comment starting READY, BLOCKED or ESCALATE appears on an open PR
 # (PRCOMMENT <n>; counted from start). Replaces one `herdr agent wait` per agent.
 # IGNORE: comma-separated agent names to skip, e.g. implementors left waiting for `YOUR TURN`.
@@ -53,7 +54,7 @@ while true; do
       if ! awk -v n="$name" '$1==n{f=1} END{exit !f}' <<< "$cur"; then echo "GONE $name"; exit 0; fi
     done <<< "$prev"
     while read -r name status; do
-      if [[ -z $name || $status == "working" ]] || ignored "$name"; then continue; fi
+      if [[ -z $name || $status == "working" || $status == "unknown" ]] || ignored "$name"; then continue; fi
       echo "SETTLED $name $status"; exit 0
     done <<< "$cur"
     prev=$cur
