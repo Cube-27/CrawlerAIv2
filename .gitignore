@@ -20,6 +20,8 @@ hidden_hosts*.txt
 sites*.txt
 
 # --- Python ---
+# Written by the build: the git SHA in ENGINE_VERSION (SPEC-01 §4.7).
+backend/VERSION
 __pycache__/
 *.py[cod]
 *.egg-info/

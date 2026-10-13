@@ -42,6 +42,7 @@ ExtractionId = NewType("ExtractionId", uuid.UUID)
 CandidateId = NewType("CandidateId", uuid.UUID)
 RecordId = NewType("RecordId", uuid.UUID)
 ExtractionConfigId = NewType("ExtractionConfigId", uuid.UUID)
+UsageEventId = NewType("UsageEventId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
@@ -61,6 +62,10 @@ SourceKind = Literal["adapter", "api", "jsonld", "microdata", "og", "js_state", 
 ConfigStatus = Literal["draft", "active", "suspended"]
 ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
 ProgressiveMode = Literal["cold", "learning", "active"]
+# What `usage_event` counts (SPEC-01 §4.6), each in whole units: calls, tokens, seconds, bytes, requests.
+UsageResource = Literal[
+    "llm_calls", "llm_tokens_in", "llm_tokens_out", "browser_seconds", "proxy_bytes", "http_requests"
+]
 
 
 def _one_of(column: str, values: Any) -> str:
@@ -84,6 +89,7 @@ class Base(DeclarativeBase):
             CandidateId,
             RecordId,
             ExtractionConfigId,
+            UsageEventId,
         )
     }
     metadata = MetaData(
@@ -337,6 +343,25 @@ class JobEvent(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     kind: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class UsageEvent(Base):
+    """One use of a counted resource by a job (ARCHITECTURE §6, §17): for visibility and budgets, not billing."""
+
+    __tablename__ = "usage_event"
+    __table_args__ = (
+        CheckConstraint(_one_of("resource", UsageResource), name="resource"),
+        CheckConstraint("quantity >= 0", name="quantity_non_negative"),
+    )
+
+    id: Mapped[UsageEventId] = mapped_column(primary_key=True, default=uuid7)
+    job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
+    resource: Mapped[UsageResource] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(Text)
+    model_or_pool: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[int] = mapped_column(BigInteger)
+    # `metadata` is taken by the declarative base; the column keeps the §6 name.
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, server_default=text("'{}'::jsonb"))
 
 
 class Extraction(Base):

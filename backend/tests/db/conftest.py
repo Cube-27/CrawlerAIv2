@@ -18,7 +18,7 @@ from alembic.config import Config
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.db.models import Job, JobEvent, UrlTask
+from crawlerai.db.models import Job, JobEvent, UrlTask, UsageEvent
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -55,6 +55,6 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(database_url)
     yield engine
     async with engine.begin() as connection:
-        for model in (JobEvent, UrlTask, Job):
+        for model in (UsageEvent, JobEvent, UrlTask, Job):
             await connection.execute(delete(model))
     await engine.dispose()
