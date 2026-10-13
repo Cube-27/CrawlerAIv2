@@ -68,6 +68,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/configs/{config_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Config
+         * @description The config as `json` (the IR as stored) or `platform_draft` (`draft: true` until the platform's format is known),
+         *     and the release check on the pages the config was validated on: a field the independent release executor does not
+         *     reproduce on every such page with an engine value while there are fewer than 10, or on 95% from 10 on, is
+         *     `manual`.
+         */
+        post: operations["export_config_v1_configs__config_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/eval/capture": {
         parameters: {
             query?: never;
@@ -571,6 +594,20 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * ConfigExport
+         * @description `export` is the IR for `json` and the draft for `platform_draft`; `release` says which fields are `manual`.
+         */
+        ConfigExport: {
+            /** Export */
+            export: components["schemas"]["ExtractionConfigIR"] | components["schemas"]["PlatformDraft"];
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "platform_draft";
+            release: components["schemas"]["ReleaseReport"];
+        };
         /** ConfigList */
         ConfigList: {
             /** Items */
@@ -672,6 +709,26 @@ export interface components {
             /** Xpath */
             xpath: string;
         };
+        /** DraftField */
+        DraftField: {
+            /** Manual */
+            manual: boolean;
+            /** Steps */
+            steps: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"])[];
+        };
+        /**
+         * DraftListing
+         * @description `row_xpath` selects the rows (None when the row step is not XPath, and then every row field is `manual`).
+         */
+        DraftListing: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["DraftField"];
+            };
+            next: components["schemas"]["DraftField"] | null;
+            /** Row Xpath */
+            row_xpath: string | null;
+        };
         /**
          * ExportPage
          * @description One page of a job's records in an export format (SPEC-08 §4.11); `next_cursor` as in `RecordPage`.
@@ -686,6 +743,14 @@ export interface components {
             format: "json_records" | "csv_records" | "markdown";
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** ExportRequest */
+        ExportRequest: {
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "platform_draft";
         };
         /**
          * ExtractedRecord
@@ -1319,6 +1384,41 @@ export interface components {
             /** Step */
             step: number;
         };
+        /** PlatformDraft */
+        PlatformDraft: {
+            api_recipe: components["schemas"]["ApiRecipe"] | null;
+            /**
+             * Draft
+             * @default true
+             * @constant
+             */
+            draft: true;
+            fetch: components["schemas"]["Fetch"];
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["DraftField"];
+            };
+            /**
+             * Ir Version
+             * @constant
+             */
+            ir_version: "1";
+            listing: components["schemas"]["DraftListing"] | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Regex Flags
+             * @default u
+             * @constant
+             */
+            regex_flags: "u";
+            schema: components["schemas"]["SchemaRef"];
+            /** Site */
+            site: string;
+        };
         /**
          * Problem
          * @description RFC 9457 problem details (SPEC-07 §4.3). `type` is one of the API's problem types, or `about:blank` when the
@@ -1462,6 +1562,40 @@ export interface components {
             post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** Regex */
             regex: string;
+        };
+        /**
+         * ReleaseField
+         * @description One field on the held-out pages: `published`, pages where the engine published it; `reproduced`, those where the
+         *     release executor gave that value; `manual`, the field failed the check.
+         */
+        ReleaseField: {
+            /** Manual */
+            manual: boolean;
+            /** Published */
+            published: number;
+            /** Reproduced */
+            reproduced: number;
+        };
+        /** ReleaseListing */
+        ReleaseListing: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["ReleaseField"];
+            };
+            next: components["schemas"]["ReleaseField"] | null;
+        };
+        /**
+         * ReleaseReport
+         * @description The release check of one config: the held-out captures it ran on, and each field's result.
+         */
+        ReleaseReport: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["ReleaseField"];
+            };
+            /** Held Out */
+            held_out: string[];
+            listing: components["schemas"]["ReleaseListing"] | null;
         };
         /** ReplayRequest */
         ReplayRequest: {
@@ -2079,6 +2213,72 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    export_config_v1_configs__config_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
