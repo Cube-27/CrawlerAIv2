@@ -73,6 +73,14 @@ def select(query: str, document: JsonValue, at: str = ROOT) -> list[tuple[str, J
     return nodes
 
 
+def segments(query: str) -> list[str]:
+    """The segments of a query `select` takes (`['name']`, `[*]`, `[0]`), as written; raises `ValueError` for any
+    other query."""
+    if not query.startswith(ROOT) or _QUERY_SEGMENTS.fullmatch(query, len(ROOT)) is None:
+        raise ValueError(f"not a query of name, wildcard and index segments: {query!r}")
+    return [found[0] for found in _SEGMENT.finditer(query, len(ROOT))]
+
+
 def split_at_last_wildcard(query: str) -> tuple[str, str]:
     """`query` (as `select` takes it) as the query up to and including its last wildcard segment, and the rest as a
     query of its own; a query without a wildcard splits as `$` and itself."""

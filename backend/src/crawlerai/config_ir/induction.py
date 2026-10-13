@@ -23,11 +23,13 @@ from lxml import etree
 from lxml.html import HtmlElement
 from pydantic import JsonValue, ValidationError
 
+from crawlerai.collect.json_doc import ROOT, segments
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.executor import field_candidate
 from crawlerai.config_ir.model import FieldSteps, JsonLdStep, Step, XPathStep
+from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import name_test
 from crawlerai.db.models import FieldStatus
@@ -40,11 +42,8 @@ from crawlerai.schemas.types import FieldSpec, SchemaDef
 # list of names.
 _STABLE_CLASS = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
 _DIGIT_RUN = re.compile(r"[0-9]{3}")
-# RFC 9535 §2.7: a normalized path is `$` followed by `['name']` and `[index]` segments.
-_SEGMENT = re.compile(r"\['(?:[^'\\]|\\.)*'\]|\[(?:0|[1-9][0-9]*)\]")
-_INDEX = re.compile(r"^\[[0-9]+\]$")
-# HTML Standard: ASCII whitespace splits the class attribute into tokens.
-_CLASS_SPLIT = re.compile(r"[\t\n\f\r ]+")
+# RFC 9535 §2.3.3: an index segment.
+_INDEX = re.compile(r"\[[0-9]+\]")
 _STATUS: FieldStatus = "uncorroborated"  # until validation (§4.7) records corroboration
 
 
@@ -118,10 +117,10 @@ def _induce_field(f: _Field, result: Induction) -> None:
     if scheme in ("adapter", "api"):
         _mapped(f.name, scheme, locators, result)
         return
-    proposals = [_proposals(scheme, locator, sample, f) for locator, sample in zip(locators, f.sample, strict=True)]
-    if proposals[0] is None:
+    if not (scheme == "jsonld" or (scheme in ("microdata", "config") and f.spec.item is None)):
         result.to_synthesize[f.name] = f"not_induced:{scheme}"
         return
+    proposals = [_proposals(locator, sample, f) for locator, sample in zip(locators, f.sample, strict=True)]
     step = next((c.step for c in _common(proposals) if _verified(c, f)), None)
     if step is None:
         result.to_synthesize[f.name] = "no_verified_selector"
@@ -152,20 +151,17 @@ def _mapped(name: str, scheme: str, locators: Sequence[Locator], result: Inducti
         result.to_synthesize[name] = "no_common_pattern"
 
 
-def _proposals(scheme: str, locator: Locator, sample: SamplePage, f: _Field) -> list[_Candidate] | None:
-    """The page's candidate steps for its locator, in order of preference; `None` for a scheme induction leaves."""
-    match scheme:
-        case "jsonld":
-            return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
-        case "microdata" | "config" if f.spec.item is None:
-            return list(_xpath_candidates(sample.page.lxml_tree, locator.parts[-1]))
-    return None
+def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candidate]:
+    """The page's candidate steps for its `jsonld`, `microdata` or `config` locator, in order of preference."""
+    if locator.scheme == "jsonld":
+        return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
+    return list(_xpath_candidates(sample.page.lxml_tree, locator.parts[-1]))
 
 
-def _common(proposals: Sequence[list[_Candidate] | None]) -> list[_Candidate]:
+def _common(proposals: Sequence[list[_Candidate]]) -> list[_Candidate]:
     """The candidates every page proposes, in the first page's order."""
-    keys = [{c.key for c in page or []} for page in proposals[1:]]
-    return [c for c in proposals[0] or [] if all(c.key in page for page in keys)]
+    keys = [{c.key for c in page} for page in proposals[1:]]
+    return [c for c in proposals[0] if all(c.key in page for page in keys)]
 
 
 def _verified(candidate: _Candidate, f: _Field) -> bool:
@@ -173,7 +169,7 @@ def _verified(candidate: _Candidate, f: _Field) -> bool:
 
 
 def _selects_published(candidate: _Candidate, sample: SamplePage, f: _Field) -> bool:
-    if candidate.nodes is not None and _count(sample.page.lxml_tree, candidate.nodes) != 1:
+    if candidate.nodes is not None and len(_select(sample.page.lxml_tree, candidate.nodes)) != 1:
         return False
     found = field_candidate(sample.page, f.schema, sample.ctx, f.vocabulary, f.name, [candidate.step])
     if found is None or not isinstance(found.normalized, Ok):
@@ -181,12 +177,13 @@ def _selects_published(candidate: _Candidate, sample: SamplePage, f: _Field) -> 
     return equal(found.normalized.value, sample.published[f.name].value, f.spec)
 
 
-def _count(tree: HtmlElement, xpath: str) -> int:
+def _select(tree: HtmlElement, xpath: str) -> list[object]:
+    """The node-set `xpath` selects; empty for an XPath error or a result that is not a node-set."""
     try:
         found = tree.xpath(xpath)
     except etree.XPathError:
-        return 0
-    return len(found) if isinstance(found, list) else 0
+        return []
+    return found if isinstance(found, list) else []
 
 
 # --- jsonld ---------------------------------------------------------------------------------------------------------
@@ -196,13 +193,16 @@ def _jsonld_candidates(page: ParsedPage, vocabulary: Vocabulary, locator: Locato
     """For each schema.org node the value is nested in, nearest first, and each of its types: the path from the node
     to the value with array indices stripped, then as written."""
     block, path = locator.parts
-    typed = JsonLdCollector(vocabulary).typed(page)
-    segments = _SEGMENT.findall(path)
-    for at in range(len(segments), -1, -1):
-        types = typed.get(f"jsonld:{block}:$" + "".join(segments[:at]), ())
-        rest = segments[at:]
-        stripped = "$" + "".join("[*]" if _INDEX.match(s) else s for s in rest)
-        written = "$" + "".join(rest)
+    try:
+        parts = segments(path)
+    except ValueError:  # a member name the engine's JSONPath reader does not take
+        return
+    typed = {node: types for node, types, _ in JsonLdCollector(vocabulary).nodes(page)}
+    for at in range(len(parts), -1, -1):
+        types = typed.get(f"jsonld:{block}:{ROOT}" + "".join(parts[:at]), ())
+        rest = parts[at:]
+        stripped = ROOT + "".join("[*]" if _INDEX.fullmatch(s) else s for s in rest)
+        written = ROOT + "".join(rest)
         for type_ in types:
             for query in dict.fromkeys((stripped, written)):
                 if (step := _jsonld_step(query, type_)) is not None:
@@ -222,11 +222,8 @@ def _jsonld_step(query: str, type_: str) -> JsonLdStep | None:
 def _xpath_candidates(tree: HtmlElement, xpath: str) -> Iterator[_Candidate]:
     """For a selector of one element: each anchored path to it, nearest anchor first, read as its normalized text, then
     as each of its attributes. Any other selector (an expression of a config step) is proposed as it is."""
-    try:
-        found = tree.xpath(xpath)
-    except etree.XPathError:
-        return
-    if isinstance(found, list) and len(found) == 1 and isinstance(found[0], HtmlElement):
+    found = _select(tree, xpath)
+    if len(found) == 1 and isinstance(found[0], HtmlElement):
         element = found[0]
         for nodes in _anchored_paths(element):
             for reading in _readings(nodes, element):
@@ -240,13 +237,12 @@ def _anchored_paths(element: HtmlElement) -> Iterator[str]:
     positional predicates (SPEC-08 §4.5)."""
     below = ""
     node: HtmlElement | None = element
-    while isinstance(node, HtmlElement) and isinstance(node.tag, str):
+    while node is not None and isinstance(node.tag, str):
         test = name_test(node.tag)
         for anchor in _anchors(node):
             yield f"//{test}[{anchor}]{below}"
         below = f"/{test}{below}"
-        parent = node.getparent()
-        node = parent if isinstance(parent, HtmlElement) else None
+        node = node.getparent()
 
 
 def _anchors(node: HtmlElement) -> Iterator[str]:
@@ -257,7 +253,7 @@ def _anchors(node: HtmlElement) -> Iterator[str]:
     for name, value in node.attrib.items():
         if name.startswith("data-") and (literal := _literal(value)) is not None:
             yield f"@{name}={literal}"
-    for token in dict.fromkeys(_CLASS_SPLIT.split(node.get("class") or "")):
+    for token in dict.fromkeys(tokens(node.get("class"))):
         if stable_class_token(token):
             # The XPath 1.0 idiom for "the class attribute holds this token" (what cssselect writes for `.token`).
             yield f"contains(concat(' ', normalize-space(@class), ' '), ' {token} ')"

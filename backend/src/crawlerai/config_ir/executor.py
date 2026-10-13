@@ -139,7 +139,7 @@ class _Run:
     def nodes(self) -> list[tuple[tuple[str, ...], JsonValue]]:
         if self._nodes is None:
             found = jsonld.JsonLdCollector(self.vocabulary).nodes(self.page)
-            self._nodes = [(types, dict(data)) for types, data in found]
+            self._nodes = [(types, dict(data)) for _, types, data in found]
         return self._nodes
 
     def fields(self, fields: Mapping[str, FieldSteps], scope: _Scope, owner: str) -> Iterator[Candidate]:
