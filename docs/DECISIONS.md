@@ -3576,3 +3576,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: count check runs with a `workflowName`; `gh run list --commit` (needs the full SHA and a second call).
 - Why: one definition of "CI started"; a `workflowName` count could be met by another workflow while `backend` never comes, which is the hang this fixes (#109).
 - Reversible: yes — edit `tools/orchestrator/wait_ci.sh`.
+
+### D-0540 — Captured network entries record their request method and body
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 2 (#113) · Status: decided
+- Decision: `NetworkBody` gains optional `method` and `request_body` (UTF-8 text, else `None`); a request body over the 2 MB per-body cap skips the entry, as an oversized response does. Bundles written before decode with `None`; discovery skips their entries.
+- Alternatives: Assume GET for unrecorded requests; bump `bundle_version`.
+- Why: SPEC-09 §4.3 groups by request method and body, and `bind` needs both; assuming a method would be a default (C7).
+- Reversible: yes
+
+### D-0541 — Discovery groups endpoints by URL shape (spec clarification)
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 2 (#113) · Status: decided
+- Decision: SPEC-09 §4.3's "URL without query values" reads as (method, `binding.url_shape`, request body shape): origin, path segment count and query names, plus the index-free paths of a JSON request body.
+- Alternatives: The literal URL without query values.
+- Why: An endpoint keyed by a path parameter has a different path on every page and would never group; binding then decides which segments are literal.
+- Reversible: yes
+
+### D-0542 — Discovery scoring and map paths (spec clarification)
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 2 (#113) · Status: decided
+- Decision: Score = required fields (`required_fields`, groups included) with an `equal` reading, plus each other field with a visible leaf of its type that no required hit used. Money also reads ordered pairs of one object's scalar members joined with `+` (`joined_raw`, a space between), pairing only a member with a digit and one without (one amount run, `_AMOUNT_RUN`). A field's map path is the first path on page 1 that reads it on every page, indices kept; a candidate needs a required field in the map; the best body per endpoint stands for the page; ties keep capture order.
+- Alternatives: §4.3's "first-match path identical after index stripping"; pairs across objects; all member pairs (quadratic, review of #113).
+- Why: The most conservative reading of §4.3 that still finds paths when an earlier match differs by page.
+- Reversible: yes
+
+### D-0543 — Listing rows discovery goes to SPEC-09 PR 5
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 2 (#113) · Status: decided
+- Decision: Discovery covers detail pages; `pagination.rows` discovery for listings comes with pagination in PR 5.
+- Alternatives: Do it in PR 2.
+- Why: Rows matter only to the pagination executor, and listing samples have many records per page.
+- Reversible: yes
