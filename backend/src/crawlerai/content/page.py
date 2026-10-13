@@ -13,13 +13,14 @@ from lxml import etree
 from lxml import html as lxml_html
 from selectolax import lexbor
 
-from crawlerai.content.text import CleanedText, VisibleIndex, render
+from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
 from crawlerai.storage.capture_bundle import CaptureBundle, decode_body
 
 
 @dataclass(frozen=True)
 class ScriptBlock:
-    """An inline `<script>`: its type's MIME essence (`""` when absent), its raw text, and its XPath 1.0 path."""
+    """An inline `<script>`: its type's MIME essence (`""` when absent), its raw text, and its XPath 1.0 path in the
+    selectolax tree (not guaranteed to resolve in `lxml_tree`: libxml2 builds HTML trees differently)."""
 
     type: str
     text: str
@@ -77,7 +78,6 @@ class ParsedPage:
 
 
 def _xpath(node: lexbor.LexborNode) -> str:
-    # XPath 1.0 abbreviated steps from the root: `tag[n]` is the nth element child with that name.
     steps: list[str] = []
     current: lexbor.LexborNode | None = node
     while current is not None and current.is_element_node:
@@ -85,6 +85,6 @@ def _xpath(node: lexbor.LexborNode) -> str:
         while sibling is not None:
             index += sibling.is_element_node and sibling.tag == current.tag
             sibling = sibling.prev
-        steps.append(f"{current.tag}[{index}]")
+        steps.append(xpath_step(current.tag or "", index))
         current = current.parent
     return "/" + "/".join(reversed(steps))

@@ -1,5 +1,9 @@
 """Cleaned-text offsets (SPEC-05 §4.4, PR 1): on generated documents, the text is exactly the visible words, each run
-is a slice of it that comes from the element its XPath names, and runs are ordered and disjoint."""
+is a slice of it that comes from the element its XPath names, and runs are ordered and disjoint.
+
+The paths address the selectolax tree. They are checked in the lxml tree only because the generator restricts itself
+to tags both parsers nest as written (no tables, no `p`, nothing misnested); a unit test pins a path lxml can't
+resolve (`tbody`)."""
 
 from dataclasses import dataclass
 

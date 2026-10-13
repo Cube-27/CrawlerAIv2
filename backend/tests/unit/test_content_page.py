@@ -128,3 +128,9 @@ def test_lxml_parses_only_when_a_consumer_asks(parses: dict[str, _Counter]) -> N
     assert len(page.scripts) == 3
 
     assert {name: counter.calls for name, counter in parses.items()} == {"selectolax": 1, "lxml": 0}
+
+
+def test_a_script_inside_a_prefixed_tag_gets_a_name_test_step() -> None:
+    assert ParsedPage("<o:w><b></b><script>1</script></o:w>").scripts == (
+        ScriptBlock(type="", text="1", xpath="/html[1]/body[1]/*[name()='o:w'][1]/script[1]"),
+    )

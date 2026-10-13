@@ -116,3 +116,18 @@ def test_visible_values_include_the_attributes_of_visible_elements() -> None:
     assert page.visible_values.visible("42")
     assert not page.visible_values.visible("SKU-1")  # `meta` is never rendered (HTML Standard, hidden elements)
     assert not page.visible_values.visible("Back view")
+
+
+def test_paths_address_the_selectolax_tree_with_its_implied_tbody() -> None:
+    # HTML tree construction inserts `tbody`; libxml2 does not, so this path is not guaranteed in `lxml_tree`.
+    page = ParsedPage("<table><tr><td>x</td></tr></table>")
+
+    assert page.cleaned_text.offsets == (TextRun(0, 1, "/html[1]/body[1]/table[1]/tbody[1]/tr[1]/td[1]"),)
+    assert page.lxml_tree.xpath(page.cleaned_text.offsets[0].node_path) == []
+
+
+def test_a_prefixed_tag_is_addressed_by_name_and_resolves_in_lxml() -> None:
+    page = ParsedPage("<p>a<o:p>b</o:p><o:p>c</o:p></p>")
+
+    assert page.cleaned_text.offsets[2] == TextRun(2, 3, "/html[1]/body[1]/p[1]/*[name()='o:p'][2]")
+    assert [e.text_content() for e in page.lxml_tree.xpath(page.cleaned_text.offsets[2].node_path)] == ["c"]

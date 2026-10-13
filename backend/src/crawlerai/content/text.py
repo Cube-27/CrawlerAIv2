@@ -4,8 +4,12 @@ selectolax tree.
 The text is the page as a reader sees it, without a CSS engine: the HTML Standard's rendering rules (its user-agent
 style sheet) decide which elements are hidden and which start a line, and inline `style` declarations and the
 `hidden`/`aria-hidden` attributes hide what the page hides itself. Style sheets and scripts are not evaluated.
+
+Node paths address the selectolax tree, which HTML tree construction builds (implied `tbody`, reparented
+misnested tags). The lxml tree comes from libxml2's own HTML parser, so a path is not guaranteed to resolve there.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -38,12 +42,16 @@ _LINE_BOXES = frozenset(
 _CELLS = frozenset({"td", "th"})
 # HTML attributes whose values the page shows or announces for a visible element (SPEC-05 §4.4).
 _SHOWN_ATTRIBUTES = ("alt", "title", "value", "content")
+# Namespaces in XML 1.0, NCName: a name without a colon, starting with a letter or `_` (`[^\W\d]`), then letters,
+# digits, `.`, `-` or `_`. Only an NCName can be an XPath 1.0 name test.
+_NCNAME = re.compile(r"[^\W\d][\w.\-]*")
 
 _Attributes = dict[str, str | None]
 
 
 class TextRun(NamedTuple):
-    """`text[start:end]` came from a text node child of the element at `node_path` (an XPath 1.0 location path)."""
+    """`text[start:end]` came from a text node child of the element at `node_path`: an XPath 1.0 location path in the
+    selectolax tree (see the module docstring)."""
 
     start: int
     end: int
@@ -89,7 +97,7 @@ def render(root: LexborNode) -> tuple[CleanedText, tuple[str, ...]]:
     builder = _TextBuilder()
     shown: list[str] = []
     # Explicit stack, not recursion: document depth is not bounded by the interpreter's recursion limit.
-    stack: list[_Item] = [_Enter(root, f"/{root.tag}[1]", invisible=False)]
+    stack: list[_Item] = [_Enter(root, "/" + xpath_step(root.tag or "", 1), invisible=False)]
     while stack:
         item = stack.pop()
         if isinstance(item, _Text):
@@ -136,14 +144,23 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
     return [_Separate(separator), *children, _Separate(separator)] if separator else children
 
 
+def xpath_step(tag: str, index: int) -> str:
+    """The XPath 1.0 step to the `index`th element child named `tag` (1-based, counting hidden siblings too). A tag that
+    is not an NCName (a prefixed `o:p`) is matched by `name()`, since a name test would read its prefix as a
+    namespace."""
+    if _NCNAME.fullmatch(tag):
+        return f"{tag}[{index}]"
+    quote = "'" if "'" not in tag else '"'
+    return f"*[name()={quote}{tag}{quote}][{index}]"
+
+
 def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:
-    # XPath 1.0 abbreviated steps: `tag[n]` is the nth element child with that name, hidden siblings included.
     counts: dict[str, int] = {}
     children: list[_Item] = []
     for child in node.iter(include_text=True):
         if child.is_element_node and child.tag:
             counts[child.tag] = counts.get(child.tag, 0) + 1
-            children.append(_Enter(child, f"{path}/{child.tag}[{counts[child.tag]}]", invisible))
+            children.append(_Enter(child, f"{path}/{xpath_step(child.tag, counts[child.tag])}", invisible))
         elif child.is_text_node and not invisible:
             children.append(_Text(child.text_content or "", path))
     return children
