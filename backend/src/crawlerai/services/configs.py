@@ -1,9 +1,12 @@
-"""The configs service (SPEC-08 §4.10, ARCHITECTURE §13.1, C5): a site's configs, operator corrections and forced
-learning, over a connection.
+"""The configs service (SPEC-08 §4.10, ARCHITECTURE §13.1, C5): a site's configs, operator corrections, forced
+learning and exports, over a connection.
 
 A correction is applied to the latest version of its (site, schema version, page kind), so an edit never silently
 drops a version someone else added, and the result is always stored as the next version: validated on the site's
 held-out pages (§4.7) and active when validation keeps it, else a `draft` whose report says why not.
+
+An export (§4.11) carries the release check (§12.3) run on the pages the config was validated on
+(`provenance.validated_on`) that are still stored; a field with no engine value left on any of them is `manual`.
 """
 
 import asyncio
@@ -17,7 +20,8 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir import corrections
 from crawlerai.config_ir.activation import store_correction
 from crawlerai.config_ir.corrections import Correction
-from crawlerai.config_ir.held_out import load_held_out
+from crawlerai.config_ir.exporters.configs import ConfigExport, ConfigFormat, export_config
+from crawlerai.config_ir.held_out import load_captures, load_held_out
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.progressive import LEARN_AFTER_PAGES, StateKey, lock_state, request_learning
 from crawlerai.config_ir.validation import ValidationReport, validate
@@ -66,6 +70,10 @@ class LearnRequest(_Out):
 
     schema_id: SchemaId
     force: bool = False
+
+
+class ExportRequest(_Out):
+    format: ConfigFormat
 
 
 class SiteNotFound(LookupError):
@@ -139,6 +147,18 @@ async def correct(
     # Both executors run on every page: CPU work, so a thread keeps the event loop serving meanwhile.
     validated = await asyncio.to_thread(validate, corrected, schema, held_out, vocabulary)
     return await get(conn, await store_correction(conn, key, corrected, validated, correction.operated()))
+
+
+async def export(
+    conn: AsyncConnection, store: ObjectStore, config_id: ExtractionConfigId, request: ExportRequest
+) -> ConfigExport:
+    """The config in `request.format`, with its release check on the captures it was validated on."""
+    row = await _row(conn, config_id)
+    ir = ExtractionConfigIR.model_validate(row["ir"])
+    schema = await registry.get_by_id(conn, row["schema_id"])
+    held_out = await load_captures(conn, store, schema, ir.provenance.validated_on)
+    # The release executor parses and runs every page: CPU work, so a thread keeps the event loop serving meanwhile.
+    return await asyncio.to_thread(export_config, request.format, ir, schema, held_out)
 
 
 async def learn(conn: AsyncConnection, host: str, request: LearnRequest) -> JobId:

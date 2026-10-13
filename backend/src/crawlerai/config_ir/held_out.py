@@ -9,6 +9,9 @@ detail page's one, or a listing's one per row in the order they were stored, whi
 The references corroboration compares with (§8.3 step 4) are the valid structured-data or adapter candidates owned by
 an entity that published a field of the page. Records do not say which row entity a listing record came from, so a
 listing's rows have no references, and their fields stay `uncorroborated`.
+
+`load_captures` reads named captures the same way: the pages a config was validated on (`provenance.validated_on`),
+which the release check runs on (§4.12).
 """
 
 import asyncio
@@ -18,7 +21,7 @@ from dataclasses import dataclass
 from typing import Final, get_args
 
 from pydantic import JsonValue
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -85,7 +88,26 @@ async def load_held_out(
     conn: AsyncConnection, store: ObjectStore, site_id: SiteId, schema: SchemaDef, *, limit: int
 ) -> list[HeldOutPage]:
     """Up to `limit` held-out pages of `site_id` for `schema`'s version, most recent first."""
-    extractions = await _extractions(conn, site_id, schema, limit)
+    return await _pages(conn, store, schema, await _extractions(conn, site_id, schema, limit))
+
+
+async def load_captures(
+    conn: AsyncConnection, store: ObjectStore, schema: SchemaDef, captures: Sequence[CaptureId]
+) -> list[HeldOutPage]:
+    """The held-out pages of `captures` that have a record of `schema`'s version, in `captures` order, each with its
+    latest such extraction."""
+    rows = await conn.execute(_latest(schema).where(Capture.id.in_(captures)))
+    found = {row.id: (row.id, row.object_key, row.extraction_id) for row in rows}
+    return await _pages(conn, store, schema, [found[capture] for capture in captures if capture in found])
+
+
+async def _pages(
+    conn: AsyncConnection,
+    store: ObjectStore,
+    schema: SchemaDef,
+    extractions: Sequence[tuple[CaptureId, str, ExtractionId]],
+) -> list[HeldOutPage]:
+    """Each extraction's page, parsed, with the facts the engine stored; a capture whose bundle expired is skipped."""
     ids = [extraction_id for _, _, extraction_id in extractions]
     records = await _records(conn, ids, schema)
     candidates = await _candidates(conn, ids)
@@ -106,6 +128,24 @@ async def _extractions(
 ) -> list[tuple[CaptureId, str, ExtractionId]]:
     """The most recent captures with a record of `schema`'s version from an `extracted` or `partial` task, each with
     its latest such extraction."""
+    latest = (
+        _latest(schema)
+        .add_columns(Capture.fetched_at)
+        .join(UrlTask, UrlTask.id == Extraction.url_task_id)
+        .where(Capture.site_id == site_id, UrlTask.outcome.in_(EXTRACTED))
+        .subquery()
+    )
+    query = (
+        select(latest.c.id, latest.c.object_key, latest.c.extraction_id)
+        .order_by(latest.c.fetched_at.desc(), latest.c.id.desc())
+        .limit(limit)
+    )
+    return [(row.id, row.object_key, row.extraction_id) for row in await conn.execute(query)]
+
+
+def _latest(schema: SchemaDef) -> Select[CaptureId, str, ExtractionId]:
+    """Each capture's latest extraction with a record of `schema`'s version (ids are UUIDv7, so the greatest is the
+    latest)."""
     has_record = (
         select(Record.id)
         .where(
@@ -115,21 +155,13 @@ async def _extractions(
         )
         .exists()
     )
-    latest = (
-        select(Capture.id, Capture.object_key, Capture.fetched_at, Extraction.id.label("extraction_id"))
+    return (
+        select(Capture.id, Capture.object_key, Extraction.id.label("extraction_id"))
         .join(Extraction, Extraction.capture_id == Capture.id)
-        .join(UrlTask, UrlTask.id == Extraction.url_task_id)
-        .where(Capture.site_id == site_id, UrlTask.outcome.in_(EXTRACTED), has_record)
+        .where(has_record)
         .order_by(Capture.id, Extraction.id.desc())
         .ext(distinct_on(Capture.id))
-        .subquery()
     )
-    query = (
-        select(latest.c.id, latest.c.object_key, latest.c.extraction_id)
-        .order_by(latest.c.fetched_at.desc(), latest.c.id.desc())
-        .limit(limit)
-    )
-    return [(row.id, row.object_key, row.extraction_id) for row in await conn.execute(query)]
 
 
 async def _records(

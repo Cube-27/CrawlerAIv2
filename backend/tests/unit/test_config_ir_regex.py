@@ -22,6 +22,8 @@ ACCEPTED = [
     r"a{2}b{1,3}c{0,}d*?e+?f??",
     r"(?s:.+)(?m-i:^x$)",
     "ünïcödé",
+    "[à-ÿ]+",
+    r"(?i)sku\x2D\x7F",
 ]
 
 # Each is accepted by Python `re` (or compiles there with a different meaning) but is outside the shared subset.
@@ -44,6 +46,11 @@ REFUSED = [
     (r"[]a]", r"\]"),
     (r"[\b]", r"\\b"),
     (r"(?P<n" + "x" * 32 + r">a)", r"\(\?P<"),  # PCRE2 group names are at most 32 characters
+    # PCRE2 in UTF mode (`/u`) folds case for non-ASCII letters; Python with `re.ASCII` folds ASCII only.
+    ("(?i)straße", "non-ASCII"),
+    ("(?m-i:x)é", "non-ASCII"),
+    (r"(?i:[à-ÿ])", "non-ASCII"),
+    (r"(?i)\xe9", "non-ASCII"),
 ]
 
 

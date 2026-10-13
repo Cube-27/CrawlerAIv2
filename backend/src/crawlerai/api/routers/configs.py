@@ -1,6 +1,6 @@
-"""`/v1/sites/{host}/configs`, `/v1/configs/{id}` and `/v1/sites/{host}/learn` (SPEC-08 §4.10, ARCHITECTURE §13.1):
-a site's configs, operator corrections (C5) and forced learning. The rules are the configs service's; this router
-translates HTTP to it and its errors to problems."""
+"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/export` and `/v1/sites/{host}/learn` (SPEC-08
+§4.10, ARCHITECTURE §13.1): a site's configs, operator corrections (C5), exports and forced learning. The rules are
+the configs service's; this router translates HTTP to it and its errors to problems."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -13,11 +13,19 @@ from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE, ConfigList, LearnStarted
 from crawlerai.api.problems import conflict, invalid, not_found, records_unavailable
 from crawlerai.config_ir.corrections import Correction, InvalidCorrection
+from crawlerai.config_ir.exporters.configs import ConfigExport
 from crawlerai.db.models import ExtractionConfigId
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.services import configs
-from crawlerai.services.configs import ConfigConflict, ConfigDetail, ConfigNotFound, LearnRequest, SiteNotFound
+from crawlerai.services.configs import (
+    ConfigConflict,
+    ConfigDetail,
+    ConfigNotFound,
+    ExportRequest,
+    LearnRequest,
+    SiteNotFound,
+)
 from crawlerai.services.scrape import Fetching
 
 router = APIRouter(
@@ -71,6 +79,17 @@ async def correct_config(config_id: ExtractionConfigId, body: Correction, reques
     fetching: Fetching = request.app.state.fetching
     async with _transaction(request) as conn:
         return await configs.correct(conn, fetching.store, data.vocabulary, config_id, body)
+
+
+@router.post("/configs/{config_id}/export", responses=_NOT_FOUND)
+async def export_config(config_id: ExtractionConfigId, body: ExportRequest, request: Request) -> ConfigExport:
+    """The config as `json` (the IR as stored) or `platform_draft` (`draft: true` until the platform's format is known),
+    and the release check on the pages the config was validated on: a field the independent release executor does not
+    reproduce on every such page with an engine value while there are fewer than 10, or on 95% from 10 on, is
+    `manual`."""
+    fetching: Fetching = request.app.state.fetching
+    async with _transaction(request) as conn:
+        return await configs.export(conn, fetching.store, config_id, body)
 
 
 @router.post("/sites/{host}/learn", status_code=202, responses=_CHANGES)

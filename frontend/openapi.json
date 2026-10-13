@@ -483,6 +483,41 @@
         "title": "ConfigDetail",
         "type": "object"
       },
+      "ConfigExport": {
+        "additionalProperties": false,
+        "description": "`export` is the IR for `json` and the draft for `platform_draft`; `release` says which fields are `manual`.",
+        "properties": {
+          "export": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionConfigIR"
+              },
+              {
+                "$ref": "#/components/schemas/PlatformDraft"
+              }
+            ],
+            "title": "Export"
+          },
+          "format": {
+            "enum": [
+              "json",
+              "platform_draft"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "release": {
+            "$ref": "#/components/schemas/ReleaseReport"
+          }
+        },
+        "required": [
+          "format",
+          "export",
+          "release"
+        ],
+        "title": "ConfigExport",
+        "type": "object"
+      },
       "ConfigList": {
         "additionalProperties": false,
         "properties": {
@@ -745,6 +780,88 @@
         "title": "CssStep",
         "type": "object"
       },
+      "DraftField": {
+        "additionalProperties": false,
+        "properties": {
+          "manual": {
+            "title": "Manual",
+            "type": "boolean"
+          },
+          "steps": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/XPathStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/CssStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonLdStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonPathStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/AttrStep-Output"
+                }
+              ]
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps",
+          "manual"
+        ],
+        "title": "DraftField",
+        "type": "object"
+      },
+      "DraftListing": {
+        "additionalProperties": false,
+        "description": "`row_xpath` selects the rows (None when the row step is not XPath, and then every row field is `manual`).",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DraftField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftField"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "row_xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Xpath"
+          }
+        },
+        "required": [
+          "row_xpath",
+          "fields",
+          "next"
+        ],
+        "title": "DraftListing",
+        "type": "object"
+      },
       "ExportPage": {
         "description": "One page of a job's records in an export format (SPEC-08 \u00a74.11); `next_cursor` as in `RecordPage`.",
         "properties": {
@@ -780,6 +897,24 @@
           "next_cursor"
         ],
         "title": "ExportPage",
+        "type": "object"
+      },
+      "ExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "enum": [
+              "json",
+              "platform_draft"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "ExportRequest",
         "type": "object"
       },
       "ExtractedRecord": {
@@ -2533,6 +2668,85 @@
         "title": "Pagination",
         "type": "object"
       },
+      "PlatformDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "api_recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiRecipe"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "draft": {
+            "const": true,
+            "default": true,
+            "title": "Draft",
+            "type": "boolean"
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/Fetch"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DraftField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "ir_version": {
+            "const": "1",
+            "title": "Ir Version",
+            "type": "string"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftListing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "regex_flags": {
+            "const": "u",
+            "default": "u",
+            "title": "Regex Flags",
+            "type": "string"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/SchemaRef"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ir_version",
+          "site",
+          "schema",
+          "page_kind",
+          "fetch",
+          "fields",
+          "listing",
+          "api_recipe"
+        ],
+        "title": "PlatformDraft",
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": false,
         "description": "RFC 9457 problem details (SPEC-07 \u00a74.3). `type` is one of the API's problem types, or `about:blank` when the\nHTTP status says all there is to say (RFC 9457 \u00a74.2.1); `instance` is the request's path (\u00a73.1.5).",
@@ -2967,6 +3181,97 @@
           "regex"
         ],
         "title": "RegexStep",
+        "type": "object"
+      },
+      "ReleaseField": {
+        "additionalProperties": false,
+        "description": "One field on the held-out pages: `published`, pages where the engine published it; `reproduced`, those where the\nrelease executor gave that value; `manual`, the field failed the check.",
+        "properties": {
+          "manual": {
+            "title": "Manual",
+            "type": "boolean"
+          },
+          "published": {
+            "title": "Published",
+            "type": "integer"
+          },
+          "reproduced": {
+            "title": "Reproduced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "published",
+          "reproduced",
+          "manual"
+        ],
+        "title": "ReleaseField",
+        "type": "object"
+      },
+      "ReleaseListing": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReleaseField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseField"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fields",
+          "next"
+        ],
+        "title": "ReleaseListing",
+        "type": "object"
+      },
+      "ReleaseReport": {
+        "additionalProperties": false,
+        "description": "The release check of one config: the held-out captures it ran on, and each field's result.",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReleaseField"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "held_out": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Held Out",
+            "type": "array"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseListing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "held_out",
+          "fields",
+          "listing"
+        ],
+        "title": "ReleaseReport",
         "type": "object"
       },
       "ReplayRequest": {
@@ -4199,6 +4504,110 @@
           }
         },
         "summary": "Correct Config",
+        "tags": [
+          "configs"
+        ]
+      }
+    },
+    "/v1/configs/{config_id}/export": {
+      "post": {
+        "description": "The config as `json` (the IR as stored) or `platform_draft` (`draft: true` until the platform's format is known),\nand the release check on the pages the config was validated on: a field the independent release executor does not\nreproduce on every such page with an engine value while there are fewer than 10, or on 95% from 10 on, is\n`manual`.",
+        "operationId": "export_config_v1_configs__config_id__export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Export Config",
         "tags": [
           "configs"
         ]
