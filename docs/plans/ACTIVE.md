@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). L2 complete except SPEC-12 PR 6, which awaits an owner design check. L3 in progress: SPEC-10 PR 2 (#128), SPEC-10 PR 3, SPEC-10 PR 6.
+- L1 complete (2026-10-14). L2 complete except SPEC-12 PR 6, which awaits an owner design check. L3 in progress: SPEC-10 PR 3 (#130), SPEC-10 PR 6. L4 in progress: SPEC-11 PR 1.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -204,7 +204,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Job summary/status/cancel/results endpoints | done (#120) | D-0577–D-0580. Follow-up from review: the INV-27 property's markdown leg compares with the exporter fed stored values; parse the table cells back. |
-| 2 | `batch/scrape` + worker handler registration | todo | |
+| 2 | `batch/scrape` + worker handler registration | done (#128) | D-0628–D-0636. Migration 0013 adds `job.pinned`. Page outputs are made from captures on read (D-0630 supersedes D-0580). Follow-ups: #31's browser retry through `HostLimiter` and `SLOW_DOWN` on every attempt (D-0634). |
 | 3 | Canonicalization + sitemaps + `map` | todo | |
 | 4 | Frontier, rules, `crawl` | todo | |
 | 5 | `extract` with globs and prompt | todo | |
