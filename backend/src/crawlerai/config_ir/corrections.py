@@ -53,7 +53,7 @@ def correct(
         else:
             fields[name] = FieldSteps(steps=corrected.steps, status="operator")
     for name in correction.confirm:
-        fields = rows if name in rows else page
+        fields = rows if _in_rows(ir, schema, name) else page
         fields[name] = fields[name].model_copy(update={"status": "operator"})
     listing = ir.listing.model_copy(update={"fields": _unmeasured(rows)}) if ir.listing is not None else None
     provenance = ir.provenance.model_copy(
@@ -64,9 +64,14 @@ def correct(
     return ExtractionConfigIR.model_validate(corrected_ir.model_dump(by_alias=True))
 
 
+def _is_row_field(schema: SchemaDef, name: str) -> bool:
+    """A row field of a listing schema (SPEC-04 §4.2 `scope`)."""
+    return schema.page_kind == "listing" and schema.fields[name].scope == "row"
+
+
 def _in_rows(ir: ExtractionConfigIR, schema: SchemaDef, name: str) -> bool:
-    """Whether `name` runs relative to each listing row: a row field of a listing schema (SPEC-04 §4.2 `scope`)."""
-    return ir.listing is not None and schema.page_kind == "listing" and schema.fields[name].scope == "row"
+    """Whether `name`'s steps run relative to each row of `ir`'s listing."""
+    return ir.listing is not None and _is_row_field(schema, name)
 
 
 def _unmeasured(fields: Mapping[str, FieldSteps]) -> dict[str, FieldSteps]:
@@ -95,11 +100,10 @@ def _check(ir: ExtractionConfigIR, schema: SchemaDef, correction: Correction) ->
 def _field_problem(
     ir: ExtractionConfigIR, schema: SchemaDef, name: str, *, removing: bool, configured: set[str]
 ) -> str | None:
-    spec = schema.fields.get(name)
-    if spec is None:
+    if name not in schema.fields:
         return f"not a field of schema {schema.name} version {schema.version}"
     if removing:
         return None if name in configured else "the config has no steps to remove"
-    if schema.page_kind == "listing" and spec.scope == "row" and ir.listing is None:
+    if _is_row_field(schema, name) and ir.listing is None:
         return "a row field needs the config's listing row selector"
     return None

@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import (
+    ExtractionConfig,
     ExtractionConfigId,
     Job,
     JobId,
@@ -56,6 +57,16 @@ TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]
 }
 
 
+# Whether a learning run must be in flight for each event; None where either will do.
+RUN_IN_FLIGHT: Final[Mapping[LearnEvent, bool | None]] = {
+    "start": False,
+    "start_forced": False,
+    "activate": True,
+    "fail": True,
+    "operator": None,
+}
+
+
 def next_mode(mode: ProgressiveMode, event: LearnEvent) -> ProgressiveMode | None:
     """The mode `event` moves a state in `mode` to, or None when `event` is refused there."""
     return TRANSITIONS[event].get(mode)
@@ -78,6 +89,15 @@ class StateKey:
 
     def where(self) -> list[ColumnElement[bool]]:
         return [getattr(ProgressiveState, name) == value for name, value in self.columns().items()]
+
+    def config_scope(self) -> list[ColumnElement[bool]]:
+        """The state's configs, one version sequence (ARCHITECTURE §6: versions per site, schema and page kind)."""
+        configs = ExtractionConfig
+        return [
+            configs.site_id == self.site_id,
+            configs.schema_id == self.schema_id,
+            configs.page_kind == self.page_kind,
+        ]
 
 
 async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
@@ -103,7 +123,7 @@ async def request_learning(conn: AsyncConnection, key: StateKey, *, force: bool 
     when a run is already in flight, or the state is active and `force` is not set."""
     await conn.execute(pg_insert(ProgressiveState).values(**key.columns()).on_conflict_do_nothing())
     event: LearnEvent = "start_forced" if force else "start"
-    if not await _move(conn, key, event, in_flight=False, learning_started_at=func.now()):
+    if not await _move(conn, key, event, learning_started_at=func.now()):
         return None
     project = select(Site.project_id).where(Site.id == key.site_id).scalar_subquery()
     request = {**key.columns(), "site_id": str(key.site_id), "schema_id": str(key.schema_id), "force": force}
@@ -129,7 +149,6 @@ async def learning_activated(conn: AsyncConnection, key: StateKey, config_id: Ex
         conn,
         key,
         "activate",
-        in_flight=True,
         active_config_id=config_id,
         last_learned_at=func.now(),
         learning_started_at=None,
@@ -148,7 +167,7 @@ async def lock_state(conn: AsyncConnection, key: StateKey) -> None:
 async def operator_activated(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
     """Make `config_id`, an operator's validated config, `key`'s active config (§4.10), with or without a learning
     run in flight. The state must exist."""
-    if not await _move(conn, key, "operator", in_flight=None, active_config_id=config_id):
+    if not await _move(conn, key, "operator", active_config_id=config_id):
         raise LookupError(f"no progressive_state {key}")
 
 
@@ -157,17 +176,16 @@ async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
     `LEARN_AFTER_PAGES` more pages (§4.8). Raises `NotLearning` when no run is in flight."""
     state = ProgressiveState
     retry = case((state.mode == "learning", state.pages_extracted + LEARN_AFTER_PAGES), else_=state.retry_at_pages)
-    if not await _move(conn, key, "fail", in_flight=True, learning_started_at=None, retry_at_pages=retry):
+    if not await _move(conn, key, "fail", learning_started_at=None, retry_at_pages=retry):
         raise NotLearning(key, "fail")
 
 
-async def _move(
-    conn: AsyncConnection, key: StateKey, event: LearnEvent, *, in_flight: bool | None, **values: Any
-) -> bool:
-    """Compare-and-set `key`'s state along `event`'s edges, setting `values` too; whether it moved. `in_flight` is
-    whether a learning run must be in flight for `event`; None when either will do."""
+async def _move(conn: AsyncConnection, key: StateKey, event: LearnEvent, **values: Any) -> bool:
+    """Compare-and-set `key`'s state along `event`'s edges and its `RUN_IN_FLIGHT` precondition, setting `values`
+    too; whether it moved."""
     state = ProgressiveState
     edges = TRANSITIONS[event]
+    in_flight = RUN_IN_FLIGHT[event]
     where = [*key.where(), state.mode.in_(edges)]
     if in_flight is not None:
         where.append(state.learning_started_at.is_not(None) if in_flight else state.learning_started_at.is_(None))

@@ -26,7 +26,7 @@ router = APIRouter(
     dependencies=[Depends(require_api_key)],
     responses={401: PROBLEM_RESPONSE, 422: PROBLEM_RESPONSE, 429: PROBLEM_RESPONSE},
 )
-_BY_ID: dict[int | str, dict[str, Any]] = {404: PROBLEM_RESPONSE}
+_NOT_FOUND: dict[int | str, dict[str, Any]] = {404: PROBLEM_RESPONSE}
 _CHANGES: dict[int | str, dict[str, Any]] = {404: PROBLEM_RESPONSE, 409: PROBLEM_RESPONSE}
 
 
@@ -45,7 +45,7 @@ async def _transaction(request: Request) -> AsyncIterator[AsyncConnection]:
         raise invalid(str(e), e.errors) from e
 
 
-@router.get("/sites/{host}/configs", responses=_BY_ID)
+@router.get("/sites/{host}/configs", responses=_NOT_FOUND)
 async def list_site_configs(host: str, request: Request) -> ConfigList:
     """Every version of the site's configs, with status, field status and validation report, by schema version, page
     kind and version."""
@@ -53,7 +53,7 @@ async def list_site_configs(host: str, request: Request) -> ConfigList:
         return ConfigList(items=await configs.list_for_host(conn, host))
 
 
-@router.get("/configs/{config_id}", responses=_BY_ID)
+@router.get("/configs/{config_id}", responses=_NOT_FOUND)
 async def get_config(config_id: ExtractionConfigId, request: Request) -> ConfigDetail:
     """The config's IR and validation report."""
     async with _transaction(request) as conn:

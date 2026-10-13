@@ -92,30 +92,27 @@ _COLUMNS = (
     ExtractionConfig.origin,
     ExtractionConfig.field_status,
     ExtractionConfig.validation_report,
-    ExtractionConfig.ir,
 )
+# A list leaves out each version's IR, the largest column.
+_SUMMARIES = select(*_COLUMNS).join(Site, Site.id == ExtractionConfig.site_id)
+_DETAILS = _SUMMARIES.add_columns(ExtractionConfig.ir)
 
 
-_CONFIGS = select(*_COLUMNS).join(Site, Site.id == ExtractionConfig.site_id)
-_SUMMARY_FIELDS = frozenset(ConfigSummary.model_fields) - {"site"}
-
-
-def _summary(row: RowMapping) -> ConfigSummary:
-    return ConfigSummary.model_validate({"site": row["host"], **{name: row[name] for name in _SUMMARY_FIELDS}})
+def _model[M: ConfigSummary](model: type[M], row: RowMapping) -> M:
+    return model.model_validate({name: row["host" if name == "site" else name] for name in model.model_fields})
 
 
 async def list_for_host(conn: AsyncConnection, host: str) -> list[ConfigSummary]:
     """Every version of every config of the site, by schema version, page kind, then version."""
     site_id = await _site_id(conn, host)
-    query = _CONFIGS.where(ExtractionConfig.site_id == site_id).order_by(
+    query = _SUMMARIES.where(ExtractionConfig.site_id == site_id).order_by(
         ExtractionConfig.schema_id, ExtractionConfig.page_kind, ExtractionConfig.version
     )
-    return [_summary(row) for row in (await conn.execute(query)).mappings()]
+    return [_model(ConfigSummary, row) for row in (await conn.execute(query)).mappings()]
 
 
 async def get(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
-    row = await _row(conn, config_id)
-    return ConfigDetail.model_validate({**_summary(row).model_dump(), "ir": row["ir"]})
+    return _model(ConfigDetail, await _row(conn, config_id))
 
 
 async def correct(
@@ -166,16 +163,13 @@ async def _site_id(conn: AsyncConnection, host: str) -> SiteId:
 
 
 async def _row(conn: AsyncConnection, config_id: ExtractionConfigId) -> RowMapping:
-    row = (await conn.execute(_CONFIGS.where(ExtractionConfig.id == config_id))).mappings().one_or_none()
+    row = (await conn.execute(_DETAILS.where(ExtractionConfig.id == config_id))).mappings().one_or_none()
     if row is None:
         raise ConfigNotFound(f"no config {config_id}")
     return row
 
 
 async def _latest_version(conn: AsyncConnection, key: StateKey) -> int:
-    configs = ExtractionConfig
-    query = select(func.max(configs.version)).where(
-        configs.site_id == key.site_id, configs.schema_id == key.schema_id, configs.page_kind == key.page_kind
-    )
+    query = select(func.max(ExtractionConfig.version)).where(*key.config_scope())
     version: int = (await conn.execute(query)).scalar_one()
     return version

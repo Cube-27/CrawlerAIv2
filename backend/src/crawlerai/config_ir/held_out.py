@@ -89,12 +89,13 @@ async def load_held_out(
     ids = [extraction_id for _, _, extraction_id in extractions]
     records = await _records(conn, ids, schema)
     candidates = await _candidates(conn, ids)
+    # The bundles are independent reads; fetch them together.
+    loaded = await asyncio.gather(*(_parsed(store, object_key) for _, object_key, _ in extractions))
     pages: list[HeldOutPage] = []
-    for capture_id, object_key, extraction_id in extractions:
-        loaded = await _parsed(store, object_key)
-        if loaded is None:
+    for (capture_id, _, extraction_id), parsed in zip(extractions, loaded, strict=True):
+        if parsed is None:
             continue
-        page, ctx = loaded
+        page, ctx = parsed
         facts, rows = facts_of(schema, records[extraction_id], candidates[extraction_id])
         pages.append(HeldOutPage(capture_id, page, ctx, facts, rows))
     return pages
@@ -167,6 +168,11 @@ async def _parsed(store: ObjectStore, object_key: str) -> tuple[ParsedPage, Cont
         blob = await asyncio.to_thread(store.get, object_key)
     except ObjectNotFound:
         return None
-    bundle = await asyncio.to_thread(decode, blob)
+    # Decoding and reading the page's context are CPU work: a thread keeps the event loop serving meanwhile.
+    return await asyncio.to_thread(_read, blob)
+
+
+def _read(blob: bytes) -> tuple[ParsedPage, Context]:
+    bundle = decode(blob)
     page = ParsedPage.of(bundle)
     return page, page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
