@@ -1,4 +1,5 @@
-import { Label, Table, TextArea, TextField } from "@heroui/react";
+import { Label, Link, Table, TextArea, TextField } from "@heroui/react";
+import { adoptSchemaPath } from "../schemas/paths";
 import type { FetchAttempt, PageMetadata, ScrapeResponse, SchemaSummary } from "../../api/scrape";
 
 /** A text format (markdown, html, raw_html) in a read-only text area, to read, scroll and copy as sent. */
@@ -152,6 +153,9 @@ export function DraftSchemaView({ schema }: Readonly<{ schema: SchemaSummary }>)
         ]}
       />
       <TextFormat label="Fields" text={JSON.stringify(schema.fields, null, 2)} />
+      <div>
+        <Link href={adoptSchemaPath(schema.id)}>Edit as schema</Link>
+      </div>
     </div>
   );
 }
