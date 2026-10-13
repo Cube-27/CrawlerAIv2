@@ -63,7 +63,10 @@ function resultTabs(response: ScrapeResponse, fieldTypes: FieldTypes): ResultTab
           label: "Draft schema",
           content: <DraftSchemaView schema={response.schema} />,
         },
-    { id: "fetch", label: "Fetch", content: <FetchView fetch={response.fetch} /> },
+    // No fetch when robots.txt kept the page from being fetched.
+    response.fetch === null
+      ? null
+      : { id: "fetch", label: "Fetch", content: <FetchView fetch={response.fetch} /> },
     { id: "usage", label: "Usage", content: <UsageTable usage={response.usage} /> },
   ];
   return tabs.filter((tab) => tab !== null);
@@ -81,10 +84,14 @@ export const ScrapeResult = memo(function ScrapeResult({
       <div className="flex flex-wrap items-center gap-3">
         <Typography.Heading level={2}>Result</Typography.Heading>
         <OutcomeLabel outcome={response.outcome} />
-        <Typography.Code>{response.final_url}</Typography.Code>
-        <Typography.Paragraph size="sm" color="muted">
-          Fetched {response.fetched_at}
-        </Typography.Paragraph>
+        {response.final_url === null ? null : (
+          <Typography.Code>{response.final_url}</Typography.Code>
+        )}
+        {response.fetched_at === null ? null : (
+          <Typography.Paragraph size="sm" color="muted">
+            Fetched {response.fetched_at}
+          </Typography.Paragraph>
+        )}
       </div>
       <Tabs>
         <Tabs.ListContainer>

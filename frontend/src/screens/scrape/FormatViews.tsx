@@ -80,7 +80,7 @@ export function MetadataTable({ metadata }: Readonly<{ metadata: PageMetadata }>
   );
 }
 
-export function FetchView({ fetch }: Readonly<{ fetch: ScrapeResponse["fetch"] }>) {
+export function FetchView({ fetch }: Readonly<{ fetch: NonNullable<ScrapeResponse["fetch"]> }>) {
   const attempts: (FetchAttempt & { id: number })[] = fetch.attempts.map((attempt, id) => ({
     ...attempt,
     id,

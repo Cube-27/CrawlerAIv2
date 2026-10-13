@@ -1,7 +1,9 @@
-/** `POST /v1/scrape` as SPEC-07 §4.4 defines it, narrowed by hand until SPEC-07 PRs 4–6 put it in `openapi.json`. The
- * module augmentation below adds it to the generated `paths`, so the call goes through the authenticated client (and
- * its 401 handling); delete it, and these types, once `make api-client` generates it. */
+/** `POST /v1/scrape` (SPEC-07 §4.4). The answer is the generated `ScrapeResult`; the records and the draft schema
+ * are narrowed by hand until SPEC-07 PRs 5 and 6 put them in `openapi.json`. */
 import type { FieldResult, FieldTypeSpec } from "./field";
+import type { components } from "./schema";
+
+type Schemas = components["schemas"];
 
 export type ScrapeFormat = "markdown" | "html" | "raw_html" | "links" | "metadata" | "records";
 export type PageKind = "detail" | "listing";
@@ -13,6 +15,9 @@ export type SchemaRef =
   | { inline: Readonly<Record<string, unknown>> }
   | { prompt: string };
 
+/** The request as the form builds it. It leaves out the limits it doesn't set, so the server's defaults apply; the
+ * generated type marks every member with a default as required (openapi-typescript), so `runScrape` sends it as
+ * that type, and the server validates it. */
 export interface ScrapeRequest {
   url: string;
   formats: ScrapeFormat[];
@@ -23,18 +28,6 @@ export interface ScrapeRequest {
   max_age?: number;
   timeout_s?: number;
   budget?: { llm_calls: number };
-}
-
-/** `url_task.outcome` (ARCHITECTURE §6). */
-export type ScrapeOutcome = "extracted" | "partial" | "blocked" | "shell" | "not_found" | "failed";
-
-/** One fetch rung tried (SPEC-02 §4.2 `AttemptRecord`). */
-export interface FetchAttempt {
-  method: string;
-  status: number | null;
-  block_class: string;
-  duration_ms: number;
-  error?: string | null;
 }
 
 /** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by` (SPEC-07 §4.4). */
@@ -63,74 +56,13 @@ export interface SchemaSummary {
   fields: Readonly<Record<string, FieldTypeSpec>>;
 }
 
-export interface PageMetadata {
-  title: string | null;
-  description: string | null;
-  language: string | null;
-  canonical: string | null;
-  og: Readonly<Record<string, string>>;
-  structured_data_types: string[];
-}
-
-export interface ScrapeUsage {
-  llm_calls: number;
-  llm_tokens_in: number;
-  llm_tokens_out: number;
-  browser_seconds: number;
-  http_requests: number;
-}
-
-/** A requested format's member is present; the others are absent. `schema` is present when a prompt was used. */
-export interface ScrapeResponse {
-  job_id: string;
-  capture_id: string;
-  url: string;
-  final_url: string;
-  fetched_at: string;
-  outcome: ScrapeOutcome;
-  fetch: {
-    method: string;
-    status_code: number | null;
-    block_class: string;
-    attempts: FetchAttempt[];
-  };
-  markdown?: string;
-  html?: string;
-  raw_html?: string;
-  links?: string[];
-  metadata?: PageMetadata;
+/** The generated answer, with the members SPEC-07 PRs 5 and 6 add (`records`, and `schema` when a prompt was
+ * used), narrowed by hand until then. A requested format's member is present; the others are absent. */
+export type ScrapeResponse = Schemas["ScrapeResult"] & {
   schema?: SchemaSummary;
   records?: ScrapeRecord[];
-  usage: ScrapeUsage;
-}
+};
 
-interface NoParameters {
-  query?: never;
-  header?: never;
-  path?: never;
-  cookie?: never;
-}
-
-interface JsonBody<T> {
-  headers: Readonly<Record<string, unknown>>;
-  content: { "application/json": T };
-}
-
-/** Any error answer: an RFC 9457 problem (SPEC-07 §4.3), read by `problemOf`. */
-interface ProblemBody {
-  headers: Readonly<Record<string, unknown>>;
-  content: { "application/problem+json": unknown };
-}
-
-declare module "./schema" {
-  interface paths {
-    "/v1/scrape": {
-      parameters: NoParameters;
-      post: {
-        parameters: NoParameters;
-        requestBody: { content: { "application/json": ScrapeRequest } };
-        responses: { 200: JsonBody<ScrapeResponse>; default: ProblemBody };
-      };
-    };
-  }
-}
+export type ScrapeOutcome = ScrapeResponse["outcome"];
+export type FetchAttempt = Schemas["AttemptRecord"];
+export type PageMetadata = Schemas["PageMetadata"];
