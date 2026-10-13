@@ -129,7 +129,7 @@ async def test_a_layout_change_suspends_the_field_and_starts_a_forced_relearn(co
             "validated_validity": 1.0,
         },
     )
-    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.created_at)
+    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.id)
     requests: list[dict[str, Any]] = list((await conn.execute(learn)).scalars())
     assert [request["force"] for request in requests] == [False, True]
     state = (await conn.execute(select(ProgressiveState).where(*key.where()))).one()
