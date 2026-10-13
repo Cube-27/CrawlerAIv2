@@ -2479,3 +2479,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: print the webhook secret too; reset `revoked_at` on a second revoke.
 - Why: SPEC-10 owns how webhook secrets reach clients; revocation time is an audit fact.
 - Reversible: yes
+
+### D-0383 — OpenGraph field roles
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 5 (#79) · Status: decided
+- Decision: A field's OGP role is the single property its `schema_org` path names on the root type (`Product.name` → `name`, `Offer.price+priceCurrency` → `price`); a path through another object (`Product.brand.name`) has none. So `og:title` maps to `Product.name` but not to `Product.brand.name`, though both end in `.name` (SPEC-05 §4.5). The same rule, with the field type, keys `og:image`, `og:url`, `product:availability` and `product:price:*`; a list field matches by its item type.
+- Alternatives: The literal "ends in `.name`", which would propose the page title as the brand.
+- Why: `og:title` is the title of the object the page describes, not of a related object; the most conservative reading. Review note: the root type is not checked, so `Organization.name` also gets `og:title`; revisit with ownership and intent (SPEC-05 PR 6).
+- Reversible: yes
+
+### D-0384 — Repeated OpenGraph properties
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 5 (#79) · Status: decided
+- Decision: A repeated property gives a scalar field its first value and a list field every value in document order (`og:image` and `og:image:url` read as one property); the locator names the first value's property.
+- Alternatives: One candidate per occurrence.
+- Why: Open Graph protocol, "Arrays": the first tag is preferred in a conflict. Several candidates from one source would disagree with themselves at preference.
+- Reversible: yes
+
+### D-0385 — OpenGraph values are not translated
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 5 (#79) · Status: decided
+- Decision: `product:price:*` becomes the money normalizer's structured form `{amount, currency}` from the first of each; a missing currency is left out, so the candidate declines (`no_currency`). `product:availability` passes through unchanged, so values outside the schema.org member names (`in stock`) are declined by the `schema:ItemAvailability` enum normalizer.
+- Alternatives: An OGP-value → schema.org-member table in the collector.
+- Why: Value translation belongs to the enum module (C7, C8); whether a vocabulary for OGP availability values is worth adding is measured on dev.
+- Reversible: yes
+
+### D-0386 — The Open Graph protocol is cited by name
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 5 (#79) · Status: decided
+- Decision: Code cites the Open Graph protocol by name, not by its host, so `tools/site_literal_allowlist.txt` is unchanged.
+- Alternatives: Allowlist the OGP host as a standards body.
+- Why: The smallest change; no allowlist edit for one module.
+- Reversible: yes
