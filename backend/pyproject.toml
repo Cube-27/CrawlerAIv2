@@ -7,8 +7,10 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13,<2",
     "asyncpg>=0.29,<1",
+    "babel>=2.16,<3",
     "boto3>=1.35,<2",
     "curl-cffi>=0.16,<1",
+    "dateparser>=1.2,<2",
     "fastapi>=0.115,<1",
     "patchright>=1.63,<2",
     "protego>=0.4,<1",
@@ -69,6 +71,7 @@ dev = [
     "mypy>=1,<2",
     "pytest>=8,<10",
     "ruff>=0.17,<1",
+    "types-dateparser>=1.2,<2",
     "types-pyyaml>=6,<7",
 ]
 licenses = [

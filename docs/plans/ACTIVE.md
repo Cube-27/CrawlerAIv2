@@ -118,7 +118,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 2 | Normalizer base, dispatcher, text, url | done (#47) | |
 | 3 | money (CLDR via Babel + price-parser) | todo | |
 | 4 | enum + vocab framework + availability `en` | done (#54) | Follow-up for SPEC-05 or a preset bump: `commerce_detail` availability is `schema:ItemAvailability`, so DOM availability text won't normalize unless the field also reads `type:availability`. |
-| 5 | date/datetime | todo | |
+| 5 | date/datetime | done (#57) | Follow-up: check a datetime's year range on the UTC value as well (`2100-12-31T23:00-05:00` → `2101-01-01T04:00Z`). |
 | 6 | identifier | done (#59) | |
 | 7 | Data manifest + GeoNames fetch + location | todo | |
 | 8 | range | done (#56) | Follow-ups: move the `type:period` words into `vocab/` (PR 4's framework) with a JUSTIFICATION.md; a dispatcher-level property test of range against the real money rules once PR 3 merges. |
