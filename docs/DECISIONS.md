@@ -1563,3 +1563,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `max_body_bytes`; capture a JSON document as a network body.
 - Why: Consistent with D-0127 and D-0128; the document is already `body.html`.
 - Reversible: yes
+
+### D-0253 — Capture and import-sites refuse a host that has pages in another split
+- Date: 2026-10-13 · Spec/PR: SPEC-03 follow-up (#49; D-0225 option b) · Status: decided
+- Decision: `eval capture` and `eval import-sites` refuse the whole input before any fetch when one of its hosts already has pages in another split, reporting counts only (per split), never a host or line. Re-capturing into the host's own split is allowed. A dev capture is checked against hidden/fresh only when custodian settings are present.
+- Alternatives: skip offending lines and report line numbers (a line number points at a hidden host); require private credentials for every dev capture (contradicts C1's custodian-only credentials).
+- Why: A site sits in one split (§16.1); counts-only output keeps C1. Remaining gap by design: a non-custodian dev capture of a hidden/fresh host can't be detected; `promote` and `rotate-hidden` still guard moves.
+- Reversible: yes
+
