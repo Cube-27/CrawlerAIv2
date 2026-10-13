@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-09 PR 1 (L2). Ready now (SPEC-05 PR 9 is done): SPEC-05 PRs 12, 13, SPEC-06 PRs 4, 5, SPEC-07 PRs 5, 8; SPEC-08 PR 3. SPEC-07 PR 8 must match the records-list and replay shapes declared in the frontend by #97 (or update that module).
+- In progress: SPEC-05 PR 12, SPEC-07 PR 5. Ready: SPEC-05 PR 13, SPEC-06 PRs 4, 5, SPEC-07 PR 8; SPEC-08 PR 3, SPEC-09 PR 2. SPEC-07 PR 8 must match the records-list and replay shapes declared in the frontend by #97 (or update that module).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -191,7 +191,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | `ApiRecipe` model + binders + property tests | todo | |
+| 1 | `ApiRecipe` model + binders + property tests | done (#102) | |
 | 2 | Discovery from network bodies | todo | |
 | 3 | Header minimization + replay | todo | |
 | 4 | Held-out validation + IR integration | todo | |
