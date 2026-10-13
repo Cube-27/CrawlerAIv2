@@ -39,6 +39,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | ID | Title | Status |
 |---|---|---|
 | D-0311 | GeoNames has no versioned download URL | needs-owner |
+| D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
 
 ---
 
@@ -3792,4 +3793,46 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The D-0527 rule builder moves from the release-executor property test to `config_ir/release_rules.py`.
 - Alternatives: Keep a copy per caller.
 - Why: C8; validation and the PR 11 release check need the same rules.
+- Reversible: yes
+
+### D-0571 — Drift compares against the IR's per-field yield and validity
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: decided
+- Decision: The drift baseline is each field's `FieldSteps.yield`/`validity` in the IR, the held-out values validation writes there (§4.7, #118), not a read of `validation_report`.
+- Alternatives: Read `validation_report[field]`.
+- Why: Same values; the executor already reads the IR, so drift needs no second document.
+- Reversible: yes
+
+### D-0572 — A drift window is compared only from 3 pages
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: decided
+- Decision: A field is judged once its window holds at least 3 pages.
+- Alternatives: Judge from the first page.
+- Why: The validated values come from at least 3 held-out pages (§8.3); one malformed page would otherwise suspend a field and start an LLM re-learn.
+- Reversible: yes
+
+### D-0573 — Windowed validity is unmeasured when no page matched
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: decided
+- Decision: Validity is valid / matched; with no matched page only yield is compared.
+- Alternatives: Count validity as 0.
+- Why: No division by zero, and yield already catches that case.
+- Reversible: yes
+
+### D-0574 — A listing row field's page observation
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: decided
+- Decision: On a page, a row field matched when any row has its value, and is valid only when every row's value is.
+- Alternatives: Count each row as an observation.
+- Why: The conservative reading: one bad row counts against validity; the window stays per page (§4.9).
+- Reversible: yes
+
+### D-0575 — Drift suspension is written to the IR and `field_status`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: decided
+- Decision: `record_run` sets `suspended` in both the stored IR (`FieldSteps.status`) and `extraction_config.field_status`.
+- Alternatives: Only `field_status`.
+- Why: The executor reads status from the IR; the API and reports read `field_status`.
+- Reversible: yes
+
+### D-0576 — `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444)
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: needs-owner
+- Decision: Question: `drift_margins.json` (§4.9) is a third dev-fitted file under `backend/data/`, like `calibration.json` and `source_precedence.yaml`, so INV-05's pinned-sha256 rule blocks it the same way. Options: (a) as D-0444 (a): the manifest check exempts stamped dev-fitted files, and the spec's `{"yield": 0.2, "validity": 0.1, "source_split": "dev"}` is committed; (b)/(c) as D-0444. Recommendation: answer with OPEN_QUESTIONS #19, option (a). Blocked: drift suspension in production; until then windows are recorded and nothing is suspended (C7: no default margin). Copied to OPEN_QUESTIONS #20.
+- Alternatives: See options.
+- Why: The same contradiction as D-0444 (CLAUDE.md §4).
 - Reversible: yes
