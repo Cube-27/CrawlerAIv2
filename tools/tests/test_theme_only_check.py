@@ -69,6 +69,7 @@ def test_semantic_tokens_default_scale_and_allowed_imports_pass(tmp_path: Path) 
             'import { createRoot } from "react-dom/client";',
             'import { useHref } from "react-router";',
             'import createClient from "openapi-fetch";',
+            'import { useQuery } from "@tanstack/react-query";',
             'import { PageHeader } from "../components/PageHeader";',
             'import "./app/theme.css";',
             '<div className="max-w-content h-page-view bg-background text-foreground border-border text-danger" />',
