@@ -1,7 +1,9 @@
 import { Tabs, Typography } from "@heroui/react";
 import { memo, type ReactNode } from "react";
+import type { FieldTypes } from "../../api/field";
 import type { ScrapeResponse } from "../../api/scrape";
 import { OutcomeLabel } from "../../components/OutcomeLabel";
+import { RecordList } from "../../components/RecordFields";
 import {
   DraftSchemaView,
   FetchView,
@@ -10,8 +12,6 @@ import {
   TextFormat,
   UsageTable,
 } from "./FormatViews";
-import { RecordsView } from "./RecordsView";
-import type { FieldTypes } from "./run";
 
 interface ResultTab {
   id: string;
@@ -27,7 +27,7 @@ function resultTabs(response: ScrapeResponse, fieldTypes: FieldTypes): ResultTab
       : {
           id: "records",
           label: "Records",
-          content: <RecordsView records={response.records} fieldTypes={fieldTypes} />,
+          content: <RecordList records={response.records} fieldTypes={fieldTypes} />,
         },
     response.markdown === undefined
       ? null

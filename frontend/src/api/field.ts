@@ -46,9 +46,12 @@ function isFieldTypeSpec(value: unknown): value is FieldTypeSpec {
   return SCALAR_FIELD_TYPES.some((scalar) => scalar === type);
 }
 
+/** Each field's type by its name, as a schema declares them. */
+export type FieldTypes = Readonly<Record<string, FieldTypeSpec>>;
+
 /** The field types in a schema's `fields` member (SPEC-04 §4.1); a field whose type is not one of these is left out,
  * and its value is then shown as the server sent it. */
-export function parseFieldTypes(fields: unknown): Readonly<Record<string, FieldTypeSpec>> {
+export function parseFieldTypes(fields: unknown): FieldTypes {
   if (!isJsonObject(fields)) return {};
   return Object.fromEntries(
     Object.entries(fields).filter((entry): entry is [string, FieldTypeSpec] =>
