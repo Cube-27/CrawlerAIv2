@@ -132,7 +132,9 @@ _KEYS = st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=8)
 
 @given(st.dictionaries(_KEYS, _SCALARS, min_size=1, max_size=6))
 def test_every_candidate_locator_names_the_recipe_and_reads_back_its_raw_value(document: dict[str, JsonValue]) -> None:
-    schema = _schema("detail", **{f"f{i}": FieldSpec(type=FieldType.TEXT, description="d") for i in range(len(document))})
+    schema = _schema(
+        "detail", **{f"f{i}": FieldSpec(type=FieldType.TEXT, description="d") for i in range(len(document))}
+    )
     collector = ApiCollector("r-7", {f"f{i}": f"$['{key}']" for i, key in enumerate(document)})
 
     executed = _collect(document, schema, collector)

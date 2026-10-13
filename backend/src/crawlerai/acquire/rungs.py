@@ -1,9 +1,10 @@
 """Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
 worked remembered in `site.fetch_method`.
 
-A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) and no other rung; the API-recipe rung
-joins it once it exists (SPEC-09). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a
-function of (url, policy), so `acquire` decides and records only.
+A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) and no other rung. A site whose active
+config has an API recipe is served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the
+config IR sits above `acquire` (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`.
+Every rung is a function of (url, policy), so `acquire` decides and records only.
 """
 
 from collections.abc import Awaitable, Callable
@@ -30,13 +31,32 @@ class Rungs:
     adapters: Registry = field(default_factory=lambda: Registry((), active=()))
 
 
-async def acquire(url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs) -> FetchResult:
-    """Fetch `url` through the active adapter that detects it, if any. Otherwise fetch it with
-    `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched again in
-    the browser, and the browser's outcome is kept only if it is `ok`. The result lists every attempt, in its
+async def acquire(
+    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs, *, recipe: Rung | None = None
+) -> FetchResult:
+    """Fetch `url` through the active adapter that detects it, if any. Otherwise through `recipe`, the active config's
+    API recipe bound to its fetch (SPEC-09 §4.8), when the site has one: its result is kept when it is `ok` or asks
+    for fewer requests, and otherwise the page is fetched as if there were no recipe (§4.10). Without a recipe, fetch
+    it with `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched
+    again in the browser, and the browser's outcome is kept only if it is `ok`. The result lists every attempt, in its
     bundle's manifest too."""
     if (adapter := rungs.adapters.detect(url)) is not None:
         return await adapter.fetch(url, policy)
+    served: FetchResult | None = None
+    if recipe is not None:
+        served = await recipe(url, policy)
+        if served.block_class == "ok" or _slow_down(served):
+            return served
+    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs)
+    if served is not None:
+        attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms
+    return with_attempts(kept, attempts, duration_ms)
+
+
+async def _page(
+    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs
+) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
+    """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     kept, attempts, duration_ms = result, result.attempts, result.duration_ms
@@ -45,16 +65,20 @@ async def acquire(url: str, policy: FetchPolicy, remembered: FetchMethod, rungs:
         if retry.block_class == "ok":
             kept = retry
         attempts, duration_ms = attempts + retry.attempts, duration_ms + retry.duration_ms
-    return _with_attempts(kept, attempts, duration_ms)
+    return kept, attempts, duration_ms
 
 
 def _browser_may_pass(result: FetchResult) -> bool:
+    return result.block_class in _BROWSER_EVIDENCE and not _slow_down(result)
+
+
+def _slow_down(result: FetchResult) -> bool:
     # A 429 or 503 asks for fewer requests (RFC 6585 §4, RFC 9110 §15.6.4): another rung would be one more, inside
     # the backoff the politeness step is about to apply.
-    return result.block_class in _BROWSER_EVIDENCE and result.bundle.manifest.status_code not in SLOW_DOWN
+    return result.bundle.manifest.status_code in SLOW_DOWN
 
 
-def _with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], duration_ms: int) -> FetchResult:
+def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], duration_ms: int) -> FetchResult:
     manifest = result.bundle.manifest
     fetch_policy = policy_with_attempts(manifest.fetch_policy, attempts)
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"fetch_policy": fetch_policy})})

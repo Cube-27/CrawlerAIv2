@@ -66,13 +66,23 @@ class Web:
     http: Rung
     browser: Rung
 
+    recipe: Rung | None = None
+
     def acquire(self, policy: FetchPolicy | None = None, remembered: FetchMethod = "http") -> FetchResult:
         rungs = Rungs(http=self.http, browser=self.browser)
-        return asyncio.run(acquire(URL, policy or FetchPolicy(), remembered, rungs))
+        return asyncio.run(acquire(URL, policy or FetchPolicy(), remembered, rungs, recipe=self.recipe))
 
 
-def web(http: BlockClass, browser: BlockClass = "ok", *, http_status: int | None = None) -> Web:
-    return Web(Rung("http", http, http_status), Rung("browser", browser))
+def web(
+    http: BlockClass,
+    browser: BlockClass = "ok",
+    *,
+    http_status: int | None = None,
+    recipe: BlockClass | None = None,
+    recipe_status: int | None = None,
+) -> Web:
+    api = None if recipe is None else Rung("api", recipe, recipe_status)
+    return Web(Rung("http", http, http_status), Rung("browser", browser), api)
 
 
 def _attempts(result: FetchResult) -> list[tuple[CaptureMethod, BlockClass]]:
@@ -187,3 +197,39 @@ def test_each_rung_runs_at_most_once_and_an_ok_attempt_is_always_kept(
     assert kept in _attempts(result)
     if any(attempt.block_class == "ok" for attempt in result.attempts):
         assert result.block_class == "ok"
+
+
+# --- the API recipe rung (SPEC-09 §4.8, §4.10) ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("remembered", ["http", "browser"])
+def test_a_page_with_a_recipe_is_served_by_it_and_no_other_rung(remembered: FetchMethod) -> None:
+    stubs = web("ok", "ok", recipe="ok")
+
+    result = stubs.acquire(remembered=remembered)
+
+    assert (result.method, result.block_class) == ("api", "ok")
+    assert _attempts(result) == [("api", "ok")]
+    assert (len(stubs.http.calls), len(stubs.browser.calls)) == (0, 0)
+
+
+@pytest.mark.parametrize("failed", ["blocked", "not_found", "error"])
+def test_a_failed_recipe_falls_back_to_the_configured_method_and_every_attempt_is_recorded(failed: BlockClass) -> None:
+    result = web("shell", "ok", recipe=failed).acquire()
+
+    assert (result.method, result.block_class) == ("browser", "ok")
+    assert _attempts(result) == [("api", failed), ("http", "shell"), ("browser", "ok")]
+    recorded = result.bundle.manifest.fetch_policy["attempts"]
+    assert isinstance(recorded, list)
+    assert [attempt["method"] for attempt in recorded if isinstance(attempt, dict)] == ["api", "http", "browser"]
+    assert result.duration_ms == 3
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_a_recipe_asked_to_slow_down_is_kept_without_a_fallback(status: int) -> None:
+    stubs = web("ok", recipe="blocked", recipe_status=status)
+
+    result = stubs.acquire()
+
+    assert _attempts(result) == [("api", "blocked")]
+    assert len(stubs.http.calls) == 0
