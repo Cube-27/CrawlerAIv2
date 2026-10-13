@@ -82,7 +82,7 @@ async def _page(
 ) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
-    if method == "http" and validators is not None and rungs.conditional is not None:
+    if method == "http" and rungs.conditional is not None:
         result = await rungs.conditional(url, policy, validators=validators)
     else:
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
