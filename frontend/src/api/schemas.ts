@@ -10,6 +10,11 @@ export type FieldSpecInput = components["schemas"]["FieldSpec-Input"];
 export type FieldType = components["schemas"]["FieldType"];
 export type SchemaPageKind = SchemaDef["page_kind"];
 
+/** A schema version as people name it: "<name> version <n>". */
+export function schemaVersionLabel({ name, version }: Pick<SchemaDef, "name" | "version">): string {
+  return `${name} version ${String(version)}`;
+}
+
 /** Every version of every schema; with `name`, every version of that one. */
 export async function listSchemas(
   client: ApiClient,

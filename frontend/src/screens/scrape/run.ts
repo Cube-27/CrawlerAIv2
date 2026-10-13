@@ -1,5 +1,5 @@
 import type { ApiClient } from "../../api/client";
-import { parseFieldTypes, type FieldTypeSpec } from "../../api/field";
+import { parseFieldTypes, type FieldTypes } from "../../api/field";
 import type { Problem } from "../../api/problem";
 import { apiResult } from "../../api/result";
 import type { components } from "../../api/schema";
@@ -7,8 +7,6 @@ import { getSchema } from "../../api/schemas";
 import type { ScrapeRequest, ScrapeResponse } from "../../api/scrape";
 
 type ScrapeRequestBody = components["schemas"]["ScrapeRequest"];
-
-export type FieldTypes = Readonly<Record<string, FieldTypeSpec>>;
 
 export type ScrapeRun =
   | { kind: "done"; response: ScrapeResponse; fieldTypes: FieldTypes }
