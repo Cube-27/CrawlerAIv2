@@ -1,12 +1,13 @@
 """The extraction step of a page task (SPEC-05 §4.10, ARCHITECTURE §6, INV-27): a fetched capture is extracted with
-`extract_page`, and the result is stored as one `extraction` row, its `candidate` rows and the page's `record`.
+`extract_page`, and the result is stored as one `extraction` row, its `candidate` rows and the page's `record` (a
+listing's: one per row).
 
 A scrape task runs it after its fetch (SPEC-07 §4.4, inline or in a worker: one function), and so will batch, extract
 and crawl tasks (SPEC-10). Storing only serializes what resolution decided (INV-27): each candidate keeps whether it
 was chosen or why it was rejected, and the record holds the published values.
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from pydantic import JsonValue
@@ -30,21 +31,26 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
-from crawlerai.resolve.records import RecordDraft, assemble
-from crawlerai.resolve.types import ExtractionResult, FieldOutcome
+from crawlerai.resolve.records import RecordDraft, assemble, assemble_listing
+from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 
 @dataclass(frozen=True, slots=True)
+class StoredRecord:
+    id: RecordId
+    draft: RecordDraft
+
+
+@dataclass(frozen=True, slots=True)
 class Stored:
-    """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`), the rows written for it, and the
-    record's content when it got one."""
+    """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`), the rows written for it, and each
+    record's content: at most one record for a detail page, one per kept row for a listing."""
 
     outcome: TaskOutcome
     extraction_id: ExtractionId
-    record_id: RecordId | None
-    record: RecordDraft | None
+    records: tuple[StoredRecord, ...]
     result: ExtractionResult
 
 
@@ -100,38 +106,59 @@ async def store_extraction(
     if result.candidates:
         await conn.execute(insert(CandidateRow), list(_candidate_rows(extraction_id, result)))
     if result.entity is None:
-        return Stored("failed" if result.outcome == "error" else result.outcome, extraction_id, None, None, result)
-    outcome, draft = assemble(
-        schema, result.entity, site_id=site_id, canonical_url=task.canonical_url, caller_supplied=caller_supplied
+        return Stored("failed" if result.outcome == "error" else result.outcome, extraction_id, (), result)
+    outcome, drafts = _records(
+        schema,
+        result.entity,
+        result.rows,
+        site_id=site_id,
+        page_url=task.canonical_url,
+        caller_supplied=caller_supplied,
     )
-    record_id = None
-    if draft is not None:
-        record_id = (
-            await conn.execute(
-                insert(Record)
-                .values(
-                    extraction_id=extraction_id,
-                    job_id=task.job_id,
-                    site_id=site_id,
-                    schema_id=schema.id,
-                    schema_version=schema.version,
-                    entity_key=draft.entity_key,
-                    data=draft.data,
-                    field_meta={name: meta.model_dump(mode="json") for name, meta in draft.field_meta.items()},
-                    complete=draft.complete,
-                    mode=result.mode,
-                )
-                .returning(Record.id)
-            )
-        ).scalar_one()
-    return Stored(outcome, extraction_id, record_id, draft, result)
+    if not drafts:
+        return Stored(outcome, extraction_id, (), result)
+    values = [
+        {
+            "extraction_id": extraction_id,
+            "job_id": task.job_id,
+            "site_id": site_id,
+            "schema_id": schema.id,
+            "schema_version": schema.version,
+            "entity_key": draft.entity_key,
+            "data": draft.data,
+            "field_meta": {name: meta.model_dump(mode="json") for name, meta in draft.field_meta.items()},
+            "complete": draft.complete,
+            "mode": result.mode,
+        }
+        for draft in drafts
+    ]
+    inserted = await conn.execute(insert(Record).returning(Record.id, sort_by_parameter_order=True), values)
+    records = tuple(StoredRecord(record_id, draft) for record_id, draft in zip(inserted.scalars(), drafts, strict=True))
+    return Stored(outcome, extraction_id, records, result)
+
+
+def _records(
+    schema: SchemaDef,
+    fields: FieldSet,
+    rows: tuple[FieldSet, ...],
+    *,
+    site_id: SiteId,
+    page_url: str,
+    caller_supplied: bool,
+) -> tuple[TaskOutcome, tuple[RecordDraft, ...]]:
+    if schema.page_kind == "listing":
+        return assemble_listing(
+            schema, fields, rows, site_id=site_id, page_url=page_url, caller_supplied=caller_supplied
+        )
+    outcome, draft = assemble(schema, fields, site_id=site_id, canonical_url=page_url, caller_supplied=caller_supplied)
+    return outcome, (draft,) if draft is not None else ()
 
 
 def _candidate_rows(extraction_id: ExtractionId, result: ExtractionResult) -> Iterator[dict[str, object]]:
-    fields: Mapping[str, FieldOutcome] = result.entity or {}
+    chosen, reasons = _marks(result)
     for candidate in result.candidates:
         status, value = _normalized(candidate)
-        outcome = fields.get(candidate.field)
+        key = _key(candidate)
         yield {
             "extraction_id": extraction_id,
             "entity_ref": candidate.entity_id,
@@ -142,9 +169,33 @@ def _candidate_rows(extraction_id: ExtractionId, result: ExtractionResult) -> It
             "source_kind": candidate.source_kind,
             "independent": candidate.independent,
             "locator": candidate.locator,
-            "chosen": outcome is not None and outcome.chosen == candidate,
-            "reject_reason": None if outcome is None else _reject_reason(outcome, candidate),
+            "chosen": key in chosen,
+            "reject_reason": None if key in chosen else reasons.get(key),
         }
+
+
+# A candidate's identity on the page: one field's value, from one source, at one place, of one entity.
+_CandidateKey = tuple[str, str, str, str]
+
+
+def _key(candidate: Candidate) -> _CandidateKey:
+    return candidate.field, candidate.entity_id, candidate.source_kind, candidate.locator
+
+
+def _marks(result: ExtractionResult) -> tuple[set[_CandidateKey], dict[_CandidateKey, str]]:
+    """The candidates some entity's field published, and why each other one did not. A listing resolves every row
+    against all candidates, so a row's candidate is `not_owned` in every other row: the reason its own row gave says
+    more, and is kept."""
+    chosen: set[_CandidateKey] = set()
+    reasons: dict[_CandidateKey, str] = {}
+    for fields in (result.entity or {}, *result.rows):
+        for outcome in fields.values():
+            if outcome.chosen is not None:
+                chosen.add(_key(outcome.chosen))
+            for candidate, reason in outcome.rejected:
+                if reasons.get(_key(candidate), "not_owned") == "not_owned":
+                    reasons[_key(candidate)] = reason
+    return chosen, reasons
 
 
 def _normalized(candidate: Candidate) -> tuple[NormalizeStatus, JsonValue]:
@@ -155,7 +206,3 @@ def _normalized(candidate: Candidate) -> tuple[NormalizeStatus, JsonValue]:
             return "ambiguous", None
         case Invalid():
             return "invalid", None
-
-
-def _reject_reason(outcome: FieldOutcome, candidate: Candidate) -> str | None:
-    return next((reason for rejected, reason in outcome.rejected if rejected == candidate), None)

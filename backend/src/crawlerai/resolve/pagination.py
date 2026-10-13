@@ -4,7 +4,7 @@ First the page's `rel=next` links (HTML Living Standard §4.6.7: `next` names th
 structural numbered links: a link to the same origin that differs from the page URL only in one integer path segment
 or one integer query parameter, whatever its name (C4), and whose integer is the page's plus one. When the page URL
 carries no such integer, which number its link would carry is not stated, so no structural link is taken (C7). A
-learned config's `listing.next` step is SPEC-08's; infinite scroll is §7.2's.
+learned config's next-page step is SPEC-08's; infinite scroll is §7.2's.
 """
 
 import re

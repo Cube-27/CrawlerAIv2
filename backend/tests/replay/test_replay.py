@@ -536,3 +536,71 @@ def test_the_pipeline_engine_knows_only_its_schemas() -> None:
     engine = PipelineEngine(DATA, {SCHEMA.name: SCHEMA})
     with pytest.raises(LookupError, match="other_schema"):
         engine.schema("other_schema")
+
+
+LISTING = SchemaDef(
+    id=SchemaId(uuid7()),
+    origin="user",
+    status="active",
+    name="synthetic_listing",
+    version=1,
+    page_kind="listing",
+    fields={
+        "title": SCHEMA.fields["title"],
+        "url": FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url"),
+        "next_page_url": FieldSpec(type=FieldType.URL, description="d", scope="page"),
+    },
+)
+
+
+def test_the_pipeline_engine_scores_a_listing_row_by_row() -> None:
+    # SPEC-03 §4.6: engine rows match label rows by URL, whatever their order on the page.
+    items = [
+        {
+            "@type": "ListItem",
+            "item": {"@type": "Product", "name": f"Item {n}", "url": f"https://shop.example.com/p/{n}"},
+        }
+        for n in (2, 1)
+    ]
+    node = {"@context": "https://schema.org", "@type": "ItemList", "itemListElement": items}
+    original = jsonld_page(1)
+    body = f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
+    manifest = original.manifest.model_copy(update={"html_sha256": sha256_hex(body)})
+    store = MemoryStore()
+    capture_id = asyncio.run(
+        store.put_capture(original.model_copy(update={"manifest": manifest, "body": body}), "custom_store")
+    )
+    rows: list[JsonValue] = [
+        {
+            "fields": {
+                "title": {"value": f"Item {n}", "absent": False},
+                "url": {"value": f"https://shop.example.com/p/{n}", "absent": False},
+            }
+        }
+        for n in (1, 2)
+    ]
+    page_labels = labels(1) | {"fields": {"next_page_url": {"value": None, "absent": True}}, "rows": rows}
+    page = EvalPageRow(
+        capture_id=capture_id,
+        split="dev",
+        schema_id=LISTING.id,
+        schema_name=LISTING.name,
+        page_kind="listing",
+        category="custom_store",
+        labels=page_labels,
+        config_snapshot=None,
+    )
+    asyncio.run(store.put_page(page))
+
+    cases = asyncio.run(replay_split(store, PipelineEngine(DATA, {LISTING.name: LISTING}), live=None))
+    report = build_report(cases, "dev", engine_version="e", git_sha="a" * 40)
+
+    assert report.pages is not None
+    cells = {(j.entity, j.field, j.cell) for j in report.pages[0].judgments}
+    assert cells == {
+        ("page", "next_page_url", "TN"),
+        ("row[0]", "title", "TP"),
+        ("row[0]", "url", "TP"),
+        ("row[1]", "title", "TP"),
+        ("row[1]", "url", "TP"),
+    }
