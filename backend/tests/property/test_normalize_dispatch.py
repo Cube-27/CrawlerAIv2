@@ -1,9 +1,11 @@
-"""The normalize dispatcher (SPEC-04 §4.3, §4.7): each field type goes to its one module, a type without a
-normalizer declines as `unknown_type`, and no type returns `Ok` for empty input (INV-06)."""
+"""The normalize dispatcher (SPEC-04 §4.3, §4.4): each field type goes to its one module, lists and objects recurse
+into their items and sub-fields, range resolves currencies by the registered money rules, and no type returns `Ok`
+for empty input (INV-06)."""
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
@@ -133,16 +135,64 @@ def test_range_goes_to_the_range_module() -> None:
     assert normalize(unit_range, _spec(FieldType.RANGE), CTX) == Ok(expected)
 
 
-def test_range_resolves_its_currency_by_the_registered_money_rules() -> None:
-    money_range: JsonValue = {"currency": "EUR", "minValue": 1, "maxValue": 2, "unitText": "YEAR"}
-    money = normalize({"price": 1, "priceCurrency": "EUR"}, _spec(FieldType.MONEY), CTX)
+# Range against the money rules the dispatcher registers (CLDR through Babel), not a stand-in.
+_CODES = ("EUR", "USD", "GBP", "CHF", "INR")
+_PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
+# The first call for a locale loads its CLDR data from disk, which can take longer than Hypothesis's default deadline.
+_LOADS_LOCALE_DATA = settings(deadline=None)
+_bounds = st.tuples(*[st.decimals(min_value=1, max_value=999, places=2)] * 2).map(sorted)
 
-    result = normalize(money_range, _spec(FieldType.RANGE), CTX)
 
-    # Before SPEC-04 PR 3 registers money, its decline is the range's decline.
-    if isinstance(money, Ok):
-        assert isinstance(result, Ok)
-        assert isinstance(result.value, dict)
-        assert (result.value["currency"], result.value["period"]) == ("EUR", "YEAR")
-    else:
-        assert result == money
+def _range(lo: Decimal, hi: Decimal, code: str | None, period: str | None) -> JsonValue:
+    return {"min": format(lo, "f"), "max": format(hi, "f"), "currency": code, "unit": None, "period": period}
+
+
+@_LOADS_LOCALE_DATA
+@given(_bounds, st.sampled_from(_CODES), st.sampled_from(_PERIODS))
+def test_a_monetary_amount_takes_its_currency_from_the_money_rules(
+    bounds: list[Decimal], code: str, period: str
+) -> None:
+    lo, hi = bounds
+    raw: JsonValue = {"currency": code, "value": {"minValue": str(lo), "maxValue": str(hi), "unitText": period}}
+
+    assert normalize(raw, _spec(FieldType.RANGE), CTX) == Ok(_range(lo, hi, code, period))
+
+
+@_LOADS_LOCALE_DATA
+@given(_bounds, st.sampled_from(_CODES), st.sampled_from(_PERIODS), st.sampled_from(["per ", "/"]))
+def test_range_text_takes_its_currency_from_the_money_rules(
+    bounds: list[Decimal], code: str, period: str, marker: str
+) -> None:
+    lo, hi = bounds
+    ctx = Context(captured_at=AT, html_lang="en-GB")
+
+    result = normalize(f"{code} {lo} - {hi} {marker}{period.lower()}", _spec(FieldType.RANGE), ctx)
+
+    assert result == Ok(_range(lo, hi, code, period))
+
+
+def test_a_currency_code_the_money_rules_do_not_know_declines_the_range() -> None:
+    raw: JsonValue = {"currency": "EURO", "minValue": 1, "maxValue": 2, "unitText": "YEAR"}
+    money = normalize({"price": "1", "priceCurrency": "EURO"}, _spec(FieldType.MONEY), CTX)
+
+    assert not isinstance(money, Ok)
+    assert normalize(raw, _spec(FieldType.RANGE), CTX) == money
+
+
+@_LOADS_LOCALE_DATA
+@given(_bounds)
+def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_currency(bounds: list[Decimal]) -> None:
+    lo, hi = bounds
+    raw = f"${lo} - ${hi} per year"
+    money = normalize(f"${lo}", _spec(FieldType.MONEY), CTX)
+
+    result = normalize(raw, _spec(FieldType.RANGE), CTX)
+
+    # Each reading pairs the two bounds in one currency the money rules allow for `$` (C7: never USD by default).
+    assert isinstance(money, Ambiguous)
+    assert isinstance(result, Ambiguous)
+    currencies = {o["currency"] for o in money.options if isinstance(o, dict)}
+    assert {o["currency"] for o in result.options if isinstance(o, dict)} == currencies
+    assert len(currencies) > 1
+    settled = Context(captured_at=AT, page_currencies=("CAD",))
+    assert normalize(raw, _spec(FieldType.RANGE), settled) == Ok(_range(lo, hi, "CAD", "YEAR"))
