@@ -7,7 +7,7 @@ executors run, and an `attr` step as the XPath attribute step `@name` (XPath 1.0
 of the context node: the row in a listing, the root element on a page. The release executor runs both steps the same
 way (a CSS step by its XPath, `attr` as the context node's attribute), so the release check of the IR is the check of
 the draft. A field the release check marks `manual` (§12.3) is exported with `manual: true`. An `api_recipe` is
-exported as stored: held-out validation replayed it (SPEC-09 §4.7), and its PHP code hint is SPEC-09's (PR 7).
+exported as stored, since held-out validation replayed it (SPEC-09 §4.7), and with its PHP code hint (`php_hint`).
 Regexes are in the portable subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry
 selectors only, never values (INV-27).
 """
@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.config_ir.exporters.php_hint import php_hint
 from crawlerai.config_ir.model import (
     AttrStep,
     CssStep,
@@ -63,6 +64,7 @@ class PlatformDraft(_Model):
     fields: dict[str, DraftField]
     listing: DraftListing | None
     api_recipe: ApiRecipe | None
+    api_recipe_php: str | None
 
 
 def platform_draft(ir: ExtractionConfigIR, report: ReleaseReport) -> PlatformDraft:
@@ -79,6 +81,7 @@ def platform_draft(ir: ExtractionConfigIR, report: ReleaseReport) -> PlatformDra
         fields=_draft_fields(ir.fields, report.fields),
         listing=listing,
         api_recipe=ir.api_recipe,
+        api_recipe_php=None if ir.api_recipe is None else php_hint(ir.api_recipe),
     )
 
 

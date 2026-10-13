@@ -1387,6 +1387,8 @@ export interface components {
         /** PlatformDraft */
         PlatformDraft: {
             api_recipe: components["schemas"]["ApiRecipe"] | null;
+            /** Api Recipe Php */
+            api_recipe_php: string | null;
             /**
              * Draft
              * @default true
