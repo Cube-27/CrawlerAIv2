@@ -59,6 +59,28 @@ async def create(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
         raise SchemaConflict(f"schema {schema.name} exists; edit its latest version instead") from e
 
 
+async def inline(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
+    """The stored schema an inline schema (a `scrape` request's) stands for: its name's latest version when that
+    has the same document and is active, else a new `user` schema at version 1. An inline schema never edits a
+    stored one (§5.2): a name whose latest version differs or is retired is a `SchemaConflict`."""
+    versions = await registry.list_schemas(conn, name=schema.name)
+    if not versions:
+        return await create(conn, schema)
+    latest = versions[-1]
+    if (latest.page_kind, latest.required_groups, latest.fields) != (
+        schema.page_kind,
+        schema.required_groups,
+        schema.fields,
+    ):
+        raise SchemaConflict(
+            f"schema {schema.name} version {latest.version} differs from the inline schema; edit it, or name the "
+            "inline schema differently"
+        )
+    if latest.status == "retired":
+        raise SchemaConflict(f"schema {schema.name} version {latest.version} is retired")
+    return latest
+
+
 async def get(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
     return await registry.get_by_id(conn, schema_id)
 

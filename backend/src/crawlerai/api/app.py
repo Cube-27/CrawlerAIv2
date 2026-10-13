@@ -1,9 +1,11 @@
 """The FastAPI application factory (SPEC-07 §4.1): routers, problem details for every error, and the database the
 routers share."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import partial
+from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -18,11 +20,15 @@ from crawlerai.api import problems
 from crawlerai.api.auth import RateLimiter
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.api.routers import health, schemas, scrape
-from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.collect.schema_org_map import VocabularyMissing
+from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import ApiSettings, Settings
 from crawlerai.llm.providers.from_settings import client_from_settings
+from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.scrape import Fetching
 from crawlerai.storage import open_store
+
+log = logging.getLogger(__name__)
 
 
 def _fetching(settings: Settings) -> Fetching:
@@ -44,6 +50,21 @@ def _fetching(settings: Settings) -> Fetching:
     return Fetching(Rungs(http=http, browser=browser), connector, open_store(settings.object_store), HostLimiter())
 
 
+def _engine_data() -> EngineData | None:
+    """The engine's data files from `backend/data/` of the source tree, for `records`; None where they are not
+    there (an installed package, or a tree without `crawlerai data fetch`): `records` then answers 503, and the
+    other formats work (D-0492 ships the files)."""
+    backend = backend_dir(Path(__file__))
+    if backend is None:
+        log.warning("no backend source tree: scrape records are unavailable")
+        return None
+    try:
+        return EngineData.load(data_dir(backend))
+    except VocabularyMissing as e:
+        log.warning("scrape records are unavailable: %s", e)
+        return None
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
@@ -51,6 +72,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.database = engine
     app.state.fetching = _fetching(settings)
     app.state.llm = client_from_settings(settings, engine)
+    app.state.engine_data = _engine_data()
     try:
         yield
     finally:
