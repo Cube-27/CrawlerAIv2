@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai.core.engine_version import ENGINE_VERSION, VERSION_FILE, engine_version
+from crawlerai.core.engine_version import BACKEND_DIR, ENGINE_VERSION, backend_dir, engine_version
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 
@@ -43,8 +43,21 @@ def test_a_version_file_that_is_not_a_git_sha_is_refused(tmp_path: Path, content
         engine_version(*_files(tmp_path, content, None))
 
 
-def test_the_engine_version_is_read_from_the_backend_tree() -> None:
-    backend = Path(__file__).resolve().parents[2]
+def test_a_source_tree_is_found_from_the_module_path(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("")
+    module = tmp_path / "src" / "crawlerai" / "core" / "engine_version.py"
 
-    assert engine_version(backend / "VERSION", backend / "data" / "calibration.json") == ENGINE_VERSION
-    assert backend / "VERSION" == VERSION_FILE
+    assert backend_dir(module) == tmp_path
+
+
+def test_an_installed_package_has_no_backend_tree(tmp_path: Path) -> None:
+    module = tmp_path / "lib" / "python3.12" / "site-packages" / "crawlerai" / "core" / "engine_version.py"
+
+    assert backend_dir(module) is None
+
+
+def test_the_engine_version_comes_from_the_backend_tree_if_there_is_one() -> None:
+    if BACKEND_DIR is None:
+        assert ENGINE_VERSION == "unknown+cal.none"
+    else:
+        assert engine_version(BACKEND_DIR / "VERSION", BACKEND_DIR / "data" / "calibration.json") == ENGINE_VERSION
