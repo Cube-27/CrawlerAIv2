@@ -140,13 +140,10 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     promote_command.add_argument("--from", dest="source", choices=["fresh"], required=True)
     promote_command.add_argument("--to", dest="target", choices=["dev"], required=True)
     promote_command.add_argument("--all", action="store_true", help="move every fresh site, checked or not")
-    # The split a failure is reported against: both commands read private splits, so their failures withhold details.
-    promote_command.set_defaults(split="fresh")
     rotate = eval_commands.add_parser(
         "rotate-hidden", help="move a fraction of the hidden sites, chosen per category, into dev"
     )
     rotate.add_argument("--fraction", type=_fraction, required=True)
-    rotate.set_defaults(split="hidden")
 
 
 def _positive_int(value: str) -> int:
@@ -157,10 +154,10 @@ def _positive_int(value: str) -> int:
 
 
 def _fraction(value: str) -> float:
-    number = float(value)
-    if not 0 < number < 1:
-        raise argparse.ArgumentTypeError("must be between 0 and 1, exclusive")
-    return number
+    try:
+        return promote.check_fraction(float(value))
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -210,10 +207,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         except (EvalCliError, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
             parser.exit(2, f"crawlerai eval: {e}\n")
         except Exception as e:
-            if args.split == "dev":
+            # Only a dev command shows its failure; `promote` and `rotate-hidden` read private splits and have none.
+            split = getattr(args, "split", "private")
+            if split == "dev":
                 raise
             # A hidden or fresh failure is reported by its type only: a message or traceback could carry a URL or a
             # row's values (a database error's DETAIL), and hidden cases must not reach a log (C1).
-            parser.exit(
-                1, f"crawlerai eval: failed with {type(e).__name__}; details withheld for the {args.split} split\n"
-            )
+            parser.exit(1, f"crawlerai eval: failed with {type(e).__name__}; details withheld for the {split} split\n")

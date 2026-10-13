@@ -4,9 +4,8 @@ Throwaway main and private databases (`CRAWLERAI_TEST_DATABASE_URL`, `CRAWLERAI_
 temporary object roots, synthetic `.test` pages only (C1, C9)."""
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
@@ -14,13 +13,13 @@ import pytest
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from crawlerai.acquire.types import FetchResult
 from crawlerai.cli import main
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Capture, EvalCategory, EvalPage, SchemaDef, SchemaId, Site
 from crawlerai.db.private_models import EvalCapture, PrivateBase
 from crawlerai.eval.promote import Move, Moved, promote, rotate_hidden
 from crawlerai.eval.store import DevEvalStore, EvalPageRow, PrivateEvalStore
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -41,6 +40,7 @@ class Stores:
     schema_id: SchemaId
     database_url: str
     private_database_url: str
+    fetch_result: Callable[..., FetchResult]
 
     async def add(
         self, store: PrivateEvalStore, host: str, labels: dict[str, object], category: EvalCategory = "custom_store"
@@ -48,25 +48,7 @@ class Stores:
         """A captured page of `host` in a private split, labeled by two people when `labels` is checked."""
         body = f"<html><body><h1>{uuid7()}</h1></body></html>".encode()
         url = f"https://{host}/p/{uuid7()}"
-        bundle = CaptureBundle(
-            manifest=CaptureManifest(
-                capture_id=uuid7(),
-                url=url,
-                final_url=url,
-                fetched_at=datetime(2026, 10, 1, 12, 0, tzinfo=UTC),
-                method="http",
-                status_code=200,
-                block_class="ok",
-                headers=Headers(request=(), response=()),
-                timings_ms={"total": 10},
-                html_sha256=sha256_hex(body),
-                network_bodies=(),
-                fetch_policy={},
-                engine_version="test",
-            ),
-            body=body,
-            network=(),
-        )
+        bundle = self.fetch_result(url, body=body).bundle
         capture_id = await store.put_capture(bundle, category)
         checked = labels.get("status") == "checked"
         page = EvalPageRow.model_validate(
@@ -96,7 +78,9 @@ def _files(root: Path) -> list[str]:
 
 
 @pytest.fixture
-async def stores(database_url: str, private_database_url: str, tmp_path: Path) -> AsyncIterator[Stores]:
+async def stores(
+    database_url: str, private_database_url: str, tmp_path: Path, fetch_result: Callable[..., FetchResult]
+) -> AsyncIterator[Stores]:
     main_root, private_root = tmp_path / "main", tmp_path / "private"
     main_engine, private_engine = create_async_engine(database_url), create_async_engine(private_database_url)
     async with main_engine.begin() as conn:
@@ -116,6 +100,7 @@ async def stores(database_url: str, private_database_url: str, tmp_path: Path) -
         schema_id,
         database_url,
         private_database_url,
+        fetch_result,
     )
     async with main_engine.begin() as conn:
         await conn.execute(delete(EvalPage))

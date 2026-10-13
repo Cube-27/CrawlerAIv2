@@ -55,10 +55,15 @@ async def rotate_hidden(hidden: PrivateEvalStore, dev: DevEvalStore, fraction: f
     return await _move(hidden, dev, sites, chosen)
 
 
-def choose_sites(categories: Mapping[str, EvalCategory], fraction: float, rng: random.Random | None = None) -> set[str]:
-    """`fraction` of the hosts of each category, rounded half up, chosen uniformly at random."""
+def check_fraction(fraction: float) -> float:
     if not 0 < fraction < 1:
         raise ValueError("the fraction must be between 0 and 1, exclusive")
+    return fraction
+
+
+def choose_sites(categories: Mapping[str, EvalCategory], fraction: float, rng: random.Random | None = None) -> set[str]:
+    """`fraction` of the hosts of each category, rounded half up, chosen uniformly at random."""
+    check_fraction(fraction)
     rng = rng or random.SystemRandom()
     by_category: defaultdict[EvalCategory, list[str]] = defaultdict(list)
     for host, category in categories.items():
