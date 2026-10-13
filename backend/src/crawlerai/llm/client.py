@@ -65,6 +65,12 @@ class LLMRequest(_Model):
         return schema
 
 
+def closed_object(properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """An object schema with exactly `properties`, each required: the closed object `LLMRequest` requires at its root
+    (§4.6), which roles also use for the objects inside it."""
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
 class LLMResponse(_Model):
     data: dict[str, JsonValue]  # validated against the request's output_schema
     provider: str

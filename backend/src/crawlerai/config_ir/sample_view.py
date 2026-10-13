@@ -8,7 +8,7 @@ page the executors run on. Only the attributes selectors anchor on or read value
 
 import copy
 import html
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
 
@@ -61,16 +61,13 @@ def cut_around(text: str, values: Iterable[str], limit: int) -> Cut:
     `&`, `<` and `>` escaped), centred as far as the text allows; the start when none is found."""
     if len(text) <= limit:
         return Cut(text)
-    found = [(i, i + len(v)) for v in map(_escaped, values) if v and (i := text.find(v)) >= 0]
+    escaped = dict.fromkeys(html.escape(v, quote=False) for v in values)  # a listing repeats many values
+    found = [(i, i + len(v)) for v in escaped if v and (i := text.find(v)) >= 0]
     start = 0
     if found:
         first, last = min(s for s, _ in found), max(e for _, e in found)
         start = max(0, min(first - max(0, limit - (last - first)) // 2, len(text) - limit))
     return Cut(text[start : start + limit], f"characters {start} to {start + limit} of {len(text)}")
-
-
-def _escaped(value: str) -> str:
-    return html.escape(value, quote=False)
 
 
 def json_keys(page: ParsedPage) -> Cut:
@@ -87,13 +84,9 @@ def json_keys(page: ParsedPage) -> Cut:
     return Cut(text[:KEYS_MAX_CHARS], f"the first {KEYS_MAX_CHARS} of {len(text)} characters of JSON keys")
 
 
-def _key_paths(document: JsonValue) -> Iterator[str]:
-    lines = (
-        f"{path}={value}" if _is_type(path) else path
-        for path, value in nodes(document, wildcard=True)
-        if is_scalar(value)
-    )
-    return iter(dict.fromkeys(lines))
+def _key_paths(document: JsonValue) -> Iterable[str]:
+    nodes_ = nodes(document, wildcard=True)
+    return dict.fromkeys(f"{path}={value}" if _is_type(path) else path for path, value in nodes_ if is_scalar(value))
 
 
 def _is_type(path: str) -> bool:

@@ -17,7 +17,9 @@ invalid step is a diagnostic, not an error. An LLM failure (`BudgetExhausted`, `
 propagates: the learning job ends `failed` and nothing activates (§4.13).
 """
 
+import asyncio
 import json
+import re
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
@@ -27,6 +29,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.config import Executed
+from crawlerai.collect.json_doc import nodes
 from crawlerai.collect.locator import InvalidLocator, parse_locator
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir import sample_view
@@ -35,7 +38,7 @@ from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Step, selector_key
 from crawlerai.config_ir.validation import MIN_ROWS
 from crawlerai.db.models import FieldStatus, JobId
-from crawlerai.llm.client import LLMClient, LLMRequest, PromptKind
+from crawlerai.llm.client import LLMClient, LLMRequest, PromptKind, closed_object
 from crawlerai.llm.roles.c_extract import field_lines
 from crawlerai.normalize.base import Invalid, Ok
 from crawlerai.normalize.dispatch import equal
@@ -58,7 +61,7 @@ MAX_DIAGNOSTICS: Final = 10
 VALUE_MAX_CHARS: Final = 200
 # The key of the listing's row selector among the targets; a field name has no `.` (`NAME_PATTERN`).
 ROW: Final = "listing.row"
-_STATUS: FieldStatus = "uncorroborated"  # until validation (§4.7)
+_STATUS: Final[FieldStatus] = "uncorroborated"  # until validation (§4.7)
 
 
 class _OneStep(BaseModel):
@@ -102,14 +105,16 @@ async def synthesize(
 ) -> Synthesis:
     """Steps for `fields` of `schema`, verified on `sample`, added to `ir` (induction's config). `max_chars` is each
     page's HTML limit (`CRAWLERAI_LLM_A_MAX_CHARS`)."""
-    learning = _Learning(ir, schema, sample, vocabulary, _Pages.of(sample, max_chars))
+    # Reducing pages and running the executor are CPU work: a thread keeps the event loop serving other tasks meanwhile.
+    pages = await asyncio.to_thread(_Pages.of, sample, max_chars)
+    learning = _Learning(ir, schema, sample, vocabulary, pages)
     ask, unresolved = learning.first_ask(fields)
     failures: dict[str, _Failure] = {}
     calls = 0
     while ask and calls <= MAX_REPAIRS:  # the first call, then the repairs
         response = await client.complete_json(learning.request(ask, failures, job_id))
         calls += 1
-        failures = learning.verify(_parse(response.data, ask))
+        failures = await asyncio.to_thread(learning.verify, _parse(response.data, ask))
         ask = ask.narrowed(failures)
     unresolved.update({target: failure.diagnostics for target, failure in failures.items()})
     config, left_out = learning.config()
@@ -212,20 +217,9 @@ class _Pages:
 def _published_strings(sample: SamplePage) -> Iterator[str]:
     """The strings the published values are made of, and the page text spans role C read them from."""
     for published in (*sample.published.values(), *(p for row in sample.rows for p in row.values())):
-        yield from _strings(published.value)
+        yield from (value for _, value in nodes(published.value) if isinstance(value, str))
         if (span := _text_span(sample, published)) is not None:
             yield span
-
-
-def _strings(value: JsonValue) -> Iterator[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, list):
-        for item in value:
-            yield from _strings(item)
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _strings(item)
 
 
 def _text_span(sample: SamplePage, published: Published) -> str | None:
@@ -243,6 +237,39 @@ def _text_span(sample: SamplePage, published: Published) -> str | None:
 def _dumped(value: JsonValue) -> str:
     text = json.dumps(value, ensure_ascii=False, sort_keys=True)
     return text if len(text) <= VALUE_MAX_CHARS else f"{text[:VALUE_MAX_CHARS]}…"
+
+
+# `EngineExecutor` diagnostics: `config:row: <message>` for the row selector, `config:<field>:<step>: <message>` for a
+# field's step (a field name has no `:`, `NAME_PATTERN`).
+_ROW_DIAGNOSTIC: Final = "config:row: "
+_STEP_DIAGNOSTIC: Final = re.compile(r"config:([^:]+):([0-9]+: .*)", re.DOTALL)
+
+
+@dataclass(frozen=True, slots=True)
+class _PageRun:
+    """The executor's output on one sample page, indexed once for every target checked on it: the row count,
+    candidates by owner and field, the row selector's diagnostics and each field's step diagnostics."""
+
+    rows: int
+    candidates: Mapping[tuple[str, str], Candidate]
+    row_diagnostics: tuple[str, ...]
+    step_diagnostics: Mapping[str, tuple[str, ...]]
+
+    @classmethod
+    def of(cls, executed: Executed) -> "_PageRun":
+        rows: list[str] = []
+        steps: dict[str, list[str]] = {}
+        for diagnostic in executed.diagnostics:
+            if diagnostic.startswith(_ROW_DIAGNOSTIC):
+                rows.append(diagnostic.removeprefix(_ROW_DIAGNOSTIC))
+            elif (step := _STEP_DIAGNOSTIC.fullmatch(diagnostic)) is not None:
+                steps.setdefault(step[1], []).append(step[2])
+        return cls(
+            rows=len(executed.rows),
+            candidates={(c.entity_id, c.field): c for c in executed.candidates},
+            row_diagnostics=tuple(rows),
+            step_diagnostics={name: tuple(found) for name, found in steps.items()},
+        )
 
 
 # --- one learning run -----------------------------------------------------------------------------------------------
@@ -278,9 +305,10 @@ class _Learning:
         return _Ask(page=tuple(page), row=bool(rows), rows=tuple(rows)), unresolved
 
     def _in_row(self, name: str) -> bool:
-        # A listing's `next` runs on the whole page (§4.3), whatever scope the schema gives `next_page_url`.
-        spec = self.schema.fields[name]
-        return self.schema.page_kind == "listing" and spec.scope == "row" and name != NEXT_PAGE_FIELD
+        # Whatever scope the schema gives `next_page_url`, a listing's `next` runs on the whole page.
+        return (
+            self.schema.page_kind == "listing" and self.schema.fields[name].scope == "row" and not self._is_next(name)
+        )
 
     def _published(self, in_row: bool) -> Iterator[Mapping[str, Published]]:
         for sample in self.sample:
@@ -315,7 +343,7 @@ class _Learning:
             parts.append(
                 f"Row fields, relative to a row (`listing.fields`):\n{field_lines({n: specs[n] for n in ask.rows})}"
             )
-        if self.schema.page_kind == "listing" and NEXT_PAGE_FIELD in ask.page:
+        if any(self._is_next(name) for name in ask.page):
             parts.append(f"`{NEXT_PAGE_FIELD}` takes one step: the URL of the listing's next page.")
         return "\n\n".join(parts)
 
@@ -332,18 +360,18 @@ class _Learning:
     def _output_schema(self, ask: _Ask) -> dict[str, JsonValue]:
         properties: dict[str, JsonValue] = {}
         if ask.page:
-            properties["fields"] = _closed({name: _steps_schema(self._one_step(name)) for name in ask.page})
+            properties["fields"] = closed_object({name: _steps_schema(self._is_next(name)) for name in ask.page})
         listing: dict[str, JsonValue] = {}
         if ask.row:
             listing["row"] = _STEP_SCHEMA
         if ask.rows:
-            listing["fields"] = _closed({name: _steps_schema(False) for name in ask.rows})
+            listing["fields"] = closed_object({name: _steps_schema(False) for name in ask.rows})
         if listing:
-            properties["listing"] = _closed(listing)
-        return _closed(properties)
+            properties["listing"] = closed_object(listing)
+        return closed_object(properties)
 
-    def _one_step(self, name: str) -> bool:
-        # IR §12.1: a listing's `next` is one step.
+    def _is_next(self, name: str) -> bool:
+        """`next_page_url` of a listing: the listing's one `next` step (IR §12.1), run on the whole page (§4.3)."""
         return self.schema.page_kind == "listing" and name == NEXT_PAGE_FIELD
 
     # --- verification ---
@@ -353,7 +381,7 @@ class _Learning:
         with their diagnostics."""
         row = next(iter(proposal.steps[ROW]), None) if ROW in proposal.steps else self.row
         executor = EngineExecutor(self._trial(proposal, row), self.vocabulary)
-        runs = [executor.execute(s.page, self.schema, s.ctx) for s in self.sample]
+        runs = [_PageRun.of(executor.execute(s.page, self.schema, s.ctx)) for s in self.sample]
         problems = proposal.parse_problems()
         if ROW in proposal.steps and row is not None:
             problems[ROW].extend(self._row_problems(runs))
@@ -375,36 +403,28 @@ class _Learning:
             listing = ListingSpec(row=row, fields={**self.row_fields, **rows})
         return self.ir.model_copy(update={"fields": {**self.ir.fields, **self.fields, **page}, "listing": listing})
 
-    def _target_problems(self, name: str, runs: Sequence[Executed], *, row_ok: bool) -> list[str]:
+    def _target_problems(self, name: str, runs: Sequence[_PageRun], *, row_ok: bool) -> list[str]:
         """A row field is checked only relative to a verified row selector."""
         if self._in_row(name) and not row_ok:
             return ["row_not_verified"]
         return self._field_problems(name, runs)
 
-    def _row_problems(self, runs: Sequence[Executed]) -> list[str]:
+    def _row_problems(self, runs: Sequence[_PageRun]) -> list[str]:
         problems = []
         for n, (sample, run) in enumerate(zip(self.sample, runs, strict=True)):
-            got, want = len(run.rows), len(sample.rows)
+            got, want = run.rows, len(sample.rows)
             if got < MIN_ROWS or (want and got != want):
                 problems.append(f"page {n + 1}: rows({got}, {want or f'at least {MIN_ROWS}'})")
-            problems.extend(
-                f"page {n + 1}: {d.removeprefix('config:row: ')}"
-                for d in run.diagnostics
-                if d.startswith("config:row:")
-            )
+            problems.extend(f"page {n + 1}: {d}" for d in run.row_diagnostics)
         return problems
 
-    def _field_problems(self, name: str, runs: Sequence[Executed]) -> list[str]:
+    def _field_problems(self, name: str, runs: Sequence[_PageRun]) -> list[str]:
         spec = self.schema.fields[name]
         problems: list[str] = []
         for n, run in enumerate(runs):
-            prefix = f"config:{name}:"
-            problems.extend(
-                f"page {n + 1}: step {d.removeprefix(prefix)}" for d in run.diagnostics if d.startswith(prefix)
-            )
-            candidates = {(c.entity_id, c.field): c for c in run.candidates}
-            for where, owner, published in self._slots(name, n, len(run.rows)):
-                problem = _problem(candidates.get((owner, name)), published, spec)
+            problems.extend(f"page {n + 1}: step {d}" for d in run.step_diagnostics.get(name, ()))
+            for where, owner, published in self._slots(name, n, run.rows):
+                problem = _problem(run.candidates.get((owner, name)), published, spec)
                 if problem is not None:
                     problems.append(f"{where}: {problem}")
         return problems
@@ -434,11 +454,11 @@ class _Learning:
         """The input config with the verified steps, and the verified targets it leaves out: a listing is built only
         with its row selector and at least one row field, and its `next` only with a listing."""
         page = dict(self.fields)
-        next_steps = page.pop(NEXT_PAGE_FIELD, None) if self.schema.page_kind == "listing" else None
+        next_steps = page.pop(NEXT_PAGE_FIELD, None) if self._is_next(NEXT_PAGE_FIELD) else None
         listing = None
         if self.row is not None and self.row_fields:
             listing = ListingSpec(
-                row=self.row, fields=self.row_fields, next=next_steps.steps[0] if next_steps else None
+                row=self.row, fields=self.row_fields, next=next_steps.steps[0] if next_steps is not None else None
             )
         left_out: dict[str, tuple[str, ...]] = (
             {NEXT_PAGE_FIELD: ("no_listing",)} if next_steps is not None and listing is None else {}
@@ -515,9 +535,4 @@ def _steps_schema(one: bool) -> dict[str, JsonValue]:
     steps: dict[str, JsonValue] = {"type": "array", "items": _STEP_SCHEMA}
     if one:
         steps["maxItems"] = 1
-    return _closed({"steps": steps})
-
-
-def _closed(properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """An object with exactly `properties`, each required (SPEC-06 §4.6: a closed object)."""
-    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+    return closed_object({"steps": steps})

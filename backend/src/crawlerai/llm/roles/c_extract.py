@@ -26,7 +26,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.db.models import JobId
-from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind
+from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind, closed_object
 from crawlerai.llm.grounding import SpanClaim, align
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.dispatch import normalize
@@ -81,7 +81,7 @@ class FilledListing(Filled):
 
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
     """`{fields: {<name>: span | null}}` for exactly the requested fields (§4.4)."""
-    return _closed({"fields": _spans(fields)})
+    return closed_object({"fields": _spans(fields)})
 
 
 def listing_output_schema(row_fields: Sequence[str], page_fields: Sequence[str]) -> dict[str, JsonValue]:
@@ -91,7 +91,7 @@ def listing_output_schema(row_fields: Sequence[str], page_fields: Sequence[str])
     properties: dict[str, JsonValue] = {"rows": {"type": "array", "items": _spans(row_fields)}}
     if page_fields:
         properties["page"] = _spans(page_fields)
-    return _closed(properties)
+    return closed_object(properties)
 
 
 def row_entity(position: int) -> Entity:
@@ -216,18 +216,8 @@ def _read_listing(
     return FilledListing(tuple(candidates), response, (*notes, *dropped), tuple(rows))
 
 
-def _closed(properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """An object with exactly `properties`, each required (§4.6: a closed object)."""
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(properties),
-        "additionalProperties": False,
-    }
-
-
 def _spans(fields: Sequence[str]) -> dict[str, JsonValue]:
-    return _closed({name: {"anyOf": [_SPAN, {"type": "null"}]} for name in sorted(fields)})
+    return closed_object({name: {"anyOf": [_SPAN, {"type": "null"}]} for name in sorted(fields)})
 
 
 def _cut(text: str, limit: int) -> tuple[str, tuple[str, ...]]:
