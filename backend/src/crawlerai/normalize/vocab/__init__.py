@@ -19,6 +19,7 @@ from importlib.resources.abc import Traversable
 from crawlerai.normalize.base import Context
 
 Tokens = tuple[str, ...]
+_JSON = ".json"
 
 
 def tokens(text: str) -> Tokens:
@@ -100,15 +101,14 @@ def context_languages(ctx: Context) -> frozenset[str]:
 
 def _load_schema(directory: Traversable) -> dict[str, frozenset[str]]:
     return {
-        e.name.removesuffix(".json"): frozenset(json.loads(e.read_text(encoding="utf-8")))
-        for e in _json_files(directory)
+        e.name.removesuffix(_JSON): frozenset(json.loads(e.read_text(encoding="utf-8"))) for e in _json_files(directory)
     }
 
 
 def _load_type(directory: Traversable) -> dict[str, dict[str, Entries]]:
     return {
         vocabulary.name: {
-            e.name.removesuffix(".json"): Entries.of(json.loads(e.read_text(encoding="utf-8")))
+            e.name.removesuffix(_JSON): Entries.of(json.loads(e.read_text(encoding="utf-8")))
             for e in _json_files(vocabulary)
         }
         for vocabulary in directory.iterdir()
@@ -117,7 +117,7 @@ def _load_type(directory: Traversable) -> dict[str, dict[str, Entries]]:
 
 
 def _json_files(directory: Traversable) -> Iterable[Traversable]:
-    return sorted((e for e in directory.iterdir() if e.name.endswith(".json")), key=lambda e: e.name)
+    return sorted((e for e in directory.iterdir() if e.name.endswith(_JSON)), key=lambda e: e.name)
 
 
 _ROOT = files(__name__)

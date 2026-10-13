@@ -162,7 +162,9 @@ def test_a_spec_of_another_type_is_a_programming_error() -> None:
 
 @given(st.sampled_from([SCHEMA, TYPE]), st.text(max_size=60))
 def test_normalize_is_pure(spec: FieldSpec, raw: str) -> None:
-    assert enum.normalize(raw, spec, CTX) == enum.normalize(raw, spec, CTX)
+    first = enum.normalize(raw, spec, CTX)
+
+    assert enum.normalize(raw, spec, CTX) == first
 
 
 @given(st.sampled_from([SCHEMA, TYPE]), st.text(max_size=60))
