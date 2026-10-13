@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, fetch_result
-from crawlerai.acquire.rungs import Rung, with_attempts
+from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import ApiCollector
@@ -72,17 +72,20 @@ class RecipeRung:
             if result.block_class != "ok":
                 yield result
                 return
-            if not _has_rows(result, pagination):
+            # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
+            if not await asyncio.to_thread(_has_rows, result, pagination):
                 return
             yield result
 
     async def _request(self, url: str, policy: FetchPolicy) -> tuple[JsonRequest, FetchResult | None] | FetchResult:
-        """The recipe's request for the page, with the HTML page fetch it needed; an `error` result when it has
-        none."""
+        """The recipe's request for the page, with the HTML page fetch it needed; when it has none, an `error`
+        result, or the page fetch itself when that asked for fewer requests."""
         data: PageData = {}
         page = None
         if self.recipe.requires_page_fetch:
             page = await self.fetch_page(url, policy)
+            if slow_down(page):
+                return page  # a 429 or 503 asks for fewer requests: `acquire` keeps it, with no fallback request
             if page.block_class != "ok":
                 return self._unserved(url, policy, f"page_{page.block_class}", page)
             # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
@@ -93,14 +96,13 @@ class RecipeRung:
         return request, page
 
     def _unserved(self, url: str, policy: FetchPolicy, reason: str, page: FetchResult | None) -> FetchResult:
-        started = time.monotonic()
         result = fetch_result(
             url=url,
             method="api",
             policy=policy,
             engine_version=self.engine_version,
             fetched_at=datetime.now(UTC),
-            started=started,
+            started=time.monotonic(),
             exchange=None,
             content=Content(body=b""),
             block_class="error",

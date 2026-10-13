@@ -105,11 +105,12 @@ class PageRung:
 
     body: bytes = b"<html></html>"
     block_class: BlockClass = "ok"
+    status: int | None = None
     calls: list[str] = field(default_factory=list)
 
     async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.calls.append(url)
-        status = 200 if self.block_class == "ok" else 403
+        status = self.status or (200 if self.block_class == "ok" else 403)
         return fetch_result(
             url=url,
             method="http",
@@ -217,6 +218,19 @@ def test_a_page_that_is_not_served_leaves_the_recipe_unserved() -> None:
         ("api", "error", "page_blocked"),
     ]
     assert api.requests == []
+
+
+def test_a_page_fetch_asked_to_slow_down_is_kept_with_no_fallback_request() -> None:
+    api, http, page = StandIn(_products), PageRung(), PageRung(block_class="blocked", status=429)
+    url = f"{SITE}/p/desk-lamp"
+
+    result = asyncio.run(
+        acquire(url, POLICY, "http", Rungs(http=http, browser=PageRung()), recipe=_rung(SKU_RECIPE, api, page))
+    )
+
+    assert (page.calls, http.calls, api.requests) == ([url], [], [])
+    assert result.bundle.manifest.status_code == 429
+    assert [(a.method, a.status) for a in result.attempts] == [("http", 429)]
 
 
 # --- pagination (§4.8, ARCHITECTURE §8.6) -----------------------------------------------------------------------------

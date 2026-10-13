@@ -45,7 +45,7 @@ async def acquire(
     served: FetchResult | None = None
     if recipe is not None:
         served = await recipe(url, policy)
-        if served.block_class == "ok" or _slow_down(served):
+        if served.block_class == "ok" or slow_down(served):
             return served
     kept, attempts, duration_ms = await _page(url, policy, remembered, rungs)
     if served is not None:
@@ -69,10 +69,10 @@ async def _page(
 
 
 def _browser_may_pass(result: FetchResult) -> bool:
-    return result.block_class in _BROWSER_EVIDENCE and not _slow_down(result)
+    return result.block_class in _BROWSER_EVIDENCE and not slow_down(result)
 
 
-def _slow_down(result: FetchResult) -> bool:
+def slow_down(result: FetchResult) -> bool:
     # A 429 or 503 asks for fewer requests (RFC 6585 §4, RFC 9110 §15.6.4): another rung would be one more, inside
     # the backoff the politeness step is about to apply.
     return result.bundle.manifest.status_code in SLOW_DOWN
