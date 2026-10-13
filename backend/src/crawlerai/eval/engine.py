@@ -4,6 +4,7 @@ the worker runs, with the engine's data and the schemas of the split's pages."""
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from crawlerai.config_ir.role_c import role_c
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import ExtractionMode
 from crawlerai.eval.replay import ConfigSnapshot
@@ -34,5 +35,5 @@ class PipelineEngine:
         llm: LLMClient,
         mode: ExtractionMode,
     ) -> ExtractionResult:
-        # Role C reads `llm` once SPEC-06 PR 4 binds it; until then the gap-filling hook is empty (§4.13).
-        return await extract_page(bundle, schema, config, None, mode, data=self.data)
+        # Role C reads `llm`, the harness's `RecordedLLM`; a replay is charged to no job.
+        return await extract_page(bundle, schema, config, role_c(llm, job_id=None), mode, data=self.data)

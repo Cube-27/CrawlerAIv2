@@ -24,7 +24,16 @@ from crawlerai.db.models import (
 )
 from crawlerai.eval.engine import PipelineEngine
 from crawlerai.eval.labels import LabelStatus
-from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields, build_report
+from crawlerai.eval.metrics import (
+    EvalCase,
+    FieldOutput,
+    PageOutput,
+    PrecisionMetrics,
+    ReplayFailed,
+    SchemaFields,
+    Usage,
+    build_report,
+)
 from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
@@ -604,3 +613,48 @@ def test_the_pipeline_engine_scores_a_listing_row_by_row() -> None:
         ("row[1]", "title", "TP"),
         ("row[1]", "url", "TP"),
     }
+
+
+class GroundingLLM:
+    """Stands in for a provider answering role C: the page text's `Item <n>` line as the title, nothing else. Its
+    latency changes from call to call, so only a recorded response replays identically."""
+
+    def __init__(self) -> None:
+        self.calls: list[LLMRequest] = []
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        self.calls.append(req)
+        text = req.user.split("<page_text>\n", 1)[1].rsplit("\n</page_text>", 1)[0]
+        title = next(line for line in text.split("\n") if line.startswith("Item "))
+        start = text.index(title)
+        return LLMResponse(
+            data={"fields": {"title": {"value": title, "start": start, "end": start + len(title)}, "summary": None}},
+            provider="provider-a",
+            model="model-a",
+            tokens_in=len(req.user),
+            tokens_out=12,
+            latency_ms=100 + len(self.calls),
+            request_hash=request_hash(req),
+        )
+
+
+def test_role_c_values_replay_from_the_recording_into_the_llm_grounded_bucket() -> None:
+    # SPEC-06 §7: the bucket appears in the dev report, and a replay with the recordings calls no provider.
+    store = MemoryStore()
+    for n in (1, 2):
+        asyncio.run(add_page(store, n))  # no structured data: the title is only in the page text
+    engine = PipelineEngine(DATA, {SCHEMA.name: SCHEMA})
+    live = GroundingLLM()
+
+    first = asyncio.run(replay_split(store, engine, live=live))
+    second = asyncio.run(replay_split(store, engine, live=None))
+
+    assert [req.prompt_kind for req in live.calls] == ["c_extract_detail", "c_extract_detail"]
+    assert dump(first) == dump(second)
+    outputs = [case.output for case in second]
+    assert [o.fields["title"] for o in outputs if isinstance(o, PageOutput)] == [
+        FieldOutput(status="published", value=f"Item {n}", evidence="llm_grounded") for n in (1, 2)
+    ]
+    report = build_report(second, "dev", engine_version=engine.version, git_sha="a" * 40)
+    assert report.by_bucket["text|llm_grounded"] == PrecisionMetrics(precision=1.0, n=2)
+    assert report.usage["adhoc"] == Usage(llm_calls_per_1k_pages=1000.0, n=2)

@@ -50,7 +50,7 @@ class LLMRequest(_Model):
     user: str
     output_schema: dict[str, JsonValue]  # JSON Schema (draft 2020-12) of the response
     max_output_tokens: int
-    job_id: JobId | None  # None only for the eval labeling pre-fill, which no job pays for
+    job_id: JobId | None  # None only for an eval replay or the labeling pre-fill, which no job pays for
 
     @field_validator("output_schema")
     @classmethod
@@ -133,27 +133,30 @@ def is_transient(status: int) -> bool:
 
 
 class LLMFailure(Exception):
-    """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type."""
+    """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type, and
+    `field_reason` as the reason of the fields the call was for, which stay `missing`."""
 
     code: ClassVar[str]
+    field_reason: ClassVar[str]
 
 
 class BudgetExhausted(LLMFailure):
     """The job has no `llm_calls` budget left; the call was not made (§4.7)."""
 
     code = BUDGET_EXHAUSTED
+    field_reason = "llm_budget"
 
 
 class ProviderUnavailable(LLMFailure):
     """No provider answered (§4.7)."""
 
-    code = "llm_unavailable"
+    code = field_reason = "llm_unavailable"
 
 
 class OutputInvalid(LLMFailure):
     """The reply did not match the output schema, after the one retry (§4.7)."""
 
-    code = "llm_output_invalid"
+    code = field_reason = "llm_output_invalid"
 
 
 class Unconfigured:

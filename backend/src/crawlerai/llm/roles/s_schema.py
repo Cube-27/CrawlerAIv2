@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMRequest
+from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import SchemaExists, SchemaNotFound
 from crawlerai.schemas.types import FieldType, SchemaDef, SchemaDocument
@@ -29,8 +30,8 @@ from crawlerai.storage.capture_bundle import sha256_hex
 SYSTEM: Final = files("crawlerai.llm").joinpath("prompts/s_schema.txt").read_text(encoding="utf-8")
 
 MAX_SAMPLES: Final = 3
-# Each sample's cleaned text is cut to its first 40,000 characters, role C's detail limit (D-0025).
-SAMPLE_MAX_CHARS: Final = 40_000
+# Each sample's cleaned text is cut to role C's detail limit (D-0025).
+SAMPLE_MAX_CHARS: Final = DETAIL_MAX_CHARS
 MAX_OUTPUT_TOKENS: Final = 8_192
 
 # One line per §5.1 field type, as the model reads them.
