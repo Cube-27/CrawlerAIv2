@@ -1,5 +1,6 @@
-"""JSON documents as collectors read them: parsed strictly as RFC 8259 JSON, and addressed by RFC 9535 normalized
-paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state` and `xhr` locators (SPEC-05 §4.3)."""
+"""JSON documents as collectors read them: parsed strictly as RFC 8259 JSON, addressed by RFC 9535 normalized paths
+(`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and `adapter` locators (SPEC-05 §4.3), and
+queried with the RFC 9535 subset adapter maps are written in."""
 
 import json
 import re
@@ -46,6 +47,33 @@ def scalars(document: JsonValue) -> Iterator[tuple[str, str | int | float]]:
             yield path, value
 
 
+def select(query: str, document: JsonValue, at: str = ROOT) -> list[tuple[str, JsonValue]]:
+    """The nodes `query` selects in `document`, in document order, each with its normalized path; `at` is the path of
+    `document` itself. The query is `$` followed by name segments (`['name']`, RFC 9535 §2.5.1.1, the name holding no
+    quote or backslash), wildcard segments (`[*]`, §2.5.1.2) and non-negative index segments (`[0]`, §2.3.3), so a
+    normalized path is one; raises `ValueError` for any other query."""
+    if not query.startswith(ROOT) or _QUERY_SEGMENTS.fullmatch(query, len(ROOT)) is None:
+        raise ValueError(f"not a query of name, wildcard and index segments: {query!r}")
+    nodes: list[tuple[str, JsonValue]] = [(at, document)]
+    for name, selector in _SEGMENT.findall(query, len(ROOT)):
+        nodes = [child for node in nodes for child in _children(*node, name, selector)]
+    return nodes
+
+
+def _children(path: str, value: JsonValue, name: str, selector: str) -> Iterator[tuple[str, JsonValue]]:
+    """The children of one node that a segment selects: the member `name`, else every child (`selector` `*`) or the
+    array item at index `selector` (RFC 9535 §2.3); a node of another kind has none."""
+    if name:
+        if isinstance(value, dict) and name in value:
+            yield member(path, name), value[name]
+    elif isinstance(value, dict) and selector == _ALL:
+        yield from ((member(path, key), child) for key, child in value.items())
+    elif isinstance(value, list) and selector == _ALL:
+        yield from ((f"{path}[{i}]", item) for i, item in enumerate(value))
+    elif isinstance(value, list) and int(selector) < len(value):
+        yield f"{path}[{selector}]", value[int(selector)]
+
+
 def _not_json(constant: str) -> JsonValue:
     # RFC 8259 §6: `NaN` and `Infinity` are not JSON numbers, though Python's parser reads them.
     raise ValueError(f"{constant} is not JSON")
@@ -61,3 +89,7 @@ def _guarded(decode: Callable[[], JsonValue]) -> JsonValue:
 _DECODER = json.JSONDecoder(parse_constant=_not_json)
 # RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
 _NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
+# A name segment captures its name in the first group; a wildcard or index segment, `*` or the index, in the second.
+_ALL = "*"
+_SEGMENT = re.compile(r"\['([^'\\]+)'\]|\[(\*|0|[1-9][0-9]*)\]")
+_QUERY_SEGMENTS = re.compile(rf"(?:{_SEGMENT.pattern})*")
