@@ -17,8 +17,9 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # tab or newline.
 _C0_AND_SPACE = "".join(chr(c) for c in range(0x21))
 _TAB_OR_NEWLINE = re.compile(r"[\t\n\r]")
-# INV-06: a reference of C0 controls, spaces and Unicode White_Space (`\s`) only carries no URL.
-_BLANK = re.compile(r"(?:[\x00-\x20]|\s)*")
+# INV-06: a reference of C0 controls, spaces and Unicode White_Space (`\s`) only carries no URL. `\s` already
+# covers U+0009-000D, U+001C-001F and the space, so the class lists only the other C0 controls.
+_BLANK = re.compile(r"[\x00-\x08\x0e-\x1b\s]*")
 # RFC 3986 §2.1 and §6.2.2.1: percent-encoding triplets; hex digits compare case-insensitively, uppercase is
 # canonical.
 _PERCENT_TRIPLET = re.compile(r"%([0-9A-Fa-f]{2})")

@@ -1,6 +1,7 @@
 """Behaviour of `tools/file_length.py` (C11, INV-18): a warning per long source file, never a failure."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,11 +16,15 @@ def lines(count: int) -> str:
 
 
 def run_check(root: Path, *, github: bool = False) -> subprocess.CompletedProcess[str]:
+    """Run a copy of the check placed in `root`'s tools/, untracked, so it checks that repository."""
+    check = root / "tools" / CHECK.name
+    check.parent.mkdir(exist_ok=True)
+    shutil.copyfile(CHECK, check)
     env = {key: value for key, value in os.environ.items() if key != "GITHUB_ACTIONS"}
     if github:
         env["GITHUB_ACTIONS"] = "true"
     return subprocess.run(  # noqa: S603
-        [sys.executable, str(CHECK), "--root", str(root)], capture_output=True, text=True, check=False, env=env
+        [sys.executable, str(check)], capture_output=True, text=True, check=False, env=env
     )
 
 

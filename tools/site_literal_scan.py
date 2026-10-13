@@ -371,12 +371,14 @@ def paths_to_scan(root: Path, tracked: list[str], *, staged: bool) -> list[str]:
 
 def file_findings(path: str, text: str, allowlist: Allowlist, tlds: frozenset[str], repo_names: RepoNames) -> list[str]:
     """One `path:line: host` per host the allowlist doesn't allow, once per line."""
-    reported: dict[tuple[int, str], None] = {}
+    seen: set[tuple[int, str]] = set()
+    findings: list[str] = []
     for number, segment in segments_of(path, text):
         for host in hosts_in(segment, tlds, repo_names):
-            if (number, host) not in reported and not allowlist.allows(host):
-                reported[number, host] = None
-    return [f"{path}:{number}: {host}" for number, host in reported]
+            if (number, host) not in seen and not allowlist.allows(host):
+                seen.add((number, host))
+                findings.append(f"{path}:{number}: {host}")
+    return findings
 
 
 def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool) -> tuple[list[str], int]:

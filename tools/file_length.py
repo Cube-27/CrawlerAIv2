@@ -4,14 +4,16 @@
 is split along logical boundaries (cohesive modules, field types per C8), never mechanically to meet the number.
 Source files are the tracked Python, JavaScript, TypeScript and shell files; generated files are not counted. In
 GitHub Actions (`GITHUB_ACTIONS=true`) each warning is a workflow annotation on its file.
+
+Checks the repository this file is in; it takes no arguments.
 """
 
-import argparse
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+REPO = Path(__file__).resolve().parents[1]
 LIMIT = 800
 SOURCE_SUFFIXES = (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".sh")
 # Written by `make api-client` from the backend's OpenAPI document, never by hand.
@@ -41,14 +43,10 @@ def warning(path: str, count: int, *, github: bool) -> str:
     return f"::warning file={path}::{text}" if github else f"warning: {text}"
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1], help="repository root")
-    args = parser.parse_args(argv)
-
+def main() -> int:
     github = os.environ.get("GITHUB_ACTIONS") == "true"
-    paths = source_files(args.root)
-    long = [(path, count) for path in paths if (count := line_count(args.root / path)) > LIMIT]
+    paths = source_files(REPO)
+    long = [(path, count) for path in paths if (count := line_count(REPO / path)) > LIMIT]
     for path, count in long:
         print(warning(path, count, github=github))
     if long:
