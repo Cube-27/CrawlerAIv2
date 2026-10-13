@@ -1311,7 +1311,6 @@
         "additionalProperties": false,
         "properties": {
           "prompt": {
-            "minLength": 1,
             "title": "Prompt",
             "type": "string"
           }

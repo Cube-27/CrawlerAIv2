@@ -53,7 +53,7 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
 from crawlerai.db.usage import record_usage
 from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
-from crawlerai.llm.roles.s_schema import draft_schema
+from crawlerai.llm.roles.s_schema import draft_schema, normalize_prompt
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.schemas import NewSchema
@@ -94,7 +94,15 @@ class SchemaInline(_Input):
 
 
 class SchemaPrompt(_Input):
-    prompt: str = Field(min_length=1)
+    prompt: str
+
+    @field_validator("prompt")
+    @classmethod
+    def _not_blank(cls, prompt: str) -> str:
+        # Role S reads the prompt whitespace-normalized (SPEC-06 §4.5), so one of only whitespace is empty.
+        if not normalize_prompt(prompt):
+            raise ValueError("the prompt is empty")
+        return prompt
 
 
 class FetchOptions(_Input):

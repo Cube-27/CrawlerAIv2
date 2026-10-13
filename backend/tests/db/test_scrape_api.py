@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -23,7 +23,7 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key
-from crawlerai.db.models import ApiKey
+from crawlerai.db.models import ApiKey, Job
 from crawlerai.llm.client import MeteredClient, ProviderError, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
@@ -269,3 +269,20 @@ async def test_an_app_without_a_provider_key_serves_and_refuses_a_new_prompt(
         "type": "llm_unavailable",
         "detail": "CRAWLERAI_LLM_API_KEY_ANTHROPIC is not set",
     }
+
+
+async def test_a_blank_prompt_is_a_validation_problem_and_starts_no_job(
+    client: httpx.AsyncClient, database: AsyncEngine, own_origin: str
+) -> None:
+    async with database.connect() as conn:
+        jobs_before = (await conn.execute(select(func.count()).select_from(Job))).scalar_one()
+
+    response = await _post(client, {"url": f"{own_origin}/", "formats": ["links"], "schema": {"prompt": " \n\t "}})
+
+    assert response.status_code == 422
+    problem = response.json()
+    assert problem["type"] == "validation"
+    # The union reports each schema form's error; the prompt form's is that the prompt is empty.
+    assert {"field": "schema.SchemaPrompt.prompt", "reason": "Value error, the prompt is empty"} in problem["errors"]
+    async with database.connect() as conn:
+        assert (await conn.execute(select(func.count()).select_from(Job))).scalar_one() == jobs_before
