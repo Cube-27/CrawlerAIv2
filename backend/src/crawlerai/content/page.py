@@ -2,8 +2,8 @@
 
 The body is decoded once and parsed at most once per parser: selectolax on first use, lxml only when an XPath step or
 trafilatura asks for it. The script blocks, the cleaned text and the visibility index are derived once from the
-selectolax tree. Every consumer (collectors, content formats, pagination, the engine executor) takes a `ParsedPage`,
-never the raw body.
+selectolax tree; the captured network bodies are kept as the bundle holds them. Every consumer (collectors, content
+formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
 """
 
 from dataclasses import dataclass
@@ -28,12 +28,14 @@ class ScriptBlock:
 
 
 class ParsedPage:
-    def __init__(self, html: str) -> None:
+    def __init__(self, html: str, network: tuple[bytes, ...] = ()) -> None:
         self.html = html
+        # The bundle's captured network bodies, in request order (the `xhr:<n>` locator indexes them).
+        self.network = network
 
     @classmethod
     def of(cls, bundle: CaptureBundle) -> "ParsedPage":
-        return cls(decode_body(bundle))
+        return cls(decode_body(bundle), bundle.network)
 
     @cached_property
     def tree(self) -> lexbor.LexborHTMLParser:

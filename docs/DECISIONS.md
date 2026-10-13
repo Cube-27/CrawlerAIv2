@@ -2724,3 +2724,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Own page-level candidates only for fields rooted at the target's type.
 - Why: §4.6 step 4 attributes page values to the target without a type condition; this answers D-0383's review note. Measure on dev before changing it.
 - Reversible: yes
+
+### D-0418 — js_state and xhr admit against the other kinds' candidates
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 10 (#86) · Status: decided
+- Decision: `js_state` and `xhr` implement `AdmittingCollector.collect(page, schema, ctx, others) -> Admitted`, not `Collector`. `Admitted` holds candidates and diagnostics but no entities: its candidates name entities of `others`, or `page`. PR 9 runs these two after the other collectors, passes their candidates, and adds the admitted candidates to the merged graph.
+- Alternatives: Return a `CollectResult` that copies the referenced entities (duplicate ids on merge).
+- Why: Admission depends on the other kinds' candidates (§8.1), and a `CollectResult` must hold every entity its candidates name.
+- Reversible: yes
+
+### D-0419 — An admitted value is owned by the entity it equals, else by the page
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 10 (#86) · Status: decided
+- Decision: A value admitted by equality is owned by the entity of each candidate it equals, one candidate per entity. A value admitted by visibility is owned by `page`.
+- Alternatives: Own every admitted value by `page`.
+- Why: A state value equal to a related product's price is evidence about that product. Owning it by `page` would put it on the target and cause spurious conflicts.
+- Reversible: yes
+
+### D-0420 — A field with any other-kind candidate admits by equality only
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 10 (#86) · Status: decided
+- Decision: A field that has any candidate from another source kind, even one that did not normalize, admits state values by equality only. So a value both equal and visible is not independent. A candidate of the same kind is never an anchor.
+- Alternatives: Count only valid candidates; let visibility make an equal value independent.
+- Why: The conservative reading of §4.5 ("leaves are considered only for fields still lacking a candidate or for agreement checks"): fewer admissions, and no independent vote for a value that only agrees.
+- Reversible: yes
+
+### D-0421 — State is a script's first assignment, and only an object or array
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 10 (#86) · Status: decided
+- Decision: js_state reads a `<script type="application/json">` whole. In any other non-JSON-LD script it reads only the first `window.<ident> =` or `var|let|const <ident> =` assignment, and only when its JSON value is an object or array. Booleans and `null` are never candidates.
+- Alternatives: Every assignment in a script; scalar initializers.
+- Why: The locator addresses one document per script. A scalar initializer is a script variable, not state. `true`, `false` and `null` are values of no field type.
+- Reversible: yes
+
+### D-0422 — `ParsedPage` carries the captured network bodies
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 10 (#86) · Status: decided
+- Decision: `ParsedPage(html, network=())`; `ParsedPage.of` passes `bundle.network`.
+- Alternatives: Pass the bundle to the xhr collector.
+- Why: Collectors read the `ParsedPage`, never the bundle (§4.1, INV-26).
+- Reversible: yes
