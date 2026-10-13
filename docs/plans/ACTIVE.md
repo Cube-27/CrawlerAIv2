@@ -130,7 +130,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Cleaned text + visible index | done (#67) | |
-| 2 | Candidate/Entity/Outcome models, locator format | todo | |
+| 2 | Candidate/Entity/Outcome models, locator format | done (#72) | |
 | 3 | JSON-LD collector + schema.org map | todo | |
 | 4 | Microdata/RDFa Lite collector | todo | |
 | 5 | OpenGraph collector | todo | |

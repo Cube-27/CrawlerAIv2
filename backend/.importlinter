@@ -88,7 +88,7 @@ allow_indirect_imports = True
 
 # `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
 # contract lets acquire import adapters. normalize sits above schemas because each normalizer reads the field's
-# `FieldSpec` (SPEC-04 §4.3).
+# `FieldSpec` (SPEC-04 §4.3). collect sits above content because every collector reads the `ParsedPage` (INV-26).
 [importlinter:contract:layers]
 name = Layering
 type = layers
@@ -97,7 +97,8 @@ layers =
     crawlerai.crawl | crawlerai.recurring | crawlerai.eval
     crawlerai.config_ir
     crawlerai.resolve | crawlerai.llm
-    crawlerai.collect | crawlerai.content
+    crawlerai.collect
+    crawlerai.content
     crawlerai.normalize
     crawlerai.schemas
     crawlerai.acquire : crawlerai.adapters

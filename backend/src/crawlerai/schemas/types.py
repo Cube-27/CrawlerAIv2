@@ -34,7 +34,8 @@ Scope = Literal["row", "page"]
 IdentifierScheme = Literal["gtin", "isbn", "mpn", "sku", "custom"]
 
 # Schema and field names are keys in records, configs and API payloads: lowercase snake case, as the presets use.
-Name = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+NAME_PATTERN = r"[a-z][a-z0-9_]{0,63}"
+Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # schema.org naming conventions: types are UpperCamelCase, properties lowerCamelCase. A path starts at a type and
 # follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
 SchemaOrgPath = Annotated[

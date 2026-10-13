@@ -17,7 +17,6 @@ from crawlerai.eval.labels import Labels
 from crawlerai.eval.metrics import (
     MIN_CELL,
     EvalCase,
-    Evidence,
     FieldMetrics,
     FieldOutput,
     PageOutput,
@@ -30,6 +29,7 @@ from crawlerai.eval.metrics import (
     build_report,
     export_aggregate,
 )
+from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 Behaviour = Literal["right", "wrong", "distractor", "abstain"]
