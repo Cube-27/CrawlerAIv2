@@ -265,6 +265,8 @@ class ExtractionConfig(Base):
     origin: Mapped[ConfigOrigin] = mapped_column(Text)
     field_status: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     validation_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # SPEC-08 §4.9: per field, `[matched, valid]` for each of the last pages the config ran on.
+    drift_window: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
 
 
 class ProgressiveState(Base):
