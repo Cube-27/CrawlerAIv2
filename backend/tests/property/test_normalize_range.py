@@ -17,6 +17,7 @@ from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.normalize import range as range_
+from crawlerai.normalize import vocab
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -223,3 +224,26 @@ def test_another_type_is_a_programming_error() -> None:
 
     with pytest.raises(TypeError):
         range_.normalize("EUR 1 - 2", money, CTX, money=_money)
+
+
+@given(_bounds, st.sampled_from(CODES), st.sampled_from(PERIODS), st.sampled_from(["per ", "/"]))
+def test_the_period_words_are_those_of_the_page_language(
+    bounds: list[Decimal], code: str, period: str, marker: str
+) -> None:
+    lo, hi = bounds
+    raw = f"{code} {lo} - {hi} {marker}{period.lower()}"
+
+    def in_language(html_lang: str) -> NormalizeResult:
+        return range_.normalize(raw, RANGE, Context(captured_at=AT, html_lang=html_lang), money=_money)
+
+    assert in_language("en-GB") == Ok(_value(lo, hi, currency=code, period=period))
+    # The `type:period` vocabulary has no `de` phrases, so on a German page the English words are not a period, and
+    # money declines the bound they stay in.
+    assert in_language("de") == Invalid("no_currency")
+
+
+def test_the_period_vocabulary_names_each_schema_org_salary_unit_once() -> None:
+    by_language = vocab.type_vocabulary("period")
+
+    assert by_language is not None
+    assert sorted(by_language["en"].phrases.values()) == sorted(PERIODS)

@@ -17,9 +17,11 @@ Declines (§9): the currency unresolved, or the period unresolved on a monetary 
 import re
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 
 from pydantic import JsonValue
 
+from crawlerai.normalize import vocab
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -30,10 +32,9 @@ text amount, and reads each value it returns as `{"amount", "currency"}` (a deci
 # schema.org `unitText` for a salary period, per the `baseSalary` / `MonetaryAmount` guidance on JobPosting:
 # HOUR, DAY, WEEK, MONTH, YEAR.
 _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
-# The `type:period` vocabulary, language `en` (SPEC-04 §4.4): the same five units, de-capitalized, after an explicit
-# "per" or "/". Justification: schema.org unitText for salary. A unit with another word around it ("hourly",
-# "per hours") is not a period.
-_PERIOD_TOKEN = re.compile(r"(?:\bper\s+|/\s*)(hour|day|week|month|year)\b", re.IGNORECASE)
+# The `type:period` vocabulary (SPEC-04 §4.4) maps each phrase to one of these units; its JUSTIFICATION.md names the
+# source.
+_PERIOD_VOCABULARY = "period"
 # The range separators SPEC-04 §4.4 names: hyphen-minus, en dash (the range dash, Unicode U+2013) and `en` "to".
 _SEPARATOR = re.compile(r"\s*(?:-|\u2013|\bto\b)\s*", re.IGNORECASE)
 # A written amount: ASCII digits (`re.ASCII`), with the grouping and decimal marks CLDR number patterns use between
@@ -119,12 +120,15 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
     if not raw.strip():
         return Invalid("empty")
     periods: set[str] = set()
+    text = raw
+    if (found := _period_phrases(vocab.context_languages(ctx))) is not None:
+        pattern, codes = found
 
-    def _drop_period(m: re.Match[str]) -> str:
-        periods.add(m.group(1).upper())
-        return " "
+        def _drop_period(m: re.Match[str]) -> str:
+            periods.add(codes[m.lastgroup or ""])
+            return " "
 
-    text = _PERIOD_TOKEN.sub(_drop_period, raw)
+        text = pattern.sub(_drop_period, raw)
     if len(periods) > 1:
         return Invalid("period_mismatch")
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
@@ -151,6 +155,34 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         money(right_before + right_amount + right_after, ctx),
         periods.pop() if periods else None,
     )
+
+
+@lru_cache(maxsize=64)  # keyed by the page's languages, a small set
+def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[str, str]] | None:
+    """A pattern that finds the `type:period` phrases of the page's languages (every language when it states none),
+    with the unit each named group stands for; `None` when the vocabulary has no phrases for them.
+
+    A phrase matches as whole words in any case, and so does its solidus form `/<last word>` (the SI Brochure and
+    ISO 80000-1 write "per" between units as `/`). A unit with another word around it ("hourly", "per hours") is not
+    a period.
+    """
+    by_language = vocab.type_vocabulary(_PERIOD_VOCABULARY) or {}
+    phrases = {
+        phrase: code
+        for language in sorted(languages or by_language.keys())
+        if language in by_language
+        for phrase, code in by_language[language].phrases.items()
+    }
+    if not phrases:
+        return None
+    alternatives: list[str] = []
+    codes: dict[str, str] = {}
+    for i, (phrase, code) in enumerate(sorted(phrases.items())):
+        words = phrase.split(" ")
+        written = r"\s+".join(map(re.escape, words))
+        alternatives.append(rf"(?P<p{i}>\b{written}\b|/\s*{re.escape(words[-1])}\b)")
+        codes[f"p{i}"] = code
+    return re.compile("|".join(alternatives), re.IGNORECASE), codes
 
 
 def _around_amount(bound: str) -> tuple[str, str, str] | None:
