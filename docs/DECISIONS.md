@@ -1871,3 +1871,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Accept JSON numbers as timestamps.
 - Why: Structured sources (JSON-LD `datePosted`) carry strings; a number's unit and epoch are not stated.
 - Reversible: yes
+
+### D-0300 — Money accepts text, schema.org `price` + `priceCurrency`, or `amount` + `currency`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: A structured amount is a JSON number or a schema.org `price` string (ASCII digits, `.` decimal point, no grouping); a structured currency must be an uppercase ISO 4217 code Babel lists.
+- Alternatives: Lenient parsing of structured strings; uppercasing codes.
+- Why: schema.org `price` syntax and ISO 4217 define these forms; accepting the normalized form makes labels re-normalizable and idempotence direct.
+- Reversible: yes
+
+### D-0301 — Money text with no currency sign is `Invalid("no_currency")`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: This holds even when `page_currencies` holds one code.
+- Alternatives: Take the single page currency.
+- Why: §4.4 lets a page currency settle a sign, not supply a missing one; the most conservative reading (C7).
+- Reversible: yes
+
+### D-0302 — Money's locale set comes from the context tags, then the ccTLD
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: Tags come from `html_lang`, `og_locale`, `request_locale` and `hreflang`. A tag with a territory is used as is; a language-only tag becomes `language_ccTLD` when CLDR has that locale, else every CLDR locale of the language. Tags CLDR can't parse (`x-default`) are ignored; with no tag CLDR knows, the ccTLD stands for its territory's locales. With no locales at all, every CLDR locale counts.
+- Alternatives: Read `en` as CLDR's default `en` (US).
+- Why: A tag without a territory doesn't say which territory's `$` is meant, so `$` with `lang="en"` stays ambiguous (ARCHITECTURE §9).
+- Reversible: yes
+
+### D-0303 — Precedence of money currency evidence
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: (1) an ISO 4217 code names itself; (2) the `page_currencies` codes the sign stands for anywhere in CLDR; (3) the currencies the sign stands for in the locale set; (4) if none, every currency the sign stands for in CLDR. One currency is `Ok`, several are `Ambiguous`.
+- Alternatives: Intersect locale and page evidence.
+- Why: §4.4 makes a stated page currency decisive for a sign valid for it; an ISO code naming itself also covers CLDR `zh` writing ILR as `ILS`.
+- Reversible: yes
+
+### D-0304 — Money locates its own amount and sign, with `price-parser` as fallback
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: The amount is the one run of digits joined by CLDR decimal and group separators; two runs are `Invalid("range")`. The sign is the longest CLDR symbol or ISO code next to the amount, not inside a run of letters; failing that, the sign `price-parser` locates if it is a whole token. A minus sign (U+002D, U+2212) before the amount is `Invalid("not_positive")`.
+- Alternatives: Use `price-parser`'s amount and sign as given.
+- Why: `price-parser` drops minus signs (`-5 €` gives 5), reads only the first of two amounts, and locates `S$` inside `BS$`.
+- Reversible: yes
+
+### D-0305 — Money signs on both sides of the amount must agree; an amount may open with its decimal symbol
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: The longest sign before and the longest after the amount are both read and the currency is what both can denote (`$5 USD` gives USD); none shared (`USD 12 EUR`) is `Invalid("currency_conflict")`. An amount may open with `.` or `,` (`.99`) unless a letter or digit precedes it, and CLDR decides whether it is the decimal symbol.
+- Alternatives: Keep the first or shorter sign; drop the leading separator.
+- Why: `.99 USD` read as 99 and `USD 12 EUR` resolved to one code, both wrong values (C7).
+- Reversible: yes
+
+### D-0306 — Money amounts fit `numeric(18,6)` and keep their written digits
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 3 (#58) · Status: decided
+- Decision: An amount must be below 10^12 with at most 6 significant fraction digits (trailing zeros don't count), else `Invalid("out_of_range")`; the output keeps its written digits (`19.90`).
+- Alternatives: Round.
+- Why: Values must be storable without rounding (D-0005), and §4.5 compares amounts as Decimals.
+- Reversible: yes

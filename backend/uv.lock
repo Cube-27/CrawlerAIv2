@@ -278,6 +278,7 @@ dependencies = [
     { name = "dateparser" },
     { name = "fastapi" },
     { name = "patchright" },
+    { name = "price-parser" },
     { name = "protego" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -316,6 +317,7 @@ requires-dist = [
     { name = "dateparser", specifier = ">=1.2,<2" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "patchright", specifier = ">=1.63,<2" },
+    { name = "price-parser", specifier = ">=0.4,<1" },
     { name = "protego", specifier = ">=0.4,<1" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "pydantic-settings", specifier = ">=2,<3" },
@@ -1033,6 +1035,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/81/74/ba08d81e668ccfe8658d7520a307e63c19862c08eb4ccb26f356c5239a7a/prettytable-3.18.0.tar.gz", hash = "sha256:439217116152244369caf3d9f1caf2f9fe29b03bd79e88d2928c8e718c95d680", size = 76373, upload-time = "2026-06-22T16:07:50.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fe/be/2e6798ace5cc036f5d05d36b7b2fd85346f1a708c87060890b070d0ec607/prettytable-3.18.0-py3-none-any.whl", hash = "sha256:b3346e0e6f79180833aebaac088ae926340586cf6d7d991b9eb125b65f72313a", size = 37357, upload-time = "2026-06-22T16:07:48.595Z" },
+]
+
+[[package]]
+name = "price-parser"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/54/c7/217521864c88b4ee862fea2fbf49b0eb64be43fe9e4ca696362ea1b4ecef/price_parser-0.5.1.tar.gz", hash = "sha256:6861919270cba24a21c70f30e1444338eb2b03ca2bf2d2ddaaa3287176cfab4c", size = 34441, upload-time = "2026-03-19T11:33:24.102Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/99/734dd8b0a0ae187aeeb4d7b35bf6aa85bc755842aff7a2b146885c293811/price_parser-0.5.1-py3-none-any.whl", hash = "sha256:d401fb2a866e86103a19383396bee5ac7f72408a9db6bf3c6edf3210e4212910", size = 14800, upload-time = "2026-03-19T11:33:22.722Z" },
 ]
 
 [[package]]
