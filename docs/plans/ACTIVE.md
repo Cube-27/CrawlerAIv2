@@ -32,9 +32,9 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PR 5 (#29, in review); SPEC-02 PR 5; SPEC-03 PRs 3, 4, 6–11.
+- Next: SPEC-02 PR 5 and SPEC-03 PR 3 (in progress); SPEC-03 PRs 4, 6–11.
+- Follow-up from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment.
 - Note (from #26): the robots snapshot is per site, but robots.txt is per scheme, host and port (RFC 9309 §2.3); a site served on both `http` and `https` or a non-default port shares one snapshot.
-- Follow-ups from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment; SPEC-03 PR 5 decides whether an empty `labeled`/`checked` listing scores.
 - Open (SPEC-04 PR 7 / SPEC-05): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Decide how runtime data ships (package data or a settings path) together with GeoNames data and calibration; the build must write `VERSION`.
 - Note for SPEC-06: usage recorded in a task's transaction is lost if the handler then raises (transient retries roll back). Catch provider errors and return a result, or record usage in its own transaction.
 - Done: `claim_tasks` no longer claims more than `n` tasks (#24, D-0153).
@@ -94,7 +94,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 2 | Label model + validation + equality | done (#27) | `equal` hooks are exact-equality stubs until SPEC-04 PR 9. |
 | 3 | `eval capture` and `import-sites` CLI | todo | |
 | 4 | Replay harness + RecordedLLM + determinism test | todo | |
-| 5 | Metrics + aggregate report + min-cell suppression | todo | |
+| 5 | Metrics + aggregate report + min-cell suppression | done (#29) | Secondary suppression: D-0187 (needs-owner, not blocking). |
 | 6 | Gate + baseline lookup | todo | |
 | 7 | Protected job wired (replace placeholder) + dev report in `backend` job | todo | |
 | 8 | Labeling API | todo | |

@@ -46,6 +46,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0037 | `map`/`crawl` scope is the exact host | pending-owner |
 | D-0086 | Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md | pending-owner |
 | D-0110 | eslint pre-commit hook exceeds the 10 s budget on Windows | needs-owner |
+| D-0187 | Secondary suppression of aggregate cells for hidden/fresh | needs-owner |
 
 ---
 
@@ -1050,3 +1051,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Take a `FetchResult`.
 - Why: Keeps the SPEC-03 §4.2 signature.
 - Reversible: yes
+
+### D-0180 — An empty checked listing scores
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: A `checked` listing with `rows: []` counts in `n_pages`; its page-level fields are scored, every published field of every engine row is FP, and it is zero-touch only if the engine published no rows.
+- Alternatives: Skip it.
+- Why: An empty listing is a legitimate label; skipping it would hide false rows from precision.
+- Reversible: yes
+
+### D-0181 — Min cell applies to each cell's own n
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: Field cells (`by_field_type`, `by_field`) are suppressed below 10 scored fields; bucket and config-status cells below 10 published fields; `by_category`, `acquisition` and `usage` below 10 pages. SPEC-03 §4.7 wording updated.
+- Alternatives: Count labeled fields for every cell.
+- Why: Pages ≤ fields, so counting pages is the stricter reading of §16.3 for page-level cells.
+- Reversible: yes
+
+### D-0182 — Pages kept only on dev; the full report stays in the job
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: `build_report` includes `pages` only for `split == "dev"`; `export_aggregate` produces what leaves the protected job; the gate (PR 6) reads the unsuppressed report inside the job, so a suppressed `wrong_product` still fails it.
+- Alternatives: Suppress at build time.
+- Why: The gate needs every wrong-product count; nothing per-page is held for hidden/fresh.
+- Reversible: yes
+
+### D-0183 — Per-field cells stay in the job for hidden/fresh
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: `export_aggregate` empties `by_field` when `split != "dev"`; the dev report and the in-job report keep it.
+- Alternatives: Export it with min-cell suppression.
+- Why: §4.7's aggregate schema and C10 expose aggregates per field type and evidence bucket only; `by_field` keys name schemas (possibly custom to a hidden site), and its suppressed cells can be recovered by subtraction.
+- Reversible: yes
+
+### D-0184 — Usage cells carry their n (spec clarification)
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: `usage` is `{mode: {"llm_calls_per_1k_pages": x, "n": pages}}`, per 1k pages of that mode. SPEC-03 §4.7's example updated.
+- Alternatives: A bare number per mode over all pages.
+- Why: Keeps n with the number and lets small mode cells be suppressed.
+- Reversible: yes
+
+### D-0185 — Zero-touch is literal
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: Every judgment of a required field must be TP (labeled-absent is not TP); a required group needs a TP member and no FP member per entity; any unmatched engine row fails it.
+- Alternatives: Count TN as success.
+- Why: §4.6: "every required field … is TP".
+- Reversible: yes
+
+### D-0186 — `list`/`object` fields report under the shape type
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: decided
+- Decision: `by_field_type` keys on `FieldShape.type`, so a list of money is reported under `list`.
+- Alternatives: The item type.
+- Why: SPEC-04 `FieldSpec` will decide; until then no field mixes into a scalar type's precision.
+- Reversible: yes
+
+### D-0187 — Secondary suppression of aggregate cells for hidden/fresh
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 5 (#29) · Status: needs-owner
+- Question: `by_bucket` and `by_config_status` cells are subsets of `by_field_type`, so one suppressed cell can be derived by subtracting the visible cells from the type total. §16.3 asks only for primary suppression (cells under 10), while its goal is that aggregates "can't identify individual cases". Add secondary suppression?
+- Options: (a) keep primary suppression only, as §16.3 says; (b) add complementary suppression: when exactly one cell in a group is suppressed, suppress the next-smallest too; (c) report bucket and config-status tables only for dev.
+- Recommendation: (b). It closes the subtraction path at little cost, and the gate reads unsuppressed numbers inside the job anyway (D-0182).
+- Blocked: nothing. Ships with primary suppression; changing it touches ARCHITECTURE §16.3, so it needs the owner.
