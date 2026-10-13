@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import JsonValue
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
@@ -168,9 +169,6 @@ class FakeBackend:
             raise self.capture_result
         return self.capture_result
 
-    async def aclose(self) -> None:
-        pass
-
 
 def _request(
     backend: FakeBackend | None, method: str, path: str, body: Any = None, headers: dict[str, str] | None = None
@@ -282,11 +280,13 @@ def test_backend_serves_the_dev_store_even_with_private_settings(tmp_path: Path)
         }
     )
 
-    backend = eval_router.DevLabelingBackend(settings)
+    engine = create_async_engine(settings.database_url.get_secret_value())
+
+    backend = eval_router.DevLabelingBackend(settings, engine)
 
     assert type(backend.store) is DevEvalStore
     assert backend.store.split == "dev"
-    asyncio.run(backend.aclose())
+    asyncio.run(engine.dispose())
 
 
 def test_get_page_returns_sanitized_html_with_a_base_at_the_capture_url() -> None:

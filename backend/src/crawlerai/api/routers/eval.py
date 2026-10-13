@@ -19,10 +19,10 @@ from fastapi import APIRouter, Body, Depends, FastAPI, Header, Query, Request, R
 from pydantic import Field, JsonValue
 from selectolax.lexbor import LexborHTMLParser
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.dto import PROBLEM_RESPONSE, Model
-from crawlerai.api.problems import ProblemError
+from crawlerai.api.problems import ProblemError, invalid, not_found
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
@@ -54,16 +54,14 @@ class LabelingBackend(Protocol):
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]: ...
 
-    async def aclose(self) -> None: ...
-
 
 class DevLabelingBackend:
     """The dev store, `schema_def` in the main database, and `eval capture` into dev. Private settings, even when
     present, are never read."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, engine: AsyncEngine) -> None:
         self._settings = settings
-        self._engine = create_async_engine(settings.database_url.get_secret_value())
+        self._engine = engine
         self._store = DevEvalStore(self._engine, open_store(settings.object_store))
 
     @property
@@ -80,18 +78,12 @@ class DevLabelingBackend:
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]:
         return await run_capture(self._settings, "dev", requests, page_kind)
 
-    async def aclose(self) -> None:
-        await self._engine.dispose()
-
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    backend = DevLabelingBackend(Settings())
-    app.state.labeling_backend = backend
-    try:
-        yield
-    finally:
-        await backend.aclose()
+    # Runs inside the app's lifespan, which owns the database engine (`api.app`).
+    app.state.labeling_backend = DevLabelingBackend(Settings(), app.state.database)
+    yield
 
 
 def labeling_backend(request: Request) -> LabelingBackend:
@@ -106,11 +98,11 @@ router = APIRouter(prefix="/v1/eval", tags=["eval"], lifespan=_lifespan, respons
 
 
 def _invalid(detail: str, errors: Sequence[LabelError] = ()) -> ProblemError:
-    return ProblemError(422, "validation", "Invalid request", detail, [(e.path, e.reason) for e in errors])
+    return invalid(detail, [(e.path, e.reason) for e in errors])
 
 
 def _not_found(page_id: EvalPageId) -> ProblemError:
-    return ProblemError(404, "not_found", "Not found", f"no dev eval page {page_id}")
+    return not_found(f"no dev eval page {page_id}")
 
 
 def _labels_changed(status: int) -> ProblemError:
@@ -264,7 +256,6 @@ _LABELS_BODY = {"content": {"application/json": {"schema": {"$ref": "#/component
         404: PROBLEM_RESPONSE,
         409: PROBLEM_RESPONSE,
         412: PROBLEM_RESPONSE,
-        422: PROBLEM_RESPONSE,
     },
     openapi_extra={"requestBody": _LABELS_BODY},
 )
@@ -335,7 +326,7 @@ async def prefill(page_id: EvalPageId) -> None:
     raise _not_implemented("the LLM pre-fill hook is not built yet (SPEC-06)")
 
 
-@router.post("/capture", response_model=CaptureResponse, responses={422: PROBLEM_RESPONSE})
+@router.post("/capture", response_model=CaptureResponse)
 async def capture(body: CaptureRequest, backend: Backend) -> CaptureResponse:
     """`crawlerai eval capture` into dev (§4.4): fetch each URL and store it as an unlabeled dev page."""
     try:

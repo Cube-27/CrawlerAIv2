@@ -2,6 +2,7 @@
 framework's (unknown path, wrong method, request validation, an unexpected exception)."""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
@@ -14,17 +15,26 @@ from crawlerai.api.dto import FieldErrorOut, Problem
 PROBLEM_JSON = "application/problem+json"  # RFC 9457 §3
 
 
+@dataclass
 class ProblemError(Exception):
     """Raised by a router or dependency to answer with a problem; `errors` are (field, reason) pairs."""
 
-    def __init__(
-        self, status: int, type_: str, title: str, detail: str, errors: Sequence[tuple[str, str]] = ()
-    ) -> None:
-        super().__init__(detail)
-        self.status, self.type, self.title, self.detail, self.errors = status, type_, title, detail, errors
+    status: int
+    type: str
+    title: str
+    detail: str
+    errors: Sequence[tuple[str, str]] = ()
 
 
-def problem_response(request: Request, error: ProblemError, headers: Mapping[str, str] | None = None) -> JSONResponse:
+def not_found(detail: str) -> ProblemError:
+    return ProblemError(404, "not_found", "Not found", detail)
+
+
+def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError:
+    return ProblemError(422, "validation", "Invalid request", detail, errors)
+
+
+def _problem_response(request: Request, error: ProblemError, headers: Mapping[str, str] | None = None) -> JSONResponse:
     problem = Problem(
         type=error.type,
         title=error.title,
@@ -50,27 +60,25 @@ def _field(location: Sequence[int | str]) -> str:
 
 
 async def _on_problem(request: Request, exc: ProblemError) -> JSONResponse:
-    return problem_response(request, exc)
+    return _problem_response(request, exc)
 
 
 async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
     if exc.status_code == HTTPStatus.NOT_FOUND:
-        error = ProblemError(404, "not_found", "Not found", f"no resource at {request.url.path}")
+        error = not_found(f"no resource at {request.url.path}")
     else:
         error = _status_only(exc.status_code, exc.detail if isinstance(exc.detail, str) else None)
-    return problem_response(request, error, exc.headers)  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
+    return _problem_response(request, error, exc.headers)  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
 
 
 async def _on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
     errors = [(_field(error["loc"]), error["msg"]) for error in exc.errors()]
-    return problem_response(
-        request, ProblemError(422, "validation", "Invalid request", "the request is invalid", errors)
-    )
+    return _problem_response(request, invalid("the request is invalid", errors))
 
 
 async def _on_unexpected(request: Request, exc: Exception) -> JSONResponse:
     # The message is left out: it may carry internals. The server still logs the exception.
-    return problem_response(request, _status_only(500, "the server failed to answer the request"))
+    return _problem_response(request, _status_only(500, "the server failed to answer the request"))
 
 
 def install(app: FastAPI) -> None:
