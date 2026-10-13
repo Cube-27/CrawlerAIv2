@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 9, SPEC-07 PR 6, SPEC-12 PR 5. Next: SPEC-05 PRs 12, 13, SPEC-07 PRs 5, 8 and SPEC-06 PRs 4, 5 after SPEC-05 PR 9; SPEC-08 PR 2 (L2).
+- In progress: SPEC-05 PR 9, SPEC-12 PR 5, SPEC-08 PR 2 (L2, keeps slots full). Next: SPEC-05 PRs 12, 13, SPEC-07 PRs 5, 8 and SPEC-06 PRs 4, 5 after SPEC-05 PR 9; SPEC-08 PR 3 after PR 2.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -166,7 +166,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 3 | Content formats | done (#80) | INV-26 counts parses of the capture body; markdown keeps relative links as written (D-0399–D-0403). |
 | 4 | Service layer + `POST /v1/scrape` (formats only) | done (#88) | `records` refused (422) and `max_age` not reused until PR 5 (D-0427). |
 | 5 | `records` format with schema id/inline + `max_age` | todo | |
-| 6 | `schema.prompt` via role S | todo | |
+| 6 | `schema.prompt` via role S | done (#96) | Drafted only from a reached page; LLM failures fail the job as problems; the API starts without provider keys (D-0466–D-0468). PR 5 passes the draft to `records`. |
 | 7 | `/v1/schemas` CRUD | done (#81) | Edits name the latest version; DELETE retires one version; presets read-only (D-0394–D-0398). |
 | 8 | `/v1/records`, `/v1/captures/{id}/replay` | todo | |
 
