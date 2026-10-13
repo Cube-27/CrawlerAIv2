@@ -2822,3 +2822,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `string | null`; keep the module augmentation.
 - Why: Matches §4.4 and the shapes #82 was built against.
 - Reversible: yes
+
+### D-0432 — Drafts show no prompt hash until the API returns one
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 4 (#87) · Status: decided
+- Decision: Draft schemas show origin `prompt_draft` but no prompt hash: `SchemaDef` has no such member until SPEC-06 PR 6 (role S, prompt-hash reuse) adds it.
+- Alternatives: Hash the prompt client-side; declare the member by hand.
+- Why: The UI shows only server values (§3); no hand-written DTOs (SPEC-12 §4.1).
+- Reversible: yes
+
+### D-0433 — Schema routes for create, adopt and edit
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 4 (#87) · Status: decided
+- Decision: Routes `/schemas/new` (adoption is `/schemas/new?from=<id>`, a create prefilled from that schema) and `/schemas/:id/edit`, beside `/schemas` and `/schemas/:id`.
+- Alternatives: Modal editors on the detail page.
+- Why: DESIGN.md "few modals"; one form for create, adopt and edit.
+- Reversible: yes
+
+### D-0434 — The query cache belongs to one API key
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 4 (#87) · Status: decided
+- Decision: `ApiQueryProvider` starts a new TanStack `QueryClient` when the key changes or is dropped; queries and mutations do not retry; a create, save or retire invalidates every `schemas` query.
+- Alternatives: The key in every query key.
+- Why: Nothing read with one key is shown under another (§18), with no key material in cache keys.
+- Reversible: yes
+
+### D-0435 — The schema form checks only what a request needs
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 4 (#87) · Status: decided
+- Decision: The form checks the JSON shape, a chosen page kind and unique field names; every schema rule is the server's 422, shown next to the input it names. Changing a field's type drops the old type's `vocab`, `scheme`, `item` or `fields`; empty optional texts send null.
+- Alternatives: Client-side schema validation.
+- Why: The UI holds no logic (§3).
+- Reversible: yes
+
+### D-0436 — Schema actions follow the server's rules
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 4 (#87) · Status: decided
+- Decision: Edit is offered only on the latest active non-preset version and retire on any active non-preset version (SPEC-07 §4.6); refusals still render as problems. Status tones: active → success, retired → neutral (`SchemaStatusLabel`).
+- Alternatives: Always show the buttons.
+- Why: Fewer dead ends; DESIGN.md "Status display".
+- Reversible: yes
