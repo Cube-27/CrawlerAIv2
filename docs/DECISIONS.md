@@ -826,3 +826,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Non-zero exit on an `error` outcome.
 - Why: The outcome is data, not a CLI failure.
 - Reversible: yes
+
+### D-0148 — `usage_event` column shapes
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 7 (#23) · Status: decided
+- Decision: `quantity` bigint ≥ 0 in whole units; `resource` CHECK on the six §4.6 resources; `provider`, `model_or_pool` nullable; `metadata` jsonb NOT NULL default `{}`; FK to `job` without cascade; no timestamp column (the UUIDv7 id carries the time); no `job_id` index until a query reads by job.
+- Alternatives: Numeric quantity; free-text resource; a `ts` column.
+- Why: All §4.6 budgets are ints; §4.6 lists resources as a closed set, unlike `job_event.kind` (D-0102).
+- Reversible: yes
+
+### D-0149 — The `pages` budget counts the job's tasks that ended
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 7 (#23) · Status: decided
+- Decision: `budget_remaining(job, "pages")` = budget − tasks in `done` or `failed`; other budgets read `job.usage[resource]`; never below 0; `None` means no budget.
+- Alternatives: Count claimed tasks too; record `pages` as a usage resource.
+- Why: `pages` is a budget key (§4.6) but not a usage resource; a page is spent once its task ends.
+- Reversible: yes
+
+### D-0150 — Budgets are advisory across workers
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 7 (#23) · Status: decided
+- Decision: No reservation; concurrent checks may both proceed, so a job can overshoot by the work in flight.
+- Alternatives: Lock the job row when checking.
+- Why: §4.6: "checked by the caller before expensive work"; a lock would serialize a job's workers.
+- Reversible: yes
+
+### D-0151 — Budget exhaustion is a handler result, not an exception
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 7 (#23) · Status: decided
+- Decision: Handlers return `Failed(BUDGET_EXHAUSTED, transient=False)`; the worker doesn't change.
+- Alternatives: A `BudgetExhausted` exception mapped to a permanent failure.
+- Why: An exception rolls back the task's transaction, including usage already recorded, so budgets would undercount.
+- Reversible: yes
+
+### D-0152 — `ENGINE_VERSION` details
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 7 (#23) · Status: decided
+- Decision: Calibration hash = first 12 hex digits of SHA-256 over the file bytes; missing `VERSION` → `unknown`, missing calibration → `none`; a malformed `VERSION` raises at import. Files are read only from a source tree; an installed wheel reports `unknown+cal.none` (open item in ACTIVE.md).
+- Alternatives: The full hash; `git rev-parse` at import.
+- Why: An honest marker for unbuilt trees, with no subprocess at import.
+- Reversible: yes
