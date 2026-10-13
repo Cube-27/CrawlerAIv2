@@ -2458,3 +2458,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `align(values, text)` over a mapping (spec's sketch); dropping on a tie.
 - Why: One value per call keeps the function independent of role C's output shape (detail fields vs listing rows); a fixed tie-break keeps replays deterministic (INV-10); an empty span holds no value and is not a valid `text:` locator.
 - Reversible: yes
+
+### D-0380 — Keyless requests are rate limited by client address
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 2 (#77) · Status: decided
+- Decision: A request without a bearer key is rate limited by client address (trusted-proxy aware); with one, by `sha256(key)[:16]` as specified. Only authenticated routes are limited; `/healthz` and the eval API are not.
+- Alternatives: limit only keyed requests; a per-address bucket on every request in addition to the per-key one.
+- Why: keyless requests cannot be sent without limit, and INV-32's client address has a use; the second bucket would add a limit the spec doesn't define.
+- Reversible: yes
+
+### D-0381 — Trusted proxies and how forwarded hops are read
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 2 (#77) · Status: decided
+- Decision: `CRAWLERAI_TRUSTED_PROXIES` is a JSON list of addresses or networks, empty by default. Hops are read right to left through trusted proxies; the first untrusted hop is the client; an unreadable hop (`unknown`, an obfuscated id, garbage) stops the walk at the last readable address. `Forwarded` is preferred to `X-Forwarded-For`.
+- Alternatives: leftmost hop (client-controlled); a header-specific hop count.
+- Why: RFC 7239 §8.1; the most conservative reading.
+- Reversible: yes
+
+### D-0382 — `apikey` CLI output and repeated revocation
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 2 (#77) · Status: decided
+- Decision: `apikey create` prints JSON `{id, label, key}`; `apikey revoke` prints `{id, revoked}` (`false` when already revoked, keeping the first `revoked_at`) and exits 2 for an unknown id. The webhook secret is 32 random bytes in hex, drawn at creation and not printed.
+- Alternatives: print the webhook secret too; reset `revoked_at` on a second revoke.
+- Why: SPEC-10 owns how webhook secrets reach clients; revocation time is an audit fact.
+- Reversible: yes
