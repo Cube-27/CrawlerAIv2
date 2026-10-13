@@ -20,6 +20,7 @@ describe("readProblem", () => {
     expect(await readProblem(response)).toEqual({
       title: "Unauthorized",
       detail: "The API key is revoked.",
+      errors: [],
     });
   });
 
@@ -29,7 +30,26 @@ describe("readProblem", () => {
       "application/problem+json; charset=utf-8",
     );
 
-    expect(await readProblem(response)).toEqual({ title: "Unauthorized", detail: null });
+    expect(await readProblem(response)).toEqual({
+      title: "Unauthorized",
+      detail: null,
+      errors: [],
+    });
+  });
+
+  it("reads the per-field errors and skips malformed entries", async () => {
+    const response = problemResponse({
+      type: "validation",
+      title: "Invalid request",
+      status: 422,
+      errors: [{ field: "url", reason: "not an absolute URL" }, { field: 3 }, "page_kind"],
+    });
+
+    expect(await readProblem(response)).toEqual({
+      title: "Invalid request",
+      detail: null,
+      errors: [{ field: "url", reason: "not an absolute URL" }],
+    });
   });
 
   it("returns null for a body that is not a problem", async () => {
