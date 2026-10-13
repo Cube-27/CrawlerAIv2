@@ -294,7 +294,7 @@ def _subresources_page(target: str) -> bytes:
     # The page reaches for `target` three ways: fetch, XHR and an iframe.
     return f"""<html><body><p>Page with subresources</p><iframe src="{target}frame"></iframe><script>
 fetch('{target}fetch').catch(() => {{}});
-const xhr = new XMLHttpRequest(); xhr.open('GET', '{target}xhr'); xhr.send();
+const xhr = new XMLHttpRequest(); xhr['open']('GET', '{target}xhr'); xhr['send']();
 </script></body></html>""".encode()
 
 
@@ -302,7 +302,7 @@ const xhr = new XMLHttpRequest(); xhr.open('GET', '{target}xhr'); xhr.send();
     ("host", "reason"),
     [
         # RFC 3927 link-local, the cloud metadata address; RFC 1122 §3.2.1.3 loopback. Chromium's implicit proxy
-        # bypass rules cover both (net/proxy_resolution/proxy_bypass_rules.cc).
+        # bypass rules (`ProxyBypassRules`, net/proxy_resolution) cover both.
         pytest.param("169.254.169.254", "link-local", id="link-local"),
         pytest.param("127.0.0.1", "loopback", id="loopback"),
     ],

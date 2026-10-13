@@ -234,7 +234,7 @@ def test_leaving_the_guard_cancels_a_check_still_resolving() -> None:
             await started.wait()
         writer.close()
         await asyncio.sleep(0)  # let a cancellation reach the resolver
-        # Checked before the loop ends: `asyncio.run` cancels whatever is left over itself.
+        # Checked inside the loop: when it ends, the runner cancels whatever is left over itself.
         assert cancelled == ["slow.example.com"]
 
     _run(scenario())

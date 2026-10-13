@@ -43,10 +43,10 @@ _PROBE_URL = "https://identity.invalid/"
 _HIGH_ENTROPY_HINTS = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
 # WebRTC sends UDP outside any proxy; Chromium's policy `disable_non_proxied_udp` keeps it inside the guard.
 _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
-# Chromium's implicit proxy-bypass rules send `localhost`, 127.0.0.0/8, [::1], 169.254.0.0/16 and fe80::/10 around
-# any proxy (net/proxy_resolution/proxy_bypass_rules.cc); 169.254.169.254 is the cloud metadata address. The bypass
-# rule `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it
-# itself unless told not to; it is named here so the guard does not rest on a library default.
+# Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
+# [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
+# `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
+# unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
 # SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page.
 _JSON_BODY_MAX_BYTES = 2_000_000
