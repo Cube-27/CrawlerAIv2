@@ -145,13 +145,17 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
 
 
 def xpath_step(tag: str, index: int) -> str:
-    """The XPath 1.0 step to the `index`th element child named `tag` (1-based, counting hidden siblings too). A tag that
-    is not an NCName (a prefixed `o:p`) is matched by `name()`, since a name test would read its prefix as a
-    namespace."""
+    """The XPath 1.0 step to the `index`th element child named `tag` (1-based, counting hidden siblings too)."""
+    return f"{name_test(tag)}[{index}]"
+
+
+def name_test(tag: str) -> str:
+    """The XPath 1.0 test for elements named `tag`. A tag that is not an NCName (a prefixed `o:p`) is matched by
+    `name()`, since a name test would read its prefix as a namespace."""
     if _NCNAME.fullmatch(tag):
-        return f"{tag}[{index}]"
+        return tag
     quote = "'" if "'" not in tag else '"'
-    return f"*[name()={quote}{tag}{quote}][{index}]"
+    return f"*[name()={quote}{tag}{quote}]"
 
 
 def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:

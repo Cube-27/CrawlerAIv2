@@ -193,6 +193,16 @@ class JsonLdCollector:
                 if found.types:
                     yield found.types, found.data
 
+    def typed(self, page: ParsedPage) -> dict[str, tuple[str, ...]]:
+        """The types of the page's schema.org nodes, most specific first, by the node's locator
+        (`jsonld:<block>:<path>`)."""
+        return {
+            found.id: found.types
+            for index, document in blocks(page, [])
+            for found in self._walk(index, document)
+            if found.types
+        }
+
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
         """Every object of `document` in document order. Iterative, so that nesting depth is bounded by what the JSON
         parser accepts rather than by the call stack."""

@@ -111,6 +111,15 @@ class EngineExecutor:
             )
 
 
+def field_candidate(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, vocabulary: Vocabulary, name: str, steps: Sequence[Step]
+) -> Candidate | None:
+    """The candidate `EngineExecutor` proposes for the page-level field `name` when it has `steps`: how induction
+    (SPEC-08 §4.5) checks a selector by the very rules it will run under."""
+    run = _Run(page, schema, ctx, vocabulary)
+    return run.first_value(name, steps, schema.fields[name], _Scope(page.lxml_tree, in_row=False), PAGE)
+
+
 @dataclass
 class _Run:
     page: ParsedPage
