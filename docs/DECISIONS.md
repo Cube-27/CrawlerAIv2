@@ -3303,3 +3303,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Scan the whole command text with regexes.
 - Why: PR bodies, commit messages and docs that mention the merge command must pass; the guard targets mistakes, not evasion.
 - Reversible: yes
+
+### D-0501 — An inline schema is stored once, or matched by name
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: An inline `schema` is stored as a `user` schema at version 1, or matched to its name's latest version when that one has the same document and is active. A name whose latest version differs or is retired is a 409 `conflict`; a document that breaks a schema rule is a 422 `validation` (`schema.inline…`). All before any job.
+- Alternatives: Add a new version when it differs; run inline schemas without storing them.
+- Why: A record needs a stored `schema_id`; an inline schema never edits a stored one (ARCHITECTURE §5.2); the same body twice reuses one row.
+- Reversible: yes
+
+### D-0502 — A schema `records` cannot use is a validation problem
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: A schema id that is unknown, retired, or for another page kind than `page_kind` is a 422 `validation` problem on `schema`, before any job. A prompt draft of another page kind is the same problem and fails the job (`invalid_schema`). `records` needs `schema` and `page_kind`; listing records are refused until SPEC-05 PR 12.
+- Alternatives: 404 for an unknown id; extract against the schema's own page kind.
+- Why: The id is a request member; D-0490 refuses listings in `extract_page`.
+- Reversible: yes
+
+### D-0503 — `max_age` reuses a recent `ok` capture of the canonical URL
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: `max_age` reuses the latest capture of the request's canonical URL (found through the tasks that fetched it) in the same site, fetched within `max_age` seconds, `ok` and not expired; a capture whose bundle is gone is fetched anew. A reused capture skips robots.txt and the rate limit, counts no usage, and `fetch` is the capture's original fetch. Index `capture (site_id, fetched_at)` added (migration 0009).
+- Alternatives: Reuse blocked or shell captures too; match `capture.url` exactly.
+- Why: A blocked page is worth retrying; §4.4 names the canonical URL; the query needs the index.
+- Reversible: yes
+
+### D-0504 — A page whose resolution fails is `failed` with nothing derived
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: When resolution fails (SPEC-05 §4.14), the scrape answers 200 with outcome `failed`, no formats, records or draft; the task fails with `extraction_error`.
+- Alternatives: A 500 problem; return the formats anyway.
+- Why: SPEC-07 §4.8: a page's failure is an outcome, and nothing partial is returned.
+- Reversible: yes
+
+### D-0505 — Without the engine's data files, `records` is a 503
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: The API loads `EngineData` from `backend/data/` of the source tree at startup. Without it, `records` is a 503 problem `records_unavailable` before any job, and the other formats work. This extends SPEC-07 §4.3's problem types, as D-0467 did.
+- Alternatives: Fail startup; load per request.
+- Why: D-0492 defers shipping the data files; the API should still serve formats.
+- Reversible: yes
+
+### D-0506 — `extract_page` takes the caller's parse; storing is its own step
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: `extract_page(..., parsed=)` takes the caller's `ParsedPage`; `resolve.task.store_extraction` stores an `ExtractionResult` (`extract_task` uses it too), and `Stored` carries the `RecordDraft`. The scrape extracts outside its write transaction, as it computes formats (D-0428).
+- Alternatives: Call `extract_task` inside the write transaction.
+- Why: INV-26: one parse per request; no connection held while the page resolves.
+- Reversible: yes
+
+### D-0507 — Scrape records run `adhoc` without role C for now
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: Records run in `adhoc` mode with no role C hook until SPEC-06 PR 4 binds it. `job.schema_id` is set for a schema by id or inline; a draft is known only after the job starts, and its records name it.
+- Alternatives: Set `job.schema_id` after drafting.
+- Why: Smallest change; records carry `schema_id` either way.
+- Reversible: yes
+
+### D-0508 — The INV-26 parser counter is shared by all tests
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 5 (#105) · Status: decided
+- Decision: The `parses` fixture moves to `tests/conftest.py` so DB tests can count parses; the records tests are `tests/db/test_scrape_records.py`, with their own small stub web.
+- Alternatives: Keep them in `test_scrape_service.py` (over 800 lines).
+- Why: C11: split along a logical boundary; test modules cannot import each other (importlib mode).
+- Reversible: yes
