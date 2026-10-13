@@ -87,6 +87,8 @@ class ExtractionResult(_Model):
     llm_calls: tuple[LLMCallRecord, ...]
     mode: ExtractionMode
     record_confidence: Probability | None
+    # What the collectors skipped and why (§4.14), for the page's log.
+    diagnostics: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _outcome_fits(self) -> Self:

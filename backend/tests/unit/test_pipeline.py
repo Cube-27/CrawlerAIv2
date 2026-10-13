@@ -1,0 +1,373 @@
+"""The extraction pipeline (SPEC-05 §4.1, §4.8, §4.13, §4.14): a capture and a schema in, every field's outcome out.
+
+Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic fixture (C3, C9).
+"""
+
+import asyncio
+import json
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+from pydantic import JsonValue
+
+from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.adapters.base import AdapterMatch
+from crawlerai.adapters.registry import Registry
+from crawlerai.collect.base import Candidate
+from crawlerai.collect.og import OpenGraphCollector
+from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.core.ids import uuid7
+from crawlerai.db.models import PageKind, SchemaId, SourceKind
+from crawlerai.normalize.base import Ok
+from crawlerai.resolve import pipeline
+from crawlerai.resolve.pipeline import (
+    UNRANKED,
+    EngineData,
+    GapReply,
+    GapRequest,
+    ModeNotSupported,
+    RoleC,
+    extract_page,
+)
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+
+# The `parses` fixture (tests/unit/conftest.py): parser constructions by name, each with `calls` and `inputs`.
+Parses = Mapping[str, Any]
+
+VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
+PAGE_URL = "https://shop.example.test/p/1"
+ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
+DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
+
+
+def _schema(page_kind: PageKind = "detail", **fields: FieldSpec) -> SchemaDef:
+    return SchemaDef(
+        id=SchemaId(uuid7()),
+        origin="user",
+        status="active",
+        name="synthetic",
+        version=1,
+        page_kind=page_kind,
+        fields=fields,
+    )
+
+
+PRODUCT = _schema(
+    title=FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
+    price=FieldSpec(type=FieldType.MONEY, description="d", required=True, schema_org="Offer.price+priceCurrency"),
+    sku=FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="d", schema_org="Product.sku"),
+)
+PRICE: JsonValue = {"amount": "19.90", "currency": "EUR"}
+
+
+def _product(name: str = "Widget One", url: str = PAGE_URL, *, price: str | None = "19.90") -> dict[str, Any]:
+    node: dict[str, Any] = {"@type": "Product", "name": name, "url": url, "sku": "W-1"}
+    if price is not None:
+        node["offers"] = {"@type": "Offer", "price": price, "priceCurrency": "EUR"}
+    return node
+
+
+def _html(*nodes: Mapping[str, Any], head: str = "", body: str = "") -> str:
+    blocks = "".join(
+        f'<script type="application/ld+json">{json.dumps({"@context": "https://schema.org", **n})}</script>'
+        for n in nodes
+    )
+    return f'<html lang="en"><head>{blocks}{head}</head><body><h1>Widget One</h1>{body}</body></html>'
+
+
+def _bundle(
+    body: str, *, block_class: BlockClass = "ok", method: CaptureMethod = "http", url: str = PAGE_URL
+) -> CaptureBundle:
+    raw = body.encode()
+    manifest = CaptureManifest(
+        capture_id=uuid7(),
+        url=url,
+        final_url=url,
+        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+        method=method,
+        status_code=200,
+        block_class=block_class,
+        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
+        timings_ms={},
+        html_sha256=sha256_hex(raw),
+        network_bodies=(),
+        fetch_policy={},
+        engine_version="0+cal.0",
+    )
+    return CaptureBundle(manifest=manifest, body=raw, network=())
+
+
+def _extract(
+    bundle: CaptureBundle,
+    schema: SchemaDef = PRODUCT,
+    *,
+    role_c: RoleC | None = None,
+    data: EngineData = DATA,
+) -> ExtractionResult:
+    return asyncio.run(extract_page(bundle, schema, None, role_c, "adhoc", data=data))
+
+
+def _statuses(result: ExtractionResult) -> dict[str, tuple[str, str | None]]:
+    assert result.entity is not None
+    return {name: (outcome.status, outcome.reason) for name, outcome in result.entity.items()}
+
+
+# --- a served page ---
+
+
+def test_a_product_page_publishes_its_structured_values() -> None:
+    result = _extract(_bundle(_html(_product())))
+    assert result.outcome == "extracted"
+    assert result.entity is not None
+    published = {name: (o.value, o.evidence, o.source_kind) for name, o in result.entity.items()}
+    assert published == {
+        "title": ("Widget One", "structured", "jsonld"),
+        "price": (PRICE, "structured", "jsonld"),
+        "sku": ({"scheme": "sku", "value": "W-1"}, "structured", "jsonld"),
+    }
+    # No calibration was fitted, so every field is uncalibrated and the record has no confidence (§4.9).
+    assert not any(o.calibrated for o in result.entity.values())
+    assert result.record_confidence is None
+
+
+def test_a_page_missing_a_required_field_is_partial() -> None:
+    result = _extract(_bundle(_html(_product(price=None))))
+    assert result.outcome == "partial"
+    assert _statuses(result)["price"] == ("missing", "no_candidates")
+
+
+def test_without_a_fitted_order_text_fields_decline() -> None:
+    # D-0444: no precedence file, so no source kind ranks; exact-match types still publish on agreement.
+    data = EngineData(vocabulary=VOCABULARY, orders=UNRANKED, calibration=None)
+    result = _extract(_bundle(_html(_product())), data=data)
+    assert _statuses(result) == {
+        "title": ("missing", "unranked"),
+        "price": ("published", None),
+        "sku": ("published", None),
+    }
+    assert result.outcome == "partial"
+
+
+def test_two_products_the_urls_do_not_settle_conflict_on_every_field() -> None:
+    page = _html(
+        _product("Widget Two", "https://shop.example.test/p/2"),
+        _product("Widget Three", "https://shop.example.test/p/3"),
+    )
+    result = _extract(_bundle(page))
+    assert set(_statuses(result).values()) == {("conflict", "intent_ambiguous")}
+    assert result.outcome == "partial"
+
+
+def test_the_product_the_page_url_names_is_the_target() -> None:
+    page = _html(_product("Widget Two", "https://shop.example.test/p/2"), _product("Widget One", PAGE_URL))
+    result = _extract(_bundle(page))
+    assert result.entity is not None
+    assert result.entity["title"].value == "Widget One"
+
+
+def test_page_level_and_embedded_state_values_join_the_candidates() -> None:
+    head = '<meta property="og:title" content="Widget One">'
+    body = '<script>window.state = {"item": {"code": "W-1"}}</script>'
+    result = _extract(_bundle(_html(_product(), head=head, body=body)))
+    kinds = {(c.field, c.source_kind) for c in result.candidates}
+    assert {("title", "og"), ("sku", "js_state")} <= kinds
+    assert result.entity is not None
+    # The og title agrees with the JSON-LD one: two independent kinds (§10).
+    assert result.entity["title"].evidence == "agreed"
+
+
+# --- pages that were not served (INV-11) ---
+
+
+@pytest.mark.parametrize("block_class", ["blocked", "shell", "not_found", "error"])
+def test_a_page_that_was_not_served_yields_its_block_class_and_nothing_else(block_class: BlockClass) -> None:
+    result = _extract(_bundle(_html(_product()), block_class=block_class))
+    assert (result.outcome, result.entity, result.rows, result.candidates) == (block_class, None, (), ())
+
+
+# --- one parse per parser (INV-26) ---
+
+
+def test_extract_page_parses_the_capture_once_per_parser(parses: Parses) -> None:
+    head = (
+        f'<link rel="canonical" href="{PAGE_URL}"><link rel="alternate" hreflang="de" href="{PAGE_URL}?l=de">'
+        '<meta property="og:title" content="Widget One"><meta property="og:locale" content="en_GB">'
+    )
+    body = (
+        '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">Widget One</span></div>'
+        '<script type="application/json">{"sku": "W-1"}</script><script>var s = {"price": "19.90"}</script>'
+    )
+    result = _extract(_bundle(_html(_product(), head=head, body=body)))
+    assert result.outcome == "extracted"
+    assert parses["selectolax"].calls == 1
+    assert parses["lxml"].calls <= 1
+
+
+# --- failures (§4.14) ---
+
+
+def test_a_collector_that_raises_leaves_a_diagnostic_and_the_others_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(*_args: object) -> None:
+        raise RuntimeError("collector bug")
+
+    monkeypatch.setattr(OpenGraphCollector, "collect", broken)
+    result = _extract(_bundle(_html(_product(), head='<meta property="og:title" content="Widget One">')))
+    assert "OpenGraphCollector: RuntimeError: collector bug" in result.diagnostics
+    assert result.entity is not None
+    assert (result.entity["title"].value, result.entity["title"].evidence) == ("Widget One", "structured")
+
+
+def test_resolution_that_raises_fails_the_page_without_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("resolution bug")
+
+    monkeypatch.setattr(pipeline, "assess_fields", broken)
+    result = _extract(_bundle(_html(_product())))
+    assert (result.outcome, result.entity, result.record_confidence) == ("error", None, None)
+
+
+def test_config_mode_and_listings_are_refused_until_their_rows_land() -> None:
+    bundle = _bundle(_html(_product()))
+    listing = _schema("listing", title=PRODUCT.fields["title"])
+    config_mode = extract_page(bundle, PRODUCT, {"ir": {}}, None, "config", data=DATA)
+    with pytest.raises(ModeNotSupported, match="config"):
+        asyncio.run(config_mode)
+    listing_page = extract_page(bundle, listing, None, None, "adhoc", data=DATA)
+    with pytest.raises(ModeNotSupported, match="listing"):
+        asyncio.run(listing_page)
+
+
+# --- the LLM hook (§4.13) ---
+
+CALL = LLMCallRecord(
+    prompt_kind="c_extract_detail",
+    provider="provider-a",
+    model="model-a",
+    request_hash="0" * 64,
+    tokens_in=9,
+    tokens_out=3,
+)
+
+
+class FakeRoleC:
+    """Answers each missing field with the money value the page text shows, grounded on the target."""
+
+    def __init__(self) -> None:
+        self.requests: list[GapRequest] = []
+
+    async def __call__(self, request: GapRequest) -> GapReply:
+        self.requests.append(request)
+        candidates = tuple(
+            Candidate(
+                field=name,
+                entity_id=request.target.id,
+                source_kind="llm",
+                raw="19.90 EUR",
+                normalized=Ok(PRICE),
+                locator="text:0-9",
+                independent=True,
+            )
+            for name in request.missing
+        )
+        return GapReply(candidates=candidates, llm_calls=(CALL,))
+
+
+def test_required_fields_left_missing_go_to_role_c_once() -> None:
+    role_c = FakeRoleC()
+    result = _extract(_bundle(_html(_product(price=None))), role_c=role_c)
+    assert [r.missing for r in role_c.requests] == [("price",)]
+    assert role_c.requests[0].target.kind == "Product"
+    assert result.entity is not None
+    assert (result.entity["price"].value, result.entity["price"].evidence) == (PRICE, "llm_grounded")
+    assert result.llm_calls == (CALL,)
+    assert result.outcome == "extracted"
+
+
+def test_role_c_is_not_called_when_every_required_field_publishes() -> None:
+    role_c = FakeRoleC()
+    result = _extract(_bundle(_html(_product())), role_c=role_c)
+    assert (role_c.requests, result.llm_calls) == ([], ())
+
+
+@pytest.mark.parametrize(("sku", "asked"), [("W-1", []), (None, [("sku", "gtin")])])
+def test_role_c_is_asked_for_a_required_group_only_while_no_member_fills_it(
+    sku: str | None, asked: list[tuple[str, ...]]
+) -> None:
+    schema = _schema(
+        title=PRODUCT.fields["title"],
+        sku=FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="d", schema_org="Product.sku"),
+        gtin=FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin", description="d", schema_org="Product.gtin"),
+    ).model_copy(update={"required_groups": [["sku", "gtin"]]})
+    node = {key: value for key, value in _product().items() if key != "sku"} | ({"sku": sku} if sku else {})
+    role_c = FakeRoleC()
+    _extract(_bundle(_html(node)), schema, role_c=role_c)
+    assert [r.missing for r in role_c.requests] == asked
+
+
+def test_role_c_is_not_called_for_conflicts() -> None:
+    # §4.13: a conflict is never sent to the LLM; with no single target every field is one.
+    role_c = FakeRoleC()
+    page = _html(
+        _product("Widget Two", "https://shop.example.test/p/2"),
+        _product("Widget Three", "https://shop.example.test/p/3"),
+    )
+    _extract(_bundle(page), role_c=role_c)
+    assert role_c.requests == []
+
+
+def test_a_role_c_failure_is_not_a_resolution_error() -> None:
+    # A replay's missing recording must reach the harness, which drops the page (SPEC-03 §4.5).
+    async def failing(_request: GapRequest) -> GapReply:
+        raise LookupError("no recorded response")
+
+    with pytest.raises(LookupError, match="no recorded response"):
+        _extract(_bundle(_html(_product(price=None))), role_c=failing)
+
+
+# --- api captures (D-0445) ---
+
+
+class FakeAdapter:
+    """A platform whose page URLs are under `/jobs/` of the synthetic host and whose API holds a `title` member."""
+
+    name = "synthetic"
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="t", page_kind="detail") if "/jobs/" in url else None
+
+    async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
+        raise AssertionError("extraction fetches nothing")
+
+    def map(self, schema_org: Mapping[str, str], page_kind: PageKind) -> dict[str, str]:
+        return {name: "$['title']" for name, path in schema_org.items() if path == "JobPosting.title"}
+
+
+JOB = _schema(title=FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="JobPosting.title"))
+JOB_URL = "https://jobs.example.test/jobs/1"
+
+
+def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url() -> None:
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=["synthetic"]))
+    result = _extract(_bundle('{"title": "Engineer"}', method="api", url=JOB_URL), JOB, data=data)
+    assert result.entity is not None
+    title = result.entity["title"]
+    assert (title.value, title.source_kind, title.evidence, title.locator) == (
+        "Engineer",
+        "adapter",
+        "adapter",
+        "adapter:synthetic:$['title']",
+    )
+
+
+def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> None:
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=[]))
+    result = _extract(_bundle('{"title": "Engineer"}', method="api", url=JOB_URL), JOB, data=data)
+    assert not any(c.source_kind == "adapter" for c in result.candidates)
+    assert any(d.startswith("adapter: no active adapter") for d in result.diagnostics)
