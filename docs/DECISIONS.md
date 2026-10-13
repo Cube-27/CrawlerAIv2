@@ -3485,3 +3485,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A synthetic id on replayed records.
 - Why: An id would name nothing stored (§13.1: replays are not persisted).
 - Reversible: yes
+
+### D-0527 — The release executor learns the schema through `FieldRule`s
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 3 (#110) · Status: decided
+- Decision: `release_run(ir, ReleasePage, rules)` takes one `FieldRule(many, accepts)` per field: `many` for list fields, `accepts(value, type | None)` for normalizer post-op checks and the field's own validity, built by the release check from the schema and SPEC-04's normalizers. A field without a rule does not run (diagnostic); only valid values are returned (no decline as in D-0479).
+- Alternatives: Import `schemas`/`normalize` (breaks the contract); return each step's raw matches for the caller to pick.
+- Why: "First valid step wins" (§12.1) needs validity, and §4.1 forbids every `crawlerai` import but the model; the release check compares only reproduced values.
+- Reversible: yes
+
+### D-0528 — Release `when_type` matches by type name, without subtypes
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 3 (#110) · Status: decided
+- Decision: A JSON-LD node is any object with `@type`; `when_type` matches a declared type's name with or without the `http(s)://schema.org/` prefix. Subtypes are not matched; `@context` is not read.
+- Alternatives: Load the schema.org vocabulary into the release executor.
+- Why: §12.3 says "no engine logic". An exported config's consumer has no vocabulary either, so a field that holds only through a subtype should be marked `manual`.
+- Reversible: yes
+
+### D-0529 — The release executor reads script state with its own reader
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 3 (#110) · Status: decided
+- Decision: `js_state` reads `application/json` scripts and the object or array after a `window.x =` / `var|let|const x =` assignment (ECMAScript syntax) with `json.JSONDecoder.raw_decode`; `xhr` reads UTF-8 JSON network bodies; an `api` source is a diagnostic (SPEC-09).
+- Alternatives: Take the engine's parsed documents as input.
+- Why: Independence (INV-20): the same syntax read by separate code is what makes agreement meaningful.
+- Reversible: yes
+
+### D-0530 — jsonpath-ng capped below 1.9
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 3 (#110) · Status: decided
+- Decision: `jsonpath-ng>=1.8,<1.9`. It accepts queries outside the engine's RFC 9535 subset (D-0477), such as `$..name`; where the engine refuses such a step the executors may disagree, and the release check marks the field `manual`.
+- Alternatives: The latest release.
+- Why: 1.9.x and 1.10.x were under two weeks old; SPEC-08 §4.1 names jsonpath-ng.
+- Reversible: yes
