@@ -1,5 +1,5 @@
 import { Tabs, Typography } from "@heroui/react";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import type { ScrapeResponse } from "../../api/scrape";
 import { OutcomeLabel } from "../../components/OutcomeLabel";
 import {
@@ -69,8 +69,9 @@ function resultTabs(response: ScrapeResponse, fieldTypes: FieldTypes): ResultTab
   return tabs.filter((tab) => tab !== null);
 }
 
-/** What one scrape returned: its outcome and final URL, then a tab per returned member. */
-export function ScrapeResult({
+/** What one scrape returned: its outcome and final URL, then a tab per returned member. Memoized: the form above
+ * re-renders on every keystroke, and a result can hold megabytes of page text. */
+export const ScrapeResult = memo(function ScrapeResult({
   response,
   fieldTypes,
 }: Readonly<{ response: ScrapeResponse; fieldTypes: FieldTypes }>) {
@@ -104,4 +105,4 @@ export function ScrapeResult({
       </Tabs>
     </section>
   );
-}
+});

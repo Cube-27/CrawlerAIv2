@@ -1,3 +1,5 @@
+import { isJsonObject } from "./json";
+
 /** The field shape the API returns for every extracted field (SPEC-07 §4.4, ARCHITECTURE §13.1), narrowed to what
  * the shared field components read until the generated `schema.d.ts` carries the record schema. */
 
@@ -35,23 +37,19 @@ export type FieldTypeSpec =
   | { type: "list"; item: FieldTypeSpec }
   | { type: "object"; fields: Readonly<Record<string, FieldTypeSpec>> };
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isFieldTypeSpec(value: unknown): value is FieldTypeSpec {
-  if (!isRecord(value)) return false;
+  if (!isJsonObject(value)) return false;
   const { type } = value;
   if (type === "list") return isFieldTypeSpec(value.item);
   if (type === "object")
-    return isRecord(value.fields) && Object.values(value.fields).every(isFieldTypeSpec);
+    return isJsonObject(value.fields) && Object.values(value.fields).every(isFieldTypeSpec);
   return SCALAR_FIELD_TYPES.some((scalar) => scalar === type);
 }
 
 /** The field types in a schema's `fields` member (SPEC-04 §4.1); a field whose type is not one of these is left out,
  * and its value is then shown as the server sent it. */
 export function parseFieldTypes(fields: unknown): Readonly<Record<string, FieldTypeSpec>> {
-  if (!isRecord(fields)) return {};
+  if (!isJsonObject(fields)) return {};
   return Object.fromEntries(
     Object.entries(fields).filter((entry): entry is [string, FieldTypeSpec] =>
       isFieldTypeSpec(entry[1]),

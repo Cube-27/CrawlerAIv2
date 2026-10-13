@@ -1,3 +1,4 @@
+import { isJsonObject, type JsonObject } from "../../api/json";
 import type {
   MethodHint,
   PageKind,
@@ -49,11 +50,10 @@ export const INITIAL_FORM: ScrapeFormState = {
 };
 
 /** The JSON object in `text`, or null when it is not one. The server validates it as a SchemaDef. */
-export function parseJsonObject(text: string): Readonly<Record<string, unknown>> | null {
+export function parseJsonObject(text: string): JsonObject | null {
   try {
     const value: unknown = JSON.parse(text);
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-    return Object.fromEntries(Object.entries(value));
+    return isJsonObject(value) ? value : null;
   } catch {
     return null;
   }

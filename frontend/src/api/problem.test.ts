@@ -21,6 +21,7 @@ describe("readProblem", () => {
       title: "Unauthorized",
       detail: "The API key is revoked.",
       errors: [],
+      retryAfter: null,
     });
   });
 
@@ -34,6 +35,7 @@ describe("readProblem", () => {
       title: "Unauthorized",
       detail: null,
       errors: [],
+      retryAfter: null,
     });
   });
 
@@ -49,7 +51,17 @@ describe("readProblem", () => {
       title: "Invalid request",
       detail: null,
       errors: [{ field: "url", reason: "not an absolute URL" }],
+      retryAfter: null,
     });
+  });
+
+  it("reads Retry-After as sent", async () => {
+    const response = new Response(JSON.stringify({ title: "Too many requests", status: 429 }), {
+      status: 429,
+      headers: { "content-type": "application/problem+json", "Retry-After": "7" },
+    });
+
+    expect((await readProblem(response))?.retryAfter).toBe("7");
   });
 
   it("returns null for a body that is not a problem", async () => {

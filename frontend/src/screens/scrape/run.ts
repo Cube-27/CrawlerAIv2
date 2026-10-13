@@ -1,33 +1,28 @@
 import type { ApiClient } from "../../api/client";
 import { parseFieldTypes, type FieldTypeSpec } from "../../api/field";
-import { isProblemJson, parseProblem, type Problem } from "../../api/problem";
+import { problemOf, type Problem } from "../../api/problem";
 import type { ScrapeRequest, ScrapeResponse } from "../../api/scrape";
 
 export type FieldTypes = Readonly<Record<string, FieldTypeSpec>>;
 
 export type ScrapeRun =
   | { kind: "done"; response: ScrapeResponse; fieldTypes: FieldTypes }
-  | { kind: "failed"; problem: Problem; retryAfter: string | null };
+  | { kind: "failed"; problem: Problem };
 
-function failure(response: Response, body: unknown): ScrapeRun {
-  const problem = isProblemJson(response) ? parseProblem(body) : null;
-  return {
-    kind: "failed",
-    problem: problem ?? {
-      title: `The scrape failed (HTTP ${String(response.status)}).`,
-      detail: null,
-      errors: [],
-    },
-    // RFC 9110 §10.2.3: sent with 429 (SPEC-07 §4.2), as seconds or an HTTP date; shown as sent.
-    retryAfter: response.headers.get("Retry-After"),
-  };
+function failed(title: string, detail: string | null, retryAfter: string | null = null): ScrapeRun {
+  return { kind: "failed", problem: { title, detail, errors: [], retryAfter } };
 }
 
+/** The stored schema's field types; empty when it can't be read, so the records still show. */
 async function storedSchemaTypes(client: ApiClient, schemaId: string): Promise<FieldTypes> {
-  const { data } = await client.GET("/v1/schemas/{schema_id}", {
-    params: { path: { schema_id: schemaId } },
-  });
-  return data?.fields ?? {};
+  try {
+    const { data } = await client.GET("/v1/schemas/{schema_id}", {
+      params: { path: { schema_id: schemaId } },
+    });
+    return data?.fields ?? {};
+  } catch {
+    return {};
+  }
 }
 
 /** The field types to show the records by: the schema the server drafted, the inline one sent, or the stored one.
@@ -46,19 +41,22 @@ async function fieldTypes(
 
 /** Runs one `POST /v1/scrape`. A 401 drops the key through the client's middleware (`useApiClient`). */
 export async function runScrape(client: ApiClient, request: ScrapeRequest): Promise<ScrapeRun> {
+  let answer;
   try {
-    const { data, error, response } = await client.POST("/v1/scrape", { body: request });
-    if (data === undefined) return failure(response, error);
-    return { kind: "done", response: data, fieldTypes: await fieldTypes(client, request, data) };
+    answer = await client.POST("/v1/scrape", { body: request });
   } catch (thrown) {
-    return {
-      kind: "failed",
-      problem: {
-        title: "The API could not be reached.",
-        detail: thrown instanceof Error ? thrown.message : null,
-        errors: [],
-      },
-      retryAfter: null,
-    };
+    return failed("The API could not be reached.", thrown instanceof Error ? thrown.message : null);
   }
+  const { data, error, response } = answer;
+  if (data !== undefined) {
+    return { kind: "done", response: data, fieldTypes: await fieldTypes(client, request, data) };
+  }
+  const problem = problemOf(response, error);
+  return problem === null
+    ? failed(
+        `The scrape failed (HTTP ${String(response.status)}).`,
+        null,
+        response.headers.get("Retry-After"),
+      )
+    : { kind: "failed", problem };
 }
