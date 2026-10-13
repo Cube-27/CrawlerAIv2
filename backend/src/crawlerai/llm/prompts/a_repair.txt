@@ -1,0 +1,10 @@
+
+This is a repair round. Your previous steps for the requested items failed on the sample pages; the request lists
+each previous step and what it did on each page:
+- `no_match`: the steps selected nothing where a value is published;
+- `multi_match(n)`: a step selected n values for a single-valued field;
+- `value_mismatch(got, want)`: the steps gave `got` (after the field type's normalizer) where `want` is published;
+- `invalid(...)`: the value is not valid for the field's type;
+- `invalid_step(...)` and `invalid_xpath(...)`: the step is not one the program runs;
+- `rows(got, want)`: the row selector selected `got` rows where `want` are published (at least 3 are needed).
+Write new steps for the requested items only.

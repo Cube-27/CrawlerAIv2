@@ -90,6 +90,8 @@ class LLMSettings(_Base):
     llm_strong_model_anthropic: str = "claude-sonnet-5-5"
     llm_fast_model_gemini: str = "gemini-3.5-flash-lite"
     llm_strong_model_gemini: str = "gemini-3.8-flash"
+    # SPEC-08 §4.6: role A reads each sample page's reduced HTML cut to this many characters.
+    llm_a_max_chars: int = Field(default=120_000, gt=0)
     # From the secret store (ARCHITECTURE §18); required for each listed provider when a client is built.
     llm_api_key_anthropic: SecretStr | None = None
     llm_api_key_gemini: SecretStr | None = None

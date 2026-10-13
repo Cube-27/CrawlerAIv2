@@ -57,9 +57,13 @@ class Published:
 
 @dataclass(frozen=True, slots=True)
 class SamplePage:
+    """A learning sample page: the page entity's published values and, on a listing, each row's, in document order.
+    Induction reads the page's; synthesis (§4.6) reads both."""
+
     page: ParsedPage
     ctx: Context
     published: Mapping[str, Published]
+    rows: Sequence[Mapping[str, Published]] = ()
 
 
 @dataclass(frozen=True, slots=True)
