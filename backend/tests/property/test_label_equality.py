@@ -55,13 +55,12 @@ def test_list_items_use_item_equality() -> None:
 
 
 def test_objects_compare_field_by_field() -> None:
-    shape = _LOCATION
     a: dict[str, JsonValue] = {"locality": "Springfield", "country": "DE"}
 
-    assert values_equal(a, dict(reversed(a.items())), shape) is True
-    assert values_equal(a, {"locality": "Springfield", "country": "FR"}, shape) is False
-    assert values_equal(a, {"locality": "Springfield"}, shape) is False
-    assert values_equal({**a, "zip": "1"}, {**a, "zip": "1"}, shape) is False
+    assert values_equal(a, dict(reversed(a.items())), _LOCATION) is True
+    assert values_equal(a, {"locality": "Springfield", "country": "FR"}, _LOCATION) is False
+    assert values_equal(a, {"locality": "Springfield"}, _LOCATION) is False
+    assert values_equal({**a, "zip": "1"}, {**a, "zip": "1"}, _LOCATION) is False
 
 
 def test_container_shapes_refuse_other_json_kinds() -> None:

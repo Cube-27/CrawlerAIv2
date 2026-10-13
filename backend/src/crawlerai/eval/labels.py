@@ -26,11 +26,11 @@ from pydantic import (
 )
 from pydantic_core import ErrorDetails
 
+from crawlerai.db.models import PageKind
 from crawlerai.normalize import date, enum, identifier, location, money, text, url
 from crawlerai.normalize import range as range_
 
 LabelStatus = Literal["draft", "labeled", "checked"]
-PageKind = Literal["detail", "listing"]
 Scope = Literal["row", "page"]
 # The §5.1 types that have values of their own (SPEC-04 §4.1); `list` and `object` recurse into them.
 ScalarType = Literal[

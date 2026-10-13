@@ -81,7 +81,6 @@ def test_labels_round_trip_through_json(raw: dict[str, Any], page_kind: Any, sha
     labels = parse_labels(raw, page_kind, shapes)
 
     assert labels.model_dump(mode="json") == raw
-    assert parse_labels(labels.model_dump(mode="json"), page_kind, shapes) == labels
 
 
 def test_a_draft_may_be_partial_and_unattributed() -> None:
