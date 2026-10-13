@@ -10,10 +10,8 @@ import asyncio
 import json
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -25,7 +23,8 @@ from crawlerai.config_ir.api_recipe.replay import ReplayPage
 from crawlerai.config_ir.api_recipe.role_d import REPAIR_SYSTEM, SYSTEM, Rejected, bind_by_role_d
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
-from crawlerai.llm.client import BudgetExhausted, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.llm.client import BudgetExhausted
+from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -51,33 +50,14 @@ PRODUCTS = {"101": ("desk-lamp", "Desk Lamp", 19.5), "202": ("oak-chair", "Oak C
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1/products"
 REGEX = "regex:^/p/[a-z-]+-([0-9]+)$"
-GOOD = {"method": "GET", "url": f"{ENDPOINT}/{{p1}}", "params": [{"name": "p1", "binder": REGEX}], "body": None}
+GOOD: dict[str, JsonValue] = {
+    "method": "GET",
+    "url": f"{ENDPOINT}/{{p1}}",
+    "params": [{"name": "p1", "binder": REGEX}],
+    "body": None,
+}
 # Path segment 1 holds `desk-lamp-101`, not the id the endpoint takes.
-WHOLE_SEGMENT = {**GOOD, "params": [{"name": "p1", "binder": "path:1"}]}
-
-
-class ScriptedClient:
-    """Answers each call with the next scripted reply, or raises the next scripted failure; keeps the requests."""
-
-    def __init__(self, *script: Mapping[str, Any] | Exception) -> None:
-        self._script = list(script)
-        self.requests: list[LLMRequest] = []
-
-    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
-        self.requests.append(req)
-        step = self._script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        Draft202012Validator(req.output_schema).validate(step)  # as the real client does
-        return LLMResponse(
-            data=dict(step),
-            provider="fake",
-            model="fake-strong",
-            tokens_in=10,
-            tokens_out=5,
-            latency_ms=1,
-            request_hash=request_hash(req),
-        )
+WHOLE_SEGMENT: dict[str, JsonValue] = {**GOOD, "params": [{"name": "p1", "binder": "path:1"}]}
 
 
 def _page_url(product_id: str) -> str:
@@ -195,7 +175,7 @@ def test_a_spec_whose_replay_answers_other_values_is_not_accepted(stand_in_api: 
 def test_a_binder_reading_the_page_data_makes_the_recipe_fetch_the_page_first(stand_in_api: StandInApi) -> None:
     # The endpoint also takes the page's variant, which only its script state holds.
     query = "?v=v{id}"
-    params = [{"name": "p1", "binder": REGEX}, {"name": "p2", "binder": "js_state:$['variant']"}]
+    params: list[JsonValue] = [{"name": "p1", "binder": REGEX}, {"name": "p2", "binder": "js_state:$['variant']"}]
     client = ScriptedClient({**GOOD, "url": f"{ENDPOINT}/{{p1}}?v={{p2}}", "params": params})
     pages = _pages(page_data={"js_state": {"variant": "v{id}"}}, query=query)
 
@@ -228,6 +208,7 @@ def test_the_prompt_shows_header_names_and_json_key_paths_but_no_values(stand_in
 
 def test_an_llm_failure_propagates(stand_in_api: StandInApi) -> None:
     client = ScriptedClient(BudgetExhausted())
+    pages, fetcher = _pages(), _api(stand_in_api)
 
     with pytest.raises(BudgetExhausted):
-        _run(client, _pages(), _api(stand_in_api))
+        _run(client, pages, fetcher)

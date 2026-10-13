@@ -20,13 +20,11 @@ from crawlerai.db.models import JobId, SchemaId
 from crawlerai.llm.client import (
     BudgetExhausted,
     LLMFailure,
-    LLMRequest,
-    LLMResponse,
     OutputInvalid,
     ProviderUnavailable,
-    ReplyCheck,
     request_hash,
 )
+from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.llm.roles.c_extract import (
     DETAIL_MAX_CHARS,
     LISTING_MAX_CHARS,
@@ -68,31 +66,6 @@ OWNER = "jsonld:0:$"
 
 def span(value: str, start: int, end: int | None = None) -> dict[str, JsonValue]:
     return {"value": value, "start": start, "end": start + len(value) if end is None else end}
-
-
-class ScriptedClient:
-    """Answers each call with the next scripted reply, or raises the next scripted failure; keeps the requests."""
-
-    def __init__(self, *script: dict[str, JsonValue] | Exception) -> None:
-        self._script = list(script)
-        self.requests: list[LLMRequest] = []
-
-    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
-        self.requests.append(req)
-        step = self._script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        # The real client validates every reply against the request's schema; so does this one.
-        Draft202012Validator(req.output_schema).validate(step)
-        return LLMResponse(
-            data=step,
-            provider="fake",
-            model="fake-fast",
-            tokens_in=10,
-            tokens_out=5,
-            latency_ms=1,
-            request_hash=request_hash(req),
-        )
 
 
 def specs(*names: str) -> dict[str, FieldSpec]:
