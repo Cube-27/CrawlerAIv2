@@ -23,22 +23,23 @@ from crawlerai.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidat
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.validation import RecipeFieldReport, RecipeReport, Validated, ValidationReport
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, SchemaId
+from crawlerai.db.models import CaptureId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-SCHEMA = SchemaDef(
-    id=SchemaId(uuid7()),
-    origin="user",
-    status="active",
-    name="synthetic",
-    version=1,
-    page_kind="detail",
-    fields={
-        "title": FieldSpec(type=FieldType.TEXT, description="d", required=True),
-        "price": FieldSpec(type=FieldType.MONEY, description="d", required=True),
-    },
+TYPES = {"title": FieldType.TEXT, "price": FieldType.MONEY}
+SCHEMA = SchemaDef.model_validate(
+    {
+        "id": uuid7(),
+        "origin": "user",
+        "status": "active",
+        "name": "synthetic",
+        "version": 1,
+        "page_kind": "detail",
+        "fields": {name: FieldSpec(type=type_, description="d", required=True) for name, type_ in TYPES.items()},
+    }
 )
+# `+` joins the amount and currency paths of a money field (SPEC-09 §4.2).
 MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}
 PRODUCTS = {"desk-lamp": ("Desk Lamp", 19.5), "oak-chair": ("Oak Chair", 120), "tea-cup": ("Tea Cup", 4)}
 SITE = "https://shop.example.test"
