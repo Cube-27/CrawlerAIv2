@@ -2,13 +2,11 @@
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `url` and `image` values are strings). Any
 other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
 import string
-from urllib.parse import SplitResult, quote, urljoin, urlsplit
+from urllib.parse import SplitResult, quote, unquote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
@@ -30,6 +28,9 @@ _UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
 # query. `%` stays, so existing triplets and a bare `%` (a WHATWG validation error, not a failure) are kept.
 _PATH_SAFE = "!$&'()*+,;=:@/%"
 _QUERY_SAFE = _PATH_SAFE + "?"
+# WHATWG URL Standard, forbidden domain code points: the forbidden host code points (U+0000, tab, LF, CR, space, `#`,
+# `/`, `:`, `<`, `>`, `?`, `@`, `[`, `\`, `]`, `^`, `|`), the other C0 controls, `%` and U+007F DELETE.
+_FORBIDDEN_IN_DOMAIN = frozenset(" #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in range(0x20)))
 # RFC 9110 §4.2.1 and §4.2.2: the default ports of http and https, the only schemes of the type.
 _DEFAULT_PORT = {"http": 80, "https": 443}
 
@@ -51,6 +52,16 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         # image is not the page it appears on.
         return Invalid("page_url")
     return result
+
+
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: equal after canonicalization. A relative URL has no canonical form without its base."""
+    if a == b:
+        return True
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return False
+    left = _canonical(a, None)
+    return isinstance(left, Ok) and left == _canonical(b, None)
 
 
 def _canonical(raw: str, base: str | None) -> NormalizeResult:
@@ -80,6 +91,9 @@ def _canonical(raw: str, base: str | None) -> NormalizeResult:
         return Invalid("not_http")
     if not parts.hostname:
         return Invalid("no_host")
+    host = _host(parts.hostname)
+    if isinstance(host, Invalid):
+        return host
     # RFC 3986 §6.2.3: an empty path with an authority is "/". Dot segments are removed after percent-normalization,
     # so `%2E` counts as a dot (WHATWG URL Standard, single- and double-dot segments).
     path = _remove_dot_segments(quote(_normalize_triplets(parts.path) or "/", safe=_PATH_SAFE))
@@ -89,11 +103,26 @@ def _canonical(raw: str, base: str | None) -> NormalizeResult:
     query = (
         f"?{quote(_normalize_triplets(parts.query), safe=_QUERY_SAFE)}" if "?" in reference.partition("#")[0] else ""
     )
-    return Ok(f"{parts.scheme}://{_authority(parts, parts.hostname, port)}{path}{query}")
+    return Ok(f"{parts.scheme}://{_authority(parts, host, port)}{path}{query}")
+
+
+def _host(hostname: str) -> str | Invalid:
+    """The host, as the WHATWG host parser reads a domain: percent-decoded as UTF-8, and refused when it then holds
+    a forbidden domain code point. An IPv6 literal (`urlsplit` checks its brackets) is not a domain."""
+    if ":" in hostname:
+        return hostname
+    try:
+        domain = unquote(hostname, errors="strict")
+    except UnicodeDecodeError:
+        return Invalid("unparsable")
+    if not _FORBIDDEN_IN_DOMAIN.isdisjoint(domain):
+        return Invalid("forbidden_host_code_point")
+    # RFC 3986 §3.2.2: the host is case-insensitive, and a decoded triplet may be uppercase.
+    return domain.lower()
 
 
 def _authority(parts: SplitResult, hostname: str, port: int | None) -> str:
-    # RFC 3986 §3.2.2: the host is case-insensitive; `hostname` is lowercased and has no IPv6 brackets.
+    # `hostname` is lowercased and has no IPv6 brackets.
     host = f"[{hostname}]" if ":" in hostname else hostname
     userinfo, at, _ = parts.netloc.rpartition("@")
     # RFC 9110 §4.2: the scheme's default port is the same as no port.
@@ -125,11 +154,3 @@ def _remove_dot_segments(path: str) -> str:
     if segments[-1] in (".", ".."):
         out.append("")
     return "/".join(out)
-
-
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (equal after canonicalization).
-
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b

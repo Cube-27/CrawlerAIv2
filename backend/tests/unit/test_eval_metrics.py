@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.eval.labels import FieldShape, InvalidLabels, Labels, ScalarShape
+from crawlerai.eval.labels import InvalidLabels, Labels
 from crawlerai.eval.metrics import (
     EvalCase,
     FieldMetrics,
@@ -24,6 +24,7 @@ from crawlerai.eval.metrics import (
     export_aggregate,
     generalization_gap,
 )
+from crawlerai.schemas.types import FieldSpec, FieldType
 
 EUR_19: JsonValue = {"amount": "19.90", "currency": "EUR"}
 EUR_24: JsonValue = {"amount": "24.90", "currency": "EUR"}
@@ -31,15 +32,15 @@ EUR_24: JsonValue = {"amount": "24.90", "currency": "EUR"}
 DETAIL = SchemaFields(
     name="commerce_detail",
     page_kind="detail",
-    fields={"price": ScalarShape(type="money"), "brand": ScalarShape(type="text")},
+    fields={"price": FieldSpec(type=FieldType.MONEY), "brand": FieldSpec(type=FieldType.TEXT)},
     required=frozenset({"price"}),
 )
-LISTING_SHAPES: dict[str, FieldShape] = {
-    "title": ScalarShape(type="text"),
-    "url": ScalarShape(type="url"),
-    "next_page": ScalarShape(type="url", scope="page"),
+LISTING_SPECS: dict[str, FieldSpec] = {
+    "title": FieldSpec(type=FieldType.TEXT),
+    "url": FieldSpec(type=FieldType.URL),
+    "next_page": FieldSpec(type=FieldType.URL, scope="page"),
 }
-LISTING = SchemaFields(name="commerce_listing", page_kind="listing", fields=LISTING_SHAPES, required=frozenset({"url"}))
+LISTING = SchemaFields(name="commerce_listing", page_kind="listing", fields=LISTING_SPECS, required=frozenset({"url"}))
 
 
 def label(value: JsonValue = None, distractors: tuple[JsonValue, ...] = ()) -> dict[str, Any]:
@@ -295,7 +296,10 @@ def test_zero_touch_required_groups(sku: FieldOutput, gtin: FieldOutput, zero_to
     schema = SchemaFields(
         name="ids",
         page_kind="detail",
-        fields={"sku": ScalarShape(type="identifier"), "gtin": ScalarShape(type="identifier")},
+        fields={
+            "sku": FieldSpec(type=FieldType.IDENTIFIER, scheme="sku"),
+            "gtin": FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin"),
+        },
         required_groups=(frozenset({"sku", "gtin"}),),
     )
     case = EvalCase(

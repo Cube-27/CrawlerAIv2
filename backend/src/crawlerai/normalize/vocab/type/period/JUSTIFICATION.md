@@ -1,0 +1,13 @@
+# `type:period`
+
+Phrases that state the period of a salary range, by language, each mapped to the schema.org `unitText` value it
+names (SPEC-04 §4.4). The range normalizer reads a period only from one of these phrases, or from the solidus form
+`/<unit>`, where `<unit>` is the phrase's last word (the SI Brochure and ISO 80000-1 write a quotient of units, "per", with a solidus).
+
+| File | Language | Source | Content |
+|---|---|---|---|
+| `en.json` | `en` | schema.org `unitText` for a salary period (`HOUR`, `DAY`, `WEEK`, `MONTH`, `YEAR`, the `baseSalary` guidance on `JobPosting`), lowercased after "per" | One phrase per unit, nothing else. Moved here from `range.py` (D-0280). |
+
+Any other phrase or language is added only under the C10 acceptance rule: a dev improvement and hidden
+non-regression shown in the PR's evaluation report (ARCHITECTURE C4, C10). Record each addition here, with its
+justification and the PR.

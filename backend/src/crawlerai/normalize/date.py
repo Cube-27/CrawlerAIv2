@@ -12,8 +12,6 @@ Any other JSON value is `Invalid("not_a_string")`. Three paths, tried in order:
 
 The locales are `ctx.html_lang` and `ctx.og_locale` (SPEC-04 §4.4); with neither, every order is allowed. A datetime
 needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own offset.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
@@ -218,7 +216,7 @@ def _decide(readings: set[date] | set[datetime], want_time: bool) -> NormalizeRe
     """One value from the readings of the input, or a decline: several readings are `Ambiguous` (C7)."""
     if not readings:
         return Invalid("not_a_date")
-    in_range = [v for v in readings if _MIN_YEAR <= _stated(v).year <= _MAX_YEAR]
+    in_range = [v for v in readings if _in_range(v, want_time)]
     if not in_range:
         return Invalid("year_out_of_range")
     rendered = sorted({_render(v, want_time) for v in in_range})
@@ -226,6 +224,15 @@ def _decide(readings: set[date] | set[datetime], want_time: bool) -> NormalizeRe
         return Ok(rendered[0])
     same_day = len({(_stated(v).month, _stated(v).day) for v in in_range}) == 1
     return Ambiguous("two_digit_year" if same_day else "date_order", tuple(rendered))
+
+
+def _in_range(value: date | datetime, want_time: bool) -> bool:
+    # SPEC-04 §4.4's year range holds for the value as stored: the stated date, and for a datetime its UTC date as
+    # well (`2100-12-31T23:00-05:00` is 2101 in UTC). The stated year is checked first, so the UTC conversion never
+    # leaves the years `datetime` can hold.
+    if not _MIN_YEAR <= _stated(value).year <= _MAX_YEAR:
+        return False
+    return not (want_time and isinstance(value, datetime)) or _MIN_YEAR <= value.astimezone(UTC).year <= _MAX_YEAR
 
 
 def _stated(value: date | datetime) -> date:
@@ -289,9 +296,6 @@ def _languages(ctx: Context) -> tuple[str, ...]:
     return tuple(dict.fromkeys(language for language in primary if language in _DATEPARSER_LANGUAGES))
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (exact).
-
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
     return a == b

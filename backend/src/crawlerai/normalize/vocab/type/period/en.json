@@ -1,0 +1,7 @@
+{
+  "HOUR": ["per hour"],
+  "DAY": ["per day"],
+  "WEEK": ["per week"],
+  "MONTH": ["per month"],
+  "YEAR": ["per year"]
+}

@@ -15,13 +15,23 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from crawlerai.eval.labels import ScalarType
 from crawlerai.eval.metrics import FieldMetrics, Report
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.schemas.types import FieldType
 
 # SPEC-03 §4.8: the field types with at least one required field in a preset. The precision rule covers only these.
-REQUIRED_FIELD_TYPES: frozenset[ScalarType] = frozenset(
-    {"money", "text", "long_text", "enum", "url", "image_url", "identifier", "date", "location"}
+REQUIRED_FIELD_TYPES: frozenset[FieldType] = frozenset(
+    {
+        FieldType.MONEY,
+        FieldType.TEXT,
+        FieldType.LONG_TEXT,
+        FieldType.ENUM,
+        FieldType.URL,
+        FieldType.IMAGE_URL,
+        FieldType.IDENTIFIER,
+        FieldType.DATE,
+        FieldType.LOCATION,
+    }
 )
 
 # ARCHITECTURE §16.4: a hidden precision drop of more than 0.5 pt fails the merge.

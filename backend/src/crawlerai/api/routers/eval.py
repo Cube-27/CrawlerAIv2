@@ -28,16 +28,16 @@ from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped, check_urls, run_capture
 from crawlerai.eval.labels import (
-    FieldShape,
     InvalidLabels,
     LabelError,
     Labels,
     LabelStatus,
-    field_shapes,
+    field_specs,
     parse_labels,
     same_person,
 )
 from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
+from crawlerai.schemas.types import FieldSpec
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
 
@@ -49,7 +49,7 @@ class LabelingBackend(Protocol):
     @property
     def store(self) -> EvalStore: ...
 
-    async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldShape]: ...
+    async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldSpec]: ...
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]: ...
 
@@ -69,12 +69,12 @@ class DevLabelingBackend:
     def store(self) -> DevEvalStore:
         return self._store
 
-    async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldShape]:
+    async def schema_fields(self, schema_id: SchemaId) -> dict[str, FieldSpec]:
         async with self._engine.connect() as conn:
             fields: dict[str, JsonValue] = (
                 await conn.execute(select(SchemaDef.fields).where(SchemaDef.id == schema_id))
             ).scalar_one()
-        return field_shapes(fields)
+        return field_specs(fields)
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]:
         return await run_capture(self._settings, "dev", requests, page_kind)
@@ -195,7 +195,7 @@ class PageSummary(_Model):
 
 class PageDetail(PageSummary):
     labels: Labels | None
-    fields: dict[str, FieldShape]  # the page's schema fields, which its labels label
+    fields: dict[str, FieldSpec]  # the page's schema fields, which its labels label
     url: str
     final_url: str
     bundle_html: str  # sanitized; see `sanitize_html`

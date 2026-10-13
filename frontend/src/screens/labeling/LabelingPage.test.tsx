@@ -27,7 +27,10 @@ function detailPage(overrides: Partial<PageDetail> = {}): PageDetail {
     labeler: null,
     checker: null,
     labels: null,
-    fields: { title: { type: "text", scope: "row" }, price: { type: "money", scope: "row" } },
+    fields: {
+      title: { type: "text", scope: "row", required: false },
+      price: { type: "money", scope: "row", required: false },
+    },
     url: "https://store.test/items/1",
     final_url: "https://store.test/items/1",
     bundle_html: "<html><head></head><body><h1>Blue mug</h1><p>EUR 19.90</p></body></html>",
@@ -403,8 +406,8 @@ describe("listing pages", () => {
           detailPage({
             page_kind: "listing",
             fields: {
-              title: { type: "text", scope: "row" },
-              total: { type: "text", scope: "page" },
+              title: { type: "text", scope: "row", required: false },
+              total: { type: "text", scope: "page", required: false },
             },
           }),
         ),

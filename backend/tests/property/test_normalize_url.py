@@ -157,6 +157,37 @@ def test_unparsable_urls_are_invalid(raw: str, reason: str) -> None:
     assert url.normalize(raw, URL, CTX) == Invalid(reason)
 
 
+# WHATWG URL Standard, forbidden domain code points: the forbidden host code points, C0 controls, `%` and DELETE.
+_FORBIDDEN_IN_DOMAIN = " #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in range(0x20))
+
+# Written as is, these end the host (delimiters) or are removed before parsing (ASCII tab and newline).
+_NOT_IN_A_WRITTEN_HOST = "#/?@:[]\t\n\r"
+
+
+@given(st.sampled_from(sorted(_FORBIDDEN_IN_DOMAIN)), st.booleans())
+def test_a_host_with_a_forbidden_domain_code_point_is_invalid(char: str, encoded: bool) -> None:
+    written = f"%{ord(char):02X}" if encoded or char in _NOT_IN_A_WRITTEN_HOST else char
+
+    assert url.normalize(f"http://a{written}b.example.test/", URL, CTX) == Invalid("forbidden_host_code_point")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("http://ex%61mple.test/", "http://example.test/"),
+        ("http://EX%41MPLE.test/", "http://example.test/"),
+        ("http://%C3%A9.example.test/", "http://é.example.test/"),
+    ],
+)
+def test_a_percent_encoded_host_is_decoded(raw: str, expected: str) -> None:
+    # WHATWG URL Standard, host parsing: a domain is percent-decoded before it is checked.
+    assert url.normalize(raw, URL, CTX) == Ok(expected)
+
+
+def test_a_host_that_decodes_to_invalid_utf_8_is_invalid() -> None:
+    assert url.normalize("http://a%FFb.example.test/", URL, CTX) == Invalid("unparsable")
+
+
 def test_an_image_url_that_is_the_page_url_is_invalid() -> None:
     ctx = Context(captured_at=AT, page_url="https://example.test/p?id=1#reviews")
 

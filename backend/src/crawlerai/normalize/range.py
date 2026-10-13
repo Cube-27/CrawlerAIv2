@@ -12,16 +12,16 @@ reads a currency itself (C8), and it does not import the money module (the norma
 
 Declines (§9): the currency unresolved, or the period unresolved on a monetary range → `Ambiguous`; min > max →
 `Invalid`. A unit range (a `QuantitativeValue` with a unit) has no period to resolve.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 
 from pydantic import JsonValue
 
+from crawlerai.normalize import vocab
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -32,16 +32,18 @@ text amount, and reads each value it returns as `{"amount", "currency"}` (a deci
 # schema.org `unitText` for a salary period, per the `baseSalary` / `MonetaryAmount` guidance on JobPosting:
 # HOUR, DAY, WEEK, MONTH, YEAR.
 _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
-# The `type:period` vocabulary, language `en` (SPEC-04 §4.4): the same five units, de-capitalized, after an explicit
-# "per" or "/". Justification: schema.org unitText for salary. A unit with another word around it ("hourly",
-# "per hours") is not a period.
-_PERIOD_TOKEN = re.compile(r"(?:\bper\s+|/\s*)(hour|day|week|month|year)\b", re.IGNORECASE)
+# The `type:period` vocabulary (SPEC-04 §4.4) maps each phrase to one of these units; its JUSTIFICATION.md names the
+# source.
+_PERIOD_VOCABULARY = "period"
 # The range separators SPEC-04 §4.4 names: hyphen-minus, en dash (the range dash, Unicode U+2013) and `en` "to".
 _SEPARATOR = re.compile(r"\s*(?:-|\u2013|\bto\b)\s*", re.IGNORECASE)
 # A written amount: ASCII digits (`re.ASCII`), with the grouping and decimal marks CLDR number patterns use between
 # them (full stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount
 # is the money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
 _AMOUNT = re.compile(r"\d(?:[\d.,' \u00a0\u202f]*\d)?", re.ASCII)
+
+# The keys of a normalized range (D-0276).
+_VALUE_KEYS = frozenset({"min", "max", "currency", "unit", "period"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> NormalizeResult:
@@ -117,13 +119,7 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         return Invalid("surrogate")
     if not raw.strip():
         return Invalid("empty")
-    periods: set[str] = set()
-
-    def _drop_period(m: re.Match[str]) -> str:
-        periods.add(m.group(1).upper())
-        return " "
-
-    text = _PERIOD_TOKEN.sub(_drop_period, raw)
+    text, periods = _strip_periods(raw, vocab.context_languages(ctx))
     if len(periods) > 1:
         return Invalid("period_mismatch")
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
@@ -150,6 +146,39 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         money(right_before + right_amount + right_after, ctx),
         periods.pop() if periods else None,
     )
+
+
+def _strip_periods(raw: str, languages: frozenset[str]) -> tuple[str, set[str]]:
+    """`raw` with each `type:period` phrase replaced by a space, and the units those phrases name."""
+    found = _period_phrases(languages)
+    if found is None:
+        return raw, set()
+    pattern, codes = found
+    periods = {codes[m.lastgroup or ""] for m in pattern.finditer(raw)}
+    return pattern.sub(" ", raw), periods
+
+
+@lru_cache(maxsize=64)  # keyed by the page's languages, a small set
+def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[str, str]] | None:
+    """A pattern that finds the `type:period` phrases of the page's languages (every language when it states none),
+    with the unit each named group stands for; `None` when the vocabulary has no phrases for them.
+
+    A phrase matches as whole words in any case, and so does its solidus form `/<last word>` (the SI Brochure and
+    ISO 80000-1 write "per" between units as `/`). A unit with another word around it ("hourly", "per hours") is not
+    a period.
+    """
+    entries = vocab.entries_for(vocab.type_vocabulary(_PERIOD_VOCABULARY) or {}, languages)
+    phrases = {phrase: code for e in entries for phrase, code in e.phrases.items()}
+    if not phrases:
+        return None
+    alternatives: list[str] = []
+    codes: dict[str, str] = {}
+    for i, (phrase, code) in enumerate(sorted(phrases.items())):
+        words = phrase.split(" ")
+        written = r"\s+".join(map(re.escape, words))
+        alternatives.append(rf"(?P<p{i}>\b{written}\b|/\s*{re.escape(words[-1])}\b)")
+        codes[f"p{i}"] = code
+    return re.compile("|".join(alternatives), re.IGNORECASE), codes
 
 
 def _around_amount(bound: str) -> tuple[str, str, str] | None:
@@ -210,9 +239,21 @@ def _value(lo: Decimal, hi: Decimal, *, currency: str | None, unit: str | None, 
     return {"min": format(lo, "f"), "max": format(hi, "f"), "currency": currency, "unit": unit, "period": period}
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (all four parts).
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: every part equal, the bounds as Decimals without rounding (`50000` equals `50000.00`)."""
+    if a == b:
+        return True
+    left, right = _range_value(a), _range_value(b)
+    return left is not None and left == right
 
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b
+
+def _range_value(value: JsonValue) -> tuple[Decimal, Decimal, JsonValue, JsonValue, JsonValue] | None:
+    """A normalized range as (min, max, currency, unit, period), or `None` for any other value."""
+    if not isinstance(value, dict) or value.keys() != _VALUE_KEYS:
+        return None
+    lo, hi = value["min"], value["max"]
+    lo_number = _decimal(lo) if isinstance(lo, str) else None
+    hi_number = _decimal(hi) if isinstance(hi, str) else None
+    if lo_number is None or hi_number is None:
+        return None
+    return lo_number, hi_number, value["currency"], value["unit"], value["period"]

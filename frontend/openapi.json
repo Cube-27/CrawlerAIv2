@@ -200,6 +200,135 @@
         "title": "FieldLabel",
         "type": "object"
       },
+      "FieldSpec": {
+        "additionalProperties": false,
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[a-z][a-z0-9_]{0,63}$": {
+                    "$ref": "#/components/schemas/FieldSpec"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "schema_org": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Org"
+          },
+          "scheme": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gtin",
+                  "isbn",
+                  "mpn",
+                  "sku",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme"
+          },
+          "scope": {
+            "default": "row",
+            "enum": [
+              "row",
+              "page"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
+          },
+          "vocab": {
+            "anyOf": [
+              {
+                "pattern": "^(schema:[A-Z][A-Za-z0-9]*|type:[a-z][a-z0-9_]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vocab"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "FieldSpec",
+        "type": "object"
+      },
+      "FieldType": {
+        "description": "The \u00a75.1 field types. A type is added here only together with its normalizer module (C8).",
+        "enum": [
+          "text",
+          "long_text",
+          "money",
+          "enum",
+          "url",
+          "image_url",
+          "identifier",
+          "date",
+          "datetime",
+          "location",
+          "range",
+          "list",
+          "object"
+        ],
+        "title": "FieldType",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -312,63 +441,6 @@
         "title": "Labels",
         "type": "object"
       },
-      "ListShape": {
-        "additionalProperties": false,
-        "properties": {
-          "item": {
-            "discriminator": {
-              "mapping": {
-                "date": "#/components/schemas/ScalarShape",
-                "datetime": "#/components/schemas/ScalarShape",
-                "enum": "#/components/schemas/ScalarShape",
-                "identifier": "#/components/schemas/ScalarShape",
-                "image_url": "#/components/schemas/ScalarShape",
-                "list": "#/components/schemas/ListShape",
-                "location": "#/components/schemas/ScalarShape",
-                "long_text": "#/components/schemas/ScalarShape",
-                "money": "#/components/schemas/ScalarShape",
-                "object": "#/components/schemas/ObjectShape",
-                "range": "#/components/schemas/ScalarShape",
-                "text": "#/components/schemas/ScalarShape",
-                "url": "#/components/schemas/ScalarShape"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ScalarShape"
-              },
-              {
-                "$ref": "#/components/schemas/ListShape"
-              },
-              {
-                "$ref": "#/components/schemas/ObjectShape"
-              }
-            ],
-            "title": "Item"
-          },
-          "scope": {
-            "default": "row",
-            "enum": [
-              "row",
-              "page"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
-          "type": {
-            "const": "list",
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "item"
-        ],
-        "title": "ListShape",
-        "type": "object"
-      },
       "NormalizeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -386,66 +458,6 @@
           "raw_text"
         ],
         "title": "NormalizeRequest",
-        "type": "object"
-      },
-      "ObjectShape": {
-        "additionalProperties": false,
-        "properties": {
-          "fields": {
-            "additionalProperties": {
-              "discriminator": {
-                "mapping": {
-                  "date": "#/components/schemas/ScalarShape",
-                  "datetime": "#/components/schemas/ScalarShape",
-                  "enum": "#/components/schemas/ScalarShape",
-                  "identifier": "#/components/schemas/ScalarShape",
-                  "image_url": "#/components/schemas/ScalarShape",
-                  "list": "#/components/schemas/ListShape",
-                  "location": "#/components/schemas/ScalarShape",
-                  "long_text": "#/components/schemas/ScalarShape",
-                  "money": "#/components/schemas/ScalarShape",
-                  "object": "#/components/schemas/ObjectShape",
-                  "range": "#/components/schemas/ScalarShape",
-                  "text": "#/components/schemas/ScalarShape",
-                  "url": "#/components/schemas/ScalarShape"
-                },
-                "propertyName": "type"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/ScalarShape"
-                },
-                {
-                  "$ref": "#/components/schemas/ListShape"
-                },
-                {
-                  "$ref": "#/components/schemas/ObjectShape"
-                }
-              ]
-            },
-            "title": "Fields",
-            "type": "object"
-          },
-          "scope": {
-            "default": "row",
-            "enum": [
-              "row",
-              "page"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
-          "type": {
-            "const": "object",
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "fields"
-        ],
-        "title": "ObjectShape",
         "type": "object"
       },
       "PageDetail": {
@@ -484,35 +496,7 @@
           },
           "fields": {
             "additionalProperties": {
-              "discriminator": {
-                "mapping": {
-                  "date": "#/components/schemas/ScalarShape",
-                  "datetime": "#/components/schemas/ScalarShape",
-                  "enum": "#/components/schemas/ScalarShape",
-                  "identifier": "#/components/schemas/ScalarShape",
-                  "image_url": "#/components/schemas/ScalarShape",
-                  "list": "#/components/schemas/ListShape",
-                  "location": "#/components/schemas/ScalarShape",
-                  "long_text": "#/components/schemas/ScalarShape",
-                  "money": "#/components/schemas/ScalarShape",
-                  "object": "#/components/schemas/ObjectShape",
-                  "range": "#/components/schemas/ScalarShape",
-                  "text": "#/components/schemas/ScalarShape",
-                  "url": "#/components/schemas/ScalarShape"
-                },
-                "propertyName": "type"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/ScalarShape"
-                },
-                {
-                  "$ref": "#/components/schemas/ListShape"
-                },
-                {
-                  "$ref": "#/components/schemas/ObjectShape"
-                }
-              ]
+              "$ref": "#/components/schemas/FieldSpec"
             },
             "title": "Fields",
             "type": "object"
@@ -746,42 +730,6 @@
           "detail"
         ],
         "title": "Problem",
-        "type": "object"
-      },
-      "ScalarShape": {
-        "additionalProperties": false,
-        "properties": {
-          "scope": {
-            "default": "row",
-            "enum": [
-              "row",
-              "page"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
-          "type": {
-            "enum": [
-              "text",
-              "long_text",
-              "money",
-              "enum",
-              "url",
-              "image_url",
-              "identifier",
-              "date",
-              "datetime",
-              "location",
-              "range"
-            ],
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type"
-        ],
-        "title": "ScalarShape",
         "type": "object"
       },
       "SkippedOut": {

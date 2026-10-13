@@ -17,9 +17,14 @@ from crawlerai.schemas.types import FieldSpec
 
 @dataclass(frozen=True, slots=True)
 class Ok:
-    """The normalized value, in the type's JSON form (the form labels and records store)."""
+    """The normalized value, in the type's JSON form (the form labels and records store).
+
+    `reasons` reports the parts of a list or object that declined and were dropped (SPEC-04 §4.4), each as
+    `<path>: <reason>` (`[2]: empty`, `address.locality: no_match`); a scalar has none.
+    """
 
     value: JsonValue
+    reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,3 +85,10 @@ class Normalizer(Protocol):
     input; a `spec` of a type it does not handle is a programming error and raises `TypeError` (§4.7)."""
 
     def __call__(self, raw: Raw, spec: FieldSpec, ctx: Context, /) -> NormalizeResult: ...
+
+
+class Equality(Protocol):
+    """One field type's equality of two normalized values (SPEC-04 §4.5), used by the resolver's agreement rule and
+    by eval. It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
+
+    def __call__(self, a: JsonValue, b: JsonValue, spec: FieldSpec, /) -> bool: ...

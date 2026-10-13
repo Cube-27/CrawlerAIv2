@@ -10,8 +10,6 @@ Accepts:
 
 Any other JSON value is `Invalid("not_money")`. Nothing is defaulted (C7): a sign that names several currencies, or
 an amount the locales read differently, is `Ambiguous`.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
@@ -317,9 +315,19 @@ def _number_conventions() -> frozenset[str]:
     return frozenset(seen.values())
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (Decimal amount and currency).
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: the amounts equal as Decimals, without rounding (`19.9` equals `19.90`), and the same currency."""
+    if a == b:
+        return True
+    left, right = _money_value(a), _money_value(b)
+    return left is not None and left == right
 
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b
+
+def _money_value(value: JsonValue) -> tuple[Decimal, str] | None:
+    """A normalized money value (`{amount, currency}`) as (amount, ISO 4217 code), or `None` for any other value."""
+    if not isinstance(value, dict) or value.keys() != {"amount", "currency"}:
+        return None
+    amount, currency = value["amount"], value["currency"]
+    if not (isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(amount) and isinstance(currency, str)):
+        return None
+    return Decimal(amount), currency

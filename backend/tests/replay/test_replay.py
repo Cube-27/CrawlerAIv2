@@ -15,7 +15,7 @@ from pydantic import JsonValue
 
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, ExtractionMode, SchemaId, Split
-from crawlerai.eval.labels import LabelStatus, ScalarShape
+from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields, build_report
 from crawlerai.eval.replay import (
     ConfigSnapshot,
@@ -28,13 +28,14 @@ from crawlerai.eval.replay import (
     request_key,
 )
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
+from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, decode, encode, sha256_hex
 
 SCHEMA = SchemaFields(
     name="synthetic_detail",
     page_kind="detail",
-    fields={"title": ScalarShape(type="text"), "summary": ScalarShape(type="text")},
+    fields={"title": FieldSpec(type=FieldType.TEXT), "summary": FieldSpec(type=FieldType.TEXT)},
     required=frozenset({"title"}),
 )
 

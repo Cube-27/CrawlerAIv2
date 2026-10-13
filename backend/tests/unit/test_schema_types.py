@@ -1,11 +1,10 @@
 """The schema document rules (SPEC-04 §4.2) and the preset files (§5.3)."""
 
-from typing import Any, get_args
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.eval.labels import ScalarType
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldType, SchemaDocument
 
@@ -159,8 +158,3 @@ def test_every_preset_field_maps_to_schema_org_except_page_navigation() -> None:
     }
 
     assert unmapped == {("commerce_listing", "next_page_url"), ("job_listing", "next_page_url")}
-
-
-def test_the_label_shapes_know_the_same_scalar_types() -> None:
-    """`eval.labels` keeps its own shapes until SPEC-04 PR 9 (D-0167); they must not drift from `FieldType`."""
-    assert set(get_args(ScalarType)) == {t.value for t in FieldType} - {"list", "object"}

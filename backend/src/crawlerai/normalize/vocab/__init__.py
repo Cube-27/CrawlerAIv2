@@ -95,11 +95,16 @@ def find_codes(by_language: Mapping[str, Entries], words: Tokens, ctx: Context) 
     The page's own languages choose the phrases (ARCHITECTURE §9: language-tagged vocabularies). A page that states
     none is matched against every language; a disagreement then shows as two codes.
     """
-    languages = context_languages(ctx) or by_language.keys()
-    entries = [by_language[language] for language in languages if language in by_language]
+    entries = entries_for(by_language, context_languages(ctx))
     if not entries:
         return None
     return frozenset().union(*(e.find(words) for e in entries))
+
+
+def entries_for(by_language: Mapping[str, Entries], languages: frozenset[str]) -> list[Entries]:
+    """A type vocabulary's entries for the page's `languages` (`context_languages`), or for every language when the
+    page states none; languages without a file have none."""
+    return [by_language[language] for language in sorted(languages or by_language.keys()) if language in by_language]
 
 
 def context_languages(ctx: Context) -> frozenset[str]:

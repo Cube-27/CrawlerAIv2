@@ -6,8 +6,6 @@ values such as `gtin13` unquoted). Any other JSON value is `Invalid("not_a_strin
 - `gtin`: ASCII digits only, GTIN-8/12/13/14, with a passing GS1 check digit. The value is the digits as given.
 - `isbn`: ISBN-10 or ISBN-13 with a passing checksum; ISO 2108 hyphens and spaces and the "ISBN " prefix are dropped.
 - `mpn`, `sku`, `custom`: opaque; trimmed, non-empty, at most 64 characters.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
@@ -102,9 +100,19 @@ def _isbn10_check_passes(value: str) -> bool:
     return total % 11 == 0
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (exact).
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: exact, except that GTINs compare in the GS1 14-digit form (D-0287)."""
+    if a == b:
+        return True
+    left, right = _gtin14(a), _gtin14(b)
+    return left is not None and left == right
 
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b
+
+def _gtin14(value: JsonValue) -> str | None:
+    # GS1 General Specifications §3.3.2: GTIN-8, -12 and -13 are compared as GTIN-14 by padding with leading zeros.
+    if not isinstance(value, dict) or value.keys() != {"scheme", "value"} or value["scheme"] != "gtin":
+        return None
+    digits = value["value"]
+    if not (isinstance(digits, str) and digits.isascii() and digits.isdigit() and len(digits) in _GTIN_LENGTHS):
+        return None
+    return digits.zfill(14)

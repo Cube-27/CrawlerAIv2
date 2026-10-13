@@ -16,9 +16,12 @@ from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, PageKind, Split
-from crawlerai.eval.labels import FieldLabel, FieldShape, LabelRow, Labels, parse_labels, values_equal
-from crawlerai.normalize import url
+from crawlerai.eval.labels import FieldLabel, LabelRow, Labels, parse_labels
+from crawlerai.normalize.dispatch import equal
+from crawlerai.schemas.types import FieldSpec, FieldType
 
+# §4.6: listing rows match by their canonicalized `url`.
+_URL = FieldSpec(type=FieldType.URL)
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
 MIN_CELL = 10
 
@@ -56,7 +59,7 @@ class ReplayFailed(_Model):
 class SchemaFields(_Model):
     name: str
     page_kind: PageKind
-    fields: dict[str, FieldShape]
+    fields: dict[str, FieldSpec]
     required: frozenset[str] = frozenset()
     required_groups: tuple[frozenset[str], ...] = ()
 
@@ -312,18 +315,18 @@ def _match_rows(label_rows: Sequence[LabelRow], rows: Sequence[Mapping[str, Fiel
             continue
         for j, row in enumerate(rows):
             out = row.get("url")
-            if j not in taken and out is not None and out.status == "published" and url.equal(label.value, out.value):
+            if j not in taken and out is not None and out.status == "published" and equal(label.value, out.value, _URL):
                 matches[i] = j
                 taken.add(j)
                 break
     return matches
 
 
-def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, shape: FieldShape) -> Judgment:
+def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, spec: FieldSpec) -> Judgment:
     published = out if out is not None and out.status == "published" else None
     value = published.value if published else None
     if published:
-        cell: Cell = "FP" if label.absent or not values_equal(value, label.value, shape) else "TP"
+        cell: Cell = "FP" if label.absent or not equal(value, label.value, spec) else "TP"
     else:
         cell = "TN" if label.absent else "FN"
     return Judgment(
@@ -331,7 +334,7 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
         entity=entity,
         cell=cell,
         on_absent=label.absent,
-        wrong_product=published is not None and any(values_equal(value, d, shape) for d in label.distractors),
+        wrong_product=published is not None and any(equal(value, d, spec) for d in label.distractors),
         evidence=published.evidence if published else None,
         label_value=label.value,
         output_value=value,

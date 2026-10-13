@@ -3,8 +3,6 @@
 Accepts a string, from the DOM, an LLM or a structured source (schema.org Text values are JSON strings). Any other
 JSON value is `Invalid("not_a_string")`. A long_text value arrives already extracted as main content (trafilatura,
 in the content layer); here it keeps its line breaks, with at most one blank line between paragraphs.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import html
@@ -35,16 +33,28 @@ def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
     """Normalize a text or long_text field (SPEC-04 §4.4). Text needs no page evidence, so the context is unused."""
     if spec.type not in _MAX_LEN:
         raise TypeError(f"the text normalizer does not handle type {spec.type}")
+    return _text(raw, spec.type)
+
+
+def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: equal after the text normalization, case-sensitive."""
+    if a == b:
+        return True
+    left, right = _text(a, spec.type), _text(b, spec.type)
+    return isinstance(left, Ok) and left == right
+
+
+def _text(raw: Raw, type_: FieldType) -> NormalizeResult:
     if not isinstance(raw, str):
         return Invalid("not_a_string")
     if has_surrogate(raw):
         return Invalid("surrogate")
     # HTML Standard, named and numeric character references; then Unicode NFC (UAX #15), so one text has one form.
     decoded = unicodedata.normalize("NFC", html.unescape(raw)).translate(_CONTROLS)
-    value = _collapse_lines(decoded) if spec.type is FieldType.LONG_TEXT else _collapse(decoded)
+    value = _collapse_lines(decoded) if type_ is FieldType.LONG_TEXT else _collapse(decoded)
     if not value:
         return Invalid("empty")
-    if len(value) > _MAX_LEN[spec.type]:
+    if len(value) > _MAX_LEN[type_]:
         return Invalid("too_long")
     if _has_placeholder(value):
         return Invalid("template_placeholder")
@@ -71,11 +81,3 @@ def _collapse_lines(s: str) -> str:
     lines = [_collapse(line) for line in s.splitlines()]
     paragraphs = "\n".join(lines)
     return _BLANK_LINE_RUN.sub("\n\n", paragraphs).strip("\n")
-
-
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (equal after text normalization).
-
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b

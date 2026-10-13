@@ -11,8 +11,6 @@ input does not state it. Accepted input:
 Declines: no name of a place is `Invalid("no_match")`; names that no one place fits are `Invalid("inconsistent")`;
 several places that fit, such as one city name in two countries with no country given, are `Ambiguous`. `remote_flag`
 comes only from `TELECOMMUTE` or a `type:remote` phrase, never from a missing location.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import io
@@ -44,6 +42,9 @@ _CITIES_MEMBER = "cities15000.txt"
 _TELECOMMUTE = frozenset(
     {"TELECOMMUTE", "https://schema.org/TELECOMMUTE", "http://schema.org/TELECOMMUTE", "schema:TELECOMMUTE"}
 )
+
+# The keys of a normalized location (the module docstring).
+_VALUE_KEYS = frozenset({"locality", "region", "country", "remote_flag"})
 
 
 class GazetteerMissing(RuntimeError):
@@ -153,12 +154,25 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, gazetteer: Gazetteer |
     return Invalid("not_a_location")
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (country, casefolded locality, region when both have one).
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: `country` equal and `locality` equal after Unicode case folding; `region` counts only when both
+    values have one; `remote_flag` equal, since a remote job and an on-site one differ. Not transitive: a place
+    without a region equals two places in different regions."""
+    if a == b:
+        return True
+    if not (isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys() == _VALUE_KEYS):
+        return False
+    a_region, b_region = a["region"], b["region"]
+    return (
+        a["country"] == b["country"]
+        and a["remote_flag"] == b["remote_flag"]
+        and _casefolded(a["locality"]) == _casefolded(b["locality"])
+        and (a_region is None or b_region is None or a_region == b_region)
+    )
 
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b
+
+def _casefolded(value: JsonValue) -> JsonValue:
+    return value.casefold() if isinstance(value, str) else value
 
 
 def _value(place: Place | None, remote: bool) -> dict[str, JsonValue]:
