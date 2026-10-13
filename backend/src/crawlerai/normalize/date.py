@@ -4,7 +4,7 @@ datetime in UTC (`YYYY-MM-DDTHH:MM:SS[.ffffff]Z`).
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `datePosted` and similar values are strings).
 Any other JSON value is `Invalid("not_a_string")`. Three paths, tried in order:
 
-1. RFC 3339 (and its ISO 8601 date-only form) parses directly.
+1. RFC 3339, with the other ISO 8601 offset forms (`±hhmm`, `±hh`), parses directly.
 2. A numeric date (`03/04/2026`) is read in each day/month/year order the page's locales allow (CLDR short date
    patterns); different readings decline as `Ambiguous`.
 3. Anything else goes to `dateparser` in the page's languages, once per allowed order, with `ctx.captured_at` as the
@@ -38,12 +38,17 @@ _ORDERS: tuple[Order, ...] = ("DMY", "MDY", "YMD")
 _MIN_YEAR, _MAX_YEAR = 1970, 2100
 
 # RFC 3339 §5.6 `full-date` and `date-time`, with the ISO 8601 space separator and lowercase `t`/`z` that RFC 3339
-# §5.6 notes permit. Fractions longer than microseconds are cut to six digits (Python's resolution).
+# §5.6 notes permit, and the other ISO 8601 offset forms (§4.2.5.1: `±hh:mm`, `±hhmm`, `±hh`) and decimal comma
+# (§4.2.2.4). Fractions longer than microseconds are cut to six digits (Python's resolution).
 _RFC_3339 = re.compile(
     r"(?P<date>\d{4}-\d{2}-\d{2})"
-    r"(?:[Tt ](?P<time>\d{2}:\d{2}(?::\d{2})?)(?:\.(?P<fraction>\d+))?(?P<offset>[Zz]|[+-]\d{2}:\d{2})?)?",
+    r"(?:[Tt ](?P<time>\d{2}:\d{2}(?::\d{2})?)(?:[.,](?P<fraction>\d+))?(?P<offset>[Zz]|[+-]\d{2}(?::?\d{2})?)?)?",
     re.ASCII,
 )
+# An ISO 8601 calendar date in extended format (`YYYY-MM-DD`, §4.1.2.2) fixes the order of its fields: text that
+# starts with one is read year first whatever the page's locales say, and must state that date.
+_ISO_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}(?!\d)", re.ASCII)
+_YEAR_FIRST: tuple[Order, ...] = ("YMD",)
 # Three numeric fields with one separator (CLDR short date patterns use `/`, `.` or `-`).
 _NUMERIC = re.compile(r"(\d{1,4})([./-])(\d{1,2})\2(\d{1,4})", re.ASCII)
 # A time followed by a numeric UTC offset (ISO 8601 time with offset; RFC 5322 §3.3 `zone`). Zone abbreviations do not
@@ -77,6 +82,12 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     want_time = spec.type is FieldType.DATETIME
     if match := _RFC_3339.fullmatch(text):
         return _from_rfc_3339(match, want_time)
+    if prefix := _ISO_DATE_PREFIX.match(text):
+        try:
+            stated = date.fromisoformat(prefix.group())
+        except ValueError:
+            return Invalid("not_a_date")
+        return _from_text(text, want_time, _YEAR_FIRST, _languages(ctx), ctx.captured_at, stated)
     orders = _orders(ctx)
     if match := _NUMERIC.fullmatch(text):
         return Invalid("no_time") if want_time else _from_numeric(match, orders)
@@ -127,8 +138,14 @@ def _two_digit_years(two_digits: int) -> list[int]:
 
 
 def _from_text(
-    text: str, want_time: bool, orders: tuple[Order, ...], languages: tuple[str, ...], base: datetime
+    text: str,
+    want_time: bool,
+    orders: tuple[Order, ...],
+    languages: tuple[str, ...],
+    base: datetime,
+    stated: date | None = None,
 ) -> NormalizeResult:
+    """`stated` is the date an ISO 8601 prefix of `text` fixes; a reading of another date is a misreading."""
     if not languages:
         # Month and day names are words of a language; reading them without the page's language is a guess (C7).
         return Invalid("no_language")
@@ -139,7 +156,7 @@ def _from_text(
         if reading is None:
             continue
         value, period = reading
-        if period not in _DAY_PERIODS:
+        if period not in _DAY_PERIODS or (stated is not None and value.date() != stated):
             continue
         # A relative date moves with its base and an absolute one does not: a structural test, not a phrase list.
         moved = _parse(text, languages, order, _ANCHOR + _ONE_DAY)

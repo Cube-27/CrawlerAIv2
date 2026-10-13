@@ -71,6 +71,66 @@ def test_rfc_3339_forms_parse_directly(raw: str, expected: str) -> None:
     assert normalize(raw, DATETIME) == Ok(expected)
 
 
+def _iso_offset(minutes: int, form: str) -> str:
+    """An ISO 8601 UTC offset in one of its forms: extended `±hh:mm`, basic `±hhmm`, or hours only `±hh`."""
+    sign = "-" if minutes < 0 else "+"
+    hours, rest = divmod(abs(minutes), 60)
+    return {
+        "extended": f"{sign}{hours:02d}:{rest:02d}",
+        "basic": f"{sign}{hours:02d}{rest:02d}",
+        "hours": f"{sign}{hours:02d}",
+    }[form]
+
+
+_ISO_LOCALES = st.sampled_from(["en-GB", "de-DE", "en-US", "fr"])
+
+
+@_LOADS_LOCALE_DATA
+@given(
+    _datetimes.map(lambda v: v.replace(tzinfo=None)),
+    st.sampled_from(["extended", "basic", "hours"]),
+    st.integers(min_value=-14 * 60, max_value=14 * 60),
+    st.sampled_from(["T", " "]),
+    st.booleans(),
+    _ISO_LOCALES,
+)
+def test_an_iso_datetime_with_any_offset_form_keeps_its_date_in_every_locale(
+    value: datetime, form: str, minutes: int, sep: str, fraction: bool, lang: str
+) -> None:
+    if form == "hours":
+        minutes = minutes // 60 * 60
+    time = value.strftime("%H:%M:%S") + (".250" if fraction else "")
+    raw = f"{value.date().isoformat()}{sep}{time}{_iso_offset(minutes, form)}"
+    stated = value.replace(microsecond=250_000 if fraction else 0, tzinfo=timezone(timedelta(minutes=minutes)))
+
+    assert normalize(raw, ctx=_ctx(lang)) == Ok(value.date().isoformat())
+    result = normalize(raw, DATETIME, _ctx(lang))
+    assert isinstance(result, Ok)
+    assert isinstance(result.value, str)
+    assert datetime.fromisoformat(result.value) == stated
+
+
+@_LOADS_LOCALE_DATA
+@given(_dates, st.sampled_from(["T10:00:00 UTC", " 10:00 UTC", "T23:30:00 GMT", " UTC"]), _ISO_LOCALES)
+def test_a_date_first_iso_prefix_fixes_the_field_order_in_every_locale(value: date, suffix: str, lang: str) -> None:
+    # ISO 8601 fixes the order of `YYYY-MM-DD`, so the page's day-first or month-first order never applies to it.
+    assert normalize(f"{value.isoformat()}{suffix}", ctx=_ctx(lang)) == Ok(value.isoformat())
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2026-03-04T10:00:00+0000", "2026-03-04T10:00:00Z"),
+        ("2026-03-04T10:00:00.000+0100", "2026-03-04T09:00:00Z"),
+        ("2026-03-04T10:00:00-05", "2026-03-04T15:00:00Z"),
+        ("2026-03-04T10:00:00,5Z", "2026-03-04T10:00:00.500000Z"),
+    ],
+)
+def test_iso_8601_offset_forms_parse_directly_without_a_language(raw: str, expected: str) -> None:
+    assert normalize(raw, DATETIME) == Ok(expected)
+    assert normalize(raw) == Ok("2026-03-04")
+
+
 @given(st.sampled_from([DATE, DATETIME]), _whitespace)
 def test_empty_or_whitespace_input_is_invalid(spec: FieldSpec, raw: str) -> None:
     assert normalize(raw, spec, _ctx("en-GB")) == Invalid("empty")
@@ -243,3 +303,16 @@ def test_the_result_depends_only_on_the_arguments_and_never_raises(spec: FieldSp
 
     assert isinstance(first, Ok | Ambiguous | Invalid)
     assert normalize(raw, spec, ctx) == first
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2026-03-04 10:00 +0100", Ok("2026-03-04")),
+        # `dateparser` reads this as another day; a reading must state the date its ISO 8601 prefix fixes.
+        ("2026-03-04 March", Invalid("not_a_date")),
+        ("2026-13-04 10:00 UTC", Invalid("not_a_date")),
+    ],
+)
+def test_text_after_an_iso_date_never_changes_that_date(raw: str, expected: object) -> None:
+    assert normalize(raw, ctx=_ctx("en-GB")) == expected
