@@ -93,6 +93,9 @@ class MemoryStore:
     async def llm_cache_put(self, key: str, value: bytes) -> None:
         self.cache[key] = value
 
+    async def aclose(self) -> None:
+        pass
+
 
 class LiveLLM:
     """Stands in for a provider: its answer depends on the prompt, but its latency changes from call to call, as a
