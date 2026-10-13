@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). Working on L2. In progress: SPEC-09 PR 3 (#117), SPEC-08 PR 6, SPEC-08 PR 9. Next: SPEC-08 PR 7, SPEC-08 PR 10, SPEC-09 PR 4.
+- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 6 (#118), SPEC-08 PR 9, SPEC-10 PR 1. Next: SPEC-08 PR 7, SPEC-08 PR 10, SPEC-09 PR 4.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -192,7 +192,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | `ApiRecipe` model + binders + property tests | done (#102) | |
 | 2 | Discovery from network bodies | done (#113) | D-0540–D-0543 |
-| 3 | Header minimization + replay | todo | |
+| 3 | Header minimization + replay | done (#117) | D-0559–D-0562 |
 | 4 | Held-out validation + IR integration | todo | |
 | 5 | Execution rung + `api` collector + pagination | todo | |
 | 6 | Role D | todo | |
