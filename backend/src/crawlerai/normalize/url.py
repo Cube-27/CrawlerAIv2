@@ -34,6 +34,8 @@ _QUERY_SAFE = _PATH_SAFE + "?"
 _FORBIDDEN_IN_DOMAIN = frozenset(" #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in range(0x20)))
 # RFC 9110 §4.2.1 and §4.2.2: the default ports of http and https, the only schemes of the type.
 _DEFAULT_PORT = {"http": 80, "https": 443}
+# A relative reference with no base to resolve it against; `resolve.derive` absolutizes these (SPEC-05 §4.8).
+RELATIVE_WITHOUT_BASE = Invalid("relative_without_base")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -86,7 +88,7 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
         parts = urlsplit(reference)
         if not parts.scheme:
             if base is None:
-                return Invalid("relative_without_base")
+                return RELATIVE_WITHOUT_BASE
             if has_surrogate(base):
                 return Invalid("surrogate")
             # RFC 3986 §5.2: reference resolution against the base URI.
