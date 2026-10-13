@@ -1,4 +1,4 @@
-"""Politeness (SPEC-02 §4.6): the request interval, Retry-After, backoff and per-host admission."""
+"""Politeness (SPEC-02 §4.6): the request interval, Retry-After and per-host admission."""
 
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.politeness import HostLimiter, backoff, interval, retry_after
+from crawlerai.acquire.politeness import HostLimiter, interval, retry_after
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
@@ -58,23 +58,6 @@ def test_retry_after_reads_seconds_or_an_http_date(value: str, expected: timedel
 def test_retry_after_is_none_without_the_header_and_uses_the_last_one_when_repeated() -> None:
     assert retry_after((("Content-Type", "text/html"),), NOW) is None
     assert retry_after((("retry-after", "10"), ("Retry-After", "20")), NOW) == timedelta(seconds=20)
-
-
-@pytest.mark.parametrize(
-    ("attempt", "expected"),
-    [(1, 30), (2, 60), (3, 120), (5, 480), (6, 900), (20, 900)],
-)
-def test_without_retry_after_backoff_doubles_from_30s_up_to_15_min(attempt: int, expected: int) -> None:
-    assert backoff((), attempt, NOW) == timedelta(seconds=expected)
-
-
-@pytest.mark.parametrize(("value", "expected"), [("120", 120), ("900", 900), ("0", 0)])
-def test_backoff_honours_retry_after(value: str, expected: int) -> None:
-    assert backoff((("Retry-After", value),), 3, NOW) == timedelta(seconds=expected)
-
-
-def test_a_retry_after_beyond_15_min_gives_no_retry() -> None:
-    assert backoff((("Retry-After", "901"),), 1, NOW) is None
 
 
 def test_the_limiter_admits_one_request_per_interval_per_host() -> None:

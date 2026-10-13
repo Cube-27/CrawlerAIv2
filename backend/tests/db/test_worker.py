@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
-from crawlerai.worker.loop import Failed, Finished, Postpone, Retry, TaskHandler, TaskResult, run_worker
+from crawlerai.worker.loop import Failed, Finished, Postpone, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -155,7 +155,7 @@ async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engin
     job_id, _ = await _job(engine, 1)
 
     async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        return Retry(timedelta(0), "http 429", exhausted="blocked")
+        return Failed("http 429", transient=True, after=timedelta(0), exhausted="blocked")
 
     await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
 

@@ -18,7 +18,6 @@ from crawlerai.db.queue import (
     fail_task,
     release_expired_leases,
     release_task,
-    retry_task,
 )
 
 pytestmark = pytest.mark.anyio
@@ -323,7 +322,7 @@ async def test_a_retry_requeues_after_the_given_delay_and_spends_the_attempt(con
     task = await _claim_one(conn)
     now = await _now(conn)
 
-    await retry_task(conn, task, "http 429", after=timedelta(seconds=120), exhausted="blocked")
+    await fail_task(conn, task, "http 429", transient=True, after=timedelta(seconds=120), exhausted="blocked")
 
     row = await _row(conn, task_id)
     assert (row.status, row.outcome, row.attempts, row.last_error, row.claimed_by) == (
@@ -341,7 +340,7 @@ async def test_a_retry_on_the_last_attempt_finishes_with_the_exhausted_outcome(c
     [task_id] = await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
     task = await _claim_one(conn)
 
-    await retry_task(conn, task, "http 503", after=timedelta(seconds=30), exhausted="blocked")
+    await fail_task(conn, task, "http 503", transient=True, after=timedelta(seconds=30), exhausted="blocked")
 
     row = await _row(conn, task_id)
     assert (row.status, row.outcome, row.attempts, row.last_error) == ("done", "blocked", MAX_ATTEMPTS, "http 503")

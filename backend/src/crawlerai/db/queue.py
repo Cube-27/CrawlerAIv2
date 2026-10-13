@@ -31,7 +31,7 @@ from crawlerai.db.jobs import (
     transition_job,
     transition_task,
 )
-from crawlerai.db.models import FinishedOutcome, Job, JobId, PageKind, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.models import FinishedOutcome, Job, JobId, PageKind, TaskOutcome, TaskStatus, UrlTask, UrlTaskId
 
 LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
@@ -104,25 +104,30 @@ async def complete_task(
     await _finish(conn, task, "done", outcome=outcome, last_error=reason)
 
 
-async def fail_task(conn: AsyncConnection, task: ClaimedTask, error: str, *, transient: bool) -> None:
-    """Record a failure. A transient one is retried after an exponential backoff until `MAX_ATTEMPTS` (D-0006);
-    anything else fails the task."""
+def retry_delay(attempts: int) -> timedelta:
+    """The backoff before retrying a task that failed transiently on attempt `attempts` (1 for the first)."""
+    delay: timedelta = BACKOFF_BASE * 2 ** (attempts - 1)
+    return delay
+
+
+async def fail_task(
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    error: str,
+    *,
+    transient: bool,
+    after: timedelta | None = None,
+    exhausted: TaskOutcome = "failed",
+) -> None:
+    """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
+    asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `retry_delay`. A permanent failure, or the last
+    attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`)."""
     last_error = _cut(error)
     if transient and task.attempts < MAX_ATTEMPTS:
-        backoff = BACKOFF_BASE * 2 ** (task.attempts - 1)
-        await _move(conn, task, "queued", last_error=last_error, next_attempt_at=func.now() + backoff)
-    else:
+        delay = retry_delay(task.attempts) if after is None else after
+        await _move(conn, task, "queued", last_error=last_error, next_attempt_at=func.now() + delay)
+    elif exhausted == "failed":
         await _finish(conn, task, "failed", outcome="failed", last_error=last_error)
-
-
-async def retry_task(
-    conn: AsyncConnection, task: ClaimedTask, error: str, *, after: timedelta, exhausted: FinishedOutcome
-) -> None:
-    """Requeue a task that ran, after the delay its target asked for (a `Retry-After`, SPEC-02 §4.6), while it has
-    attempts left (`MAX_ATTEMPTS`, as for a transient failure); on the last attempt, finish it with `exhausted`."""
-    last_error = _cut(error)
-    if task.attempts < MAX_ATTEMPTS:
-        await _move(conn, task, "queued", last_error=last_error, next_attempt_at=func.now() + after)
     else:
         await _finish(conn, task, "done", outcome=exhausted, last_error=last_error)
 

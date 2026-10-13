@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import FetchResult
@@ -79,10 +79,11 @@ def snapshot_of(result: FetchResult) -> RobotsSnapshot | None:
     return RobotsSnapshot(fetched_at=manifest.fetched_at, status_code=status, body=body)
 
 
-async def site_robots(conn: AsyncConnection, site_id: SiteId, url: str, fetch: Fetch) -> Robots | None:
-    """The robots rules for `url` on its site, from the site's snapshot while it is fresh; otherwise fetched and
-    stored as the new snapshot. `None` when robots.txt is unreachable; nothing is stored then."""
-    stored = (await conn.execute(select(Site.robots_snapshot).where(Site.id == site_id))).scalar_one()
+async def site_robots(
+    conn: AsyncConnection, site_id: SiteId, stored: str | None, url: str, fetch: Fetch
+) -> Robots | None:
+    """The robots rules for `url` on its site, from the site's snapshot `stored` while it is fresh; otherwise
+    fetched and stored as the new snapshot. `None` when robots.txt is unreachable; nothing is stored then."""
     if stored is not None:
         snapshot = RobotsSnapshot.model_validate_json(stored)
         if datetime.now(UTC) - snapshot.fetched_at < ROBOTS_TTL:

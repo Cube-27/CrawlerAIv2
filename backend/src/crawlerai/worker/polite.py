@@ -10,12 +10,12 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, HostLimiter, backoff, interval
+from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, HostLimiter, interval, retry_after
 from crawlerai.acquire.robots import Fetch, site_robots
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
-from crawlerai.db.queue import ClaimedTask
-from crawlerai.worker.loop import Failed, Finished, Postpone, Retry, TaskResult
+from crawlerai.db.queue import ClaimedTask, retry_delay
+from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
 
 
 async def fetch_politely(
@@ -30,18 +30,18 @@ async def fetch_politely(
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page;
     - robots.txt unreachable: a transient failure (RFC 9309 §2.3.1.4 allows nothing until it can be read);
     - the site not admitted yet: postponed until it is;
-    - a 429 or 503: retried after the backoff, then `blocked` once attempts run out or when the server asks for
-      more than the longest backoff."""
+    - a 429 or 503: a transient failure, retried after its `Retry-After` or the queue's backoff, then `blocked` once
+      attempts run out; `blocked` at once when the server asks for more than the longest backoff."""
+    site = (await conn.execute(select(Site.robots_snapshot, Site.crawl_delay_ms).where(Site.id == site_id))).one()
     robots = None
     if policy.respect_robots:
-        robots = await site_robots(conn, site_id, task.url, fetch)
+        robots = await site_robots(conn, site_id, site.robots_snapshot, task.url, fetch)
         if robots is None:
             return Failed("robots_unreachable", transient=True)
         if not robots.allows(task.url):
             return Finished("blocked", reason="robots")
-    crawl_delay_ms = (await conn.execute(select(Site.crawl_delay_ms).where(Site.id == site_id))).scalar_one()
     host = urlsplit(task.url).hostname or ""
-    wait = limiter.admit(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay))
+    wait = limiter.admit(host, interval(site.crawl_delay_ms, None if robots is None else robots.crawl_delay))
     if wait:
         return Postpone(wait)
 
@@ -50,8 +50,10 @@ async def fetch_politely(
     if manifest.status_code not in SLOW_DOWN:
         return result
     error = f"http {manifest.status_code}"
-    after = backoff(manifest.headers.response, task.attempts, datetime.now(UTC))
-    limiter.pause(host, BACKOFF_MAX if after is None else after)
-    if after is None:
+    asked = retry_after(manifest.headers.response, datetime.now(UTC))
+    if asked is not None and asked > BACKOFF_MAX:
+        # Retrying before the server allows breaks its request; waiting longer holds the job open without bound.
+        limiter.pause(host, BACKOFF_MAX)
         return Finished("blocked", reason=error)
-    return Retry(after, error, exhausted="blocked")
+    limiter.pause(host, retry_delay(task.attempts) if asked is None else asked)
+    return Failed(error, transient=True, after=asked, exhausted="blocked")

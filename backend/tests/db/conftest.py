@@ -12,7 +12,6 @@ The database is migrated to head once per session. Each test runs in a transacti
 or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
 """
 
-import hashlib
 import os
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
@@ -28,7 +27,7 @@ from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Job, JobEvent, UrlTask, UsageEvent
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 TEST_PRIVATE_DATABASE_URL = "CRAWLERAI_TEST_PRIVATE_DATABASE_URL"
@@ -105,7 +104,7 @@ def fetch_result() -> Callable[..., FetchResult]:
             block_class=block_class,
             headers=Headers(request=(), response=headers),
             timings_ms={"total": 1},
-            html_sha256=hashlib.sha256(body).hexdigest(),
+            html_sha256=sha256_hex(body),
             network_bodies=(),
             fetch_policy=FetchPolicy().model_dump(mode="json"),
             engine_version="test",

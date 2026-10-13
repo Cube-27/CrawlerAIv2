@@ -1,4 +1,4 @@
-"""Politeness per site (SPEC-02 §4.6): a request rate, and backoff when a server asks for a pause.
+"""Politeness per site (SPEC-02 §4.6): a request rate, and the pause a server asks for.
 
 The limiter's state lives in the worker process. With several workers a site sees up to one request per interval
 from each, which the design point (0.1 tasks/s) accepts; shared state is a candidate only if measured.
@@ -13,8 +13,7 @@ from typing import Final
 from crawlerai.storage.capture_bundle import HeaderList
 
 DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # SPEC-02 §4.6: 1 request/s
-BACKOFF_BASE: Final = timedelta(seconds=30)
-BACKOFF_MAX: Final = timedelta(minutes=15)
+BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
@@ -43,17 +42,6 @@ def retry_after(headers: HeaderList, now: datetime) -> timedelta | None:
     # RFC 9110 §5.6.7: an HTTP-date is in GMT; the parser leaves one without a zone (`-0000`) naive.
     when = when if when.tzinfo else when.replace(tzinfo=UTC)
     return max(when - now, timedelta(0))
-
-
-def backoff(headers: HeaderList, attempt: int, now: datetime) -> timedelta | None:
-    """How long to wait after a slow-down response on `attempt` (1 for the first): its `Retry-After`, else 30 s
-    doubling per attempt up to 15 min. `None` when the server asks for longer than 15 min: the task stops there
-    rather than retry before the server allows, or hold its job open for an unbounded time."""
-    asked = retry_after(headers, now)
-    if asked is None:
-        doubled: timedelta = BACKOFF_BASE * 2 ** (attempt - 1)
-        return min(doubled, BACKOFF_MAX)
-    return asked if asked <= BACKOFF_MAX else None
 
 
 class HostLimiter:

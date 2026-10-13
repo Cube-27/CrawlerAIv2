@@ -20,7 +20,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, claim_tasks
-from crawlerai.worker.loop import Failed, Finished, Postpone, Retry, TaskResult, run_worker
+from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult, run_worker
 from crawlerai.worker.polite import fetch_politely
 
 pytestmark = pytest.mark.anyio
@@ -28,6 +28,7 @@ pytestmark = pytest.mark.anyio
 ORIGIN = "https://shop.example.test"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
 PAGE = b"<html><body><h1>Item</h1></body></html>"
+DEFAULT_PROJECT = select(Project.id).where(Project.name == "default").scalar_subquery()
 OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
 
 
@@ -59,15 +60,13 @@ def web(fetch_result: Callable[..., FetchResult]) -> Web:
 
 
 async def _site(conn: AsyncConnection, **columns: Any) -> SiteId:
-    project = select(Project.id).where(Project.name == "default").scalar_subquery()
-    values = {"project_id": project, "host": "shop.example.test", **columns}
+    values = {"project_id": DEFAULT_PROJECT, "host": "shop.example.test", **columns}
     site_id: SiteId = (await conn.execute(insert(Site).values(**values).returning(Site.id))).scalar_one()
     return site_id
 
 
 async def _job(conn: AsyncConnection, *paths: str) -> JobId:
-    project = select(Project.id).where(Project.name == "default").scalar_subquery()
-    values = {"project_id": project, "kind": "scrape", "request": {}, "engine_version": "0+cal.0"}
+    values = {"project_id": DEFAULT_PROJECT, "kind": "scrape", "request": {}, "engine_version": "0+cal.0"}
     job_id: JobId = (await conn.execute(insert(Job).values(**values).returning(Job.id))).scalar_one()
     rows = [{"job_id": job_id, "url": ORIGIN + path, "canonical_url": ORIGIN + path} for path in paths]
     await conn.execute(insert(UrlTask), rows)
@@ -195,12 +194,13 @@ async def test_a_second_page_of_the_site_waits_out_the_interval_in_the_queue(
 
 
 @pytest.mark.parametrize(
-    ("status", "headers", "attempts", "after"),
+    ("status", "headers", "attempts", "asked", "pause"),
     [
-        (429, (("Retry-After", "120"),), 0, timedelta(seconds=120)),
-        (503, (("Retry-After", "5"),), 2, timedelta(seconds=5)),
-        (429, (), 0, timedelta(seconds=30)),
-        (503, (), 1, timedelta(seconds=60)),
+        (429, (("Retry-After", "120"),), 0, timedelta(seconds=120), timedelta(seconds=120)),
+        (503, (("Retry-After", "5"),), 2, timedelta(seconds=5), timedelta(seconds=5)),
+        # Without Retry-After the queue's backoff applies: 30 s, doubling per attempt.
+        (429, (), 0, None, timedelta(seconds=30)),
+        (503, (), 1, None, timedelta(seconds=60)),
     ],
 )
 async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
@@ -209,7 +209,8 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     status: int,
     headers: tuple[tuple[str, str], ...],
     attempts: int,
-    after: timedelta,
+    asked: timedelta | None,
+    pause: timedelta,
 ) -> None:
     site_id = await _site(conn)
     web.pages[f"{ORIGIN}/item/1"] = (status, b"", headers)
@@ -219,9 +220,9 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
 
     result = await fetch_politely(conn, first, site_id, FetchPolicy(), web, limiter)
 
-    assert result == Retry(after, f"http {status}", exhausted="blocked")
+    assert result == Failed(f"http {status}", transient=True, after=asked, exhausted="blocked")
     # The site's other pages wait out the same pause.
-    assert await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(after)
+    assert await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
 
 
 async def test_a_retry_after_beyond_15_min_blocks_the_task(conn: AsyncConnection, web: Web) -> None:
@@ -238,9 +239,8 @@ async def test_a_retry_after_beyond_15_min_blocks_the_task(conn: AsyncConnection
 
 
 async def test_through_the_worker_retry_after_sets_the_next_attempt_and_robots_end_the_task(
-    engine: AsyncEngine, fetch_result: Callable[..., FetchResult]
+    engine: AsyncEngine, web: Web
 ) -> None:
-    web = Web(fetch_result, {f"{ORIGIN}/robots.txt": (200, ROBOTS.encode(), ())})
     web.pages[f"{ORIGIN}/item/1"] = (429, b"", (("Retry-After", "120"),))
     async with engine.begin() as conn:
         site_id = await _site(conn)
