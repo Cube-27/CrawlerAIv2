@@ -158,6 +158,9 @@ published values unchanged), INV-32 (trusted-proxy headers; no key creation at s
   hosts resolved by a stub resolver): each format, `max_age` reuse, timeout, problem responses, unknown key 401,
   rate limit 429.
 - Service tests without HTTP.
+- INV-32: router test with spoofed `Forwarded`/`X-Forwarded-For` headers; they change the client address used
+  for rate limiting only when the peer is a configured trusted proxy. A startup test: creating the app and
+  starting the worker leave the `api_key` table unchanged (no key created, reactivated or reset).
 - Content formats: property test that `links` are absolute http(s) URLs; `html` contains no `<script>`;
   `metadata.language` falls back as specified.
 - OpenAPI snapshot test (the committed `frontend/openapi.json` matches).
@@ -175,7 +178,7 @@ published values unchanged), INV-32 (trusted-proxy headers; no key creation at s
 | # | Title | Scope | Checks | Done when |
 |---|---|---|---|---|
 | 1 | App factory, problem details, healthz, OpenAPI export wiring | `api/app`, `api/dto` | unit | `/healthz` 200; openapi.json committed. |
-| 2 | API keys: CLI, hashing, bearer auth, rate limiter | `api/auth`, `cli` | unit | 401/429 tested. |
+| 2 | API keys: CLI, hashing, bearer auth, rate limiter | `api/auth`, `cli` | unit, router | 401/429 tested; INV-32 spoofed-header and startup-creates-no-keys tests pass. |
 | 3 | Content formats | `content/markdown,html,links,metadata` | unit, property | Formats correct on fixtures. |
 | 4 | Service layer + `POST /v1/scrape` (formats only) | `services/scrape`, router | router tests | Sync scrape works. |
 | 5 | `records` format with schema id/inline + `max_age` | same | router + replay, parser-count test | Field shape complete; INV-26 across formats + records. |
