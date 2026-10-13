@@ -40,13 +40,18 @@ def plant(src: Path, files: dict[str, str]) -> None:
     [
         ({"collect/probe.py": "import babel\n"}, "Only normalizers import normalization libraries"),
         ({"schemas/probe.py": "from price_parser import Price\n"}, "Only normalizers import normalization libraries"),
+        ({"normalize/url.py": "from crawlerai.normalize import text\n"}, "One module per field type"),
         (
-            {"normalize/alpha.py": "", "normalize/beta.py": "from crawlerai.normalize import alpha\n"},
-            "One module per field type",
+            {"normalize/dispatch.py": "", "normalize/money.py": "from crawlerai.normalize import dispatch\n"},
+            "Normalizer internals",
+        ),
+        (
+            {"normalize/dispatch.py": "", "normalize/base.py": "from crawlerai.normalize import dispatch\n"},
+            "Normalizer internals",
         ),
         ({"resolve/probe.py": "from crawlerai import adapters\n"}, "Nothing outside adapters imports adapters"),
         ({"core/probe.py": "from crawlerai import db\n"}, "Layering"),
-        ({"normalize/probe.py": "from crawlerai import schemas\n"}, "Layering"),
+        ({"schemas/probe.py": "from crawlerai import normalize\n"}, "Layering"),
     ],
 )
 def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[str, str], broken_contract: str) -> None:
@@ -67,6 +72,7 @@ def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[s
         {"acquire/probe.py": "from crawlerai import adapters\n"},
         {"collect/probe.py": "from crawlerai import adapters\n"},
         {"collect/probe.py": "from crawlerai import normalize\n"},
+        {"normalize/money.py": "from crawlerai.normalize import base\nfrom crawlerai.schemas import types\n"},
     ],
 )
 def test_permitted_imports_keep_every_contract(package_copy: Path, files: dict[str, str]) -> None:

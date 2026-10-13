@@ -43,6 +43,8 @@ select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT012"]
 strict = true
 python_version = "3.12"
 mypy_path = "src"
+# Test directories have no `__init__.py`; module names come from their paths, so two `conftest.py` files coexist.
+explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
 [tool.pydantic-mypy]

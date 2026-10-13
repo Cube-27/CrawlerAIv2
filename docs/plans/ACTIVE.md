@@ -115,14 +115,14 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Schema models, registry, presets, sync | done (#43) | C3 `schema_org` exemption tightened in #48 (D-0248). |
-| 2 | Normalizer base, dispatcher, text, url | todo | |
+| 2 | Normalizer base, dispatcher, text, url | done (#47) | |
 | 3 | money (CLDR via Babel + price-parser) | todo | |
 | 4 | enum + vocab framework + availability `en` | todo | |
 | 5 | date/datetime | todo | |
 | 6 | identifier | todo | |
 | 7 | Data manifest + GeoNames fetch + location | todo | |
 | 8 | range | todo | |
-| 9 | `equal` per type + list/object recursion | todo | |
+| 9 | `equal` per type + list/object recursion | todo | Also: url's WHATWG forbidden-host-code-point check (from #47). |
 
 ## [SPEC-05 — Structured extraction, ownership, resolution and confidence](../specs/SPEC-05-extraction-and-resolution.md)
 

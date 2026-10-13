@@ -4,13 +4,30 @@
 root_package = crawlerai
 include_external_packages = True
 
-# Every module directly under crawlerai.normalize is one field type's normalizer. The wildcard covers each new
-# type as soon as its module exists.
+# The eight field-type normalizers (SPEC-04 §4.1). A new type module is added here and to normalize-internals in
+# the PR that creates it.
 [importlinter:contract:normalize-independence]
 name = One module per field type
 type = independence
 modules =
-    crawlerai.normalize.*
+    crawlerai.normalize.text
+    crawlerai.normalize.money
+    crawlerai.normalize.enum
+    crawlerai.normalize.url
+    crawlerai.normalize.identifier
+    crawlerai.normalize.date
+    crawlerai.normalize.location
+    crawlerai.normalize.range
+
+# The dispatcher imports the type modules; the type modules import only `base` (results, context) from normalize.
+# Independence between the type modules is the contract above, so they are `:` siblings here.
+[importlinter:contract:normalize-internals]
+name = Normalizer internals
+type = layers
+layers =
+    crawlerai.normalize.dispatch
+    crawlerai.normalize.text : crawlerai.normalize.money : crawlerai.normalize.enum : crawlerai.normalize.url : crawlerai.normalize.identifier : crawlerai.normalize.date : crawlerai.normalize.location : crawlerai.normalize.range
+    crawlerai.normalize.base
 
 # Indirect imports are allowed: callers use the normalizers, which use these libraries.
 [importlinter:contract:normalize-libs]
@@ -68,7 +85,8 @@ forbidden_modules =
 allow_indirect_imports = True
 
 # `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
-# contract lets acquire import adapters.
+# contract lets acquire import adapters. normalize sits above schemas because each normalizer reads the field's
+# `FieldSpec` (SPEC-04 §4.3).
 [importlinter:contract:layers]
 name = Layering
 type = layers
@@ -78,7 +96,8 @@ layers =
     crawlerai.config_ir
     crawlerai.resolve | crawlerai.llm
     crawlerai.collect | crawlerai.content
-    crawlerai.normalize | crawlerai.schemas
+    crawlerai.normalize
+    crawlerai.schemas
     crawlerai.acquire : crawlerai.adapters
     crawlerai.db | crawlerai.storage
     crawlerai.core
