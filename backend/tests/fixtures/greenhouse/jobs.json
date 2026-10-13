@@ -1,0 +1,33 @@
+{
+  "jobs": [
+    {
+      "id": 4000001,
+      "internal_job_id": 3000001,
+      "title": "Synthetic Platform Engineer",
+      "updated_at": "2026-09-15T12:30:00-04:00",
+      "requisition_id": "REQ-0001",
+      "location": { "name": "Remote" },
+      "absolute_url": "https://jobs.example.com/example-tenant/jobs/4000001",
+      "language": "en",
+      "metadata": null,
+      "content": "&lt;p&gt;Build synthetic systems for a test fixture.&lt;/p&gt;",
+      "departments": [{ "id": 1, "name": "Engineering", "parent_id": null, "child_ids": [] }],
+      "offices": [{ "id": 2, "name": "Remote", "location": "Remote", "parent_id": null, "child_ids": [] }]
+    },
+    {
+      "id": 4000002,
+      "internal_job_id": 3000002,
+      "title": "Synthetic Data Analyst",
+      "updated_at": "2026-09-20T08:00:00-04:00",
+      "requisition_id": "REQ-0002",
+      "location": { "name": "Example City" },
+      "absolute_url": "https://jobs.example.com/example-tenant/jobs/4000002",
+      "language": "en",
+      "metadata": null,
+      "content": "&lt;p&gt;Analyse synthetic data.&lt;/p&gt;",
+      "departments": [],
+      "offices": []
+    }
+  ],
+  "meta": { "total": 2 }
+}

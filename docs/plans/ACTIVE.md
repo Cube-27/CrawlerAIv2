@@ -90,7 +90,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | Rung selection + fetch_method memory + re-check scheduler task | done (#31) | SPEC-02 L0 rows complete. |
 | 6 | Patchright browser rung with network capture | done (#46) | SSRF guard is a per-fetch SOCKS5 proxy (D-0249). Optional follow-ups: cap `json_responses` at append time; keep the first hop's exchange when the guard rejects a later redirect. |
 | 7 | Proxy pools | todo | |
-| 8 | Adapter protocol + Greenhouse | todo | |
+| 8 | Adapter protocol + Greenhouse | done (#52) | Follow-ups: proxy support in `fetch_json` and a per-adapter settings flag, once PR 7 merges. |
 | 9 | Lever adapter | todo | |
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)

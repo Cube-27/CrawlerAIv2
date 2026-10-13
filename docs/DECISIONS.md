@@ -1647,3 +1647,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `__init__.py` files in test directories.
 - Why: SPEC-04 §6's example count in CI.
 - Reversible: yes
+
+### D-0265 — `Adapter.map` takes a field → schema.org projection and the page kind
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 8 (#52) · Status: decided
+- Decision: SPEC-02 §4.9 says `map(schema_def)`, but the layers contract puts `schemas` above `acquire : adapters`. The caller (collect, above schemas) passes `{field: schema.org path}` and the page kind; only top-level fields are mapped.
+- Alternatives: Relax the layer contract.
+- Why: Same information, no contract change (C8).
+- Reversible: yes
+
+### D-0266 — Adapter JSONPaths use RFC 9535 bracket notation
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 8 (#52) · Status: decided
+- Decision: `$['location']['name']`, `$['jobs'][*]['title']`.
+- Alternatives: Dot notation.
+- Why: RFC 9535 Normalized Paths; can't be mistaken for a hostname by the C3 scan.
+- Reversible: yes
+
+### D-0267 — Greenhouse endpoints verified; no guessed regional host
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 8 (#52) · Status: decided
+- Decision: `GET /v1/boards/{token}/jobs?content=true` and `/jobs/{id}`, verified against the platform's public docs on 2026-10-13, closing SPEC-02 §9's "[unverified]" item for Greenhouse. Boards on regional hosts the docs don't name are not detected and fall through to the generic rungs.
+- Alternatives: Guess a regional API host.
+- Why: C7: decline rather than guess.
+- Reversible: yes
+
+### D-0268 — `acquire/api.fetch_json` (GET only) lands with the adapters
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 8 (#52) · Status: decided
+- Decision: `JsonRequest(url, page_url)`, GET only; SPEC-09 extends it for recipes; proxy support follows SPEC-02 PR 7.
+- Alternatives: Build it in SPEC-09.
+- Why: The adapter's fetch needs it now.
+- Reversible: yes
+
+### D-0269 — The active adapter set is a `Registry` argument
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 8 (#52) · Status: decided
+- Decision: A per-adapter settings flag is a follow-up.
+- Alternatives: A settings flag now.
+- Why: Settings are SPEC-02 PR 7's scope, and nothing builds the registry in production yet.
+- Reversible: yes

@@ -20,14 +20,12 @@ from curl_cffi.requests.exceptions import RequestException
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
+from crawlerai.acquire.redirects import MAX_REDIRECTS
+from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.storage.capture_bundle import HeaderList
 
-# RFC 9110 §15.4: the redirect status codes that carry a Location to follow (300 and 304 do not redirect by
-# themselves, 305 and 306 are deprecated).
-_REDIRECTS = frozenset({301, 302, 303, 307, 308})
-_MAX_REDIRECTS = 5  # SPEC-02 §4.5
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
     CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
@@ -96,11 +94,11 @@ async def _follow(
     # bypass the checked address.
     async with AsyncSession(impersonate=impersonate, trust_env=False) as session:
         response = await _get(session, target, policy, deadline)
-        for hop in range(_MAX_REDIRECTS + 1):
-            location = _location(response)
+        for hop in range(MAX_REDIRECTS + 1):
+            location = redirect_location(response.status, response.response_headers)
             if location is None:
                 break
-            if hop == _MAX_REDIRECTS:
+            if hop == MAX_REDIRECTS:
                 raise _Failed("too_many_redirects", response)
             target = await _checked(connector.redirect(target, location), deadline, response)
             response = await _get(session, target, policy, deadline)
@@ -184,11 +182,3 @@ def _parse_request_headers(block: bytes) -> HeaderList:
     # `name: value` lines (RFC 9112 §3, §5).
     lines = block.decode("latin-1").split("\r\n")[1:]
     return tuple((name, value.strip()) for name, _, value in (line.partition(":") for line in lines if ":" in line))
-
-
-def _location(response: _Response) -> str | None:
-    if response.status not in _REDIRECTS:
-        return None
-    # RFC 9110 §10.2.2: one Location value; when repeated, the last one received is used.
-    values = [value for name, value in response.response_headers if name.lower() == "location"]
-    return values[-1] if values else None
