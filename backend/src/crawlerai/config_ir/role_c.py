@@ -1,4 +1,5 @@
-"""The pipeline's LLM hook bound to a client (SPEC-05 §4.13, SPEC-06 §4.4, D-0483): role C for `extract_page`.
+"""The pipeline's LLM hook bound to a client (SPEC-05 §4.13, SPEC-06 §4.4, D-0483): role C for `extract_page`, on a
+detail page's gaps and on a listing without structured rows.
 
 `resolve` and `llm` don't import each other (C8 layering), so the hook is bound here, in the first layer above both;
 the worker and the replay harness (`eval.engine`) bind it the same way.
@@ -7,38 +8,69 @@ The client commits each call's usage on a connection of its own (D-0346). A call
 must not hold an uncommitted write to the job's row meanwhile: the client's usage update would wait on it.
 """
 
+from dataclasses import dataclass
+
 from crawlerai.db.models import JobId
-from crawlerai.llm.client import LLMClient, LLMResponse
+from crawlerai.llm.client import LLMClient, LLMFailure, PromptKind
 from crawlerai.llm.roles import c_extract
-from crawlerai.resolve.pipeline import GapReply, GapRequest, RoleC
+from crawlerai.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest, RoleC
 from crawlerai.resolve.types import LLMCallRecord
 
 
 def role_c(client: LLMClient, *, job_id: JobId | None) -> RoleC:
     """Role C on `client`, charged to `job_id` (None for a replay, which no job pays for)."""
+    return _RoleC(client, job_id)
 
-    async def fill(request: GapRequest) -> GapReply:
+
+@dataclass(frozen=True, slots=True)
+class _RoleC:
+    client: LLMClient
+    job_id: JobId | None
+
+    async def detail(self, request: GapRequest) -> GapReply:
+        fields = {name: request.schema.fields[name] for name in request.missing}
         filled = await c_extract.extract_detail(
-            client,
+            self.client,
             request.page.cleaned_text.text,
-            request.schema,
+            fields,
             request.ctx,
             owner=request.target.id,
-            fields=request.missing,
-            job_id=job_id,
+            job_id=self.job_id,
         )
-        calls = () if filled.response is None else (_call(filled.response),)
-        return GapReply(filled.candidates, calls, failure=filled.failure, diagnostics=filled.diagnostics)
+        calls = _calls(c_extract.PROMPT_KIND, filled)
+        return GapReply(filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics)
 
-    return fill
+    async def listing(self, request: ListingGapRequest) -> ListingGapReply:
+        fields = request.schema.fields
+        filled = await c_extract.extract_listing(
+            self.client,
+            request.page.cleaned_text.text,
+            {name: fields[name] for name in request.row_fields},
+            {name: fields[name] for name in request.page_missing},
+            request.ctx,
+            job_id=self.job_id,
+        )
+        calls = _calls(c_extract.LISTING_PROMPT_KIND, filled)
+        return ListingGapReply(
+            filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics, rows=filled.rows
+        )
 
 
-def _call(response: LLMResponse) -> LLMCallRecord:
-    return LLMCallRecord(
-        prompt_kind=c_extract.PROMPT_KIND,
-        provider=response.provider,
-        model=response.model,
-        request_hash=response.request_hash,
-        tokens_in=response.tokens_in,
-        tokens_out=response.tokens_out,
+def _reason(filled: c_extract.Filled) -> str | None:
+    return filled.reply.field_reason if isinstance(filled.reply, LLMFailure) else None
+
+
+def _calls(kind: PromptKind, filled: c_extract.Filled) -> tuple[LLMCallRecord, ...]:
+    response = filled.reply
+    if isinstance(response, LLMFailure):
+        return ()
+    return (
+        LLMCallRecord(
+            prompt_kind=kind,
+            provider=response.provider,
+            model=response.model,
+            request_hash=response.request_hash,
+            tokens_in=response.tokens_in,
+            tokens_out=response.tokens_out,
+        ),
     )
