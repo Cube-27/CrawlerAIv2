@@ -110,7 +110,7 @@ def test_length_is_bounded_after_normalization(spec: FieldSpec, limit: int) -> N
 @given(
     st.sampled_from([TEXT, LONG]),
     st.text(max_size=20),
-    st.sampled_from(["{{ product.name }}", "{{x}}", "${title}", "${ a.b }", "%s", "%d", "%(name)s", "%1$s"]),
+    st.sampled_from(["{{ item_name }}", "{{x}}", "${title}", "${ a.b }", "%s", "%d", "%(name)s", "%1$s"]),
     st.text(max_size=20),
 )
 def test_a_template_placeholder_anywhere_is_invalid(spec: FieldSpec, before: str, placeholder: str, after: str) -> None:
