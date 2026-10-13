@@ -2,7 +2,8 @@
 and its references are the valid structured or adapter values of the entities that published; a listing's rows are
 its records in stored order, with the page's fields split off and no references."""
 
-from crawlerai.config_ir.held_out import StoredCandidate, facts_of
+from crawlerai.config_ir.held_out import StoredCandidate, StoredRecord, facts_of, published_of
+from crawlerai.config_ir.induction import Published
 from crawlerai.config_ir.validation import Facts
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
@@ -50,3 +51,24 @@ def test_a_listing_splits_page_fields_from_rows_in_stored_order() -> None:
 
 def test_a_page_without_records_has_no_facts() -> None:
     assert facts_of(_schema("detail", title=TEXT), [], []) == (Facts(), ())
+
+
+def test_a_sample_page_reads_published_values_with_their_locators() -> None:
+    schema = _schema("detail", title=TEXT, brand=TEXT, sku=TEXT)
+    record = StoredRecord({"title": "Kettle", "brand": "Acme"}, {"title": "jsonld:0:$['name']", "sku": "x"})
+
+    # A value stored without a locator is left out: induction and synthesis read where a value came from.
+    assert published_of(schema, [record]) == ({"title": Published("Kettle", "jsonld:0:$['name']")}, ())
+
+
+def test_a_listing_samples_its_page_fields_from_the_first_record_and_rows_from_each() -> None:
+    schema = _schema("listing", name=TEXT, heading=PAGE_TEXT)
+    records = [
+        StoredRecord({"name": "A", "heading": "All"}, {"name": "text:0-1", "heading": "text:9-12"}),
+        StoredRecord({"name": "B", "heading": "All"}, {"name": "text:4-5", "heading": "text:9-12"}),
+    ]
+
+    page, rows = published_of(schema, records)
+
+    assert page == {"heading": Published("All", "text:9-12")}
+    assert rows == ({"name": Published("A", "text:0-1")}, {"name": Published("B", "text:4-5")})
