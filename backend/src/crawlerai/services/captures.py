@@ -13,17 +13,18 @@ import asyncio
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import Capture, CaptureId, Extraction, Record
-from crawlerai.resolve.pipeline import EngineData, ModeNotSupported, extract_page
-from crawlerai.resolve.records import RecordContent
+from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.records import record_confidence
+from crawlerai.resolve.task import page_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.records import ExtractedRecord
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
-_COLUMNS = (Capture.id, Capture.object_key)
-_Capture = Row[CaptureId, str]
+_COLUMNS = (Capture.id, Capture.site_id, Capture.url, Capture.object_key)
+_Capture = Row[CaptureId, SiteId, str, str]
 
 
 class CaptureNotFound(LookupError):
@@ -31,8 +32,7 @@ class CaptureNotFound(LookupError):
 
 
 class NotReplayable(Exception):
-    """The capture exists but cannot be replayed: no record was made from it, so no schema names what to extract, or
-    its schema is one the pipeline does not extract yet."""
+    """The capture exists but no record was made from it, so no schema names what to extract."""
 
 
 async def replay(
@@ -58,8 +58,7 @@ async def replay(
     if not schemas:
         raise NotReplayable(f"no record was made from capture {capture_id}, so no schema says what to extract")
     bundle = await _bundle(store, capture)
-    made = [await _replay(bundle, schema, data) for schema in schemas]
-    return [record for record in made if record is not None]
+    return [record for schema in schemas for record in await _replay(bundle, schema, data, capture)]
 
 
 async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
@@ -70,12 +69,18 @@ async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
     return await asyncio.to_thread(decode, blob)
 
 
-async def _replay(bundle: CaptureBundle, schema: SchemaDef, data: EngineData) -> ExtractedRecord | None:
-    try:
-        result = await extract_page(bundle, schema, None, None, "adhoc", data=data)
-    except ModeNotSupported as e:
-        raise NotReplayable(f"schema {schema.name} version {schema.version}: {e}") from e
+async def _replay(
+    bundle: CaptureBundle, schema: SchemaDef, data: EngineData, capture: _Capture
+) -> list[ExtractedRecord]:
+    result = await extract_page(bundle, schema, None, None, "adhoc", data=data)
     if result.entity is None:
-        return None
-    content = RecordContent.of(schema, result.entity)
-    return ExtractedRecord.of_content(content, mode=result.mode, confidence=result.record_confidence)
+        return []
+    # The records a page task would store: a listing's rows are deduplicated by their URLs (§4.10). Their entity keys
+    # are not returned, so the capture's URL stands in for the task's canonical one.
+    _, drafts = page_records(
+        schema, result.entity, result.rows, site_id=capture.site_id, page_url=capture.url, caller_supplied=True
+    )
+    return [
+        ExtractedRecord.of_content(draft, mode=result.mode, confidence=record_confidence(schema, draft.field_meta))
+        for draft in drafts
+    ]

@@ -23,8 +23,7 @@ router = APIRouter(
 @router.post("/{capture_id}/replay", responses={404: PROBLEM_RESPONSE, 409: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE})
 async def replay_capture(capture_id: CaptureId, body: ReplayRequest, request: Request) -> ReplayResult:
     """The records the current engine makes from the capture, against the schema versions of the records stored from
-    it. 404: no such capture, or its bundle expired; 409: no record was made from it, or its schema is a page kind
-    not extracted yet."""
+    it. 404: no such capture, or its bundle expired; 409: no record was made from it."""
     data: EngineData | None = request.app.state.engine_data
     if data is None:
         raise records_unavailable("the engine's data files are not installed")

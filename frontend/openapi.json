@@ -2000,7 +2000,7 @@
     },
     "/v1/captures/{capture_id}/replay": {
       "post": {
-        "description": "The records the current engine makes from the capture, against the schema versions of the records stored from\nit. 404: no such capture, or its bundle expired; 409: no record was made from it, or its schema is a page kind\nnot extracted yet.",
+        "description": "The records the current engine makes from the capture, against the schema versions of the records stored from\nit. 404: no such capture, or its bundle expired; 409: no record was made from it.",
         "operationId": "replay_capture_v1_captures__capture_id__replay_post",
         "parameters": [
           {

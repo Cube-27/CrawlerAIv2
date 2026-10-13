@@ -108,7 +108,8 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     if query.job_id is not None:
         statement = statement.where(Record.job_id == query.job_id)
     if query.site is not None:
-        statement = statement.join(Site, Site.id == Record.site_id).where(Site.host == query.site)
+        # Hosts compare without case (RFC 4343), and sites are stored lowercase.
+        statement = statement.join(Site, Site.id == Record.site_id).where(Site.host == query.site.lower())
     if query.schema_id is not None:
         statement = statement.where(Record.schema_id == query.schema_id)
     if query.cursor is not None:

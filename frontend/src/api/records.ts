@@ -48,7 +48,7 @@ export function listRecords(
   );
 }
 
-/** Replays the capture with the current engine and the site's active config, calling no LLM (SPEC-07 §4.6). */
+/** Replays the capture with the current engine, cold until SPEC-08 wires configs, calling no LLM (SPEC-07 §4.6). */
 export function replayCapture(
   client: ApiClient,
   captureId: string,

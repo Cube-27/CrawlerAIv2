@@ -52,11 +52,19 @@ def _document(name: str) -> SchemaDocument:
     )
 
 
-def _page(name: str, *, price: bool = True) -> bytes:
+def _product(name: str, *, price: bool = True) -> dict[str, Any]:
     node: dict[str, Any] = {"@context": "https://schema.org", "@type": "Product", "name": name}
     if price:
         node["offers"] = {"@type": "Offer", "price": "19.90", "priceCurrency": "EUR"}
+    return node
+
+
+def _html(node: dict[str, Any]) -> bytes:
     return f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
+
+
+def _page(name: str, *, price: bool = True) -> bytes:
+    return _html(_product(name, price=price))
 
 
 @dataclass
@@ -103,7 +111,7 @@ class World:
                 mode="adhoc",
                 caller_supplied=True,
             )
-        return Made(job_id, capture_id, stored.record_id)
+        return Made(job_id, capture_id, stored.records[0].id if stored.records else None)
 
 
 @pytest.fixture
@@ -183,7 +191,7 @@ async def test_filters_narrow_by_job_site_and_schema(world: World) -> None:
     host = world.origin.removeprefix("https://")
 
     by_job = await _list(world.engine, job_id=one.job_id)
-    by_site = await _list(world.engine, site=host)
+    by_site = await _list(world.engine, site=host.upper())
     by_both = await _list(world.engine, site=host, job_id=two.job_id)
     elsewhere = await _list(world.engine, site="other.example.test", schema_id=world.schema.id)
 
@@ -260,15 +268,24 @@ async def test_a_capture_no_record_was_made_from_is_not_replayable(world: World)
         await captures.replay(world.engine, world.store, world.data, made.capture_id)
 
 
-async def test_a_capture_whose_records_follow_a_listing_schema_is_not_replayable_yet(world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
+async def test_a_listing_replays_one_record_per_row_as_the_page_task_stored_them(world: World) -> None:
+    url = FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url")
+    listed = SchemaChanges(page_kind="listing", fields={**world.schema.fields, "url": url})
     async with world.engine.begin() as conn:
-        listing = await registry.new_version(conn, world.schema.name, SchemaChanges(page_kind="listing"), "user")
-        moved = update(Record).where(Record.id == made.record_id)
-        await conn.execute(moved.values(schema_id=listing.id, schema_version=listing.version))
+        world.schema = await registry.new_version(conn, world.schema.name, listed, "user")
+    rows = [_product(f"Kettle {n}") | {"url": f"{world.origin}/p/{n}"} for n in (1, 2)]
+    items = [{"@type": "ListItem", "position": n, "item": row} for n, row in enumerate(rows, start=1)]
+    made = await world.scrape(
+        "/kettles", _html({"@context": "https://schema.org", "@type": "ItemList", "itemListElement": items})
+    )
+    stored = (await _list(world.engine, job_id=made.job_id)).items
 
-    with pytest.raises(NotReplayable, match="listing"):
-        await captures.replay(world.engine, world.store, world.data, made.capture_id)
+    replayed = await captures.replay(world.engine, world.store, world.data, made.capture_id)
+
+    content = {"mode", "complete", "confidence", "fields"}
+    by_title = {str(record.fields["title"].value): record.model_dump() for record in replayed}
+    assert sorted(by_title) == ["Kettle 1", "Kettle 2"]
+    assert by_title == {str(record.fields["title"].value): record.model_dump(include=content) for record in stored}
 
 
 # Over HTTP.

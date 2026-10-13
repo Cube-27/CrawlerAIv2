@@ -110,7 +110,7 @@ async def store_extraction(
         await conn.execute(insert(CandidateRow), list(_candidate_rows(extraction_id, result)))
     if result.entity is None:
         return Stored("failed" if result.outcome == "error" else result.outcome, extraction_id, (), result)
-    outcome, drafts = _records(
+    outcome, drafts = page_records(
         schema,
         result.entity,
         result.rows,
@@ -140,7 +140,7 @@ async def store_extraction(
     return Stored(outcome, extraction_id, records, result)
 
 
-def _records(
+def page_records(
     schema: SchemaDef,
     fields: FieldSet,
     rows: tuple[FieldSet, ...],
@@ -149,6 +149,7 @@ def _records(
     page_url: str,
     caller_supplied: bool,
 ) -> tuple[TaskOutcome, tuple[RecordDraft, ...]]:
+    """The page's outcome and the records it keeps: a detail page's one, or a listing's one per row (§4.10)."""
     if schema.page_kind == "listing":
         return assemble_listing(
             schema, fields, rows, site_id=site_id, page_url=page_url, caller_supplied=caller_supplied

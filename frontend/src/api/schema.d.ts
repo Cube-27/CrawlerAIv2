@@ -33,8 +33,7 @@ export interface paths {
         /**
          * Replay Capture
          * @description The records the current engine makes from the capture, against the schema versions of the records stored from
-         *     it. 404: no such capture, or its bundle expired; 409: no record was made from it, or its schema is a page kind
-         *     not extracted yet.
+         *     it. 404: no such capture, or its bundle expired; 409: no record was made from it.
          */
         post: operations["replay_capture_v1_captures__capture_id__replay_post"];
         delete?: never;
