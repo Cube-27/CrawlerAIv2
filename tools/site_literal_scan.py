@@ -6,7 +6,8 @@ paths pass. Tests are not exempt (C9).
 
 Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
-- a two-label token whose last label is the extension of a tracked file is a file name;
+- a two-label token whose last label is the extension of a tracked file is a file name, and so is the file name of
+  a data file `backend/data/manifest.json` pins (a fetched one is not tracked; SPEC-04 §4.6);
 - a token that is the dotted path of a tracked Python module is a module name;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
@@ -54,7 +55,8 @@ DEFAULT_ALLOWLIST = PurePosixPath("tools/site_literal_allowlist.txt")
 EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", ".github/")
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
 EXEMPT_SUFFIXES = (".lock",)
-EXEMPT_FILES = frozenset({"backend/data/manifest.json"})
+DATA_MANIFEST = "backend/data/manifest.json"
+EXEMPT_FILES = frozenset({DATA_MANIFEST})
 
 JS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 
@@ -204,6 +206,7 @@ class RepoNames:
     modules: frozenset[str]
     columns: frozenset[tuple[str, str]]
     schema_paths: frozenset[str]
+    data_files: frozenset[str]
 
     @classmethod
     def of(cls, root: Path, paths: list[str]) -> "RepoNames":
@@ -211,6 +214,7 @@ class RepoNames:
         modules: set[str] = set()
         columns: set[tuple[str, str]] = set()
         schema_paths: set[str] = set()
+        data_files: set[str] = set()
         for path in paths:
             pure = PurePosixPath(path)
             if pure.suffix:
@@ -221,14 +225,25 @@ class RepoNames:
                 columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
             if pure.suffix == ".json":
                 schema_paths.update(schema_org_paths(root / path))
-        return cls(frozenset(extensions), frozenset(modules), frozenset(columns), frozenset(schema_paths))
+            if path == DATA_MANIFEST:
+                data_files.update(manifest_file_names(root / path))
+        return cls(
+            frozenset(extensions),
+            frozenset(modules),
+            frozenset(columns),
+            frozenset(schema_paths),
+            frozenset(data_files),
+        )
 
     def names(self, token: str) -> bool:
         """Whether the token, as written, is a file name, a module or a schema.org path."""
         lowered = token.lower()
         labels = lowered.split(".")
         return (
-            (len(labels) == 2 and labels[1] in self.extensions) or lowered in self.modules or token in self.schema_paths
+            (len(labels) == 2 and labels[1] in self.extensions)
+            or lowered in self.modules
+            or token in self.schema_paths
+            or lowered in self.data_files
         )
 
     def without_column_references(self, text: str) -> str:
@@ -237,6 +252,17 @@ class RepoNames:
             lambda match: " " * len(match[0]) if (match[1].lower(), match[2].lower()) in self.columns else match[0],
             text,
         )
+
+
+def manifest_file_names(manifest: Path) -> Iterator[str]:
+    """The file names, lowercase, of the data files the manifest pins; nothing when it does not read as one."""
+    try:
+        entries = json.loads(manifest.read_text(encoding="utf-8")).get("entries")
+    except (ValueError, AttributeError):
+        return
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+            yield PurePosixPath(entry["path"]).name.lower()
 
 
 def load_tlds(tld_list: Path) -> frozenset[str]:

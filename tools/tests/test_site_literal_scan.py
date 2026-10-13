@@ -271,6 +271,20 @@ def test_names_of_tracked_files_and_modules_are_not_hosts(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stdout
 
 
+def test_names_of_data_files_the_manifest_pins_are_not_hosts(tmp_path: Path) -> None:
+    # A fetched data file is not tracked (SPEC-04 §4.6), so its name is known from the manifest, not from git.
+    manifest = json.dumps({"entries": [{"path": "geo/cities.md", "fetched": True}]})
+    code = 'CITIES = "cities.md"\nOTHER = "towns.md"\n'
+    repo = make_repo(
+        tmp_path / "repo",
+        {"backend/data/manifest.json": manifest, "backend/src/crawlerai/normalize/geo.py": code},
+    )
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.stdout.splitlines() == ["backend/src/crawlerai/normalize/geo.py:2: towns.md"]
+
+
 def test_url_hosts_are_checked_even_when_they_look_like_file_names(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"README.md": "", "notes.txt": "https://readme.example/\n"})
 
