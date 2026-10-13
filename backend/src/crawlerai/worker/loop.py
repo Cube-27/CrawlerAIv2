@@ -27,7 +27,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import FinishedOutcome, Job, JobKind
-from crawlerai.db.queue import ClaimedTask, LeaseLost, cancel_task, claim_tasks, complete_task, fail_task, release_task
+from crawlerai.db.queue import (
+    ClaimedTask,
+    LeaseLost,
+    cancel_task,
+    claim_tasks,
+    complete_task,
+    fail_task,
+    release_task,
+    retry_task,
+)
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +49,7 @@ URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 @dataclass(frozen=True)
 class Finished:
     outcome: FinishedOutcome
+    reason: str | None = None  # why, when the outcome alone does not say: a `blocked` task's `robots`
 
 
 @dataclass(frozen=True)
@@ -48,7 +58,25 @@ class Failed:
     transient: bool
 
 
-TaskResult = Finished | Failed
+@dataclass(frozen=True)
+class Retry:
+    """The task ran and its target asked for a pause (SPEC-02 §4.6): run it again `after` from now, spending the
+    attempt; on the last attempt, finish it with `exhausted`."""
+
+    after: timedelta
+    error: str
+    exhausted: FinishedOutcome
+
+
+@dataclass(frozen=True)
+class Postpone:
+    """The task did not run, because its site is not admitted yet (SPEC-02 §4.6): run it `after` from now, without
+    spending an attempt. The worker moves on instead of sleeping."""
+
+    after: timedelta
+
+
+TaskResult = Finished | Failed | Retry | Postpone
 TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]
 
 
@@ -101,10 +129,14 @@ async def _execute(
         await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False)
         return
     match await handler(task, conn):
-        case Finished(outcome):
-            await complete_task(conn, task, outcome)
+        case Finished(outcome, reason):
+            await complete_task(conn, task, outcome, reason=reason)
         case Failed(error, transient):
             await fail_task(conn, task, _error_text(error, redact_urls=redact_urls), transient=transient)
+        case Retry(after, error, exhausted):
+            await retry_task(conn, task, _error_text(error, redact_urls=redact_urls), after=after, exhausted=exhausted)
+        case Postpone(after):
+            await release_task(conn, task, after=after)
         case unreachable:
             assert_never(unreachable)
 
