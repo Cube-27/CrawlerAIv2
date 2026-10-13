@@ -217,7 +217,7 @@ def test_an_extracted_result_holds_its_fields() -> None:
 def test_a_page_that_was_not_served_has_no_candidates_and_no_fields(outcome: str) -> None:
     candidates = (_candidate(),)
     with pytest.raises(ValidationError, match="candidates"):
-        _result(outcome=outcome, entity=None, rows=(), candidates=candidates)
+        _result(outcome=outcome, entity=None, candidates=candidates)
     with pytest.raises(ValidationError, match="fields"):
         _result(outcome=outcome, candidates=())
     assert _result(outcome=outcome, entity=None, candidates=(), record_confidence=None).outcome == outcome

@@ -8,7 +8,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from crawlerai.collect.base import Candidate, LocatorText
+from crawlerai.collect.base import Candidate
+from crawlerai.collect.locator import LocatorText
 from crawlerai.db.models import ExtractionMode, SourceKind
 
 # ARCHITECTURE §10 evidence buckets.
@@ -18,8 +19,10 @@ FieldStatus = Literal["published", "missing", "conflict", "abstained"]
 Derivation = Literal["canonical_link", "final_url", "absolutize"]
 # `url_task.outcome` (§6), except that `error` is stored as `failed`.
 Outcome = Literal["extracted", "partial", "no_match", "blocked", "shell", "not_found", "error"]
-# Outcomes of a page that was not served (INV-11) or whose resolution failed (§4.14): nothing is published.
-_UNPUBLISHED: frozenset[Outcome] = frozenset({"blocked", "shell", "not_found", "error"})
+# Outcomes of a page that was not served (INV-11): no candidates and nothing published.
+_NOT_SERVED: frozenset[Outcome] = frozenset({"blocked", "shell", "not_found"})
+# Those, and a page whose resolution failed (§4.14): nothing is published.
+_UNPUBLISHED: frozenset[Outcome] = _NOT_SERVED | {"error"}
 # A probability: a bucket's measured precision (§4.9).
 Probability = Annotated[float, Field(ge=0.0, le=1.0)]
 # The attributes INV-22 requires of a published field.
@@ -88,6 +91,6 @@ class ExtractionResult(_Model):
         if self.outcome in _UNPUBLISHED and (self.entity is not None or self.rows):
             raise ValueError(f"a {self.outcome} page has no fields")
         # INV-11: a page that was not served yields no candidates; an `error` keeps its candidates for diagnostics.
-        if self.outcome in ("blocked", "shell", "not_found") and self.candidates:
+        if self.outcome in _NOT_SERVED and self.candidates:
             raise ValueError(f"a {self.outcome} page has no candidates")
         return self

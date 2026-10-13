@@ -4,24 +4,15 @@ proposes for schema fields, and the `Collector` protocol.
 A collector proposes; it never chooses. Ownership, intent and preference are `crawlerai.resolve`'s.
 """
 
-from typing import Annotated, Protocol, Self
+from typing import Protocol, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
-from crawlerai.collect.locator import parse_locator
+from crawlerai.collect.locator import LocatorText
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, NormalizeResult, Raw
 from crawlerai.schemas.types import SchemaDef
-
-
-def _check_locator(text: str) -> str:
-    parse_locator(text)
-    return text
-
-
-# A string in the SPEC-05 §4.3 locator format (INV-22).
-LocatorText = Annotated[str, AfterValidator(_check_locator)]
 
 
 class _Model(BaseModel):

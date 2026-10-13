@@ -8,7 +8,11 @@ split after the first `script[n]` step, the step `ParsedPage` ends a script's pa
 """
 
 import re
-from typing import Literal, NamedTuple, cast
+from typing import Annotated, Literal, NamedTuple, cast
+
+from pydantic import AfterValidator
+
+from crawlerai.schemas.types import NAME_PATTERN
 
 Scheme = Literal["jsonld", "microdata", "meta", "js_state", "xhr", "adapter", "api", "config", "text"]
 
@@ -21,21 +25,23 @@ _JSONPATH = r"(\$.*)"
 _XPATH = r"(/.+)"
 # A name the engine assigned (an adapter, an API recipe id): no `:` and no whitespace.
 _ASSIGNED_NAME = r"([^:\s]+)"
+_INDEXED_JSONPATH = re.compile(rf"{_INDEX}:{_JSONPATH}", re.DOTALL)
+_NAMED_JSONPATH = re.compile(rf"{_ASSIGNED_NAME}:{_JSONPATH}", re.DOTALL)
 
 _ADDRESS: dict[str, re.Pattern[str]] = {
     # The nth `application/ld+json` block, then a path in its expanded graph.
-    "jsonld": re.compile(rf"{_INDEX}:{_JSONPATH}", re.DOTALL),
+    "jsonld": _INDEXED_JSONPATH,
     # The element carrying the `itemprop`.
     "microdata": re.compile(_XPATH, re.DOTALL),
     # HTML Standard, the meta element: a `name` or `property` value; OpenGraph names hold `:` but no whitespace.
     "meta": re.compile(r"(\S+)"),
     "js_state": re.compile(rf"(/.*?script\[[1-9][0-9]*\]):{_JSONPATH}", re.DOTALL),
     # The nth captured network body in the bundle.
-    "xhr": re.compile(rf"{_INDEX}:{_JSONPATH}", re.DOTALL),
-    "adapter": re.compile(rf"{_ASSIGNED_NAME}:{_JSONPATH}", re.DOTALL),
-    "api": re.compile(rf"{_ASSIGNED_NAME}:{_JSONPATH}", re.DOTALL),
-    # A schema field name (the `Name` pattern of the schema types), the step index, then the step's selector.
-    "config": re.compile(rf"([a-z][a-z0-9_]{{0,63}}):{_INDEX}:(.+)", re.DOTALL),
+    "xhr": _INDEXED_JSONPATH,
+    "adapter": _NAMED_JSONPATH,
+    "api": _NAMED_JSONPATH,
+    # A schema field name, the step index, then the step's selector.
+    "config": re.compile(rf"({NAME_PATTERN}):{_INDEX}:(.+)", re.DOTALL),
     # `[start, end)` character offsets into the cleaned text.
     "text": re.compile(rf"{_INDEX}-{_INDEX}"),
 }
@@ -72,3 +78,12 @@ def format_locator(scheme: Scheme, *parts: str) -> str:
     if parse_locator(text).parts != parts:
         raise InvalidLocator(f"parts do not fit the {scheme} address: {parts!r}")
     return text
+
+
+def _check_locator(text: str) -> str:
+    parse_locator(text)
+    return text
+
+
+# A string in the locator format, checked when a model is built (INV-22).
+LocatorText = Annotated[str, AfterValidator(_check_locator)]
