@@ -29,10 +29,10 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
 1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, its spec's dependencies are `done`, and the earlier rows in its
    spec are `done`, unless the rows don't really depend on each other (the earlier row's output isn't an input to the
    later one). Rows that are `human` or `blocked` are skipped.
-2. **Assign.** Free memory is the cap (owner, 2026-10-13). There is no fixed worktree count. Start an agent only
-   with at least 1.5 GB free (`start_agent.sh` refuses below that). Eight agents (the orchestrator, workers and
-   reviewers together) is a soft ceiling, exceeded only when memory clearly allows. Within that, run as many ready
-   rows in parallel as can proceed independently. Two workers never run rows that edit the same migration. For each assignment:
+2. **Assign.** At most **4 agents** (workers and reviewers together, not counting the orchestrator) are alive at
+   once, and each start needs at least 1.5 GB free (owner, 2026-10-13). `start_agent.sh` refuses past either limit.
+   Prefer a reviewer for a ready PR over a new worker. Within the limit, run ready rows that can proceed
+   independently in parallel. Two workers never run rows that edit the same migration. For each assignment:
    - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
      `spec-NN/pr-M-<short-name>`, and start the worker with `tools/orchestrator/start_agent.sh <name> <worktree>
      "<prompt>"` (§1a). Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator assigned you this row.
