@@ -31,6 +31,7 @@ GH_PR_MERGE_TEXT = re.compile(r"\bgh(?:\.exe)?\s+pr\s+merge\b")
 
 # Bash and PowerShell control operators and grouping; each starts a new command.
 SEPARATORS = ";&|()<>\n`"
+SEPARATOR_CHARS = frozenset(SEPARATORS)
 # gh flags placed between `pr` and `merge` that take a value.
 GH_VALUE_FLAGS = frozenset({"-R", "--repo"})
 # Flags and commands whose next argument is itself a command string: `bash -c`, `pwsh -Command`, `cmd /c`, `iex`.
@@ -58,7 +59,7 @@ def tokenize(command: str) -> list[str]:
 def segments(tokens: list[str]) -> Iterator[list[str]]:
     current: list[str] = []
     for token in tokens:
-        if token and set(token) <= set(SEPARATORS):
+        if token and set(token) <= SEPARATOR_CHARS:
             yield current
             current = []
         else:
@@ -84,10 +85,10 @@ def gh_positionals(args: list[str]) -> list[str]:
 
 
 def runs_gh_pr_merge(segment: list[str]) -> bool:
-    for index, token in enumerate(segment):
-        if is_gh(token) and gh_positionals(segment[index + 1 :])[:2] == ["pr", "merge"]:
-            return True
-    return False
+    return any(
+        is_gh(token) and gh_positionals(segment[index + 1 :])[:2] == ["pr", "merge"]
+        for index, token in enumerate(segment)
+    )
 
 
 def calls_merge_api(segment: list[str]) -> bool:
@@ -106,9 +107,7 @@ def merges_directly(command: str, depth: int = 0) -> bool:
     try:
         tokens = tokenize(command)
     except ValueError:
-        return bool(GH_PR_MERGE_TEXT.search(command) or MERGE_MUTATIONS.search(command)) or any(
-            PULLS_MERGE.search(word) for word in command.split()
-        )
+        return bool(GH_PR_MERGE_TEXT.search(command)) or calls_merge_api(command.split())
     for segment in segments(tokens):
         if runs_gh_pr_merge(segment) or calls_merge_api(segment):
             return True
