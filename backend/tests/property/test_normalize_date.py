@@ -263,12 +263,19 @@ def test_a_datetime_needs_a_time_and_a_numeric_offset(raw: str, ctx: Context, ex
         ("1969-12-31", DATE),
         ("2101-01-01", DATE),
         ("1969-12-31T23:00:00Z", DATETIME),
+        # A datetime's value is in UTC, so its year is checked there too.
+        ("2100-12-31T23:00:00-05:00", DATETIME),
+        ("1970-01-01T00:30:00+01:00", DATETIME),
         ("31/12/1969", DATE),
         ("4 March 1969", DATE),
     ],
 )
 def test_a_year_outside_1970_to_2100_is_invalid(raw: str, spec: FieldSpec) -> None:
     assert normalize(raw, spec, _ctx("en-GB")) == Invalid("year_out_of_range")
+
+
+def test_a_date_field_checks_the_year_of_the_date_it_states() -> None:
+    assert normalize("2100-12-31T23:00:00-05:00", DATE) == Ok("2100-12-31")
 
 
 @pytest.mark.parametrize("raw", ["2026-02-30", "2026-13-01", "31/31/2026", "2026-03-04T25:00:00Z"])
