@@ -232,12 +232,12 @@ def test_the_first_provider_answers_without_asking_the_next() -> None:
     assert second.calls == []
 
 
-def test_a_failover_happens_at_most_once() -> None:
-    providers = [FakeProvider([ProviderError(f"503 from {name}")], name=name) for name in ("a", "b", "c")]
+def test_when_neither_provider_answers_both_errors_are_reported() -> None:
+    providers = [FakeProvider([ProviderError(f"503 from {name}")], name=name) for name in ("a", "b")]
 
     with pytest.raises(ProviderUnavailable, match=r"^a: 503 from a; b: 503 from b$"):
         complete_with(providers)
-    assert [len(provider.calls) for provider in providers] == [1, 1, 0]
+    assert [len(provider.calls) for provider in providers] == [1, 1]
 
 
 def test_the_retry_after_an_invalid_reply_asks_the_first_provider_again() -> None:
@@ -254,10 +254,13 @@ def test_the_retry_after_an_invalid_reply_asks_the_first_provider_again() -> Non
     )
 
 
-def test_a_client_needs_a_provider() -> None:
+@pytest.mark.parametrize("count", [0, 3])
+def test_a_client_has_one_or_two_providers(count: int) -> None:
+    # A call fails over at most once, so a third provider would never be asked.
+    providers = [FakeProvider([], name=str(index)) for index in range(count)]
     engine = create_async_engine("postgresql+asyncpg://127.0.0.1/unused")
-    with pytest.raises(ValueError, match="at least one provider"):
-        MeteredClient([], engine)
+    with pytest.raises(ValueError, match="one or two providers"):
+        MeteredClient(providers, engine)
 
 
 @pytest.mark.parametrize(

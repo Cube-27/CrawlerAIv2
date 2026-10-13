@@ -152,9 +152,10 @@ class _Answer:
 
 class MeteredClient:
     def __init__(self, providers: Sequence[Provider], engine: AsyncEngine) -> None:
-        """`providers` in order of preference (`CRAWLERAI_LLM_PROVIDERS`); a call fails over at most once (§4.2)."""
-        if not providers:
-            raise ValueError("an LLM client needs at least one provider")
+        """`providers` in order of preference (`CRAWLERAI_LLM_PROVIDERS`). A call fails over at most once (§4.2), so
+        there are one or two."""
+        if not 1 <= len(providers) <= 2:
+            raise ValueError("an LLM client needs one or two providers")
         self._providers = tuple(providers)
         self._engine = engine
 
@@ -193,7 +194,7 @@ class MeteredClient:
             timeout_s=TIMEOUT_S[req.model_class],
         )
         errors: list[str] = []
-        for provider in self._providers[:2]:
+        for provider in self._providers:
             started = time.monotonic()
             try:
                 reply = await provider.complete(call)
