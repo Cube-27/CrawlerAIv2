@@ -93,7 +93,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | Proxy pools | done (#53) | Follow-up: record `proxy_bytes` and `http_requests` usage per attempt once the worker writes usage events. |
 | 8 | Adapter protocol + Greenhouse | done (#52) | Follow-ups: proxy support in `fetch_json` and a per-adapter settings flag, once PR 7 merges. |
 | 9 | Lever adapter | done (#62) | |
-| 10 | Tests named for INV-29 and INV-30 (cookies stay inside one fetch; oversize bodies are errors) | todo | Added with D-0291; behaviour already implemented. |
+| 10 | Tests named for INV-29 and INV-30 (cookies stay inside one fetch; oversize bodies are errors) | done (#64) | Fixed JSON-fetch cookie matching and the browser's `max_body_bytes` (D-0320, D-0321). Follow-ups: CDP streaming for the browser's memory bound; public-suffix data for `Domain=` cookies. |
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)
 

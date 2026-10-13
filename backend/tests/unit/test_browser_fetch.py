@@ -10,6 +10,7 @@ prove that `fetch_browser` itself keeps those destinations behind the guard.
 """
 
 import asyncio
+import gzip
 import json
 import os
 import re
@@ -365,8 +366,73 @@ def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, serv
     assert result.duration_ms < 4_000
 
 
-def test_a_body_over_the_cap_is_an_error_without_a_body(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/app"), FetchPolicy(max_decompressed_bytes=100, browser_timeout_s=10))
+# --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
+
+
+def test_inv29_a_cookie_set_by_one_fetch_is_absent_from_the_next(browser: Browser, server: Server) -> None:
+    first = len(server.requests)
+    browser.fetch(server.url("/app"))  # `/app` sets `session=s1`
+    second = len(server.requests)
+    browser.fetch(server.url("/app"))
+
+    # Within the first fetch the page's own requests carry the cookie; the second fetch starts without it.
+    assert ("/api/items", "session=s1") in [(path, h.get("Cookie")) for _, path, h in server.requests[first:second]]
+    assert [(path, h.get("Cookie")) for _, path, h in server.requests[second:] if path == "/app"] == [("/app", None)]
+
+
+@pytest.mark.parametrize(
+    ("set_cookie", "host"),
+    [
+        # RFC 6265 §5.4: a host-only cookie goes to its own host only; `keep`, for the parent domain, does go
+        # (§5.1.3 domain-match), so the hop carries cookies at all.
+        (("other=1", "keep=1; Domain=example.test"), "cdn.example.test"),
+        (("other=1", "keep=1; Domain=example.test"), "eu.shop.example.test"),
+        # §5.3 step 6: a Domain attribute that the setting host does not domain-match is ignored with its cookie.
+        (("other=1; Domain=cdn.example.test", "keep=1"), "shop.example.test"),
+        # §5.1.4: a cookie goes only to request paths its Path matches.
+        (("other=1; Path=/private", "keep=1; Path=/"), "shop.example.test"),
+    ],
+    ids=["another_host", "sub_host", "foreign_domain_attribute", "another_path"],
+)
+def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
+    browser: Browser, server: Server, set_cookie: tuple[str, str], host: str
+) -> None:
+    path = "/inv29/end"
+    location = server.url(path, host)
+    server.routes["/inv29/start"] = Reply(
+        302, headers=(("Location", location), *(("Set-Cookie", c) for c in set_cookie))
+    )
+    server.routes[path] = Reply(body=b"<html><body><p>Redirect target</p></body></html>")
+    first = len(server.requests)
+
+    result = browser.fetch(server.url("/inv29/start"))
+
+    assert result.bundle.manifest.final_url == location
+    hop = [h for request_host, p, h in server.requests[first:] if p == path and request_host.startswith(host + ":")]
+    assert [h.get("Cookie") for h in hop] == ["keep=1"]
+
+
+# --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------
+
+
+def test_inv30_a_body_over_the_cap_is_an_error_without_a_body(browser: Browser, server: Server) -> None:
+    server.routes["/inv30/large"] = Reply(body=b"<html><body><p>" + b"x" * 50_000 + b"</p></body></html>")
+
+    result = browser.fetch(server.url("/inv30/large"), FetchPolicy(max_body_bytes=10_000, browser_timeout_s=10))
+
+    (attempt,) = result.attempts
+    assert (attempt.status, attempt.block_class, attempt.error) == (200, "error", "body_cap")
+    assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
+
+
+def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body(
+    browser: Browser, server: Server
+) -> None:
+    bomb = gzip.compress(b"<html><body><p>" + b"x" * 1_000_000 + b"</p></body></html>")  # about 1 kB on the wire
+    server.routes["/inv30/bomb"] = Reply(body=bomb, headers=(("Content-Encoding", "gzip"),))
+    policy = FetchPolicy(max_body_bytes=1_000_000, max_decompressed_bytes=100_000, browser_timeout_s=10)
+
+    result = browser.fetch(server.url("/inv30/bomb"), policy)
 
     (attempt,) = result.attempts
     assert (attempt.status, attempt.block_class, attempt.error) == (200, "error", "body_cap")

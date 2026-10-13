@@ -29,22 +29,24 @@ _JSON = b'{"jobs": [{"id": 1, "title": "Synthetic"}]}'
 Handler = Callable[[httpx.Request], httpx.Response]
 
 
-def connector() -> SafeConnector:
+def connector(dns: dict[str, str]) -> SafeConnector:
     async def resolve(host: str) -> list[IPAddress]:
-        if host not in _DNS:
+        if host not in dns:
             raise OSError("no such host")
-        return [ip_address(_DNS[host])]
+        return [ip_address(dns[host])]
 
     return SafeConnector(resolve)
 
 
-def fetch(handler: Handler, policy: FetchPolicy | None = None, url: str = API) -> FetchResult:
+def fetch(
+    handler: Handler, policy: FetchPolicy | None = None, url: str = API, dns: dict[str, str] = _DNS
+) -> FetchResult:
     return asyncio.run(
         fetch_json(
             JsonRequest(url=url, page_url=PAGE),
             policy or FetchPolicy(),
             engine_version="test",
-            connector=connector(),
+            connector=connector(dns),
             transport=httpx.MockTransport(handler),
         )
     )
@@ -144,24 +146,6 @@ def test_more_than_five_redirects_end_the_fetch() -> None:
     assert outcome(result) == (301, "error", "too_many_redirects")
 
 
-def test_a_body_over_the_compressed_cap_is_an_error() -> None:
-    result = fetch(json_reply(b"[" + b"1," * 600 + b"1]"), FetchPolicy(max_body_bytes=1000))
-
-    assert outcome(result) == (200, "error", "body_cap")
-
-
-def test_a_compression_bomb_stops_at_the_decompressed_cap() -> None:
-    bomb = gzip.compress(b"[" + b"0," * 500_000 + b"0]")
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return streamed(200, bomb, {"Content-Encoding": "gzip"})
-
-    result = fetch(handler, FetchPolicy(max_decompressed_bytes=100_000))
-
-    assert len(bomb) < 100_000
-    assert outcome(result) == (200, "error", "body_cap")
-
-
 def test_a_corrupt_content_encoding_is_a_decode_error() -> None:
     result = fetch(lambda _r: streamed(200, b"not gzip", {"Content-Encoding": "gzip"}))
 
@@ -194,6 +178,77 @@ def test_cookies_are_not_recorded() -> None:
     result = fetch(handler)
 
     assert [name for name, _ in result.bundle.manifest.headers.response if name.lower() == "set-cookie"] == []
+
+
+# --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
+
+
+def test_inv29_a_cookie_set_by_one_fetch_is_absent_from_the_next() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, headers={"Set-Cookie": "session=s1"}, content=_JSON)
+
+    fetch(handler)
+    fetch(handler)
+
+    assert [request.headers.get("Cookie") for request in seen] == [None, None]
+
+
+@pytest.mark.parametrize(
+    ("set_cookie", "next_hop"),
+    [
+        # RFC 6265 §5.4: a host-only cookie goes to its own host only, even when both hosts share an address;
+        # `keep`, for the parent domain, does go (§5.1.3 domain-match), so the hop carries cookies at all.
+        (("other=1", "keep=1; Domain=example.com"), "https://cdn.example.com/v1/board/all"),
+        (("other=1", "keep=1; Domain=example.com"), "https://eu.api.example.com/v1/board/all"),
+        # §5.3 step 6: a Domain attribute that the setting host does not domain-match is ignored with its cookie.
+        (("other=1; Domain=cdn.example.com", "keep=1"), "/v1/board/all"),
+        # §5.1.4: a cookie goes only to request paths its Path matches.
+        (("other=1; Path=/private", "keep=1; Path=/"), "/v1/board/all"),
+    ],
+    ids=["another_host", "sub_host", "foreign_domain_attribute", "another_path"],
+)
+def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
+    set_cookie: tuple[str, str], next_hop: str
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if len(seen) == 1:
+            headers = [("Location", next_hop), *(("Set-Cookie", c) for c in set_cookie)]
+            return httpx.Response(302, headers=headers)
+        return json_reply()(request)
+
+    shared_address = {host: "93.184.215.14" for host in ("api.example.com", "cdn.example.com", "eu.api.example.com")}
+    assert outcome(fetch(handler, dns=shared_address)) == (200, "ok", None)
+
+    assert seen[1].headers.get("Cookie") == "keep=1"
+
+
+# --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------
+
+
+def test_inv30_a_body_over_the_cap_is_an_error_without_a_body() -> None:
+    result = fetch(json_reply(b"[" + b"1," * 600 + b"1]"), FetchPolicy(max_body_bytes=1000))
+
+    assert outcome(result) == (200, "error", "body_cap")
+    assert result.bundle.body == b""
+
+
+def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body() -> None:
+    bomb = gzip.compress(b"[" + b"0," * 500_000 + b"0]")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return streamed(200, bomb, {"Content-Encoding": "gzip"})
+
+    result = fetch(handler, FetchPolicy(max_decompressed_bytes=100_000))
+
+    assert len(bomb) < 100_000
+    assert outcome(result) == (200, "error", "body_cap")
+    assert result.bundle.body == b""
 
 
 @pytest.fixture

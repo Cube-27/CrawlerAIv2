@@ -222,12 +222,13 @@ async def _navigate(
     idle_end = started + _IDLE_SHARE * policy.browser_timeout_s
     with contextlib.suppress(PlaywrightTimeout):
         await page.wait_for_load_state("networkidle", timeout=_ms_until(idle_end))
-    body, raw_body, network = await asyncio.gather(
-        _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses)
+    body, raw_body, network, wire_size = await asyncio.gather(
+        _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses), _wire_size(response, exchange)
     )
-    # The browser hands over bodies after content decoding, so the decompressed cap is the one that applies. It
-    # bounds what is stored, not memory: the browser has no streaming read, so both bodies are read in full first.
-    if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
+    # The browser hands over bodies after content decoding; `wire_size` counts the body as it arrived, before. Both
+    # caps bound what is stored, not memory: the browser has no streaming read, so the bodies are read in full first.
+    decoded = max(len(body), len(raw_body or b""))
+    if wire_size > policy.max_body_bytes or decoded > policy.max_decompressed_bytes:
         raise _Failed("body_cap", exchange)
     return exchange, Content(body=body, raw_body=raw_body, network=network)
 
@@ -245,6 +246,14 @@ async def _raw_body(response: Response) -> bytes | None:
         return await response.body()
     except PlaywrightError:
         return None
+
+
+async def _wire_size(response: Response, exchange: Exchange) -> int:
+    """The navigation response body's size on the wire, before content decoding."""
+    try:
+        return (await response.request.sizes())["responseBodySize"]
+    except PlaywrightError as e:
+        raise _Failed("network_error", exchange) from e
 
 
 def _is_json(response: Response) -> bool:

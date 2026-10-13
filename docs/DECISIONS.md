@@ -1558,7 +1558,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0252 — Browser outcome details follow the HTTP fetcher
-- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 6 (#46) · Status: decided
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 6 (#46) · Status: superseded by D-0320 (the size cap only)
 - Decision: The size cap is `max_decompressed_bytes` on both bodies; failures report `timeout`, `ssrf_rejected: <reason>` or `network_error: net::ERR_*`, never the URL (D-0128); the navigation response is not captured as a network body; `browser` tests skip without Chromium except under `CI`.
 - Alternatives: `max_body_bytes`; capture a JSON document as a network body.
 - Why: Consistent with D-0127 and D-0128; the document is already `body.html`.
@@ -2031,4 +2031,18 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Each PR gets one review once complete and green. With `MERGE AFTER FIX` the implementor makes the fixes, gets CI green and comments `READY`; no second review.
 - Alternatives: The same reviewer ticks off the fixes.
 - Why: Owner choice, 2026-10-13.
+- Reversible: yes
+
+### D-0320 — The browser holds both body caps, at storage
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 10 (#64) · Status: decided
+- Decision: The browser fetch holds the navigation body to `max_body_bytes` (its size on the wire, `Request.sizes()`) and to `max_decompressed_bytes`; an oversize body is a `body_cap` error with no capture body (INV-30). Both are checked after the response finishes and before anything is kept: Patchright has no streaming read, so Chromium's own limits bound the memory. Supersedes D-0252's size cap.
+- Alternatives: Stream the body through CDP `Fetch.takeResponseBodyAsStream` (a larger change; a possible follow-up row).
+- Why: INV-30, and the same two caps as the HTTP and JSON fetchers.
+- Reversible: yes
+
+### D-0321 — JSON-fetch cookies match on the hop's host name
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 10 (#64) · Status: decided
+- Decision: `fetch_json` keeps cookies in a per-fetch jar matched on each hop's host name, with host-only cookies kept to their host (RFC 6265 §5.3 step 6, §5.4); httpx's own jar, which would match on the pinned address, refuses every cookie.
+- Alternatives: Drop cookies on every hop (also meets INV-29, but differs from the other fetchers); pin the address at the connection layer so httpx's jar sees host names (a larger change).
+- Why: INV-29. `Domain=` uses the stdlib's heuristic rather than public-suffix data; a follow-up row can add it.
 - Reversible: yes

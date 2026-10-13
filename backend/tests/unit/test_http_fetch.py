@@ -285,6 +285,64 @@ def test_cookies_are_sent_across_hops_but_never_recorded(server: Server) -> None
     assert "set-cookie" not in recorded
 
 
+# --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
+
+
+def test_inv29_a_cookie_set_by_one_fetch_is_absent_from_the_next(server: Server) -> None:
+    server.route("/p", html(_PAGE, 200, ("Set-Cookie", "session=s1")))
+    fetch(server, server.url("/p"))
+    fetch(server, server.url("/p"))
+
+    assert [_cookie(headers) for _, headers in server.requests] == [None, None]
+
+
+@pytest.mark.parametrize(
+    ("set_cookie", "next_hop"),
+    [
+        # RFC 6265 §5.4: a host-only cookie goes to its own host only; `keep`, for the parent domain, does go
+        # (§5.1.3 domain-match), so the hop carries cookies at all.
+        (("other=1", "keep=1; Domain=example.test"), "http://cdn.example.test:{port}/p"),
+        (("other=1", "keep=1; Domain=example.test"), "http://eu.shop.example.test:{port}/p"),
+        # §5.3 step 6: a Domain attribute that the setting host does not domain-match is ignored with its cookie.
+        (("other=1; Domain=cdn.example.test", "keep=1"), "/p"),
+        # §5.1.4: a cookie goes only to request paths its Path matches.
+        (("other=1; Path=/private", "keep=1; Path=/"), "/p"),
+    ],
+    ids=["another_host", "sub_host", "foreign_domain_attribute", "another_path"],
+)
+def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
+    server: Server, set_cookie: tuple[str, str], next_hop: str
+) -> None:
+    location = next_hop.format(port=server.port)
+    server.route("/start", Reply(302, (("Location", location), *(("Set-Cookie", c) for c in set_cookie))))
+    server.route("/p", html(_PAGE))
+    assert outcome(fetch(server, server.url("/start"))) == (200, "ok", None)
+
+    assert _cookie(server.requests[1][1]) == "keep=1"
+
+
+def _cookie(headers: list[tuple[str, str]]) -> str | None:
+    return next((value for name, value in headers if name.lower() == "cookie"), None)
+
+
+# --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------
+
+
+def test_inv30_a_body_over_the_cap_is_an_error_without_a_body(server: Server) -> None:
+    server.route("/p", html(b"x" * 50_000))
+    result = fetch(server, server.url("/p"), FetchPolicy(max_body_bytes=10_000))
+    assert outcome(result) == (200, "error", "body_cap")
+    assert result.bundle.body == b""
+
+
+def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body(server: Server) -> None:
+    bomb = gzip.compress(b"\0" * 20_000_000)  # about 20 kB on the wire
+    server.route("/p", Reply(200, (("Content-Type", "text/html"), ("Content-Encoding", "gzip")), bomb))
+    result = fetch(server, server.url("/p"), FetchPolicy(max_body_bytes=1_000_000, max_decompressed_bytes=100_000))
+    assert outcome(result) == (200, "error", "body_cap")
+    assert result.bundle.body == b""
+
+
 # --- caps and failures -------------------------------------------------------------------------------------------
 
 
@@ -295,25 +353,11 @@ def test_a_body_at_the_cap_is_kept(server: Server) -> None:
     assert result.bundle.body == body
 
 
-def test_a_body_over_the_cap_is_an_error(server: Server) -> None:
-    server.route("/p", html(b"x" * 50_000))
-    result = fetch(server, server.url("/p"), FetchPolicy(max_body_bytes=10_000))
-    assert outcome(result) == (200, "error", "body_cap")
-    assert result.bundle.body == b""
-
-
 def test_a_compressed_body_is_stored_decoded(server: Server) -> None:
     server.route("/p", Reply(200, (("Content-Type", "text/html"), ("Content-Encoding", "gzip")), gzip.compress(_PAGE)))
     result = fetch(server, server.url("/p"))
     assert outcome(result) == (200, "ok", None)
     assert result.bundle.body == _PAGE
-
-
-def test_a_compression_bomb_stops_at_the_decompressed_cap(server: Server) -> None:
-    bomb = gzip.compress(b"\0" * 20_000_000)  # about 20 kB on the wire
-    server.route("/p", Reply(200, (("Content-Type", "text/html"), ("Content-Encoding", "gzip")), bomb))
-    result = fetch(server, server.url("/p"), FetchPolicy(max_body_bytes=1_000_000, max_decompressed_bytes=100_000))
-    assert outcome(result) == (200, "error", "body_cap")
 
 
 def test_a_body_that_fails_to_decode_is_an_error(server: Server) -> None:
