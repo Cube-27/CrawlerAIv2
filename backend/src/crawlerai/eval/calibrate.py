@@ -19,9 +19,8 @@ from crawlerai.db.models import EvalRunId, Split
 from crawlerai.eval.cli import EvalCliError
 from crawlerai.eval.metrics import PrecisionMetrics, Report
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.resolve.preference import PRECEDENCE_FILE, parse_orders
 from crawlerai.storage.fs import FsStore
-
-PRECEDENCE_FILE = "source_precedence.yaml"
 
 Orders = dict[str, tuple[str, ...]]  # field type -> source kinds, first wins (SPEC-05 §4.7)
 
@@ -57,8 +56,6 @@ class Precedence(_Model):
     git_sha: str
     orders: Orders
 
-
-_STAMP = Precedence.model_fields.keys() - {"orders"}
 
 CalibrationFit = Callable[[EvalRunRow], dict[str, Bucket]]
 PrecedenceFit = Callable[[EvalRunRow, Mapping[str, Sequence[str]]], Orders]
@@ -104,23 +101,13 @@ def write_calibration(calibration: Calibration, data_dir: Path) -> Path:
 
 
 def read_precedence(data_dir: Path) -> Orders:
-    """The orders of the current `source_precedence.yaml`: every top-level key but the stamp names a field type and
-    holds its list of source kinds."""
+    """The orders of the current `source_precedence.yaml` (`resolve.preference.parse_orders`)."""
     path = data_dir / PRECEDENCE_FILE
     try:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise PrecedenceMissing(f"no {PRECEDENCE_FILE} to refit; SPEC-05 commits the initial order") from None
-    if not isinstance(document, dict):
-        raise ValueError(f"{PRECEDENCE_FILE} is not a mapping")
-    orders: Orders = {}
-    for type_, order in document.items():
-        if type_ in _STAMP:
-            continue
-        if not isinstance(order, list) or not all(isinstance(kind, str) for kind in order):
-            raise ValueError(f"{PRECEDENCE_FILE}: {type_} is not a list of source kinds")
-        orders[str(type_)] = tuple(order)
-    return orders
+    return {type_: tuple(order) for type_, order in parse_orders(document).items()}
 
 
 def write_precedence(precedence: Precedence, data_dir: Path) -> Path:
