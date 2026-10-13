@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from importlib.resources import files
 from typing import Any
 
-from sqlalchemy import Row, func, insert, select
+from sqlalchemy import Row, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -77,7 +77,7 @@ async def create(conn: AsyncConnection, document: SchemaDocument, origin: Schema
     is `new_version`."""
     if document.version != 1:
         raise ValueError(f"a new schema starts at version 1, not {document.version}")
-    if await _latest_version(conn, document.name) is not None:
+    if await _latest(conn, document.name) is not None:
         raise SchemaExists(f"schema {document.name} exists; add a version instead")
     return await _insert(conn, document, origin)
 
@@ -85,29 +85,19 @@ async def create(conn: AsyncConnection, document: SchemaDocument, origin: Schema
 async def new_version(conn: AsyncConnection, name: str, changes: SchemaChanges, origin: SchemaOrigin) -> SchemaDef:
     """Insert version latest + 1 of `name`: the latest version's document with `changes` applied, validated as a
     whole. Earlier versions stay as they are, since records and configs reference them (§5.2)."""
-    latest_version = await _latest_version(conn, name)
-    if latest_version is None:
+    latest = await _latest(conn, name)
+    if latest is None:
         raise SchemaNotFound(f"no schema {name}")
-    latest = await get(conn, name, latest_version)
     document = SchemaDocument.model_validate(
-        {
-            "name": name,
-            "version": latest_version + 1,
-            "page_kind": changes.page_kind or latest.page_kind,
-            "fields": changes.fields if changes.fields is not None else latest.fields,
-            "required_groups": (
-                changes.required_groups if changes.required_groups is not None else latest.required_groups
-            ),
-        }
+        {**_document(latest), "version": latest.version + 1, **changes.model_dump(exclude_none=True)}
     )
     return await _insert(conn, document, origin)
 
 
-async def _latest_version(conn: AsyncConnection, name: str) -> int | None:
-    latest: int | None = (
-        await conn.execute(select(func.max(SchemaRow.version)).where(SchemaRow.name == name))
-    ).scalar_one()
-    return latest
+async def _latest(conn: AsyncConnection, name: str) -> SchemaDef | None:
+    query = select(*_COLUMNS).where(SchemaRow.name == name).order_by(SchemaRow.version.desc()).limit(1)
+    row = (await conn.execute(query)).one_or_none()
+    return None if row is None else _from_row(row)
 
 
 async def _insert(conn: AsyncConnection, document: SchemaDocument, origin: SchemaOrigin) -> SchemaDef:
@@ -146,24 +136,28 @@ async def sync_presets(conn: AsyncConnection, presets: Sequence[SchemaDocument] 
     name; otherwise `PresetConflict`, and nothing is inserted. That is the version-bump rule (§4.2): a preset file
     changes only together with its version.
     """
+    presets = load_presets() if presets is None else presets
+    query = select(*_COLUMNS).where(SchemaRow.name.in_({preset.name for preset in presets}))
+    stored: dict[tuple[str, int], SchemaDef] = {
+        (row.name, row.version): _from_row(row) for row in (await conn.execute(query)).all()
+    }
     pending = []
-    for preset in load_presets() if presets is None else presets:
-        rows = (await conn.execute(select(*_COLUMNS).where(SchemaRow.name == preset.name))).all()
-        stored = {row.version: row for row in rows}
-        newest = max((row.version for row in rows if row.origin == "preset"), default=0)
+    for preset in presets:
+        newest = max(
+            (v for (name, v), row in stored.items() if name == preset.name and row.origin == "preset"), default=0
+        )
         if preset.version < newest:
             raise PresetConflict(f"preset {preset.name} is version {preset.version}; version {newest} is stored")
-        row = stored.get(preset.version)
+        row = stored.get((preset.name, preset.version))
         if row is None:
             pending.append(preset)
-        elif row.origin != "preset" or _document(row) != preset:
+        elif row.origin != "preset" or _document(row) != preset.model_dump(exclude_none=True):
             raise PresetConflict(
                 f"{preset.name} version {preset.version} is stored with other contents; bump the preset's version"
             )
     return [await _insert(conn, preset, "preset") for preset in pending]
 
 
-def _document(row: Row[Any]) -> SchemaDocument:
-    return SchemaDocument.model_validate(
-        {key: row._mapping[key] for key in ("name", "version", "page_kind", "fields", "required_groups")}
-    )
+def _document(schema: SchemaDef) -> dict[str, Any]:
+    """The document part of a stored schema, without its identity and lifecycle."""
+    return schema.model_dump(include=set(SchemaDocument.model_fields), exclude_none=True)

@@ -5,8 +5,8 @@ the fields against the page's schema, and reports every error with its path and 
 saved (§4.11). Whether each `value` is a valid normalized value is the type normalizer's call (SPEC-04), made by
 the labeling API (SPEC-03 PR 8).
 
-`FieldShape` is the part of a schema field that labels need: its type, nesting and scope. SPEC-04 PR 1 brings the
-full `FieldSpec`; callers then pass that instead, and `FieldShape` goes.
+`FieldShape` is the part of a schema field that labels need: its type, nesting and scope. `schemas.types.FieldSpec`
+now exists; SPEC-04 PR 9 moves callers to it with the list/object recursion, and `FieldShape` goes (D-0167).
 """
 
 import re
@@ -30,9 +30,9 @@ from pydantic_core import ErrorDetails
 from crawlerai.db.models import PageKind
 from crawlerai.normalize import date, enum, identifier, location, money, text, url
 from crawlerai.normalize import range as range_
+from crawlerai.schemas.types import Scope
 
 LabelStatus = Literal["draft", "labeled", "checked"]
-Scope = Literal["row", "page"]
 # The §5.1 types that have values of their own (SPEC-04 §4.1); `list` and `object` recurse into them.
 ScalarType = Literal[
     "text", "long_text", "money", "enum", "url", "image_url", "identifier", "date", "datetime", "location", "range"

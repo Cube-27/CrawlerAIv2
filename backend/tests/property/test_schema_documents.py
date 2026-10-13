@@ -1,14 +1,14 @@
 """Schema documents (SPEC-04 §6): generated valid documents round-trip through the model and its JSON, and a
 `schema_org` path that breaks the schema.org naming conventions is rejected wherever it appears."""
 
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from crawlerai.schemas.types import FieldType, SchemaDocument
+from crawlerai.schemas.types import FieldType, IdentifierScheme, SchemaDocument
 
 _names = st.from_regex(r"[a-z][a-z0-9_]{0,10}", fullmatch=True)
 _type_name = st.from_regex(r"[A-Z][A-Za-z0-9]{0,8}", fullmatch=True)
@@ -28,7 +28,7 @@ def _parameters(type_: FieldType) -> st.SearchStrategy[dict[str, Any]]:
             lambda v: {"vocab": v}, st.from_regex(r"(schema:[A-Z][a-z]{1,6}|type:[a-z]{1,6})", fullmatch=True)
         )
     if type_ is FieldType.IDENTIFIER:
-        return st.builds(lambda s: {"scheme": s}, st.sampled_from(["gtin", "isbn", "mpn", "sku", "custom"]))
+        return st.builds(lambda s: {"scheme": s}, st.sampled_from(get_args(IdentifierScheme)))
     return st.just({})
 
 

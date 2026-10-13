@@ -468,39 +468,42 @@ def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Pa
 # schema.org paths ending in a TLD (`.name`), joined at run time like the names above.
 PRODUCT_NAME = ".".join(["Product", "name"])
 BRAND_NAME = ".".join(["Product", "brand", "name"])
+OFFER_NAME = ".".join(["Offer", "name"])
+PRESET = (
+    "{\n"
+    f'  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},\n'
+    f'  "rows": {{"item": {{"fields": {{"brand": {{"schema_org": "{BRAND_NAME}"}}}}}}}},\n'
+    '  "price": {"schema_org": "Offer.price+priceCurrency"}\n'
+    "}\n"
+)
 
 
-def test_schema_org_values_of_schema_documents_are_not_hosts(tmp_path: Path) -> None:
-    preset = (
-        "{\n"
-        f'  "title": {{"type": "text", "schema_org": "{PRODUCT_NAME}"}},\n'
-        f'  "brand": {{"schema_org" : "{BRAND_NAME}", "type": "text"}},\n'
-        f'  "price": {{"schema_org": "Offer.price+priceCurrency"}}\n'
-        "}\n"
-    )
-    repo = make_repo(tmp_path / "repo", {"backend/src/crawlerai/schemas/presets/p.json": preset})
+def test_schema_org_paths_the_schema_documents_define_are_not_hosts(tmp_path: Path) -> None:
+    refs = f'A = "{PRODUCT_NAME.lower()}"\n# maps to {BRAND_NAME}\n'
+    repo = make_repo(tmp_path / "repo", {"schemas/presets/p.json": PRESET, "refs.py": refs})
 
     result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 0, result.stdout
 
 
-def test_hosts_outside_schema_org_paths_are_still_found(tmp_path: Path) -> None:
-    lowercase = PRODUCT_NAME.lower()
-    preset = (
-        f'{{"schema_org": "{lowercase}"}}\n'  # a lowercase type is not schema.org's convention: a host
-        f'{{"same_as": "{PRODUCT_NAME}"}}\n'  # another key
-        f'{{"schema_org": "{PRODUCT_NAME}", "url": "shop.example.com"}}\n'  # the rest of the line
-        f'"schema_org"\nX = "{PRODUCT_NAME}"\n'  # not a pair on one line
+def test_schema_org_shapes_no_schema_document_defines_are_hosts(tmp_path: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo",
+        {
+            "schemas/presets/p.json": PRESET,
+            "q.json": f'{{"same_as": "{OFFER_NAME}"}}\n',  # another key
+            "broken.json": f'{{"schema_org": "{OFFER_NAME}"\n',  # not JSON
+            "refs.py": f'A = "{OFFER_NAME}"\nB = "shop.{PRODUCT_NAME}"\n',
+        },
     )
-    repo = make_repo(tmp_path / "repo", {"p.json": preset})
 
     result = run_scan(repo, allowlist=[])
 
     assert result.returncode == 1
     assert result.stdout.splitlines() == [
-        f"p.json:1: {lowercase}",
-        f"p.json:2: {lowercase}",
-        "p.json:3: shop.example.com",
-        f"p.json:5: {lowercase}",
+        f"broken.json:1: {OFFER_NAME.lower()}",
+        f"q.json:1: {OFFER_NAME.lower()}",
+        f"refs.py:1: {OFFER_NAME.lower()}",
+        f"refs.py:2: shop.{PRODUCT_NAME.lower()}",
     ]

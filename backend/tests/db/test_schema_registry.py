@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.cli import main
@@ -154,5 +154,4 @@ async def _delete_presets(database_url: str) -> None:
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
         await conn.execute(delete(SchemaRow).where(SchemaRow.origin == "preset"))
-        assert (await conn.execute(select(SchemaRow.id).where(SchemaRow.origin == "preset"))).first() is None
     await engine.dispose()
