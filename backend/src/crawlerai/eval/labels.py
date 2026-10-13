@@ -62,6 +62,27 @@ class ObjectShape(_Model):
 FieldShape = Annotated[ScalarShape | ListShape | ObjectShape, Field(discriminator="type")]
 
 
+class _Shape(_Model):
+    shape: FieldShape
+
+
+def field_shapes(fields: Mapping[str, JsonValue]) -> dict[str, FieldShape]:
+    """The shapes of a schema document's `fields` (SPEC-04 §4.2, `schema_def.fields`): each field's type, scope and
+    nesting, without the parts labels don't read (`required`, `description`, `schema_org`, ...)."""
+    return {name: _Shape.model_validate({"shape": _shape_part(spec)}).shape for name, spec in fields.items()}
+
+
+def _shape_part(spec: JsonValue) -> JsonValue:
+    if not isinstance(spec, dict):
+        return spec  # not a field document: validation rejects it
+    part: dict[str, JsonValue] = {key: spec[key] for key in ("type", "scope") if key in spec}
+    if "item" in spec:
+        part["item"] = _shape_part(spec["item"])
+    if isinstance(nested := spec.get("fields"), dict):
+        part["fields"] = {name: _shape_part(sub) for name, sub in nested.items()}
+    return part
+
+
 def values_equal(a: JsonValue, b: JsonValue, shape: FieldShape) -> bool:
     """Type equality (SPEC-04 §4.5): each scalar type's normalizer decides; a list is a multiset of its items, an
     object is equal field by field."""

@@ -7,7 +7,16 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.eval.labels import FieldShape, InvalidLabels, LabelError, ListShape, ScalarShape, parse_labels
+from crawlerai.eval.labels import (
+    FieldShape,
+    InvalidLabels,
+    LabelError,
+    ListShape,
+    ObjectShape,
+    ScalarShape,
+    field_shapes,
+    parse_labels,
+)
 
 DETAIL_SHAPES: dict[str, FieldShape] = {
     "title": ScalarShape(type="text"),
@@ -190,3 +199,19 @@ def test_detail_pages_ignore_scope() -> None:
     shapes = {**DETAIL_SHAPES, "brand": ScalarShape(type="text", scope="page")}
 
     assert parse_labels(raw, "detail", shapes).fields["brand"].absent is True
+
+
+def test_field_shapes_keep_type_scope_and_nesting_of_a_schema_document() -> None:
+    fields: dict[str, JsonValue] = {
+        "title": {"type": "text", "required": True, "description": "Name", "schema_org": "Product.name"},
+        "next_page_url": {"type": "url", "scope": "page", "description": "Next page"},
+        "locations": {"type": "list", "item": {"type": "location", "description": "One"}, "description": "All"},
+        "salary": {"type": "object", "fields": {"base": {"type": "money", "required": True}}, "description": "Pay"},
+    }
+
+    assert field_shapes(fields) == {
+        "title": ScalarShape(type="text"),
+        "next_page_url": ScalarShape(type="url", scope="page"),
+        "locations": ListShape(type="list", item=ScalarShape(type="location")),
+        "salary": ObjectShape(type="object", fields={"base": ScalarShape(type="money")}),
+    }
