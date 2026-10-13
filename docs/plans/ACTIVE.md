@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-02 PR 5 (#31); SPEC-03 PRs 4, 7–11.
+- Next: SPEC-03 PR 4 and PR 8 (in progress); SPEC-03 PRs 9–11. SPEC-03 PR 7 waits on H1/H2, so the exit predicate can't fully hold until then.
+- Follow-ups for SPEC-10's page-fetching handler (from #31): pass `fetch_politely` the HTTP rung for robots.txt and `acquire` for the page (a robots.txt classifies as `shell` and would trigger a browser retry); admit the browser retry through `HostLimiter`, or log that one immediate retry per fetch is accepted; check every attempt, not only the kept result, for `SLOW_DOWN`.
 - Follow-ups for SPEC-03 PR 7 (from #32): run the gate (baseline lookup) before `put_run` on a push to `main`, or exclude the candidate's sha, since otherwise the candidate's own run becomes its baseline; store the unsuppressed report as the run's `metrics` (an exported aggregate makes `gate` raise `GateInputInvalid`); check out with `fetch-depth: 0`.
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
 - Follow-up from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment.
@@ -82,7 +83,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 2 | HTTP fetch (curl_cffi) with manual redirects and caps | done (#18) | |
 | 3 | Persist capture + `crawlerai fetch` CLI | done (#22) | Also closed #18's follow-ups. |
 | 4 | Politeness + robots + backoff via requeue | done (#26) | Also closed #23's follow-ups. |
-| 5 | Rung selection + fetch_method memory + re-check scheduler task | todo | |
+| 5 | Rung selection + fetch_method memory + re-check scheduler task | done (#31) | SPEC-02 L0 rows complete. |
 | 6 | Patchright browser rung with network capture | todo | |
 | 7 | Proxy pools | todo | |
 | 8 | Adapter protocol + Greenhouse | todo | |
@@ -98,7 +99,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | Replay harness + RecordedLLM + determinism test | todo | |
 | 5 | Metrics + aggregate report + min-cell suppression | done (#29) | Secondary suppression: D-0187 (needs-owner, not blocking). |
 | 6 | Gate + baseline lookup | done (#32) | |
-| 7 | Protected job wired (replace placeholder) + dev report in `backend` job | todo | |
+| 7 | Protected job wired (replace placeholder) + dev report in `backend` job | human (H1, H2) | Needs the private eval credentials and the protected environment; changes the protected job (CLAUDE.md §4). Follow-ups from #32 below. |
 | 8 | Labeling API | todo | |
 | 9 | Labeling screen | todo | |
 | 10 | Promote/rotate commands | todo | |

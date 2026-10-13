@@ -1212,3 +1212,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Print tracebacks for every split.
 - Why: C1: a DB error's `DETAIL` or an exception message could carry a hidden URL or row values.
 - Reversible: yes
+
+### D-0203 — The browser is not tried after a 429 or 503
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 5 (#31) · Status: decided
+- Decision: An HTTP `blocked` with status 429 or 503 is kept, with no browser retry; politeness applies the backoff (D-0163).
+- Alternatives: Retry every `blocked` in the browser, as §4.4's sketch does.
+- Why: RFC 6585 §4 and RFC 9110 §15.6.4 ask for fewer requests; a second rung would be one more request inside the backoff window.
+- Reversible: yes
+
+### D-0204 — `site.fetch_method` turns `browser` only on evidence against HTTP
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 5 (#31) · Status: decided
+- Decision: `remember_fetch_method` sets `browser` only when the kept result is a browser `ok` and an HTTP attempt in the same fetch was `shell` or `blocked`; a `method_hint` browser fetch changes nothing.
+- Alternatives: §4.4's literal `if r.method == "browser" and ok`.
+- Why: §7.1 remembers "the method that worked" after HTTP failed; a forced browser fetch says nothing about HTTP.
+- Reversible: yes
+
+### D-0205 — The fetch-method re-check
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 5 (#31) · Status: decided
+- Decision: Due means `fetch_method='browser'` and `fetch_method_checked_at` null or older than 7 days, oldest first. It fetches the site's latest `ok` capture after robots.txt, one site per transaction; every re-check sets `fetch_method_checked_at`. No `ok` capture, a robots disallow, or unreachable robots.txt keeps `browser`.
+- Alternatives: The latest capture of any class; a queued re-check task.
+- Why: A page known to exist makes a miss evidence about the method; no job kind exists for a queued re-check; batch 1 bounds row-lock time.
+- Reversible: yes
+
+### D-0206 — `acquire` is pure
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 5 (#31) · Status: decided
+- Decision: `acquire(url, policy, remembered: FetchMethod, rungs: Rungs)`; `remember_fetch_method(conn, site_id, result)` writes.
+- Alternatives: `acquire(url, site, policy)` reading and writing the DB.
+- Why: Rung selection is tested without a database, and the caller owns the transaction (ENGINEERING).
+- Reversible: yes
