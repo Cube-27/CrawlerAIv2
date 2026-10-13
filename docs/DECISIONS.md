@@ -1332,3 +1332,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Drop on everything; raise on everything.
 - Why: Per-page problems trip the `n_pages` gate as §4.11 intends; setup errors would silently drop every page.
 - Reversible: yes
+
+### D-0220 — Promote moves whole sites, by default only fully checked ones
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 10 (#34) · Status: decided
+- Decision: Without `--all`, a fresh site moves only when every page is `checked`; `--all` moves every fresh site; pages never move one by one.
+- Alternatives: Move checked pages individually; `--all` meaning every split.
+- Why: §16.1 splits are sets of sites; splitting one would put a host in dev and a private split at once; `checked` is the only measured status (§4.3).
+- Reversible: yes
+
+### D-0221 — A fresh site whose host also has hidden pages is not promoted
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 10 (#34) · Status: decided
+- Decision: It stays in fresh even with `--all`.
+- Alternatives: Promote it anyway.
+- Why: C1 / §16.1: moving it would put a hidden host in dev. Most conservative reading.
+- Reversible: yes
+
+### D-0222 — Rotation is stratified by category, rounding half up, at random
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 10 (#34) · Status: decided
+- Decision: Per category, `floor(F·n_sites + 0.5)` hosts are chosen by `SystemRandom.sample`; a site's category is its first page's; `--fraction` in (0, 1).
+- Alternatives: One draw over all sites; floor rounding.
+- Why: §16.1 stratifies hidden by category; with 0.33 and 3 sites, round-half-up moves 1.
+- Reversible: yes
+
+### D-0223 — Interrupted moves converge
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 10 (#34) · Status: decided
+- Decision: Copy (`put_capture` converges, `put_page` skipped when the dev page exists), then `remove_page` (no-op when missing); a rerun finishes a partial move.
+- Alternatives: A two-phase commit across databases.
+- Why: The dev and private stores are separate databases (INV-01); §4.4 fixes the order.
+- Reversible: yes

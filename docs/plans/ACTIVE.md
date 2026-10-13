@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-03 PR 10 (#34) to merge; workflow self-improvement PR; Vite+ toolchain PR (owner request); SPEC-03 PRs 9, 11; fix row: `rotate_hidden` must skip hosts that also have fresh pages (from #34).
+- Next: workflow self-improvement PR; Vite+ toolchain PR (owner request); SPEC-03 PRs 9, 11; fix row: `rotate_hidden` must skip hosts that also have fresh pages, or `import-sites` must refuse hidden/dev hosts (from #34; keeps fresh = sites nobody has seen, §16.1).
+- For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
 - Follow-ups from #33: decide whether unreadable recordings (`LLMResponse` validation, a cache row whose object is missing) drop the page as `ReplayFailed` or stop the run, and write it down (SPEC-05 PR that wires the engine).
 - Follow-ups for SPEC-03 PR 9 (from #35): guard `PUT labels` against a labeler/checker race (`WHERE labels = <read>` or a version); compare labeler names casefolded, as `parse_labels` does; the `javascript:` strip should drop tab and newline characters first (WHATWG URL parsing). For SPEC-07 PR 1: map `ObjectNotFound`/`CorruptBundle` from `get_bundle` to a problem response.
 - Follow-ups for SPEC-10's page-fetching handler (from #31): pass `fetch_politely` the HTTP rung for robots.txt and `acquire` for the page (a robots.txt classifies as `shell` and would trigger a browser retry); admit the browser retry through `HostLimiter`, or log that one immediate retry per fetch is accepted; check every attempt, not only the kept result, for `SLOW_DOWN`.
@@ -104,7 +105,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | Protected job wired (replace placeholder) + dev report in `backend` job | human (H1, H2) | Needs the private eval credentials and the protected environment; changes the protected job (CLAUDE.md §4). Follow-ups from #32 below. |
 | 8 | Labeling API | done (#35) | Dev split only (D-0207); hidden/fresh labeling at M is D-0214. |
 | 9 | Labeling screen | todo | |
-| 10 | Promote/rotate commands | todo | |
+| 10 | Promote/rotate commands | done (#34) | Fix row due: `rotate_hidden` must skip hosts that also have fresh pages. |
 | 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | todo | |
 
 ## [SPEC-04 — Schemas as data and type normalization](../specs/SPEC-04-schemas-and-normalization.md)
