@@ -30,12 +30,23 @@ MONEY = FieldSpec(type=FieldType.MONEY)
 
 
 @cache
+def _symbols_by_locale() -> dict[str, dict[str, str]]:
+    """CLDR: each locale's currency symbols (NFKC), by ISO 4217 code."""
+    return {
+        identifier: {
+            code: unicodedata.normalize("NFKC", s) for code, s in Locale.parse(identifier).currency_symbols.items()
+        }
+        for identifier in locale_identifiers()
+    }
+
+
+@cache
 def _symbols() -> dict[str, frozenset[str]]:
     """CLDR: every currency symbol (NFKC) and the currencies it stands for in some locale."""
     by_symbol: dict[str, set[str]] = {}
-    for identifier in locale_identifiers():
-        for code, symbol in Locale.parse(identifier).currency_symbols.items():
-            by_symbol.setdefault(unicodedata.normalize("NFKC", symbol), set()).add(code)
+    for symbols in _symbols_by_locale().values():
+        for code, symbol in symbols.items():
+            by_symbol.setdefault(symbol, set()).add(code)
     return {symbol: frozenset(codes) for symbol, codes in by_symbol.items()}
 
 
@@ -45,9 +56,10 @@ def _located(sign: str) -> bool:
 
 
 # A symbol that is itself an ISO 4217 code names that currency (CLDR `zh` writes ILR, the old sheqel, as `ILS`).
-_SHARED = sorted(s for s, codes in _symbols().items() if len(codes) > 1 and s not in list_currencies())
+_ISO_CODES = frozenset(list_currencies())
+_SHARED = sorted(s for s, codes in _symbols().items() if len(codes) > 1 and s not in _ISO_CODES)
 _LOCATED_SHARED = [s for s in _SHARED if _located(s)]
-_CODES = sorted(c for c in list_currencies() if _located(c))
+_CODES = sorted(c for c in _ISO_CODES if _located(c))
 # One locale per CLDR number convention the tests write amounts in: `.` decimal with `,`, U+2019 and narrow no-break
 # space groups, and `,` decimal with `.` groups.
 _CONVENTIONS = ["en_US", "de_DE", "fr_FR", "de_CH"]
@@ -107,8 +119,8 @@ def test_an_ok_currency_is_backed_by_the_evidence(
 def _valid_in_some_locale(sign: str, code: str, ctx: Context) -> bool:
     languages = {Locale.parse(t, sep="-").language for t in ctx.hreflang if t != "x-default"}
     return any(
-        unicodedata.normalize("NFKC", Locale.parse(i).currency_symbols.get(code, "")) == sign
-        for i in locale_identifiers()
+        symbols.get(code) == sign
+        for i, symbols in _symbols_by_locale().items()
         if i.partition("_")[0] in languages or (not languages and i.endswith(f"_{ctx.cctld_territory}"))
     )
 
