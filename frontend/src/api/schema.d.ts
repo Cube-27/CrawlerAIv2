@@ -190,10 +190,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/scrape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scrape
+         * @description Fetch `url` and return the requested formats; only those are members of the answer.
+         */
+        post: operations["scrape_v1_scrape_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AttemptRecord
+         * @description One rung tried. `status` is None when no response arrived (network error, timeout, SSRF rejection).
+         */
+        AttemptRecord: {
+            /**
+             * Block Class
+             * @enum {string}
+             */
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            /** Duration Ms */
+            duration_ms: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "http" | "browser" | "api";
+            /** Status */
+            status: number | null;
+        };
+        /** Budget */
+        Budget: {
+            /**
+             * Llm Calls
+             * @default 10
+             */
+            llm_calls: number;
+        };
         /** CaptureRequest */
         CaptureRequest: {
             /**
@@ -249,6 +299,44 @@ export interface components {
             page_id: string;
             /** Status Code */
             status_code: number;
+        };
+        /** FetchOptions */
+        FetchOptions: {
+            /**
+             * Method Hint
+             * @default auto
+             * @enum {string}
+             */
+            method_hint: "auto" | "http" | "browser";
+            /** Proxy Pool */
+            proxy_pool?: string | null;
+            /**
+             * Respect Robots
+             * @default true
+             */
+            respect_robots: boolean;
+            /** Robots Override Reason */
+            robots_override_reason?: string | null;
+        };
+        /**
+         * FetchSummary
+         * @description The fetch of the page: the method, status and class of the kept attempt, and every attempt made.
+         */
+        FetchSummary: {
+            /** Attempts */
+            attempts: components["schemas"]["AttemptRecord"][];
+            /**
+             * Block Class
+             * @enum {string}
+             */
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "http" | "browser" | "api";
+            /** Status Code */
+            status_code: number | null;
         };
         /** FieldErrorOut */
         FieldErrorOut: {
@@ -478,6 +566,26 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** PageMetadata */
+        PageMetadata: {
+            /** Canonical */
+            canonical: string | null;
+            /** Description */
+            description: string | null;
+            /** Language */
+            language: string | null;
+            /** Og */
+            og: {
+                [key: string]: string;
+            };
+            /**
+             * Structured Data Types
+             * @default []
+             */
+            structured_data_types: string[];
+            /** Title */
+            title: string | null;
+        };
         /** PageSummary */
         PageSummary: {
             /**
@@ -535,6 +643,14 @@ export interface components {
             title: string;
             /** Type */
             type: string;
+        };
+        /** SchemaById */
+        SchemaById: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
         };
         /**
          * SchemaContent
@@ -596,10 +712,96 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** SchemaInline */
+        SchemaInline: {
+            inline: components["schemas"]["NewSchema"];
+        };
         /** SchemaList */
         SchemaList: {
             /** Items */
             items: components["schemas"]["SchemaDef"][];
+        };
+        /** SchemaPrompt */
+        SchemaPrompt: {
+            /** Prompt */
+            prompt: string;
+        };
+        /**
+         * ScrapeRequest
+         * @description The body of `POST /v1/scrape` (§4.4). `records`, with `schema`, `page_kind` and `budget`, is SPEC-07 PR 5;
+         *     `max_age` reuses a recent capture from PR 5, and until then every scrape fetches anew, which any `max_age`
+         *     allows.
+         */
+        ScrapeRequest: {
+            /**
+             * @default {
+             *       "llm_calls": 10
+             *     }
+             */
+            budget: components["schemas"]["Budget"];
+            /**
+             * @default {
+             *       "method_hint": "auto",
+             *       "respect_robots": true
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions"];
+            /** Formats */
+            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Max Age
+             * @default 0
+             */
+            max_age: number;
+            /** Page Kind */
+            page_kind?: ("detail" | "listing") | null;
+            /** Schema */
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | null;
+            /**
+             * Timeout S
+             * @default 60
+             */
+            timeout_s: number;
+            /** Url */
+            url: string;
+        };
+        /**
+         * ScrapeResult
+         * @description The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
+         *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None.
+         */
+        ScrapeResult: {
+            /** Capture Id */
+            capture_id: string | null;
+            fetch: components["schemas"]["FetchSummary"] | null;
+            /** Fetched At */
+            fetched_at: string | null;
+            /** Final Url */
+            final_url: string | null;
+            /** Html */
+            html?: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Links */
+            links?: string[];
+            /** Markdown */
+            markdown?: string;
+            metadata?: components["schemas"]["PageMetadata"];
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "failed";
+            /** Raw Html */
+            raw_html?: string;
+            /** Url */
+            url: string;
+            usage: components["schemas"]["Usage"];
         };
         /** SkippedOut */
         SkippedOut: {
@@ -612,6 +814,37 @@ export interface components {
             n: number;
             /** Reason */
             reason: string;
+        };
+        /**
+         * Usage
+         * @description What the scrape's job used (ARCHITECTURE §17).
+         */
+        Usage: {
+            /**
+             * Browser Seconds
+             * @default 0
+             */
+            browser_seconds: number;
+            /**
+             * Http Requests
+             * @default 0
+             */
+            http_requests: number;
+            /**
+             * Llm Calls
+             * @default 0
+             */
+            llm_calls: number;
+            /**
+             * Llm Tokens In
+             * @default 0
+             */
+            llm_tokens_in: number;
+            /**
+             * Llm Tokens Out
+             * @default 0
+             */
+            llm_tokens_out: number;
         };
     };
     responses: never;
@@ -1237,6 +1470,70 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scrape_v1_scrape_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScrapeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScrapeResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

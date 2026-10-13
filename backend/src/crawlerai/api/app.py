@@ -3,21 +3,52 @@ routers share."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from crawlerai.acquire.browser import fetch_browser, open_browser
+from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api import problems
 from crawlerai.api.auth import RateLimiter
 from crawlerai.api.routers import eval as eval_router
-from crawlerai.api.routers import health, schemas
-from crawlerai.core.settings import ApiSettings, DatabaseSettings
+from crawlerai.api.routers import health, schemas, scrape
+from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.settings import ApiSettings, Settings
+from crawlerai.services.scrape import Fetching
+from crawlerai.storage import open_store
+
+
+def _fetching(settings: Settings) -> Fetching:
+    """The rungs `scrape` fetches with, all through one SSRF guard."""
+    connector = SafeConnector()
+    pools = settings.proxy_pools
+
+    async def browser(url: str, policy: FetchPolicy) -> FetchResult:
+        # The browser is a rung of last resort here (ARCHITECTURE §7.1), so it is launched per fetch rather than kept
+        # running beside every API process.
+        async with open_browser() as session:
+            return await fetch_browser(
+                url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
+            )
+
+    http = partial(
+        fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
+    )
+    return Fetching(Rungs(http=http, browser=browser), connector, open_store(settings.object_store), HostLimiter())
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
+    settings = Settings()
+    engine = create_async_engine(settings.database_url.get_secret_value())
     app.state.database = engine
+    app.state.fetching = _fetching(settings)
     try:
         yield
     finally:
@@ -35,6 +66,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     problems.install(app)
     app.include_router(health.router)
     app.include_router(schemas.router)
+    app.include_router(scrape.router)
     if app.state.eval_ui:
         app.include_router(eval_router.router)
     return app
