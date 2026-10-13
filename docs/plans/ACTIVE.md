@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). Working on L2. In progress: SPEC-09 PR 4, SPEC-08 PR 7, SPEC-10 PR 1 (#120, L3). Next: SPEC-08 PR 10, SPEC-08 PR 8.
+- L1 complete (2026-10-14). Working on L2. In progress: SPEC-09 PR 4 (#121), SPEC-08 PR 7, SPEC-08 PR 10. Next: SPEC-08 PR 8, SPEC-08 PR 11, SPEC-09 PR 5.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -202,7 +202,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Job summary/status/cancel/results endpoints | todo | |
+| 1 | Job summary/status/cancel/results endpoints | done (#120) | D-0577–D-0580. Follow-up from review: the INV-27 property's markdown leg compares with the exporter fed stored values; parse the table cells back. |
 | 2 | `batch/scrape` + worker handler registration | todo | |
 | 3 | Canonicalization + sitemaps + `map` | todo | |
 | 4 | Frontier, rules, `crawl` | todo | |

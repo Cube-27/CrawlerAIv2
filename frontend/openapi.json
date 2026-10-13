@@ -217,6 +217,43 @@
         "title": "CapturedOut",
         "type": "object"
       },
+      "ExportPage": {
+        "description": "One page of a job's records in an export format (SPEC-08 \u00a74.11); `next_cursor` as in `RecordPage`.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "json_records",
+              "csv_records",
+              "markdown"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "format",
+          "content",
+          "next_cursor"
+        ],
+        "title": "ExportPage",
+        "type": "object"
+      },
       "ExtractedRecord": {
         "description": "A record's content (\u00a76 `record`): `complete` when every required field and group published (\u00a710), and its\nconfidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with\nthese: they are not stored, so they have no id.",
         "properties": {
@@ -671,6 +708,110 @@
         "title": "Health",
         "type": "object"
       },
+      "JobSummary": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/TaskCounts"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "scrape",
+              "batch_scrape",
+              "map",
+              "crawl",
+              "extract",
+              "learn"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "outcomes": {
+            "$ref": "#/components/schemas/OutcomeCounts"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Usage",
+            "type": "object"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "counts",
+          "outcomes",
+          "usage",
+          "webhook_url",
+          "engine_version"
+        ],
+        "title": "JobSummary",
+        "type": "object"
+      },
       "JsonValue": {},
       "LabelRow": {
         "additionalProperties": false,
@@ -834,6 +975,60 @@
           "raw_text"
         ],
         "title": "NormalizeRequest",
+        "type": "object"
+      },
+      "OutcomeCounts": {
+        "description": "How many of the job's tasks ended with each outcome (`url_task.outcome`, ARCHITECTURE \u00a76).",
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "extracted": {
+            "title": "Extracted",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "links_only": {
+            "title": "Links Only",
+            "type": "integer"
+          },
+          "no_match": {
+            "title": "No Match",
+            "type": "integer"
+          },
+          "not_found": {
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "integer"
+          },
+          "shell": {
+            "title": "Shell",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "extracted",
+          "partial",
+          "unchanged",
+          "links_only",
+          "blocked",
+          "shell",
+          "not_found",
+          "no_match",
+          "failed"
+        ],
+        "title": "OutcomeCounts",
         "type": "object"
       },
       "PageDetail": {
@@ -1922,6 +2117,40 @@
         "title": "StoredRecord",
         "type": "object"
       },
+      "TaskCounts": {
+        "description": "How many of the job's tasks are in each status (SPEC-01 \u00a74.3).",
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "claimed": {
+            "title": "Claimed",
+            "type": "integer"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "claimed",
+          "done",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskCounts",
+        "type": "object"
+      },
       "Usage": {
         "description": "What the scrape's job used (ARCHITECTURE \u00a717).",
         "properties": {
@@ -2705,6 +2934,369 @@
         "summary": "Prefill",
         "tags": [
           "eval"
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "delete": {
+        "description": "Cancel the job: its queued tasks are not run, and it is `cancelled` once no task is running. 409: it already\ncompleted or failed.",
+        "operationId": "cancel_job_v1_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "jobs"
+        ]
+      },
+      "get": {
+        "description": "The job's status, its task counts by status and by outcome, and its usage.",
+        "operationId": "get_job_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}/results": {
+      "get": {
+        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. Pass a page's `next_cursor` as `cursor` for the page\nafter it. 409: an export of a job without a schema.",
+        "operationId": "job_results_v1_jobs__job_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "json_records",
+                "csv_records",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RecordPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExportPage"
+                    }
+                  ],
+                  "title": "Response Job Results V1 Jobs  Job Id  Results Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Job Results",
+        "tags": [
+          "jobs"
         ]
       }
     },

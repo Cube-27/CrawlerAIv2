@@ -163,6 +163,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job
+         * @description The job's status, its task counts by status and by outcome, and its usage.
+         */
+        get: operations["get_job_v1_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Job
+         * @description Cancel the job: its queued tasks are not run, and it is `cancelled` once no task is running. 409: it already
+         *     completed or failed.
+         */
+        delete: operations["cancel_job_v1_jobs__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Results
+         * @description The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
+         *     `csv_records` or `markdown` text in the schema's columns. Pass a page's `next_cursor` as `cursor` for the page
+         *     after it. 409: an export of a job without a schema.
+         */
+        get: operations["job_results_v1_jobs__job_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/records": {
         parameters: {
             query?: never;
@@ -348,6 +395,21 @@ export interface components {
             status_code: number;
         };
         /**
+         * ExportPage
+         * @description One page of a job's records in an export format (SPEC-08 §4.11); `next_cursor` as in `RecordPage`.
+         */
+        ExportPage: {
+            /** Content */
+            content: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json_records" | "csv_records" | "markdown";
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
          * ExtractedRecord
          * @description A record's content (§6 `record`): `complete` when every required field and group published (§10), and its
          *     confidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with
@@ -515,6 +577,43 @@ export interface components {
              */
             status: "ok";
         };
+        /** JobSummary */
+        JobSummary: {
+            counts: components["schemas"]["TaskCounts"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Engine Version */
+            engine_version: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "scrape" | "batch_scrape" | "map" | "crawl" | "extract" | "learn";
+            outcomes: components["schemas"]["OutcomeCounts"];
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Usage */
+            usage: {
+                [key: string]: number;
+            };
+            /** Webhook Url */
+            webhook_url: string | null;
+        };
         JsonValue: unknown;
         /** LabelRow */
         LabelRow: {
@@ -584,6 +683,30 @@ export interface components {
             field: string;
             /** Raw Text */
             raw_text: string;
+        };
+        /**
+         * OutcomeCounts
+         * @description How many of the job's tasks ended with each outcome (`url_task.outcome`, ARCHITECTURE §6).
+         */
+        OutcomeCounts: {
+            /** Blocked */
+            blocked: number;
+            /** Extracted */
+            extracted: number;
+            /** Failed */
+            failed: number;
+            /** Links Only */
+            links_only: number;
+            /** No Match */
+            no_match: number;
+            /** Not Found */
+            not_found: number;
+            /** Partial */
+            partial: number;
+            /** Shell */
+            shell: number;
+            /** Unchanged */
+            unchanged: number;
         };
         /** PageDetail */
         PageDetail: {
@@ -989,6 +1112,22 @@ export interface components {
             schema_id: string;
             /** Version */
             version: number;
+        };
+        /**
+         * TaskCounts
+         * @description How many of the job's tasks are in each status (SPEC-01 §4.3).
+         */
+        TaskCounts: {
+            /** Cancelled */
+            cancelled: number;
+            /** Claimed */
+            claimed: number;
+            /** Done */
+            done: number;
+            /** Failed */
+            failed: number;
+            /** Queued */
+            queued: number;
         };
         /**
          * Usage
@@ -1460,6 +1599,216 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_job_v1_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancel_job_v1_jobs__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    job_results_v1_jobs__job_id__results_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+                format?: "json" | "json_records" | "csv_records" | "markdown";
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPage"] | components["schemas"]["ExportPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

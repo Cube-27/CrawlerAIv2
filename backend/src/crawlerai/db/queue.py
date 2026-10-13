@@ -214,7 +214,7 @@ async def _claimed(conn: AsyncConnection, statement: Executable) -> list[Claimed
 
 async def _finish(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
     await _move(conn, task, target, **values)
-    await _settle_job(conn, task.job_id)
+    await settle_job(conn, task.job_id)
 
 
 async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
@@ -226,7 +226,7 @@ async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **
         raise LeaseLost(task.id) from lost
 
 
-async def _settle_job(conn: AsyncConnection, job_id: JobId) -> None:
+async def settle_job(conn: AsyncConnection, job_id: JobId) -> None:
     """End a running job once its tasks allow it (`settled_status`)."""
     job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == job_id).with_for_update())).one()
     if job.status != "running":
