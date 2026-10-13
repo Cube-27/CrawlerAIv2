@@ -3513,3 +3513,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: The latest release.
 - Why: 1.9.x and 1.10.x were under two weeks old; SPEC-08 §4.1 names jsonpath-ng.
 - Reversible: yes
+
+### D-0531 — Per-kind precision for `fit-precedence` is scored on every kind's kept values, in a dev-only `by_source` table
+- Date: 2026-10-14 · Spec/PR: SPEC-05 PR 13 (#109) · Status: decided
+- Decision: The dev report gains `by_source` (`rule_type|source_kind` → precision, coverage, n). For each judged field and each source kind with kept candidates, the cell is TP when every value of that kind equals the label, FP otherwise (including an absent label); coverage is TP over the type's fields whose label holds a value. A list is keyed by its item type. Only dev reports carry it. Supersedes the interim fits of D-0229.
+- Alternatives: Score only the published value's kind.
+- Why: §4.11 asks for per-kind precision on dev; the order decides between competing kinds, so each is measured where it competes, not only where it won.
+- Reversible: yes
+
+### D-0532 — A precedence fit reorders only the kinds already in the order
+- Date: 2026-10-14 · Spec/PR: SPEC-05 PR 13 (#109) · Status: decided
+- Decision: `fit-precedence` never adds or removes a source kind; kinds measured on ≥ 30 fields are sorted by precision, then coverage, in the slots they hold, and every other kind keeps its place.
+- Alternatives: Add any kind measured with n ≥ 30.
+- Why: Membership is the committed initial order (D-0020); §4.11 orders kinds, it does not add them.
+- Reversible: yes
+
+### D-0533 — Preference records its kept candidates
+- Date: 2026-10-14 · Spec/PR: SPEC-05 PR 13 (#109) · Status: decided
+- Decision: `Chosen`, `Unpublished` and `FieldOutcome` carry `kept`: the candidates that passed validity, ownership and the URL-parameter rule, whether the field publishes, is declined or abstains. A derived value and an ambiguous intent keep none.
+- Alternatives: Rebuild the set from reject reasons (a deny-list that counts any new reason as kept), or from `ExtractionResult.candidates` (ambiguous across listing rows).
+- Why: The resolver is the one place that knows which candidates were screened out.
+- Reversible: yes

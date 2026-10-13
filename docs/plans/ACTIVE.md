@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 13, SPEC-06 PR 5 (the last L1 rows), SPEC-09 PR 2 (L2). Next: SPEC-08 PR 4, SPEC-09 PR 3 (L2).
+- In progress: SPEC-06 PR 5 (the last L1 row), SPEC-09 PR 2 (L2). Next: SPEC-08 PR 4, SPEC-09 PR 3 (L2).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -144,7 +144,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 10 | js_state + xhr collectors with admission rule | done (#86) | `AdmittingCollector` takes the other kinds' candidates; PR 9 runs it after them (D-0418). Follow-up from review: js_state reads only a script's first assignment, so `var n = 1; window.X = {...}` gives no document; could take the first assignment whose value is an object or array. |
 | 11 | Adapter collector | done (#91) | PR 9 builds `AdapterCollector(adapter, page_kind)` for `api` captures from the bundle's `url` (D-0445). Follow-up from review: a list field mapped through a nested wildcard would become one candidate per item; no current map does this. |
 | 12 | Cold listings + pagination | done (#106) | D-0509–D-0517. `next_pages` is on `ExtractionResult` for SPEC-10's frontier; scrape still refuses listing records. Follow-ups from review: a page with the same items in JSON-LD and microdata gives a row per syntax (one record only once row URLs rank, D-0444); the `T.url` path check is in both `records._row_key` and `derive.is_page_url_field`. |
-| 13 | calibrate / fit-precedence logic | todo | |
+| 13 | calibrate / fit-precedence logic | done (#109) | D-0531–D-0533; replaces the interim fits of D-0229. No `calibration.json` or `source_precedence.yaml` committed (D-0444, milestone M). Follow-up from review (optional): make `Chosen.kept`/`Unpublished.kept` required instead of defaulting to `()`. |
 
 ## [SPEC-06 — LLM layer: provider-agnostic client, grounding, roles C and S](../specs/SPEC-06-llm-layer.md)
 
