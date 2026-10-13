@@ -9,7 +9,6 @@ Entities and locators are addressed as `jsonld:<block>:<path>`, where the path i
 the object in its block's JSON (`$['@graph'][1]`).
 """
 
-import json
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -18,6 +17,7 @@ from urllib.parse import urljoin, urlsplit
 from pydantic import JsonValue
 
 from crawlerai.collect.base import CollectResult, Entity, descends
+from crawlerai.collect.json_doc import member, parse
 from crawlerai.collect.schema_org_map import (
     NAMESPACES,
     Typed,
@@ -111,7 +111,7 @@ class _Node:
         for key in _keys(prop, in_schema=self.found.in_schema):
             if key not in self.found.data:
                 continue
-            path, written = _member(self.found.path, key), self.found.data[key]
+            path, written = member(self.found.path, key), self.found.data[key]
             # JSON-LD 1.1 §4.3.1: an array holds several values of the property.
             items = [(f"{path}[{i}]", item) for i, item in enumerate(written)] if isinstance(written, list) else []
             for item_path, item in items or [(path, written)]:
@@ -143,15 +143,6 @@ def _keys(prop: str, *, in_schema: bool) -> list[str]:
     return ([prop] if in_schema else []) + [namespace + prop for namespace in NAMESPACES]
 
 
-# RFC 9535 §2.7: a normalized path writes a member name in single quotes, escaping `'`, `\` and control characters.
-_ESCAPES = {"'": "\\'", "\\": "\\\\", "\b": "\\b", "\f": "\\f", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
-
-
-def _member(path: str, name: str) -> str:
-    escaped = "".join(_ESCAPES.get(c) or (f"\\u{ord(c):04x}" if c < " " else c) for c in name)
-    return f"{path}['{escaped}']"
-
-
 def _in_schema(context: JsonValue, inherited: bool) -> bool:
     """Whether schema.org is the vocabulary after `context` (JSON-LD 1.1 §4.1: a `null` context resets it; an array is
     processed in order; an object without `@vocab` keeps the vocabulary in scope). A remote context other than
@@ -179,7 +170,7 @@ class JsonLdCollector:
         blocks = [script for script in page.scripts if script.type == _MEDIA_TYPE]
         for index, script in enumerate(blocks):
             try:
-                document = _parse(script.text)
+                document = parse(script.text)
             except ValueError as e:
                 diagnostics.append(f"jsonld:{index}: invalid JSON ({e})")
                 continue
@@ -218,7 +209,7 @@ class JsonLdCollector:
             yield found
             inner = found.id if found.types else enclosing
             stack.extend(
-                (child, _member(path, key), in_schema, inner, _member_via(found, key, via))
+                (child, member(path, key), in_schema, inner, _member_via(found, key, via))
                 for key, child in reversed(value.items())
                 if key != "@context"
             )
@@ -238,19 +229,6 @@ def _member_via(holder: _Object, key: str, via: str | None) -> str | None:
     if not holder.types:
         return via
     return schema_term(key) or (key if holder.in_schema and not key.startswith("@") else None)
-
-
-def _parse(text: str) -> JsonValue:
-    try:
-        parsed: JsonValue = json.loads(text, parse_constant=_not_json)
-    except RecursionError:
-        raise ValueError("nested too deeply") from None
-    return parsed
-
-
-def _not_json(constant: str) -> JsonValue:
-    # RFC 8259 §6: `NaN` and `Infinity` are not JSON numbers, though Python's parser reads them.
-    raise ValueError(f"{constant} is not JSON")
 
 
 def _parents(entities: Sequence[_Object], graph: _Graph) -> tuple[dict[str, str | None], dict[str, str | None]]:
