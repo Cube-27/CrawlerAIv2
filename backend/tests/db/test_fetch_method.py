@@ -37,9 +37,11 @@ class Web:
     pages: dict[str, BlockClass] = field(default_factory=dict)
     robots: str = ""
     fetched: list[str] = field(default_factory=list)
+    policies: list[FetchPolicy | None] = field(default_factory=list)  # one per fetch
 
     async def __call__(self, url: str, policy: FetchPolicy | None = None) -> FetchResult:
         self.fetched.append(url)
+        self.policies.append(policy)
         if url == f"{ORIGIN}/robots.txt":
             return self.fetch_result(url, 200, self.robots.encode(), method=self.method)
         block_class = self.pages.get(url, "not_found")
@@ -196,6 +198,18 @@ async def test_the_recheck_tries_the_latest_ok_capture(conn: AsyncConnection, ht
 
     assert http.fetched[-1] == f"{ORIGIN}/item/recent"
     assert (await _memory(conn, site_id))[0] == "http"
+
+
+async def test_the_recheck_fetches_through_the_sites_proxy_pool(conn: AsyncConnection, http: Web) -> None:
+    # ARCHITECTURE §7.1: a site with a pool is fetched through it on every rung, the re-check's included.
+    site_id = await _site(conn, fetch_method="browser", proxy_pool="dc")
+    await _capture(conn, site_id, PAGE, "ok", days_ago=1)
+    http.pages[PAGE] = "ok"
+
+    await recheck_fetch_method(conn, http, batch=10)
+
+    assert http.fetched == [f"{ORIGIN}/robots.txt", PAGE]
+    assert http.policies == [FetchPolicy(proxy_pool="dc"), FetchPolicy(proxy_pool="dc")]
 
 
 async def test_the_recheck_honours_robots(conn: AsyncConnection, http: Web) -> None:

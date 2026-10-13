@@ -27,6 +27,7 @@ from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, sha256_hex
 
 __all__ = ["BrowserSession", "fetch_browser", "open_browser"]
@@ -110,7 +111,9 @@ async def fetch_browser(
     session: BrowserSession,
     engine_version: str,
     connector: SafeConnector | None = None,
+    pools: Mapping[str, ProxyEndpoint] | None = None,
 ) -> FetchResult:
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     timings: dict[str, int] = {}
@@ -118,13 +121,18 @@ async def fetch_browser(
     exchange: Exchange | None = None
     content = Content(body=b"")
     try:
+        proxy = pool_endpoint(policy.proxy_pool, pools)
         async with asyncio.timeout(policy.browser_timeout_s):
-            exchange, content = await _render(url, policy, session, connector or SafeConnector(), started, timings)
+            exchange, content = await _render(
+                url, policy, session, connector or SafeConnector(), proxy, started, timings
+            )
         # classify parses HTML synchronously; a thread keeps the event loop free.
         headers = exchange.response_headers
         block_class: BlockClass = await asyncio.to_thread(classify, exchange.status, headers, content.body)
     except _Failed as failed:
         error, block_class, exchange = failed.error, "error", failed.exchange
+    except UnknownProxyPool as unknown:
+        error, block_class = str(unknown), "error"
     except TimeoutError:
         error, block_class = "timeout", "error"
     return fetch_result(
@@ -148,6 +156,7 @@ async def _render(
     policy: FetchPolicy,
     session: BrowserSession,
     connector: SafeConnector,
+    proxy: ProxyEndpoint | None,
     started: float,
     timings: dict[str, int],
 ) -> tuple[Exchange, Content]:
@@ -155,7 +164,7 @@ async def _render(
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
         raise _Failed(str(e), None) from e
-    async with SocksGuard(connector, checked=(first,)) as guard:
+    async with SocksGuard(connector, checked=(first,), upstream=proxy) as guard:
         context = await session.browser.new_context(
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK}, accept_downloads=False
         )

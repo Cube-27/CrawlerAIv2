@@ -12,7 +12,7 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Capture, Job, JobEvent, JobId, Project, Site, UrlTask
 from crawlerai.db.queue import claim_tasks
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.anyio
 QUICK = timedelta(milliseconds=50)
 
 
-async def _no_fetch(url: str) -> FetchResult:
+async def _no_fetch(url: str, policy: FetchPolicy) -> FetchResult:
     raise AssertionError("no site is due for a fetch-method re-check")
 
 
@@ -213,7 +213,7 @@ async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
         )
     fetched: list[str] = []
 
-    async def fetch(fetched_url: str) -> FetchResult:
+    async def fetch(fetched_url: str, policy: FetchPolicy) -> FetchResult:
         fetched.append(fetched_url)
         return fetch_result(fetched_url, 200, b"" if fetched_url.endswith("/robots.txt") else b"<p>page</p>")
 

@@ -139,7 +139,11 @@ if r.method == "browser" and r.block_class == "ok": site.fetch_method = "browser
   the proxy.
 - Proxy: the proxy resolves DNS, so pinning the IP is impossible. The guard still runs `resolve_public` on the
   hostname before the request and on each manual redirect hop, and the proxy URL itself must be public or
-  explicitly allowlisted in settings (`CRAWLERAI_PROXY_POOLS`), as §7.1 states for proxies.
+  explicitly allowlisted in settings (`CRAWLERAI_PROXY_POOLS`), as §7.1 states for proxies. A pool is an HTTP proxy
+  (`http://[user[:password]@]host[:port]`, `crawlerai.core.proxy`), reached through a CONNECT tunnel (RFC 9110
+  §9.3.6) for every page: curl tunnels to it, and the browser's `SocksGuard` opens each checked connection as a
+  tunnel through it. A policy naming a pool that isn't configured ends with `error`, `error='proxy_pool_unknown'`,
+  without fetching.
 - Tests use a stub resolver injected into the guard; no network.
 
 ### 4.6 Politeness

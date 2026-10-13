@@ -1,13 +1,15 @@
 """HTTP fetch with curl_cffi and Chrome TLS impersonation (SPEC-02 §4.7).
 
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
-address the guard checked. Every failure becomes an `error` outcome with a short reason that never contains the URL.
+address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
+before it is requested (ARCHITECTURE §7.1). Every failure becomes an `error` outcome with a short reason that never
+contains the URL.
 """
 
 import asyncio
 import io
 import time
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
@@ -22,10 +24,12 @@ from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
-from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
+from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target, bracketed
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList
 
+_CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYTYPE)
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
     CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
@@ -60,17 +64,23 @@ async def fetch_http(
     engine_version: str,
     impersonate: BrowserTypeLiteral,
     connector: SafeConnector | None = None,
+    pools: Mapping[str, ProxyEndpoint] | None = None,
 ) -> FetchResult:
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     error: str | None = None
     try:
-        final = await _follow(url, policy, impersonate, connector or SafeConnector(), started + policy.timeout_s)
+        proxy = pool_endpoint(policy.proxy_pool, pools)
+        deadline = started + policy.timeout_s
+        final = await _follow(url, policy, impersonate, connector or SafeConnector(), proxy, deadline)
         # classify parses HTML synchronously; a thread keeps the event loop free.
         block_class: BlockClass = await asyncio.to_thread(classify, final.status, final.response_headers, final.body)
         last: _Response | None = final
     except _Failed as failed:
         error, block_class, last = failed.error, "error", failed.last
+    except UnknownProxyPool as unknown:
+        error, block_class, last = str(unknown), "error", None
     return fetch_result(
         url=url,
         method="http",
@@ -86,14 +96,19 @@ async def fetch_http(
 
 
 async def _follow(
-    url: str, policy: FetchPolicy, impersonate: BrowserTypeLiteral, connector: SafeConnector, deadline: float
+    url: str,
+    policy: FetchPolicy,
+    impersonate: BrowserTypeLiteral,
+    connector: SafeConnector,
+    proxy: ProxyEndpoint | None,
+    deadline: float,
 ) -> _Response:
     target = await _checked(connector.check(url), deadline, None)
     # One session per fetch keeps cookies set by one hop for the next, and none across fetches. `trust_env=False`
-    # with an empty proxy (below) ignores proxy environment variables: a proxy resolves the host itself, which would
-    # bypass the checked address.
+    # stops curl_cffi reading the proxy environment variables; libcurl reads them itself, so each request also sets
+    # CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY (below): proxies come only from the pools.
     async with AsyncSession(impersonate=impersonate, trust_env=False) as session:
-        response = await _get(session, target, policy, deadline)
+        response = await _get(session, target, policy, proxy, deadline)
         for hop in range(MAX_REDIRECTS + 1):
             location = redirect_location(response.status, response.response_headers)
             if location is None:
@@ -101,7 +116,7 @@ async def _follow(
             if hop == MAX_REDIRECTS:
                 raise _Failed("too_many_redirects", response)
             target = await _checked(connector.redirect(target, location), deadline, response)
-            response = await _get(session, target, policy, deadline)
+            response = await _get(session, target, policy, proxy, deadline)
     return response
 
 
@@ -116,7 +131,9 @@ async def _checked(check: Awaitable[Target], deadline: float, last: _Response | 
         raise _Failed("timeout", last) from e
 
 
-async def _get(session: AsyncSession[Response], target: Target, policy: FetchPolicy, deadline: float) -> _Response:
+async def _get(
+    session: AsyncSession[Response], target: Target, policy: FetchPolicy, proxy: ProxyEndpoint | None, deadline: float
+) -> _Response:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise _Failed("timeout", None)
@@ -139,12 +156,8 @@ async def _get(session: AsyncSession[Response], target: Target, policy: FetchPol
         if kind == CURLINFO_HEADER_OUT:
             sent.append(data)
 
-    ip = f"[{target.ip}]" if target.ip.version == 6 else str(target.ip)
     options: dict[CurlOpt, object] = {
-        # Every connection of this request goes to the checked address, whatever host name curl derives from the
-        # URL (IDNA, case, percent-encoding): CURLOPT_RESOLVE's `*` host matches every name on the port.
-        CurlOpt.RESOLVE: [f"*:{target.port}:{ip}"],
-        CurlOpt.PROXY: "",  # an empty proxy disables proxies, including the environment's (CURLOPT_PROXY)
+        **(_pinned(target) if proxy is None else _through(proxy)),
         # curl speaks only the schemes the guard admits, whatever URL reaches it (CURLOPT_PROTOCOLS_STR).
         CurlOpt.PROTOCOLS_STR: "http,https",
         CurlOpt.MAXFILESIZE_LARGE: policy.max_body_bytes,  # counts body bytes as received, before decoding
@@ -164,6 +177,38 @@ async def _get(session: AsyncSession[Response], target: Target, policy: FetchPol
         partial: Response | None = e.response
         raise _Failed(error, None if partial is None else _response(target, partial, sent, b"")) from e
     return _response(target, response, sent, body.getvalue())
+
+
+def _pinned(target: Target) -> dict[CurlOpt, object]:
+    ip = bracketed(str(target.ip))
+    return {
+        # Every connection of this request goes to the checked address, whatever host name curl derives from the
+        # URL (IDNA, case, percent-encoding): CURLOPT_RESOLVE's `*` host matches every name on the port.
+        CurlOpt.RESOLVE: [f"*:{target.port}:{ip}"],
+        CurlOpt.PROXY: "",  # an empty proxy disables proxies, including the environment's (CURLOPT_PROXY)
+    }
+
+
+def _through(proxy: ProxyEndpoint) -> dict[CurlOpt, object]:
+    # No CURLOPT_RESOLVE: its `*` would also redirect the connection to the proxy. The proxy resolves the page's host
+    # itself (ARCHITECTURE §7.1); the guard checked that host before this request.
+    options: dict[CurlOpt, object] = {
+        # The proxy's host alone, with its type and port set apart: curl's CURLPROXY_HTTP (0) speaks plain HTTP to
+        # the proxy, the only kind a pool is (`crawlerai.core.proxy`); pages inside the tunnel keep their own TLS.
+        CurlOpt.PROXY: bracketed(proxy.host),
+        CurlOpt.PROXYPORT: proxy.port,
+        CurlOpt.PROXYTYPE: _CURLPROXY_HTTP,
+        # A CONNECT tunnel for http pages too (RFC 9110 §9.3.6): the proxy relays bytes and never rewrites a request.
+        CurlOpt.HTTPPROXYTUNNEL: 1,
+        # An empty list overrides the environment's `no_proxy`, which would otherwise send matching hosts direct,
+        # resolved by curl rather than the guard (CURLOPT_NOPROXY).
+        CurlOpt.NOPROXY: "",
+    }
+    if proxy.username is not None:
+        # Set apart from the proxy URL, so the credentials need no percent-encoding (CURLOPT_PROXYUSERNAME).
+        options[CurlOpt.PROXYUSERNAME] = proxy.username
+        options[CurlOpt.PROXYPASSWORD] = proxy.password or ""
+    return options
 
 
 def _response(target: Target, response: Response, sent: list[bytes], body: bytes) -> _Response:
