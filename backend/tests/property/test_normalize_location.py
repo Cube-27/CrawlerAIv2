@@ -101,6 +101,34 @@ def test_a_city_in_several_countries_with_no_country_is_ambiguous(text: str) -> 
     )
 
 
+# Made-up names that hold no name of the fixture and no `type:remote` phrase.
+_new_names = st.text(alphabet="bcdfghjklmnpqrstvwxz", min_size=3, max_size=10).map(lambda s: "Zy" + s)
+
+
+@given(_new_names, st.sampled_from([("AA", "Northland", "01"), ("QN", "Eastvale", "01")]))
+def test_a_generated_homonym_in_two_countries_is_ambiguous_until_a_country_is_named(
+    name: str, other: tuple[str, str, str]
+) -> None:
+    code, country, admin1 = other
+    gazetteer = location.Gazetteer.parse(
+        COUNTRY_INFO, ADMIN1, [*CITIES, _city(90, name, name, "QM", "01"), _city(91, name, name, code, admin1)]
+    )
+    regions = {"AA": "Upper Fen", "QN": "Corran Province"}
+    here, there = value(name, "Westshire", "QM"), value(name, regions[code], code)
+
+    assert location.normalize(name, SPEC, CTX, gazetteer=gazetteer) == Ambiguous(
+        "several_places", (there, here) if code < "QM" else (here, there)
+    )
+    assert location.normalize(f"{name}, {country}", SPEC, CTX, gazetteer=gazetteer) == Ok(there)
+
+
+def test_telecommute_with_a_homonym_keeps_remote_in_every_option() -> None:
+    assert norm({"jobLocationType": "TELECOMMUTE", "addressLocality": "Harwick"}) == Ambiguous(
+        "several_places",
+        (value("Harwick", "Upper Fen", "AA", remote=True), value("Harwick", "Eastvale", "QM", remote=True)),
+    )
+
+
 @given(_separators)
 def test_a_country_settles_a_homonym(sep: str) -> None:
     assert norm(f"Harwick{sep}Southmark") == Ok(value("Harwick", "Eastvale", "QM"))

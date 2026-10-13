@@ -150,7 +150,7 @@ def _value(place: Place | None, remote: bool) -> dict[str, JsonValue]:
     }
 
 
-def _text(text: str, gazetteer: Gazetteer | None, ctx: Context) -> NormalizeResult:
+def _text(text: str, gazetteer: Gazetteer | None, ctx: Context, *, remote: bool = False) -> NormalizeResult:
     if has_surrogate(text):
         return Invalid("surrogate")
     words = vocab.tokens(text)
@@ -158,7 +158,7 @@ def _text(text: str, gazetteer: Gazetteer | None, ctx: Context) -> NormalizeResu
         return Invalid("empty")
     # Read only now, so input that declines on its own never needs the GeoNames files.
     gazetteer = gazetteer or default_gazetteer()
-    remote = _says_remote(words, ctx)
+    remote = remote or _says_remote(words, ctx)
     spans = _spans(words, gazetteer, _country_names(ctx, gazetteer))
     if not spans:
         return Ok(_value(None, remote)) if remote else Invalid("no_match")
@@ -185,7 +185,10 @@ def _text(text: str, gazetteer: Gazetteer | None, ctx: Context) -> NormalizeResu
 
 def _spans(words: vocab.Tokens, gazetteer: Gazetteer, countries: Mapping[vocab.Tokens, str]) -> list[frozenset[Place]]:
     """The places each name in `words` may be: names are contiguous runs of words, and a name that lies inside a
-    longer one is not read (the longest match, as `vocab.Entries.find`)."""
+    longer one is not read (the longest match, as `vocab.Entries.find`).
+
+    Country codes are not read in text: ISO 3166-1 alpha-2 codes share their alphabet with the ISO 3166-2 subdivision
+    codes that addresses also abbreviate to ("IL", "CA") and with short words, so a code alone names no one place."""
     longest = max(map(len, gazetteer.names), default=0)
     found: list[tuple[int, int, frozenset[Place]]] = []
     for start in range(len(words)):
@@ -247,15 +250,8 @@ def _structured(raw: Mapping[str, JsonValue], gazetteer: Gazetteer | None, ctx: 
         return Ok(_value(Place(country, region, locality), remote))
     text = ", ".join(p for p in (locality, region) if p) or _part(raw.get("name")) or _part(address.get("name"))
     if text:
-        result = _text(text, gazetteer, ctx)
-        return _with_remote(result, remote) if remote else result
+        return _text(text, gazetteer, ctx, remote=remote)
     return Ok(_value(None, remote)) if remote else Invalid("no_match")
-
-
-def _with_remote(result: NormalizeResult, remote: bool) -> NormalizeResult:
-    if isinstance(result, Ok) and isinstance(result.value, dict):
-        return Ok({**result.value, "remote_flag": remote})
-    return result
 
 
 def _part(given: JsonValue) -> str | None:
