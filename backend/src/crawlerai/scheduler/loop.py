@@ -20,6 +20,7 @@ from functools import partial
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.rungs import Rung
+from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import release_expired_leases
 from crawlerai.scheduler.recheck import RECHECK_BATCH, recheck_fetch_method
@@ -59,6 +60,12 @@ def periodic(store: ObjectStore, fetch: Rung) -> tuple[Periodic, ...]:
             timedelta(hours=1),
             partial(recheck_fetch_method, fetch=fetch, batch=RECHECK_BATCH),
             batch=RECHECK_BATCH,
+        ),
+        Periodic(
+            "trigger_learning",
+            timedelta(minutes=1),
+            partial(trigger_learning, batch=TRIGGER_BATCH),
+            batch=TRIGGER_BATCH,
         ),
     )
 

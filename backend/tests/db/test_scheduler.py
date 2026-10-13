@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Capture, Job, JobEvent, JobId, Project, Site, UrlTask
+from crawlerai.db.models import Capture, Job, JobEvent, JobId, ProgressiveState, Project, SchemaDef, Site, UrlTask
 from crawlerai.db.queue import claim_tasks
 from crawlerai.scheduler.loop import Periodic, periodic, run_scheduler
 from crawlerai.storage.fs import FsStore
@@ -230,3 +230,31 @@ async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
             await conn.execute(delete(Site).where(Site.id == site_id))
 
     assert fetched == ["https://recheck.example.test/robots.txt", url]
+
+
+async def test_the_scheduler_starts_learning_for_a_state_with_eight_extracted_pages(
+    engine: AsyncEngine, tmp_path: Path, own_origin: str, schema_name: str
+) -> None:
+    default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
+    schema = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {}, "origin": "user"}
+    async with engine.begin() as conn:
+        host = own_origin.removeprefix("https://")
+        site_id = (
+            await conn.execute(insert(Site).values(project_id=default_project, host=host).returning(Site.id))
+        ).scalar_one()
+        schema_id = (
+            await conn.execute(insert(SchemaDef).values(**schema, status="active").returning(SchemaDef.id))
+        ).scalar_one()
+        key = {"site_id": site_id, "schema_id": schema_id, "schema_version": 1, "page_kind": "detail"}
+        await conn.execute(insert(ProgressiveState).values(**key, pages_extracted=8))
+
+    async def learn_job() -> bool:
+        async with engine.connect() as conn:
+            jobs = select(Job.status).where(Job.kind == "learn", Job.schema_id == schema_id)
+            return list((await conn.execute(jobs)).scalars()) == ["queued"]
+
+    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch), learn_job)
+
+    async with engine.connect() as conn:
+        mode = select(ProgressiveState.mode).where(ProgressiveState.schema_id == schema_id)
+        assert (await conn.execute(mode)).scalar_one() == "learning"
