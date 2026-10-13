@@ -34,10 +34,10 @@ from crawlerai.storage.capture_bundle import HeaderList
 PageData = Mapping[PageDataKind, JsonValue]
 
 # RFC 3986 §3.3: a path segment holds pchar; `quote` keeps the unreserved characters, these are the rest of it.
-_PATH_SAFE: Final = "!$&'()*+,;=:@"
+PATH_SAFE: Final = "!$&'()*+,;=:@"
 # RFC 3986 §3.4: a query holds pchar, `/` and `?`; `&`, `=` and `+` are encoded in a value because the
 # application/x-www-form-urlencoded reading (WHATWG URL §5) takes them as separators or a space.
-_QUERY_SAFE: Final = "!$'()*,;:@/?"
+QUERY_SAFE: Final = "!$'()*,;:@/?"
 _DATA_KINDS: Final[dict[str, PageDataKind]] = {"jsonld": "jsonld", "js_state": "js_state"}
 
 
@@ -110,7 +110,7 @@ def request_spec(method: str, url: str, params: Mapping[str, str], body: str | N
 def render_url(template: str, params: Mapping[str, str]) -> str:
     """`template` with each placeholder replaced by its value, encoded for the path or the query it stands in."""
     path, question, query = template.partition("?")
-    return _fill(path, params, _PATH_SAFE) + question + _fill(query, params, _QUERY_SAFE)
+    return _fill(path, params, PATH_SAFE) + question + _fill(query, params, QUERY_SAFE)
 
 
 def with_query_value(url: str, name: str, value: str) -> str:
@@ -118,7 +118,7 @@ def with_query_value(url: str, name: str, value: str) -> str:
     is (`render_url`)."""
     path, _, query = url.partition("?")
     items = [item for item in query.split("&") if item and unquote(item.partition("=")[0]) != name]
-    items.append(f"{quote(name, safe=_QUERY_SAFE)}={quote(value, safe=_QUERY_SAFE)}")
+    items.append(f"{quote(name, safe=QUERY_SAFE)}={quote(value, safe=QUERY_SAFE)}")
     return f"{path}?{'&'.join(items)}"
 
 
