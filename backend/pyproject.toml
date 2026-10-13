@@ -10,6 +10,7 @@ dependencies = [
     "boto3>=1.35,<2",
     "curl-cffi>=0.16,<1",
     "fastapi>=0.115,<1",
+    "patchright>=1.63,<2",
     "protego>=0.4,<1",
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
@@ -52,6 +53,9 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-markers"]
+markers = [
+    "browser: drives headless Chromium (`uv run patchright install chromium` once); skipped where it is not installed, except in CI",
+]
 
 [dependency-groups]
 dev = [

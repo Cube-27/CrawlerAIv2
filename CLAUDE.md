@@ -154,6 +154,7 @@ uv sync --frozen
 uv run ruff check && uv run ruff format --check
 uv run mypy src tests migrations
 uv run lint-imports                 # C8 import contracts
+uv run patchright install --only-shell chromium   # once per Patchright version: the `browser`-marked tests
 uv run pytest
 uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
 # (needs `make db`, and CRAWLERAI_DATABASE_URL set as in .env.example; tests/db also need
