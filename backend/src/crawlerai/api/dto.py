@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from crawlerai.schemas.types import SchemaDef
+
 
 class Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -36,3 +38,7 @@ PROBLEM_RESPONSE: dict[str, object] = {
 class Health(Model):
     status: Literal["ok"] = "ok"
     eval_ui: bool  # the labeling endpoints are mounted (SPEC-12 §4.3 reads it for its navigation)
+
+
+class SchemaList(Model):
+    items: list[SchemaDef]  # by name, then version

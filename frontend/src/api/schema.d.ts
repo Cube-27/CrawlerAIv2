@@ -140,6 +140,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/schemas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Schemas
+         * @description Every version of every schema; only those of `name` and in `status` when given.
+         */
+        get: operations["list_schemas_v1_schemas_get"];
+        put?: never;
+        /**
+         * Create Schema
+         * @description A `user` schema at version 1.
+         */
+        post: operations["create_schema_v1_schemas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/schemas/{schema_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schema */
+        get: operations["get_schema_v1_schemas__schema_id__get"];
+        /**
+         * Update Schema
+         * @description Adds the next version with `body` as its whole document and returns it. `schema_id` must be the latest
+         *     version, active and not a preset; otherwise 409.
+         */
+        put: operations["update_schema_v1_schemas__schema_id__put"];
+        post?: never;
+        /**
+         * Retire Schema
+         * @description Retires this version. The row stays, since records and configs reference it; a preset is refused (409).
+         */
+        delete: operations["retire_schema_v1_schemas__schema_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -231,14 +281,48 @@ export interface components {
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
          *     `item` for `list`, `fields` for `object`.
          */
-        FieldSpec: {
+        "FieldSpec-Input": {
             /** Description */
             description?: string | null;
             /** Fields */
             fields?: {
-                [key: string]: components["schemas"]["FieldSpec"];
+                [key: string]: components["schemas"]["FieldSpec-Input"];
             } | null;
-            item?: components["schemas"]["FieldSpec"] | null;
+            item?: components["schemas"]["FieldSpec-Input"] | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Schema Org */
+            schema_org?: string | null;
+            /** Scheme */
+            scheme?: ("gtin" | "isbn" | "mpn" | "sku" | "custom") | null;
+            /**
+             * Scope
+             * @default row
+             * @enum {string}
+             */
+            scope: "row" | "page";
+            type: components["schemas"]["FieldType"];
+            /** Vocab */
+            vocab?: string | null;
+        };
+        /**
+         * FieldSpec
+         * @description One field of a schema, or the item of a list.
+         *
+         *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
+         *     `item` for `list`, `fields` for `object`.
+         */
+        "FieldSpec-Output": {
+            /** Description */
+            description?: string | null;
+            /** Fields */
+            fields?: {
+                [key: string]: components["schemas"]["FieldSpec-Output"];
+            } | null;
+            item?: components["schemas"]["FieldSpec-Output"] | null;
             /**
              * Required
              * @default false
@@ -319,6 +403,25 @@ export interface components {
              */
             status: "draft" | "labeled" | "checked";
         };
+        /** NewSchema */
+        NewSchema: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldSpec-Input"];
+            };
+            /** Name */
+            name: string;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Required Groups
+             * @default []
+             */
+            required_groups: string[][];
+        };
         /** NormalizeRequest */
         NormalizeRequest: {
             /** Field */
@@ -344,7 +447,7 @@ export interface components {
             checker: string | null;
             /** Fields */
             fields: {
-                [key: string]: components["schemas"]["FieldSpec"];
+                [key: string]: components["schemas"]["FieldSpec-Output"];
             };
             /** Final Url */
             final_url: string;
@@ -432,6 +535,71 @@ export interface components {
             title: string;
             /** Type */
             type: string;
+        };
+        /**
+         * SchemaContent
+         * @description A schema document as a caller writes it, without the name and version the registry assigns.
+         */
+        SchemaContent: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldSpec-Input"];
+            };
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Required Groups
+             * @default []
+             */
+            required_groups: string[][];
+        };
+        /**
+         * SchemaDef
+         * @description A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. Rows are
+         *     immutable per (name, version); a change is a new version.
+         */
+        SchemaDef: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldSpec-Output"];
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "preset" | "user" | "prompt_draft";
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Required Groups
+             * @default []
+             */
+            required_groups: string[][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "retired";
+            /** Version */
+            version: number;
+        };
+        /** SchemaList */
+        SchemaList: {
+            /** Items */
+            items: components["schemas"]["SchemaDef"][];
         };
         /** SkippedOut */
         SkippedOut: {
@@ -744,6 +912,331 @@ export interface operations {
             };
             /** @description Not Implemented */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_schemas_v1_schemas_get: {
+        parameters: {
+            query?: {
+                name?: string | null;
+                status?: ("active" | "retired") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_schema_v1_schemas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewSchema"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_schema_v1_schemas__schema_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schema_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_schema_v1_schemas__schema_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schema_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaContent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retire_schema_v1_schemas__schema_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schema_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -56,6 +56,8 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
         "/v1/eval/pages/{page_id}/labels",
         "/v1/eval/pages/{page_id}/normalize",
         "/v1/eval/pages/{page_id}/prefill",
+        "/v1/schemas",
+        "/v1/schemas/{schema_id}",
     ]
     assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
 

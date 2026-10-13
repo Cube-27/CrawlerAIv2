@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from crawlerai.api import problems
 from crawlerai.api.auth import RateLimiter
 from crawlerai.api.routers import eval as eval_router
-from crawlerai.api.routers import health
+from crawlerai.api.routers import health, schemas
 from crawlerai.core.settings import ApiSettings, DatabaseSettings
 
 
@@ -34,6 +34,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.state.rate_limiter = RateLimiter(settings.api_rate_per_s, settings.api_rate_burst)
     problems.install(app)
     app.include_router(health.router)
+    app.include_router(schemas.router)
     if app.state.eval_ui:
         app.include_router(eval_router.router)
     return app
