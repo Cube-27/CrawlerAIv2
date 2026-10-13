@@ -2591,3 +2591,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Services beside `crawl | eval`; input models in `api.dto`.
 - Why: SPEC-07 §4.7 says REST and MCP call the same functions.
 - Reversible: yes
+
+### D-0399 — INV-26's count for the content formats counts parses of the capture body
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 3 (#80) · Status: decided
+- Decision: trafilatura's readability fallback parses readability's own summary, a new document with only the main content, and that parse is not counted. The test tells the two apart by a `<head>` JSON-LD block that readability's output never contains.
+- Alternatives: `fast=True`, which skips the fallback and changes the extraction §4.5 specifies; counting every lxml construction, which this fallback always fails.
+- Why: INV-26 is about the capture body. A mutation check shows the test catches a re-parse of the body.
+- Reversible: yes
+
+### D-0400 — `normalize.url.canonical` and `canonical_url` are public
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 3 (#80) · Status: decided
+- Decision: `canonical(raw, base)` is public, and `canonical_url(raw, base) -> str | None` wraps it for callers outside a field. The content formats (`links`, `content.dom`, `metadata.canonical`) call it directly, not through the dispatcher.
+- Alternatives: `dispatch.normalize` with a synthetic `FieldSpec(url)` and a `Context` (it needs a `captured_at` the formats don't have); a copy of the URL rules in `content` (C8).
+- Why: A link is not a field value, and one module owns the URL rules (C8).
+- Reversible: yes
+
+### D-0401 — The `html` format cleans a clone of the selectolax tree
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 3 (#80) · Status: decided
+- Decision: `LexborHTMLParser.clone()` (a copy, no parse), serialized by lexbor. Every attribute whose value parses as a `javascript:` URL is removed, whatever its name; comments stay. The eval sanitizer uses the same `content.html.remove_scripting_attributes`.
+- Alternatives: A deep copy of the lxml tree (libxml2's HTML4-era tree building); a fixed list of URL attributes.
+- Why: The shared tree stays as parsed (INV-26), lexbor follows the HTML standard, and one function serves both sanitizers.
+- Reversible: yes
+
+### D-0402 — `metadata` member rules
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 3 (#80) · Status: decided
+- Decision: `og` reads `meta[property]`, else `meta[name]`, and the first value of each key wins. `structured_data_types` lists the JSON-LD `@type` values, then the microdata `itemtype` tokens; an IRI is reduced to its last path segment or fragment, and a JSON-LD term is kept as written. `@type` inside `@context` and on value objects is not a node type. A JSON-LD block that doesn't parse is skipped. `language` is the stripped `<html lang>`, else `og:locale` as written. Absent members are `None` or empty.
+- Alternatives: OGP `property` only; full type IRIs; expanding JSON-LD contexts.
+- Why: `name` is read the way SPEC-05 §4.2's `meta:` locator reads it; the reduced names match §4.4's example; resolving a context is the JSON-LD collector's job (SPEC-05).
+- Reversible: yes
+
+### D-0403 — `markdown` is `""` when there is no main content
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 3 (#80) · Status: decided
+- Decision: trafilatura finding nothing gives `""`, not `None`.
+- Alternatives: `None`.
+- Why: The §4.4 response shape gives `markdown` as a string.
+- Reversible: yes
