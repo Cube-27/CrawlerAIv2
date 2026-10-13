@@ -77,8 +77,7 @@ check-backend: db
 		CRAWLERAI_TEST_PRIVATE_DATABASE_URL=$(CHECK_PRIVATE_DATABASE_URL) $(UV_RUN) pytest
 
 check-frontend:
-	cd frontend && pnpm lint
-	cd frontend && pnpm typecheck
+	cd frontend && pnpm check
 	cd frontend && pnpm test
 	cd frontend && pnpm build
 

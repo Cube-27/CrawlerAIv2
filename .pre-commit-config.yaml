@@ -34,16 +34,13 @@ repos:
         entry: python tools/site_literal_scan.py --public --staged
         language: python
         pass_filenames: false
-      # Run from the repo root with the frontend's own config and ignore file, as `pnpm lint` reads them.
-      - id: prettier
-        name: prettier
-        entry: node frontend/node_modules/prettier/bin/prettier.cjs --write --ignore-unknown --ignore-path frontend/.prettierignore
+      # Vite+ formats (Oxfmt), lints (Oxlint) and type-checks (tsgo) the staged frontend files with the config in
+      # frontend/vite.config.ts. vp resolves paths from frontend/, so the hook strips the `frontend/` prefix: a
+      # root-relative path matches no lint input and passes unchecked.
+      - id: vite-plus
+        name: vp check
+        entry: sh -c 'cd frontend && for f; do set -- "$@" "${f#frontend/}"; shift; done && exec node node_modules/vite-plus/bin/vp check --fix "$@"' --
         language: system
         files: ^frontend/
-      - id: eslint
-        name: eslint
-        entry: node frontend/node_modules/eslint/bin/eslint.js --flag v10_config_lookup_from_file
-        language: system
-        files: ^frontend/.*\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$
-        # Each eslint process builds the whole TypeScript program, so one process beats parallel chunks.
+        # Each type-aware process builds the whole TypeScript program, so one process beats parallel chunks.
         require_serial: true

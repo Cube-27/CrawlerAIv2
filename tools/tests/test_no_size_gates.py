@@ -56,6 +56,13 @@ def test_checks_without_gates_pass(tmp_path: Path) -> None:
         ("frontend/eslint.config.js", '  rules: { complexity: ["error", 10] },'),
         ("frontend/eslint.config.js", '  rules: { "max-statements": ["error", 20] },'),
         ("frontend/vite.config.ts", "  test: { coverage: { thresholds: { lines: 80 } } },"),
+        ("frontend/vite.config.ts", '  lint: { rules: { "eslint/max-lines": ["error", 300] } },'),
+        ("frontend/vite.config.ts", '    categories: { pedantic: "error" },'),
+        ("frontend/vite.config.ts", '      style: "warn",'),
+        ("frontend/.oxlintrc.json", '  "categories": { "restriction": "error" },'),
+        ("frontend/oxlint.config.ts", '  rules: { "eslint/complexity": ["error", 10] },'),
+        ("frontend/package.json", '    "check": "vp lint -D pedantic",'),
+        ("frontend/package.json", '    "check": "vp lint --deny=style",'),
         ("frontend/package.json", '  "jest": { "coverageThreshold": { "global": { "lines": 80 } } }'),
     ],
 )
@@ -67,6 +74,15 @@ def test_size_complexity_or_coverage_gate_fails_with_path_and_line(tmp_path: Pat
     assert result.returncode == 1
     assert result.stdout.startswith(f"{path}:2: ")
     assert result.stdout.count("\n") == 1
+
+
+def test_a_style_key_that_is_not_an_oxlint_category_severity_passes(tmp_path: Path) -> None:
+    root = make_root(tmp_path, {"frontend/vite.config.ts": '  css: { modules: { style: "camelCase" } },\n'})
+
+    result = run_check(root)
+
+    assert result.returncode == 0, result.stdout
+    assert result.stdout == "no-size-gates: ok, 1 files\n"
 
 
 def test_files_outside_workflows_hooks_and_tool_configs_are_not_scanned(tmp_path: Path) -> None:

@@ -22,6 +22,8 @@ SCANNED = (
     "frontend/package.json",
     "frontend/eslint.config.*",
     "frontend/vite.config.*",
+    "frontend/oxlint.config.*",
+    "frontend/.oxlintrc.json",
     "frontend/vitest.config.*",
 )
 
@@ -31,13 +33,17 @@ GATES = re.compile(
             # Complexity and line-count tools.
             r"\b(?:radon|xenon|cloc|tokei)\b",
             r"\bwc\s+-l\b",
-            # Size and complexity limits: flake8/ruff mccabe, pylint and ESLint rules.
+            # Size and complexity limits: flake8/ruff mccabe, pylint and ESLint/Oxlint rules.
             r"max[-_](?:lines|module-lines|complexity|statements|branches|args|params|returns|depth|nested)",
             r"\bmccabe\b",
             r"\bC90\d?\b",
             r"\bPLR09\d*\b",
             r"\btoo-many-",
             r"(?<![\w-])[\"']?complexity[\"']?\s*:",
+            # Oxlint categories that switch on max-* and complexity as a group: pedantic (max-depth, max-lines,
+            # max-lines-per-function), style (max-params, max-statements), restriction (complexity).
+            r"(?<![\w-])[\"']?(?:pedantic|style|restriction)[\"']?\s*:\s*[\"']?(?:warn|error|deny)\b",
+            r"(?:-[WD]|--warn|--deny)[\s=]+(?:pedantic|style|restriction)\b",
             # Coverage thresholds: pytest-cov and coverage.py, c8 and nyc, Vitest, Jest.
             r"fail[-_]under",
             r"check-coverage",

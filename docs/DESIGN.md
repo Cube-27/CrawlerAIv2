@@ -43,7 +43,7 @@ packages.
 React Aria supplies the behaviour; these rules keep it intact.
 - Every control has an accessible name.
 - Everything is reachable by keyboard.
-- `eslint-plugin-jsx-a11y` (strict) is on, and lint runs in CI.
+- Oxlint's `jsx-a11y` plugin runs the strict rule set (`frontend/vite.config.ts`), and lint runs in CI.
 - Focus-visible styles are never removed.
 
 ## Showing extraction results
