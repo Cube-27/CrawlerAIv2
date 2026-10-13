@@ -5,6 +5,7 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolv
 """
 
 import asyncio
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from ipaddress import ip_address
@@ -20,8 +21,10 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import Capture, Job, Site, UrlTask, UsageEvent
+from crawlerai.services import scrape as scrape_service
 from crawlerai.services.scrape import Fetching, ScrapeRejected, ScrapeRequest, ScrapeTimedOut, scrape
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, decode
@@ -161,8 +164,9 @@ async def test_records_a_completed_scrape_job_its_task_and_capture(
 
     result = await scrape(engine, fetching, request(url, "markdown", fetch={"method_hint": "http"}))
 
-    job = await _row(engine, select(Job.kind, Job.status, Job.request).where(Job.id == result.job_id))
+    job = await _row(engine, select(Job.kind, Job.status, Job.request, Job.started_at).where(Job.id == result.job_id))
     assert (job.kind, job.status) == ("scrape", "completed")
+    assert job.started_at is not None
     assert job.request["url"] == url and job.request["fetch"]["method_hint"] == "http"
     task = await _row(engine, select(UrlTask).where(UrlTask.job_id == result.job_id))
     assert (task.status, task.outcome, task.capture_id, task.canonical_url) == (
@@ -356,3 +360,25 @@ async def test_a_scrape_past_its_timeout_fails_the_job_and_returns_nothing(
         task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
         job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
     assert (task.status, task.outcome, task.last_error, job_status) == ("failed", "failed", "timeout", "failed")
+
+
+async def test_a_timeout_while_the_formats_are_computed_fails_the_job(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, PAGE, "ok", None)
+
+    def slow_markdown(page: ParsedPage) -> str:
+        time.sleep(1)
+        return ""
+
+    monkeypatch.setattr(scrape_service, "markdown", slow_markdown)
+    scrape_request = request(url, "markdown", timeout_s=0.5)
+
+    with pytest.raises(ScrapeTimedOut):
+        await scrape(engine, fetching, scrape_request)
+
+    async with engine.connect() as conn:
+        task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
+        job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
+    assert (task.status, task.last_error, job_status) == ("failed", "timeout", "failed")

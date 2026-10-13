@@ -17,7 +17,7 @@ from typing import Any, Final, Literal, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
-from sqlalchemy import Row, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -271,6 +271,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest) -> ClaimedTask:
                     kind="scrape",
                     request=request.model_dump(mode="json", by_alias=True),
                     status="running",
+                    started_at=func.now(),
                     engine_version=ENGINE_VERSION,
                 )
                 .returning(Job.id)
@@ -294,6 +295,11 @@ async def _run(engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, 
     policy = _policy(request, site.proxy_pool)
     fetches: list[FetchResult] = []
     page = await _fetch(engine, fetching, request.url, host, policy, site, fetches)
+    # Formats come before the write, so a timeout while they are computed still finds the task claimed. They are
+    # computed only from a page that was reached (§4.8: no partial formats on failure).
+    formats = _Formats()
+    if isinstance(page, FetchResult) and _OUTCOMES[page.block_class] == "extracted":
+        formats = await asyncio.to_thread(_formats, page, request.formats)
     members = _NOT_FETCHED
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
@@ -306,10 +312,6 @@ async def _run(engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, 
             await complete_task(conn, task, outcome, reason=page)
         await _record_usage(conn, task.job_id, fetches, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
-    # Formats are computed only from a page that was reached (§4.8: no partial formats on failure).
-    formats = _Formats()
-    if isinstance(page, FetchResult) and outcome == "extracted":
-        formats = await asyncio.to_thread(_formats, page, request.formats)
     return ScrapeResult(job_id=task.job_id, url=request.url, outcome=outcome, usage=usage, **members, **formats)
 
 
