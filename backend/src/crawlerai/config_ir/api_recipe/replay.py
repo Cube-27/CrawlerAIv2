@@ -46,20 +46,41 @@ def request_for(spec: RequestSpec, page_url: str, page_data: PageData) -> JsonRe
 async def reproduces(
     spec: RequestSpec, fields: Mapping[str, str], page: ReplayPage, schema: SchemaDef, replay: Replay
 ) -> bool:
-    """Whether replaying `spec` for `page` answers JSON whose value at each `fields` path is `equal` to the page's
-    published value of that field; fields the page has no value for are not compared, and at least one is."""
-    compared = {name: path for name, path in fields.items() if name in page.values}
+    """Whether replaying `spec` for `page` reproduces every field `compare` compares there, and at least one."""
+    compared = await compare(spec, fields, page, schema, replay)
+    return bool(compared) and all(compared.values())
+
+
+async def compare(
+    spec: RequestSpec, fields: Mapping[str, str], page: ReplayPage, schema: SchemaDef, replay: Replay
+) -> dict[str, bool]:
+    """For each `fields` entry the page has a published value for, whether replaying `spec` for `page` answers JSON
+    whose value at its path is `equal` to that value; every entry is false when the request cannot be made or its
+    answer is not JSON, and nothing is sent when no field is compared."""
+    compared = {name: path for name, path in fields.items() if page.values.get(name) is not None}
+    if not compared:
+        return {}
+    document = await _answer(spec, page, replay)
+    if isinstance(document, _NoAnswer):
+        return dict.fromkeys(compared, False)
+    return {name: _equal(read_map(path, document), name, page, schema) for name, path in compared.items()}
+
+
+class _NoAnswer:
+    """The replay gave no JSON document (JSON `null` is a document)."""
+
+
+async def _answer(spec: RequestSpec, page: ReplayPage, replay: Replay) -> JsonValue | _NoAnswer:
     request = request_for(spec, page.sample.page_url, page.sample.page_data)
-    if not compared or request is None:
-        return False
+    if request is None:
+        return _NoAnswer()
     result = await replay(request)
     if result.block_class != "ok":
-        return False
+        return _NoAnswer()
     try:
-        document = json_doc.parse(result.bundle.body.decode("utf-8"))
+        return json_doc.parse(result.bundle.body.decode("utf-8"))
     except ValueError:  # UnicodeDecodeError is a ValueError
-        return False
-    return all(_equal(read_map(path, document), name, page, schema) for name, path in compared.items())
+        return _NoAnswer()
 
 
 def _equal(raw: str | int | float | None, name: str, page: ReplayPage, schema: SchemaDef) -> bool:
