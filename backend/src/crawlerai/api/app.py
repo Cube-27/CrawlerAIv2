@@ -45,7 +45,8 @@ def _fetching(settings: Settings) -> Fetching:
     http = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
     )
-    return Fetching(Rungs(http=http, browser=browser), connector, open_store(settings.object_store), HostLimiter())
+    rungs = Rungs(http=http, browser=browser, conditional=http)
+    return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
 
 
 @asynccontextmanager

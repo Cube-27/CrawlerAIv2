@@ -3,7 +3,8 @@
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested (ARCHITECTURE §7.1). Every failure becomes an `error` outcome with a short reason that never
-contains the URL.
+contains the URL. Given the validators a page last answered with, every request is conditional (SPEC-11 §4.2): an
+unchanged page answers 304 with no body.
 """
 
 import asyncio
@@ -25,7 +26,7 @@ from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target, bracketed
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, Validators
 from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList
 
@@ -65,6 +66,7 @@ async def fetch_http(
     impersonate: BrowserTypeLiteral,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyEndpoint] | None = None,
+    validators: Validators | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request."""
     fetched_at = datetime.now(UTC)
@@ -73,7 +75,8 @@ async def fetch_http(
     try:
         proxy = pool_endpoint(policy.proxy_pool, pools)
         deadline = started + policy.timeout_s
-        final = await _follow(url, policy, impersonate, connector or SafeConnector(), proxy, deadline)
+        headers = _conditional(validators)
+        final = await _follow(url, policy, impersonate, connector or SafeConnector(), proxy, deadline, headers)
         # classify parses HTML synchronously; a thread keeps the event loop free.
         block_class: BlockClass = await asyncio.to_thread(classify, final.status, final.response_headers, final.body)
         last: _Response | None = final
@@ -102,13 +105,14 @@ async def _follow(
     connector: SafeConnector,
     proxy: ProxyEndpoint | None,
     deadline: float,
+    headers: dict[str, str],
 ) -> _Response:
     target = await _checked(connector.check(url), deadline, None)
     # One session per fetch keeps cookies set by one hop for the next, and none across fetches. `trust_env=False`
     # stops curl_cffi reading the proxy environment variables; libcurl reads them itself, so each request also sets
     # CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY (below): proxies come only from the pools.
     async with AsyncSession(impersonate=impersonate, trust_env=False) as session:
-        response = await _get(session, target, policy, proxy, deadline)
+        response = await _get(session, target, policy, proxy, deadline, headers)
         for hop in range(MAX_REDIRECTS + 1):
             location = redirect_location(response.status, response.response_headers)
             if location is None:
@@ -116,8 +120,17 @@ async def _follow(
             if hop == MAX_REDIRECTS:
                 raise _Failed("too_many_redirects", response)
             target = await _checked(connector.redirect(target, location), deadline, response)
-            response = await _get(session, target, policy, proxy, deadline)
+            response = await _get(session, target, policy, proxy, deadline, headers)
     return response
+
+
+def _conditional(validators: Validators | None) -> dict[str, str]:
+    """The request headers that make a GET conditional: If-None-Match carries the entity tag (RFC 9110 §13.1.2),
+    If-Modified-Since the Last-Modified date (§13.1.3). A server that has both decides on the entity tag."""
+    if validators is None:
+        return {}
+    headers = {"If-None-Match": validators.etag, "If-Modified-Since": validators.last_modified}
+    return {name: value for name, value in headers.items() if value is not None}
 
 
 async def _checked(check: Awaitable[Target], deadline: float, last: _Response | None) -> Target:
@@ -132,7 +145,12 @@ async def _checked(check: Awaitable[Target], deadline: float, last: _Response | 
 
 
 async def _get(
-    session: AsyncSession[Response], target: Target, policy: FetchPolicy, proxy: ProxyEndpoint | None, deadline: float
+    session: AsyncSession[Response],
+    target: Target,
+    policy: FetchPolicy,
+    proxy: ProxyEndpoint | None,
+    deadline: float,
+    headers: dict[str, str],
 ) -> _Response:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -169,7 +187,9 @@ async def _get(
     # curl_cffi types option values as str, but passes each to curl_easy_setopt with the option's own type.
     session.curl_options = cast(dict[CurlOpt, str], options)
     try:
-        response = await session.get(target.url, allow_redirects=False, timeout=remaining, content_callback=on_body)
+        response = await session.get(
+            target.url, headers=headers, allow_redirects=False, timeout=remaining, content_callback=on_body
+        )
     except RequestException as e:
         capped = received > policy.max_decompressed_bytes
         error = "body_cap" if capped else _CURL_ERRORS.get(e.code, f"network_error: curl {int(e.code)}")
