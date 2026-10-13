@@ -7,7 +7,7 @@ function of (url, policy), so `acquire` decides and records only.
 """
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -27,7 +27,7 @@ _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 class Rungs:
     http: Rung
     browser: Rung
-    adapters: Registry | None = None
+    adapters: Registry = field(default_factory=lambda: Registry((), active=()))
 
 
 async def acquire(url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs) -> FetchResult:
@@ -35,7 +35,7 @@ async def acquire(url: str, policy: FetchPolicy, remembered: FetchMethod, rungs:
     `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched again in
     the browser, and the browser's outcome is kept only if it is `ok`. The result lists every attempt, in its
     bundle's manifest too."""
-    if rungs.adapters is not None and (adapter := rungs.adapters.detect(url)) is not None:
+    if (adapter := rungs.adapters.detect(url)) is not None:
         return await adapter.fetch(url, policy)
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     result = await (rungs.http if method == "http" else rungs.browser)(url, policy)

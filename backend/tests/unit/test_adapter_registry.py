@@ -99,9 +99,8 @@ def test_every_platform_adapter_has_its_own_name() -> None:
     adapters: tuple[Adapter, ...] = platform_adapters(no_fetch)
 
     names = [adapter.name for adapter in adapters]
-    assert len(set(names)) == len(names)
     assert "greenhouse" in names
-    Registry(adapters, active=names)
+    Registry(adapters, active=names)  # refuses repeated names
 
 
 def test_a_detected_url_is_fetched_by_its_adapter_and_no_other_rung() -> None:

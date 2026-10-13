@@ -37,12 +37,6 @@ class JsonRequest:
 JsonFetcher = Callable[[JsonRequest, FetchPolicy], Awaitable[FetchResult]]
 
 
-@dataclass(frozen=True)
-class _Response:
-    exchange: Exchange
-    body: bytes
-
-
 class _Failed(Exception):
     def __init__(self, error: str, last: Exchange | None) -> None:
         super().__init__(error)
@@ -66,8 +60,7 @@ async def fetch_json(
     body = b""
     try:
         async with asyncio.timeout(policy.timeout_s):
-            final = await _follow(request.url, policy, connector or SafeConnector(), transport)
-        last, body = final.exchange, final.body
+            last, body = await _follow(request.url, policy, connector or SafeConnector(), transport)
         block_class, error = await asyncio.to_thread(_outcome, last.status, body)
     except _Failed as failed:
         error, block_class, last = failed.error, "error", failed.last
@@ -102,22 +95,24 @@ def _outcome(status: int, body: bytes) -> tuple[BlockClass, str | None]:
 
 async def _follow(
     url: str, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
-) -> _Response:
+) -> tuple[Exchange, bytes]:
     target = await _checked(connector.check(url), None)
     # `trust_env=False` ignores proxy environment variables: a proxy resolves the host itself, which would bypass the
     # checked address. One client per fetch keeps no cookies across fetches.
     async with httpx.AsyncClient(transport=transport, trust_env=False, timeout=policy.timeout_s) as client:
-        response = await _get(client, target, policy)
-        for hop in range(MAX_REDIRECTS + 1):
-            exchange = response.exchange
-            location = redirect_location(exchange.status, exchange.response_headers)
-            if location is None:
-                break
-            if hop == MAX_REDIRECTS:
+        hops = 0
+        while True:
+            exchange, response = await _send(client, target)
+            try:
+                location = redirect_location(exchange.status, exchange.response_headers)
+                if location is None:
+                    return exchange, await _read(response, policy, exchange)
+            finally:
+                await response.aclose()  # a redirect's body is never read
+            if hops == MAX_REDIRECTS:
                 raise _Failed("too_many_redirects", exchange)
+            hops += 1
             target = await _checked(connector.redirect(target, location), exchange)
-            response = await _get(client, target, policy)
-    return response
 
 
 async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
@@ -127,7 +122,7 @@ async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
         raise _Failed(str(e), last) from e
 
 
-async def _get(client: httpx.AsyncClient, target: Target, policy: FetchPolicy) -> _Response:
+async def _send(client: httpx.AsyncClient, target: Target) -> tuple[Exchange, httpx.Response]:
     url = httpx.URL(target.url)
     # The request goes to the checked address; the Host header (RFC 9110 §7.2) and the TLS server name (RFC 6066 §3,
     # httpx's `sni_hostname` extension) keep the name, so virtual hosting and certificate checks see the real host.
@@ -147,25 +142,23 @@ async def _get(client: httpx.AsyncClient, target: Target, policy: FetchPolicy) -
         request_headers=recorded(tuple(request.headers.multi_items())),
         response_headers=recorded(tuple(response.headers.multi_items())),
     )
-    try:
-        body = await _read(response, policy, exchange)
-    finally:
-        await response.aclose()
-    return _Response(exchange, body)
+    return exchange, response
 
 
 async def _read(response: httpx.Response, policy: FetchPolicy, exchange: Exchange) -> bytes:
-    body = bytearray()
+    chunks: list[bytes] = []
+    decoded = 0
     try:
         async for chunk in response.aiter_bytes():
-            body += chunk
-            # `num_bytes_downloaded` counts bytes as received, before content decoding; `body` holds them decoded, so
-            # a compression bomb stops here with at most one chunk past the cap in memory.
-            if response.num_bytes_downloaded > policy.max_body_bytes or len(body) > policy.max_decompressed_bytes:
+            chunks.append(chunk)
+            decoded += len(chunk)
+            # `num_bytes_downloaded` counts bytes as received, before content decoding; `decoded` counts them after,
+            # so a compression bomb stops here with at most one chunk past the cap in memory.
+            if response.num_bytes_downloaded > policy.max_body_bytes or decoded > policy.max_decompressed_bytes:
                 raise _Failed("body_cap", exchange)
     except httpx.HTTPError as e:
         raise _Failed(_reason(e), exchange) from e
-    return bytes(body)
+    return b"".join(chunks)
 
 
 def _reason(error: httpx.HTTPError) -> str:
