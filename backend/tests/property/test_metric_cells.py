@@ -161,7 +161,10 @@ def test_aggregate_suppresses_small_cells_and_names_no_host(
 
     assert aggregate.pages is None
     assert aggregate.n_pages == report.n_pages
-    for table in ("by_field_type", "by_field", "by_bucket", "by_config_status", "by_category", "usage"):
+    # Per-(schema, field) cells stay in the job; the in-job report keeps them for the gate.
+    assert aggregate.by_field == {}
+    assert report.by_field.keys() == {f"synthetic|f{i}" for fields, _ in pages for i in range(len(fields))}
+    for table in ("by_field_type", "by_bucket", "by_config_status", "by_category", "usage"):
         full, out = getattr(report, table), getattr(aggregate, table)
         assert out.keys() == full.keys()
         for key, cell in out.items():

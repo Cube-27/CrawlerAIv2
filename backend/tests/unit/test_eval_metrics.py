@@ -344,12 +344,14 @@ def test_export_suppresses_cells_under_ten() -> None:
     assert agg.by_category == {"custom_store": ZeroTouch(zero_touch=1.0, n=10), "mixed": Suppressed(n=3)}
     assert agg.acquisition == {"custom_store": {"ok": 10}, "mixed": Suppressed(n=3)}
     assert agg.by_bucket == {"money|structured": PrecisionMetrics(precision=1.0, n=13)}
+    assert agg.by_field["commerce_detail|price"] == money(agg)
 
 
 def test_export_reduces_a_small_cell_to_its_n() -> None:
     agg = export_aggregate(report(detail_case("p1", EUR_19, published(EUR_19)), split="hidden"))
 
     as_json = json.loads(agg.model_dump_json())
+    assert as_json["by_field"] == {}
     assert as_json["by_field_type"] == {"money": {"n": 1}, "text": {"n": 1}}
     assert as_json["by_bucket"] == {"money|structured": {"n": 1}}
     assert as_json["usage"] == {"adhoc": {"n": 1}}

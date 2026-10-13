@@ -15,15 +15,13 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from crawlerai.core.capture import BlockClass
-from crawlerai.db.models import ExtractionMode, PageKind
+from crawlerai.db.models import EvalCategory, ExtractionMode, PageKind, Split
 from crawlerai.eval.labels import FieldLabel, FieldShape, LabelRow, Labels, parse_labels, values_equal
 from crawlerai.normalize import url
 
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
 MIN_CELL = 10
 
-Split = Literal["dev", "hidden", "fresh"]  # ARCHITECTURE §16.1
-Category = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]  # ARCHITECTURE §16.1
 # ARCHITECTURE §10 evidence buckets and §6 `extraction_config.field_status`.
 Evidence = Literal["adapter", "structured", "agreed", "config_corroborated", "config_uncorroborated", "llm_grounded"]
 CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
@@ -67,7 +65,7 @@ class EvalCase(_Model):
     """One eval page with its replay. `config_status` is the field status in the page's `config_snapshot` (§4.5)."""
 
     page_id: str
-    category: Category
+    category: EvalCategory
     schema_def: SchemaFields
     labels: Labels
     output: PageOutput | ReplayFailed
@@ -96,7 +94,7 @@ class Judgment(_Model):
 
 class PageDetail(_Model):
     page_id: str
-    category: Category
+    category: EvalCategory
     schema_name: str
     error: str | None
     zero_touch: bool | None
@@ -140,7 +138,7 @@ class Report(_Model):
     split: Split
     n_pages: int
     by_field_type: dict[str, FieldMetrics | Suppressed]
-    by_field: dict[str, FieldMetrics | Suppressed]  # "schema|field"
+    by_field: dict[str, FieldMetrics | Suppressed]  # "schema|field"; empty in a hidden/fresh aggregate
     by_bucket: dict[str, PrecisionMetrics | Suppressed]  # "field_type|evidence"
     by_config_status: dict[str, PrecisionMetrics | Suppressed]  # "field_type|status"
     by_category: dict[str, ZeroTouch | Suppressed]
@@ -212,12 +210,13 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
 def export_aggregate(report: Report) -> Report:
     """The report as it may leave the protected job (§4.7): no per-page rows, and every cell under `MIN_CELL`
     reduced to its `n`. Page-level cells (category, acquisition, usage) count pages, which is stricter than counting
-    the fields on them."""
+    the fields on them. Per-field cells stay in the job for hidden and fresh: their keys name schemas, and §4.7 and C10
+    expose aggregates per field type and evidence bucket only."""
     by_category = _suppress_all(report.by_category)
     return report.model_copy(
         update={
             "by_field_type": _suppress_all(report.by_field_type),
-            "by_field": _suppress_all(report.by_field),
+            "by_field": _suppress_all(report.by_field) if report.split == "dev" else {},
             "by_bucket": _suppress_all(report.by_bucket),
             "by_config_status": _suppress_all(report.by_config_status),
             "by_category": by_category,
