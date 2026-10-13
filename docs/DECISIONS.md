@@ -2647,3 +2647,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: The HTML Standard's microdata-to-JSON form (`{"type", "properties"}`), which the normalizers do not read; resolved URLs as raw.
 - Why: The same raw shapes as JSON-LD, so one normalizer reads both; raw values match the capture.
 - Reversible: yes
+
+### D-0407 — `POST /v1/scrape` is declared by hand until SPEC-07 generates it
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 3 (#82) · Status: decided
+- Decision: `src/api/scrape.ts` declares the SPEC-07 §4.3–4.4 request and response and adds the route to the generated `paths` by module augmentation, so the call uses the authenticated client and its 401 handling; deleted once `make api-client` generates it.
+- Alternatives: Wait for SPEC-07 PRs 4–6; raw `fetch` outside the client (loses the 401 middleware).
+- Why: Row-level readiness (D-0378); same reasoning as D-0343 and D-0367.
+- Reversible: yes
+
+### D-0408 — Empty scrape limits are left to the server
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 3 (#82) · Status: decided
+- Decision: Empty `max_age`, `timeout_s` and `budget.llm_calls` are left out of the request; `fetch.method_hint` starts at `auto` (FetchPolicy's default).
+- Alternatives: Prefill SPEC-07's example values.
+- Why: The UI does not choose server defaults (§3).
+- Reversible: yes
+
+### D-0409 — Record field types come from the schema, else the value is shown as sent
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 3 (#82) · Status: decided
+- Decision: Field types come from the response's draft schema, the inline schema sent, or `GET /v1/schemas/{schema_id}`; when none is readable, `FieldValue` gets `spec: null` and shows a string as is and anything else as JSON.
+- Alternatives: Infer the type from the value (a client heuristic, §3).
+- Why: Most conservative; review of #82 found the earlier text fallback hid published lists.
+- Reversible: yes
+
+### D-0410 — Scrape picks a schema by id; "Edit as schema" is SPEC-12 PR 4
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 3 (#82) · Status: decided
+- Decision: The Scrape form takes a stored schema's id as text; a drafted schema is shown with its fields, and adopting or editing it is left to the Schemas screen.
+- Alternatives: A schema list in the form; an "Edit as schema" link to a screen that does not exist yet.
+- Why: SPEC-12 PR 4 owns schema editing and draft adoption.
+- Reversible: yes
+
+### D-0411 — Outcome tones
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 3 (#82) · Status: decided
+- Decision: extracted → success, partial and shell → warning, not_found → neutral, blocked and failed → danger, in `components/OutcomeLabel` next to the outcome type.
+- Alternatives: Other mappings.
+- Why: DESIGN.md "Status display": each domain maps its values to one tone, once.
+- Reversible: yes
