@@ -45,8 +45,9 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      - copies the PR's `## Decisions` into DECISIONS.md with the next IDs, with `needs-owner` entries also listed
        in the index.
 
-     Push it and wait with `tools/orchestrator/wait_ci.sh <n> <sha>`, which waits on that commit, not the previous
-     one. Then run `gh pr merge <n> --squash`, close the PR's herdr panes, and run
+     Push it, then run `tools/orchestrator/merge_pr.sh <n> <sha7>`. It waits for every check on that commit and
+     merges only if all passed and the commit is still the PR's head. Never run `gh pr merge` yourself after a
+     wait chained with `;`. Then close the PR's herdr panes and run
      `tools/orchestrator/cleanup_worktree.sh <worktree> <branch>`.
    - **Early tracker commits.** While the review runs, you may write the tracker commit early, but only for the PR
      that merges next. An early commit on any other PR conflicts as soon as another PR merges first.
