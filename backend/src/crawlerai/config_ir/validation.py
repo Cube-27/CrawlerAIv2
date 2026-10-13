@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor
+from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Ratio, Step
 from crawlerai.config_ir.release_executor import Released, ReleasePage, Value, release_run
 from crawlerai.config_ir.release_rules import release_rules
@@ -121,7 +121,8 @@ def validate(
     captures = [page.capture_id for page in held_out]
     if len(held_out) < MIN_HELD_OUT:
         return Validated(None, ValidationReport(held_out=captures, fields={}, listing=None, refused="too_few_held_out"))
-    runs = [_PageRun.of(ir, schema, page, vocabulary) for page in held_out]
+    executor = EngineExecutor(ir, vocabulary)
+    runs = [_PageRun.of(executor, schema, page) for page in held_out]
     fields, page_reports = _check_fields(ir.fields, schema, runs, _page_slots)
     listing, listing_report = _check_listing(ir.listing, schema, runs)
     kept = len(fields) + (len(listing.fields) if listing is not None else 0)
@@ -132,17 +133,18 @@ def validate(
         return Validated(None, report)
     provenance = ir.provenance.model_copy(update={"validated_on": captures})
     validated = ir.model_copy(update={"fields": fields, "listing": listing, "provenance": provenance})
+    # `model_copy` skips validation; the round trip runs the IR's validators on the pruned document.
     return Validated(ExtractionConfigIR.model_validate(validated.model_dump(by_alias=True)), report)
 
 
 def corroboration(comparable: int, agreeing: int) -> FieldStatus:
     """§8.3 step 4: `corroborated` with at least `MIN_COMPARABLE` comparable pages, all agreeing while there are fewer
     than `EVERY_PAGE_BELOW`, and at least `CORROBORATION_SHARE` of them from then on."""
-    if comparable < MIN_COMPARABLE:
-        return "uncorroborated"
     if comparable < EVERY_PAGE_BELOW:
-        return "corroborated" if agreeing == comparable else "uncorroborated"
-    return "corroborated" if Fraction(agreeing, comparable) >= CORROBORATION_SHARE else "uncorroborated"
+        held = comparable >= MIN_COMPARABLE and agreeing == comparable
+    else:
+        held = Fraction(agreeing, comparable) >= CORROBORATION_SHARE
+    return "corroborated" if held else "uncorroborated"
 
 
 # --- one page -------------------------------------------------------------------------------------------------------
@@ -159,15 +161,15 @@ class _PageRun:
     released: Released
 
     @classmethod
-    def of(cls, ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage, vocabulary: Vocabulary) -> "_PageRun":
-        executed = EngineExecutor(ir, vocabulary).execute(page.page, schema, page.ctx)
+    def of(cls, executor: EngineExecutor, schema: SchemaDef, page: HeldOutPage) -> "_PageRun":
+        executed = executor.execute(page.page, schema, page.ctx)
         release_page = ReleasePage(page.page.html, page.page.network, page.ctx.base_url)
         return cls(
             page=page,
             spec_of=schema.fields,
             candidates={(c.entity_id, c.field): c for c in executed.candidates},
             rows=len(executed.rows),
-            released=release_run(ir, release_page, release_rules(schema, page.ctx)),
+            released=release_run(executor.ir, release_page, release_rules(schema, page.ctx)),
         )
 
     def released_value(self, values: Mapping[str, Value], name: str) -> JsonValue | None:
@@ -215,7 +217,7 @@ def _row_slots(run: _PageRun, name: str) -> tuple[list[_Slot], bool]:
     facts, released = run.page.rows, run.released.rows
     slots = [
         _slot(
-            run.candidates.get((f"config:row:{n}", name)),
+            run.candidates.get((row_id(n), name)),
             run.released_value(released[n], name) if n < len(released) else None,
             facts[n] if n < len(facts) else Facts(),
             name,
@@ -330,7 +332,11 @@ def _check_listing(
     rows_ok = sum(run.rows >= MIN_ROWS for run in runs)
     fields, reports = _check_fields(listing.fields, schema, runs, _row_slots)
     next_step, next_report = _check_next(listing, schema, runs)
-    dropped = "too_few_rows" if rows_ok < len(runs) else None if fields else "no_field_kept"
+    dropped = None
+    if rows_ok < len(runs):
+        dropped = "too_few_rows"
+    elif not fields:
+        dropped = "no_field_kept"
     if dropped is not None:
         lost = {"status": None, "dropped": dropped}
         reports = {name: r if r.dropped else r.model_copy(update=lost) for name, r in reports.items()}

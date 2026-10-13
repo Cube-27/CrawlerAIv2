@@ -57,6 +57,11 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 ROW_KIND = "ListItem"
 
 
+def row_id(n: int) -> str:
+    """The entity id of a listing's `n`-th row (document order)."""
+    return f"config:row:{n}"
+
+
 class ConfigMismatch(ValueError):
     """The config was learned for another schema version or page kind than the page is extracted with."""
 
@@ -207,9 +212,9 @@ class _Run:
         rows: list[Entity] = []
         candidates: list[Candidate] = []
         for n, node in enumerate(self.rows(listing)):
-            row_id = f"config:row:{n}"
-            rows.append(Entity(id=row_id, kind=ROW_KIND, urls=(), parent=None))
-            candidates.extend(self.fields(listing.fields, _Scope(node, in_row=True), row_id))
+            owner = row_id(n)
+            rows.append(Entity(id=owner, kind=ROW_KIND, urls=(), parent=None))
+            candidates.extend(self.fields(listing.fields, _Scope(node, in_row=True), owner))
         next_spec = self.schema.fields.get(NEXT_PAGE_FIELD)
         if listing.next is not None and next_spec is not None:
             found = self.first_value(NEXT_PAGE_FIELD, [listing.next], next_spec, document, PAGE)

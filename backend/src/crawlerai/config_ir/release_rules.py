@@ -20,10 +20,15 @@ def _rule(spec: FieldSpec, ctx: Context) -> FieldRule:
     own = spec.item or spec
 
     def accepts(value: Value, type_: str | None) -> bool:
-        try:
-            target = spec if type_ is None else own if own.type == type_ else FieldSpec(type=FieldType(type_))
-        except ValidationError:  # an enum or identifier type needs the field's own vocabulary or scheme
-            return False
+        if type_ is None:
+            target = spec
+        elif own.type == type_:
+            target = own
+        else:
+            try:
+                target = FieldSpec(type=FieldType(type_))
+            except ValidationError:  # an enum or identifier type needs the field's own vocabulary or scheme
+                return False
         return isinstance(normalize(value, target, ctx), Ok)
 
     return FieldRule(many=spec.item is not None, accepts=accepts)

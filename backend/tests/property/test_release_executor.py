@@ -13,7 +13,7 @@ from hypothesis import strategies as st
 
 from crawlerai.collect.base import PAGE
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor
+from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.release_executor import ReleasePage, release_run
 from crawlerai.config_ir.release_rules import release_rules
@@ -173,7 +173,7 @@ def test_the_executors_agree_on_listing_rows_and_the_next_page(page: str, fields
     engine = _engine_values(EngineExecutor(ir, VOCABULARY), ParsedPage(page), schema, ctx)
     released = release_run(ir, ReleasePage(page, (), ctx.base_url), release_rules(schema, ctx))
     rows = [
-        {name: value for (owner, name), value in engine.items() if owner == f"config:row:{n}"}
+        {name: value for (owner, name), value in engine.items() if owner == row_id(n)}
         for n in range(len(released.rows))
     ]
     assert list(released.rows) == rows
