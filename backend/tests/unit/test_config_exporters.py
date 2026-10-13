@@ -116,6 +116,7 @@ def test_platform_draft_carries_every_step_in_order_as_xpath_regex_or_jsonpath()
             },
             "next": {"steps": [{"regex": "next=([a-z0-9/]+)", "post": [{"absolutize_url": {}}]}], "manual": False},
         },
+        "api_recipe": None,
     }
 
 
@@ -137,3 +138,16 @@ def test_the_xpath_form_reads_the_same_values_as_the_ir() -> None:
     original, translated = _released(IR, page), _released(as_xpath(IR), page)
     assert (translated.fields, translated.rows) == (original.fields, original.rows)
     assert translated.rows[0] == {"sku": "S70", "link": "https://catalog.example.test/i/1"}
+
+
+def test_platform_draft_carries_the_api_recipe_as_stored() -> None:
+    recipe = {
+        "method": "GET",
+        "url": "https://api.example.test/v2/items/{p1}",
+        "params_from_url": {"p1": "path:1"},
+        "map": {"heading": "$['data']['title']"},
+        "proof": {"validated_on": [str(uuid7())], "headers_tried": 1, "bound_by": "deterministic"},
+    }
+    ir = ExtractionConfigIR.model_validate({**IR.model_dump(mode="json", by_alias=True), "api_recipe": recipe})
+    exported = export_config("platform_draft", ir, SCHEMA, [_page(n) for n in range(3)])
+    assert exported.model_dump(mode="json")["export"]["api_recipe"] == ir.model_dump(mode="json")["api_recipe"]

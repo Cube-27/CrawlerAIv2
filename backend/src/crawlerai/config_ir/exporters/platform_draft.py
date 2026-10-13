@@ -6,14 +6,16 @@ export something other than what the engine runs. A CSS step is exported as its 
 executors run, and an `attr` step as the XPath attribute step `@name` (XPath 1.0 §2.5), which reads the same attribute
 of the context node: the row in a listing, the root element on a page. `as_xpath` is that translation on the IR
 itself, so the release check runs the steps the export carries. A field the release check marks `manual` (§12.3) is
-exported with `manual: true`. Regexes are in the portable subset (`portable_regex`) and run with PHP's `/u` modifier
-(`regex_flags`). Exports carry selectors only, never values (INV-27).
+exported with `manual: true`. An `api_recipe` is exported as stored: held-out validation replayed it (SPEC-09 §4.7),
+and its PHP code hint is SPEC-09's (PR 7). Regexes are in the portable subset (`portable_regex`) and run with PHP's
+`/u` modifier (`regex_flags`). Exports carry selectors only, never values (INV-27).
 """
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.model import (
     AttrStep,
     CssStep,
@@ -58,6 +60,7 @@ class PlatformDraft(_Model):
     fetch: Fetch
     fields: dict[str, DraftField]
     listing: DraftListing | None
+    api_recipe: ApiRecipe | None
 
 
 def as_xpath(ir: ExtractionConfigIR) -> ExtractionConfigIR:
@@ -87,6 +90,7 @@ def platform_draft(ir: ExtractionConfigIR, report: ReleaseReport) -> PlatformDra
         fetch=ir.fetch,
         fields=_draft_fields(ir.fields, report.fields),
         listing=listing,
+        api_recipe=ir.api_recipe,
     )
 
 
