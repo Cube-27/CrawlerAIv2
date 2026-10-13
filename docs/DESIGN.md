@@ -81,7 +81,7 @@ use it instead of composing their own. Each line ends with how it follows the re
 | Empty state | `EmptyView`: what is missing and how to get it, with an optional action. | Quiet empty states with one next step. |
 | Loading state | `LoadingView` (a named HeroUI `Spinner`) in place of the content; a HeroUI `Skeleton` where the layout is known. | No layout jump. |
 | Error state | `ProblemAlert` for every RFC 9457 problem: its title, its detail, then any per-field lines. Other alerts use HeroUI `Alert` with a `status`. | Errors inline, where they happened. |
-| Status display | `StatusLabel`: a HeroUI `Chip` with one icon and one color per tone. Each domain maps each of its status values to one tone, once, next to its type (for example `LabelStatus`). | Neutral palette; status by icon and text. |
+| Status display | `StatusLabel`: a HeroUI `Chip` with one icon and one color per tone. Each domain maps each of its status values to one tone, once, next to its type (for example `LabelStatusChip` for label statuses). | Neutral palette; status by icon and text. |
 | Confirmations | `ConfirmDialog` (HeroUI `AlertDialog`), only before an action that can't be undone. Cancel first, the action last. | Few modals. |
 | Notifications | `toast` from `@heroui/react` (for example `toast.success`); the one `Toast.Provider` is in the shell. Use it for the outcome of an action, never for an error the user must act on. | Brief, out-of-the-way confirmations. |
 

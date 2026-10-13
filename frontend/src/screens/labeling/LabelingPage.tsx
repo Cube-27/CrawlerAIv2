@@ -35,7 +35,7 @@ import {
 } from "./editorState";
 import { EvalUiOff } from "./EvalUiOff";
 import { FieldEditor } from "./FieldEditor";
-import { SplitBadge, statusText } from "./LabelingList";
+import { LabelStatusChip, SplitBadge } from "./LabelingList";
 import type { PageDetail, pageLoader } from "./loaders";
 import { PageView } from "./PageView";
 
@@ -107,10 +107,11 @@ function LabelingHeader({ page }: Readonly<{ page: PageDetail }>) {
     <>
       <PageHeader title="Labeling">
         <SplitBadge split={page.split} />
+        <LabelStatusChip status={page.status} />
         <Link href="/labeling">All pages</Link>
       </PageHeader>
       <Typography.Paragraph size="sm" color="muted">
-        {page.schema_name} · {page.page_kind} · {page.category} · {statusText(page.status)}
+        {page.schema_name} · {page.page_kind} · {page.category}
         {page.labeler === null ? "" : ` · labeled by ${page.labeler}`}
         {page.checker === null ? "" : ` · checked by ${page.checker}`}
       </Typography.Paragraph>

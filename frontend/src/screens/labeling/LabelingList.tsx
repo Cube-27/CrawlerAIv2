@@ -18,7 +18,7 @@ const STATUS_TONES: Record<NonNullable<PageSummary["status"]> | "none", StatusTo
   checked: "success",
 };
 
-export function LabelStatus({ status }: Readonly<{ status: PageSummary["status"] }>) {
+export function LabelStatusChip({ status }: Readonly<{ status: PageSummary["status"] }>) {
   return <StatusLabel text={statusText(status)} tone={STATUS_TONES[status ?? "none"]} />;
 }
 
@@ -61,7 +61,7 @@ function PageList({ pages }: Readonly<{ pages: PageSummary[] }>) {
                 <Table.Cell>{page.page_kind}</Table.Cell>
                 <Table.Cell>{page.category}</Table.Cell>
                 <Table.Cell>
-                  <LabelStatus status={page.status} />
+                  <LabelStatusChip status={page.status} />
                 </Table.Cell>
                 <Table.Cell>{page.labeler ?? "—"}</Table.Cell>
                 <Table.Cell>{page.checker ?? "—"}</Table.Cell>
