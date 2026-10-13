@@ -47,14 +47,14 @@ async def _schedule() -> None:
     await run_scheduler(Settings(), PERIODIC, _stop_on_signals())
 
 
-async def _fetch(url: str, out: Path) -> None:
+async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) -> None:
     result = await fetch_http(
         url,
         FetchPolicy(),
         # The package version until SPEC-01 PR 7 provides ENGINE_VERSION.
         engine_version=version("crawlerai"),
         impersonate=AcquireSettings().impersonate,
-        connector=SafeConnector(),
+        connector=connector,
     )
     out.write_bytes(encode(result.bundle))
     manifest = result.bundle.manifest

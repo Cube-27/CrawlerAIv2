@@ -336,20 +336,14 @@ def test_the_time_budget_covers_every_hop(server: Server) -> None:
     assert outcome(fetch(server, server.url("/a"), FetchPolicy(timeout_s=0.6)))[1:] == ("error", "timeout")
 
 
-def test_name_resolution_counts_against_the_time_budget(server: Server) -> None:
-    started = time.monotonic()
-    connector = LoopbackConnector(server.port, _DNS, dns_delay_s=3.0)
-    result = fetch(server, "http://public.example.com/", FetchPolicy(timeout_s=0.5), connector)
-    assert outcome(result) == (0, "error", "timeout")
-    assert time.monotonic() - started < 2.5
-
-
-def test_name_resolution_of_a_redirect_hop_counts_against_the_time_budget(server: Server) -> None:
+@pytest.mark.parametrize(("path", "status"), [(None, 0), ("/p", 302)], ids=["first_url", "redirect_hop"])
+def test_name_resolution_counts_against_the_time_budget(server: Server, path: str | None, status: int) -> None:
     server.route("/p", redirect("http://public.example.com/"))
+    url = server.url(path) if path else "http://public.example.com/"
     started = time.monotonic()
     connector = LoopbackConnector(server.port, _DNS, dns_delay_s=3.0)
-    result = fetch(server, server.url("/p"), FetchPolicy(timeout_s=0.5), connector)
-    assert outcome(result) == (302, "error", "timeout")
+    result = fetch(server, url, FetchPolicy(timeout_s=0.5), connector)
+    assert outcome(result) == (status, "error", "timeout")
     assert time.monotonic() - started < 2.5
 
 
@@ -396,11 +390,10 @@ def test_the_fetch_command_writes_a_bundle_that_decodes(
     for name in list(os.environ):
         if name.upper().startswith("CRAWLERAI_"):
             monkeypatch.delenv(name)
-    monkeypatch.setattr(cli, "SafeConnector", lambda: LoopbackConnector(server.port, _DNS))
     server.route("/p", reply)
     out = tmp_path / "bundle.zst"
 
-    main(["fetch", server.url("/p"), "--out", str(out)])
+    asyncio.run(cli._fetch(server.url("/p"), out, LoopbackConnector(server.port, _DNS)))
 
     bundle = decode(out.read_bytes())
     manifest = bundle.manifest

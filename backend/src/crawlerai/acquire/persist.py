@@ -32,30 +32,26 @@ async def store_capture(
     # Encoding compresses the whole bundle and the store is synchronous (boto3): both run off the event loop.
     blob = await asyncio.to_thread(encode, result.bundle)
     await asyncio.to_thread(store.put, key, blob)
-    capture_id: CaptureId = (
-        await conn.execute(
-            insert(Capture)
-            .values(
-                id=manifest.capture_id,
-                site_id=site_id,
-                url=manifest.url,
-                fetched_at=manifest.fetched_at,
-                method=manifest.method,
-                status_code=manifest.status_code,
-                final_url=manifest.final_url,
-                block_class=manifest.block_class,
-                object_key=key,
-                html_sha256=manifest.html_sha256,
-                expires_at=None if expires_in is None else manifest.fetched_at + expires_in,
-                size_bytes=len(blob),
-                duration_ms=result.duration_ms,
-                # SPEC-02 §4.4: the row keeps every rung tried, beside the policy they ran under.
-                fetch_policy={
-                    **manifest.fetch_policy,
-                    "attempts": [attempt.model_dump(mode="json") for attempt in result.attempts],
-                },
-            )
-            .returning(Capture.id)
+    await conn.execute(
+        insert(Capture).values(
+            id=manifest.capture_id,
+            site_id=site_id,
+            url=manifest.url,
+            fetched_at=manifest.fetched_at,
+            method=manifest.method,
+            status_code=manifest.status_code,
+            final_url=manifest.final_url,
+            block_class=manifest.block_class,
+            object_key=key,
+            html_sha256=manifest.html_sha256,
+            expires_at=None if expires_in is None else manifest.fetched_at + expires_in,
+            size_bytes=len(blob),
+            duration_ms=result.duration_ms,
+            # SPEC-02 §4.4: the row keeps every rung tried, beside the policy they ran under.
+            fetch_policy={
+                **manifest.fetch_policy,
+                "attempts": [attempt.model_dump(mode="json") for attempt in result.attempts],
+            },
         )
-    ).scalar_one()
-    return capture_id
+    )
+    return CaptureId(manifest.capture_id)
