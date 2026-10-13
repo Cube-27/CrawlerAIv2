@@ -13,6 +13,8 @@ import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Any
 from urllib.parse import urljoin
 
 from jsonpath_ng import parse as parse_jsonpath  # type: ignore[import-untyped]
@@ -21,6 +23,7 @@ from lxml import etree
 from lxml import html as lxml_html
 
 from crawlerai.config_ir.model import (
+    NEXT_PAGE_FIELD,
     AbsolutizeUrlOp,
     AttrStep,
     CssStep,
@@ -44,14 +47,14 @@ type Value = str | int | float | bool | list[Value] | dict[str, Value] | None
 # The IR's regexes are the subset Python and PCRE read alike when Python matches ASCII-only, as PCRE does without its
 # UCP option (SPEC-08 §4.2).
 _REGEX_FLAGS = re.ASCII
-# ARCHITECTURE §5.3: the listing presets' page-level next-page field, which a listing's `next` step fills (§12.1).
-NEXT_PAGE_FIELD = "next_page_url"
 # IANA media types: JSON-LD (embedded in HTML by a script of this type, JSON-LD 1.1 §7.1) and JSON (RFC 8259).
 _JSONLD = "application/ld+json"
 _JSON = "application/json"
 # ECMAScript: an assignment to a property of `window` (the global object, HTML Standard) or a variable declaration
-# with an initializer; `=` not followed by `=` or `>` is assignment, not comparison or an arrow.
-_ASSIGNMENT = re.compile(r"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+)(?:[^\W\d]|\$)[\w$]*\s*=(?![=>])")
+# with an initializer; `=` not followed by `=` or `>` is assignment, not comparison or an arrow. The match ends where
+# the value starts.
+_ASSIGNMENT = re.compile(r"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+)(?:[^\W\d]|\$)[\w$]*\s*=(?![=>])\s*")
+_DECODER = json.JSONDecoder()
 # schema.org: a type's IRI is the vocabulary IRI plus its name; either scheme names the same term.
 _SCHEMA_ORG = re.compile(r"^https?://schema\.org/")
 # XPath 1.0 §4.2: `string()` is the context node's string-value.
@@ -62,7 +65,8 @@ _STRING_VALUE = etree.XPath("string()")
 class FieldRule:
     """What the release check tells the executor of one schema field. `many`: a list field takes every match, any other
     exactly one. `accepts(value, type)`: whether `value` is valid for the field type a normalizer post op names, or,
-    with `None`, for the field itself. The caller runs the normalizers; this module has none."""
+    with `None`, for the field itself. The caller runs the normalizers, the one definition of a valid value (SPEC-04,
+    C8); what this module checks independently is that the steps select and transform the values the engine did."""
 
     many: bool
     accepts: Callable[[Value, str | None], bool]
@@ -92,13 +96,13 @@ def release_run(ir: ExtractionConfigIR, page: ReleasePage, rules: Mapping[str, F
     wins (§12.1); a field without a rule, or `suspended`, does not run."""
     run = _Run(page, _parse(page.html), rules)
     fields = run.fields(ir.fields, run.root, in_row=False)
-    rows: list[dict[str, Value]] = []
+    rows: tuple[dict[str, Value], ...] = ()
     if ir.listing is not None:
-        rows = [run.fields(ir.listing.fields, node, in_row=True) for node in run.rows(ir.listing.row)]
+        rows = tuple(run.fields(ir.listing.fields, node, in_row=True) for node in run.rows(ir.listing.row))
         found = run.next_page(ir.listing)
         if found is not None:
             fields[NEXT_PAGE_FIELD] = found
-    return Released(fields=fields, rows=tuple(rows), diagnostics=tuple(run.diagnostics))
+    return Released(fields=fields, rows=rows, diagnostics=tuple(run.diagnostics))
 
 
 class _Unreadable(Exception):
@@ -198,9 +202,9 @@ def _take(matches: list[Value], post: Sequence[PostOp], rule: FieldRule, base_ur
 def _post(value: Value, ops: Sequence[PostOp], rule: FieldRule, base_url: str | None) -> Value | None:
     """`value` through `ops` in order, or `None` when one declines it. A normalizer op is a check: the value passes on
     unchanged, since the field's normalizer makes the value (SPEC-04)."""
+    if value is None:
+        return None
     for op in ops:
-        if value is None:
-            return None
         if isinstance(op, NormalizeOp):
             if not rule.accepts(value, op.type.value):
                 return None
@@ -213,8 +217,9 @@ def _post(value: Value, ops: Sequence[PostOp], rule: FieldRule, base_url: str | 
             case RegexReplaceOp():
                 value = re.sub(op.regex_replace.pattern, op.regex_replace.repl, value, flags=_REGEX_FLAGS)
             case AbsolutizeUrlOp():
-                # RFC 3986 §5: a reference resolves against a base URL; without one none is assumed (C7)
-                value = None if base_url is None else urljoin(base_url, value)
+                if base_url is None:  # RFC 3986 §5 resolves against a base URL; none is assumed (C7)
+                    return None
+                value = urljoin(base_url, value)
     return value
 
 
@@ -245,10 +250,16 @@ def _regex(pattern: str, text: str) -> list[Value]:
 
 def _query(query: str, documents: Sequence[Value]) -> list[Value]:
     try:
-        compiled = parse_jsonpath(query)
+        compiled = _jsonpath(query)
     except (JsonPathLexerError, JsonPathParserError) as error:
         raise _Unreadable(f"invalid_jsonpath: {error}") from None
     return [found.value for document in documents for found in compiled.find(document)]
+
+
+@lru_cache(maxsize=256)
+def _jsonpath(query: str) -> Any:
+    """The parsed query; jsonpath-ng builds a parser per call, and a config's queries repeat on every held-out page."""
+    return parse_jsonpath(query)
 
 
 def _parse(html: str) -> etree._Element:
@@ -298,9 +309,8 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Value | None
     found = _ASSIGNMENT.search(text)
     if found is None:
         return None
-    start = len(text) - len(text[found.end() :].lstrip())
     try:
-        value, _ = json.JSONDecoder().raw_decode(text, start)
+        value, _ = _DECODER.raw_decode(text, found.end())
     except ValueError:
         return None
     return value if isinstance(value, (dict, list)) else None  # a scalar initializer is a script variable

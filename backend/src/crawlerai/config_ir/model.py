@@ -233,6 +233,10 @@ class FieldSteps(_Model):
     validity: Ratio | None = None
 
 
+# ARCHITECTURE §5.3: the listing presets' page-level next-page field, which a listing's `next` step fills (§12.1).
+NEXT_PAGE_FIELD = "next_page_url"
+
+
 class ListingSpec(_Model):
     """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next
     page's URL."""
