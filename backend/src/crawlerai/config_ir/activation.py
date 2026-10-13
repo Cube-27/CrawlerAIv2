@@ -9,6 +9,8 @@ Only a `Validated` with a config activates: nothing activates without validation
 caller's connection, in its transaction, so a run that cannot end (`NotLearning`) stores nothing.
 """
 
+from collections.abc import Collection
+
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -50,18 +52,28 @@ async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -
 
 
 async def store_correction(
-    conn: AsyncConnection, key: StateKey, corrected: ExtractionConfigIR, validated: Validated
+    conn: AsyncConnection,
+    key: StateKey,
+    corrected: ExtractionConfigIR,
+    validated: Validated,
+    operated: Collection[str],
 ) -> ExtractionConfigId:
-    """Store an operator's `corrected` config, validated as `validated`, as `key`'s next version, and return its id:
-    `validated`'s config, active, when validation kept one, else `corrected` as a `draft`. The caller holds `key`'s
-    state lock (`progressive.lock_state`). Raises `ConfigMismatch` like `activate`."""
+    """Store an operator's `corrected` config, validated as `validated`, as `key`'s next version, and return its id.
+    It is `validated`'s config, active, only when validation kept every field in `operated` (those the operator gave
+    steps or confirmed): activating without one would drop the operator's work and suspend the version that served.
+    Otherwise it is `corrected` as a `draft`. The caller holds `key`'s state lock (`progressive.lock_state`). Raises
+    `ConfigMismatch` like `activate`."""
     await _check_key(conn, key, corrected)
-    if validated.ir is None:
+    if validated.ir is None or not set(operated) <= _field_names(validated.ir):
         return await _store(conn, key, corrected, validated.report, "draft")
     await _suspend_active(conn, key)
     config_id = await _store(conn, key, validated.ir, validated.report, "active")
     await operator_activated(conn, key, config_id)
     return config_id
+
+
+def _field_names(ir: ExtractionConfigIR) -> set[str]:
+    return set(ir.fields) | (set(ir.listing.fields) if ir.listing is not None else set())
 
 
 async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR) -> None:

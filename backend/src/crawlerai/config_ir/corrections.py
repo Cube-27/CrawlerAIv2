@@ -30,6 +30,10 @@ class Correction(_Model):
     fields: dict[Name, CorrectedSteps | None] = {}
     confirm: list[Name] = []
 
+    def operated(self) -> set[str]:
+        """The fields the operator gave steps or confirmed: those that must survive validation to activate."""
+        return {name for name, steps in self.fields.items() if steps is not None} | set(self.confirm)
+
 
 class InvalidCorrection(ValueError):
     """The correction does not fit the config or its schema; `errors` are (dotted path in the body, reason) pairs,

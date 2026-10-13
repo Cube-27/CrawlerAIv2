@@ -138,7 +138,7 @@ async def correct(
     held_out = await load_held_out(conn, store, key.site_id, schema, limit=LEARN_AFTER_PAGES)
     # Both executors run on every page: CPU work, so a thread keeps the event loop serving meanwhile.
     validated = await asyncio.to_thread(validate, corrected, schema, held_out, vocabulary)
-    return await get(conn, await store_correction(conn, key, corrected, validated))
+    return await get(conn, await store_correction(conn, key, corrected, validated, correction.operated()))
 
 
 async def learn(conn: AsyncConnection, host: str, request: LearnRequest) -> JobId:

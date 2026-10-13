@@ -47,27 +47,34 @@ pytestmark = pytest.mark.anyio
 
 H1 = {"xpath": "normalize-space(//h1)", "post": []}
 H2 = {"xpath": "normalize-space(//h2)", "post": []}
+ABOUT = {"xpath": "normalize-space(//p)", "post": []}
 
 
 def _document(name: str) -> SchemaDocument:
     title = FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name")
-    return SchemaDocument(name=name, version=1, page_kind="detail", fields={"title": title})
+    about = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.description")
+    return SchemaDocument(name=name, version=1, page_kind="detail", fields={"title": title, "about": about})
 
 
 def _page(name: str) -> bytes:
-    node = {"@context": "https://schema.org", "@type": "Product", "name": name}
+    node = {"@context": "https://schema.org", "@type": "Product", "name": name, "description": f"About {name}"}
     script = f'<script type="application/ld+json">{json.dumps(node)}</script>'
-    return f"<html><head>{script}</head><body><h1>{name}</h1><h2>Other</h2></body></html>".encode()
+    body = f"<h1>{name}</h1><h2>Other</h2><p>About {name}</p>"
+    return f"<html><head>{script}</head><body>{body}</body></html>".encode()
 
 
-def _ir(host: str, schema: SchemaDef, step: dict[str, Any]) -> dict[str, Any]:
+def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, Any]) -> dict[str, Any]:
+    steps = {"title": step, **more}
     return {
         "ir_version": "1",
         "site": host,
         "schema": {"name": schema.name, "version": schema.version},
         "page_kind": "detail",
         "fetch": {"method": "http"},
-        "fields": {"title": {"steps": [step], "status": "uncorroborated", "yield": 1.0, "validity": 1.0}},
+        "fields": {
+            name: {"steps": [field_step], "status": "uncorroborated", "yield": 1.0, "validity": 1.0}
+            for name, field_step in steps.items()
+        },
         "listing": None,
         "api_recipe": None,
         "provenance": {
@@ -131,17 +138,18 @@ class World:
         async with self.engine.begin() as conn:
             return await store_capture(conn, self.store, fetched, self.site_id)
 
-    async def active_config(self, step: dict[str, Any]) -> ExtractionConfigId:
-        """Version 1 of the site's config, active, with `step` for `title`, and the state active on it."""
+    async def active_config(self, step: dict[str, Any], **more: dict[str, Any]) -> ExtractionConfigId:
+        """Version 1 of the site's config, active, with `step` for `title` (and `more` steps by field), and the state
+        active on it."""
         key = {"site_id": self.site_id, "schema_id": self.schema.id, "schema_version": 1, "page_kind": "detail"}
         async with self.engine.begin() as conn:
             config = insert(ExtractionConfig).values(
                 **key,
                 version=1,
                 status="active",
-                ir=_ir(self.host, self.schema, step),
+                ir=_ir(self.host, self.schema, step, **more),
                 origin="induced",
-                field_status={"title": "uncorroborated"},
+                field_status=dict.fromkeys(["title", *more], "uncorroborated"),
                 validation_report=None,
             )
             config_id: ExtractionConfigId = (await conn.execute(config.returning(ExtractionConfig.id))).scalar_one()
@@ -334,6 +342,24 @@ async def test_a_correction_that_fails_validation_is_kept_as_a_draft_with_its_re
     assert str((await world.state()).active_config_id) == str(first)
 
 
+async def test_a_correction_that_loses_a_corrected_field_is_a_draft_and_the_working_version_stays(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    await _pages(world, 3)
+    first = await world.active_config(H1, about=ABOUT)
+
+    # `title` still validates; the corrected `about` does not, so activating would drop the operator's field.
+    response = await client.put(f"/v1/configs/{first}", json={"fields": {"about": {"steps": [H2]}}})
+
+    body = response.json()
+    assert (body["version"], body["status"]) == (2, "draft")
+    assert body["ir"]["fields"]["about"]["steps"] == [H2]
+    report = body["validation_report"]
+    assert (report["refused"], report["fields"]["about"]["dropped"]) == (None, "not_reproduced")
+    assert await world.configs() == [(1, "active", "induced"), (2, "draft", "operator")]
+    assert str((await world.state()).active_config_id) == str(first)
+
+
 async def test_a_correction_without_three_held_out_pages_is_a_draft(client: httpx.AsyncClient, world: World) -> None:
     await _pages(world, 2)
     first = await world.active_config(H2)
@@ -461,8 +487,10 @@ async def test_held_out_pages_are_the_latest_extracted_captures_with_their_publi
         pages = await load_held_out(conn, world.store, world.site_id, world.schema, limit=3)
 
     assert [page.capture_id for page in pages] == captures[:0:-1]
-    assert [page.facts.published for page in pages] == [{"title": f"Kettle {n}"} for n in (3, 2, 1)]
-    assert pages[0].facts.references == {"title": ["Kettle 3"]}
+    assert [page.facts.published for page in pages] == [
+        {"title": f"Kettle {n}", "about": f"About Kettle {n}"} for n in (3, 2, 1)
+    ]
+    assert pages[0].facts.references == {"title": ["Kettle 3"], "about": ["About Kettle 3"]}
     assert pages[0].page.html.startswith("<html>")
 
 

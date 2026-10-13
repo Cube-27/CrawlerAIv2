@@ -142,3 +142,9 @@ def test_a_row_field_needs_a_listing_with_a_row_selector() -> None:
 def test_steps_are_checked_as_ir_steps() -> None:
     with pytest.raises(ValueError, match=r"upper-case\(\) is not an XPath 1\.0 function"):
         Correction.model_validate({"fields": {"title": {"steps": [{"xpath": "upper-case(//h1)"}]}}})
+
+
+def test_the_operated_fields_are_those_given_steps_or_confirmed() -> None:
+    body = {"fields": {"title": {"steps": [H1]}, "brand": None}, "confirm": ["subtitle"]}
+    correction = Correction.model_validate(body)
+    assert correction.operated() == {"title", "subtitle"}
