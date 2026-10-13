@@ -148,7 +148,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Client protocol, request/response models, fake provider, budgets, usage | done (#69) | Usage commits in its own transaction (D-0346); replay uses `llm.client` (D-0218 retired). |
-| 2 | Anthropic and Gemini providers with JSON-schema output + failover | todo | |
+| 2 | Anthropic and Gemini providers with JSON-schema output + failover | done (#74) | Fails over once on 408/429/5xx/timeout (D-0371); Anthropic sends no temperature (D-0370). |
 | 3 | Grounding alignment | todo | |
 | 4 | Role C detail + pipeline hook wiring | todo | |
 | 5 | Role C listing + labeling pre-fill endpoint | todo | |
