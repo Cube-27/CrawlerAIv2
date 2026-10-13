@@ -47,7 +47,7 @@ describe("app shell", () => {
       within(nav)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Overview", "Scrape", "Schemas"]);
+    ).toEqual(["Overview", "Scrape", "Schemas", "Records"]);
   });
 
   it("hides the Labeling entry when /healthz fails", async () => {
