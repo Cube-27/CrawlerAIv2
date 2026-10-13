@@ -15,8 +15,8 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from crawlerai.core.capture import BlockClass
-from crawlerai.db.models import PageKind
-from crawlerai.eval.labels import FieldLabel, FieldShape, Labels, parse_labels, values_equal
+from crawlerai.db.models import ExtractionMode, PageKind
+from crawlerai.eval.labels import FieldLabel, FieldShape, LabelRow, Labels, parse_labels, values_equal
 from crawlerai.normalize import url
 
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
@@ -24,9 +24,9 @@ MIN_CELL = 10
 
 Split = Literal["dev", "hidden", "fresh"]  # ARCHITECTURE §16.1
 Category = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]  # ARCHITECTURE §16.1
-Mode = Literal["adhoc", "config"]
 # ARCHITECTURE §10 evidence buckets and §6 `extraction_config.field_status`.
 Evidence = Literal["adapter", "structured", "agreed", "config_corroborated", "config_uncorroborated", "llm_grounded"]
+CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
 ConfigFieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
 Cell = Literal["TP", "FP", "FN", "TN"]
 
@@ -43,7 +43,7 @@ class FieldOutput(_Model):
 
 class PageOutput(_Model):
     block_class: BlockClass  # from the capture manifest
-    mode: Mode
+    mode: ExtractionMode
     llm_calls: int = 0
     fields: dict[str, FieldOutput] = {}  # detail: the entity; listing: page-level fields
     rows: tuple[dict[str, FieldOutput], ...] = ()  # listing rows
@@ -152,7 +152,7 @@ class Report(_Model):
 def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, git_sha: str) -> Report:
     """Score every checked case. Pages that are not `checked` don't count (§4.3); failed replays are dropped from
     `n_pages` and every metric. Per-page detail is kept for dev only."""
-    scored: list[tuple[EvalCase, PageOutput, list[Judgment]]] = []
+    scored: list[tuple[EvalCase, PageOutput, list[Judgment], bool]] = []
     details: list[PageDetail] = []
     for case in sorted(cases, key=lambda c: c.page_id):
         if case.labels.status != "checked":
@@ -162,14 +162,19 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
                 details.append(_detail(case, error, None, ()))
             case PageOutput() as output:
                 judgments = list(_judge_page(case.schema_def, case.labels, output))
-                scored.append((case, output, judgments))
-                details.append(_detail(case, None, _zero_touch(case.schema_def, judgments), tuple(judgments)))
+                zero_touch = _zero_touch(case.schema_def, judgments)
+                scored.append((case, output, judgments, zero_touch))
+                details.append(_detail(case, None, zero_touch, tuple(judgments)))
 
     by_type: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_field: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_bucket: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_config: defaultdict[str, list[Judgment]] = defaultdict(list)
-    for case, _, judgments in scored:
+    pages_by_category: defaultdict[str, list[tuple[bool, BlockClass]]] = defaultdict(list)
+    pages_by_mode: defaultdict[str, list[PageOutput]] = defaultdict(list)
+    for case, output, judgments, zero_touch in scored:
+        pages_by_category[case.category].append((zero_touch, output.block_class))
+        pages_by_mode[output.mode].append(output)
         for j in judgments:
             type_ = case.schema_def.fields[j.field].type
             by_type[type_].append(j)
@@ -178,12 +183,6 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
                 by_bucket[f"{type_}|{j.evidence}"].append(j)
             if (status := _config_status(case, j)) is not None:
                 by_config[f"{type_}|{status}"].append(j)
-
-    pages_by_category: defaultdict[str, list[tuple[EvalCase, PageOutput, list[Judgment]]]] = defaultdict(list)
-    pages_by_mode: defaultdict[str, list[PageOutput]] = defaultdict(list)
-    for case, output, judgments in scored:
-        pages_by_category[case.category].append((case, output, judgments))
-        pages_by_mode[output.mode].append(output)
 
     return Report(
         engine_version=engine_version,
@@ -195,11 +194,11 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
         by_bucket={k: _precision(v) for k, v in sorted(by_bucket.items())},
         by_config_status={k: _precision(v) for k, v in sorted(by_config.items())},
         by_category={
-            k: ZeroTouch(zero_touch=sum(_zero_touch(c.schema_def, js) for c, _, js in pages) / len(pages), n=len(pages))
+            k: ZeroTouch(zero_touch=sum(zt for zt, _ in pages) / len(pages), n=len(pages))
             for k, pages in sorted(pages_by_category.items())
         },
         acquisition={
-            k: dict(sorted(Counter(out.block_class for _, out, _ in pages).items()))
+            k: dict(sorted(Counter(block_class for _, block_class in pages).items()))
             for k, pages in sorted(pages_by_category.items())
         },
         usage={
@@ -214,19 +213,19 @@ def export_aggregate(report: Report) -> Report:
     """The report as it may leave the protected job (§4.7): no per-page rows, and every cell under `MIN_CELL`
     reduced to its `n`. Page-level cells (category, acquisition, usage) count pages, which is stricter than counting
     the fields on them."""
-    by_category = {k: _suppress(v) for k, v in report.by_category.items()}
+    by_category = _suppress_all(report.by_category)
     return report.model_copy(
         update={
-            "by_field_type": {k: _suppress(v) for k, v in report.by_field_type.items()},
-            "by_field": {k: _suppress(v) for k, v in report.by_field.items()},
-            "by_bucket": {k: _suppress(v) for k, v in report.by_bucket.items()},
-            "by_config_status": {k: _suppress(v) for k, v in report.by_config_status.items()},
+            "by_field_type": _suppress_all(report.by_field_type),
+            "by_field": _suppress_all(report.by_field),
+            "by_bucket": _suppress_all(report.by_bucket),
+            "by_config_status": _suppress_all(report.by_config_status),
             "by_category": by_category,
+            # Acquisition counts the same pages as the category's zero-touch cell, so it shares that suppression.
             "acquisition": {
-                k: Suppressed(n=cell.n) if isinstance(cell, Suppressed) else report.acquisition[k]
-                for k, cell in by_category.items()
+                k: cell if isinstance(cell, Suppressed) else report.acquisition[k] for k, cell in by_category.items()
             },
-            "usage": {k: _suppress(v) for k, v in report.usage.items()},
+            "usage": _suppress_all(report.usage),
             "pages": None,
         }
     )
@@ -249,7 +248,7 @@ def generalization_gap(dev: Report, fresh: Report) -> dict[str, float]:
 
 def _config_status(case: EvalCase, judgment: Judgment) -> ConfigFieldStatus | None:
     # Fields published from a config are measured per the field's status in the page's config snapshot (§4.5).
-    if judgment.evidence is None or not judgment.evidence.startswith("config_"):
+    if judgment.evidence not in CONFIG_EVIDENCE:
         return None
     return case.config_status.get(judgment.field)
 
@@ -272,7 +271,7 @@ def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput) -> Ite
         yield _judge(name, "page", label, output.fields.get(name), schema.fields[name])
     if schema.page_kind == "detail":
         return
-    matches = _match_rows(labels, output.rows)
+    matches = _match_rows(labels.rows, output.rows)
     for i, row in enumerate(labels.rows):
         out_row = output.rows[matches[i]] if i in matches else {}
         for name, label in sorted(row.fields.items()):
@@ -299,11 +298,11 @@ def _unmatched_row(j: int, row: Mapping[str, FieldOutput], schema: SchemaFields)
             )
 
 
-def _match_rows(labels: Labels, rows: Sequence[Mapping[str, FieldOutput]]) -> dict[int, int]:
+def _match_rows(label_rows: Sequence[LabelRow], rows: Sequence[Mapping[str, FieldOutput]]) -> dict[int, int]:
     """Label row index → engine row index, matched by canonicalized `url` (§4.6), in page order, one to one."""
     matches: dict[int, int] = {}
     taken: set[int] = set()
-    for i, label_row in enumerate(labels.rows):
+    for i, label_row in enumerate(label_rows):
         label = label_row.fields.get("url")
         if label is None or label.absent:
             continue
@@ -317,8 +316,8 @@ def _match_rows(labels: Labels, rows: Sequence[Mapping[str, FieldOutput]]) -> di
 
 
 def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, shape: FieldShape) -> Judgment:
-    published = out is not None and out.status == "published"
-    value = out.value if out is not None and published else None
+    published = out if out is not None and out.status == "published" else None
+    value = published.value if published else None
     if published:
         cell: Cell = "FP" if label.absent or not values_equal(value, label.value, shape) else "TP"
     else:
@@ -328,8 +327,8 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
         entity=entity,
         cell=cell,
         on_absent=label.absent,
-        wrong_product=published and any(values_equal(value, d, shape) for d in label.distractors),
-        evidence=out.evidence if out is not None and published else None,
+        wrong_product=published is not None and any(values_equal(value, d, shape) for d in label.distractors),
+        evidence=published.evidence if published else None,
         label_value=label.value,
         output_value=value,
     )
@@ -371,8 +370,15 @@ def _field_metrics(judgments: Sequence[Judgment]) -> FieldMetrics:
 
 
 def _precision(judgments: Sequence[Judgment]) -> PrecisionMetrics:
-    tp = sum(j.cell == "TP" for j in judgments)
-    return PrecisionMetrics(precision=_ratio(tp, len(judgments)), n=len(judgments))
+    count = Counter(j.cell for j in judgments)
+    tp, fp = count["TP"], count["FP"]
+    return PrecisionMetrics(precision=_ratio(tp, tp + fp), n=tp + fp)
+
+
+def _suppress_all[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppressed](
+    table: Mapping[str, C],
+) -> dict[str, C | Suppressed]:
+    return {k: _suppress(v) for k, v in table.items()}
 
 
 def _suppress[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppressed](cell: C) -> C | Suppressed:

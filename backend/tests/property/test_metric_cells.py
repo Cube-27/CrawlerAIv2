@@ -72,7 +72,7 @@ def _case(page: int, fields: list[FieldCase], category: str) -> EvalCase:
             "absent": not f.present,
             "distractors": [distractor],
         }
-        if f.behaviour == "abstain" or (not f.present and f.behaviour == "right"):
+        if f.cell in ("FN", "TN"):
             output[f"f{i}"] = FieldOutput(status="abstained")
         else:
             value = {"right": right, "wrong": _value(page, i, "wrong"), "distractor": distractor}[f.behaviour]
