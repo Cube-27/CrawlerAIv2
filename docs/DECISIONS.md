@@ -3289,3 +3289,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Refuse only in PR 3's minimizer.
 - Why: §4.6 says they are never kept; the model also guards role D output and operator corrections.
 - Reversible: yes
+
+### D-0499 — The merge guard fails closed
+- Date: 2026-10-13 · Spec/PR: chore (#104) · Status: decided
+- Decision: `tools/orchestrator/merge_guard.py` denies a Bash or PowerShell call when the hook input is unreadable, and the hook command denies when neither `python3` nor `python` is on PATH.
+- Alternatives: Fail open (allow on error).
+- Why: A guard that fails open is silently off; a broken Python setup blocks tool calls until fixed, and the stderr message names the cause.
+- Reversible: yes
+
+### D-0500 — Literal bodies are data to the merge guard
+- Date: 2026-10-13 · Spec/PR: chore (#104) · Status: decided
+- Decision: Quoted here-documents and `@'...'@` here-strings are stripped before parsing; a quoted argument is scanned only after `-c`, `-Command`, `/c` or `iex`, or when it contains `$(` or a backtick.
+- Alternatives: Scan the whole command text with regexes.
+- Why: PR bodies, commit messages and docs that mention the merge command must pass; the guard targets mistakes, not evasion.
+- Reversible: yes
