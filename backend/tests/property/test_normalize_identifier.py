@@ -17,6 +17,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, IdentifierScheme
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 SCHEMES: tuple[IdentifierScheme, ...] = ("gtin", "isbn", "mpn", "sku", "custom")
 OPAQUE: tuple[IdentifierScheme, ...] = ("mpn", "sku", "custom")
+GTIN_LENGTHS = (8, 12, 13, 14)
 
 _whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 
@@ -41,12 +42,8 @@ def _digits(n: int) -> st.SearchStrategy[str]:
     return st.text(alphabet="0123456789", min_size=n, max_size=n)
 
 
-_gtins = st.sampled_from([8, 12, 13, 14]).flatmap(lambda n: _digits(n - 1)).map(lambda b: b + _gs1_check_digit(b))
-_isbn13s = (
-    st.tuples(st.sampled_from(["978", "979"]), _digits(9))
-    .map(lambda t: t[0] + t[1])
-    .map(lambda b: b + _gs1_check_digit(b))
-)
+_gtins = st.sampled_from(GTIN_LENGTHS).flatmap(lambda n: _digits(n - 1)).map(lambda b: b + _gs1_check_digit(b))
+_isbn13s = st.tuples(st.sampled_from(["978", "979"]), _digits(9)).map("".join).map(lambda b: b + _gs1_check_digit(b))
 _isbn10s = _digits(9).map(lambda b: b + _isbn10_check_digit(b))
 
 
@@ -80,7 +77,7 @@ def test_known_valid_gtins_of_each_length_are_ok(raw: str) -> None:
     assert identifier.normalize(raw, _spec("gtin"), CTX) == Ok({"scheme": "gtin", "value": raw})
 
 
-@given(st.integers(min_value=1, max_value=20).filter(lambda n: n not in (8, 12, 13, 14)).flatmap(_digits))
+@given(st.integers(min_value=1, max_value=20).filter(lambda n: n not in GTIN_LENGTHS).flatmap(_digits))
 def test_a_gtin_of_another_length_is_invalid(raw: str) -> None:
     assert identifier.normalize(raw, _spec("gtin"), CTX) == Invalid("length")
 

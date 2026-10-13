@@ -20,9 +20,9 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # GS1 General Specifications §3.3.2: the GTIN formats are GTIN-8, GTIN-12, GTIN-13 and GTIN-14.
 _GTIN_LENGTHS = frozenset({8, 12, 13, 14})
 # ISO 2108: a printed ISBN is preceded by "ISBN", and its parts are separated by hyphens or spaces. A separator
-# stands between two characters; `X` is the ISBN-10 check character for 10 and is checked by position below.
+# stands between two characters; `X`, the ISBN-10 check character for 10, comes only last.
 _ISBN_PREFIX = re.compile(r"\AISBN\s+")
-_ISBN_BODY = re.compile(r"[0-9Xx](?:[- ]?[0-9Xx])*")
+_ISBN_BODY = re.compile(r"[0-9](?:[- ]?[0-9])*(?:[- ]?[Xx])?")
 # ISO 2108: an ISBN-13 is an EAN-13 (a GTIN-13) under the GS1 prefixes 978 and 979.
 _ISBN13_PREFIXES = ("978", "979")
 # SPEC-04 §4.4: the length bound of an opaque identifier, in characters.
@@ -71,7 +71,7 @@ def _isbn(s: str) -> str | Invalid:
     if not _ISBN_BODY.fullmatch(body):
         return Invalid("not_digits")
     value = body.replace("-", "").replace(" ", "").upper()
-    if "X" in value[:-1] or (value.endswith("X") and len(value) != 10):
+    if value.endswith("X") and len(value) != 10:
         return Invalid("not_digits")
     if len(value) == 13:
         if not value.startswith(_ISBN13_PREFIXES):
