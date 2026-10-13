@@ -56,9 +56,9 @@ async def rotate_hidden(hidden: PrivateEvalStore, dev: DevEvalStore, fraction: f
 
 
 def check_fraction(fraction: float) -> float:
-    if not 0 < fraction < 1:
-        raise ValueError("the fraction must be between 0 and 1, exclusive")
-    return fraction
+    if 0 < fraction < 1:  # NaN fails both comparisons and is refused
+        return fraction
+    raise ValueError("the fraction must be between 0 and 1, exclusive")
 
 
 def choose_sites(categories: Mapping[str, EvalCategory], fraction: float, rng: random.Random | None = None) -> set[str]:
