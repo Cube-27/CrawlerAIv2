@@ -55,6 +55,9 @@ Out of scope:
   limited too), default 20 req/s burst 40; exceeded → 429 with `Retry-After`. Multiple API replicas each keep
   their own bucket (implementation detail; the design point is one deployment).
 - Revoked keys (`revoked_at` set — plumbing column, SPEC-01 4.2) → 401.
+- Client identity: `Forwarded`/`X-Forwarded-*` headers are honoured only when the peer is a configured trusted
+  proxy; otherwise they are ignored (RFC 7239 §8.1: the header is client-controlled). API and worker startup never
+  create, reactivate or reset API keys; keys come only from the CLI (INV-32).
 - UI (§18): the frontend holds the key in memory only and sends it as the bearer header. No cookies or sessions
   are issued by the API, so there is no CSRF surface.
 
@@ -96,7 +99,7 @@ Behaviour:
 1. Create `job(kind='scrape', request=frozen body)` and one `url_task` (for usage/events bookkeeping), executed
    **inline** in the API process (no queue hop — implementation detail; the worker handler is the same function).
 2. `max_age > 0` and a `capture` for the canonical URL within the window → reuse; else `acquire` (SPEC-02).
-3. Formats computed from the bundle (4.5). `records` → `extract_page` (SPEC-05) in the site's progressive mode
+3. Formats computed from the request's single `ParsedPage` (4.5, INV-26). `records` → `extract_page` (SPEC-05) in the site's progressive mode
    (cold until SPEC-08 exists; `mode` = `adhoc`), with role C when required fields are missing (SPEC-06).
    A page whose required fields don't all publish returns its record with `complete=false` and outcome
    `partial` (§10; `scrape` URLs are caller-supplied). `progressive_state.pages_extracted` is incremented when
@@ -107,7 +110,7 @@ Behaviour:
 
 ### 4.5 Content formats (§8.5)
 
-- `markdown`: trafilatura `extract(html, output_format="markdown", include_links=True, include_images=True)`
+- `markdown`: trafilatura `extract(<the ParsedPage's lxml tree>, output_format="markdown", include_links=True, include_images=True)`
   with `favor_precision=True`; no per-site rules. Browser captures use the rendered body.
 - `html`: body with `script`, `style`, `noscript`, `template`, event-handler attributes and `javascript:` URLs
   removed; everything else intact (no readability cleaning — that is `markdown`).
@@ -144,10 +147,13 @@ returned on failure.
 ## 5. Invariants
 
 INV-16 (SSRF rejection surfaces as a problem, never a fetch), INV-22 (field shape), INV-23 (usage returned),
-INV-03 (no literals in `api/`, `content/`), INV-26 (one parse per parser per request).
+INV-03 (no literals in `api/`, `content/`), INV-26 (one parse per parser per request), INV-27 (responses serialize
+published values unchanged), INV-32 (trusted-proxy headers; no key creation at startup).
 
 ## 6. Testing strategy
 
+- INV-26: a `scrape` with several formats plus `records` constructs each parser at most once per capture
+  (counting test).
 - Router tests with `httpx.AsyncClient` against the app and a local test server for target pages (`.test`
   hosts resolved by a stub resolver): each format, `max_age` reuse, timeout, problem responses, unknown key 401,
   rate limit 429.
@@ -172,7 +178,7 @@ INV-03 (no literals in `api/`, `content/`), INV-26 (one parse per parser per req
 | 2 | API keys: CLI, hashing, bearer auth, rate limiter | `api/auth`, `cli` | unit | 401/429 tested. |
 | 3 | Content formats | `content/markdown,html,links,metadata` | unit, property | Formats correct on fixtures. |
 | 4 | Service layer + `POST /v1/scrape` (formats only) | `services/scrape`, router | router tests | Sync scrape works. |
-| 5 | `records` format with schema id/inline + `max_age` | same | router + replay | Field shape complete. |
+| 5 | `records` format with schema id/inline + `max_age` | same | router + replay, parser-count test | Field shape complete; INV-26 across formats + records. |
 | 6 | `schema.prompt` via role S | same | unit | Draft returned and reused. |
 | 7 | `/v1/schemas` CRUD | `services/schemas`, router | unit | Versioning rules enforced. |
 | 8 | `/v1/records`, `/v1/captures/{id}/replay` | `services/records,captures` | unit | Replay returns records. |

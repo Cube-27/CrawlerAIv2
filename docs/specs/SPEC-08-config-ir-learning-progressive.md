@@ -84,8 +84,8 @@ syntax check). In config-only execution the first step whose value passes its po
 ### 4.3 Executor
 
 `execute(ir, page, schema) -> list[Candidate]` (SPEC-05 protocol): for each field, run steps in order over the
-`ParsedPage` (its lxml tree for `xpath`/`css`, its script blocks for `jsonld`; no second parse, INV-26) (`xpath`/`css`/`attr`/`regex` on the body; `jsonld` over expanded JSON-LD nodes filtered by `when_type`;
-`jsonpath` over the chosen source); the first `Ok` value becomes a `Candidate(source_kind='config',
+`ParsedPage`, with no second parse (INV-26): `xpath`/`css`/`attr` on the page's lxml tree, `regex` on the body
+text, `jsonld` over the page's script blocks expanded and filtered by `when_type`, `jsonpath` over the chosen source; the first `Ok` value becomes a `Candidate(source_kind='config',
 locator=config:<field>:<i>:<selector>)`. Listings: `row` step selects row nodes; field steps are evaluated
 relative to each row; `next` yields the page-level `next_page_url` candidate. Steps never match more than
 `max_matches` (default 1 for single-valued fields; a multi-match is `Invalid("multi_match")`).
@@ -202,7 +202,7 @@ executor beyond the IR model (import-linter contract), so agreement between them
 
 INV-20 (release check), INV-02 (drift margins stamped dev), INV-17 (no exec of selectors as code; XPath is
 interpreted by lxml), INV-03 (site strings exist only inside IR rows — the `config_ir/` package itself contains
-none), INV-22.
+none), INV-22, INV-27 (exporters serialize published values; they never fix a value).
 
 ## 6. Testing strategy
 

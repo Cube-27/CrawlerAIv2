@@ -212,7 +212,9 @@ themselves; they never call `store_capture`.
 
 INV-11 (blocked/shell → zero records; this spec sets the class, SPEC-05 enforces zero records), INV-16 (SSRF),
 INV-24 (classification structural only; the C3 scan covers this package — it must contain no hostnames; only
-`adapters/` may). INV-23 for usage events on every attempt.
+`adapters/` may). INV-23 for usage events on every attempt. INV-29 (cookies stay inside one fetch: one session or
+browser context per fetch, RFC 6265 matching on each hop, nothing stored). INV-30 (bodies bounded by
+`max_body_bytes`/`max_decompressed_bytes` before full reading; oversize is an error outcome, never content).
 
 ## 6. Testing strategy
 

@@ -153,7 +153,7 @@ an empty result with a diagnostic).
 - **xhr**: the bundle's captured JSON bodies, same admission rule as js_state. (Also feeds SPEC-09 discovery.)
 - **adapter**: `source_kind='adapter'`, entity from the adapter's JSON object, locator `adapter:…`, using the
   adapter's `map(schema)`.
-- **config**: `ConfigExecutor` protocol `execute(ir, bundle, schema) -> list[Candidate]` with
+- **config**: `ConfigExecutor` protocol `execute(ir, page, schema) -> list[Candidate]` with
   `source_kind='config'`; injected when a config is active (SPEC-08).
 
 No collector contains a hostname, a class-name fragment or a phrase list (C2/C3; the scan covers `collect/`).
@@ -277,10 +277,13 @@ a `diagnostics` jsonb — plumbing). The pipeline never partially publishes: an 
 
 INV-07, INV-11, INV-12 (consumer side: the pipeline re-checks `text:` locators), INV-13, INV-14, INV-15, INV-22,
 INV-02 (calibration file source split), INV-03 (no literals in `collect/` and `resolve/`), INV-26 (one parse per parser per
-pipeline run: a test counts parser constructions in `extract_page`).
+pipeline run: a test counts parser constructions in `extract_page`), INV-27 (resolution is the last step that
+sets a value; records storage only serializes).
 
 ## 6. Testing strategy
 
+- INV-26: a test wraps the selectolax and lxml parser constructors with counters and asserts at most one
+  construction each per capture in `extract_page`.
 - Property tests: INV-14 with generated candidate sets; INV-13 with generated URLs/params; INV-07 derivations;
   `agreed` requires independence.
 - Unit tests on synthetic HTML/JSON-LD fixtures under `tests/fixtures/synthetic/` (hosts `example.test`,
@@ -303,7 +306,7 @@ pipeline run: a test counts parser constructions in `extract_page`).
 
 | # | Title | Scope | Checks | Done when |
 |---|---|---|---|---|
-| 1 | Cleaned text + visible index | `content/text` | unit, property (offsets map back to text) | Offsets correct. |
+| 1 | `ParsedPage` + cleaned text + visible index | `content/page`, `content/text` | unit, property (offsets map back to text) | Offsets correct; one parse per parser. |
 | 2 | Candidate/Entity/Outcome models, locator format | `collect/base`, `resolve` types | unit | INV-22 model tests. |
 | 3 | JSON-LD collector + schema.org map | `collect/jsonld,schema_org_map` | unit | Expands @graph, nested Offers. |
 | 4 | Microdata/RDFa Lite collector | `collect/microdata` | unit | Nested scopes. |
@@ -311,7 +314,7 @@ pipeline run: a test counts parser constructions in `extract_page`).
 | 6 | Ownership + intent | `resolve/ownership,intent` | unit | Multi-entity cases. |
 | 7 | Preference + atomic offers + URL-param rule + derivations | `resolve/preference,derive` | property | INV-13/14/15/07. |
 | 8 | Evidence buckets, calibration loader, τ, records | `resolve/evidence,records`, `data/calibration.json` (empty) | unit | Flags correct. |
-| 9 | Pipeline `extract_page` + worker handler for scrape tasks + blocked/shell | `resolve/pipeline` | unit, replay | INV-11. |
+| 9 | Pipeline `extract_page` + worker handler for scrape tasks + blocked/shell | `resolve/pipeline` | unit, replay, parser-count test | INV-11, INV-26. |
 | 10 | js_state + xhr collectors with admission rule | `collect/js_state,xhr` | unit | Independence flag set. |
 | 11 | Adapter collector | `collect/adapter` | unit | Greenhouse/Lever fixtures map. |
 | 12 | Cold listings + pagination | `resolve/pagination`, listing rows | unit | rel=next + structural rule. |

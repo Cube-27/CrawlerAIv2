@@ -30,8 +30,8 @@ Evidence labels:
 ## 1. Goals and non-goals
 
 **What it is.** It takes any URL or site and returns clean, normalized, typed records for a schema the caller
-chooses, plus an executable per-site config. It is used through a REST API, an MCP server and a web UI. The concepts
-follow Firecrawl; the API shapes are our own. Commerce and jobs are the first schema presets, not the limit. The
+chooses, plus an executable per-site config. It is used through a REST API, an MCP server and a web UI. The API shapes are
+our own. Commerce and jobs are the first schema presets, not the limit. The
 project is open source under AGPL-3.0 (Appendix A #26).
 
 **Users** (Appendix B):
@@ -757,7 +757,6 @@ in `DECISIONS.md`.
 
 **Rejected as the engine:**
 - Scrapy (lock-in);
-- Firecrawl (core is AGPL-3.0 **[verified]**);
 - Crawl4AI / ScrapeGraphAI (would own our pipeline);
 - Stagehand (per-page LLM extraction);
 - Zyte / Diffbot extraction (closed, per-page, no exportable config);
@@ -892,7 +891,7 @@ implementation go in `DECISIONS.md`, not here.
 | 18 | Location | GitHub `Cube-27/CrawlerAIv2`. |
 | 19 | Fallback use | Internal use or open source. |
 | 20 | Browser | **Patchright headless** is the browser; the owner tested it and it works. Owner notes for any future anti-bot candidate: Patchright makes real Chrome worse; real Chrome needs human-like behaviour, not Patchright. Camoufox was rejected. |
-| 21 | API and MCP | Scrape, map, crawl, and extract with a schema or prompt. Our own API shapes, not Firecrawl-compatible. No web search, no browser actions. |
+| 21 | API and MCP | Scrape, map, crawl, and extract with a schema or prompt. Our own API shapes. No web search, no browser actions. |
 | 22 | Generalization | The target is clean, normalized data from any site, for any schema; §2 is binding. |
 | 23 | Ad-hoc extraction | Progressive mode (§8.4). |
 | 24 | Codebase | Build from scratch. No porting from v1, including acquisition. |
@@ -903,6 +902,7 @@ implementation go in `DECISIONS.md`, not here.
 | 29 | Labeling deferred (2026-10-12) | No labeled sets before the crawler works. L0–L4 are accepted on functional criteria; measurement is milestone M (§21), started by the owner from reviewing crawler output. Hidden and fresh are later drawn only from sites development never touched. |
 | 30 | Hidden/fresh privacy answers (2026-10-13) | Hidden and fresh aggregates use complementary suppression as well as the 10-field minimum cell (§16.3). Hidden and fresh pages are labeled only through an instance of the app on the custodian machine with a private backend, never deployed. |
 | 31 | Parse once (2026-10-13) | A capture body is parsed at most once per parser per pipeline run; every consumer reads one shared `ParsedPage` (§8). The release executor is the only exception. |
+| 32 | Operational invariants (2026-10-13) | No layer after resolution changes a published value; a job pins its settings at submit; cookies stay inside one fetch; untrusted bodies are bounded; one task's failure never fails another; forwarded headers only from trusted proxies and no API keys created at startup (INV-27–INV-32). |
 
 ---
 
@@ -977,4 +977,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 5 | 2026-10-12 | **Spec review folded in, repo made public.** <br>• Hidden and fresh data live only in a private DB and store (C1, §6, §15). <br>• Acceptance is dev improvement plus hidden non-regression; improvement claims come from fresh only (C10); small-cell suppression. <br>• Locator defined (§8.1); `required_groups` and `scope` (§5.2); `independent` flag so `agreed` can't count a value agreeing with itself (§8.1, §10). <br>• Block classification by status and structure only (§7.1); SSRF behaviour through proxies stated. <br>• Partial records for caller-supplied URLs, `no_match` for crawl-discovered ones (§10). <br>• Grounding scoped to role C (§11). <br>• Learning counts extracted pages; small-n thresholds (§8.3, §12.3). <br>• Plumbing named: `learn` job kind, `links_only`/`partial` outcomes, record versions, `gone_at`, stored run events. <br>• UI auth by bearer API key, no CSRF (§18). <br>• Repo public under AGPL-3.0: customer names and business terms removed; Appendix B rewritten as anonymized user requirements; eval categories renamed to generic ones; the platform exporter renamed `platform_draft`. <br>• Appendix A #26–#28 added. <br>• Consistency pass: comparable-page rule and floor of 3 for corroboration; `suspended` field status; `schema_version` on `progressive_state`; `operator` fields use the `config_uncorroborated` bucket; glob-expanded `extract` URLs count as caller-supplied; `error` class and robots outcome defined; role C also fills fields an active config doesn't cover; hidden numbers stay with the custodian (PR comments show pass/fail only); PHP-only code hints. |
 | 6 | 2026-10-12 | **Labeling deferred** (Appendix A #29). §21 rewritten: L0–L4 accepted on functional criteria, accuracy claims moved to milestone M; rule for drawing hidden and fresh from untouched sites; C10 notes the `no_baseline` period. |
 | 7 | 2026-10-13 | **Owner answers** (Appendix A #30). §16.3: complementary suppression for hidden and fresh aggregates (D-0234, OPEN_QUESTIONS #16). |
-| 8 | 2026-10-13 | **Parse once** (Appendix A #31, owner). §8: one `ParsedPage` per capture, shared by every consumer (INV-26). |
+| 8 | 2026-10-13 | **Parse once** (Appendix A #31, owner). §8: one `ParsedPage` per capture, shared by every consumer (INV-26). Appendix A #32: operational invariants INV-27–INV-32 (owner-selected). Comparisons with a named hosted crawler removed (owner). |

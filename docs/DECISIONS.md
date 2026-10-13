@@ -1829,6 +1829,20 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Why: Owner, 2026-10-13: "make sure multiple parsing is avoided and parsed html is reused" (seen in earlier products). Before this, the specs had each collector, cleaned text, content formats, pagination and the executor start from the body.
 - Reversible: yes
 
+### D-0291 — Operational invariants INV-27–INV-32
+- Date: 2026-10-13 · Spec/PR: owner (ARCHITECTURE Appendix A #32) · Status: decided (owner)
+- Decision: Adopt six invariants: no layer after resolution changes a published value (INV-27); a job pins its settings at submit (INV-28); cookies stay inside one fetch (INV-29); untrusted bodies are bounded, oversize is an error (INV-30); one task's failure never fails another (INV-31); forwarded headers only from trusted proxies, and no API keys created at startup (INV-32). Each is written for v2; nothing is copied (C12).
+- Alternatives: the other candidates reviewed (listing/detail separation, popup suppression, a single redactor, `srcset` grammar), which the owner didn't select.
+- Why: The owner allowed a one-off read of the v1 invariants document only (a logged exception to C12, 2026-10-13), after "parse once" (D-0281) turned out to be missing, and chose these six.
+- Reversible: yes
+
+### D-0292 — No comparisons with a named hosted crawler in the docs
+- Date: 2026-10-13 · Spec/PR: owner · Status: decided (owner)
+- Decision: README and ARCHITECTURE no longer name or compare against a specific hosted crawler product.
+- Alternatives: keep the comparison.
+- Why: Owner instruction.
+- Reversible: yes
+
 ### D-0293 — Date order comes from the CLDR locales of `html_lang` and `og_locale`
 - Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
 - Decision: A tag with a territory uses its CLDR locale's short date pattern; a language-only tag allows the orders of every CLDR locale of that language (and script), so `en` declines `03/04/2026` while `de` is DMY; no locale allows every order.
