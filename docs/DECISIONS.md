@@ -3178,4 +3178,72 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Every `source_kind='config'` candidate has `independent=False`.
 - Alternatives: `independent=True`.
 - Why: A config is learned from the page's other sources and a `jsonld` step reads the node the JSON-LD collector reads, so an equal value is one piece of evidence, not `agreed` (ARCHITECTURE §8.1, §10) (#98 review).
+### D-0483 — The pipeline lives in `resolve.pipeline`; role C is a hook, not an LLM client
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: `extract_page` takes `role_c: Callable[[GapRequest], Awaitable[GapReply]] | None` where SPEC-03's signature has `llm`; the caller binds the client. `eval.engine.PipelineEngine.replay_page(bundle, schema, config, llm, mode)` keeps SPEC-03's signature.
+- Alternatives: Import `LLMClient` in `resolve` (breaks the `resolve | llm` independence contract); a new top-level package.
+- Why: The import contracts stay as they are; SPEC-06 PR 4 binds role C from the client in a layer above both.
+- Reversible: yes
+
+### D-0484 — The collectors are assembled in `collect.run`
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: `collect_page` runs JSON-LD, microdata, OG, and the adapter collector for an `api` capture whose page URL an active adapter detects (D-0445), each isolated: one that raises gives a diagnostic and no candidates. js_state and xhr then admit against the rest (D-0418).
+- Alternatives: Build the adapter collector in `resolve` (forbidden: only acquire and collect import adapters).
+- Why: §4.14; import contracts.
+- Reversible: yes
+
+### D-0485 — The scrape task's handler step is `resolve.task.extract_task`
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: This row supplies the step after the fetch: extract, store `extraction`/`candidate`/`record`, return the outcome; the caller settles the task. The fetch and worker registration stay with SPEC-07's scrape function and SPEC-10 PR 2.
+- Alternatives: A second fetching handler beside `services.scrape`.
+- Why: SPEC-07 §4.4 and SPEC-10 §4.2 make the scrape function the handler; a second fetch path would duplicate it.
+- Reversible: yes
+
+### D-0486 — No fitted precedence means every precedence type declines
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: `EngineData.load` uses `UNRANKED` (empty orders) when `source_precedence.yaml` is absent: text, long_text, url and image_url fields are `missing`/`unranked`. Exact-match types still publish on agreement.
+- Alternatives: Commit SPEC-05's default order (blocked by D-0444).
+- Why: C7: decline rather than follow an unmeasured order; consistent with a missing calibration meaning uncalibrated.
+- Reversible: yes
+
+### D-0487 — Normalization context from page evidence only
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: `content.context.page_context` sets `html_lang`, `og_locale`, `hreflang` (`link rel~=alternate`), `base_url`, `page_url` and `captured_at`. `page_currencies` and `cctld_territory` stay empty for now.
+- Alternatives: Fill them from the page's structured data and CLDR territories.
+- Why: An empty value makes money decline rather than guess (C7); filling them is a follow-up with its own tests.
+- Reversible: yes
+
+### D-0488 — Entity key uses the task's canonical URL
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: `record.entity_key = sha256(site_id + url_task.canonical_url)` for detail pages.
+- Alternatives: The target entity's own URL.
+- Why: Stable across runs of one URL, and the key `url_state` (SPEC-11) uses.
+- Reversible: yes
+
+### D-0489 — Role C is asked only for real gaps
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: In schema order: required fields that are `missing`, and `missing` members of required groups no member fills. Conflicts and abstentions are never sent. Role C runs once per page; its exceptions propagate.
+- Alternatives: Every member of every required group.
+- Why: §4.13; fewer LLM calls; a replay's missing recording reaches the harness.
+- Reversible: yes
+
+### D-0490 — Config mode and listings are refused for now
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: `extract_page` raises `ModeNotSupported` for a config or a listing schema until SPEC-08 PR 2 and SPEC-05 PR 12.
+- Alternatives: Resolve page-scoped listing fields only, or ignore the config.
+- Why: A partial answer would be scored as a real one.
+- Reversible: yes
+
+### D-0491 — Unreadable recordings drop the page (follow-up from #33)
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: A recording that doesn't parse as an `LLMResponse`, or whose cache row points at a missing object, raises `RecordingUnreadable`; `replay_split` drops the page as `ReplayFailed("recording unreadable: …")`.
+- Alternatives: Stop the run.
+- Why: A per-page data problem, like a missing recording (D-0219); the `n_pages` gate catches it.
+- Reversible: yes
+
+### D-0492 — Runtime data shipping deferred (follow-up from SPEC-04 PR 7)
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 9 (#100) · Status: decided
+- Decision: Shipping `VERSION`, `calibration.json` and GeoNames data goes to its own PR before the first deployment. `EngineData.load(data_dir)` takes the directory explicitly, so that PR only chooses where it comes from (package data or a settings path) and makes the build write `VERSION`.
+- Alternatives: Settle it here.
+- Why: It changes `infra/Dockerfile` and packaging, outside this row; D-0444 already blocks committing the fitted files.
 - Reversible: yes
