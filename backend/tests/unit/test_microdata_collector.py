@@ -84,8 +84,8 @@ def test_a_product_with_nested_items() -> None:
     )
     assert result.entities == (
         Entity(id=product, kind="Product", urls=(PAGE_URL,), parent=None),
-        Entity(id=brand, kind="Brand", urls=(), parent=product),
-        Entity(id=offer, kind="Offer", urls=(), parent=product),
+        Entity(id=brand, kind="Brand", urls=(), parent=product, via="brand"),
+        Entity(id=offer, kind="Offer", urls=(), parent=product, via="offers"),
     )
     assert result.candidates == (
         _candidate("title", product, "Widget 9", Ok("Widget 9"), f"{product}/h1[1]"),
@@ -144,8 +144,27 @@ def test_a_nested_item_s_properties_are_not_the_outer_item_s() -> None:
     )
     # A nested item (`itemprop` + `itemscope`) is its holder's child; an item without `itemprop` is a top-level item
     # (HTML Standard), so DOM nesting alone makes no parent.
-    assert [(e.id, e.parent) for e in result.entities] == [(outer, None), (related, outer), (top, None)]
+    assert [(e.id, e.parent, e.via) for e in result.entities] == [
+        (outer, None, None),
+        (related, outer, "isRelatedTo"),
+        (top, None, None),
+    ]
     assert _fields(result) == [("title", outer, "A"), ("title", related, "B"), ("title", top, "C")]
+
+
+def test_via_is_the_one_property_name_the_holder_uses() -> None:
+    result = _collect(
+        '<div itemscope itemtype="https://schema.org/Product">'
+        '<div itemprop="isSimilarTo" itemscope><div itemprop="https://schema.org/item" itemscope itemtype="https://schema.org/Product"></div>'
+        "</div>"
+        '<div itemprop="isRelatedTo isSimilarTo" itemscope itemtype="https://schema.org/Product"></div></div>'
+    )
+    # Through an untyped item, the property is the one on the entity; an element naming two properties names neither.
+    assert [(e.parent, e.via) for e in result.entities] == [
+        (None, None),
+        (f"microdata:{BODY}/div[1]", "isSimilarTo"),
+        (f"microdata:{BODY}/div[1]", None),
+    ]
 
 
 def test_itemref_adds_the_referenced_properties() -> None:
@@ -245,7 +264,7 @@ def test_rdfa_lite_nests_resources() -> None:
     product, offer = f"microdata:{BODY}/div[1]", f"microdata:{BODY}/div[1]/div[1]"
     assert result.entities == (
         Entity(id=product, kind="Product", urls=(PAGE_URL,), parent=None),
-        Entity(id=offer, kind="Offer", urls=(PAGE_URL,), parent=product),
+        Entity(id=offer, kind="Offer", urls=(PAGE_URL,), parent=product, via="offers"),
     )
     assert _fields(result) == [
         ("title", product, "Widget 9"),

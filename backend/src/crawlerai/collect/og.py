@@ -12,13 +12,12 @@ from dataclasses import dataclass
 
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate, CollectResult, Entity
+from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-_PAGE = "page"
 _URL = FieldSpec(type=FieldType.URL)
 
 
@@ -64,7 +63,7 @@ class OpenGraphCollector:
         if not metas:
             return CollectResult(entities=(), candidates=())
         candidates = tuple(_candidates(metas, schema, ctx))
-        entity = Entity(id=_PAGE, kind=_PAGE, urls=_urls(metas, ctx), parent=None)
+        entity = Entity(id=PAGE, kind=PAGE, urls=_urls(metas, ctx), parent=None)
         return CollectResult(entities=(entity,), candidates=candidates)
 
 
@@ -86,7 +85,7 @@ def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iter
         if (found := _value(metas, spec)) is not None:
             yield Candidate(
                 field=name,
-                entity_id=_PAGE,
+                entity_id=PAGE,
                 source_kind="og",
                 raw=found.raw,
                 normalized=normalize(found.raw, spec, ctx),
