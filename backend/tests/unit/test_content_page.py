@@ -15,7 +15,14 @@ from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import metadata
 from crawlerai.content.page import ParsedPage, ScriptBlock
 from crawlerai.core.ids import uuid7
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.storage.capture_bundle import (
+    CaptureBundle,
+    CaptureManifest,
+    Headers,
+    NetworkBody,
+    network_file,
+    sha256_hex,
+)
 
 DOC = """<!doctype html><html><head>
 <script type="application/ld+json; charset=utf-8">{"@type": "Product", "name": "A &amp; B"}</script>
@@ -61,6 +68,26 @@ def test_the_body_decodes_in_the_content_type_charset_else_utf8(
 
     assert page.cleaned_text.text == expected
     assert page.lxml_tree.text_content() == expected
+
+
+def test_the_page_keeps_the_captured_network_bodies_in_request_order() -> None:
+    bodies = (b'{"a": 1}', b"[2]")
+    entries = tuple(
+        NetworkBody(
+            url=f"https://shop.example.test/api/{i}",
+            status=200,
+            content_type="application/json",
+            sha256=sha256_hex(data),
+            file=network_file(i),
+        )
+        for i, data in enumerate(bodies)
+    )
+    plain = _bundle(b"<p>x</p>", ())
+    manifest = plain.manifest.model_copy(update={"method": "browser", "network_bodies": entries})
+
+    page = ParsedPage.of(CaptureBundle(manifest=manifest, body=plain.body, network=bodies))
+
+    assert page.network == (b'{"a": 1}', b"[2]")
 
 
 def test_script_blocks_are_the_inline_scripts_with_media_type_text_and_xpath() -> None:
