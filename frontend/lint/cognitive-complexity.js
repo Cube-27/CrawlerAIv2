@@ -24,11 +24,11 @@ const cognitiveComplexity = defineRule({
       before() {
         max = context.options[0].max;
       },
-      ...createCognitiveVisitor(context, (result, node) => {
-        if (result.total > max) {
+      ...createCognitiveVisitor(context, ({ total }, node) => {
+        if (total > max) {
           context.report({
             node,
-            message: `Cognitive complexity is ${result.total}; at most ${max} is allowed. Extract named steps.`,
+            message: `Cognitive complexity is ${total}; at most ${max} is allowed. Extract named steps.`,
           });
         }
       }),

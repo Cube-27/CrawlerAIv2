@@ -11,9 +11,50 @@ export function pageHref({ id }: PageSummary): string {
   return `/labeling/${id}`;
 }
 
-export function SplitBadge({ split }: { split: PageSummary["split"] }) {
+export function SplitBadge({ split }: Readonly<{ split: PageSummary["split"] }>) {
   // The API serves dev only (D-0207); a private-split badge comes with hidden/fresh labeling (D-0214).
   return <Chip>Split: {split}</Chip>;
+}
+
+/** The dev pages, or what to do when there are none yet. */
+function PageList({ pages }: Readonly<{ pages: PageSummary[] }>) {
+  if (pages.length === 0) {
+    return (
+      <p className="text-muted">
+        No dev pages yet. Capture some with <code>crawlerai eval capture --split dev</code>.
+      </p>
+    );
+  }
+  return (
+    <Table>
+      <Table.ScrollContainer>
+        <Table.Content aria-label="Dev eval pages">
+          <Table.Header>
+            <Table.Column isRowHeader>Page</Table.Column>
+            <Table.Column>Schema</Table.Column>
+            <Table.Column>Kind</Table.Column>
+            <Table.Column>Category</Table.Column>
+            <Table.Column>Status</Table.Column>
+            <Table.Column>Labeler</Table.Column>
+            <Table.Column>Checker</Table.Column>
+          </Table.Header>
+          <Table.Body items={pages}>
+            {(page) => (
+              <Table.Row id={page.id} href={pageHref(page)}>
+                <Table.Cell>{page.id}</Table.Cell>
+                <Table.Cell>{page.schema_name}</Table.Cell>
+                <Table.Cell>{page.page_kind}</Table.Cell>
+                <Table.Cell>{page.category}</Table.Cell>
+                <Table.Cell>{statusText(page.status)}</Table.Cell>
+                <Table.Cell>{page.labeler ?? "—"}</Table.Cell>
+                <Table.Cell>{page.checker ?? "—"}</Table.Cell>
+              </Table.Row>
+            )}
+          </Table.Body>
+        </Table.Content>
+      </Table.ScrollContainer>
+    </Table>
+  );
 }
 
 export function LabelingList() {
@@ -25,42 +66,7 @@ export function LabelingList() {
         <h1 className="text-2xl font-semibold">Labeling</h1>
         <SplitBadge split="dev" />
       </div>
-      {data.kind === "off" ? (
-        <EvalUiOff />
-      ) : data.pages.length === 0 ? (
-        <p className="text-muted">
-          No dev pages yet. Capture some with <code>crawlerai eval capture --split dev</code>.
-        </p>
-      ) : (
-        <Table>
-          <Table.ScrollContainer>
-            <Table.Content aria-label="Dev eval pages">
-              <Table.Header>
-                <Table.Column isRowHeader>Page</Table.Column>
-                <Table.Column>Schema</Table.Column>
-                <Table.Column>Kind</Table.Column>
-                <Table.Column>Category</Table.Column>
-                <Table.Column>Status</Table.Column>
-                <Table.Column>Labeler</Table.Column>
-                <Table.Column>Checker</Table.Column>
-              </Table.Header>
-              <Table.Body items={data.pages}>
-                {(page) => (
-                  <Table.Row id={page.id} href={pageHref(page)}>
-                    <Table.Cell>{page.id}</Table.Cell>
-                    <Table.Cell>{page.schema_name}</Table.Cell>
-                    <Table.Cell>{page.page_kind}</Table.Cell>
-                    <Table.Cell>{page.category}</Table.Cell>
-                    <Table.Cell>{statusText(page.status)}</Table.Cell>
-                    <Table.Cell>{page.labeler ?? "—"}</Table.Cell>
-                    <Table.Cell>{page.checker ?? "—"}</Table.Cell>
-                  </Table.Row>
-                )}
-              </Table.Body>
-            </Table.Content>
-          </Table.ScrollContainer>
-        </Table>
-      )}
+      {data.kind === "off" ? <EvalUiOff /> : <PageList pages={data.pages} />}
     </section>
   );
 }
