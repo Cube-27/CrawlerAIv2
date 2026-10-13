@@ -6,7 +6,9 @@ not translated. The check is a conservative scan (Python `re` syntax; PCRE2 `pcr
 engines share are refused too.
 
 Both engines treat `\\d`, `\\w`, `\\s` and `\\b` as ASCII classes only when Python compiles with `re.ASCII` (PCRE2 does
-without the UCP option), so Python compiles these patterns with `PCRE_FLAGS`.
+without the UCP option), so Python compiles these patterns with `PCRE_FLAGS`. Exports run them in PCRE2's UTF mode (PHP
+`/u`), where `.` and classes match code points as in Python; but there PCRE2 folds case for non-ASCII letters and
+Python with `re.ASCII` does not, so a pattern with the `i` flag must be ASCII.
 """
 
 import re
@@ -36,6 +38,10 @@ _REPLACEMENT_REFERENCE: Final = re.compile(r"\\(?:\d+|.?)|\$[\d{]", re.ASCII | r
 _HEX_ESCAPE: Final = re.compile(r"\\x[0-9A-Fa-f]{2}")
 # Python warns on these inside a class (reserved for set operations); PCRE reads them as characters.
 _CLASS_DOUBLES: Final = ("&&", "--", "~~", "||")
+# An inline flag group that names `i`, to set or clear it (either way part of the pattern is caseless), and a `\xhh`
+# escape above U+007F. Exported regexes run with PHP `/u` (PCRE2 UTF mode).
+_CASELESS: Final = re.compile(r"\(\?[-ims]*i[-ims]*[:)]")
+_NON_ASCII_HEX: Final = re.compile(r"\\x[89A-Fa-f][0-9A-Fa-f]")
 
 
 class RegexError(ValueError):
@@ -47,6 +53,8 @@ def check_pattern(pattern: str) -> str:
     position = 0
     while position < len(pattern):
         position = _skip_construct(pattern, position)
+    if _CASELESS.search(pattern) and (not pattern.isascii() or _NON_ASCII_HEX.search(pattern)):
+        raise RegexError("a caseless pattern has non-ASCII characters, which PCRE2 /u and Python fold differently")
     try:
         re.compile(pattern, PCRE_FLAGS)
     except re.error as error:
