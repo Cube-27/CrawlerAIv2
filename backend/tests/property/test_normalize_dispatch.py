@@ -85,6 +85,23 @@ def test_a_list_normalizes_each_item(items: list[str]) -> None:
         assert result == Invalid("no_item")
 
 
+@given(
+    st.lists(
+        st.fixed_dictionaries(
+            {"name": st.text(alphabet="ab &", max_size=6)},
+            optional={"home": st.sampled_from(["HTTP://example.test/a#b", "mailto:a@example.test", ""])},
+        ),
+        max_size=4,
+    )
+)
+def test_a_normalized_list_of_objects_normalizes_to_itself(raw: list[JsonValue]) -> None:
+    people = FieldSpec(type=FieldType.LIST, item=PERSON)
+    result = normalize(raw, people, CTX)
+
+    if isinstance(result, Ok):
+        assert normalize(result.value, people, CTX) == Ok(result.value)
+
+
 def test_a_single_value_is_a_list_of_one() -> None:
     assert normalize("a  b", TEXTS, CTX) == Ok(["a b"])
 
