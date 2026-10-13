@@ -38,15 +38,16 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      `spec-NN/pr-M-<short-name>`, and start the worker with `tools/orchestrator/start_agent.sh <name> <worktree>
      "<prompt>"` (§1a). Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator assigned you this row.
      Report the PR URL when done."
-3. **On a worker report.** Run `/review-pr <n>` in a fresh reviewer agent, never the worker itself.
-   - `FIX`: send the Act-on list back to the same worker, or to a fresh worker in the same worktree if the first
-     was closed to save memory. After 3 FIX rounds on one PR, escalate.
-   - `MERGE`: in the PR's worktree, add one commit `chore(plan): done SPEC-NN PR M` that:
-     - sets the row to `done (#n)`;
-     - copies the PR's `## Decisions` into DECISIONS.md with the next IDs, with `needs-owner` entries also listed
-       in the index.
+3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR (`/implement-pr` §6). It starts one
+   reviewer in its worktree once the PR is implemented, simplified and green. The review happens once. Its verdict is
+   `MERGE` or `MERGE AFTER FIX`. With the second, the implementor fixes the listed items and gets CI green; there is
+   no second review. Then it comments `READY <sha7>`. You don't rebase, fix or edit PRs yourself.
+   - If CI stays red after 3 honest attempts, escalate.
+   - To merge, pick the next `READY` PR and send its implementor `YOUR TURN` with the next free decision IDs. The
+     implementor rebases, adds the tracker commit (row `done (#n)`, `## Decisions` copied to DECISIONS.md, with
+     `needs-owner` entries also listed in the index) and comments `READY` again.
 
-     Push it, then run `tools/orchestrator/merge_pr.sh <n> <sha7>`. It waits for every check on that commit and
+     Then run `tools/orchestrator/merge_pr.sh <n> <sha7>`. It waits for every check on that commit and
      merges only if all passed and the commit is still the PR's head. Never run `gh pr merge` yourself after a
      wait chained with `;`. Then close the PR's herdr panes and run
      `tools/orchestrator/cleanup_worktree.sh <worktree> <branch>`.

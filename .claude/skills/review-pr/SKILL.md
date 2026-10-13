@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review one PR against its spec row, the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
+description: Review one complete PR (implemented, simplified, CI green) against its spec row, the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
 ---
 
 # Review a PR
@@ -8,6 +8,12 @@ description: Review one PR against its spec row, the generalization contract and
 A single reviewer with a verdict, not a panel. You did not write this code: read it adversarially, then judge it
 pragmatically. Don't push commits to the branch; the author fixes. Adapted from pstack's `interrogate` (MIT, see
 `NOTICE`).
+
+## 0. Only a complete PR, reviewed once
+
+Review when the implementor hands over a finished PR: implemented, simplified, and every CI check green on the head
+commit, SonarCloud included (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`). If CI is red, don't review: tell the
+implementor and stop. Don't run builds or tests yourself; CI did. One single agent does the whole review.
 
 ## 1. Scope and intent
 
@@ -43,6 +49,13 @@ pragmatically. Don't push commits to the branch; the author fixes. Adapted from 
 
 ## 3. Judge
 
+Before sorting, re-check each finding against the code. Drop false positives:
+- pre-existing issues, and lines the PR didn't change;
+- anything a linter, type checker, test or SonarCloud would catch;
+- nits a senior engineer wouldn't raise, and intentional changes that follow from the row.
+
+Act on only what you have verified is real and will be hit in practice.
+
 Sort every finding into one bucket, with a one-line reason each:
 - **Act on.** Correctness, security, contract or scope defects. These block the merge. If there are more than 5,
   you aren't filtering hard enough.
@@ -58,10 +71,14 @@ Filter for "nitpick gravity". If all you have are nits, the code is fine; say so
 Post the review as a PR comment (`gh pr review <n> --comment --body-file …`) with the intent, the buckets and one of
 these verdicts:
 - `MERGE`: no Act-on items and CI is green;
-- `FIX`: Act-on items listed, to go back to the author;
+- `MERGE AFTER FIX`: the PR merges once the listed Act-on items are fixed and CI is green again. There is no
+  second review, so make each item specific enough that the fix is unambiguous;
 - `ESCALATE`: needs the owner (`CLAUDE.md` §4); name the question.
 
-Never approve with an Act-on item open, and never approve on red CI.
+Never approve with an Act-on item open, and never approve on red CI. Link each Act-on item to the code at the head
+commit (`https://github.com/<owner>/<repo>/blob/<full-sha>/<path>#L<a>-L<b>`). Send the verdict and the Act-on list
+to the implementor with `herdr agent prompt <implementor> "…"`, then exit. There is no re-review (owner,
+2026-10-13).
 
 End the comment with one line naming the category of each Act-on item, for example
 `Categories: path-traversal, sonar-gate`. The orchestrator tallies these lines to spot recurring mistakes.

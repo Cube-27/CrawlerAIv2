@@ -25,7 +25,7 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
    | Situation | Action |
    |---|---|
    | Open PR, CI green, no review | `/review-pr` |
-   | Open PR with a `FIX` verdict | A worker addresses the Act-on list |
+   | Open PR with a `MERGE AFTER FIX` (or older `FIX`) verdict | Its implementor makes the listed fixes, gets CI green and comments `READY`; no second review |
    | Branch with commits, no PR | A worker continues `/implement-pr` from §3 Verify |
    | Branch with no commits, or abandoned for more than 7 days with no PR | Remove the worktree and delete the branch; the row is `todo` again |
 

@@ -103,11 +103,16 @@ PR's SonarCloud gate `OK`: `tools/orchestrator/wait_ci.sh <n> <head-sha7>` waits
 prints the gate.
 A red gate is fixed in code, never with `NOSONAR`, exclusions or a weaker threshold.
 
-Report:
-- the PR URL;
-- the exit predicate and its state;
-- decisions logged;
-- anything left for a follow-up row.
+You own the PR until it merges (owner, 2026-10-13):
+1. **Review once, when complete.** Only after the PR is implemented, simplified and green, start one reviewer in
+   this worktree: `tools/orchestrator/start_agent.sh reviewer-pr<n> <worktree> "Run /review-pr <n>. The
+   implementor is <your agent name>."`.
+2. **`MERGE AFTER FIX`:** fix every Act-on item and push, then get every check green again (`wait_ci.sh`). There
+   is no second review.
+3. **Ready:** with `MERGE`, or with every fix pushed and CI green, comment `READY <sha7>` on the PR, listing each
+   Act-on item with the commit that fixed it. Then stop.
+4. **`YOUR TURN` from the orchestrator,** with decision IDs: rebase onto `origin/main`, then add the tracker commit
+   `chore(plan): done SPEC-NN PR M (#n)` (row `done (#n)`, your `## Decisions` copied to DECISIONS.md under those
+   IDs). Push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
 
-Don't merge your own PR. The orchestrator (`/run-plan`) or a reviewer merges it after review and green CI. If you
-were asked to merge, use `/review-pr` first.
+On `ESCALATE`, comment it on the PR and stop. Never merge your own PR; the orchestrator merges and cleans up.
