@@ -61,8 +61,9 @@ class CleanedText:
 class VisibleIndex:
     """The visible text lines and the shown attributes of visible elements, in the SPEC-04 text form."""
 
-    def __init__(self, strings: Iterable[str]) -> None:
-        # One entry per line: a match never spans two lines or attributes.
+    def __init__(self, cleaned: CleanedText, shown: Iterable[str]) -> None:
+        # One entry per line and per attribute: a match never spans two of them.
+        strings = [*cleaned.text.split("\n"), *shown]
         self._haystack = "\n".join(form for form in map(text_form, strings) if form)
 
     def visible(self, value: str) -> bool:
@@ -82,8 +83,9 @@ class VisibleIndex:
         return False
 
 
-def render(root: LexborNode) -> tuple[CleanedText, VisibleIndex]:
-    """The cleaned text and the visibility index of the document whose root element is `root`."""
+def render(root: LexborNode) -> tuple[CleanedText, tuple[str, ...]]:
+    """The cleaned text of the document whose root element is `root`, and the shown attribute values of its visible
+    elements (with the text, the input of its `VisibleIndex`)."""
     builder = _TextBuilder()
     shown: list[str] = []
     # Explicit stack, not recursion: document depth is not bounded by the interpreter's recursion limit.
@@ -96,8 +98,7 @@ def render(root: LexborNode) -> tuple[CleanedText, VisibleIndex]:
             builder.separate(item.separator)
         else:
             stack.extend(reversed(_enter(item, shown)))
-    cleaned = CleanedText("".join(builder.parts), tuple(builder.runs))
-    return cleaned, VisibleIndex([*cleaned.text.split("\n"), *shown])
+    return CleanedText("".join(builder.parts), tuple(builder.runs)), tuple(shown)
 
 
 class _Enter(NamedTuple):
@@ -123,9 +124,10 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
     shown attributes to `shown` when it is visible."""
     attributes = item.node.attributes
     tag = item.node.tag or ""
-    if _hidden(tag, attributes):
+    style = _declarations(attributes)
+    if _hidden(tag, attributes, style):
         return []
-    invisible = _invisible(attributes, inherited=item.invisible)
+    invisible = _invisible(style.get("visibility"), inherited=item.invisible)
     if not invisible:
         shown.extend(value for name in _SHOWN_ATTRIBUTES if (value := attributes.get(name)))
     children = _children(item.node, item.path, invisible)
@@ -147,7 +149,7 @@ def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:
     return children
 
 
-def _hidden(tag: str, attributes: _Attributes) -> bool:
+def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.
     if tag in _NOT_RENDERED or "hidden" in attributes:
@@ -159,12 +161,11 @@ def _hidden(tag: str, attributes: _Attributes) -> bool:
     # WAI-ARIA 1.2, `aria-hidden="true"`: the element and its subtree are hidden from every user.
     if (attributes.get("aria-hidden") or "").strip().lower() == "true":
         return True
-    return _declarations(attributes).get("display") == "none"
+    return style.get("display") == "none"
 
 
-def _invisible(attributes: _Attributes, *, inherited: bool) -> bool:
+def _invisible(visibility: str | None, *, inherited: bool) -> bool:
     # CSS 2 §11.2: `visibility` is inherited; `hidden` and `collapse` hide the box, `visible` shows it again.
-    visibility = _declarations(attributes).get("visibility")
     if visibility in ("hidden", "collapse"):
         return True
     return inherited and visibility != "visible"

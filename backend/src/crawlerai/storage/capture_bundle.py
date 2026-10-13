@@ -15,6 +15,7 @@ import hashlib
 import io
 import tarfile
 from datetime import UTC, datetime
+from email.message import Message
 from typing import Annotated, Final, Literal, Self
 from uuid import UUID
 
@@ -179,6 +180,20 @@ def private_eval_capture_key(split: Literal["hidden", "fresh"], capture_id: UUID
 
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def decode_body(bundle: CaptureBundle) -> str:
+    """The body as text, in the charset its Content-Type names (RFC 9110 §8.3.2), else UTF-8 (the HTML default,
+    HTML Standard §13.2.3.2); undecodable bytes become U+FFFD."""
+    header = Message()
+    for name, value in bundle.manifest.headers.response:
+        if name.lower() == "content-type":
+            header["content-type"] = value
+            break
+    try:
+        return bundle.body.decode(header.get_content_charset() or "utf-8", errors="replace")
+    except LookupError:  # a charset Python doesn't know
+        return bundle.body.decode("utf-8", errors="replace")
 
 
 def _body_file(method: CaptureMethod) -> str:

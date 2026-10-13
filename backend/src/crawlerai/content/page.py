@@ -7,7 +7,6 @@ never the raw body.
 """
 
 from dataclasses import dataclass
-from email.message import Message
 from functools import cached_property
 
 from lxml import etree
@@ -15,7 +14,7 @@ from lxml import html as lxml_html
 from selectolax import lexbor
 
 from crawlerai.content.text import CleanedText, VisibleIndex, render
-from crawlerai.storage.capture_bundle import CaptureBundle
+from crawlerai.storage.capture_bundle import CaptureBundle, decode_body
 
 
 @dataclass(frozen=True)
@@ -53,44 +52,28 @@ class ParsedPage:
     def scripts(self) -> tuple[ScriptBlock, ...]:
         # HTML Standard, the script element: a script with `src` runs the external resource, not its text. The type
         # attribute is a MIME type, compared by its essence (WHATWG MIME Sniffing: lower-cased, parameters dropped).
-        return tuple(
-            ScriptBlock(
-                type=(node.attributes.get("type") or "").split(";", 1)[0].strip().lower(),
-                text=node.text(deep=True),
-                xpath=_xpath(node),
-            )
-            for node in self.tree.css("script")
-            if "src" not in node.attributes
-        )
+        blocks: list[ScriptBlock] = []
+        for node in self.tree.css("script"):
+            attributes = node.attributes
+            if "src" not in attributes:
+                media_type = (attributes.get("type") or "").split(";", 1)[0].strip().lower()
+                blocks.append(ScriptBlock(type=media_type, text=node.text(deep=True), xpath=_xpath(node)))
+        return tuple(blocks)
 
     @property
     def cleaned_text(self) -> CleanedText:
         return self._rendered[0]
 
-    @property
+    @cached_property
     def visible_values(self) -> VisibleIndex:
-        return self._rendered[1]
+        return VisibleIndex(*self._rendered)
 
     @cached_property
-    def _rendered(self) -> tuple[CleanedText, VisibleIndex]:
+    def _rendered(self) -> tuple[CleanedText, tuple[str, ...]]:
         root = self.tree.root
         if root is None:
             raise RuntimeError("the HTML parser creates an `html` element in every document")
         return render(root)
-
-
-def decode_body(bundle: CaptureBundle) -> str:
-    """The body as text, in the charset its Content-Type names (RFC 9110 §8.3.2), else UTF-8 (the HTML default,
-    HTML Standard §13.2.3.2); undecodable bytes become U+FFFD."""
-    header = Message()
-    for name, value in bundle.manifest.headers.response:
-        if name.lower() == "content-type":
-            header["content-type"] = value
-            break
-    try:
-        return bundle.body.decode(header.get_content_charset() or "utf-8", errors="replace")
-    except LookupError:  # a charset Python doesn't know
-        return bundle.body.decode("utf-8", errors="replace")
 
 
 def _xpath(node: lexbor.LexborNode) -> str:

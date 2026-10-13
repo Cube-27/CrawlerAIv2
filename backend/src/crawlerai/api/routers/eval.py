@@ -22,7 +22,6 @@ from selectolax.lexbor import LexborHTMLParser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.content.page import decode_body
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId
@@ -39,7 +38,7 @@ from crawlerai.eval.labels import (
 from crawlerai.eval.store import DevEvalStore, EvalNotFound, EvalPageRow, EvalStore, LabelPass, LabelsChanged
 from crawlerai.schemas.types import FieldSpec
 from crawlerai.storage import open_store
-from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle, decode_body, sha256_hex
 
 # `POST /capture` fetches within the request, one polite fetch at a time, so a request stays short.
 MAX_CAPTURE_URLS = 20
