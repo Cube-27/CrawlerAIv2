@@ -16,3 +16,4 @@ step); a **skill rule** only where no check can. Workers read this list before o
 | A wait loop reads the previous commit's CI results. | orchestrator | `tools/orchestrator/wait_ci.sh` waits on the head SHA. |
 | A merge ran after a failed CI wait (`wait_ci.sh ... ; gh pr merge`), so #38's last commit merged before its CI ran. Main stayed green. | orchestrator (#38) | `tools/orchestrator/merge_pr.sh`: merges only on a passing wait, pinned to the head commit; `wait_ci.sh` tolerates the old head right after a push and exits 1 on a failed check. |
 | Sonar shell rules on orchestrator scripts (`shelldre`: `[[`, errors to stderr, `case` default, explicit `return`). | #40 | Watch. Skill rule if it recurs. |
+| A prompt sent while the agent was still loading was dropped, and `start_agent.sh` reported the agent idle. | orchestrator (SPEC-02 PR 6 worker) | `start_agent.sh` waits 15 s for a turn, resends once, then fails and closes the pane. |
