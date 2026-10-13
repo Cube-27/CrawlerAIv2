@@ -2976,3 +2976,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A `/healthz` reply in every screen test.
 - Why: Every screen now sends it; screen tests assert only their own calls.
 - Reversible: yes
+
+### D-0454 — An uncalibrated published field may have no confidence
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 8 (#94) · Status: decided
+- Decision: A published field's `confidence` is its bucket's dev precision, and is `None` only when the field is `calibrated=false` (the bucket has no dev measurement). INV-22's "carries `confidence`" is read as the attribute being present, as §13.1 says of every field.
+- Alternatives: Keep `confidence` mandatory (PR 2), so nothing publishes until dev is labeled.
+- Why: §10 publishes uncalibrated buckets with the flag set, and §21 L1 is done when every published field carries evidence and `calibrated=false`; with no labels there is no precision.
+- Reversible: yes
+
+### D-0455 — Evidence bucket priority; a lone state value has no bucket
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 8 (#94) · Status: decided
+- Decision: `adapter` (adapter or api chosen) > `agreed` (at least 2 distinct source kinds among the independent candidates of chosen + agreeing) > the chosen kind's bucket: `structured` for jsonld/microdata/og, `config_corroborated`/`config_uncorroborated` from a caller-given set of corroborated fields, `llm_grounded`. A lone js_state/xhr value fits no §10 bucket and abstains with reason `no_bucket`.
+- Alternatives: Count js_state/xhr as `structured`.
+- Why: §10 names no bucket for embedded state; publishing without a bucket breaks INV-22.
+- Reversible: yes
+
+### D-0456 — τ and record confidence cover required-group members
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 8 (#94) · Status: decided
+- Decision: τ 0.97 applies to required fields and to every member of a required group; others use 0.95. Record confidence takes the same set. `calibrated` requires n ≥ 30 and a precision. A `below_tau` field keeps `evidence`, `confidence` and `calibrated` in `field_meta`, and its chosen candidate moves to `rejected` with `below_tau`.
+- Alternatives: Group members as optional.
+- Why: The stricter reading (C7); the meta says why the field abstained.
+- Reversible: yes
+
+### D-0457 — Derived values publish only with a source candidate
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 8 (#94) · Status: decided
+- Decision: An `absolutize` value publishes with its source candidate's kind, locator and bucket, and `derived_by`. A page-URL derivation (`canonical_link`, `final_url`) has no candidate and stays `missing` with reason `no_provenance` until D-0355 is answered.
+- Alternatives: Publish it without provenance.
+- Why: INV-22 as the models enforce it.
+- Reversible: yes
+
+### D-0458 — `Calibration` lives in `resolve.evidence`
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 8 (#94) · Status: decided
+- Decision: `Calibration` and `Bucket` move to `resolve.evidence`, and `eval.calibrate` imports them, so the writer and the engine's reader share one model. `load_calibration` returns `None` for a missing file (every field uncalibrated).
+- Alternatives: Two models.
+- Why: C8; `resolve` sits below `eval` in the layering.
+- Reversible: yes
+
+### D-0459 — Entity key
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 8 (#94) · Status: decided
+- Decision: `entity_key` is the hex sha256 of `str(site_id) + canonical_url`; the caller passes the target's canonicalized URL.
+- Alternatives: A separator between the parts.
+- Why: A UUID string has one length, so the concatenation is unambiguous.
+- Reversible: yes, until records are stored
