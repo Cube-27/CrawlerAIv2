@@ -7,8 +7,6 @@
   the input's tokens (`crawlerai.normalize.vocab`). The value is the phrase's code.
 
 No match is `Invalid`; two members in one input are `Ambiguous`.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 from pydantic import JsonValue
@@ -74,9 +72,6 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
     return Ok(next(iter(codes)))
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (exact).
-
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: exact. A normalized value has one form (one code per member)."""
     return a == b

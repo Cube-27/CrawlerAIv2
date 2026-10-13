@@ -2,8 +2,6 @@
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `url` and `image` values are strings). Any
 other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
@@ -51,6 +49,16 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         # image is not the page it appears on.
         return Invalid("page_url")
     return result
+
+
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: equal after canonicalization. A relative URL has no canonical form without its base."""
+    if a == b:
+        return True
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return False
+    left = _canonical(a, None)
+    return isinstance(left, Ok) and left == _canonical(b, None)
 
 
 def _canonical(raw: str, base: str | None) -> NormalizeResult:
@@ -125,11 +133,3 @@ def _remove_dot_segments(path: str) -> str:
     if segments[-1] in (".", ".."):
         out.append("")
     return "/".join(out)
-
-
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (equal after canonicalization).
-
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b

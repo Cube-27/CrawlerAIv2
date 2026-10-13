@@ -12,8 +12,6 @@ reads a currency itself (C8), and it does not import the money module (the norma
 
 Declines (§9): the currency unresolved, or the period unresolved on a monetary range → `Ambiguous`; min > max →
 `Invalid`. A unit range (a `QuantitativeValue` with a unit) has no period to resolve.
-
-`equal` is a stub until SPEC-04 PR 9 implements §4.5.
 """
 
 import re
@@ -42,6 +40,9 @@ _SEPARATOR = re.compile(r"\s*(?:-|\u2013|\bto\b)\s*", re.IGNORECASE)
 # them (full stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount
 # is the money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
 _AMOUNT = re.compile(r"\d(?:[\d.,' \u00a0\u202f]*\d)?", re.ASCII)
+
+# The keys of a normalized range (D-0276).
+_VALUE_KEYS = frozenset({"min", "max", "currency", "unit", "period"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> NormalizeResult:
@@ -210,9 +211,11 @@ def _value(lo: Decimal, hi: Decimal, *, currency: str | None, unit: str | None, 
     return {"min": format(lo, "f"), "max": format(hi, "f"), "currency": currency, "unit": unit, "period": period}
 
 
-def equal(a: JsonValue, b: JsonValue) -> bool:
-    """Stub until SPEC-04 PR 9 implements §4.5 (all four parts).
-
-    Exact equality of two normalized values, which labels and engine output both hold (SPEC-03 §4.3).
-    """
-    return a == b
+def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
+    """SPEC-04 §4.5: every part equal, the bounds as Decimals without rounding (`50000` equals `50000.00`)."""
+    if a == b:
+        return True
+    if not (isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys() == _VALUE_KEYS):
+        return False
+    bounds = [_decimal(v[k]) if isinstance(v[k], str) else None for v in (a, b) for k in ("min", "max")]
+    return None not in bounds and bounds[:2] == bounds[2:] and all(a[k] == b[k] for k in _VALUE_KEYS - {"min", "max"})

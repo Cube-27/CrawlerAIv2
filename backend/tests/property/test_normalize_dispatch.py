@@ -7,7 +7,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, Ok
+from crawlerai.normalize.base import Ambiguous, Context, Invalid, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -55,9 +55,75 @@ def test_date_and_datetime_go_to_the_date_module() -> None:
     assert normalize(raw, _spec(FieldType.DATETIME), CTX) == Ok("2026-03-05T01:30:00Z")
 
 
-def test_a_type_without_a_normalizer_yet_declines_as_unknown_type() -> None:
-    # `list` and `object` recursion arrives with SPEC-04 PR 9, the last normalizer PR.
-    assert normalize(["a"], _spec(FieldType.LIST), CTX) == Invalid("unknown_type")
+TEXTS = _spec(FieldType.LIST)
+PERSON = FieldSpec.model_validate(
+    {
+        "type": "object",
+        "fields": {
+            "name": {"type": "text", "description": "A name.", "required": True},
+            "home": {"type": "url", "description": "A home page."},
+        },
+    }
+)
+
+
+@given(st.lists(st.text(alphabet="ab &", min_size=1, max_size=6), min_size=1, max_size=5))
+def test_a_list_normalizes_each_item(items: list[str]) -> None:
+    expected: list[JsonValue] = [" ".join(item.split()) for item in items]
+
+    result = normalize(list(items), TEXTS, CTX)
+
+    if all(expected):
+        assert result == Ok(expected)
+    elif any(expected):
+        assert isinstance(result, Ok)
+        assert result.value == [e for e in expected if e]
+        assert result.reasons == tuple(f"[{i}]: empty" for i, e in enumerate(expected) if not e)
+    else:
+        assert result == Invalid("no_item")
+
+
+def test_a_single_value_is_a_list_of_one() -> None:
+    assert normalize("a  b", TEXTS, CTX) == Ok(["a b"])
+
+
+def test_an_empty_list_is_invalid() -> None:
+    assert normalize([], TEXTS, CTX) == Invalid("empty")
+
+
+def test_a_list_whose_items_are_only_ambiguous_is_ambiguous() -> None:
+    dates = FieldSpec.model_validate({"type": "list", "item": {"type": "date"}})
+
+    assert normalize(["03/04/2026", ""], dates, CTX) == Ambiguous("no_item", ())
+    assert normalize(["03/04/2026", "2026-05-06"], dates, CTX) == Ok(["2026-05-06"], ("[0]: date_order",))
+
+
+def test_an_object_normalizes_its_sub_fields_and_ignores_other_keys() -> None:
+    raw: JsonValue = {"@type": "Person", "name": " A &amp; B ", "home": "HTTPS://example.test/a#x"}
+
+    assert normalize(raw, PERSON, CTX) == Ok({"name": "A & B", "home": "https://example.test/a"})
+
+
+def test_an_optional_sub_field_that_declines_is_dropped_and_reported() -> None:
+    assert normalize({"name": "A", "home": "mailto:a@example.test"}, PERSON, CTX) == Ok(
+        {"name": "A"}, ("home: not_http",)
+    )
+    assert normalize({"name": "A", "home": None}, PERSON, CTX) == Ok({"name": "A"})
+
+
+def test_a_required_sub_field_that_declines_declines_the_object() -> None:
+    assert normalize({"home": "https://example.test/"}, PERSON, CTX) == Invalid("name: missing")
+    assert normalize({"name": None}, PERSON, CTX) == Invalid("name: missing")
+    assert normalize({"name": " "}, PERSON, CTX) == Invalid("name: empty")
+    assert normalize("A", PERSON, CTX) == Invalid("not_an_object")
+
+
+def test_nested_reasons_carry_their_path() -> None:
+    people = FieldSpec(type=FieldType.LIST, item=PERSON)
+
+    result = normalize([{"name": "A", "home": "ftp://example.test/"}, {"home": "https://example.test/"}], people, CTX)
+
+    assert result == Ok([{"name": "A"}], ("[0].home: not_http", "[1]: name: missing"))
 
 
 def test_range_goes_to_the_range_module() -> None:
