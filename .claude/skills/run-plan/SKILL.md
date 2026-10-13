@@ -63,9 +63,10 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
 
 The owner's concern is the machine, not the agents' count alone. Manage every process you start:
 - **One watcher.** Run `tools/orchestrator/watch_agents.sh` in the background. It polls `herdr agent list` and exits
-  with `SETTLED <name> <status>` (any named agent not `working`, including one already idle at start), `GONE <name>`
-  or `LOWMEM <MB>`. Handle the event, then start it again. Set `IGNORE=<name>,<name>` for agents you are
-  deliberately leaving to wait (e.g. implementors that commented `READY` and wait for `YOUR TURN`). Don't run one
+  with `SETTLED <name> <status>` (any named agent not `working`, including one already idle at start), `GONE <name>`,
+  `LOWMEM <MB>`, or `PRCOMMENT <n>` (a new comment starting `READY`, `BLOCKED` or `ESCALATE` on an open PR). Handle
+  the event, then start it again. Set `IGNORE=<name>,<name>` for agents you are
+  deliberately leaving to wait (implementors waiting on CI or for `YOUR TURN`; their PR comment wakes you). Don't run one
   `herdr agent wait` per agent. If the watcher is killed, start it again; a killed watcher means finished agents go
   unnoticed.
 - **Memory admission.** `start_agent.sh` refuses to start an agent below 1.5 GB free. On `LOWMEM`, close idle

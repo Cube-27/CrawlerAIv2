@@ -1,7 +1,8 @@
 #!/bin/bash
 # One watcher for every herdr agent: exits (printing why) as soon as any named agent is not working
 # (SETTLED <name> <status>, including one already idle at start), disappears (GONE <name>), or free memory
-# falls below MIN_FREE_MB (LOWMEM). Replaces one `herdr agent wait` per agent.
+# falls below MIN_FREE_MB (LOWMEM), or a new comment starting READY, BLOCKED or ESCALATE appears on an open PR
+# (PRCOMMENT <n>; counted from start). Replaces one `herdr agent wait` per agent.
 # IGNORE: comma-separated agent names to skip, e.g. implementors left waiting for `YOUR TURN`.
 MIN_FREE_MB=${MIN_FREE_MB:-1500}
 INTERVAL=${INTERVAL:-30}
@@ -19,6 +20,13 @@ free_mb() {
     | tr -d '\r'
   return 0
 }
+pr_signals() {
+  # One "<pr> <count>" line per open PR: comments whose body starts with READY, BLOCKED or ESCALATE.
+  gh pr list --state open --json number,comments --jq \
+    '.[] | "\(.number) \([.comments[] | select(.body | test("^ *(READY|BLOCKED|ESCALATE)"))] | length)"' \
+    2>/dev/null | tr -d '\r'
+  return "${PIPESTATUS[0]}"
+}
 ignored() {
   case ",$IGNORE," in
     *",$1,"*) return 0 ;;
@@ -27,7 +35,16 @@ ignored() {
 }
 
 prev=""
+until signals=$(pr_signals); do sleep "$INTERVAL"; done   # baseline: comments already there don't count
 while true; do
+  if now_signals=$(pr_signals); then
+    while read -r pr count; do
+      [[ -z $pr ]] && continue
+      before=$(awk -v n="$pr" '$1==n{print $2}' <<< "$signals")
+      if (( count > ${before:-0} )); then echo "PRCOMMENT $pr"; exit 0; fi
+    done <<< "$now_signals"
+    signals=$now_signals
+  fi
   cur=$(snapshot)
   # A failed poll is not every agent gone; keep the last good snapshot.
   if [[ -n $cur ]]; then
