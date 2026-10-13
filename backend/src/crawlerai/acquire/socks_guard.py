@@ -124,10 +124,10 @@ class SocksGuard:
     async def _check(self, host: str, port: int) -> Target:
         key = (host.lower(), port)
         if key not in self._targets:
-            # The scheme only selects `check`'s rules for web URLs: its port allowlist covers both schemes, and the
-            # browser speaks TLS inside the tunnel when the page is https.
+            # The scheme only selects `check`'s rules for web URLs: its port allowlist is the same for http and https,
+            # and the tunnel carries whichever the page uses.
             literal = f"[{host}]" if ":" in host else host
-            self._targets[key] = asyncio.ensure_future(self._connector.check(f"http://{literal}:{port}/"))
+            self._targets[key] = asyncio.ensure_future(self._connector.check(f"https://{literal}:{port}/"))
         try:
             return await asyncio.shield(self._targets[key])
         except SsrfRejected as e:

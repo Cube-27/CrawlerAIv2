@@ -203,4 +203,4 @@ def test_leaving_the_guard_closes_open_tunnels_and_the_listener() -> None:
     rest, address = _run(scenario())
     assert rest == b""
     with pytest.raises(OSError):  # refused; Windows retries the SYN and times out instead
-        socket.create_connection(address, timeout=2).close()
+        socket.create_connection(address, timeout=2)

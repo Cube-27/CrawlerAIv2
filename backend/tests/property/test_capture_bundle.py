@@ -206,9 +206,10 @@ def test_bundle_rejects_a_raw_body_that_does_not_match_raw_html_sha256() -> None
 def test_decode_raises_corrupt_bundle_when_the_raw_body_is_missing() -> None:
     members = _members(encode(_bundle(raw_body=b"<html>raw</html>")))
     del members["body.raw.html"]
+    blob = _tar_zst(members)
 
     with pytest.raises(CorruptBundle, match=r"body\.raw\.html"):
-        decode(_tar_zst(members))
+        decode(blob)
 
 
 def test_api_capture_body_is_stored_as_body_json() -> None:
