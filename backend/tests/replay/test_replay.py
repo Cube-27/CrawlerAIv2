@@ -83,6 +83,9 @@ class MemoryStore:
     async def put_run(self, run: EvalRunRow) -> EvalRunId:
         raise NotImplementedError
 
+    async def get_run(self, run_id: EvalRunId) -> EvalRunRow:
+        raise NotImplementedError
+
     async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
         raise NotImplementedError
 

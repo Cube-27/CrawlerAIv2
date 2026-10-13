@@ -119,6 +119,9 @@ class FakeStore:
     async def put_run(self, run: EvalRunRow) -> EvalRunId:
         raise AssertionError("not used by the API")
 
+    async def get_run(self, run_id: EvalRunId) -> EvalRunRow:
+        raise AssertionError("not used by the API")
+
     async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
         raise AssertionError("not used by the API")
 

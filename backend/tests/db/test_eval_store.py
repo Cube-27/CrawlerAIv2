@@ -14,7 +14,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Capture, CaptureId, EvalPage, EvalPageId, EvalRun, SchemaDef, SchemaId, Site, Split
+from crawlerai.db.models import (
+    Capture,
+    CaptureId,
+    EvalPage,
+    EvalPageId,
+    EvalRun,
+    EvalRunId,
+    SchemaDef,
+    SchemaId,
+    Site,
+    Split,
+)
 from crawlerai.db.private_models import PrivateBase, PrivateEvalRun
 from crawlerai.eval.store import (
     DevEvalStore,
@@ -252,6 +263,16 @@ async def test_the_latest_run_is_the_newest_optionally_of_one_commit(case: Case)
     assert await case.store.latest_run(None) == runs[3]
     assert await case.store.latest_run("a" * 40) == runs[2]
     assert await case.store.latest_run("d" * 40) is None
+
+
+async def test_a_run_is_read_back_by_its_id(case: Case) -> None:
+    run = EvalRunRow(split=case.store.split, engine_version="a+cal.0", git_sha="a" * 40, metrics={"n_pages": 2})
+    await case.store.put_run(run)
+    unknown = EvalRunId(uuid7())
+
+    assert await case.store.get_run(run.id) == run
+    with pytest.raises(EvalNotFound, match=f"no {case.store.split} eval run"):
+        await case.store.get_run(unknown)
 
 
 async def test_a_run_of_another_split_is_refused(case: Case) -> None:
