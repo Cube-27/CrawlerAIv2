@@ -10,6 +10,7 @@ part of a page: if it raises, the outcome is `error` and no field is set (§4.14
 
 import asyncio
 import logging
+from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -127,19 +128,18 @@ async def extract_page(
         return _result(not_served, mode)
     try:
         # Parsing and resolution are CPU work: a thread keeps the event loop serving other tasks meanwhile.
-        page = await asyncio.to_thread(_Page.read, bundle, schema, data)
-        fields, target = await asyncio.to_thread(page.resolve, page.collected.candidates)
+        page, fields = await asyncio.to_thread(_read_and_resolve, bundle, schema, data)
     except Exception:  # §4.14: a resolution bug fails the page, never part of it
         log.exception("extraction failed")
         return _result("error", mode)
     candidates = page.collected.candidates
     llm_calls: tuple[LLMCallRecord, ...] = ()
     missing = _gaps(schema, fields)
-    if role_c is not None and missing and isinstance(target, Entity):
-        reply = await role_c(GapRequest(page.page, schema, page.ctx, target, missing))
+    if role_c is not None and missing and isinstance(page.target, Entity):
+        reply = await role_c(GapRequest(page.page, schema, page.ctx, page.target, missing))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
         try:
-            fields, _ = await asyncio.to_thread(page.resolve, candidates)
+            fields = await asyncio.to_thread(page.resolve, candidates)
         except Exception:
             log.exception("extraction failed")
             return _result("error", mode, candidates=candidates, llm_calls=llm_calls)
@@ -157,15 +157,19 @@ async def extract_page(
 
 @dataclass(frozen=True, slots=True)
 class _Page:
-    """One served page, parsed once (INV-26), with its context and every collector's result."""
+    """One served page, parsed once (INV-26), with its context, every collector's result, and what resolution reads
+    of it whatever the candidates: the entity graph, the target (§4.6) and the URL-parameter facts."""
 
     page: ParsedPage
     ctx: Context
     schema: SchemaDef
     data: EngineData
-    request_url: str
     canonical_url: str | None
     collected: Collected
+    graph: EntityGraph
+    primary: frozenset[str]
+    target: Entity | AmbiguousTarget
+    facts: PageFacts
 
     @classmethod
     def read(cls, bundle: CaptureBundle, schema: SchemaDef, data: EngineData) -> "_Page":
@@ -173,35 +177,43 @@ class _Page:
         page = ParsedPage.of(bundle)
         ctx = page_context(page, manifest.final_url, manifest.fetched_at)
         collected = collect_page(page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters)
-        return cls(page, ctx, schema, data, manifest.url, canonical_link(page, manifest.final_url), collected)
+        canonical = canonical_link(page, manifest.final_url)
+        graph = EntityGraph.of(collected.entities, data.vocabulary)
+        primary = primary_types(schema, data.vocabulary)
+        target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
+        facts = PageFacts.of(manifest.url, page.visible_values.visible)
+        return cls(page, ctx, schema, data, canonical, collected, graph, primary, target, facts)
 
-    def resolve(self, candidates: Sequence[Candidate]) -> tuple[FieldSet, Entity | AmbiguousTarget]:
-        """Ownership and intent (§4.6), preference (§4.7, §4.8), derivations, then evidence and τ (§4.9)."""
-        schema, vocabulary = self.schema, self.data.vocabulary
-        graph = EntityGraph.of(self.collected.entities, vocabulary)
-        primary = primary_types(schema, vocabulary)
-        final_url = self.ctx.page_url or self.request_url
-        target = select_target(self.request_url, final_url, self.canonical_url, graph, primary)
+    def resolve(self, candidates: Sequence[Candidate]) -> FieldSet:
+        """Preference (§4.7, §4.8) for the target, derivations, then evidence and τ (§4.9)."""
+        schema = self.schema
         decisions: Mapping[str, Preference | Derived]
-        if isinstance(target, AmbiguousTarget):
+        if isinstance(self.target, AmbiguousTarget):
             decisions = intent_ambiguous(schema, candidates)
         else:
-            facts = PageFacts.of(self.request_url, self.page.visible_values.visible)
-            resolver = Resolver(graph, target, facts, self.data.orders)
+            resolver = Resolver(self.graph, self.target, self.facts, self.data.orders)
             preferences = resolver.prefer(schema, candidates)
+            by_field: dict[str, list[Candidate]] = defaultdict(list)
+            for candidate in candidates:
+                by_field[candidate.field].append(candidate)
             decisions = {
                 name: fill(
                     spec,
                     preferences[name],
-                    [c for c in candidates if c.field == name],
+                    by_field[name],
                     resolver,
                     self.ctx,
                     canonical_url=self.canonical_url,
-                    page_url_field=is_page_url_field(schema, spec, primary),
+                    page_url_field=is_page_url_field(schema, spec, self.primary),
                 )
                 for name, spec in schema.fields.items()
             }
-        return assess_fields(schema, decisions, self.data.calibration, corroborated=frozenset()), target
+        return assess_fields(schema, decisions, self.data.calibration, corroborated=frozenset())
+
+
+def _read_and_resolve(bundle: CaptureBundle, schema: SchemaDef, data: EngineData) -> tuple[_Page, FieldSet]:
+    page = _Page.read(bundle, schema, data)
+    return page, page.resolve(page.collected.candidates)
 
 
 def _gaps(schema: SchemaDef, fields: FieldSet) -> tuple[str, ...]:
