@@ -9,6 +9,10 @@ the guard: a name is resolved once per fetch, and a changed DNS answer can't red
 
 Only CONNECT with no authentication is spoken (RFC 1928 §3, §4). Bytes are relayed unread, so TLS stays end to end
 between the browser and the site.
+
+With an `upstream` proxy pool, the guard still checks each host, then opens the connection as a CONNECT tunnel
+through the pool's proxy (RFC 9110 §9.3.6), naming the host: the proxy resolves it, so the address can't be pinned
+(ARCHITECTURE §7.1).
 """
 
 import asyncio
@@ -20,6 +24,7 @@ from types import TracebackType
 from typing import Self, cast
 
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target, authority
+from crawlerai.core.proxy import ProxyEndpoint
 
 __all__ = ["SocksGuard"]
 
@@ -48,10 +53,14 @@ class _Refused(Exception):
 class SocksGuard:
     """`async with SocksGuard(connector) as guard:` listens on `guard.url` until the block ends, then closes the
     listener and every tunnel. `checked` targets were checked by the caller already and are used as they are.
-    `rejections` maps each refused (host, port) to the guard's reason."""
+    `upstream` is the proxy pool every connection goes through, if any. `rejections` maps each refused (host, port) to
+    the guard's reason."""
 
-    def __init__(self, connector: SafeConnector, checked: Iterable[Target] = ()) -> None:
+    def __init__(
+        self, connector: SafeConnector, checked: Iterable[Target] = (), upstream: ProxyEndpoint | None = None
+    ) -> None:
         self._connector = connector
+        self._upstream = upstream
         self._targets: dict[tuple[str, int], asyncio.Future[Target]] = {}
         for target in checked:
             done: asyncio.Future[Target] = asyncio.get_running_loop().create_future()
@@ -131,6 +140,8 @@ class SocksGuard:
         if command != _CONNECT:
             raise _Refused(_COMMAND_NOT_SUPPORTED)
         target = await self._check(host, port)
+        if self._upstream is not None:
+            return await _tunnel(self._upstream, target)
         try:
             return await asyncio.open_connection(str(target.ip), target.port)
         except OSError as e:
@@ -148,6 +159,34 @@ class SocksGuard:
         except SsrfRejected as e:
             self.rejections[key] = e.reason
             raise _Refused(_NOT_ALLOWED) from e
+
+
+async def _tunnel(proxy: ProxyEndpoint, target: Target) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """A CONNECT tunnel to `target`'s host through `proxy` (RFC 9110 §9.3.6). Any 2xx answer opens it."""
+    try:
+        reader, writer = await asyncio.open_connection(proxy.host, proxy.port)
+    except OSError as e:
+        raise _Refused(_HOST_UNREACHABLE) from e
+    # RFC 9112 §3.2.3: CONNECT names the authority; an IPv6 literal goes in brackets (RFC 3986 §3.2.2).
+    host = f"[{target.host}]" if ":" in target.host else target.host
+    head = [f"CONNECT {host}:{target.port} HTTP/1.1", f"Host: {host}:{target.port}"]
+    if proxy.authorization is not None:
+        head.append(f"Proxy-Authorization: {proxy.authorization}")
+    try:
+        # The host is ASCII: a browser names it in IDNA (A-label) form, and the guard admitted it.
+        writer.write(("\r\n".join(head) + "\r\n\r\n").encode("ascii"))
+        await writer.drain()
+        # A 2xx CONNECT response ends with its header section: what follows belongs to the tunnel (RFC 9110 §9.3.6).
+        response = await reader.readuntil(b"\r\n\r\n")
+    except (OSError, asyncio.IncompleteReadError, asyncio.LimitOverrunError) as e:
+        writer.close()
+        raise _Refused(_GENERAL_FAILURE) from e
+    # RFC 9112 §4: status-line = HTTP-version SP status-code SP [ reason-phrase ].
+    fields = response.split(b" ", 2)
+    if len(fields) < 2 or not fields[1].startswith(b"2"):
+        writer.close()
+        raise _Refused(_GENERAL_FAILURE)
+    return reader, writer
 
 
 async def _negotiate(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> bool:

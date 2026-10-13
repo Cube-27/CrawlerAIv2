@@ -8,8 +8,10 @@ An empty value counts as unset, so unset CI secrets (which arrive as "") behave 
 from typing import Annotated, Literal
 
 from curl_cffi.requests import BrowserTypeLiteral
-from pydantic import Field, SecretStr
+from pydantic import BeforeValidator, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from crawlerai.core.proxy import ProxyEndpoint
 
 # `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]` (SPEC-00 §4.4).
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
@@ -22,7 +24,10 @@ IMPERSONATE_DEFAULT: BrowserTypeLiteral = "chrome150"
 
 
 class _Base(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CRAWLERAI_", env_ignore_empty=True, frozen=True)
+    # Validation errors leave out the input: settings hold credentials (database and proxy URLs).
+    model_config = SettingsConfigDict(
+        env_prefix="CRAWLERAI_", env_ignore_empty=True, frozen=True, hide_input_in_errors=True
+    )
 
 
 class DatabaseSettings(_Base):
@@ -41,6 +46,8 @@ class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
+    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url}` (SPEC-02 §3, OPEN_QUESTIONS #10).
+    proxy_pools: dict[str, Annotated[ProxyEndpoint, BeforeValidator(ProxyEndpoint.parse)]] = Field(default_factory=dict)
 
 
 class ApiSettings(_Base):
