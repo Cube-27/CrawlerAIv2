@@ -3,9 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
-import type { RecordPage, ReplayResult, StoredRecord } from "../../api/records";
+import type { ExtractedRecord, RecordPage, ReplayResult, StoredRecord } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
-import type { ScrapeRecord } from "../../api/scrape";
 import { problem, stubApi } from "../../test/api";
 import { recordField } from "../../test/records";
 
@@ -280,6 +279,19 @@ describe("records screen: the inspector", () => {
     expect(price.getByText("0.41")).toBeInTheDocument();
   });
 
+  it("offers no replay once the record's capture expired", async () => {
+    stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
+      "GET /v1/records": page([storedRecord({ capture_id: null })]),
+    });
+    await open(RECORDS_PATH);
+
+    const inspector = await openInspector();
+    expect(inspector.getByText(/capture this record came from has expired/)).toBeInTheDocument();
+    expect(inspector.queryByRole("button", { name: "Replay" })).not.toBeInTheDocument();
+  });
+
   it("replays the capture and marks each field changed or same against the stored record", async () => {
     const calls = stubApi({
       "GET /v1/schemas": schemaList,
@@ -288,7 +300,6 @@ describe("records screen: the inspector", () => {
       [REPLAY]: replayReply({
         records: [
           {
-            id: "replayed",
             mode: "adhoc",
             complete: true,
             confidence: 0.9,
@@ -318,13 +329,13 @@ describe("records screen: the inspector", () => {
         path: `/v1/captures/${CAPTURE_ID}/replay`,
         query: "",
         authorization: "Bearer ck_first",
-        body: {},
+        body: { allow_llm: false },
       },
     ]);
   });
 
   it("lists the replay's records without a diff when it made several", async () => {
-    const replayed: Omit<ScrapeRecord, "id"> = {
+    const replayed: ExtractedRecord = {
       mode: "adhoc",
       complete: true,
       confidence: 0.9,
@@ -335,10 +346,7 @@ describe("records screen: the inspector", () => {
       [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
       "GET /v1/records": page([storedRecord()]),
       [REPLAY]: replayReply({
-        records: [
-          { ...replayed, id: "r1" },
-          { ...replayed, id: "r2" },
-        ],
+        records: [replayed, { ...replayed, complete: false }],
       }),
     });
     await open(RECORDS_PATH);

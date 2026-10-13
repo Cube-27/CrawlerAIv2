@@ -18,8 +18,8 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api import problems
 from crawlerai.api.auth import RateLimiter
+from crawlerai.api.routers import captures, health, records, schemas, scrape
 from crawlerai.api.routers import eval as eval_router
-from crawlerai.api.routers import health, schemas, scrape
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import ApiSettings, Settings
@@ -51,17 +51,17 @@ def _fetching(settings: Settings) -> Fetching:
 
 
 def _engine_data() -> EngineData | None:
-    """The engine's data files from `backend/data/` of the source tree, for `records`; None where they are not
-    there (an installed package, or a tree without `crawlerai data fetch`): `records` then answers 503, and the
-    other formats work (D-0492 ships the files)."""
+    """The engine's data files from `backend/data/` of the source tree, for `records` and replays; None where they
+    are not there (an installed package, or a tree without `crawlerai data fetch`): `records` and replays then answer
+    503, and the other formats work (D-0492 ships the files)."""
     backend = backend_dir(Path(__file__))
     if backend is None:
-        log.warning("no backend source tree: scrape records are unavailable")
+        log.warning("no backend source tree: records and replays are unavailable")
         return None
     try:
         return EngineData.load(data_dir(backend))
     except VocabularyMissing as e:
-        log.warning("scrape records are unavailable: %s", e)
+        log.warning("records and replays are unavailable: %s", e)
         return None
 
 
@@ -91,6 +91,8 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(schemas.router)
     app.include_router(scrape.router)
+    app.include_router(records.router)
+    app.include_router(captures.router)
     if app.state.eval_ui:
         app.include_router(eval_router.router)
     return app

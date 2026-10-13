@@ -36,6 +36,11 @@ def conflict(detail: str) -> ProblemError:
     return ProblemError(409, "conflict", "Conflict", detail)
 
 
+def records_unavailable(detail: str) -> ProblemError:
+    """The engine's data files are not installed, so no records can be extracted (`api.app._engine_data`)."""
+    return ProblemError(503, "records_unavailable", "Records unavailable", detail)
+
+
 def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError:
     return ProblemError(422, "validation", "Invalid request", detail, errors)
 

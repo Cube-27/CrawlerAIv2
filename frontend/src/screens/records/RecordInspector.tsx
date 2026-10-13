@@ -10,21 +10,22 @@ import { ReplayView } from "./ReplayView";
 /** The capture the record came from, and a replay of it with the current engine and config (SPEC-07 §4.6). */
 function ReplaySection({
   record,
+  captureId,
   fieldTypes,
-}: Readonly<{ record: StoredRecord; fieldTypes: FieldTypes }>) {
+}: Readonly<{ record: StoredRecord; captureId: string; fieldTypes: FieldTypes }>) {
   const replay = useReplay();
   const problem = problemOf(replay.error);
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Typography.Paragraph size="sm">
-          Capture <Typography.Code>{record.capture_id}</Typography.Code>
+          Capture <Typography.Code>{captureId}</Typography.Code>
         </Typography.Paragraph>
         <Button
           variant="secondary"
           isPending={replay.isPending}
           onPress={() => {
-            replay.mutate(record.capture_id);
+            replay.mutate(captureId);
           }}
         >
           Replay
@@ -64,7 +65,18 @@ export function RecordInspector({
             </Drawer.Header>
             <Drawer.Body className="flex flex-col gap-6">
               <RecordFieldsTable label="Record fields" record={record} fieldTypes={fieldTypes} />
-              <ReplaySection record={record} fieldTypes={fieldTypes} />
+              {/* Captures expire (ARCHITECTURE §15); the record stays, without one to replay. */}
+              {record.capture_id === null ? (
+                <Typography.Paragraph size="sm" color="muted">
+                  The capture this record came from has expired, so it cannot be replayed.
+                </Typography.Paragraph>
+              ) : (
+                <ReplaySection
+                  record={record}
+                  captureId={record.capture_id}
+                  fieldTypes={fieldTypes}
+                />
+              )}
             </Drawer.Body>
           </Drawer.Dialog>
         </Drawer.Content>

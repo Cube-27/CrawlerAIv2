@@ -1,6 +1,7 @@
 import { Table, Typography } from "@heroui/react";
 import type { FieldTypes } from "../api/field";
-import type { RecordField, ScrapeRecord } from "../api/scrape";
+import type { ExtractedRecord } from "../api/records";
+import type { RecordField } from "../api/scrape";
 import { ConfidenceCell, confidenceText } from "./ConfidenceCell";
 import { EmptyView } from "./EmptyView";
 import { FieldStatusBadge } from "./FieldStatusBadge";
@@ -9,7 +10,7 @@ import { LocatorText } from "./LocatorText";
 import { StatusLabel } from "./StatusLabel";
 
 /** Whether a record is complete, with its mode and confidence. */
-export function RecordSummary({ record }: Readonly<{ record: ScrapeRecord }>) {
+export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>) {
   return (
     <>
       <StatusLabel
@@ -28,7 +29,7 @@ export function RecordFieldsTable({
   label,
   record,
   fieldTypes,
-}: Readonly<{ label: string; record: ScrapeRecord; fieldTypes: FieldTypes }>) {
+}: Readonly<{ label: string; record: ExtractedRecord; fieldTypes: FieldTypes }>) {
   const fields: (RecordField & { name: string })[] = Object.entries(record.fields).map(
     ([name, field]) => ({ ...field, name }),
   );
@@ -78,7 +79,7 @@ export function RecordFieldsTable({
 export function RecordList({
   records,
   fieldTypes,
-}: Readonly<{ records: readonly ScrapeRecord[]; fieldTypes: FieldTypes }>) {
+}: Readonly<{ records: readonly ExtractedRecord[]; fieldTypes: FieldTypes }>) {
   if (records.length === 0) {
     return <EmptyView title="No records">The page yielded no record for this schema.</EmptyView>;
   }
@@ -87,7 +88,8 @@ export function RecordList({
       {records.map((record, index) => {
         const title = `Record ${String(index + 1)}`;
         return (
-          <section key={record.id} className="flex flex-col gap-2">
+          // One answer's records keep their order, and a replayed record has no id: its title is its key.
+          <section key={title} className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-3">
               <Typography.Heading level={3}>{title}</Typography.Heading>
               <RecordSummary record={record} />

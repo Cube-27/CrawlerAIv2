@@ -9,7 +9,7 @@ resolution published (INV-27).
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Literal
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
@@ -45,13 +45,28 @@ class FieldMeta(_Model):
         return cls(**{name: getattr(outcome, name) for name in cls.model_fields})
 
 
-class RecordDraft(_Model):
-    """A `record` row's content before storage gives it ids and a version."""
+class RecordContent(_Model):
+    """What an entity's field outcomes make of a record: the published values, every field's meta, completeness."""
 
-    entity_key: str
     data: dict[str, JsonValue]
     field_meta: dict[str, FieldMeta]
     complete: bool
+
+    @classmethod
+    def of(cls, schema: SchemaDef, fields: FieldSet) -> "RecordContent":
+        if fields.keys() != schema.fields.keys():
+            raise ValueError(f"field outcomes {sorted(fields)} do not match the schema's {sorted(schema.fields)}")
+        return cls(
+            data={name: outcome.value for name, outcome in fields.items() if outcome.status == "published"},
+            field_meta={name: FieldMeta.of(outcome) for name, outcome in fields.items()},
+            complete=is_complete(schema, fields),
+        )
+
+
+class RecordDraft(RecordContent):
+    """A `record` row's content before storage gives it ids and a version."""
+
+    entity_key: str
 
 
 def entity_key(site_id: SiteId, canonical_url: str) -> str:
@@ -67,7 +82,18 @@ def is_complete(schema: SchemaDef, fields: Mapping[str, FieldOutcome]) -> bool:
     return required and all(published.intersection(group) for group in schema.required_groups)
 
 
-def record_confidence(schema: SchemaDef, fields: Mapping[str, FieldOutcome]) -> float | None:
+class Assessed(Protocol):
+    """What a record's confidence reads of a field: a `FieldOutcome`, or the `FieldMeta` a stored record keeps."""
+
+    @property
+    def status(self) -> FieldStatus: ...
+    @property
+    def confidence(self) -> float | None: ...
+    @property
+    def calibrated(self) -> bool: ...
+
+
+def record_confidence(schema: SchemaDef, fields: Mapping[str, Assessed]) -> float | None:
     """§10: the minimum confidence over the required fields that published, and `None` if any of them is
     uncalibrated (or none published)."""
     needed = required_fields(schema)
@@ -82,18 +108,11 @@ def assemble(
 ) -> tuple[PageOutcome, RecordDraft | None]:
     """The page's outcome and its record, if it gets one (§4.10). `canonical_url` is the target's canonicalized URL;
     `caller_supplied` is true for `scrape`, `batch_scrape` and `extract` URLs, false for crawl-discovered ones."""
-    if fields.keys() != schema.fields.keys():
-        raise ValueError(f"field outcomes {sorted(fields)} do not match the schema's {sorted(schema.fields)}")
-    complete = is_complete(schema, fields)
-    if not complete and not caller_supplied:
+    content = RecordContent.of(schema, fields)
+    if not content.complete and not caller_supplied:
         return "no_match", None
-    record = RecordDraft(
-        entity_key=entity_key(site_id, canonical_url),
-        data={name: outcome.value for name, outcome in fields.items() if outcome.status == "published"},
-        field_meta={name: FieldMeta.of(outcome) for name, outcome in fields.items()},
-        complete=complete,
-    )
-    return ("extracted" if complete else "partial"), record
+    record = RecordDraft(entity_key=entity_key(site_id, canonical_url), **dict(content))
+    return ("extracted" if content.complete else "partial"), record
 
 
 def assemble_listing(
