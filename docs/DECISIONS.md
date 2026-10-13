@@ -1821,6 +1821,26 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Any other EAN-13 under scheme `isbn` is `Invalid("prefix")`.
 - Alternatives: Accept any EAN-13.
 - Why: ISO 2108.
+
+### D-0281 — Parse once: one shared `ParsedPage` per capture
+- Date: 2026-10-13 · Spec/PR: owner (ARCHITECTURE rev 8, Appendix A #31) · Status: decided (owner)
+- Decision: A capture body is parsed at most once per parser (selectolax, lxml) per pipeline run or `scrape` request. SPEC-05's `content.page.ParsedPage` holds the trees (lxml lazily), the script blocks, cleaned text and the visibility index. Collectors, content formats, pagination and the engine executor take it instead of the body. The release executor is the only exception (INV-20). New invariant INV-26.
+- Alternatives: let each consumer parse what it needs.
+- Why: Owner, 2026-10-13: "make sure multiple parsing is avoided and parsed html is reused" (seen in earlier products). Before this, the specs had each collector, cleaned text, content formats, pagination and the executor start from the body.
+- Reversible: yes
+
+### D-0291 — Operational invariants INV-27–INV-32
+- Date: 2026-10-13 · Spec/PR: owner (ARCHITECTURE Appendix A #32) · Status: decided (owner)
+- Decision: Adopt six invariants: no layer after resolution changes a published value (INV-27); a job pins its settings at submit (INV-28); cookies stay inside one fetch (INV-29); untrusted bodies are bounded, oversize is an error (INV-30); one task's failure never fails another (INV-31); forwarded headers only from trusted proxies, and no API keys created at startup (INV-32). Each is written for v2; nothing is copied (C12).
+- Alternatives: the other candidates reviewed (listing/detail separation, popup suppression, a single redactor, `srcset` grammar), which the owner didn't select.
+- Why: The owner allowed a one-off read of the v1 invariants document only (a logged exception to C12, 2026-10-13), after "parse once" (D-0281) turned out to be missing, and chose these six.
+- Reversible: yes
+
+### D-0292 — No comparisons with a named hosted crawler in the docs
+- Date: 2026-10-13 · Spec/PR: owner · Status: decided (owner)
+- Decision: README and ARCHITECTURE no longer name or compare against a specific hosted crawler product.
+- Alternatives: keep the comparison.
+- Why: Owner instruction.
 - Reversible: yes
 
 ### D-0293 — Date order comes from the CLDR locales of `html_lang` and `og_locale`

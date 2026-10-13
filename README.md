@@ -11,7 +11,7 @@ that a deterministic crawler can run.
 
 ## What it does
 
-- **Scrape, map, crawl, extract.** A REST API and an MCP server cover the same ground as Firecrawl: page content as
+- **Scrape, map, crawl, extract.** A REST API and an MCP server provide page content as
   markdown, HTML, links and metadata; URL discovery; site crawls; and structured extraction with a JSON schema or
   a plain-language prompt. The API shapes are our own.
 - **Schemas are data.** Commerce and jobs are presets, and any schema can be defined. Each field has a type such as

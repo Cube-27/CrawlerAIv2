@@ -51,6 +51,10 @@ Out of scope:
 - Common response: `{id, kind, status, created_at, started_at, finished_at, counts: {queued, claimed, done,
   failed, cancelled}, outcomes: {extracted, partial, unchanged, links_only, blocked, shell, not_found, no_match,
   failed}, usage, webhook_url, engine_version}` (outcome names as `url_task.outcome`, §6).
+- A job pins, when submitted, the schema version, site config versions, calibration, source precedence and LLM
+  settings it runs with; later changes apply only to jobs submitted after them (INV-28).
+- Each task runs in its own DB session and transaction; a failed task or a crashed browser never fails the job's
+  other tasks, and a crashed shared browser is restarted at most once per task (INV-31).
 - `DELETE /v1/jobs/{id}` → `cancel_requested` (SPEC-01); status becomes `cancelled` when no task is running.
 - `GET /v1/jobs/{id}/results?cursor&limit&format=json|json_records|csv_records|markdown` → paginated records (SPEC-07
   field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`.
@@ -129,7 +133,8 @@ failed or the budget is exhausted before any task completes. Webhook delivery fa
 ## 5. Invariants
 
 INV-16 (endpoint-level SSRF tests including `webhook_url` and sitemap URLs), INV-22, INV-23, INV-03 (`crawl/`
-has no hostnames; glob patterns come from requests).
+has no hostnames; glob patterns come from requests), INV-27 (exporters serialize
+published values unchanged), INV-28 (settings pinned at submit), INV-31 (task isolation).
 
 ## 6. Testing strategy
 
@@ -140,6 +145,12 @@ has no hostnames; glob patterns come from requests).
   mid-run; results pagination; SSE resume with `Last-Event-ID`; webhook signature and retries.
 - SSRF: endpoint tests submitting private IPs/hostnames in `url`, `urls`, sitemap locations, redirect targets
   and `webhook_url` → rejected.
+- INV-27: property test over generated records: the values in `GET /v1/jobs/{id}/results` (JSON and each
+  `?format=` export) equal the stored `record` values.
+- INV-28: change calibration and a site config while a job runs; the job's remaining tasks still use the
+  versions pinned at submit, and a job submitted after the change uses the new ones.
+- INV-31: a batch with one task that raises completes the other tasks; a killed shared browser fails only the
+  task that was using it, and is restarted at most once for that task.
 - MCP: in-process client from the SDK calls each tool against a test app; pagination cursor; "unknown" rendering.
 - No site-named tests.
 
@@ -154,8 +165,8 @@ has no hostnames; glob patterns come from requests).
 
 | # | Title | Scope | Checks | Done when |
 |---|---|---|---|---|
-| 1 | Job summary/status/cancel/results endpoints | `services/jobs`, routers | router tests | Lifecycle tested. |
-| 2 | `batch/scrape` + worker handler registration | `services/batch`, handlers | queue tests | Results paginate. |
+| 1 | Job summary/status/cancel/results endpoints | `services/jobs`, routers | router tests, property | Lifecycle tested; INV-27 results-equal-stored property test passes. |
+| 2 | `batch/scrape` + worker handler registration | `services/batch`, handlers | queue tests | Results paginate; INV-28 pinned-settings and INV-31 task-isolation tests pass. |
 | 3 | Canonicalization + sitemaps + `map` | `crawl/canonical,sitemaps`, `services/map` | unit, property | Map returns URLs. |
 | 4 | Frontier, rules, `crawl` | `crawl/frontier,rules`, handler | integration | Link-only vs extracted. |
 | 5 | `extract` with globs and prompt | `services/extract` | integration | Draft returned. |

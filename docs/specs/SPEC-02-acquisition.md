@@ -212,7 +212,9 @@ themselves; they never call `store_capture`.
 
 INV-11 (blocked/shell → zero records; this spec sets the class, SPEC-05 enforces zero records), INV-16 (SSRF),
 INV-24 (classification structural only; the C3 scan covers this package — it must contain no hostnames; only
-`adapters/` may). INV-23 for usage events on every attempt.
+`adapters/` may). INV-23 for usage events on every attempt. INV-29 (cookies stay inside one fetch: one session or
+browser context per fetch, RFC 6265 matching on each hop, nothing stored). INV-30 (bodies bounded by
+`max_body_bytes`/`max_decompressed_bytes` before full reading; oversize is an error outcome, never content).
 
 ## 6. Testing strategy
 
@@ -227,6 +229,10 @@ INV-24 (classification structural only; the C3 scan covers this package — it m
 - Adapters: tests use recorded JSON fixtures with synthetic tenant names; test names refer to the adapter, which
   is a platform, not a site (C9 compatible; the hostnames live only in the adapter package).
 - Replay (SPEC-03): dev captures must be loadable by `decode`.
+- INV-29: a cookie set by one fetch is absent from the next fetch to the same host; on a redirect chain, a cookie
+  for another domain or path is not sent on a hop (RFC 6265 §5.4). Run for both the HTTP and the browser fetcher.
+- INV-30: an oversize body (`max_body_bytes`) and an over-decompressing body (`max_decompressed_bytes`) each end
+  in an error outcome with no capture body.
 
 ## 7. Acceptance criteria
 
@@ -250,8 +256,9 @@ INV-24 (classification structural only; the C3 scan covers this package — it m
 | 7 | Proxy pools | settings + both fetchers | unit (local proxy fixture) | Pool used when set. |
 | 8 | Adapter protocol + Greenhouse | `adapters/base,registry,greenhouse` | unit with fixtures | Detect + fetch + map. |
 | 9 | Lever adapter | `adapters/lever` | unit | Same. |
+| 10 | Tests named for INV-29 and INV-30 | tests for `acquire/http,browser` | unit, browser-marked tests | Cookie isolation and body-bound tests pass on both fetchers. |
 
-PRs 1–5 are L0; 6–9 are L1.
+PRs 1–5 are L0; 6–10 are L1.
 
 ## 9. Open issues
 
