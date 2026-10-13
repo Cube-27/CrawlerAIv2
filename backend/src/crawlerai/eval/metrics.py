@@ -217,25 +217,19 @@ def export_aggregate(report: Report) -> Report:
     a reported total: the bucket cells and the config-status cells of one field type (published fields of that
     type), and the category cells and the usage cells (pages, which sum to `n_pages`)."""
     dev = report.split == "dev"
-
-    def complement[C: PrecisionMetrics | ZeroTouch | Usage](
-        table: Mapping[str, C | Suppressed], group_of: Callable[[str], str]
-    ) -> dict[str, C | Suppressed]:
-        return dict(table) if dev else _complement(table, group_of)
-
-    by_category = complement(_suppress_all(report.by_category), _whole)
+    by_category = _complement(_suppress_all(report.by_category), _whole, dev)
     return report.model_copy(
         update={
             "by_field_type": _suppress_all(report.by_field_type),
             "by_field": _suppress_all(report.by_field) if dev else {},
-            "by_bucket": complement(_suppress_all(report.by_bucket), _field_type),
-            "by_config_status": complement(_suppress_all(report.by_config_status), _field_type),
+            "by_bucket": _complement(_suppress_all(report.by_bucket), _field_type, dev),
+            "by_config_status": _complement(_suppress_all(report.by_config_status), _field_type, dev),
             "by_category": by_category,
             # Acquisition counts the same pages as the category's zero-touch cell, so it shares that suppression.
             "acquisition": {
                 k: cell if isinstance(cell, Suppressed) else report.acquisition[k] for k, cell in by_category.items()
             },
-            "usage": complement(_suppress_all(report.usage), _whole),
+            "usage": _complement(_suppress_all(report.usage), _whole, dev),
             "pages": None,
         }
     )
@@ -396,13 +390,16 @@ def _suppress[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppresse
 
 
 def _complement[C: PrecisionMetrics | ZeroTouch | Usage](
-    table: Mapping[str, C | Suppressed], group_of: Callable[[str], str]
+    table: Mapping[str, C | Suppressed], group_of: Callable[[str], str], dev: bool
 ) -> dict[str, C | Suppressed]:
     """Complementary suppression (§16.3): a group whose cells sum to a reported total must not show all its cells
     but one, or that one is the total minus the others. So when exactly one cell of a group is suppressed, the
     next-smallest cell (ties by key) is suppressed too; with two hidden, only their sum is derivable. A group of one
-    cell equals its total, which is reported at its own size by design, so it is left as is."""
+    cell equals its total, which is reported at its own size by design, so it is left as is. Dev is reported in full
+    (§4.7), so it gets none."""
     out = dict(table)
+    if dev:
+        return out
     groups: defaultdict[str, list[str]] = defaultdict(list)
     for key in table:
         groups[group_of(key)].append(key)

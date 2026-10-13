@@ -377,9 +377,8 @@ def test_generalization_gap_is_dev_minus_fresh() -> None:
     assert generalization_gap(dev, export_aggregate(fresh)) == {}
 
 
-def _precision_table(**cells: int) -> dict[str, PrecisionMetrics | Suppressed]:
-    # Keys are "type__evidence" in the call, "type|evidence" in the table.
-    return {k.replace("__", "|"): PrecisionMetrics(precision=1.0, n=n) for k, n in cells.items()}
+def _precision_table(cells: dict[str, int]) -> dict[str, PrecisionMetrics | Suppressed]:
+    return {k: PrecisionMetrics(precision=1.0, n=n) for k, n in cells.items()}
 
 
 def _report(split: str = "hidden", **tables: Any) -> Report:
@@ -402,7 +401,9 @@ def _report(split: str = "hidden", **tables: Any) -> Report:
 
 
 def test_a_lone_small_bucket_takes_the_next_smallest_of_its_type_with_it() -> None:
-    r = _report(by_bucket=_precision_table(money__structured=30, money__agreed=12, money__adapter=4, text__agreed=5))
+    r = _report(
+        by_bucket=_precision_table({"money|structured": 30, "money|agreed": 12, "money|adapter": 4, "text|agreed": 5})
+    )
 
     agg = export_aggregate(r)
 
@@ -415,7 +416,9 @@ def test_a_lone_small_bucket_takes_the_next_smallest_of_its_type_with_it() -> No
 
 
 def test_a_lone_small_config_status_takes_the_next_smallest_of_its_type_with_it() -> None:
-    r = _report(by_config_status=_precision_table(money__corroborated=15, money__operator=11, money__suspended=2))
+    r = _report(
+        by_config_status=_precision_table({"money|corroborated": 15, "money|operator": 11, "money|suspended": 2})
+    )
 
     agg = export_aggregate(r)
 
@@ -427,7 +430,7 @@ def test_a_lone_small_config_status_takes_the_next_smallest_of_its_type_with_it(
 
 
 def test_two_small_cells_need_no_complement() -> None:
-    r = _report(by_bucket=_precision_table(money__structured=30, money__agreed=3, money__adapter=4))
+    r = _report(by_bucket=_precision_table({"money|structured": 30, "money|agreed": 3, "money|adapter": 4}))
 
     agg = export_aggregate(r)
 
@@ -466,7 +469,7 @@ def test_usage_modes_are_complemented_as_one_group() -> None:
 
 
 def test_dev_keeps_primary_suppression_only() -> None:
-    r = _report("dev", by_bucket=_precision_table(money__structured=30, money__agreed=12, money__adapter=4))
+    r = _report("dev", by_bucket=_precision_table({"money|structured": 30, "money|agreed": 12, "money|adapter": 4}))
 
     agg = export_aggregate(r)
 

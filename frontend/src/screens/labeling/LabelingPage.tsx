@@ -54,17 +54,20 @@ const PASSES: [Pass, string][] = [
 ];
 
 /**
- * The field errors and message of a failed save. The API answers with an RFC 9457 problem, but a proxy's HTML page
- * or FastAPI's own validation list can arrive instead, and the screen still says the save failed.
+ * A problem's `detail` (RFC 9457), or null when the error body is not a problem: a proxy's HTML page, or FastAPI's own
+ * validation errors, which carry a list.
  */
-function saveFailure(error: unknown, status: number): { errors: FieldError[]; detail: string } {
-  const body =
-    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : {};
-  return {
-    errors: Array.isArray(body.errors) ? (body.errors as FieldError[]) : [],
-    detail:
-      typeof body.detail === "string" ? body.detail : `the server answered ${String(status)}.`,
-  };
+function problemDetail(error: unknown): string | null {
+  const detail =
+    typeof error === "object" && error !== null ? (error as { detail?: unknown }).detail : null;
+  return typeof detail === "string" ? detail : null;
+}
+
+/** The field errors of a failed save; a body that is not a problem has none. */
+function problemErrors(error: unknown): FieldError[] {
+  const errors =
+    typeof error === "object" && error !== null ? (error as { errors?: unknown }).errors : null;
+  return Array.isArray(errors) ? (errors as FieldError[]) : [];
 }
 
 /** Where a click on the page goes: a top-level field, or a field of one listing row. */
@@ -175,8 +178,7 @@ function PageEditor({
         ? normalizeAnswer(data)
         : {
             value: null,
-            // A problem's detail; FastAPI's own validation errors carry a list instead.
-            text: `Not normalized: ${typeof error.detail === "string" ? error.detail : "invalid request"}`,
+            text: `Not normalized: ${problemDetail(error) ?? "invalid request"}`,
           };
     if (answer.value !== null) setField(at, { ...field, value: answer.value, absent: false });
     setNormalized((current) => ({ ...current, [pathOf(at)]: answer.text }));
@@ -216,9 +218,8 @@ function PageEditor({
       setConflict(true);
       return;
     }
-    const failure = saveFailure(error, response.status);
-    setErrors(failure.errors);
-    setProblem(failure.detail);
+    setErrors(problemErrors(error));
+    setProblem(problemDetail(error) ?? `the server answered ${String(response.status)}.`);
   }
 
   const checkable = page.status === "labeled" || page.status === "checked";
