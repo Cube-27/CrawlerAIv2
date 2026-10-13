@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 9 (#119), SPEC-09 PR 4, SPEC-10 PR 1 (L3). Next: SPEC-08 PR 7, SPEC-08 PR 10.
+- L1 complete (2026-10-14). Working on L2. In progress: SPEC-09 PR 4, SPEC-08 PR 7, SPEC-10 PR 1 (#120, L3). Next: SPEC-08 PR 10, SPEC-08 PR 8.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -181,7 +181,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 6 | Validation, corroboration, validation_report, activation | done (#118) | D-0563–D-0570. Follow-ups: PR 7/8 load held-out pages and structured/adapter references and call `learning_failed` when validation refuses; PR 10 needs its own activation entry (`activate` requires a learning run in flight). |
 | 7 | Role A synthesis + repair loop | todo | |
 | 8 | Active-mode extraction (role C only for uncovered fields) | todo | |
-| 9 | Drift tracking + suspension + re-learn | todo | |
+| 9 | Drift tracking + suspension + re-learn | done (#119) | D-0571–D-0576. Migration 0012 adds `extraction_config.drift_window`. `drift_margins.json` not committed: nothing is suspended until OQ #19 / D-0576 is answered. Follow-ups for PR 8: call `observe` + `record_run` after each active-config page and load the margins with `load_margins`; measure a listing's per-page yield the way §4.7 does (an empty listing page counts row fields as misses). |
 | 10 | Config API + operator corrections | todo | |
 | 11 | Exporters json/platform_draft + release check + export endpoint | todo | |
 | 12 | Record exporters (json/csv/markdown) | done (#115) | D-0544–D-0545. Follow-up for SPEC-10/12: CSV formula injection, if CSV is served as a download. |
