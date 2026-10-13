@@ -1920,3 +1920,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Round.
 - Why: Values must be storable without rounding (D-0005), and §4.5 compares amounts as Decimals.
 - Reversible: yes
+
+### D-0307 — Lever endpoints verified; both documented instances detected
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 9 (#62) · Status: decided
+- Decision: `GET /v0/postings/{site}?mode=json` and `/v0/postings/{site}/{posting_id}`, verified against the platform's public Postings API docs on 2026-10-13, closing SPEC-02 §9's "[unverified]" item for Lever. The global and EU job site hosts are each sent to their own instance's API host.
+- Alternatives: The global host only.
+- Why: The docs name both instances.
+- Reversible: yes
+
+### D-0308 — Filtered Lever job site lists and application forms are not detected
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 9 (#62) · Status: decided
+- Decision: A job site URL carrying one of the list endpoint's documented filter or group parameters (`location`, `commitment`, `team`, `department`, `level`, `group`), and the `/{site}/{id}/apply` form, fall through to the generic rungs.
+- Alternatives: Forward the filters to the API (the docs don't say the job site uses the same parameters).
+- Why: C7: decline rather than guess.
+- Reversible: yes
+
+### D-0309 — No `datePosted` or `hiringOrganization.name` mapping for Lever
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 9 (#62) · Status: decided
+- Decision: Lever maps `JobPosting.title`, `url`, `description` and `jobLocation` only.
+- Alternatives: Map undocumented fields.
+- Why: The documented posting fields have no posting date or company name.
+- Reversible: yes
+
+### D-0310 — `PATH_SEGMENT` and `json_path` live in `adapters/base`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 9 (#62) · Status: decided
+- Decision: The URL path-segment pattern and the RFC 9535 bracket-notation builder are shared by the adapters.
+- Alternatives: A copy per adapter.
+- Why: C8: the same logic was needed twice.
+- Reversible: yes
