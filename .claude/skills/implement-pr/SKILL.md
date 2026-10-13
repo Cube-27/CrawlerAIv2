@@ -62,7 +62,9 @@ Stay in scope. Work outside the row becomes a note in ACTIVE.md, not code.
   attempts, escalate (`CLAUDE.md` §5).
 - Database tests: point `CRAWLERAI_TEST_DATABASE_URL` (and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`) at a throwaway
   Postgres on `127.0.0.1` and a free port (`localhost` hangs asyncpg on Windows; 5432 may be taken). Name its
-  container `crawlerai-<worktree>-pg`, and remove it before you hand back.
+  container `crawlerai-<worktree>-pg`, and remove it with its volume (`docker rm -f -v`) before you hand back.
+- Docker builds (checking `infra/Dockerfile`): tag the image `crawlerai-<worktree>:check`, and remove it
+  (`docker image rm`) when the check is done. Leave no images, volumes or containers behind.
 
 ## 4. Self-review before the PR
 
