@@ -121,7 +121,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 5 | date/datetime | todo | |
 | 6 | identifier | todo | |
 | 7 | Data manifest + GeoNames fetch + location | todo | |
-| 8 | range | todo | |
+| 8 | range | done (#56) | Follow-ups: move the `type:period` words into `vocab/` (PR 4's framework) with a JUSTIFICATION.md; a dispatcher-level property test of range against the real money rules once PR 3 merges. |
 | 9 | `equal` per type + list/object recursion | todo | Also: url's WHATWG forbidden-host-code-point check (from #47). |
 
 ## [SPEC-05 — Structured extraction, ownership, resolution and confidence](../specs/SPEC-05-extraction-and-resolution.md)

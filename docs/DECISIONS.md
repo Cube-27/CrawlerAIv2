@@ -1717,3 +1717,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Casefold; fall back to `type:availability` phrases.
 - Why: schema.org names are case-sensitive; the spec links no `schema:` field to a `type:` vocabulary.
 - Reversible: yes
+
+### D-0275 — range resolves currency through the money rules via the dispatcher
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 8 (#56) · Status: decided
+- Decision: `range.normalize` takes a keyword-only `money` callable; the dispatcher passes `normalize(·, FieldSpec(type=money), ctx)`.
+- Alternatives: Import `money` (breaks the independence contract); copy CLDR symbol resolution (C8 duplication).
+- Why: §4.4's "currency through the money rules" with one module per type (C8).
+- Reversible: yes
+
+### D-0276 — Range value shape `{min, max, currency, unit, period}`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 8 (#56) · Status: decided
+- Decision: Bounds are plain-notation decimal strings; exactly one of `currency`/`unit` is set; `period` is one of the five schema.org unitText values or null.
+- Alternatives: One `currency|unit` key.
+- Why: Keeps ISO 4217 currency and UN/CEFACT or unitText unit distinguishable for PR 9's `equal`.
+- Reversible: yes
+
+### D-0277 — A unit range needs no period; a monetary range does
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 8 (#56) · Status: decided
+- Decision: A `QuantitativeValue` with a `unitCode` or non-period `unitText` gives `Ok` with `period: null`; a currency range without a period is `Ambiguous("period_missing")`; a period with neither currency nor unit is `Ambiguous("currency_missing")`.
+- Alternatives: Require a period for every range.
+- Why: §9's "period unresolved" applies to salary-style amounts; a quantity range has no period.
+- Reversible: yes
+
+### D-0278 — A currency written once in range text applies to both bounds
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 8 (#56) · Status: decided
+- Decision: If only one bound has text around its amount (`€10-20`, `10-20 EUR`), that text is copied around the other bound before each goes to the money rules; with none, `Ambiguous("currency_missing")`.
+- Alternatives: Decline unless both bounds carry it.
+- Why: A structural property of written ranges; the money rules still decide the currency.
+- Reversible: yes
+
+### D-0279 — Range text needs one separator with an amount on each side
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 8 (#56) · Status: decided
+- Decision: A lone text value is `Invalid("not_a_range")`; structured `QuantitativeValue.value` gives min = max.
+- Alternatives: Read a lone text amount as min = max.
+- Why: §4.4: text is two parses around a separator; `value` is a standard single value.
+- Reversible: yes
+
+### D-0280 — `type:period` (en) words live in `range.py` until moved into `vocab/`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 8 (#56) · Status: decided
+- Decision: hour/day/week/month/year after "per" or "/", derived from schema.org unitText. Follow-up: move into PR 4's vocab framework with a JUSTIFICATION.md.
+- Alternatives: Invent a vocab file format ahead of PR 4.
+- Why: Avoided a conflict with PR 4 while both were in flight.
+- Reversible: yes
