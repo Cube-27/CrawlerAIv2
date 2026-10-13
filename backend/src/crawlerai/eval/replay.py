@@ -12,18 +12,17 @@ engine holds its calibration, which `version` names (`core.engine_version`). `LL
 `PageOutput` and `SchemaFields` (as in `metrics`).
 """
 
-import hashlib
 import json
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from crawlerai.db.models import ExtractionMode
-from crawlerai.eval.labels import parse_labels
+from crawlerai.eval.labels import from_pydantic, parse_labels
 from crawlerai.eval.metrics import ConfigFieldStatus, EvalCase, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
 from crawlerai.storage.base import ObjectNotFound
-from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
+from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle, sha256_hex
 
 
 class _Model(BaseModel):
@@ -62,7 +61,7 @@ def request_key(req: LLMRequest) -> str:
     concrete model after the request exists (SPEC-06 failover), so the key can't depend on it."""
     parts = [req.prompt_kind, req.model_class, req.system, req.user, req.output_schema]
     canonical = json.dumps(parts, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode()).hexdigest()
+    return sha256_hex(canonical.encode())
 
 
 class RecordedLLM:
@@ -158,7 +157,7 @@ async def _replay(
         try:
             config = ConfigSnapshot.model_validate(page.config_snapshot)
         except ValidationError as e:
-            reasons = "; ".join(f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors())
+            reasons = "; ".join(f"{err.path}: {err.reason}" for err in map(from_pydantic, e.errors()))
             return ReplayFailed(error=f"invalid config_snapshot: {reasons}"), {}
     mode: ExtractionMode = "adhoc" if config is None else "config"
     try:

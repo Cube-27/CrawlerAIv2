@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import json
 import re
-from collections.abc import Coroutine, Iterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -213,10 +212,6 @@ async def add_page(
     return page
 
 
-def run[T](coro: Coroutine[Any, Any, T]) -> T:
-    return asyncio.run(coro)
-
-
 def dump(cases: list[EvalCase]) -> str:
     return json.dumps([case.model_dump(mode="json") for case in cases], sort_keys=True)
 
@@ -227,12 +222,12 @@ def dump(cases: list[EvalCase]) -> str:
 def test_two_runs_over_a_split_are_byte_identical() -> None:
     store = MemoryStore()
     for n in range(1, 6):
-        run(add_page(store, n))
+        asyncio.run(add_page(store, n))
     live = LiveLLM()
 
-    first = run(replay_split(store, StubEngine(), live=live))
+    first = asyncio.run(replay_split(store, StubEngine(), live=live))
     # The second run may not reach the provider at all: every response comes from the recording.
-    second = run(replay_split(store, StubEngine(), live=None))
+    second = asyncio.run(replay_split(store, StubEngine(), live=None))
 
     assert len(live.calls) == 5
     assert dump(first) == dump(second)
@@ -245,8 +240,8 @@ def test_two_runs_over_a_split_are_byte_identical() -> None:
 def test_a_recorded_run_and_a_live_run_agree() -> None:
     # Recording changes nothing about the answer: the first (recording) run gives what the live client gave.
     store = MemoryStore()
-    run(add_page(store, 3))
-    [case] = run(replay_split(store, StubEngine(), live=LiveLLM()))
+    asyncio.run(add_page(store, 3))
+    [case] = asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))
     assert isinstance(case.output, PageOutput)
     assert case.output.fields["summary"].value == f"summary of {len(bundle(3).body)} chars"
     assert case.output.fields["title"].value == "Item 3"
@@ -266,23 +261,23 @@ REQUEST = LLMRequest(
 
 def test_a_miss_calls_the_provider_and_records_the_response() -> None:
     store, live = MemoryStore(), LiveLLM()
-    response = run(RecordedLLM(store, live).complete_json(REQUEST))
+    response = asyncio.run(RecordedLLM(store, live).complete_json(REQUEST))
     assert live.calls == [REQUEST]
     assert store.cache == {request_key(REQUEST): response.model_dump_json().encode()}
 
 
 def test_a_hit_returns_the_recording_without_calling_the_provider() -> None:
     store, live = MemoryStore(), LiveLLM()
-    recorded = run(RecordedLLM(store, live).complete_json(REQUEST))
+    recorded = asyncio.run(RecordedLLM(store, live).complete_json(REQUEST))
     again = LiveLLM()
-    assert run(RecordedLLM(store, again).complete_json(REQUEST)) == recorded
-    assert run(RecordedLLM(store, None).complete_json(REQUEST)) == recorded
+    assert asyncio.run(RecordedLLM(store, again).complete_json(REQUEST)) == recorded
+    assert asyncio.run(RecordedLLM(store, None).complete_json(REQUEST)) == recorded
     assert again.calls == []
 
 
 def test_a_miss_without_a_provider_raises() -> None:
     with pytest.raises(RecordingMissing, match=request_key(REQUEST)):
-        run(RecordedLLM(MemoryStore(), None).complete_json(REQUEST))
+        asyncio.run(RecordedLLM(MemoryStore(), None).complete_json(REQUEST))
 
 
 def test_a_recording_is_data_not_code() -> None:
@@ -290,7 +285,7 @@ def test_a_recording_is_data_not_code() -> None:
     store = MemoryStore()
     store.cache[request_key(REQUEST)] = b"__import__('os').system('true')"
     with pytest.raises(ValueError, match="Invalid JSON"):
-        run(RecordedLLM(store, None).complete_json(REQUEST))
+        asyncio.run(RecordedLLM(store, None).complete_json(REQUEST))
 
 
 def test_the_key_is_sha256_of_the_canonical_request() -> None:
@@ -308,15 +303,16 @@ def test_the_key_ignores_schema_key_order() -> None:
     assert request_key(reordered) == request_key(REQUEST)
 
 
-def variants() -> Iterator[tuple[str, Any]]:
-    yield "prompt_kind", "c_extract_listing"
-    yield "model_class", "strong"
-    yield "system", "system prompt "
-    yield "user", "user prompt."
-    yield "output_schema", {"type": "object"}
-
-
-@pytest.mark.parametrize(("field", "value"), list(variants()))
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("prompt_kind", "c_extract_listing"),
+        ("model_class", "strong"),
+        ("system", "system prompt "),
+        ("user", "user prompt."),
+        ("output_schema", {"type": "object"}),
+    ],
+)
 def test_each_part_of_the_request_changes_the_key(field: str, value: Any) -> None:
     assert request_key(REQUEST.model_copy(update={field: value})) != request_key(REQUEST)
 
@@ -334,24 +330,26 @@ def test_parts_cannot_run_into_each_other(system_a: str, user_a: str, system_b: 
 
 def test_only_checked_pages_replay() -> None:
     store = MemoryStore()
-    checked = run(add_page(store, 1))
-    run(add_page(store, 2, status="labeled"))
-    run(add_page(store, 3, status="draft"))
-    assert [case.page_id for case in run(replay_split(store, StubEngine(), live=LiveLLM()))] == [str(checked.id)]
+    checked = asyncio.run(add_page(store, 1))
+    asyncio.run(add_page(store, 2, status="labeled"))
+    asyncio.run(add_page(store, 3, status="draft"))
+    assert [case.page_id for case in asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))] == [
+        str(checked.id)
+    ]
 
 
 def test_the_schema_filter_selects_pages() -> None:
     store = MemoryStore()
-    run(add_page(store, 1, schema_name="other_schema"))
-    kept = run(add_page(store, 2))
-    cases = run(replay_split(store, StubEngine(), schema_filter=SCHEMA.name, live=LiveLLM()))
+    asyncio.run(add_page(store, 1, schema_name="other_schema"))
+    kept = asyncio.run(add_page(store, 2))
+    cases = asyncio.run(replay_split(store, StubEngine(), schema_filter=SCHEMA.name, live=LiveLLM()))
     assert [case.page_id for case in cases] == [str(kept.id)]
 
 
 def test_a_case_carries_the_page_and_its_labels() -> None:
     store = MemoryStore()
-    page = run(add_page(store, 1))
-    [case] = run(replay_split(store, StubEngine(), live=LiveLLM()))
+    page = asyncio.run(add_page(store, 1))
+    [case] = asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))
     assert (case.page_id, case.category, case.schema_def) == (str(page.id), "custom_store", SCHEMA)
     assert case.labels.model_dump(mode="json", exclude_defaults=True) == {
         "label_version": 1,
@@ -364,8 +362,8 @@ def test_a_case_carries_the_page_and_its_labels() -> None:
 
 def test_without_a_config_snapshot_the_page_replays_cold() -> None:
     store, engine = MemoryStore(), StubEngine()
-    run(add_page(store, 1))
-    [case] = run(replay_split(store, engine, live=LiveLLM()))
+    asyncio.run(add_page(store, 1))
+    [case] = asyncio.run(replay_split(store, engine, live=LiveLLM()))
     assert engine.seen == [(None, "adhoc")]
     assert case.config_status == {}
 
@@ -373,36 +371,37 @@ def test_without_a_config_snapshot_the_page_replays_cold() -> None:
 def test_a_config_snapshot_replays_in_config_mode_and_gives_field_status() -> None:
     store, engine = MemoryStore(), StubEngine()
     snapshot: dict[str, JsonValue] = {"ir": {"fields": {}}, "field_status": {"title": "corroborated"}}
-    run(add_page(store, 1, config_snapshot=snapshot))
-    [case] = run(replay_split(store, engine, live=LiveLLM()))
+    asyncio.run(add_page(store, 1, config_snapshot=snapshot))
+    [case] = asyncio.run(replay_split(store, engine, live=LiveLLM()))
     assert engine.seen == [(ConfigSnapshot(ir={"fields": {}}, field_status={"title": "corroborated"}), "config")]
     assert case.config_status == {"title": "corroborated"}
 
 
+def dropped_error(store: MemoryStore, *, provider: bool = True) -> str:
+    """The error of the store's one page, which the replay dropped."""
+    [case] = asyncio.run(replay_split(store, StubEngine(), live=LiveLLM() if provider else None))
+    assert isinstance(case.output, ReplayFailed)
+    return case.output.error
+
+
 def test_an_invalid_config_snapshot_drops_the_page() -> None:
     store = MemoryStore()
-    run(add_page(store, 1, config_snapshot={"ir": {}, "field_status": {"title": "trusted"}}))
-    [case] = run(replay_split(store, StubEngine(), live=LiveLLM()))
-    assert isinstance(case.output, ReplayFailed)
-    assert case.output.error.startswith("invalid config_snapshot:")
+    asyncio.run(add_page(store, 1, config_snapshot={"ir": {}, "field_status": {"title": "trusted"}}))
+    assert dropped_error(store).startswith("invalid config_snapshot: field_status.title: ")
 
 
 def test_a_missing_bundle_drops_the_page() -> None:
     store = MemoryStore()
-    page = run(add_page(store, 1))
+    page = asyncio.run(add_page(store, 1))
     del store.blobs[page.capture_id]
-    [case] = run(replay_split(store, StubEngine(), live=LiveLLM()))
-    assert isinstance(case.output, ReplayFailed)
-    assert case.output.error.startswith("bundle unavailable: EvalNotFound")
+    assert dropped_error(store).startswith("bundle unavailable: EvalNotFound")
 
 
 def test_a_corrupt_bundle_drops_the_page() -> None:
     store = MemoryStore()
-    page = run(add_page(store, 1))
+    page = asyncio.run(add_page(store, 1))
     store.blobs[page.capture_id] = b"not a bundle"
-    [case] = run(replay_split(store, StubEngine(), live=LiveLLM()))
-    assert isinstance(case.output, ReplayFailed)
-    assert case.output.error.startswith("bundle unavailable: CorruptBundle")
+    assert dropped_error(store).startswith("bundle unavailable: CorruptBundle")
 
 
 def test_a_missing_object_drops_the_page() -> None:
@@ -411,41 +410,35 @@ def test_a_missing_object_drops_the_page() -> None:
             raise ObjectNotFound(str(capture_id))
 
     store = NoObjects()
-    run(add_page(store, 1))
-    [case] = run(replay_split(store, StubEngine(), live=LiveLLM()))
-    assert isinstance(case.output, ReplayFailed)
-    assert case.output.error.startswith("bundle unavailable: ObjectNotFound")
+    asyncio.run(add_page(store, 1))
+    assert dropped_error(store).startswith("bundle unavailable: ObjectNotFound")
 
 
 def test_a_missing_recording_drops_the_page() -> None:
     store = MemoryStore()
-    run(add_page(store, 1))
-    [case] = run(replay_split(store, StubEngine(), live=None))
-    assert isinstance(case.output, ReplayFailed)
-    assert case.output.error.startswith("recording missing:")
+    asyncio.run(add_page(store, 1))
+    assert dropped_error(store, provider=False).startswith("recording missing:")
 
 
 def test_dropped_pages_leave_n_pages() -> None:
     # §4.11: a dropped page counts against `n_pages`, which trips the gate.
     store = MemoryStore()
-    for n in range(1, 4):
-        run(add_page(store, n))
-    page = run(add_page(store, 4))
-    del store.blobs[page.capture_id]
-    report = build_report(run(replay_split(store, StubEngine(), live=LiveLLM())), "dev", "e", "a" * 40)
+    pages = [asyncio.run(add_page(store, n)) for n in range(1, 5)]
+    del store.blobs[pages[-1].capture_id]
+    report = build_report(asyncio.run(replay_split(store, StubEngine(), live=LiveLLM())), "dev", "e", "a" * 40)
     assert report.n_pages == 3
 
 
 def test_a_schema_the_engine_does_not_know_stops_the_run() -> None:
     store = MemoryStore()
-    run(add_page(store, 1, schema_name="unknown_schema"))
+    asyncio.run(add_page(store, 1, schema_name="unknown_schema"))
     with pytest.raises(LookupError, match="unknown_schema"):
-        run(replay_split(store, StubEngine(), live=LiveLLM()))
+        asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))
 
 
 def test_a_schema_of_another_page_kind_stops_the_run() -> None:
     store = MemoryStore()
-    run(add_page(store, 1))
+    asyncio.run(add_page(store, 1))
     listing = SCHEMA.model_copy(update={"page_kind": "listing"})
 
     class ListingEngine(StubEngine):
@@ -453,4 +446,4 @@ def test_a_schema_of_another_page_kind_stops_the_run() -> None:
             return listing
 
     with pytest.raises(ValueError, match="is a detail page"):
-        run(replay_split(store, ListingEngine(), live=LiveLLM()))
+        asyncio.run(replay_split(store, ListingEngine(), live=LiveLLM()))
