@@ -1759,3 +1759,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Invent a vocab file format ahead of PR 4.
 - Why: Avoided a conflict with PR 4 while both were in flight.
 - Reversible: yes
+
+### D-0282 — A proxy pool is an HTTP proxy used through a CONNECT tunnel
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 7 (#53) · Status: decided
+- Decision: `http://[user[:password]@]host[:port]`, always tunnelled (http pages too): curl gets `HTTPPROXYTUNNEL`; the browser's `SocksGuard` chains each checked connection to the pool with CONNECT. SPEC-02 §4.5 clarified.
+- Alternatives: SOCKS5 or HTTPS proxies; absolute-form forwarding; pointing Chromium straight at the pool (leaves hops unchecked, D-0249).
+- Why: OPEN_QUESTIONS #10's datacenter/ISP pools speak CONNECT (RFC 9110 §9.3.6); tunnelling keeps the proxy from rewriting requests; chaining behind the guard keeps INV-16.
+- Reversible: yes
+
+### D-0283 — An unknown proxy pool ends the fetch with `error='proxy_pool_unknown'`
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 7 (#53) · Status: decided
+- Decision: A policy naming a pool not in `CRAWLERAI_PROXY_POOLS` fetches nothing.
+- Alternatives: Fetch directly; raise.
+- Why: C7: no fallback that silently changes where requests come from; an outcome like other fetch failures (§4.11).
+- Reversible: yes
+
+### D-0284 — The configured proxy endpoint is the SSRF allowlist entry
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 7 (#53) · Status: decided
+- Decision: The proxy's own address isn't SSRF-checked; being configured in settings is §4.5's explicit allowlist.
+- Alternatives: Check it like a target.
+- Why: §7.1/§4.5: "public or explicitly allowlisted in settings".
+- Reversible: yes
+
+### D-0285 — Settings errors hide input; `ProxyEndpoint` hides credentials in its repr
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 7 (#53) · Status: decided
+- Decision: `hide_input_in_errors`; username and password stay out of reprs.
+- Alternatives: Default reprs.
+- Why: Proxy and database URLs carry credentials.
+- Reversible: yes
+
+### D-0286 — A refused proxy tunnel reports as curl does
+- Date: 2026-10-13 · Spec/PR: SPEC-02 PR 7 (#53) · Status: decided
+- Decision: `network_error: curl 7` over HTTP; a SOCKS general failure in the browser; no separate `proxy_error` class.
+- Alternatives: A `proxy_error` class.
+- Why: curl gives a refused CONNECT the same code as an unreachable server; separating them needs per-handle state.
+- Reversible: yes
