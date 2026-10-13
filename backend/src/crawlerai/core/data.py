@@ -22,14 +22,20 @@ class DataFetchError(Exception):
     """A fetched entry could not be written as the manifest pins it."""
 
 
-def fetch_data(data_dir: Path, download: Callable[[str], bytes] | None = None) -> list[str]:
+def _download(url: str) -> bytes:
+    # `fetch_data` admits only https URLs from the manifest, so no other scheme reaches urlopen.
+    with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310
+        body: bytes = response.read()
+    return body
+
+
+def fetch_data(data_dir: Path, download: Callable[[str], bytes] = _download) -> list[str]:
     """Download each fetched entry of `data_dir`'s manifest that is missing or differs from its pinned sha256.
 
     Returns one line per fetched entry (`fetched <path>` or `present <path>`). Raises `DataFetchError` on an entry
     whose path leaves `data_dir`, whose URL is not https, or whose download does not match its hash; a refused
     download is not written.
     """
-    download = download or _download
     root = data_dir.resolve()
     manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
     report: list[str] = []
@@ -72,10 +78,3 @@ def _write_atomically(target: Path, content: bytes) -> None:
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
-
-
-def _download(url: str) -> bytes:
-    # `fetch_data` admits only https URLs from the manifest, so no other scheme reaches urlopen.
-    with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310
-        body: bytes = response.read()
-    return body

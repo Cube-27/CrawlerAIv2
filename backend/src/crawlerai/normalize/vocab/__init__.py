@@ -89,6 +89,19 @@ def type_vocabulary(name: str) -> Mapping[str, Entries] | None:
     return _TYPE.get(name)
 
 
+def find_codes(by_language: Mapping[str, Entries], words: Tokens, ctx: Context) -> frozenset[str] | None:
+    """The codes of a type vocabulary whose phrases `words` hold, or `None` when it has no entries for the page.
+
+    The page's own languages choose the phrases (ARCHITECTURE §9: language-tagged vocabularies). A page that states
+    none is matched against every language; a disagreement then shows as two codes.
+    """
+    languages = context_languages(ctx) or by_language.keys()
+    entries = [by_language[language] for language in languages if language in by_language]
+    if not entries:
+        return None
+    return frozenset().union(*(e.find(words) for e in entries))
+
+
 def context_languages(ctx: Context) -> frozenset[str]:
     """The languages the page states for itself, as lowercase primary language subtags (RFC 5646 §2.2.1).
 

@@ -64,13 +64,9 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
     words = vocab.tokens(raw)
     if not words:
         return Invalid("empty")
-    # The page's own languages choose the phrases (ARCHITECTURE §9: language-tagged vocabularies). A page that states
-    # none is matched against every language; a disagreement then shows as two members.
-    languages = vocab.context_languages(ctx) or by_language.keys()
-    entries = [by_language[language] for language in languages if language in by_language]
-    if not entries:
+    codes = vocab.find_codes(by_language, words, ctx)
+    if codes is None:
         return Invalid("no_vocabulary_for_language")
-    codes = frozenset().union(*(e.find(words) for e in entries))
     if not codes:
         return Invalid("no_match")
     if len(codes) > 1:

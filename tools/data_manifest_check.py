@@ -85,13 +85,12 @@ def check(root: Path) -> tuple[list[str], int]:
     for path in sorted(present - claimed):
         problems.append(f"{DATA_DIR / path}: not listed in {MANIFEST}")
     for path, sha256 in sorted(pinned.items()):
-        if path not in present:
-            if path not in fetched:
-                problems.append(f"{DATA_DIR / path}: listed in the manifest but missing")
-        else:
+        if path in present:
             with (data_dir / path).open("rb") as file:
                 if hashlib.file_digest(file, "sha256").hexdigest() != sha256:
                     problems.append(f"{DATA_DIR / path}: sha256 does not match the manifest")
+        elif path not in fetched:
+            problems.append(f"{DATA_DIR / path}: listed in the manifest but missing")
     return problems, len(pinned)
 
 

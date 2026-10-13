@@ -271,18 +271,19 @@ def test_names_of_tracked_files_and_modules_are_not_hosts(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stdout
 
 
-def test_names_of_data_files_the_manifest_pins_are_not_hosts(tmp_path: Path) -> None:
-    # A fetched data file is not tracked (SPEC-04 §4.6), so its name is known from the manifest, not from git.
+def test_names_with_the_extension_of_a_data_file_the_manifest_pins_are_not_hosts(tmp_path: Path) -> None:
+    # A fetched data file is not tracked (SPEC-04 §4.6), so its extension is known from the manifest, not from git.
     manifest = json.dumps({"entries": [{"path": "geo/cities.md", "fetched": True}]})
     code = 'CITIES = "cities.md"\nOTHER = "towns.md"\n'
-    repo = make_repo(
-        tmp_path / "repo",
-        {"backend/data/manifest.json": manifest, "backend/src/crawlerai/normalize/geo.py": code},
-    )
+    files: dict[str, str | bytes] = {"backend/src/crawlerai/normalize/geo.py": code}
+    without = make_repo(tmp_path / "without", files)
+    with_manifest = make_repo(tmp_path / "with", {**files, "backend/data/manifest.json": manifest})
 
-    result = run_scan(repo, allowlist=[])
-
-    assert result.stdout.splitlines() == ["backend/src/crawlerai/normalize/geo.py:2: towns.md"]
+    assert run_scan(without, allowlist=[]).stdout.splitlines() == [
+        "backend/src/crawlerai/normalize/geo.py:1: cities.md",
+        "backend/src/crawlerai/normalize/geo.py:2: towns.md",
+    ]
+    assert run_scan(with_manifest, allowlist=[]).returncode == 0
 
 
 def test_url_hosts_are_checked_even_when_they_look_like_file_names(tmp_path: Path) -> None:
