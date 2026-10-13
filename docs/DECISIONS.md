@@ -3892,3 +3892,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Compare against `null` (always fails).
 - Why: D-0561 compares "every map field the page has a value for".
 - Reversible: yes
+
+### D-0585 — Synthesis extends induction's config
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: `synthesize` takes the induced IR and the names in `Induction.to_synthesize`, and returns the IR with the verified steps added (`origin=llm_synth` when it added any; status `uncorroborated` until validation), the unresolved targets with their last diagnostics, and the number of repair rounds.
+- Alternatives: Return bare `FieldSteps`.
+- Why: Verification runs the engine executor on a whole config, and the caller validates and activates one IR.
+- Reversible: yes
+
+### D-0586 — Verification on the sample mirrors held-out validation
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: A field passes when, on every sample page where the engine published it, the engine executor's value is `equal` to it, and every value it gives on any page is valid. A row selector passes with ≥ 3 rows on every page and, where the engine published rows, exactly that many; row fields are compared row by row in document order (as D-0566). A field published on no sample page is not asked (`not_published`).
+- Alternatives: Require only ≥ 3 rows.
+- Why: Anything weaker fails held-out validation (§4.7) anyway. Review (#122): revisit together with D-0566 if listings rarely activate.
+- Reversible: yes
+
+### D-0587 — Repair rounds ask only for what failed
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: A repair round asks only for the failing targets, with their previous steps and up to 10 diagnostics each; verified targets are kept. A failing row selector is asked again with every unverified row field (`row_not_verified`); a verified one is shown as fixed. Steps that do not parse are dropped and the others verified; they are reported when the field fails.
+- Alternatives: Ask again for every field.
+- Why: §4.6 "fields still failing"; keeps selectors that pass stable.
+- Reversible: yes
+
+### D-0588 — LLM failures propagate from synthesis
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: `BudgetExhausted`, `ProviderUnavailable` and `OutputInvalid` propagate from `synthesize`; the learn job ends `failed` and calls `learning_failed`.
+- Alternatives: Keep what was verified before the failure.
+- Why: §4.13 (a learning job that exhausts its budget ends failed, and nothing activates); the most conservative reading.
+- Reversible: yes
+
+### D-0589 — `next_page_url` is verified as a page-level field and becomes `listing.next`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: On a listing, `next_page_url` is asked with at most one step and runs as a page-level field (how the executor runs `next`, §4.3), whatever its schema scope; without a verified listing it is left out (`no_listing`).
+- Alternatives: Drop `next` along with the row.
+- Why: IR §12.1 puts `next` in the listing.
+- Reversible: yes
+
+### D-0590 — What role A reads
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: Reduced HTML keeps every element except `script` and `style` (so paths match the page) and only §4.6's attributes; the cut window is centred on the published values found as HTML-escaped text (the start when none is found); JSON documents (JSON-LD, script state, captured responses) are key paths with `[*]`, `@type` values kept for `when_type`, cut to 20,000 characters; the first 10 published rows per page are shown. `CRAWLERAI_LLM_A_MAX_CHARS` (default 120,000) is a setting; `max_output_tokens = 8,192`.
+- Alternatives: Drop empty elements; show every row.
+- Why: §4.6; the paths the model writes must run on the real tree.
+- Reversible: yes
+
+### D-0591 — The learn job's end-to-end wiring goes to SPEC-08 PR 8
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 7 (#122) · Status: decided
+- Decision: PR 8 (pipeline wiring) loads the sample and held-out pages with their published values and structured references, chains induce → synthesize → validate → activate, and calls `learning_failed` on a failure or a refusal (the PR 4 and PR 6 follow-ups).
+- Alternatives: Include them in PR 7.
+- Why: The PR 7 row's scope is `config_ir/synthesis` and its prompts, with unit tests on a fake LLM.
+- Reversible: yes
