@@ -16,8 +16,16 @@ from urllib.parse import quote, unquote, urlsplit
 
 from pydantic import JsonValue, ValidationError
 
-from crawlerai.collect import js_state, json_doc, jsonld
-from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, Binder, PageDataKind, RequestSpec, parse_binder
+from crawlerai.collect import json_doc
+from crawlerai.config_ir.api_recipe.model import (
+    PAGE_DATA_KINDS,
+    PLACEHOLDER,
+    Binder,
+    PageDataKind,
+    RequestSpec,
+    parse_binder,
+)
+from crawlerai.config_ir.executor import documents
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS
 from crawlerai.content.page import ParsedPage
 from crawlerai.storage.capture_bundle import HeaderList
@@ -96,10 +104,7 @@ def with_query_value(url: str, name: str, value: str) -> str:
 def page_data(page: ParsedPage) -> PageData:
     """The page's JSON documents as `jsonld:` and `js_state:` binders read them: a list per kind, in page order,
     unreadable ones skipped (their collectors report them)."""
-    return {
-        "jsonld": [document for _, document in jsonld.blocks(page, [])],
-        "js_state": [document.data for document in js_state.state_documents(page, [])],
-    }
+    return {kind: documents(kind, page) for kind in PAGE_DATA_KINDS}
 
 
 def render_body(template: str, params: Mapping[str, str]) -> str:

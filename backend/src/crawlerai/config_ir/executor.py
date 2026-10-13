@@ -135,7 +135,7 @@ class _Run:
 
     def documents(self, source: JsonSource) -> list[JsonValue]:
         if source not in self._documents:
-            self._documents[source] = _documents(source, self.page)
+            self._documents[source] = documents(source, self.page)
         return self._documents[source]
 
     def nodes(self) -> list[tuple[tuple[str, ...], JsonValue]]:
@@ -303,7 +303,8 @@ def _jsonld_values(step: JsonLdStep, run: _Run) -> list[Raw]:
     return _select_all(step.jsonld, nodes)
 
 
-def _documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
+def documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
+    """The page's JSON documents of `source`, in page order."""
     # Unreadable documents are skipped here; the jsonld, js_state and xhr collectors report them for the page.
     match source:
         case "jsonld":
