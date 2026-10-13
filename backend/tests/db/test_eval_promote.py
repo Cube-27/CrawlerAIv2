@@ -114,6 +114,14 @@ async def stores(
     await private_engine.dispose()
 
 
+def _point_the_cli_at(stores: Stores, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command's settings name the throwaway test databases and roots, never the private eval ones (C1)."""
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", stores.database_url)
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", _fs(stores.main_root))
+    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_DATABASE_URL", stores.private_database_url)
+    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE", _fs(stores.private_root))
+
+
 async def _main_hosts(stores: Stores) -> list[str]:
     engine = create_async_engine(stores.database_url)
     async with engine.connect() as conn:
@@ -260,10 +268,7 @@ async def test_the_promote_command_reports_ids_and_counts_and_no_host(
 ) -> None:
     page = await stores.add(stores.fresh, "a.example.test", CHECKED)
     await stores.add(stores.fresh, "b.example.test", DRAFT)
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", stores.database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", _fs(stores.main_root))
-    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_DATABASE_URL", stores.private_database_url)
-    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE", _fs(stores.private_root))
+    _point_the_cli_at(stores, monkeypatch)
 
     # In a thread: the command runs its own event loop.
     await anyio.to_thread.run_sync(main, ["eval", "promote", "--from", "fresh", "--to", "dev"])
@@ -283,10 +288,7 @@ async def test_the_rotate_command_skips_a_host_with_fresh_pages_and_reports_no_h
     page = await stores.add(stores.hidden, "a.example.test", CHECKED)
     await stores.add(stores.hidden, "h.example.test", CHECKED)
     await stores.add(stores.fresh, "h.example.test", DRAFT)
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", stores.database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", _fs(stores.main_root))
-    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_DATABASE_URL", stores.private_database_url)
-    monkeypatch.setenv("CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE", _fs(stores.private_root))
+    _point_the_cli_at(stores, monkeypatch)
 
     await anyio.to_thread.run_sync(main, ["eval", "rotate-hidden", "--fraction", "0.99"])
 
