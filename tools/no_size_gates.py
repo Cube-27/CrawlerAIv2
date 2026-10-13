@@ -42,8 +42,8 @@ GATES = re.compile(
             r"(?<![\w-])[\"']?complexity[\"']?\s*:",
             # Oxlint categories that switch on max-* and complexity as a group: pedantic (max-depth, max-lines,
             # max-lines-per-function), style (max-params, max-statements), restriction (complexity).
-            r"(?<![\w-])[\"']?(?:pedantic|style|restriction)[\"']?\s*:",
-            r"(?:-[WD]|--warn|--deny)\s+(?:pedantic|style|restriction)\b",
+            r"(?<![\w-])[\"']?(?:pedantic|style|restriction)[\"']?\s*:\s*[\"']?(?:warn|error|deny)\b",
+            r"(?:-[WD]|--warn|--deny)[\s=]+(?:pedantic|style|restriction)\b",
             # Coverage thresholds: pytest-cov and coverage.py, c8 and nyc, Vitest, Jest.
             r"fail[-_]under",
             r"check-coverage",

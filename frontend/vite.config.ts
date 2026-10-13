@@ -16,10 +16,6 @@ export default defineConfig({
       typeAware: true,
       typeCheck: true,
     },
-    env: {
-      builtin: true,
-    },
-    ignorePatterns: ["dist"],
     overrides: [
       {
         files: ["**/*.{ts,tsx}"],
@@ -60,14 +56,12 @@ export default defineConfig({
           "no-nonoctal-decimal-escape": "error",
           "no-obj-calls": "off",
           "no-prototype-builtins": "error",
-          "no-redeclare": "off",
           "no-regex-spaces": "error",
           "no-self-assign": "error",
           "no-setter-return": "off",
           "no-shadow-restricted-names": "error",
           "no-sparse-arrays": "error",
           "no-this-before-super": "off",
-          "no-undef": "off",
           "no-unexpected-multiline": "error",
           "no-unreachable": "off",
           "no-unsafe-finally": "error",
@@ -88,12 +82,8 @@ export default defineConfig({
           "prefer-rest-params": "error",
           "prefer-spread": "error",
           "no-array-constructor": "error",
-          "no-implied-eval": "off",
           "no-unused-expressions": "error",
           "no-useless-constructor": "error",
-          "no-throw-literal": "off",
-          "prefer-promise-reject-errors": "off",
-          "require-await": "off",
           "typescript/await-thenable": "error",
           "typescript/ban-ts-comment": [
             "error",
@@ -271,7 +261,7 @@ export default defineConfig({
   fmt: {
     printWidth: 100,
     sortPackageJson: false,
-    ignorePatterns: ["dist", "pnpm-lock.yaml", "openapi.json", "src/api/schema.d.ts"],
+    ignorePatterns: ["pnpm-lock.yaml", "openapi.json", "src/api/schema.d.ts"],
   },
   plugins: [react(), tailwindcss()],
   test: {

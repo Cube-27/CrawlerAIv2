@@ -39,7 +39,7 @@ repos:
       # root-relative path matches no lint input and passes unchecked.
       - id: vite-plus
         name: vp check
-        entry: sh -c 'cd frontend && for f; do set -- "$@" "${f#frontend/}"; shift; done && exec node node_modules/vite-plus/bin/vp check --fix --no-error-on-unmatched-pattern "$@"' --
+        entry: sh -c 'cd frontend && for f; do set -- "$@" "${f#frontend/}"; shift; done && exec node node_modules/vite-plus/bin/vp check --fix "$@"' --
         language: system
         files: ^frontend/
         # Each type-aware process builds the whole TypeScript program, so one process beats parallel chunks.
