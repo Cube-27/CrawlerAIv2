@@ -1,0 +1,222 @@
+"""The extraction step of a page task (SPEC-05 §4.10, ARCHITECTURE §6, INV-27): the extraction, its candidates and
+the page's record, as resolution decided them."""
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+from sqlalchemy import insert, select
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from crawlerai.acquire.persist import store_capture
+from crawlerai.acquire.types import AttemptRecord, FetchResult
+from crawlerai.collect.og import OpenGraphCollector
+from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.core.capture import BlockClass
+from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.ids import uuid7
+from crawlerai.db.models import Candidate, Extraction, Job, Project, Record, Site, SiteId, SourceKind
+from crawlerai.db.queue import ClaimedTask, insert_claimed
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.records import entity_key
+from crawlerai.resolve.task import Stored, extract_task
+from crawlerai.schemas import registry
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.storage.fs import FsStore
+
+pytestmark = pytest.mark.anyio
+
+VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
+ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
+DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
+PAGE_URL = "https://shop.example.test/p/1"
+DOCUMENT = SchemaDocument(
+    name="synthetic_product",
+    version=1,
+    page_kind="detail",
+    fields={
+        "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
+        "price": FieldSpec(
+            type=FieldType.MONEY, description="d", required=True, schema_org="Offer.price+priceCurrency"
+        ),
+    },
+)
+
+
+def _product(name: str, url: str, *, offers: bool = True) -> dict[str, Any]:
+    node: dict[str, Any] = {"@context": "https://schema.org", "@type": "Product", "name": name, "url": url}
+    if offers:
+        node["offers"] = {"@type": "Offer", "price": "19.90", "priceCurrency": "EUR"}
+    return node
+
+
+def _page(*nodes: dict[str, Any]) -> str:
+    scripts = "".join(f'<script type="application/ld+json">{json.dumps(node)}</script>' for node in nodes)
+    return f"<html><head>{scripts}</head><body></body></html>"
+
+
+class _Setup:
+    def __init__(self, conn: AsyncConnection, tmp_path: Path) -> None:
+        self.conn = conn
+        self.store = FsStore(tmp_path)
+
+    async def prepare(self) -> tuple[SiteId, SchemaDef, ClaimedTask]:
+        project = select(Project.id).where(Project.name == "default").scalar_subquery()
+        site_id: SiteId = (
+            await self.conn.execute(
+                insert(Site).values(project_id=project, host="shop.example.test").returning(Site.id)
+            )
+        ).scalar_one()
+        schema = await registry.create(self.conn, DOCUMENT, "user")
+        job_id = (
+            await self.conn.execute(
+                insert(Job)
+                .values(project_id=project, kind="scrape", request={}, schema_id=schema.id, engine_version="e")
+                .returning(Job.id)
+            )
+        ).scalar_one()
+        task = await insert_claimed(self.conn, job_id, PAGE_URL, PAGE_URL, "detail", "test-worker")
+        return site_id, schema, task
+
+    async def run(self, body: str, *, block_class: BlockClass = "ok", caller_supplied: bool = True) -> Stored:
+        site_id, schema, task = await self.prepare()
+        raw = body.encode()
+        manifest = CaptureManifest(
+            capture_id=uuid7(),
+            url=PAGE_URL,
+            final_url=PAGE_URL,
+            fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+            method="http",
+            status_code=200,
+            block_class=block_class,
+            headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
+            timings_ms={},
+            html_sha256=sha256_hex(raw),
+            network_bodies=(),
+            fetch_policy={},
+            engine_version="0+cal.0",
+        )
+        bundle = CaptureBundle(manifest=manifest, body=raw, network=())
+        attempt = AttemptRecord(method="http", status=200, block_class=block_class, duration_ms=1)
+        fetched = FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
+        capture_id = await store_capture(self.conn, self.store, fetched, site_id)
+        self.site_id, self.schema = site_id, schema
+        return await extract_task(
+            self.conn,
+            task,
+            capture_id=capture_id,
+            site_id=site_id,
+            bundle=bundle,
+            schema=schema,
+            data=DATA,
+            role_c=None,
+            mode="adhoc",
+            caller_supplied=caller_supplied,
+        )
+
+    async def candidates(self, stored: Stored) -> list[tuple[Any, ...]]:
+        rows = await self.conn.execute(
+            select(
+                Candidate.field,
+                Candidate.source_kind,
+                Candidate.normalize_status,
+                Candidate.chosen,
+                Candidate.reject_reason,
+            )
+            .where(Candidate.extraction_id == stored.extraction_id)
+            .order_by(Candidate.field, Candidate.entity_ref)
+        )
+        return [tuple(row) for row in rows]
+
+
+@pytest.fixture
+def setup(conn: AsyncConnection, tmp_path: Path) -> _Setup:
+    return _Setup(conn, tmp_path)
+
+
+async def test_a_complete_page_stores_its_extraction_candidates_and_record(setup: _Setup) -> None:
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
+
+    assert stored.outcome == "extracted"
+    extraction = (
+        await setup.conn.execute(select(Extraction.__table__).where(Extraction.id == stored.extraction_id))
+    ).one()
+    assert (extraction.mode, extraction.llm_calls, extraction.config_version, extraction.engine_version) == (
+        "adhoc",
+        0,
+        None,
+        ENGINE_VERSION,
+    )
+    assert await setup.candidates(stored) == [
+        ("price", "jsonld", "ok", True, None),
+        ("title", "jsonld", "ok", True, None),
+    ]
+    record = (await setup.conn.execute(select(Record.__table__).where(Record.id == stored.record_id))).one()
+    assert record.data == {"title": "Widget One", "price": {"amount": "19.90", "currency": "EUR"}}
+    assert record.complete is True
+    assert (record.entity_key, record.schema_id, record.schema_version, record.mode) == (
+        entity_key(setup.site_id, PAGE_URL),
+        setup.schema.id,
+        1,
+        "adhoc",
+    )
+    assert record.field_meta["title"] == {
+        "status": "published",
+        "reason": None,
+        "evidence": "structured",
+        "confidence": None,
+        "calibrated": False,
+        "source_kind": "jsonld",
+        "locator": "jsonld:0:$['name']",
+        "derived_by": None,
+    }
+
+
+async def test_a_rejected_candidate_keeps_its_reason(setup: _Setup) -> None:
+    other = _product("Widget Two", "https://shop.example.test/p/2", offers=False)
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL), other))
+    assert ("title", "jsonld", "ok", False, "not_owned") in await setup.candidates(stored)
+    assert ("title", "jsonld", "ok", True, None) in await setup.candidates(stored)
+
+
+async def test_an_incomplete_caller_supplied_page_keeps_its_record(setup: _Setup) -> None:
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL, offers=False)))
+    assert stored.outcome == "partial"
+    record = (await setup.conn.execute(select(Record.__table__).where(Record.id == stored.record_id))).one()
+    assert (record.data, record.complete) == ({"title": "Widget One"}, False)
+    assert record.field_meta["price"]["status"] == "missing"
+
+
+async def test_an_incomplete_crawl_discovered_page_is_no_match_without_a_record(setup: _Setup) -> None:
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL, offers=False)), caller_supplied=False)
+    assert (stored.outcome, stored.record_id) == ("no_match", None)
+    assert await setup.conn.scalar(select(Record.id).where(Record.extraction_id == stored.extraction_id)) is None
+    assert await setup.candidates(stored) == [("title", "jsonld", "ok", True, None)]
+
+
+async def test_a_page_that_was_not_served_stores_an_extraction_and_nothing_else(setup: _Setup) -> None:
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL)), block_class="shell")
+    assert (stored.outcome, stored.record_id) == ("shell", None)
+    assert await setup.candidates(stored) == []
+
+
+async def test_the_extraction_keeps_the_collectors_diagnostics(setup: _Setup, monkeypatch: pytest.MonkeyPatch) -> None:
+    # SPEC-05 §4.14: a collector that raises is recorded on the extraction row, and the page still resolves.
+    def broken(*_args: object) -> None:
+        raise RuntimeError("collector bug")
+
+    monkeypatch.setattr(OpenGraphCollector, "collect", broken)
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
+    diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
+    assert diagnostics == ["OpenGraphCollector: RuntimeError: collector bug"]
+    assert stored.outcome == "extracted"
+
+
+async def test_an_extraction_without_diagnostics_stores_an_empty_list(setup: _Setup) -> None:
+    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
+    diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
+    assert diagnostics == []

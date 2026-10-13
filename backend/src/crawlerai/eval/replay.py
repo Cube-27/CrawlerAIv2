@@ -5,26 +5,33 @@
 split's recorded responses, so a replay reads nothing but the bundle, the page's config snapshot and the
 recordings: two replays of one engine version give byte-identical results.
 
-`Engine` is the seam for SPEC-05: its `replay_page` is the function the worker calls, with SPEC-03's signature; the
-engine holds its calibration, which `version` names (`core.engine_version`). SPEC-05's `ExtractionResult` and
-SPEC-04's `SchemaDef` replace `PageOutput` and `SchemaFields` (as in `metrics`).
+`Engine` is the seam to SPEC-05: its `replay_page` runs `resolve.pipeline.extract_page`, the function the worker
+runs, with SPEC-03's signature (`eval.engine`); the engine holds its calibration, which `version` names
+(`core.engine_version`). Its `ExtractionResult` is scored as the `PageOutput` that `metrics` reads.
 """
 
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
+from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import ExtractionMode, FieldStatus
 from crawlerai.eval.labels import from_pydantic, parse_labels
-from crawlerai.eval.metrics import EvalCase, PageOutput, ReplayFailed, SchemaFields
+from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.resolve.types import ExtractionResult, FieldSet
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
 
 
 class RecordingMissing(LookupError):
     """A replay asked for a response that was never recorded, and no provider may be called."""
+
+
+class RecordingUnreadable(ValueError):
+    """A recorded response that does not read back: not an `LLMResponse`, or its object is gone from the store."""
 
 
 class RecordedLLM:
@@ -40,9 +47,15 @@ class RecordedLLM:
 
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         key = request_hash(req)
-        recorded = await self._store.llm_cache_get(key)
+        try:
+            recorded = await self._store.llm_cache_get(key)
+        except ObjectNotFound as e:
+            raise RecordingUnreadable(f"recording {key}: its object is missing") from e
         if recorded is not None:
-            return LLMResponse.model_validate_json(recorded)
+            try:
+                return LLMResponse.model_validate_json(recorded)
+            except ValidationError as e:
+                raise RecordingUnreadable(f"recording {key} is not an LLMResponse: {e}") from e
         if self._live is None:
             raise RecordingMissing(f"no recorded response for {key}")
         response = await self._live.complete_json(req, check)
@@ -64,18 +77,18 @@ class Engine(Protocol):
     @property
     def version(self) -> str: ...
 
-    def schema(self, name: str) -> SchemaFields:
+    def schema(self, name: str) -> SchemaDef:
         """The schema named `name`; `LookupError` when there is none."""
         ...
 
     async def replay_page(
         self,
         bundle: CaptureBundle,
-        schema: SchemaFields,
+        schema: SchemaDef,
         config: ConfigSnapshot | None,
         llm: LLMClient,
         mode: ExtractionMode,
-    ) -> PageOutput: ...
+    ) -> ExtractionResult: ...
 
 
 async def replay_split(
@@ -84,9 +97,9 @@ async def replay_split(
     """Replay every `checked` page of the store's split (of schema `schema_filter`, if given), in page order.
 
     A page with its site's config snapshot replays in `config` mode with that config, any other cold (`adhoc`, no
-    config). A missing or corrupt bundle, an invalid snapshot or a missing recording drops the page as a
-    `ReplayFailed` case, which the `n_pages` gate catches (§4.11). A schema the engine doesn't know, or labels that
-    don't fit it, stop the run: those are setup errors, not pages to drop.
+    config). A missing or corrupt bundle, an invalid snapshot, or a recording that is missing or unreadable drops the
+    page as a `ReplayFailed` case, which the `n_pages` gate catches (§4.11). A schema the engine doesn't know, or
+    labels that don't fit it, stop the run: those are setup errors, not pages to drop.
     """
     llm = RecordedLLM(store, live)
     cases = []
@@ -99,7 +112,7 @@ async def replay_split(
             EvalCase(
                 page_id=str(page.id),
                 category=page.category,
-                schema_def=schema,
+                schema_def=schema_fields(schema),
                 labels=parse_labels(page.labels, schema.page_kind, schema.fields),
                 output=output,
                 config_status=config_status,
@@ -108,8 +121,37 @@ async def replay_split(
     return cases
 
 
+def schema_fields(schema: SchemaDef) -> SchemaFields:
+    """The parts of a schema that metrics read: its fields, required fields and required groups."""
+    return SchemaFields(
+        name=schema.name,
+        page_kind=schema.page_kind,
+        fields=schema.fields,
+        required=frozenset(name for name, spec in schema.fields.items() if spec.required),
+        required_groups=tuple(frozenset(group) for group in schema.required_groups),
+    )
+
+
+def page_output(result: ExtractionResult, block_class: BlockClass) -> PageOutput:
+    """What metrics score of an extraction: each field's status, value and evidence, and the page's LLM calls."""
+    return PageOutput(
+        block_class=block_class,
+        mode=result.mode,
+        llm_calls=len(result.llm_calls),
+        fields=_field_outputs(result.entity or {}),
+        rows=tuple(_field_outputs(row) for row in result.rows),
+    )
+
+
+def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
+    return {
+        name: FieldOutput(status=outcome.status, value=outcome.value, evidence=outcome.evidence)
+        for name, outcome in fields.items()
+    }
+
+
 async def _replay(
-    store: EvalStore, engine: Engine, llm: LLMClient, page: EvalPageRow, schema: SchemaFields
+    store: EvalStore, engine: Engine, llm: LLMClient, page: EvalPageRow, schema: SchemaDef
 ) -> tuple[PageOutput | ReplayFailed, dict[str, FieldStatus]]:
     try:
         bundle = await store.get_bundle(page.capture_id)
@@ -124,7 +166,9 @@ async def _replay(
             return ReplayFailed(error=f"invalid config_snapshot: {reasons}"), {}
     mode: ExtractionMode = "adhoc" if config is None else "config"
     try:
-        output = await engine.replay_page(bundle, schema, config, llm, mode)
+        result = await engine.replay_page(bundle, schema, config, llm, mode)
     except RecordingMissing as e:
         return ReplayFailed(error=f"recording missing: {e}"), {}
-    return output, {} if config is None else config.field_status
+    except RecordingUnreadable as e:
+        return ReplayFailed(error=f"recording unreadable: {e}"), {}
+    return page_output(result, bundle.manifest.block_class), {} if config is None else config.field_status

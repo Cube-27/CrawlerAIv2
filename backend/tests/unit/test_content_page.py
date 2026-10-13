@@ -1,13 +1,11 @@
 """`ParsedPage` (SPEC-05 §4.1, ARCHITECTURE §8 "Parse once"): one decode and at most one parse per parser per
 capture (INV-26); the script blocks; the lazy lxml tree."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from lxml import html as lxml_html
-from selectolax import lexbor
 
 from crawlerai.content.html import cleaned_html
 from crawlerai.content.links import links
@@ -23,6 +21,9 @@ from crawlerai.storage.capture_bundle import (
     network_file,
     sha256_hex,
 )
+
+# The `parses` fixture (tests/unit/conftest.py): parser constructions by name, each with `calls` and `inputs`.
+Parses = Mapping[str, Any]
 
 DOC = """<!doctype html><html><head>
 <script type="application/ld+json; charset=utf-8">{"@type": "Product", "name": "A &amp; B"}</script>
@@ -120,31 +121,7 @@ def test_the_lxml_tree_accepts_an_xml_declaration_and_an_empty_document(html: st
     assert ParsedPage(html).lxml_tree.text_content() == expected
 
 
-class _Counter:
-    def __init__(self) -> None:
-        self.inputs: list[object] = []
-
-    @property
-    def calls(self) -> int:
-        return len(self.inputs)
-
-    def wrap(self, constructor: Callable[..., Any]) -> Callable[..., Any]:
-        def counted(*args: Any, **kwargs: Any) -> Any:
-            self.inputs.append(args[0] if args else None)
-            return constructor(*args, **kwargs)
-
-        return counted
-
-
-@pytest.fixture
-def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, _Counter]]:
-    counters = {"selectolax": _Counter(), "lxml": _Counter()}
-    monkeypatch.setattr(lexbor, "LexborHTMLParser", counters["selectolax"].wrap(lexbor.LexborHTMLParser))
-    monkeypatch.setattr(lxml_html, "document_fromstring", counters["lxml"].wrap(lxml_html.document_fromstring))
-    yield counters
-
-
-def test_every_consumer_reads_one_parse_per_parser(parses: dict[str, _Counter]) -> None:
+def test_every_consumer_reads_one_parse_per_parser(parses: Parses) -> None:
     # INV-26: each capture body is parsed at most once per parser, however many consumers read the page.
     page = ParsedPage.of(_bundle(DOC.encode(), (("Content-Type", "text/html"),)))
     for _ in range(2):
@@ -162,7 +139,7 @@ def _holds_head_script(parser_input: object) -> bool:
     return isinstance(text, str) and "application/ld+json" in text
 
 
-def test_the_content_formats_read_one_parse_per_parser(parses: dict[str, _Counter]) -> None:
+def test_the_content_formats_read_one_parse_per_parser(parses: Parses) -> None:
     # INV-26 across SPEC-07 §4.5's formats: they read the page's trees, and none parses the body again.
     # trafilatura's readability fallback parses readability's own output, a new document with the main content
     # only, so a parse of the body is one whose input still holds the `<head>`'s JSON-LD block.
@@ -179,7 +156,7 @@ def test_the_content_formats_read_one_parse_per_parser(parses: dict[str, _Counte
     assert body_parses == {"selectolax": 1, "lxml": 1}
 
 
-def test_lxml_parses_only_when_a_consumer_asks(parses: dict[str, _Counter]) -> None:
+def test_lxml_parses_only_when_a_consumer_asks(parses: Parses) -> None:
     page = ParsedPage(DOC)
     assert page.visible_values.visible("world")
     assert len(page.scripts) == 3
