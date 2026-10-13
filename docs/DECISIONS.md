@@ -926,3 +926,80 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Allow partial labels at any status.
 - Why: §4.6 scores every field of a checked page.
 - Reversible: yes
+
+### D-0169 — Private DB migrations: one Alembic env, two revision chains
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `alembic.ini` gets a `[private]` section with the same `env.py` and `version_locations = migrations/private_versions`; `env.py` uses `PrivateBase.metadata` and `CRAWLERAI_EVAL_PRIVATE_DATABASE_URL` (`EvalPrivateDatabaseSettings`) for it. Private revisions are `p0001`, ….
+- Alternatives: A second `migrations_private/` env; one chain with conditional tables.
+- Why: The private DDL evolves on its own, and the custodian runs it on their own machine.
+- Reversible: yes
+
+### D-0170 — Main eval tables hold dev only; private ones hold hidden/fresh only
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `CHECK split = 'dev'` on main `eval_page`/`eval_run`; `CHECK split IN ('hidden','fresh')` on the private tables.
+- Alternatives: A free `split` column guarded only by the store.
+- Why: Makes INV-01 structural for anything writing to the main DB.
+- Reversible: yes
+
+### D-0171 — `eval_capture` replaces `site_id` with `host` and `category`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `eval_capture` copies the `capture` columns without `site_id` or `expires_at`, and adds `split`.
+- Alternatives: A private `site` table.
+- Why: C1: a hidden host must not enter the main `site` table; eval captures never expire.
+- Reversible: yes
+
+### D-0172 — `eval_page.schema_name` plumbing
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: Both DBs have `schema_id` and `schema_name`; in the main DB the pair references `schema_def(id, name)` (new `uq_schema_def_id_name`); in the private DB it is unchecked.
+- Alternatives: The dev store joins `schema_def` while the private DB stores a name.
+- Why: `list_pages(schema_name)` works in both stores; the private DB has no `schema_def`.
+- Reversible: yes
+
+### D-0173 — `eval_run.git_sha` and `latest_run(sha)`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `eval_run` gets `git_sha` and `created_at`; `latest_run(None)` returns the newest run of the split, `latest_run(sha)` the newest of that commit.
+- Alternatives: Parse the sha out of `engine_version`.
+- Why: SPEC-03 §4.8 baseline lookup; deciding which commits are on `main` is the gate's job (PR 6).
+- Reversible: yes
+
+### D-0174 — LLM cache layout
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: Values are objects: dev at `eval/dev/llm/{key}.json`, private at `llm/{key}.json` (shared by hidden and fresh). In the private store an `eval_llm_cache` row, written after the object, makes a key a hit; the dev store has no table. Keys are lowercase hex sha256.
+- Alternatives: Bytes in a table.
+- Why: Follows SPEC-03 §4.2's object layout and keeps the `eval_llm_cache` table the row asks for.
+- Reversible: yes
+
+### D-0175 — Two-pass labeling rule in the DB
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `CHECK (checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler))`; a labeler pass clears `checker`.
+- Alternatives: Enforce only in the store or the API.
+- Why: §16.2 requires two different people, and a new labeler pass invalidates an earlier check.
+- Reversible: yes
+
+### D-0176 — Dev pages must reference a dev eval capture
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: The dev store accepts only a `capture` with `object_key = eval/dev/{id}.bundle.zst` and `expires_at IS NULL`; otherwise `EvalNotFound`. `eval_page.capture_id` references `capture` with no cascade.
+- Alternatives: A trigger; `expires_at IS NULL` alone (accepts non-expiring production captures).
+- Why: SPEC-03 §4.2; an expiring capture would make `expire_captures` fail on the foreign key.
+- Reversible: yes
+
+### D-0177 — `get_store` refuses a private config that isn't separate
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `PrivateStoreNotSeparate` when the private DB URL names the main database, or one object root is or contains the other.
+- Alternatives: No check.
+- Why: INV-01 ("separate DB + object prefixes"); SPEC-01 §5.
+- Reversible: yes
+
+### D-0178 — Private store tests use a throwaway `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: Tests use a throwaway database named by this variable (skipped without it); CI creates `crawlerai_private_test`, `make check` creates `crawlerai_private_check`, both owned by `app`.
+- Alternatives: Give `custodian` a login in CI.
+- Why: C1 and D-0067: no custodian credential exists anywhere agents run.
+- Reversible: yes
+
+### D-0179 — `put_capture` reads `duration_ms` from `timings_ms["total"]`
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 1 (#28) · Status: decided
+- Decision: `put_capture` takes only a bundle; the fetchers record the whole fetch as `total`.
+- Alternatives: Take a `FetchResult`.
+- Why: Keeps the SPEC-03 §4.2 signature.
+- Reversible: yes

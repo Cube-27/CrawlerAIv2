@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-12): every L0 row (SPEC-00, SPEC-01, SPEC-02 PRs 1–5, SPEC-03) is `done`, and CI on `main` is green.
-- Next: SPEC-02 PR 4 (#26, fixing review); SPEC-03 PR 1 (#28, in review); SPEC-02 PR 5; SPEC-03 PRs 3–11.
+- Next: SPEC-02 PR 4 (#26, re-review); SPEC-03 PR 5 (in progress); SPEC-02 PR 5; SPEC-03 PRs 3, 4, 6–11.
 - Follow-ups from #27: SPEC-04 PR 9 should revisit `_multiset_equal`'s greedy matching once location equality (not transitive) lands, using bipartite matching or fixing the comment; SPEC-03 PR 5 decides whether an empty `labeled`/`checked` listing scores.
 - Follow-ups for SPEC-02 PR 4 (from #23): `crawlerai fetch` should stamp captures with `ENGINE_VERSION` instead of `version("crawlerai")` (D-0143); in `tests/unit/test_engine_version.py:46` build the tree before `pytest.raises` (Sonar S5778); drop the deprecated `Result.tuples()` in `tests/db/test_check_names.py`.
 - Open (SPEC-04 PR 7 / SPEC-05): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Decide how runtime data ships (package data or a settings path) together with GeoNames data and calibration; the build must write `VERSION`.
@@ -90,7 +90,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Private database, roles, `EvalStore` protocol + both stores | todo | |
+| 1 | Private database, roles, `EvalStore` protocol + both stores | done (#28) | Private chain `p0001`; agents never hold custodian credentials (D-0178). |
 | 2 | Label model + validation + equality | done (#27) | `equal` hooks are exact-equality stubs until SPEC-04 PR 9. |
 | 3 | `eval capture` and `import-sites` CLI | todo | |
 | 4 | Replay harness + RecordedLLM + determinism test | todo | |
