@@ -63,7 +63,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 6 | import-linter contracts (C8) | done (#6) | |
 | 7 | License deny-list + SBOM | done (#7) | |
 | 8 | Protected eval job placeholder + hidden-host scan mode | done (#8) | |
-| 9 | Pre-commit hooks and `make check` | done (#12) | Windows eslint hook timing: D-0110 (needs-owner, not blocking). |
+| 9 | Pre-commit hooks and `make check` | done (#12) | Windows eslint hook timing: D-0110, resolved by D-0227. |
 | 10 | Root documents | done (#10) | |
 
 ## [SPEC-01 — Persistence, job queue and capture storage](../specs/SPEC-01-persistence-queue-storage.md)
@@ -108,7 +108,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 9 | Labeling screen | todo | |
 | 10 | Promote/rotate commands | done (#34) | `rotate_hidden` skips hosts that also have fresh pages (#37, D-0225). |
 | 11 | `calibrate` / `fit-precedence` entry points (write files; logic lands in SPEC-05) | done (#39) | Interim fits until SPEC-05 PR 13 (D-0229). |
-| 12 | Complementary suppression for hidden/fresh aggregates | todo | Owner answer D-0234 (ARCHITECTURE rev 7 §16.3). |
+| 12 | Complementary suppression for hidden/fresh aggregates | todo | Owner answer D-0234 (ARCHITECTURE rev 7 §16.3). Cover every group that sums to a reported total (including `by_category` if it does), and add an INVARIANTS row. |
 
 ## [SPEC-04 — Schemas as data and type normalization](../specs/SPEC-04-schemas-and-normalization.md)
 
