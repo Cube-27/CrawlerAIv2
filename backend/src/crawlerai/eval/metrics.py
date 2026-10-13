@@ -176,9 +176,8 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
             by_field[f"{case.schema_def.name}|{j.field}"].append(j)
             if j.evidence is not None:
                 by_bucket[f"{type_}|{j.evidence}"].append(j)
-                status = case.config_status.get(j.field)
-                if j.evidence.startswith("config_") and status is not None:
-                    by_config[f"{type_}|{status}"].append(j)
+            if (status := _config_status(case, j)) is not None:
+                by_config[f"{type_}|{status}"].append(j)
 
     pages_by_category: defaultdict[str, list[tuple[EvalCase, PageOutput, list[Judgment]]]] = defaultdict(list)
     pages_by_mode: defaultdict[str, list[PageOutput]] = defaultdict(list)
@@ -248,6 +247,13 @@ def generalization_gap(dev: Report, fresh: Report) -> dict[str, float]:
     return gap
 
 
+def _config_status(case: EvalCase, judgment: Judgment) -> ConfigFieldStatus | None:
+    # Fields published from a config are measured per the field's status in the page's config snapshot (§4.5).
+    if judgment.evidence is None or not judgment.evidence.startswith("config_"):
+        return None
+    return case.config_status.get(judgment.field)
+
+
 def _detail(case: EvalCase, error: str | None, zero_touch: bool | None, judgments: tuple[Judgment, ...]) -> PageDetail:
     return PageDetail(
         page_id=case.page_id,
@@ -273,21 +279,24 @@ def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput) -> Ite
             yield _judge(name, f"row[{i}]", label, out_row.get(name), schema.fields[name])
     matched = set(matches.values())
     for j, out_row in enumerate(output.rows):
-        if j in matched:
-            continue
-        # §4.6: an engine row that matches no label row is FP for every published field.
-        for name, out in sorted(out_row.items()):
-            if out.status == "published" and name in schema.fields:
-                yield Judgment(
-                    field=name,
-                    entity=f"extra[{j}]",
-                    cell="FP",
-                    on_absent=False,
-                    wrong_product=False,
-                    evidence=out.evidence,
-                    label_value=None,
-                    output_value=out.value,
-                )
+        if j not in matched:
+            yield from _unmatched_row(j, out_row, schema)
+
+
+def _unmatched_row(j: int, row: Mapping[str, FieldOutput], schema: SchemaFields) -> Iterator[Judgment]:
+    # §4.6: an engine row that matches no label row is FP for every published field.
+    for name, out in sorted(row.items()):
+        if out.status == "published" and name in schema.fields:
+            yield Judgment(
+                field=name,
+                entity=f"extra[{j}]",
+                cell="FP",
+                on_absent=False,
+                wrong_product=False,
+                evidence=out.evidence,
+                label_value=None,
+                output_value=out.value,
+            )
 
 
 def _match_rows(labels: Labels, rows: Sequence[Mapping[str, FieldOutput]]) -> dict[int, int]:

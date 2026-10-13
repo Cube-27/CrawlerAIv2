@@ -200,14 +200,11 @@ def test_failed_replay_is_dropped_but_listed_on_dev() -> None:
 
 
 def test_labels_must_fit_the_schema() -> None:
+    partial = labels({"price": label(EUR_19)})
+    output = PageOutput(block_class="ok", mode="adhoc")
+
     with pytest.raises(InvalidLabels, match="brand: not labeled"):
-        EvalCase(
-            page_id="p1",
-            category="mixed",
-            schema_def=DETAIL,
-            labels=labels({"price": label(EUR_19)}),
-            output=PageOutput(block_class="ok", mode="adhoc"),
-        )
+        EvalCase(page_id="p1", category="mixed", schema_def=DETAIL, labels=partial, output=output)
 
 
 def listing_case(
@@ -260,7 +257,8 @@ def test_unmatched_rows_are_fp_and_fn() -> None:
         ("extra[0]", "title", "FP"),
         ("extra[0]", "url", "FP"),
     ]
-    assert r.pages is not None and r.pages[0].zero_touch is False
+    assert r.pages is not None
+    assert r.pages[0].zero_touch is False
 
 
 def test_empty_checked_listing_scores() -> None:
