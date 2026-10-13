@@ -281,8 +281,12 @@ async def test_an_llm_cache_key_must_be_a_sha256(case: Case) -> None:
         await case.store.llm_cache_put("../escape", b"{}")
 
 
-async def test_a_dev_page_cannot_reference_a_production_capture(database_url: str, tmp_path: Path) -> None:
-    """Production captures expire (SPEC-01 §4.4); a dev eval page needs one that never does."""
+@pytest.mark.parametrize("expires_at", [datetime(2026, 10, 31, tzinfo=UTC), None])
+async def test_a_dev_page_cannot_reference_a_production_capture(
+    database_url: str, tmp_path: Path, expires_at: datetime | None
+) -> None:
+    """A dev eval page needs a dev eval capture: under `eval/dev/`, never expiring (SPEC-01 §4.4). A production
+    capture is refused whether or not it expires (`store_capture` can write one without an expiry)."""
     engine = create_async_engine(database_url)
     store = DevEvalStore(engine, FsStore(tmp_path))
     capture_id = CaptureId(uuid7())
@@ -304,7 +308,7 @@ async def test_a_dev_page_cannot_reference_a_production_capture(database_url: st
                     block_class="ok",
                     object_key=f"captures/2026/10/{capture_id}.bundle.zst",
                     html_sha256="0" * 64,
-                    expires_at=datetime(2026, 10, 31, tzinfo=UTC),
+                    expires_at=expires_at,
                     size_bytes=1,
                     duration_ms=1,
                 )

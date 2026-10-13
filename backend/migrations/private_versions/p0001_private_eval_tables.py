@@ -7,6 +7,7 @@ Create Date: 2026-10-13
 """
 
 from collections.abc import Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -18,85 +19,86 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# Literal like every revision, written compactly: most columns are NOT NULL, and CHECK names are final (`op.f`).
+_CATEGORY = "category IN ('platform_store', 'custom_store', 'api_backed', 'job_board', 'mixed')"
+_SPLIT = "split IN ('hidden', 'fresh')"
+
+
+def _col(name: str, type_: sa.types.TypeEngine[Any], **kw: Any) -> sa.Column[Any]:
+    return sa.Column(name, type_, nullable=kw.pop("nullable", False), **kw)
+
+
+def _check(table: str, name: str, expression: str) -> sa.CheckConstraint:
+    return sa.CheckConstraint(expression, name=op.f(f"ck_{table}_{name}"))
+
+
+def _jsonb(name: str, default: str | None = None, *, nullable: bool = False) -> sa.Column[Any]:
+    server_default = sa.text(default) if default else None
+    return _col(name, postgresql.JSONB(), server_default=server_default, nullable=nullable)
+
+
+def _created_at() -> sa.Column[Any]:
+    return _col("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"))
+
+
 def upgrade() -> None:
     op.create_table(
         "eval_capture",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("split", sa.Text(), nullable=False),
-        sa.Column("host", sa.Text(), nullable=False),
-        sa.Column("category", sa.Text(), nullable=False),
-        sa.Column("url", sa.Text(), nullable=False),
-        sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("method", sa.Text(), nullable=False),
-        sa.Column("status_code", sa.Integer(), nullable=False),
-        sa.Column("final_url", sa.Text(), nullable=False),
-        sa.Column("block_class", sa.Text(), nullable=False),
-        sa.Column("object_key", sa.Text(), nullable=False),
-        sa.Column("html_sha256", sa.Text(), nullable=False),
-        sa.Column("size_bytes", sa.BigInteger(), nullable=False),
-        sa.Column("duration_ms", sa.Integer(), nullable=False),
-        sa.Column("fetch_policy", postgresql.JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False),
-        sa.CheckConstraint(
-            "block_class IN ('ok', 'blocked', 'shell', 'not_found', 'error')", name=op.f("ck_eval_capture_block_class")
-        ),
-        sa.CheckConstraint(
-            "category IN ('platform_store', 'custom_store', 'api_backed', 'job_board', 'mixed')",
-            name=op.f("ck_eval_capture_category"),
-        ),
-        sa.CheckConstraint("method IN ('http', 'browser', 'api')", name=op.f("ck_eval_capture_method")),
-        sa.CheckConstraint("split IN ('hidden', 'fresh')", name=op.f("ck_eval_capture_split")),
-        sa.CheckConstraint("duration_ms >= 0", name=op.f("ck_eval_capture_duration_ms_non_negative")),
-        sa.CheckConstraint("host = lower(host)", name=op.f("ck_eval_capture_host_lowercase")),
-        sa.CheckConstraint("size_bytes >= 0", name=op.f("ck_eval_capture_size_bytes_non_negative")),
+        _col("id", sa.Uuid()),
+        *(_col(name, sa.Text()) for name in ("split", "host", "category", "url")),
+        _col("fetched_at", sa.DateTime(timezone=True)),
+        _col("method", sa.Text()),
+        _col("status_code", sa.Integer()),
+        *(_col(name, sa.Text()) for name in ("final_url", "block_class", "object_key", "html_sha256")),
+        _col("size_bytes", sa.BigInteger()),
+        _col("duration_ms", sa.Integer()),
+        _jsonb("fetch_policy", "'{}'::jsonb"),
+        _check("eval_capture", "block_class", "block_class IN ('ok', 'blocked', 'shell', 'not_found', 'error')"),
+        _check("eval_capture", "category", _CATEGORY),
+        _check("eval_capture", "method", "method IN ('http', 'browser', 'api')"),
+        _check("eval_capture", "split", _SPLIT),
+        _check("eval_capture", "duration_ms_non_negative", "duration_ms >= 0"),
+        _check("eval_capture", "host_lowercase", "host = lower(host)"),
+        _check("eval_capture", "size_bytes_non_negative", "size_bytes >= 0"),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_eval_capture")),
         sa.UniqueConstraint("id", "split", name=op.f("uq_eval_capture_id_split")),
         sa.UniqueConstraint("object_key", name=op.f("uq_eval_capture_object_key")),
     )
     op.create_table(
         "eval_llm_cache",
-        sa.Column("key", sa.Text(), nullable=False),
-        sa.Column("object_key", sa.Text(), nullable=False),
-        sa.Column("size_bytes", sa.BigInteger(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.CheckConstraint("key ~ '^[0-9a-f]{64}$'", name=op.f("ck_eval_llm_cache_key_sha256")),
-        sa.CheckConstraint("size_bytes >= 0", name=op.f("ck_eval_llm_cache_size_bytes_non_negative")),
+        _col("key", sa.Text()),
+        _col("object_key", sa.Text()),
+        _col("size_bytes", sa.BigInteger()),
+        _created_at(),
+        _check("eval_llm_cache", "key_sha256", "key ~ '^[0-9a-f]{64}$'"),
+        _check("eval_llm_cache", "size_bytes_non_negative", "size_bytes >= 0"),
         sa.PrimaryKeyConstraint("key", name=op.f("pk_eval_llm_cache")),
         sa.UniqueConstraint("object_key", name=op.f("uq_eval_llm_cache_object_key")),
     )
     op.create_table(
         "eval_run",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("split", sa.Text(), nullable=False),
-        sa.Column("engine_version", sa.Text(), nullable=False),
-        sa.Column("git_sha", sa.Text(), nullable=False),
-        sa.Column("metrics", postgresql.JSONB(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.CheckConstraint("split IN ('hidden', 'fresh')", name=op.f("ck_eval_run_split")),
+        _col("id", sa.Uuid()),
+        *(_col(name, sa.Text()) for name in ("split", "engine_version", "git_sha")),
+        _jsonb("metrics"),
+        _created_at(),
+        _check("eval_run", "split", _SPLIT),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_eval_run")),
     )
     op.create_table(
         "eval_page",
-        sa.Column("capture_id", sa.Uuid(), nullable=False),
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("split", sa.Text(), nullable=False),
-        sa.Column("schema_id", sa.Uuid(), nullable=False),
-        sa.Column("schema_name", sa.Text(), nullable=False),
-        sa.Column("page_kind", sa.Text(), nullable=False),
-        sa.Column("category", sa.Text(), nullable=False),
-        sa.Column("labels", postgresql.JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False),
-        sa.Column("labeler", sa.Text(), nullable=True),
-        sa.Column("checker", sa.Text(), nullable=True),
-        sa.Column("config_snapshot", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.CheckConstraint(
-            "category IN ('platform_store', 'custom_store', 'api_backed', 'job_board', 'mixed')",
-            name=op.f("ck_eval_page_category"),
-        ),
-        sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_eval_page_page_kind")),
-        sa.CheckConstraint("split IN ('hidden', 'fresh')", name=op.f("ck_eval_page_split")),
-        sa.CheckConstraint(
-            "checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler)", name=op.f("ck_eval_page_two_people")
-        ),
+        _col("capture_id", sa.Uuid()),
+        _col("id", sa.Uuid()),
+        _col("split", sa.Text()),
+        _col("schema_id", sa.Uuid()),
+        *(_col(name, sa.Text()) for name in ("schema_name", "page_kind", "category")),
+        _jsonb("labels", "'{}'::jsonb"),
+        *(_col(name, sa.Text(), nullable=True) for name in ("labeler", "checker")),
+        _jsonb("config_snapshot", nullable=True),
+        _created_at(),
+        _check("eval_page", "category", _CATEGORY),
+        _check("eval_page", "page_kind", "page_kind IN ('detail', 'listing')"),
+        _check("eval_page", "split", _SPLIT),
+        _check("eval_page", "two_people", "checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler)"),
         sa.ForeignKeyConstraint(
             ["capture_id", "split"],
             ["eval_capture.id", "eval_capture.split"],

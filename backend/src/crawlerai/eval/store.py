@@ -37,6 +37,7 @@ from crawlerai.db.models import (
     Split,
 )
 from crawlerai.db.private_models import EvalCapture, EvalLlmCache, PrivateBase, PrivateEvalPage, PrivateEvalRun
+from crawlerai.eval.labels import LabelStatus
 from crawlerai.storage import open_store
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import (
@@ -48,9 +49,8 @@ from crawlerai.storage.capture_bundle import (
     private_eval_capture_key,
 )
 
-# The label document of SPEC-03 §4.3, stored as given; SPEC-03 PR 2 adds its model and validation.
+# The label document of SPEC-03 §4.3, stored as given: callers validate it first (`crawlerai.eval.labels`).
 Labels = dict[str, JsonValue]
-LabelStatus = Literal["draft", "labeled", "checked"]
 LabelPass = Literal["labeler", "checker"]
 
 
@@ -313,8 +313,12 @@ class DevEvalStore(_SqlEvalStore):
         super().__init__("dev", engine, objects)
 
     async def _capture_key(self, conn: AsyncConnection, capture_id: CaptureId) -> str | None:
-        # A dev eval capture never expires (SPEC-01 §4.4); a production capture is not an eval capture.
-        query = select(Capture.object_key).where(Capture.id == capture_id, Capture.expires_at.is_(None))
+        # A dev eval capture is stored under `eval/dev/` and never expires (SPEC-01 §4.4). A production capture,
+        # even one written without an expiry, is not an eval capture.
+        key = dev_eval_capture_key(capture_id)
+        query = select(Capture.object_key).where(
+            Capture.id == capture_id, Capture.object_key == key, Capture.expires_at.is_(None)
+        )
         return (await conn.execute(query)).scalar_one_or_none()
 
     async def put_capture(self, bundle: CaptureBundle, category: EvalCategory) -> CaptureId:
