@@ -12,14 +12,12 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.schema_org_map import parse_path
-from crawlerai.normalize.base import Context, Invalid, Ok
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
+from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
 from crawlerai.resolve.preference import Chosen, Preference, Resolver, Unpublished
 from crawlerai.resolve.types import Derivation
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-
-# The url normalizer's decline for a relative reference with no base URL (SPEC-04 §4.4).
-_RELATIVE = Invalid("relative_without_base")
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +69,7 @@ def absolutize(spec: FieldSpec, candidates: Sequence[Candidate], resolver: Resol
     pairs = [
         (candidate.model_copy(update={"normalized": normalize(candidate.raw, spec, ctx)}), candidate)
         for candidate in candidates
-        if candidate.normalized == _RELATIVE
+        if candidate.normalized == RELATIVE_WITHOUT_BASE
     ]
     preference = resolver.prefer_field(spec, [resolved for resolved, _ in pairs])
     if not isinstance(preference, Chosen) or not isinstance(preference.chosen.normalized, Ok):

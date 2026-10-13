@@ -17,7 +17,9 @@ from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.preference import (
+    PRECEDENCE_TYPES,
     Chosen,
+    Orders,
     PageFacts,
     Resolver,
     Unpublished,
@@ -29,7 +31,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
-ORDERS = {t: ORDER for t in (FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL)}
+ORDERS = {t: ORDER for t in PRECEDENCE_TYPES}
 
 PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
 OFFER_A = Entity(id="jsonld:0:$['offers'][0]", kind="Offer", urls=(), parent=PRODUCT.id, via="offers")
@@ -96,12 +98,13 @@ def _resolver(
     request_url: str = PAGE_URL,
     shown: tuple[str, ...] = (),
     entities: tuple[Entity, ...] = ENTITIES,
+    orders: Orders = ORDERS,
 ) -> Resolver:
     return Resolver(
         graph=EntityGraph.of(entities, VOCABULARY),
         target=target,
         page=PageFacts.of(request_url, lambda value: value in shown),
-        orders=ORDERS,
+        orders=orders,
     )
 
 
@@ -194,12 +197,7 @@ def test_the_first_ranked_source_kind_wins_and_lower_ones_that_disagree_are_reje
 
 
 def test_the_order_is_the_types_own() -> None:
-    resolver = Resolver(
-        graph=EntityGraph.of(ENTITIES, VOCABULARY),
-        target=PRODUCT,
-        page=PageFacts.of(PAGE_URL, lambda _: False),
-        orders={**ORDERS, FieldType.TEXT: ("og", "jsonld")},
-    )
+    resolver = _resolver(orders={**ORDERS, FieldType.TEXT: ("og", "jsonld")})
     og = _candidate("title", "Lamp, the shop", PAGE, "og")
     jsonld = _candidate("title", "Lamp")
 

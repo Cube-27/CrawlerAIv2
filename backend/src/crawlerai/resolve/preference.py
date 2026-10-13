@@ -20,6 +20,7 @@ import yaml
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_path
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
@@ -32,7 +33,7 @@ PRECEDENCE_FILE = "source_precedence.yaml"
 # ARCHITECTURE §10: the types whose candidates rank by source kind; every other type publishes only on agreement.
 PRECEDENCE_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
 # What `crawlerai eval fit-precedence` stamps on the file (INV-02); every other key names a field type.
-_STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
+STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
 _STAGES = ("invalid", "ambiguous", "not_owned", "url_param")
@@ -172,10 +173,16 @@ class Resolver:
         if not _all_agree([c for c in kept if c.source_kind == kind], spec):
             return _all_rejected("conflict", "disagree", kept, rejected)
         chosen = next(c for c in choosable if c.source_kind == kind)
-        others = [c for c in kept if c is not chosen]
-        agreeing = tuple(c for c in others if _equal(c, chosen, spec))
-        lower = [(c, "precedence") for c in others if not _equal(c, chosen, spec)]
-        return Chosen(chosen, agreeing, (*rejected, *lower))
+        agreeing: list[Candidate] = []
+        lower: list[Rejection] = []
+        for c in kept:
+            if c is chosen:
+                continue
+            if _equal(c, chosen, spec):
+                agreeing.append(c)
+            else:
+                lower.append((c, "precedence"))
+        return Chosen(chosen, tuple(agreeing), (*rejected, *lower))
 
 
 def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
@@ -229,16 +236,7 @@ def _value(candidate: Candidate) -> JsonValue:
 
 def _scalars(raw: Raw) -> Iterator[str]:
     """The raw value's strings and numbers as text: what could have been copied from a query parameter."""
-    if isinstance(raw, str):
-        yield raw
-    elif isinstance(raw, int | float) and not isinstance(raw, bool):
-        yield json.dumps(raw)
-    elif isinstance(raw, list):
-        for item in raw:
-            yield from _scalars(item)
-    elif isinstance(raw, dict):
-        for item in raw.values():
-            yield from _scalars(item)
+    return (value if isinstance(value, str) else json.dumps(value) for _, value in scalars(raw))
 
 
 def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
@@ -265,7 +263,7 @@ def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
         raise ValueError(f"{PRECEDENCE_FILE} is not a mapping")
     orders: dict[str, tuple[SourceKind, ...]] = {}
     for type_, order in document.items():
-        if type_ in _STAMP:
+        if type_ in STAMP:
             continue
         if not isinstance(order, list) or not all(isinstance(kind, str) for kind in order):
             raise ValueError(f"{PRECEDENCE_FILE}: {type_} is not a list of source kinds")

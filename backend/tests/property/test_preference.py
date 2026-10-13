@@ -15,13 +15,13 @@ from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.resolve.derive import Derived, fill
 from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.resolve.preference import Chosen, PageFacts, Preference, Resolver, Unpublished
+from crawlerai.resolve.preference import PRECEDENCE_TYPES, Chosen, PageFacts, Preference, Resolver, Unpublished
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
-ORDERS = {t: ORDER for t in (FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL)}
+ORDERS = {t: ORDER for t in PRECEDENCE_TYPES}
 PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
 OFFERS = tuple(
     Entity(id=f"jsonld:0:$['offers'][{i}]", kind="Offer", urls=(), parent=PRODUCT.id, via="offers") for i in range(3)

@@ -15,6 +15,7 @@ from crawlerai.cli import main
 from crawlerai.db.models import EvalRunId, Split
 from crawlerai.eval.calibrate import (
     NotDev,
+    Precedence,
     PrecedenceMissing,
     calibrate,
     fit_precedence,
@@ -24,6 +25,7 @@ from crawlerai.eval.calibrate import (
 )
 from crawlerai.eval.metrics import PrecisionMetrics, Report, Suppressed
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.resolve.preference import STAMP
 
 RUN_ID = EvalRunId(uuid.UUID("01900000-0000-7000-8000-000000000001"))
 SHA = "a" * 40
@@ -174,3 +176,8 @@ def test_the_commands_exit_non_zero_on_a_private_split_without_opening_a_store(
 
     assert exit_.value.code == 2
     assert f"refusing the {split} split" in capsys.readouterr().err
+
+
+def test_the_precedence_reader_skips_exactly_the_stamp_the_writer_adds() -> None:
+    # `resolve.preference` reads the file and cannot import eval, so the two lists are checked here.
+    assert set(Precedence.model_fields) - {"orders"} == STAMP

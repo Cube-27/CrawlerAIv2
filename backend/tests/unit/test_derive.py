@@ -13,7 +13,7 @@ from crawlerai.db.models import PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Context, Invalid, Ok
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.resolve.preference import Chosen, PageFacts, Preference, Resolver, Unpublished
+from crawlerai.resolve.preference import PRECEDENCE_TYPES, Chosen, PageFacts, Preference, Resolver, Unpublished
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -28,7 +28,7 @@ RESOLVER = Resolver(
     graph=EntityGraph.of((PRODUCT, RELATED), VOCABULARY),
     target=PRODUCT,
     page=PageFacts.of(FINAL_URL, lambda _: False),
-    orders={t: ORDER for t in (FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL)},
+    orders={t: ORDER for t in PRECEDENCE_TYPES},
 )
 
 URL = FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url")
