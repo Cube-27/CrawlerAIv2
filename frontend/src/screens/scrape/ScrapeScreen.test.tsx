@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
-import type { RecordField, SchemaSummary, ScrapeResponse } from "../../api/scrape";
+import type { RecordField, ScrapeResponse } from "../../api/scrape";
 import { problem, stubApi } from "../../test/api";
 
 // The form types into several fields with user-event, which is slow in jsdom.
@@ -28,7 +28,7 @@ function field(overrides: Partial<RecordField>): RecordField {
   };
 }
 
-const itemSchema: SchemaSummary = {
+const itemSchema = {
   id: SCHEMA_ID,
   name: "item_detail",
   version: 2,
@@ -325,7 +325,7 @@ describe("scrape screen: records and schemas", () => {
   });
 
   it("shows a prompt's draft schema and types the records by it", async () => {
-    const draft: SchemaSummary = { ...itemSchema, name: "drafted", origin: "prompt_draft" };
+    const draft = { ...itemSchema, name: "drafted", origin: "prompt_draft" };
     const calls = stubApi({
       "POST /v1/scrape": () => Response.json({ ...withRecords, schema: draft }),
     });

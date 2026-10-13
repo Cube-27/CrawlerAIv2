@@ -1,6 +1,6 @@
-/** `POST /v1/scrape` (SPEC-07 §4.4). The answer is the generated `ScrapeResult`; the records and the draft schema
- * are narrowed by hand until SPEC-07 PRs 5 and 6 put them in `openapi.json`. */
-import type { FieldResult, FieldTypeSpec } from "./field";
+/** `POST /v1/scrape` (SPEC-07 §4.4). The answer is the generated `ScrapeResult`; the records are narrowed by hand
+ * until SPEC-07 PR 5 puts them in `openapi.json`. */
+import type { FieldResult } from "./field";
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -48,20 +48,14 @@ export interface ScrapeRecord {
   fields: Readonly<Record<string, RecordField>>;
 }
 
-export interface SchemaSummary {
-  id: string;
-  name: string;
-  version: number;
-  origin: "preset" | "user" | "prompt_draft";
-  fields: Readonly<Record<string, FieldTypeSpec>>;
-}
-
-/** The generated answer, with the members SPEC-07 PRs 5 and 6 add (`records`, and `schema` when a prompt was
- * used), narrowed by hand until then. A requested format's member is present; the others are absent. */
+/** The generated answer, with `records` (SPEC-07 PR 5) narrowed by hand until then. A requested format's member
+ * is present; the others are absent. `schema` is the draft when a prompt was used. */
 export type ScrapeResponse = Schemas["ScrapeResult"] & {
-  schema?: SchemaSummary;
   records?: ScrapeRecord[];
 };
+
+/** The schema role S drafted from the request's prompt. */
+export type DraftSchema = Schemas["SchemaDef"];
 
 export type ScrapeOutcome = ScrapeResponse["outcome"];
 export type FetchAttempt = Schemas["AttemptRecord"];

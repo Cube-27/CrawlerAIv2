@@ -201,7 +201,8 @@ export interface paths {
         put?: never;
         /**
          * Scrape
-         * @description Fetch `url` and return the requested formats; only those are members of the answer.
+         * @description Fetch `url` and return the requested formats; only those are members of the answer. A `schema.prompt` is
+         *     drafted into a schema, returned as `schema`.
          */
         post: operations["scrape_v1_scrape_post"];
         delete?: never;
@@ -728,9 +729,9 @@ export interface components {
         };
         /**
          * ScrapeRequest
-         * @description The body of `POST /v1/scrape` (§4.4). `records`, with `schema`, `page_kind` and `budget`, is SPEC-07 PR 5;
-         *     `max_age` reuses a recent capture from PR 5, and until then every scrape fetches anew, which any `max_age`
-         *     allows.
+         * @description The body of `POST /v1/scrape` (§4.4). `records`, with `page_kind` and a schema by id or inline, is SPEC-07
+         *     PR 5; a `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft. `max_age` reuses a
+         *     recent capture from PR 5, and until then every scrape fetches anew, which any `max_age` allows.
          */
         ScrapeRequest: {
             /**
@@ -770,7 +771,7 @@ export interface components {
         /**
          * ScrapeResult
          * @description The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
-         *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None.
+         *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None. `schema` is the draft of a `schema.prompt`.
          */
         ScrapeResult: {
             /** Capture Id */
@@ -799,6 +800,7 @@ export interface components {
             outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "failed";
             /** Raw Html */
             raw_html?: string;
+            schema?: components["schemas"]["SchemaDef"];
             /** Url */
             url: string;
             usage: components["schemas"]["Usage"];
@@ -1524,6 +1526,26 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

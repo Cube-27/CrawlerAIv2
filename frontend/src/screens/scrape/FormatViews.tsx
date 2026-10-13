@@ -1,6 +1,6 @@
 import { Label, Link, Table, TextArea, TextField } from "@heroui/react";
 import { adoptSchemaPath } from "../schemas/paths";
-import type { FetchAttempt, PageMetadata, ScrapeResponse, SchemaSummary } from "../../api/scrape";
+import type { DraftSchema, FetchAttempt, PageMetadata, ScrapeResponse } from "../../api/scrape";
 
 /** A text format (markdown, html, raw_html) in a read-only text area, to read, scroll and copy as sent. */
 export function TextFormat({ label, text }: Readonly<{ label: string; text: string }>) {
@@ -140,7 +140,7 @@ export function UsageTable({ usage }: Readonly<{ usage: ScrapeResponse["usage"] 
 }
 
 /** The schema role S drafted from the prompt (SPEC-07 §4.4 step 5): what it is, and its fields as JSON. */
-export function DraftSchemaView({ schema }: Readonly<{ schema: SchemaSummary }>) {
+export function DraftSchemaView({ schema }: Readonly<{ schema: DraftSchema }>) {
   return (
     <div className="flex flex-col gap-4">
       <NameValueTable

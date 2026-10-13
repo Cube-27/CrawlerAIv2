@@ -1324,7 +1324,7 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records`, with `schema`, `page_kind` and `budget`, is SPEC-07 PR 5;\n`max_age` reuses a recent capture from PR 5, and until then every scrape fetches anew, which any `max_age`\nallows.",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records`, with `page_kind` and a schema by id or inline, is SPEC-07\nPR 5; a `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft. `max_age` reuses a\nrecent capture from PR 5, and until then every scrape fetches anew, which any `max_age` allows.",
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/Budget",
@@ -1424,7 +1424,7 @@
         "type": "object"
       },
       "ScrapeResult": {
-        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None.",
+        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None. `schema` is the draft of a `schema.prompt`.",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -1509,6 +1509,9 @@
           "raw_html": {
             "title": "Raw Html",
             "type": "string"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/SchemaDef"
           },
           "url": {
             "title": "Url",
@@ -2615,7 +2618,7 @@
     },
     "/v1/scrape": {
       "post": {
-        "description": "Fetch `url` and return the requested formats; only those are members of the answer.",
+        "description": "Fetch `url` and return the requested formats; only those are members of the answer. A `schema.prompt` is\ndrafted into a schema, returned as `schema`.",
         "operationId": "scrape_v1_scrape_post",
         "requestBody": {
           "content": {
@@ -2682,6 +2685,36 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           },
           "504": {
             "content": {
