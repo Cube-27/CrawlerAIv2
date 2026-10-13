@@ -3941,3 +3941,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Include them in PR 7.
 - Why: The PR 7 row's scope is `config_ir/synthesis` and its prompts, with unit tests on a fake LLM.
 - Reversible: yes
+
+### D-0592 — `POST /v1/sites/{host}/learn` takes `{schema_id, force=false}`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: The body is `{schema_id, force}`; the page kind comes from the schema. 202 `{job_id}`; 409 while a run is in flight, or when the state is active and `force` is not set; 404 for an unknown site or schema.
+- Alternatives: Learn every state of the host (several jobs, breaks `{job_id}`); a query parameter.
+- Why: Fills a gap: §4.10 gives no request body. Progressive state is keyed per (site, schema version, page kind) (§4.4, D-0549), so the narrowest reading is that the caller names the schema version; SPEC-12's "Learn now" sits on a config detail page where it is known. Agreed with the orchestrator.
+- Reversible: yes
+
+### D-0593 — A correction is the next version; it activates only if every operated field validates
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: `PUT /v1/configs/{id}` stores version+1: `active` with the validated (pruned) IR only when validation keeps every field the operator gave steps or confirmed (`Correction.operated()`), else `draft` with the operator's full IR and the report, the previous version staying active. The response is the new version (`ConfigDetail`: summary, IR, report).
+- Alternatives: Activate when any field is kept (dropped the operator's field and suspended the working version; review of #123); store nothing on failure.
+- Why: §4.10: version+1, activates only if validation passes, the response carries the report. A failed correction must not replace the version that serves; the draft lets the operator correct again.
+- Reversible: yes
+
+### D-0594 — Only the latest config version is corrected
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: A `PUT` on a version that is not the latest of its (site, schema version, page kind) is 409; the state row is locked (`progressive.lock_state`) while the version is taken.
+- Alternatives: Branch from any version.
+- Why: An edit never silently drops a version someone else added; the same rule as schema edits (SPEC-07).
+- Reversible: yes
+
+### D-0595 — Correction semantics
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: Corrected and confirmed fields become `operator`; `null` removes a field; row fields of a listing schema go to `listing.fields` and need an existing listing; every field's yield and validity are cleared and re-measured; provenance becomes `operator` with `learned_at` now. Refused with 422 and a field path: unknown field, confirming or removing a field the config lacks, confirming and correcting one field, an empty correction, a row field without a listing.
+- Alternatives: Allow edits to `row`/`next` (the §4.10 body has no place for them).
+- Why: Most conservative reading of §4.10's body.
+- Reversible: yes
+
+### D-0596 — Held-out pages for a correction
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: The site's 8 (`LEARN_AFTER_PAGES`) most recent captures with task outcome `extracted`/`partial` and a record of the schema version, each with its latest extraction; expired bundles are skipped; fewer than 3 pages refuse (`too_few_held_out`).
+- Alternatives: The base version's `validated_on` (expires after 30 days, leaving old configs uncorrectable).
+- Why: §4.4 selection rule; the operator wrote the steps from none of these pages.
+- Reversible: yes
+
+### D-0597 — `config_ir/held_out.py` is the one held-out loader
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: Published values come from `record.data`; references are `ok` candidates from structured or adapter sources (every source kind except `config` and `llm`) owned by an entity that published a field of the page; a listing's rows are its records in stored (UUIDv7) order, page-scope fields split off, with no references. SPEC-08 PR 8 and the learn-job runner reuse it.
+- Alternatives: Replay cold (loses role-C-published values, so such fields could never validate).
+- Why: Validation compares with what the engine stored (§4.7). Records don't store their row entity, so row references are left out (errs `uncorroborated`); a listing with an incomplete or duplicate row has fewer records than rows and validation refuses it as misaligned (D-0566).
+- Reversible: yes
+
+### D-0598 — Operator activation does not end a learning run
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 10 (#123) · Status: decided
+- Decision: New progressive event `operator`: cold/learning/active → active, with or without a run in flight (`RUN_IN_FLIGHT` per event); a run in flight continues and may later activate its own config over the operator's.
+- Alternatives: Cancel the run; refuse the correction while learning.
+- Why: A correction must not wait on a run; whether a learned config should yield to an operator's is PR 8's.
+- Reversible: yes

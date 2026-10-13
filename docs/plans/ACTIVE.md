@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 10 (#123), SPEC-08 PR 11, SPEC-09 PR 5. Next: SPEC-08 PR 8 (after PR 10), SPEC-09 PR 6.
+- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 11 (#124), SPEC-09 PR 5 (#125), SPEC-09 PR 6. Next: SPEC-08 PR 8 (reuses config_ir/held_out.py), SPEC-09 PR 7, SPEC-12 PR 6 (owner design check).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -182,7 +182,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | Role A synthesis + repair loop | done (#122) | D-0585–D-0591. Follow-up for PR 8: wire the learn job end to end (D-0591). |
 | 8 | Active-mode extraction (role C only for uncovered fields) | todo | |
 | 9 | Drift tracking + suspension + re-learn | done (#119) | D-0571–D-0576. Migration 0012 adds `extraction_config.drift_window`. `drift_margins.json` not committed: nothing is suspended until OQ #19 / D-0576 is answered. Follow-ups for PR 8: call `observe` + `record_run` after each active-config page and load the margins with `load_margins`; measure a listing's per-page yield the way §4.7 does (an empty listing page counts row fields as misses). |
-| 10 | Config API + operator corrections | todo | |
+| 10 | Config API + operator corrections | done (#123) | D-0592–D-0598. `POST /v1/sites/{host}/learn` takes `{schema_id, force}` (D-0592). Follow-ups for PR 8: reuse `config_ir/held_out.py` for held-out pages (D-0597); decide whether a learning run may replace an operator's active config (D-0598). |
 | 11 | Exporters json/platform_draft + release check + export endpoint | todo | |
 | 12 | Record exporters (json/csv/markdown) | done (#115) | D-0544–D-0545. Follow-up for SPEC-10/12: CSV formula injection, if CSV is served as a download. |
 
