@@ -14,7 +14,7 @@ Model output is data: it is parsed as JSON and validated, never executed (INV-17
 
 import json
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, Protocol
 
@@ -75,8 +75,14 @@ class LLMResponse(_Model):
     request_hash: str
 
 
+# A role's own check of a reply that matches the output schema: why the reply is invalid, or None. JSON Schema can't
+# express every rule of a role's output (that every field of a schema document is described, say); a failed check is
+# retried like a schema mismatch, within the same one retry.
+ReplyCheck = Callable[[dict[str, JsonValue]], str | None]
+
+
 class LLMClient(Protocol):
-    async def complete_json(self, req: LLMRequest) -> LLMResponse: ...
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse: ...
 
 
 def request_hash(req: LLMRequest) -> str:
@@ -159,15 +165,15 @@ class MeteredClient:
         self._providers = tuple(providers)
         self._engine = engine
 
-    async def complete_json(self, req: LLMRequest) -> LLMResponse:
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         key = request_hash(req)
         validator = Draft202012Validator(req.output_schema)
         answer = await self._call(req, req.user, key)
-        checked = _check(answer.reply.text, validator)
+        checked = _check(answer.reply.text, validator, check)
         if isinstance(checked, _Invalid):
             retry_user = f"{req.user}\n\n{RETRY_NOTE.format(error=checked.error)}"
             answer = await self._call(req, retry_user, key)
-            checked = _check(answer.reply.text, validator)
+            checked = _check(answer.reply.text, validator, check)
         if isinstance(checked, _Invalid):
             raise OutputInvalid(checked.error)
         return LLMResponse(
@@ -240,8 +246,8 @@ class MeteredClient:
                 )
 
 
-def _check(text: str, validator: Draft202012Validator) -> dict[str, JsonValue] | _Invalid:
-    """The reply as a JSON object that matches the schema, or why it isn't one."""
+def _check(text: str, validator: Draft202012Validator, check: ReplyCheck | None) -> dict[str, JsonValue] | _Invalid:
+    """The reply as a JSON object that matches the schema and passes the role's check, or why it isn't one."""
     try:
         data = json.loads(text)
     except json.JSONDecodeError as error:
@@ -251,4 +257,5 @@ def _check(text: str, validator: Draft202012Validator) -> dict[str, JsonValue] |
     mismatch = best_match(validator.iter_errors(data))
     if mismatch is not None:
         return _Invalid(f"at {mismatch.json_path}: {mismatch.message}")
-    return data
+    refusal = None if check is None else check(data)
+    return data if refusal is None else _Invalid(refusal)

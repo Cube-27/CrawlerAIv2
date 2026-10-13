@@ -15,7 +15,7 @@ from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields, build_report
 from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
-from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, request_hash
+from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, decode, encode, sha256_hex
@@ -97,7 +97,7 @@ class LiveLLM:
     def __init__(self) -> None:
         self.calls: list[LLMRequest] = []
 
-    async def complete_json(self, req: LLMRequest) -> LLMResponse:
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         self.calls.append(req)
         return LLMResponse(
             data={"summary": f"summary of {len(req.user)} chars"},

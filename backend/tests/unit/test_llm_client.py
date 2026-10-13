@@ -199,6 +199,30 @@ def test_a_second_invalid_reply_raises_output_invalid() -> None:
     assert len(provider.calls) == 2
 
 
+def _no_x(data: dict[str, Any]) -> str | None:
+    return "the summary holds an x" if "x" in str(data["summary"]) else None
+
+
+def test_a_reply_the_role_check_refuses_takes_the_same_one_retry() -> None:
+    provider = FakeProvider([reply('{"summary": "x"}'), reply('{"summary": "good"}')])
+    client = MeteredClient([provider], create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))
+
+    response = asyncio.run(client.complete_json(REQUEST, check=_no_x))
+
+    assert response.data == {"summary": "good"}
+    assert "the summary holds an x" in provider.calls[1].user
+
+
+def test_a_schema_mismatch_then_a_refused_reply_is_two_calls_then_output_invalid() -> None:
+    provider = FakeProvider([reply('{"summary": 3}'), reply('{"summary": "x"}'), reply('{"summary": "ok"}')])
+    client = MeteredClient([provider], create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))
+    call = client.complete_json(REQUEST, check=_no_x)
+
+    with pytest.raises(OutputInvalid, match="the summary holds an x"):
+        asyncio.run(call)
+    assert len(provider.calls) == 2
+
+
 def test_a_provider_error_raises_provider_unavailable() -> None:
     provider = FakeProvider([ProviderError("503 from the provider")])
     with pytest.raises(ProviderUnavailable, match="503 from the provider"):

@@ -2934,3 +2934,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A JSONPath library.
 - Why: Adapter maps use only this subset (D-0266); no dependency needed.
 - Reversible: yes
+
+### D-0448 — Role S output is checked by the client, within its one retry
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 6 (#92) · Status: decided
+- Decision: The role S output schema is `SchemaDocument`'s Pydantic JSON Schema without `name` and `version`. `LLMClient.complete_json` takes an optional reply check (`ReplyCheck`: why a schema-valid reply is invalid, or None); role S passes the `SchemaDocument` validation, so a schema mismatch and an invalid document share the client's one retry (at most two calls), then `OutputInvalid`. `RecordedLLM` passes the check to its live client.
+- Alternatives: A hand-written JSON Schema encoding every document rule; a second retry in role S on top of the client's (up to four calls).
+- Why: One definition of the document (SPEC-04 types); JSON Schema can't express "every field described" or required-group rules; §4.5 says "the client validates it with the SchemaDef model; invalid → one retry", and roles A and D can reuse the check. Whether each provider's structured-output mode accepts the recursive `$ref` is unverified until keys exist (H4).
+- Reversible: yes
+
+### D-0449 — Role S keys drafts on the whitespace-normalized prompt
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 6 (#92) · Status: decided
+- Decision: The prompt is normalized by collapsing Unicode whitespace runs to one space and stripping the ends; the hash and the request use the normalized text. An empty prompt is refused. The stored draft is returned whatever its status.
+- Alternatives: Hash the raw prompt; also hash the sample pages or page kind.
+- Why: §4.5 "the same prompt text (after whitespace normalization)" and "keyed by prompt hash"; one prompt, one schema.
+- Reversible: yes
+
+### D-0450 — Role S input limits
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 6 (#92) · Status: decided
+- Decision: Each sample's cleaned text is cut to its first 40,000 characters (role C's detail limit, D-0025); 1–3 samples are required; `max_output_tokens` is 8,192.
+- Alternatives: A new setting for role S's limit; no cut.
+- Why: Bounds the request without a new setting; 8,192 tokens holds a schema of several dozen fields.
+- Reversible: yes
