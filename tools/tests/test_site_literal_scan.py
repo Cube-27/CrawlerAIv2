@@ -286,6 +286,14 @@ def test_names_with_the_extension_of_a_data_file_the_manifest_pins_are_not_hosts
     assert run_scan(with_manifest, allowlist=[]).returncode == 0
 
 
+def test_an_unreadable_manifest_adds_no_extensions(tmp_path: Path) -> None:
+    # Tracked but gone from the working tree: the scan reads no extensions from it and still runs.
+    repo = make_repo(tmp_path / "repo", {"backend/data/manifest.json": "{}", "a.txt": "see cities.md\n"})
+    (repo / "backend/data/manifest.json").unlink()
+
+    assert run_scan(repo, allowlist=[]).stdout.splitlines() == ["a.txt:1: cities.md"]
+
+
 def test_url_hosts_are_checked_even_when_they_look_like_file_names(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo", {"README.md": "", "notes.txt": "https://readme.example/\n"})
 

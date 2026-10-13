@@ -251,8 +251,19 @@ def test_a_place_with_only_a_name_is_read_as_text() -> None:
     assert norm({"@type": "Place", "name": "Brookfield"}) == Ok(value("Brookfield", "Westshire", "QM"))
 
 
-@given(st.sampled_from(["TELECOMMUTE", "https://schema.org/TELECOMMUTE"]))
-def test_telecommute_is_remote(job_location_type: str) -> None:
+@given(
+    st.sampled_from(
+        [
+            "TELECOMMUTE",
+            "https://schema.org/TELECOMMUTE",
+            ["TELECOMMUTE"],
+            ["ONSITE", "schema:TELECOMMUTE"],
+            {"@id": "schema:TELECOMMUTE"},
+            [{"@id": "https://schema.org/TELECOMMUTE"}],
+        ]
+    )
+)
+def test_telecommute_is_remote(job_location_type: JsonValue) -> None:
     assert norm({"jobLocationType": job_location_type}) == Ok(value(None, None, None, remote=True))
     assert norm({"jobLocationType": job_location_type, "addressCountry": "QM"}) == Ok(
         value(None, None, "QM", remote=True)
@@ -265,6 +276,11 @@ def test_telecommute_is_remote(job_location_type: str) -> None:
         ({}, "no_match"),
         ({"@type": "Place"}, "no_match"),
         ({"jobLocationType": "ONSITE"}, "no_match"),
+        ({"jobLocationType": ["ONSITE"]}, "no_match"),
+        ({"jobLocationType": {"@id": "ONSITE"}}, "no_match"),
+        ({"jobLocationType": {"name": "TELECOMMUTE"}}, "no_match"),
+        ({"jobLocationType": [[]]}, "no_match"),
+        ({"jobLocationType": 7}, "no_match"),
         (7, "not_a_location"),
         (None, "not_a_location"),
         (["Alderton"], "not_a_location"),

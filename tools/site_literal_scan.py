@@ -247,7 +247,7 @@ def manifest_extensions(manifest: Path) -> Iterator[str]:
     """The extensions, lowercase, of the data files the manifest pins; nothing when it does not read as one."""
     try:
         entries = json.loads(manifest.read_text(encoding="utf-8")).get("entries")
-    except (ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError):
         return
     for entry in entries if isinstance(entries, list) else []:
         path = entry.get("path") if isinstance(entry, dict) else None

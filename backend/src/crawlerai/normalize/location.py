@@ -233,6 +233,16 @@ def _territory_names(language: str) -> Mapping[str, str]:
         return {}
 
 
+def _telecommute(value: JsonValue) -> bool:
+    """Whether a `jobLocationType` value is TELECOMMUTE. JSON-LD 1.1 lets a property hold an array of values (§4.3)
+    or a node object naming its IRI in `@id` (§4.1); any one TELECOMMUTE value makes the job remote."""
+    if isinstance(value, list):
+        return any(_telecommute(item) for item in value)
+    if isinstance(value, dict):
+        value = value.get("@id")
+    return isinstance(value, str) and value in _TELECOMMUTE
+
+
 def _says_remote(words: vocab.Tokens, ctx: Context) -> bool:
     return bool(vocab.find_codes(vocab.type_vocabulary("remote") or {}, words, ctx))
 
@@ -244,7 +254,7 @@ def _nothing(remote: bool) -> NormalizeResult:
 
 def _structured(raw: Mapping[str, JsonValue], gazetteer: Gazetteer | None, ctx: Context) -> NormalizeResult:
     # schema.org: `Place.address` is a PostalAddress (or text); `JobPosting.jobLocationType` is beside the location.
-    remote = raw.get("jobLocationType") in _TELECOMMUTE
+    remote = _telecommute(raw.get("jobLocationType"))
     address = raw.get("address", raw)
     if isinstance(address, str):
         address = {"name": address}
