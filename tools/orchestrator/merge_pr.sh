@@ -1,7 +1,8 @@
 #!/bin/bash
 # merge_pr.sh PR SHA7 — squash-merges PR only if wait_ci.sh reports every check passed on commit SHA7, and only if
 # SHA7 is still the PR's head when the merge runs (--match-head-commit). Never chain `gh pr merge` after a wait with
-# `;`: a failed wait must stop the merge.
+# `;`: a failed wait must stop the merge. A PR that conflicts with main, or whose head has no workflow run, fails the
+# wait at once or after its grace period (see wait_ci.sh) instead of timing out.
 set -eu
 pr=$1; sha=$2
 bash "$(dirname "$0")/wait_ci.sh" "$pr" "$sha"
