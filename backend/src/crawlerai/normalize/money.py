@@ -32,8 +32,10 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
 _SCHEMA_ORG_PRICE = re.compile(r"\d+(?:\.\d+)?", re.ASCII)
 # Structural: a written amount is a run of digits joined by single separators (CLDR decimal and group symbols: `.`,
-# `,`, apostrophes, spaces). A text holding two runs states two amounts: a range or a list, never one money value.
-_AMOUNT_RUN = re.compile(r"\d+(?:[.,'\u2019\s]\d+)*")
+# `,`, apostrophes, spaces). An amount below one may open with its decimal symbol (`.99`), unless a letter or digit
+# precedes it; CLDR then decides whether that symbol is a decimal point. A text holding two runs states two amounts:
+# a range or a list, never one money value.
+_AMOUNT_RUN = re.compile(r"(?:(?<![^\W_])[.,])?\d+(?:[.,'\u2019\s]\d+)*")
 # Unicode HYPHEN-MINUS and MINUS SIGN (the CLDR `minusSign` symbols, after NFKC) before the amount: a negative value.
 _MINUS = ("-", "\u2212")
 # SPEC-01 D-0005: money is stored as `numeric(18,6)`, so an amount has at most 12 integer and 6 fraction digits.
@@ -88,18 +90,21 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     before, after = text[: run.start()], text[run.end() :]
     if any(minus in before for minus in _MINUS):
         return Invalid("not_positive")
-    sign = _adjacent_sign(before.rstrip(), after.lstrip())
-    if sign is None:
+    signs = _adjacent_signs(before.rstrip(), after.lstrip())
+    if not signs:
         located = Price.fromstring(text).currency
         if located is None:
             return Invalid("no_currency")
         if not _whole_sign(text, located):
             return Invalid("unknown_currency")
-        sign = located
+        signs = [located]
     locales = _locale_set(ctx)
-    currencies = _currencies_for(sign, locales, ctx.page_currencies)
+    # A sign on each side of the amount (`$5 USD`) must agree: the currencies both can denote. Two signs that share
+    # none (`USD 12 EUR`) state two currencies, never one money value.
+    each = [_currencies_for(sign, locales, ctx.page_currencies) for sign in signs]
+    currencies = sorted(set(each[0]).intersection(*each[1:]))
     if not currencies:
-        return Invalid("unknown_currency")
+        return Invalid("currency_conflict" if len(each) > 1 and all(each) else "unknown_currency")
     amounts = _amounts(run.group(), locales)
     if not amounts:
         return Invalid("unparsable_amount")
@@ -110,17 +115,19 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     return Ambiguous(reason, tuple(options))
 
 
-def _adjacent_sign(before: str, after: str) -> str | None:
-    """The longest CLDR currency symbol or ISO 4217 code written right before or after the amount. A symbol can hold
-    a shorter one (`$ AU`, `BS$`), which `price-parser` would locate instead."""
+def _adjacent_signs(before: str, after: str) -> list[str]:
+    """The longest CLDR currency symbol or ISO 4217 code written right before the amount, then the longest written
+    right after it. A symbol can hold a shorter one (`$ AU`, `BS$`), which `price-parser` would locate instead."""
+    tail = _longest_sign(before, lambda n: (len(before) - n, len(before)))
+    head = _longest_sign(after, lambda n: (0, n))
+    return [sign for sign in (tail, head) if sign is not None]
+
+
+def _longest_sign(text: str, span: Callable[[int], tuple[int, int]]) -> str | None:
     for length, signs in _signs_by_length():
-        found = []
-        if (tail := before[-length:]) in signs and _bounded(before, len(before) - length, len(before)):
-            found.append(tail)
-        if (head := after[:length]) in signs and _bounded(after, 0, length):
-            found.append(head)
-        if found:
-            return min(found)
+        start, end = span(length)
+        if start >= 0 and (sign := text[start:end]) in signs and _bounded(text, start, end):
+            return sign
     return None
 
 
@@ -203,10 +210,12 @@ def _locale_set(ctx: Context) -> frozenset[str]:
     locales."""
     tags = [t for t in (ctx.html_lang, ctx.og_locale, ctx.request_locale, *ctx.hreflang) if t]
     out: set[str] = set()
+    known = False
     for tag in tags:
         locale = _parse_tag(tag)
         if locale is None:
             continue  # Not a BCP 47 tag CLDR knows (`x-default`): no evidence.
+        known = True
         if locale.territory:
             out.add(str(locale))
             continue
@@ -215,7 +224,7 @@ def _locale_set(ctx: Context) -> frozenset[str]:
             out.add(with_territory)
         else:
             out.update(_by_language().get(locale.language, ()))
-    if not tags and ctx.cctld_territory:
+    if not known and ctx.cctld_territory:
         out.update(_by_territory().get(ctx.cctld_territory, ()))
     return frozenset(out)
 

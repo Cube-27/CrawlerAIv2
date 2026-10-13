@@ -146,6 +146,42 @@ def test_the_cctld_territory_completes_a_language_without_one() -> None:
     assert money.normalize("$12.99", MONEY, ctx) == Ok({"amount": "12.99", "currency": "CAD"})
 
 
+def test_a_tag_cldr_does_not_know_leaves_the_cctld_territory_as_evidence() -> None:
+    ctx = Context(captured_at=AT, html_lang="x-default", cctld_territory="CA")
+
+    assert money.normalize("$12.99", MONEY, ctx) == Ok({"amount": "12.99", "currency": "CAD"})
+
+
+@given(
+    st.sampled_from(_CODES),
+    st.integers(min_value=1, max_value=99),
+    st.sampled_from([("en-US", "."), ("de-DE", ",")]),
+    st.booleans(),
+)
+def test_an_amount_below_one_written_from_its_decimal_symbol_reads_back(
+    code: str, cents: int, locale: tuple[str, str], code_first: bool
+) -> None:
+    tag, decimal = locale
+    written = f"{decimal}{cents:02d}"
+    raw = f"{code} {written}" if code_first else f"{written} {code}"
+
+    result = money.normalize(raw, MONEY, Context(captured_at=AT, html_lang=tag))
+
+    assert result == Ok({"amount": f"0.{cents:02d}", "currency": code})
+
+
+@given(st.lists(st.sampled_from(_CODES), min_size=2, max_size=2, unique=True), st.integers(min_value=1))
+def test_two_codes_around_one_amount_conflict(codes: list[str], amount: int) -> None:
+    assert money.normalize(f"{codes[0]} {amount} {codes[1]}", MONEY, CTX) == Invalid("currency_conflict")
+
+
+@given(st.sampled_from(_LOCATED_SHARED), st.integers(min_value=1, max_value=99_999), st.data())
+def test_a_code_after_a_shared_symbol_settles_it(sign: str, amount: int, data: st.DataObject) -> None:
+    code = data.draw(st.sampled_from(sorted(_symbols()[sign])))
+
+    assert money.normalize(f"{sign}{amount} {code}", MONEY, CTX) == Ok({"amount": str(amount), "currency": code})
+
+
 @given(st.sampled_from(_CODES), _amounts, st.sampled_from(_CONVENTIONS))
 def test_an_amount_written_in_the_page_locale_reads_back(code: str, amount: Decimal, locale: str) -> None:
     written = format_currency(amount, code, format="#,##0.00 ¤¤", locale=locale, currency_digits=False)
