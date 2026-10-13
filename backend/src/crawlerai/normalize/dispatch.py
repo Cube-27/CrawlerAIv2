@@ -24,32 +24,19 @@ def _money(raw: Raw, ctx: Context) -> NormalizeResult:
     return normalize(raw, _MONEY, ctx)
 
 
-# The field-type registries: every §5.1 type with values of its own.
-_NORMALIZERS: dict[FieldType, Normalizer] = {
-    FieldType.TEXT: text.normalize,
-    FieldType.LONG_TEXT: text.normalize,
-    FieldType.ENUM: enum.normalize,
-    FieldType.MONEY: money.normalize,
-    FieldType.LOCATION: location.normalize,
-    FieldType.URL: url.normalize,
-    FieldType.IDENTIFIER: identifier.normalize,
-    FieldType.IMAGE_URL: url.normalize,
-    FieldType.DATE: date.normalize,
-    FieldType.DATETIME: date.normalize,
-    FieldType.RANGE: partial(range_.normalize, money=_money),
-}
-_EQUALITIES: dict[FieldType, Equality] = {
-    FieldType.TEXT: text.equal,
-    FieldType.LONG_TEXT: text.equal,
-    FieldType.ENUM: enum.equal,
-    FieldType.MONEY: money.equal,
-    FieldType.LOCATION: location.equal,
-    FieldType.URL: url.equal,
-    FieldType.IDENTIFIER: identifier.equal,
-    FieldType.IMAGE_URL: url.equal,
-    FieldType.DATE: date.equal,
-    FieldType.DATETIME: date.equal,
-    FieldType.RANGE: range_.equal,
+# The field-type registry: every §5.1 type with values of its own, with its normalizer and its equality.
+_TYPES: dict[FieldType, tuple[Normalizer, Equality]] = {
+    FieldType.TEXT: (text.normalize, text.equal),
+    FieldType.LONG_TEXT: (text.normalize, text.equal),
+    FieldType.ENUM: (enum.normalize, enum.equal),
+    FieldType.MONEY: (money.normalize, money.equal),
+    FieldType.LOCATION: (location.normalize, location.equal),
+    FieldType.URL: (url.normalize, url.equal),
+    FieldType.IDENTIFIER: (identifier.normalize, identifier.equal),
+    FieldType.IMAGE_URL: (url.normalize, url.equal),
+    FieldType.DATE: (date.normalize, date.equal),
+    FieldType.DATETIME: (date.normalize, date.equal),
+    FieldType.RANGE: (partial(range_.normalize, money=_money), range_.equal),
 }
 
 
@@ -60,10 +47,10 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         return _list(raw, _item(spec), ctx)
     if spec.type is FieldType.OBJECT:
         return _object(raw, _fields(spec), ctx)
-    normalizer = _NORMALIZERS.get(spec.type)
-    if normalizer is None:
+    registered = _TYPES.get(spec.type)
+    if registered is None:
         return Invalid("unknown_type")
-    return normalizer(raw, spec, ctx)
+    return registered[0](raw, spec, ctx)
 
 
 def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
@@ -81,8 +68,8 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
             and a.keys() == b.keys() <= fields.keys()
             and all(equal(a[name], b[name], fields[name]) for name in a)
         )
-    equality = _EQUALITIES.get(spec.type)
-    return equality is not None and equality(a, b, spec)
+    registered = _TYPES.get(spec.type)
+    return registered is not None and registered[1](a, b, spec)
 
 
 def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:

@@ -119,16 +119,7 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         return Invalid("surrogate")
     if not raw.strip():
         return Invalid("empty")
-    periods: set[str] = set()
-    text = raw
-    if (found := _period_phrases(vocab.context_languages(ctx))) is not None:
-        pattern, codes = found
-
-        def _drop_period(m: re.Match[str]) -> str:
-            periods.add(codes[m.lastgroup or ""])
-            return " "
-
-        text = pattern.sub(_drop_period, raw)
+    text, periods = _strip_periods(raw, vocab.context_languages(ctx))
     if len(periods) > 1:
         return Invalid("period_mismatch")
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
@@ -157,6 +148,16 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
     )
 
 
+def _strip_periods(raw: str, languages: frozenset[str]) -> tuple[str, set[str]]:
+    """`raw` with each `type:period` phrase replaced by a space, and the units those phrases name."""
+    found = _period_phrases(languages)
+    if found is None:
+        return raw, set()
+    pattern, codes = found
+    periods = {codes[m.lastgroup or ""] for m in pattern.finditer(raw)}
+    return pattern.sub(" ", raw), periods
+
+
 @lru_cache(maxsize=64)  # keyed by the page's languages, a small set
 def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[str, str]] | None:
     """A pattern that finds the `type:period` phrases of the page's languages (every language when it states none),
@@ -166,13 +167,8 @@ def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[st
     ISO 80000-1 write "per" between units as `/`). A unit with another word around it ("hourly", "per hours") is not
     a period.
     """
-    by_language = vocab.type_vocabulary(_PERIOD_VOCABULARY) or {}
-    phrases = {
-        phrase: code
-        for language in sorted(languages or by_language.keys())
-        if language in by_language
-        for phrase, code in by_language[language].phrases.items()
-    }
+    entries = vocab.entries_for(vocab.type_vocabulary(_PERIOD_VOCABULARY) or {}, languages)
+    phrases = {phrase: code for e in entries for phrase, code in e.phrases.items()}
     if not phrases:
         return None
     alternatives: list[str] = []
@@ -247,7 +243,17 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
     """SPEC-04 §4.5: every part equal, the bounds as Decimals without rounding (`50000` equals `50000.00`)."""
     if a == b:
         return True
-    if not (isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys() == _VALUE_KEYS):
-        return False
-    bounds = [_decimal(v[k]) if isinstance(v[k], str) else None for v in (a, b) for k in ("min", "max")]
-    return None not in bounds and bounds[:2] == bounds[2:] and all(a[k] == b[k] for k in _VALUE_KEYS - {"min", "max"})
+    left, right = _range_value(a), _range_value(b)
+    return left is not None and left == right
+
+
+def _range_value(value: JsonValue) -> tuple[Decimal, Decimal, JsonValue, JsonValue, JsonValue] | None:
+    """A normalized range as (min, max, currency, unit, period), or `None` for any other value."""
+    if not isinstance(value, dict) or value.keys() != _VALUE_KEYS:
+        return None
+    lo, hi = value["min"], value["max"]
+    lo_number = _decimal(lo) if isinstance(lo, str) else None
+    hi_number = _decimal(hi) if isinstance(hi, str) else None
+    if lo_number is None or hi_number is None:
+        return None
+    return lo_number, hi_number, value["currency"], value["unit"], value["period"]
