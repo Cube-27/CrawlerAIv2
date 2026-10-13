@@ -23,9 +23,11 @@ if [[ $name != reviewer* ]]; then
   (( workers < ${MAX_WORKERS:-4} )) || err "worker limit: $workers alive, max ${MAX_WORKERS:-4}"
 fi
 
-pane=$(herdr pane split --current --direction down --cwd "$path" --no-focus 2>/dev/null \
-  | python -c "import json,sys;print(json.load(sys.stdin)['result']['pane']['pane_id'])")
-[[ -n $pane ]] || err "pane split failed"
+# Each agent gets its own tab, labelled with its name, so the owner sees one agent at full size per tab. Splitting
+# the orchestrator's pane stacked agents into rows one or two lines high.
+pane=$(herdr tab create --cwd "$path" --label "$name" --no-focus 2>/dev/null \
+  | python -c "import json,sys;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])")
+[[ -n $pane ]] || err "tab create failed"
 close_and_fail() { herdr pane close "$pane" >/dev/null 2>&1; err "$1; closed pane $pane"; }
 herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 >/dev/null 2>&1
 cwd=$(herdr agent get "$name" 2>/dev/null | python -c "import json,sys;print(json.load(sys.stdin)['result']['agent'].get('cwd',''))")
