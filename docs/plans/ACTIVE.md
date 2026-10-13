@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 4 (#114), SPEC-08 PR 5, SPEC-09 PR 3. Next: SPEC-12 PR 6, SPEC-08 PR 6.
+- L1 complete (2026-10-14). Working on L2. In progress: SPEC-08 PR 5 (#116), SPEC-09 PR 3. Next: SPEC-08 PR 6, SPEC-12 PR 6.
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
@@ -176,7 +176,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 1 | IR model + validation (XPath 1.0, regex subset, css→xpath) | done (#95) | D-0460–D-0465. Follow-ups: loader re-translates or pins css→xpath across cssselect upgrades (PR 2/10); regex subset follows the PHP `/u` choice for non-ASCII and `(?i)` (PR 11). |
 | 2 | Engine executor + SPEC-05 injection | done (#98) | D-0475–D-0482. Follow-up for PR 6: an absolute `//` row-field XPath escapes its row; validation must require one match per row. |
 | 3 | Release executor + import contract | done (#110) | D-0527–D-0530. Follow-ups for PR 11: release JSON-LD typing ignores `@context` (errs to `manual`); listing-row step rules could move into `ListingSpec` validation. |
-| 4 | Progressive state + learning trigger + `learn` job kind | todo | |
+| 4 | Progressive state + learning trigger + `learn` job kind | done (#114) | D-0546–D-0550. Migration 0011. Follow-ups: PRs 5–7 end the run (`learning_failed`) on every failed or cancelled `learn` job, or a cold state stays `learning`; PR 6 checks that `active_config_id` matches the state's (site, schema version, page_kind). |
 | 5 | Induction | todo | |
 | 6 | Validation, corroboration, validation_report, activation | todo | |
 | 7 | Role A synthesis + repair loop | todo | |

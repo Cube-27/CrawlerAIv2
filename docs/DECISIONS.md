@@ -3618,3 +3618,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: JSON-encode every value; prefix formula-like cells with `'` (OWASP CSV injection guidance).
 - Why: §4.11 JSON-encodes nested values only; INV-27 forbids changing a published value. Spreadsheet safety, if wanted, belongs to the caller (SPEC-10/SPEC-12).
 - Reversible: yes
+
+### D-0546 — An in-flight learning run is `learning_started_at IS NOT NULL`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 4 (#114) · Status: decided
+- Decision: A learning run is in flight while `progressive_state.learning_started_at` is set, in any mode; it is cleared when the run ends. `last_learned_at` is stamped only when a run activates a config.
+- Alternatives: A separate `learn_job_id` column; stamping `last_learned_at` on failure too.
+- Why: §4.4 names these plumbing columns; one flag serves both a cold site's `learning` mode and an active site's re-learn, and lets the compare-and-set refuse a second concurrent run.
+- Reversible: yes
+
+### D-0547 — An active state re-learns only when forced and keeps its config
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 4 (#114) · Status: decided
+- Decision: An `active` state re-learns only with `force` (API `force=true`, drift in PR 9), stays `active` on its current config while the run is in flight, and stays on it if the run fails.
+- Alternatives: Move `active → learning` and serve cold during the re-learn.
+- Why: Most conservative reading of §4.8–§4.10: nothing is deactivated without a validated replacement, and suspended fields already fall back to cold per field (§4.9).
+- Reversible: yes
+
+### D-0548 — A failed learning run retries at `retry_at_pages`
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 4 (#114) · Status: decided
+- Decision: The retry after a failed run (D-0030) is a nullable `progressive_state.retry_at_pages` (= `pages_extracted + 8` at failure); the trigger fires at `pages_extracted >= coalesce(retry_at_pages, 8)`, and `pages_extracted` keeps its §6 meaning.
+- Alternatives: Reset `pages_extracted`; count pages since the failure from tasks.
+- Why: The §6 counter stays a plain count; 8 lives in code once (`LEARN_AFTER_PAGES`).
+- Reversible: yes
+
+### D-0549 — The `learn` job is a queued job row naming its state
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 4 (#114) · Status: decided
+- Decision: The `learn` job is created `queued` in the site's project, `schema_id` set, with `request = {site_id, schema_id, schema_version, page_kind, force}`; the learning pipeline (PRs 5–7) runs it and calls `learning_activated`/`learning_failed`.
+- Alternatives: A url_task per sample page.
+- Why: A learn run reads stored captures and fetches nothing; the request names the state it learns.
+- Reversible: yes
+
+### D-0550 — `progressive_state` checks tie modes to their plumbing
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 4 (#114) · Status: decided
+- Decision: Checks `mode <> 'learning' OR learning_started_at IS NOT NULL`, `mode <> 'active' OR active_config_id IS NOT NULL` and `retry_at_pages >= 0` (migration 0011).
+- Alternatives: No database checks.
+- Why: The state machine's invariants hold even for writes outside `config_ir.progressive`.
+- Reversible: yes
