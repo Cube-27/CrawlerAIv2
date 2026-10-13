@@ -13,7 +13,7 @@ import hashlib
 import io
 import tarfile
 from datetime import UTC, datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Final, Literal, Self
 from uuid import UUID
 
 import zstandard
@@ -143,10 +143,13 @@ def decode(blob: bytes) -> CaptureBundle:
         raise CorruptBundle(str(e)) from e
 
 
+CAPTURES_PREFIX: Final = "captures/"
+
+
 def capture_key(capture_id: UUID, fetched_at: datetime) -> str:
     """Production captures, which expire after 30 days (SPEC-01 §4.4). `fetched_at` must be timezone-aware."""
     month = fetched_at.astimezone(UTC)
-    return f"captures/{month:%Y}/{month:%m}/{capture_id}.bundle.zst"
+    return f"{CAPTURES_PREFIX}{month:%Y}/{month:%m}/{capture_id}.bundle.zst"
 
 
 def dev_eval_capture_key(capture_id: UUID) -> str:
