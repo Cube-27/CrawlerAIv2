@@ -19,7 +19,7 @@ DETAIL_SHAPES: dict[str, FieldShape] = {
 LISTING_SHAPES: dict[str, FieldShape] = {
     "title": ScalarShape(type="text"),
     "url": ScalarShape(type="url"),
-    "next_page_url": ScalarShape(type="url", scope="page"),
+    "pagination_url": ScalarShape(type="url", scope="page"),
 }
 
 DETAIL: dict[str, Any] = {
@@ -55,7 +55,7 @@ LISTING: dict[str, Any] = {
     "checker": None,
     "prefill_source": None,
     "fields": {
-        "next_page_url": {
+        "pagination_url": {
             "value": "https://shop.example.test/c?page=2",
             "absent": False,
             "locator": None,
@@ -176,12 +176,12 @@ def test_every_error_is_reported_at_once() -> None:
 def test_listing_fields_are_placed_by_scope() -> None:
     raw = copy.deepcopy(LISTING)
     raw["fields"]["title"] = raw["rows"][0]["fields"].pop("title")
-    raw["rows"][0]["fields"]["next_page_url"] = raw["fields"].pop("next_page_url")
+    raw["rows"][0]["fields"]["pagination_url"] = raw["fields"].pop("pagination_url")
 
     assert _errors(raw, "listing", LISTING_SHAPES) == {
         LabelError("fields.title", "a row field belongs in rows"),
-        LabelError("rows[0].fields.next_page_url", "a page field belongs in fields"),
-        LabelError("fields.next_page_url", "not labeled; mark it absent if the page does not show it"),
+        LabelError("rows[0].fields.pagination_url", "a page field belongs in fields"),
+        LabelError("fields.pagination_url", "not labeled; mark it absent if the page does not show it"),
         LabelError("rows[0].fields.title", "not labeled; mark it absent if the page does not show it"),
     }
 
