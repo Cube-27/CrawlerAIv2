@@ -3109,3 +3109,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Match records by position; compare every attribute.
 - Why: A replayed record has no id of the stored one, and the UI holds no matching logic (§3); the same value can be published from another source.
 - Reversible: yes
+
+### D-0473 — The watcher's lock is a pidfile in the git common dir
+- Date: 2026-10-13 · Spec/PR: tooling chore (#99) · Status: decided
+- Decision: `watch_agents.sh` locks with `watch_agents.lock` in `git rev-parse --git-common-dir`, holding "<pid> <windows pid>" and created exclusively with `ln` from a temp file.
+- Alternatives: A `.pid` name; `flock` (not in Git Bash); `noclobber` (a reader can see an empty file and clear it as stale).
+- Why: The common dir is shared by every worktree, so there is one lock; the C3 scan reads `.pid` as a TLD.
+- Reversible: yes
+
+### D-0474 — Watcher liveness falls back to the Windows pid, bash only
+- Date: 2026-10-13 · Spec/PR: tooling chore (#99) · Status: decided
+- Decision: A holder is alive if `kill -0` sees it, or if PowerShell `Get-Process` finds its Windows pid as a `bash` process.
+- Alternatives: `kill -0` only; any process with that Windows pid.
+- Why: `kill -0` sees only its own MSYS runtime's processes, and Windows reuses pids.
+- Reversible: yes
