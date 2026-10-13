@@ -3081,3 +3081,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Fail startup; build the client per request.
 - Why: Scrape without a prompt needs no LLM, and provider keys are deferred (H4).
 - Reversible: yes
+
+### D-0469 — Records and replay shapes are declared by hand until SPEC-07 PR 8
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 5 (#97) · Status: decided
+- Decision: `frontend/src/api/records.ts` declares SPEC-07 §4.6's records list and replay and adds them to the generated `paths` by module augmentation: a listed record is the §4.4 record plus `capture_id`, `schema_id` and `version`; a page is `{items, next_cursor}` (`next_cursor` null on the last page); a replay answers `{records: [...]}` and is sent an empty body. Deleted once SPEC-07 PR 8 is in `openapi.json`; that PR matches these shapes or updates the module.
+- Alternatives: Wait for SPEC-07 PR 8; raw `fetch` outside the client.
+- Why: Row-level readiness (D-0378), as D-0407; the fewest members the screen needs, and the page envelope follows `SchemaList.items`.
+- Reversible: yes
+
+### D-0470 — Records are listed by schema, with filters in the URL
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 5 (#97) · Status: decided
+- Decision: The Records screen requires a schema version; job and site narrow the list. The filters live in the URL query (`/records?schema_id=…&job_id=…&site=…`).
+- Alternatives: Columns from the union of the fields on a page; filters in `localStorage`.
+- Why: SPEC-12 §4.3 asks for one column per schema field, which needs one schema; URL filters can be reloaded and shared and need no storage.
+- Reversible: yes
+
+### D-0471 — The record inspector is a bottom drawer
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 5 (#97) · Status: decided
+- Decision: The inspector is a HeroUI `Drawer` placed at the bottom, opened by row action (click or Enter), with no route of its own.
+- Alternatives: A right drawer (too narrow for the eight-column field table); a `/records/:id` route (no single-record endpoint in SPEC-07).
+- Why: SPEC-12 §4.3 "row click opens the inspector"; few modals (DESIGN.md).
+- Reversible: yes
+
+### D-0472 — The replay diff compares status and value, for one replayed record
+- Date: 2026-10-13 · Spec/PR: SPEC-12 PR 5 (#97) · Status: decided
+- Decision: The replay diff compares each field's `status` and `value` (JSON equality, member order ignored per RFC 8259 §4); confidence and locator are shown, not compared. It diffs only when the replay made exactly one record; with several it lists them without a diff. Tones: changed → warning, same → neutral.
+- Alternatives: Match records by position; compare every attribute.
+- Why: A replayed record has no id of the stored one, and the UI holds no matching logic (§3); the same value can be published from another source.
+- Reversible: yes
