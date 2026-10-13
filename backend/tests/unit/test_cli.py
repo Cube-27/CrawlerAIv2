@@ -139,9 +139,10 @@ def test_the_scheduler_releases_leases_every_minute_and_expires_and_rechecks_hou
 
 
 def test_data_fetch_reports_each_fetched_entry(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     calls: list[Path] = []
+    monkeypatch.setattr(cli, "_data_dir", lambda: tmp_path)
 
     def fetch_data(directory: Path) -> list[str]:
         calls.append(directory)
@@ -151,13 +152,15 @@ def test_data_fetch_reports_each_fetched_entry(
 
     main(["data", "fetch"])
 
-    assert calls == [Path(cli.__file__).resolve().parents[2] / "data"]
+    assert calls == [tmp_path]
     assert capsys.readouterr().out == "present geonames/countryInfo.txt\nfetched geonames/cities15000.zip\n"
 
 
 def test_data_fetch_exits_2_on_a_refused_entry(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(cli, "_data_dir", lambda: tmp_path)
+
     def fetch_data(directory: Path) -> list[str]:
         raise DataFetchError("geonames/countryInfo.txt: sha256 0 does not match the manifest")
 

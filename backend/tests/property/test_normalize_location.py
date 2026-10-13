@@ -280,7 +280,10 @@ def test_a_value_with_no_place_and_no_remote_is_invalid(raw: JsonValue, reason: 
 
 @given(st.sampled_from(["Harwick", "Alderton, Northland", "Remote", "nothing here"]))
 def test_normalize_is_a_pure_function(text: str) -> None:
-    assert norm(text) == norm(text)
+    # The same input against an equal gazetteer gives the same result: nothing earlier calls cached changes it.
+    fresh = location.Gazetteer.parse(COUNTRY_INFO, ADMIN1, CITIES)
+
+    assert norm(text) == location.normalize(text, SPEC, CTX, gazetteer=fresh)
 
 
 def test_the_dispatcher_sends_location_here(monkeypatch: pytest.MonkeyPatch) -> None:

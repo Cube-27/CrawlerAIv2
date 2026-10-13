@@ -38,6 +38,14 @@ def read_entries(manifest_path: Path) -> list[object] | str:
     return entries
 
 
+def field_problems(index: int, item: dict[str, object], missing: list[str]) -> list[str]:
+    """The problems with one entry's fields: each required field it lacks, and a `fetched` that is not a boolean."""
+    problems = [f"{MANIFEST}: entry {index} has no '{field}'" for field in missing]
+    if not isinstance(item.get("fetched", False), bool):
+        problems.append(f"{MANIFEST}: entry {index} has a 'fetched' that is not true or false")
+    return problems
+
+
 def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str, str], set[str]]:
     """Return the problems, the claimed paths, the sha256 of each complete entry by path, and the fetched paths.
 
@@ -52,9 +60,7 @@ def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str,
             problems.append(f"{MANIFEST}: entry {index} is not an object")
             continue
         missing = [field for field in REQUIRED_FIELDS if not str(item.get(field) or "").strip()]
-        problems.extend(f"{MANIFEST}: entry {index} has no '{field}'" for field in missing)
-        if not isinstance(item.get("fetched", False), bool):
-            problems.append(f"{MANIFEST}: entry {index} has a 'fetched' that is not true or false")
+        problems.extend(field_problems(index, item, missing))
         if "path" in missing:
             continue
         path = str(item["path"])
