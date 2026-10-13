@@ -1,4 +1,667 @@
 {
+  "components": {
+    "schemas": {
+      "CaptureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "platform_store",
+              "custom_store",
+              "api_backed",
+              "job_board",
+              "mixed"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema": {
+            "title": "Schema",
+            "type": "string"
+          },
+          "split": {
+            "const": "dev",
+            "title": "Split",
+            "type": "string"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "split",
+          "schema",
+          "page_kind",
+          "category",
+          "urls"
+        ],
+        "title": "CaptureRequest",
+        "type": "object"
+      },
+      "CaptureResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "outcomes": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "captured": "#/components/schemas/CapturedOut",
+                  "skipped": "#/components/schemas/SkippedOut"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CapturedOut"
+                },
+                {
+                  "$ref": "#/components/schemas/SkippedOut"
+                }
+              ]
+            },
+            "title": "Outcomes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "outcomes"
+        ],
+        "title": "CaptureResponse",
+        "type": "object"
+      },
+      "CapturedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "block_class": {
+            "enum": [
+              "ok",
+              "blocked",
+              "shell",
+              "not_found",
+              "error"
+            ],
+            "title": "Block Class",
+            "type": "string"
+          },
+          "capture_id": {
+            "format": "uuid",
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "kind": {
+            "const": "captured",
+            "default": "captured",
+            "title": "Kind",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "capture_id",
+          "page_id",
+          "status_code",
+          "block_class",
+          "error"
+        ],
+        "title": "CapturedOut",
+        "type": "object"
+      },
+      "FieldErrorOut": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "title": "FieldErrorOut",
+        "type": "object"
+      },
+      "FieldLabel": {
+        "additionalProperties": false,
+        "description": "One field's label. `absent` means the field is genuinely not on the page (G2); `distractors` are values of the\nsame field shown for another entity on the page, which drive the wrong-product metric (\u00a716.3).",
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "boolean"
+          },
+          "distractors": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Distractors",
+            "type": "array"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "absent"
+        ],
+        "title": "FieldLabel",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "LabelRow": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldLabel"
+            },
+            "title": "Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "LabelRow",
+        "type": "object"
+      },
+      "Labels": {
+        "additionalProperties": false,
+        "properties": {
+          "checker": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldLabel"
+            },
+            "default": {},
+            "title": "Fields",
+            "type": "object"
+          },
+          "label_version": {
+            "const": 1,
+            "title": "Label Version",
+            "type": "integer"
+          },
+          "labeler": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labeler"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "prefill_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefill Source"
+          },
+          "rows": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LabelRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "labeled",
+              "checked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_version",
+          "status"
+        ],
+        "title": "Labels",
+        "type": "object"
+      },
+      "NormalizeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "raw_text": {
+            "title": "Raw Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "raw_text"
+        ],
+        "title": "NormalizeRequest",
+        "type": "object"
+      },
+      "PageDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_html": {
+            "title": "Bundle Html",
+            "type": "string"
+          },
+          "capture_id": {
+            "format": "uuid",
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "platform_store",
+              "custom_store",
+              "api_backed",
+              "job_board",
+              "mixed"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "checker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker"
+          },
+          "final_url": {
+            "title": "Final Url",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "labeler": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labeler"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Labels"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "split": {
+            "const": "dev",
+            "title": "Split",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "labeled",
+                  "checked"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "capture_id",
+          "split",
+          "schema_name",
+          "page_kind",
+          "category",
+          "status",
+          "labeler",
+          "checker",
+          "labels",
+          "url",
+          "final_url",
+          "bundle_html",
+          "text"
+        ],
+        "title": "PageDetail",
+        "type": "object"
+      },
+      "PageSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_id": {
+            "format": "uuid",
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "platform_store",
+              "custom_store",
+              "api_backed",
+              "job_board",
+              "mixed"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "checker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "labeler": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labeler"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "split": {
+            "const": "dev",
+            "title": "Split",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "labeled",
+                  "checked"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "id",
+          "capture_id",
+          "split",
+          "schema_name",
+          "page_kind",
+          "category",
+          "status",
+          "labeler",
+          "checker"
+        ],
+        "title": "PageSummary",
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": false,
+        "description": "RFC 9457 problem details (SPEC-07 \u00a74.3).",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FieldErrorOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "SkippedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "skipped",
+            "default": "skipped",
+            "title": "Kind",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "reason"
+        ],
+        "title": "SkippedOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
   "info": {
     "title": "CrawlerAI",
     "version": "0.1.0"
@@ -25,6 +688,375 @@
           }
         },
         "summary": "Healthz"
+      }
+    },
+    "/v1/eval/capture": {
+      "post": {
+        "description": "`crawlerai eval capture` into dev (\u00a74.4): fetch each URL and store it as an unlabeled dev page.",
+        "operationId": "capture_v1_eval_capture_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Capture",
+        "tags": [
+          "eval"
+        ]
+      }
+    },
+    "/v1/eval/pages": {
+      "get": {
+        "operationId": "list_pages_v1_eval_pages_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "split",
+            "required": false,
+            "schema": {
+              "const": "dev",
+              "default": "dev",
+              "title": "Split",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "labeled",
+                    "checked"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "schema",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PageSummary"
+                  },
+                  "title": "Response List Pages V1 Eval Pages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Pages",
+        "tags": [
+          "eval"
+        ]
+      }
+    },
+    "/v1/eval/pages/{page_id}": {
+      "get": {
+        "operationId": "get_page_v1_eval_pages__page_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Page",
+        "tags": [
+          "eval"
+        ]
+      }
+    },
+    "/v1/eval/pages/{page_id}/labels": {
+      "put": {
+        "description": "Store one pass of labels (\u00a716.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;\n`checked` is the checker's pass over a labeled page, by someone other than its labeler.",
+        "operationId": "put_labels_v1_eval_pages__page_id__labels_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Labels",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "title": "Labels",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Put Labels",
+        "tags": [
+          "eval"
+        ]
+      }
+    },
+    "/v1/eval/pages/{page_id}/normalize": {
+      "post": {
+        "description": "The field type's normalized value for `raw_text`, or its reason to decline. The normalizers arrive with\nSPEC-04 PRs 2 to 8.",
+        "operationId": "normalize_v1_eval_pages__page_id__normalize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NormalizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "Normalize",
+        "tags": [
+          "eval"
+        ]
+      }
+    },
+    "/v1/eval/pages/{page_id}/prefill": {
+      "post": {
+        "description": "Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06.",
+        "operationId": "prefill_v1_eval_pages__page_id__prefill_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "Prefill",
+        "tags": [
+          "eval"
+        ]
       }
     }
   }

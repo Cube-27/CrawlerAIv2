@@ -21,6 +21,7 @@ from pydantic import (
     Field,
     JsonValue,
     StringConstraints,
+    TypeAdapter,
     ValidationError,
     model_validator,
 )
@@ -60,6 +61,24 @@ class ObjectShape(_Model):
 
 
 FieldShape = Annotated[ScalarShape | ListShape | ObjectShape, Field(discriminator="type")]
+_FIELD_SHAPES: TypeAdapter[dict[str, FieldShape]] = TypeAdapter(dict[str, FieldShape])
+
+
+def field_shapes(fields: Mapping[str, JsonValue]) -> dict[str, FieldShape]:
+    """The shapes of a schema document's `fields` (SPEC-04 §4.2, `schema_def.fields`): each field's type, scope and
+    nesting, without the parts labels don't read (`required`, `description`, `schema_org`, ...)."""
+    return _FIELD_SHAPES.validate_python({name: _shape_part(spec) for name, spec in fields.items()})
+
+
+def _shape_part(spec: JsonValue) -> JsonValue:
+    if not isinstance(spec, dict):
+        return spec  # not a field document: validation rejects it
+    part: dict[str, JsonValue] = {key: spec[key] for key in ("type", "scope") if key in spec}
+    if "item" in spec:
+        part["item"] = _shape_part(spec["item"])
+    if isinstance(nested := spec.get("fields"), dict):
+        part["fields"] = {name: _shape_part(sub) for name, sub in nested.items()}
+    return part
 
 
 def values_equal(a: JsonValue, b: JsonValue, shape: FieldShape) -> bool:

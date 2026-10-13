@@ -47,6 +47,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0086 | Escalations copy `needs-owner` entries to OPEN_QUESTIONS.md | pending-owner |
 | D-0110 | eslint pre-commit hook exceeds the 10 s budget on Windows | needs-owner |
 | D-0187 | Secondary suppression of aggregate cells for hidden/fresh | needs-owner |
+| D-0214 | How hidden/fresh pages get labeled at milestone M | needs-owner |
 
 ---
 
@@ -1240,3 +1241,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `acquire(url, site, policy)` reading and writing the DB.
 - Why: Rung selection is tested without a database, and the caller owns the transaction (ENGINEERING).
 - Reversible: yes
+
+### D-0207 — The labeling API serves the dev split only
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: The router holds a `DevEvalStore` from the main settings and never calls `get_store`; `split` accepts only `dev` (422 otherwise); private settings are ignored even when set.
+- Alternatives: Serve whichever split `get_store` can open (§1, §4.10 on a custodian machine).
+- Why: C1 / INV-01, most conservative reading; hidden/fresh labeling at M is D-0214.
+- Reversible: yes
+
+### D-0208 — Label values are checked for structure only until the normalizers exist
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: `PUT labels` validates the document, schema fit and two-pass rule; running values through type normalizers and `POST /normalize` wait for SPEC-04 PRs 2–8 (`/normalize` returns 501).
+- Alternatives: Refuse every label until then; hand-check value shapes.
+- Why: Hand checks would duplicate a type module's logic (C8).
+- Reversible: yes; SPEC-04 adds the check
+
+### D-0209 — Pass rules at the API
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: `draft`/`labeled` is the labeler's pass and names its labeler; `checked` is allowed only over a `labeled`/`checked` page and keeps the stored labeler.
+- Alternatives: Trust the document's names.
+- Why: §16.2 / §4.10: `checked` only on confirmation by a different name.
+- Reversible: yes
+
+### D-0210 — Problem responses are local until SPEC-07
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: The router returns SPEC-07 §4.3 problems itself; FastAPI's request validation keeps its default 422; no auth until SPEC-07 PR 2.
+- Alternatives: Install app-wide handlers now.
+- Why: Those are SPEC-07 PR 1's scope.
+- Reversible: yes
+
+### D-0211 — The OpenAPI document always includes the eval routes
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: `crawlerai openapi` builds the app with `eval_ui=True`; at runtime they mount only with `CRAWLERAI_EVAL_UI=true`.
+- Alternatives: Export only what the default app mounts.
+- Why: The labeling screen needs the types, and the export must not depend on the environment.
+- Reversible: yes
+
+### D-0212 — Capture through the API is limited to 20 URLs per request
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: `POST /v1/eval/capture` runs `run_capture` into dev within the request.
+- Alternatives: A background job (SPEC-10).
+- Why: Fetches are polite and sequential, so a request must stay short.
+- Reversible: yes
+
+### D-0213 — Sanitized HTML for the labeling view
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: decided
+- Decision: Removes `script`, `iframe`, `frame`, `frameset`, `object`, `embed`, `meta[http-equiv]`, `on*` attributes and `javascript:` URLs; inserts one `<base href>` at the final URL or the page's own base resolved against it (D-0012); decodes in the Content-Type charset, else UTF-8.
+- Alternatives: Only §4.10's list; strip `src`.
+- Why: The extra elements also run script or navigate (HTML standard).
+- Reversible: yes
+
+### D-0214 — How hidden/fresh pages get labeled at milestone M
+- Date: 2026-10-13 · Spec/PR: SPEC-03 PR 8 (#35) · Status: needs-owner
+- Question: The labeling API serves dev only (D-0207). SPEC-03 §1/§4.10 suggest the same screen could label hidden/fresh on a custodian machine. How should hidden/fresh labeling work?
+- Options: (a) a custodian-only process: the same app run on the custodian machine with a private backend, never deployed; (b) this router gains a private backend behind a custodian-only setting; (c) label hidden/fresh with a separate CLI.
+- Recommendation: (a). It keeps the main deployment unable to reach private data, and it reuses the screen.
+- Blocked: nothing now. Needed before H3 (milestone M).

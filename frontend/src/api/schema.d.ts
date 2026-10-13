@@ -21,10 +21,388 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/eval/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture
+         * @description `crawlerai eval capture` into dev (§4.4): fetch each URL and store it as an unlabeled dev page.
+         */
+        post: operations["capture_v1_eval_capture_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/eval/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pages */
+        get: operations["list_pages_v1_eval_pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/eval/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Page */
+        get: operations["get_page_v1_eval_pages__page_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/eval/pages/{page_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Labels
+         * @description Store one pass of labels (§16.2). `status` `draft` or `labeled` is the labeler's pass and clears any check;
+         *     `checked` is the checker's pass over a labeled page, by someone other than its labeler.
+         */
+        put: operations["put_labels_v1_eval_pages__page_id__labels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/eval/pages/{page_id}/normalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Normalize
+         * @description The field type's normalized value for `raw_text`, or its reason to decline. The normalizers arrive with
+         *     SPEC-04 PRs 2 to 8.
+         */
+        post: operations["normalize_v1_eval_pages__page_id__normalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/eval/pages/{page_id}/prefill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prefill
+         * @description Store a `draft` filled by the LLM pre-fill hook. The hook arrives with SPEC-06.
+         */
+        post: operations["prefill_v1_eval_pages__page_id__prefill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        /** CaptureRequest */
+        CaptureRequest: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "platform_store" | "custom_store" | "api_backed" | "job_board" | "mixed";
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Schema */
+            schema: string;
+            /**
+             * Split
+             * @constant
+             */
+            split: "dev";
+            /** Urls */
+            urls: string[];
+        };
+        /** CaptureResponse */
+        CaptureResponse: {
+            /** Outcomes */
+            outcomes: (components["schemas"]["CapturedOut"] | components["schemas"]["SkippedOut"])[];
+        };
+        /** CapturedOut */
+        CapturedOut: {
+            /**
+             * Block Class
+             * @enum {string}
+             */
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            /**
+             * Capture Id
+             * Format: uuid
+             */
+            capture_id: string;
+            /** Error */
+            error: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "captured";
+            /** N */
+            n: number;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Status Code */
+            status_code: number;
+        };
+        /** FieldErrorOut */
+        FieldErrorOut: {
+            /** Field */
+            field: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * FieldLabel
+         * @description One field's label. `absent` means the field is genuinely not on the page (G2); `distractors` are values of the
+         *     same field shown for another entity on the page, which drive the wrong-product metric (§16.3).
+         */
+        FieldLabel: {
+            /** Absent */
+            absent: boolean;
+            /**
+             * Distractors
+             * @default []
+             */
+            distractors: components["schemas"]["JsonValue"][];
+            /** Locator */
+            locator?: string | null;
+            value?: components["schemas"]["JsonValue"];
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        JsonValue: unknown;
+        /** LabelRow */
+        LabelRow: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldLabel"];
+            };
+        };
+        /** Labels */
+        Labels: {
+            /** Checker */
+            checker?: string | null;
+            /**
+             * Fields
+             * @default {}
+             */
+            fields: {
+                [key: string]: components["schemas"]["FieldLabel"];
+            };
+            /**
+             * Label Version
+             * @constant
+             */
+            label_version: 1;
+            /** Labeler */
+            labeler?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Prefill Source */
+            prefill_source?: string | null;
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["LabelRow"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "labeled" | "checked";
+        };
+        /** NormalizeRequest */
+        NormalizeRequest: {
+            /** Field */
+            field: string;
+            /** Raw Text */
+            raw_text: string;
+        };
+        /** PageDetail */
+        PageDetail: {
+            /** Bundle Html */
+            bundle_html: string;
+            /**
+             * Capture Id
+             * Format: uuid
+             */
+            capture_id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "platform_store" | "custom_store" | "api_backed" | "job_board" | "mixed";
+            /** Checker */
+            checker: string | null;
+            /** Final Url */
+            final_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Labeler */
+            labeler: string | null;
+            labels: components["schemas"]["Labels"] | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Schema Name */
+            schema_name: string;
+            /**
+             * Split
+             * @constant
+             */
+            split: "dev";
+            /** Status */
+            status: ("draft" | "labeled" | "checked") | null;
+            /** Text */
+            text: string | null;
+            /** Url */
+            url: string;
+        };
+        /** PageSummary */
+        PageSummary: {
+            /**
+             * Capture Id
+             * Format: uuid
+             */
+            capture_id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "platform_store" | "custom_store" | "api_backed" | "job_board" | "mixed";
+            /** Checker */
+            checker: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Labeler */
+            labeler: string | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Schema Name */
+            schema_name: string;
+            /**
+             * Split
+             * @constant
+             */
+            split: "dev";
+            /** Status */
+            status: ("draft" | "labeled" | "checked") | null;
+        };
+        /**
+         * Problem
+         * @description RFC 9457 problem details (SPEC-07 §4.3).
+         */
+        Problem: {
+            /** Detail */
+            detail: string;
+            /**
+             * Errors
+             * @default []
+             */
+            errors: components["schemas"]["FieldErrorOut"][];
+            /** Status */
+            status: number;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /** SkippedOut */
+        SkippedOut: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "skipped";
+            /** N */
+            n: number;
+            /** Reason */
+            reason: string;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -51,6 +429,246 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    capture_v1_eval_capture_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+        };
+    };
+    list_pages_v1_eval_pages_get: {
+        parameters: {
+            query?: {
+                split?: "dev";
+                status?: ("draft" | "labeled" | "checked") | null;
+                schema?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_v1_eval_pages__page_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_labels_v1_eval_pages__page_id__labels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Labels"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageSummary"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+        };
+    };
+    normalize_v1_eval_pages__page_id__normalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NormalizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
+                };
+            };
+        };
+    };
+    prefill_v1_eval_pages__page_id__prefill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": unknown;
                 };
             };
         };
