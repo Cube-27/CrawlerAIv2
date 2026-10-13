@@ -2451,3 +2451,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Why: The old rule left worker slots idle on rows whose inputs already existed.
 - Reversible: yes — restore the old rule in the three places.
 - Owner answer: owner direction, 2026-10-13.
+
+### D-0379 — Grounding aligns one claim at a time
+- Date: 2026-10-13 · Spec/PR: SPEC-06 PR 3 (#76) · Status: decided
+- Decision: `align` takes one claim (`SpanClaim`) and returns `GroundedSpan | None`; role C maps it over its fields. Two occurrences equally near the claimed `start` resolve to the earlier one. An empty value is dropped. Offsets count code points of the cleaned text (Python `str` indices), as SPEC-05's `CleanedText` does.
+- Alternatives: `align(values, text)` over a mapping (spec's sketch); dropping on a tie.
+- Why: One value per call keeps the function independent of role C's output shape (detail fields vs listing rows); a fixed tie-break keeps replays deterministic (INV-10); an empty span holds no value and is not a valid `text:` locator.
+- Reversible: yes

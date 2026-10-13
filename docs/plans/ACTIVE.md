@@ -33,7 +33,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 ## Current focus
 
 - Exit predicate (run-plan, 2026-10-13): every L1 row (SPEC-02 PRs 6–9, SPEC-04, SPEC-05, SPEC-06, SPEC-07, SPEC-12 PRs 1–5 and 9) is `done` or `human`, and CI on `main` is green. Rows are ready per row (D-0378).
-- In progress: SPEC-05 PR 3, SPEC-06 PR 3, SPEC-07 PR 2. Next: SPEC-05 PRs 4–5, SPEC-07 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
+- In progress: SPEC-05 PRs 3, 5, SPEC-07 PR 2. Next: SPEC-05 PR 4, SPEC-07 PR 3, SPEC-06 PR 4 after SPEC-05 PR 9.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
 - Workflow (owner, 2026-10-13): recurring agent mistakes become checks or skill rules (`docs/plans/RECURRING.md`, `/run-plan` §2a); orchestrator process management lives in `tools/orchestrator/` (`/run-plan` §1a).
 - For SPEC-03 PR 7 or the custodian runbook (from #34): a rotation lowers hidden `n_pages`, so the next hidden gate fails `n_pages_dropped` against the pre-rotation baseline until replacements are captured or a new baseline is recorded. Promoted pages re-record their LLM responses on their first dev replay.
@@ -150,7 +150,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | Client protocol, request/response models, fake provider, budgets, usage | done (#69) | Usage commits in its own transaction (D-0346); replay uses `llm.client` (D-0218 retired). |
 | 2 | Anthropic and Gemini providers with JSON-schema output + failover | done (#74) | Fails over once on 408/429/5xx/timeout (D-0371); Anthropic sends no temperature (D-0370). |
-| 3 | Grounding alignment | todo | |
+| 3 | Grounding alignment | done (#76) | |
 | 4 | Role C detail + pipeline hook wiring | todo | |
 | 5 | Role C listing + labeling pre-fill endpoint | todo | |
 | 6 | Role S + prompt-hash reuse | todo | |
