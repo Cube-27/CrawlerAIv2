@@ -66,16 +66,22 @@ class LeaseLost(Exception):
 
 async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[ClaimedTask]:
     """Lease up to `n` due tasks to `worker`, highest priority first, then oldest, and start their queued jobs."""
+    # The CTE runs exactly once (MATERIALIZED, PostgreSQL docs, "WITH Queries"). As a plain `IN (subquery)`, the
+    # planner may rescan the subquery once per row of a semi-join; each rescan skips the rows already claimed and
+    # yields `n` more, so a single claim could take every due task.
     due = (
         select(UrlTask.id)
         .where(UrlTask.status == "queued", UrlTask.next_attempt_at <= func.now())
         .order_by(UrlTask.priority.desc(), UrlTask.id)
         .limit(n)
         .with_for_update(skip_locked=True)
+        .cte("due")
+        .prefix_with("MATERIALIZED")
     )
     claim = (
         update(UrlTask)
-        .where(UrlTask.id.in_(due))
+        .add_cte(due)
+        .where(UrlTask.id.in_(select(due.c.id)))
         .values(
             status="claimed",
             claimed_by=worker,
