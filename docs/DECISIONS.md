@@ -1822,3 +1822,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Accept any EAN-13.
 - Why: ISO 2108.
 - Reversible: yes
+
+### D-0293 — Date order comes from the CLDR locales of `html_lang` and `og_locale`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: A tag with a territory uses its CLDR locale's short date pattern; a language-only tag allows the orders of every CLDR locale of that language (and script), so `en` declines `03/04/2026` while `de` is DMY; no locale allows every order.
+- Alternatives: CLDR likely subtags (`en` → `en_US`); also using `cctld_territory`/`request_locale`.
+- Why: Likely subtags would act as a default (C7), and §4.4 names only these two sources.
+- Reversible: yes
+
+### D-0294 — Numeric dates are parsed by our own code, not `dateparser`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: Three-field numeric dates are read in each allowed order by the module; `dateparser` handles text with words.
+- Alternatives: `dateparser` with `DATE_ORDER` for every input.
+- Why: `dateparser` silently swaps fields when a reading is invalid, so it cannot report ambiguity.
+- Reversible: yes
+
+### D-0295 — A two-digit year is read in every century
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: `yy` is read as 19yy, 20yy and 21yy, and the 1970–2100 range settles which (`26` → 2026; `85` → `Ambiguous`); `dateparser` readings are checked for a year written in full.
+- Alternatives: POSIX `%y` pivoting.
+- Why: A pivot is a default (C7).
+- Reversible: yes
+
+### D-0296 — A datetime needs a time and a numeric offset; output is UTC with `Z`
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: Date-only input is `Invalid("no_time")`; a naive time or a zone abbreviation is `Invalid("no_offset")`; `2 hours ago` is `Invalid("relative_datetime")`. A `date` field takes the calendar date the input states in its own offset.
+- Alternatives: Keep the source offset in the output; assume UTC for naive times.
+- Why: Exact equality (§4.5) needs one form per instant, and an assumed zone is a default (C7).
+- Reversible: yes
+
+### D-0297 — Relative dates are detected structurally
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: A reading is relative when it moves with the base time (parsed again with the base one day later); only `day`/`time` periods name a day.
+- Alternatives: A list of relative phrases.
+- Why: No phrase list (C4); `1 month ago` and `March 2026` do not name a day.
+- Reversible: yes
+
+### D-0298 — Relative dates are read against fixed bases
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: `dateparser` reads against two fixed bases and the result is shifted onto `ctx.captured_at`; a reading that is not a plain one-day shift is dropped.
+- Alternatives: Use the capture time as `RELATIVE_BASE`.
+- Why: `dateparser` keeps every settings object for the life of the process, so a per-page base grows memory per page.
+- Reversible: yes
+
+### D-0299 — Date and datetime inputs are strings only
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 5 (#57) · Status: decided
+- Decision: Any other JSON value is `Invalid("not_a_string")`.
+- Alternatives: Accept JSON numbers as timestamps.
+- Why: Structured sources (JSON-LD `datePosted`) carry strings; a number's unit and epoch are not stated.
+- Reversible: yes
