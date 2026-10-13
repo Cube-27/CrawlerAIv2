@@ -742,3 +742,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Catch and continue (the connection is usually gone).
 - Why: §4.8; the scheduler recovers the tasks.
 - Reversible: yes
+
+### D-0136 — (`schema_id`, `schema_version`) is a composite FK to `schema_def (id, version)`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: decided
+- Decision: `record`, `extraction_config` and `progressive_state` reference `schema_def (id, version)`, which gets `UNIQUE (id, version)`; no separate FK on `schema_id` alone.
+- Alternatives: An FK on `schema_id` alone, with `schema_version` unchecked.
+- Why: A `schema_def` row is one version, so the pair could otherwise disagree (§5.2).
+- Reversible: yes
+
+### D-0137 — Expiring a capture keeps its task and extraction
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: decided
+- Decision: `url_task.capture_id` and `extraction.capture_id` are nullable, `ON DELETE SET NULL`, and indexed.
+- Alternatives: NOT NULL with `ON DELETE CASCADE` (deletes extractions that records cite); a plain FK (blocks `expire_captures`).
+- Why: Production captures expire after 30 days (§15); extractions and records are kept.
+- Reversible: yes
+
+### D-0138 — Column shapes left open by §6
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: decided
+- Decision: Most conservative reading: `capture.status_code`, `final_url`, `html_sha256` NOT NULL as in the bundle manifest; `expires_at` nullable; `object_key` UNIQUE; `candidate.raw_value` jsonb NOT NULL, `normalized_value` nullable; `record.version` ≥ 1 default 1, `changed_fields` jsonb `[]`, `fingerprint` nullable until SPEC-11; `url_state` PK (`site_id`, `canonical_url`), `last_modified` text as received (RFC 9110 §13.1.3); `progressive_state` PK (`site_id`, `schema_id`, `schema_version`, `page_kind`) starting `cold`; `extraction_config` UNIQUE (`site_id`, `schema_id`, `page_kind`, `version`), status default `draft`. Full list in #20.
+- Alternatives: A bigint SimHash `content_fingerprint`; a timestamptz `last_modified`.
+- Why: SPEC-11 can tighten the fingerprint type when it computes one.
+- Reversible: yes, before data exists
+
+### D-0139 — Extra indexes beyond §4.2
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: decided
+- Decision: `ix_capture_expires_at` (partial) and `ix_candidate_created_at` for retention; `ix_url_task_capture_id` and `ix_extraction_capture_id` for `SET NULL` on capture delete; `ix_candidate_extraction_id` for reading an extraction's candidates.
+- Alternatives: Add them with the retention PR (8).
+- Why: Each serves a query this spec defines (§4.3 scheduler entries, §6 retention).
+- Reversible: yes
+
+### D-0140 — `CaptureMethod`/`BlockClass` live in `crawlerai.core.capture`
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: decided
+- Decision: Moved from `storage.capture_bundle`; `storage`, `acquire` and `db` import them from `core`.
+- Alternatives: Duplicate the Literals in `db.models`.
+- Why: The layering contract keeps `db` and `storage` independent; one definition keeps the CHECK and the bundle in sync.
+- Reversible: yes

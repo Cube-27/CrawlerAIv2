@@ -4,7 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt
 
-from crawlerai.storage.capture_bundle import BlockClass, CaptureBundle, CaptureMethod
+from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.storage.capture_bundle import CaptureBundle
 
 __all__ = ["AttemptRecord", "BlockClass", "FetchPolicy", "FetchResult"]
 

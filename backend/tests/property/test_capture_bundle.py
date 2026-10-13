@@ -15,11 +15,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
+from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.storage.capture_bundle import (
-    BlockClass,
     CaptureBundle,
     CaptureManifest,
-    CaptureMethod,
     CorruptBundle,
     Headers,
     NetworkBody,

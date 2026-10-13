@@ -8,7 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import BlockClass, CaptureBundle, CaptureManifest, CaptureMethod, Headers
+from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers
 
 
 def _bundle(method: CaptureMethod = "http", block_class: BlockClass = "shell") -> CaptureBundle:
