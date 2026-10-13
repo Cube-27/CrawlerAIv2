@@ -288,3 +288,30 @@ def test_a_calibration_not_fitted_on_dev_is_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(ValidationError, match="source_split"):
         load_calibration(path)
+
+
+@pytest.mark.parametrize(("precision", "status"), [(0.5, "abstained"), (0.99, "published")])
+def test_the_outcome_keeps_the_candidates_that_passed_screening(precision: float, status: str) -> None:
+    # Precedence fitting scores every kind that offered a value (SPEC-05 §4.11), not only the chosen one.
+    chosen, og = _candidate(), _candidate("og")
+    calibration = _calibration(identifier__agreed=(50, precision))
+
+    outcome = _assess(Chosen(chosen, (og,), (), (chosen, og)), calibration)
+
+    assert (outcome.status, outcome.kept) == (status, (chosen, og))
+
+
+def test_a_lone_state_value_abstains_with_its_kept_candidates() -> None:
+    chosen, xhr = _candidate("js_state"), _candidate("xhr", independent=False, n=1)
+
+    outcome = _assess(Chosen(chosen, (xhr,), (), (chosen, xhr)))
+
+    assert (outcome.status, outcome.reason, outcome.kept) == ("abstained", "no_bucket", (chosen, xhr))
+
+
+def test_a_declined_field_keeps_its_competing_candidates() -> None:
+    a, b = _candidate(), _candidate("og", "A-2")
+
+    outcome = _assess(Unpublished("conflict", "disagree", ((a, "disagree"), (b, "disagree")), (a, b)))
+
+    assert (outcome.status, outcome.kept) == ("conflict", (a, b))

@@ -129,17 +129,18 @@ def assess(
     elif isinstance(decision, Chosen):
         value = _value(decision.chosen)
     else:
-        return _unpublished(decision.status, decision.reason, decision.rejected)
+        return _unpublished(decision.status, decision.reason, decision.rejected, kept=decision.kept)
     chosen, rejected = decision.chosen, decision.rejected
     evidence = evidence_of(chosen, decision.agreeing, corroborated=corroborated)
     if evidence is None:
-        return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")))
+        return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")), kept=decision.kept)
     confidence, calibrated = calibration.measure(type_, evidence) if calibration else (None, False)
     if calibrated and confidence is not None and confidence < tau:
         return _unpublished(
             "abstained",
             "below_tau",
             (*rejected, (chosen, "below_tau")),
+            kept=decision.kept,
             evidence=evidence,
             confidence=confidence,
             calibrated=True,
@@ -155,6 +156,7 @@ def assess(
         locator=chosen.locator,
         derived_by=derived_by,
         chosen=chosen,
+        kept=decision.kept,
         rejected=rejected,
     )
 
@@ -164,6 +166,7 @@ def _unpublished(
     reason: str,
     rejected: tuple[tuple[Candidate, str], ...],
     *,
+    kept: tuple[Candidate, ...] = (),
     evidence: Evidence | None = None,
     confidence: float | None = None,
     calibrated: bool = False,
@@ -180,6 +183,7 @@ def _unpublished(
         locator=None,
         derived_by=None,
         chosen=None,
+        kept=kept,
         rejected=rejected,
     )
 

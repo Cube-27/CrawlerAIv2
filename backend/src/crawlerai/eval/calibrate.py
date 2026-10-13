@@ -3,12 +3,12 @@
 
 Both are fitted on dev only (C1, INV-02): each refuses a run of any other split, and stamps what it writes with
 `source_split: dev`, the run's id and its commit; the engine reads them back with `resolve.evidence` and
-`resolve.preference`. The fits are parameters. SPEC-05 §4.11 brings its own
-(`resolve/calibrate`); until then calibration is the run's bucket table, and precedence keeps the current order.
+`resolve.preference`. Calibration is the run's bucket table (SPEC-05 §4.11); precedence is fitted from its per-kind
+table (`by_source`) by `resolve.calibrate`.
 """
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -16,15 +16,16 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from crawlerai.core.engine_version import CALIBRATION_FILE
-from crawlerai.db.models import EvalRunId, Split
+from crawlerai.db.models import EvalRunId, SourceKind, Split
 from crawlerai.eval.cli import EvalCliError
-from crawlerai.eval.metrics import PrecisionMetrics, Report
+from crawlerai.eval.metrics import PrecisionMetrics, Report, SourceMetrics, Suppressed
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.resolve.calibrate import Measured, fit_orders
 from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.preference import PRECEDENCE_FILE, parse_orders
 from crawlerai.storage.fs import FsStore
 
-Orders = dict[str, tuple[str, ...]]  # field type -> source kinds, first wins (SPEC-05 §4.7)
+Orders = dict[str, tuple[SourceKind, ...]]  # field type -> source kinds, first wins (SPEC-05 §4.7)
 
 
 class NotDev(EvalCliError):
@@ -46,41 +47,38 @@ class Precedence(_Model):
     orders: Orders
 
 
-CalibrationFit = Callable[[EvalRunRow], dict[str, Bucket]]
-PrecedenceFit = Callable[[EvalRunRow, Mapping[str, Sequence[str]]], Orders]
-
-
 def require_dev(split: Split) -> None:
     if split != "dev":
         raise NotDev(f"calibration and precedence are fitted on dev only (INV-02); refusing the {split} split")
 
 
-def run_buckets(run: EvalRunRow) -> dict[str, Bucket]:
-    """The run's `by_bucket` table: `n` and precision of the published fields per field type and evidence bucket,
-    which is SPEC-05 §4.11's definition. A suppressed cell keeps its size and has no precision."""
+def calibrate(run: EvalRunRow) -> Calibration:
+    require_dev(run.split)
     report = Report.model_validate(run.metrics)
+    return Calibration(eval_run_id=run.id, git_sha=run.git_sha, buckets=_buckets(report.by_bucket))
+
+
+def fit_precedence(run: EvalRunRow, current: Mapping[str, Sequence[SourceKind]]) -> Precedence:
+    require_dev(run.split)
+    report = Report.model_validate(run.metrics)
+    return Precedence(eval_run_id=run.id, git_sha=run.git_sha, orders=fit_orders(current, _measured(report.by_source)))
+
+
+def _buckets(cells: Mapping[str, PrecisionMetrics | Suppressed]) -> dict[str, Bucket]:
+    # A suppressed cell keeps its size and has no precision, so it is never calibrated (nor, below, ranked).
     return {
         key: Bucket(n=cell.n, precision=cell.precision if isinstance(cell, PrecisionMetrics) else None)
-        for key, cell in report.by_bucket.items()
+        for key, cell in sorted(cells.items())
     }
 
 
-def keep_order(run: EvalRunRow, current: Mapping[str, Sequence[str]]) -> Orders:
-    """SPEC-05 §4.11 keeps a source kind with n < 30 in its place. The dev report has no per-kind counts yet, so every
-    kind keeps its place."""
-    return {type_: tuple(order) for type_, order in current.items()}
-
-
-def calibrate(run: EvalRunRow, fit: CalibrationFit = run_buckets) -> Calibration:
-    require_dev(run.split)
-    return Calibration(eval_run_id=run.id, git_sha=run.git_sha, buckets=dict(sorted(fit(run).items())))
-
-
-def fit_precedence(
-    run: EvalRunRow, current: Mapping[str, Sequence[str]], fit: PrecedenceFit = keep_order
-) -> Precedence:
-    require_dev(run.split)
-    return Precedence(eval_run_id=run.id, git_sha=run.git_sha, orders=fit(run, current))
+def _measured(cells: Mapping[str, SourceMetrics | Suppressed]) -> dict[str, Measured]:
+    return {
+        key: Measured(n=cell.n, precision=cell.precision, coverage=cell.coverage)
+        if isinstance(cell, SourceMetrics)
+        else Measured(n=cell.n, precision=None)
+        for key, cell in cells.items()
+    }
 
 
 def write_calibration(calibration: Calibration, data_dir: Path) -> Path:

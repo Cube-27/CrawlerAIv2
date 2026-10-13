@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
+from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
@@ -34,9 +35,10 @@ from crawlerai.eval.metrics import (
     Usage,
     build_report,
 )
-from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, replay_split
+from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, page_output, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.normalize.base import Ok
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import Evidence, ExtractionResult, FieldOutcome, LLMCallRecord
@@ -535,7 +537,8 @@ def test_the_pipeline_engine_replays_pages_through_extract_page() -> None:
     outputs = [case.output for case in first]
     assert all(isinstance(output, PageOutput) for output in outputs)
     assert [o.fields["title"] for o in outputs if isinstance(o, PageOutput)] == [
-        FieldOutput(status="published", value=f"Item {n}", evidence="structured") for n in (1, 2)
+        FieldOutput(status="published", value=f"Item {n}", evidence="structured", offered={"jsonld": (f"Item {n}",)})
+        for n in (1, 2)
     ]
     report = build_report(first, "dev", engine_version=engine.version, git_sha="a" * 40)
     assert report.n_pages == 2
@@ -653,8 +656,42 @@ def test_role_c_values_replay_from_the_recording_into_the_llm_grounded_bucket() 
     assert dump(first) == dump(second)
     outputs = [case.output for case in second]
     assert [o.fields["title"] for o in outputs if isinstance(o, PageOutput)] == [
-        FieldOutput(status="published", value=f"Item {n}", evidence="llm_grounded") for n in (1, 2)
+        FieldOutput(status="published", value=f"Item {n}", evidence="llm_grounded", offered={"llm": (f"Item {n}",)})
+        for n in (1, 2)
     ]
     report = build_report(second, "dev", engine_version=engine.version, git_sha="a" * 40)
     assert report.by_bucket["text|llm_grounded"] == PrecisionMetrics(precision=1.0, n=2)
     assert report.usage["adhoc"] == Usage(llm_calls_per_1k_pages=1000.0, n=2)
+
+
+def _title(kind: SourceKind, value: str, n: int) -> Candidate:
+    return Candidate(
+        field="title",
+        entity_id=PAGE,
+        source_kind=kind,
+        raw=value,
+        normalized=Ok(value),
+        locator=f"meta:og:x{n}" if kind == "og" else f"jsonld:0:$['x{n}']",
+        independent=True,
+    )
+
+
+def test_a_field_output_offers_the_kept_values_of_each_kind() -> None:
+    # SPEC-05 §4.11: precedence is fitted on every kind's kept values, not only the published one.
+    chosen, agreeing, lower = _title("og", "A", 0), _title("jsonld", "A", 1), _title("og", "B", 2)
+    outcome = published("A", "agreed", "og", chosen.locator).model_copy(
+        update={"chosen": chosen, "kept": (chosen, agreeing, lower), "rejected": ((lower, "precedence"),)}
+    )
+    result = ExtractionResult(
+        outcome="extracted",
+        entity={"title": outcome},
+        rows=(),
+        candidates=(),
+        llm_calls=(),
+        mode="adhoc",
+        record_confidence=None,
+    )
+
+    output = page_output(result, "ok")
+
+    assert list(output.fields["title"].offered.items()) == [("jsonld", ("A",)), ("og", ("A", "B"))]

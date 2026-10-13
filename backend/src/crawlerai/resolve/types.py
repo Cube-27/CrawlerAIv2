@@ -46,6 +46,7 @@ class FieldOutcome(_Model):
     locator: LocatorText | None
     derived_by: Derivation | None
     chosen: Candidate | None
+    kept: tuple[Candidate, ...] = ()  # the candidates that passed screening (validity, ownership, INV-13)
     rejected: tuple[tuple[Candidate, str], ...]  # each with its reject reason
 
     @model_validator(mode="after")

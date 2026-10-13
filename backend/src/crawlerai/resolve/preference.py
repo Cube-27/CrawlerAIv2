@@ -44,11 +44,13 @@ Rejection = tuple[Candidate, str]  # a candidate that does not publish, with its
 
 @dataclass(frozen=True, slots=True)
 class Chosen:
-    """The field publishes `chosen`'s normalized value. `agreeing` are the other kept candidates equal to it."""
+    """The field publishes `chosen`'s normalized value. `agreeing` are the other kept candidates equal to it; `kept`
+    are all the candidates that passed screening, `chosen` included."""
 
     chosen: Candidate
     agreeing: tuple[Candidate, ...]
     rejected: tuple[Rejection, ...]
+    kept: tuple[Candidate, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +58,7 @@ class Unpublished:
     status: Literal["missing", "conflict"]
     reason: str
     rejected: tuple[Rejection, ...]
+    kept: tuple[Candidate, ...] = ()  # the candidates that passed screening and still did not publish
 
 
 Preference = Chosen | Unpublished
@@ -151,7 +154,7 @@ class Resolver:
             if split is not None:
                 return _all_rejected("conflict", split, kept, rejected)
             choosable = [c for c in kept if c.entity_id == anchor]
-        if _rule_type(spec) in PRECEDENCE_TYPES:
+        if rule_type(spec) in PRECEDENCE_TYPES:
             return self._by_precedence(spec, kept, choosable, rejected)
         return _by_agreement(spec, kept, choosable[0], rejected)
 
@@ -167,7 +170,7 @@ class Resolver:
     def _by_precedence(
         self, spec: FieldSpec, kept: list[Candidate], choosable: list[Candidate], rejected: list[Rejection]
     ) -> Preference:
-        order = self.orders[_rule_type(spec)]
+        order = self.orders[rule_type(spec)]
         # A kind outside the order is not ranked on dev, so it never wins; it can still agree.
         kind = next((k for k in order if any(c.source_kind == k for c in choosable)), None)
         if kind is None:
@@ -185,7 +188,7 @@ class Resolver:
                 agreeing.append(c)
             else:
                 lower.append((c, "precedence"))
-        return Chosen(chosen, tuple(agreeing), (*rejected, *lower))
+        return Chosen(chosen, tuple(agreeing), (*rejected, *lower), tuple(kept))
 
 
 def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
@@ -202,13 +205,13 @@ def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rej
     # ARCHITECTURE §10, INV-14: exact-match values publish only when every kept candidate agrees.
     if not _all_agree(kept, spec):
         return _all_rejected("conflict", "disagree", kept, rejected)
-    return Chosen(chosen, tuple(c for c in kept if c is not chosen), tuple(rejected))
+    return Chosen(chosen, tuple(c for c in kept if c is not chosen), tuple(rejected), tuple(kept))
 
 
 def _all_rejected(
     status: Literal["missing", "conflict"], reason: str, kept: list[Candidate], rejected: list[Rejection]
 ) -> Unpublished:
-    return Unpublished(status, reason, (*rejected, *((c, reason) for c in kept)))
+    return Unpublished(status, reason, (*rejected, *((c, reason) for c in kept)), tuple(kept))
 
 
 def _missing_reason(rejected: list[Rejection]) -> str:
@@ -217,7 +220,7 @@ def _missing_reason(rejected: list[Rejection]) -> str:
     return max((reason for _, reason in rejected), key=_STAGES.index)
 
 
-def _rule_type(spec: FieldSpec) -> FieldType:
+def rule_type(spec: FieldSpec) -> FieldType:
     # A list's values are its items', so it ranks or agrees as its item type does; an object agrees as a whole.
     return spec.item.type if spec.type is FieldType.LIST and spec.item is not None else spec.type
 

@@ -15,12 +15,13 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from crawlerai.core.capture import BlockClass
-from crawlerai.db.models import ExtractionMode, FieldStatus
+from crawlerai.db.models import ExtractionMode, FieldStatus, SourceKind
 from crawlerai.eval.labels import from_pydantic, parse_labels
 from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
-from crawlerai.resolve.types import ExtractionResult, FieldSet
+from crawlerai.normalize.base import Ok
+from crawlerai.resolve.types import ExtractionResult, FieldOutcome, FieldSet
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
@@ -133,7 +134,8 @@ def schema_fields(schema: SchemaDef) -> SchemaFields:
 
 
 def page_output(result: ExtractionResult, block_class: BlockClass) -> PageOutput:
-    """What metrics score of an extraction: each field's status, value and evidence, and the page's LLM calls."""
+    """What metrics score of an extraction: each field's status, value, evidence and the values each source kind
+    offered, and the page's LLM calls."""
     return PageOutput(
         block_class=block_class,
         mode=result.mode,
@@ -145,9 +147,20 @@ def page_output(result: ExtractionResult, block_class: BlockClass) -> PageOutput
 
 def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
     return {
-        name: FieldOutput(status=outcome.status, value=outcome.value, evidence=outcome.evidence)
+        name: FieldOutput(
+            status=outcome.status, value=outcome.value, evidence=outcome.evidence, offered=_offered(outcome)
+        )
         for name, outcome in fields.items()
     }
+
+
+def _offered(outcome: FieldOutcome) -> dict[SourceKind, tuple[JsonValue, ...]]:
+    # Kept candidates normalized (validity, SPEC-05 §4.7); kinds sorted so two replays dump the same bytes (INV-10).
+    offered: dict[SourceKind, list[JsonValue]] = {}
+    for candidate in outcome.kept:
+        if isinstance(candidate.normalized, Ok):
+            offered.setdefault(candidate.source_kind, []).append(candidate.normalized.value)
+    return {kind: tuple(offered[kind]) for kind in sorted(offered)}
 
 
 async def _replay(
