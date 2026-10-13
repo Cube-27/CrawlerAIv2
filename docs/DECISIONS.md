@@ -4074,3 +4074,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A separate router and loader (the PR's state before #123 merged); an `exporters/json.py`.
 - Why: One loader for held-out pages (C8); the `json` export is the IR itself.
 - Reversible: yes
+
+### D-0611 — Role D's repair round uses prompt kind `d_bind`
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 6 (#126) · Status: decided
+- Decision: Both role D calls are `prompt_kind="d_bind"`; the repair is told apart by its system prompt (`d_bind.txt` + `d_repair.txt`).
+- Alternatives: Add `d_repair` to `PromptKind`.
+- Why: SPEC-06 §4.2 fixes the prompt kinds, and role D has one.
+- Reversible: yes
+
+### D-0612 — Role D writes the request without headers or pagination
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 6 (#126) · Status: decided
+- Decision: The output schema is `{method, url, params: [{name, binder}], body}`. Headers come only from header minimization by replay (§4.6), `requires_page_fetch` is derived from the binders (`binding.request_spec`), and pagination is left out, as deterministic binding leaves it out.
+- Alternatives: The full `RequestSpec` shape §4.5 names ("the `ApiRecipe` without `map`/`proof`").
+- Why: The model sees header names only (§4.5), so it cannot propose values, and §4.6 keeps only headers "proven necessary by replay". Params are an array of closed objects, which providers' structured output handles.
+- Reversible: yes
+
+### D-0613 — Role D acceptance: reproduce the requests first, then minimize headers
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 6 (#126) · Status: decided
+- Decision: A spec is replayed only after it reproduces every captured sample request exactly (`binding.mismatch`); only that failure gets the one repair round. A replay failure ends `NotLearnable` without a repair, since the spec's request is then the browser's own.
+- Alternatives: Repair on replay failure too.
+- Why: §4.5 "must reproduce the captured endpoint URL on every sample page and the replayed response must contain the mapped values"; no fetch happens for a URL the model wrote that the browser did not request.
+- Reversible: yes

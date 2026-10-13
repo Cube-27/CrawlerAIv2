@@ -11,7 +11,6 @@ from typing import Any
 
 import httpx
 import pytest
-from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -33,13 +32,10 @@ from crawlerai.eval.store import (
     LabelsChanged,
 )
 from crawlerai.llm.client import (
-    LLMRequest,
-    LLMResponse,
     OutputInvalid,
     ProviderUnavailable,
-    ReplyCheck,
-    request_hash,
 )
+from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, CorruptBundle, Headers, sha256_hex
@@ -162,30 +158,6 @@ class FakeStore:
 
     async def aclose(self) -> None:
         pass
-
-
-class ScriptedClient:
-    """Answers each call with the next scripted reply, or raises the next scripted failure; keeps the requests."""
-
-    def __init__(self, *script: dict[str, JsonValue] | Exception) -> None:
-        self._script = list(script)
-        self.requests: list[LLMRequest] = []
-
-    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
-        self.requests.append(req)
-        step = self._script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        Draft202012Validator(req.output_schema).validate(step)  # as the real client does
-        return LLMResponse(
-            data=step,
-            provider="fake",
-            model="fake-fast",
-            tokens_in=10,
-            tokens_out=5,
-            latency_ms=1,
-            request_hash=request_hash(req),
-        )
 
 
 @dataclass
