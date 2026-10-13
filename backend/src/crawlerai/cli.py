@@ -7,6 +7,7 @@ import signal
 import sys
 from collections.abc import Sequence
 from contextlib import suppress
+from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from typing import get_args
@@ -51,7 +52,10 @@ async def _work() -> None:
 
 async def _schedule() -> None:
     settings = Settings()
-    await run_scheduler(settings, periodic(open_store(settings.object_store)), _stop_on_signals())
+    fetch = partial(
+        fetch_http, policy=FetchPolicy(), engine_version=ENGINE_VERSION, impersonate=AcquireSettings().impersonate
+    )
+    await run_scheduler(settings, periodic(open_store(settings.object_store), fetch), _stop_on_signals())
 
 
 async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) -> None:
@@ -121,7 +125,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("openapi", help="print the API's OpenAPI document as JSON")
     commands.add_parser("worker", help="run a worker: claim queued tasks and run them until SIGINT or SIGTERM")
-    commands.add_parser("scheduler", help="run the scheduler: release expired leases, expire captures and candidates")
+    commands.add_parser(
+        "scheduler", help="run the scheduler: release expired leases, expire old data, re-check fetch methods"
+    )
     fetch = commands.add_parser("fetch", help="fetch one URL over HTTP into a capture bundle file")
     fetch.add_argument("url")
     fetch.add_argument(
