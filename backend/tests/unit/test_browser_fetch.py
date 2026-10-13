@@ -4,6 +4,9 @@ connection passes the SSRF guard, and the browser presents one consistent identi
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. The connector admits only
 those hosts (and the server's own address) at the server's port; every other name goes through the real guard with
 a stub resolver. One browser serves the whole module, as one serves a worker process.
+
+The browser runs with Playwright's own forced proxying of loopback turned off, so the loopback and link-local tests
+prove that `fetch_browser` itself keeps those destinations behind the guard.
 """
 
 import asyncio
@@ -22,7 +25,7 @@ import pytest
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
+from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.storage.capture_bundle import decode, encode
@@ -141,12 +144,18 @@ class LocalConnector(SafeConnector):
         super().__init__(resolve)
         self._port = port
 
+        self.refused: list[tuple[str, int | None]] = []  # (host, port) of every URL the guard refused
+
     async def check(self, url: str) -> Target:
         parts = urlsplit(url)
         host = parts.hostname or ""
         if (host.endswith(".test") or host == "127.0.0.1") and parts.port == self._port:
             return Target(url=url, host=host, port=self._port, ip=IPv4Address("127.0.0.1"))
-        return await super().check(url)
+        try:
+            return await super().check(url)
+        except SsrfRejected:
+            self.refused.append((host, parts.port))
+            raise
 
 
 @dataclass
@@ -155,21 +164,26 @@ class Browser:
     session: BrowserSession
     port: int
 
+    connector: LocalConnector | None = None  # the last fetch's
+
     def fetch(self, url: str, policy: FetchPolicy | None = None) -> FetchResult:
+        self.connector = LocalConnector(self.port)
         return self.runner.run(
             fetch_browser(
                 url,
                 policy or FetchPolicy(browser_timeout_s=10),
                 session=self.session,
                 engine_version=ENGINE_VERSION,
-                connector=LocalConnector(self.port),
+                connector=self.connector,
             )
         )
 
 
 @pytest.fixture(scope="module")
 def browser(server: Server) -> Iterator[Browser]:
-    with asyncio.Runner() as runner:
+    with pytest.MonkeyPatch.context() as env, asyncio.Runner() as runner:
+        # Read by the Playwright driver when it starts (crBrowser `shouldProxyLoopback`).
+        env.setenv("PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK", "1")
         opened = open_browser()
         try:
             session = runner.run(opened.__aenter__())
@@ -246,6 +260,70 @@ def test_redirect_hop_to_a_private_address_is_rejected_after_a_public_first_hop(
     (attempt,) = result.attempts
     assert (attempt.block_class, attempt.error) == ("error", "ssrf_rejected: private_address")
     assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
+
+
+@pytest.fixture(scope="module")
+def other_loopback_server() -> Iterator[Server]:
+    """A JSON service on another loopback port, which the connector does not admit."""
+    srv: Server | None = None
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            assert srv is not None
+            srv.requests.append((self.headers.get("Host", ""), self.path, dict(self.headers.items())))
+            self.send_response(200)
+            self.send_header("Content-Type", _JSON)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b'{"secret": 1}')
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    httpd.daemon_threads = True
+    srv = Server(port=httpd.server_address[1])
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+    thread.start()
+    yield srv
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _subresources_page(target: str) -> bytes:
+    # The page reaches for `target` three ways: fetch, XHR and an iframe.
+    return f"""<html><body><p>Page with subresources</p><iframe src="{target}frame"></iframe><script>
+fetch('{target}fetch').catch(() => {{}});
+const xhr = new XMLHttpRequest(); xhr.open('GET', '{target}xhr'); xhr.send();
+</script></body></html>""".encode()
+
+
+@pytest.mark.parametrize(
+    ("host", "reason"),
+    [
+        # RFC 3927 link-local, the cloud metadata address; RFC 1122 §3.2.1.3 loopback. Chromium's implicit proxy
+        # bypass rules cover both (net/proxy_resolution/proxy_bypass_rules.cc).
+        pytest.param("169.254.169.254", "link-local", id="link-local"),
+        pytest.param("127.0.0.1", "loopback", id="loopback"),
+    ],
+)
+def test_a_subresource_to_a_loopback_or_link_local_address_is_refused_by_the_guard(
+    browser: Browser, server: Server, other_loopback_server: Server, host: str, reason: str
+) -> None:
+    port = other_loopback_server.port if host == "127.0.0.1" else 80
+    target = f"http://{host}:{port}/"
+    path = f"/subresources-{reason}"
+    server.routes[path] = Reply(body=_subresources_page(target))
+
+    result = browser.fetch(server.url(path), FetchPolicy(browser_timeout_s=10))
+
+    assert result.attempts[0].error is None  # the page itself loads; only its subresources are refused
+    assert b"Page with subresources" in result.bundle.body
+    assert browser.connector is not None
+    # The guard names the port explicitly in the URL it checks.
+    assert (host, port) in browser.connector.refused
+    assert other_loopback_server.requests == []
+    assert result.bundle.manifest.network_bodies == ()
 
 
 @pytest.mark.parametrize(

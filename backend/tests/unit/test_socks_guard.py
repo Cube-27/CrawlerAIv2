@@ -63,18 +63,27 @@ def _domain_request(host: str, port: int, command: int = 1) -> bytes:
 
 
 async def _socks(
-    guard: SocksGuard, request: bytes, methods: bytes = b"\x00"
+    guard: SocksGuard, request: bytes, methods: bytes = bytes([0])
 ) -> tuple[bytes, asyncio.StreamReader, asyncio.StreamWriter]:
     """Greet, send `request`, and return the method choice plus the reply's first two bytes (version, code)."""
+    choice, reader, writer = await _socks_sent(guard, request, methods)
+    if choice != bytes([5, 0]):
+        return choice, reader, writer
+    head = await reader.readexactly(2)
+    return head, reader, writer
+
+
+async def _socks_sent(
+    guard: SocksGuard, request: bytes, methods: bytes = bytes([0])
+) -> tuple[bytes, asyncio.StreamReader, asyncio.StreamWriter]:
+    """Greet and, once the guard accepts no authentication, send `request` without waiting for its reply."""
     host, port = guard.address
     reader, writer = await asyncio.open_connection(host, port)
     writer.write(bytes([5, len(methods)]) + methods)
     choice = await reader.readexactly(2)
-    if choice != b"\x05\x00":
-        return choice, reader, writer
-    writer.write(request)
-    head = await reader.readexactly(2)
-    return head, reader, writer
+    if choice == bytes([5, 0]):
+        writer.write(request)
+    return choice, reader, writer
 
 
 def _run[T](scenario: Coroutine[None, None, T]) -> T:
@@ -204,3 +213,28 @@ def test_leaving_the_guard_closes_open_tunnels_and_the_listener() -> None:
     assert rest == b""
     with pytest.raises(OSError):  # refused; Windows retries the SYN and times out instead
         socket.create_connection(address, timeout=2)
+
+
+def test_leaving_the_guard_cancels_a_check_still_resolving() -> None:
+    started = asyncio.Event()
+    cancelled: list[str] = []
+
+    async def resolve(host: str) -> list[IPAddress]:
+        started.set()
+        try:
+            await asyncio.Event().wait()  # a resolver that never answers
+        except asyncio.CancelledError:
+            cancelled.append(host)
+            raise
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        async with SocksGuard(SafeConnector(resolve)) as guard:
+            _, _, writer = await _socks_sent(guard, _domain_request("slow.example.com", 443))
+            await started.wait()
+        writer.close()
+        await asyncio.sleep(0)  # let a cancellation reach the resolver
+        # Checked before the loop ends: `asyncio.run` cancels whatever is left over itself.
+        assert cancelled == ["slow.example.com"]
+
+    _run(scenario())

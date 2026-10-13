@@ -43,6 +43,11 @@ _PROBE_URL = "https://identity.invalid/"
 _HIGH_ENTROPY_HINTS = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
 # WebRTC sends UDP outside any proxy; Chromium's policy `disable_non_proxied_udp` keeps it inside the guard.
 _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
+# Chromium's implicit proxy-bypass rules send `localhost`, 127.0.0.0/8, [::1], 169.254.0.0/16 and fe80::/10 around
+# any proxy (net/proxy_resolution/proxy_bypass_rules.cc); 169.254.169.254 is the cloud metadata address. The bypass
+# rule `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it
+# itself unless told not to; it is named here so the guard does not rest on a library default.
+_PROXY_ALL_LOOPBACK = "<-loopback>"
 # SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page.
 _JSON_BODY_MAX_BYTES = 2_000_000
 _JSON_BODIES_MAX = 50
@@ -151,7 +156,9 @@ async def _render(
     except SsrfRejected as e:
         raise _Failed(str(e), None) from e
     async with SocksGuard(connector, checked=(first,)) as guard:
-        context = await session.browser.new_context(proxy={"server": guard.url}, accept_downloads=False)
+        context = await session.browser.new_context(
+            proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK}, accept_downloads=False
+        )
         opened = time.monotonic()
         try:
             page = await context.new_page()
@@ -209,7 +216,8 @@ async def _navigate(
     body, raw_body, network = await asyncio.gather(
         _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses)
     )
-    # The browser hands over bodies after content decoding, so the decompressed cap is the one that applies.
+    # The browser hands over bodies after content decoding, so the decompressed cap is the one that applies. It
+    # bounds what is stored, not memory: the browser has no streaming read, so both bodies are read in full first.
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise _Failed("body_cap", exchange)
     return exchange, Content(body=body, raw_body=raw_body, network=network)

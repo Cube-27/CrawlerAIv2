@@ -85,12 +85,19 @@ class SocksGuard:
     ) -> None:
         server, self._server = self._server, None
         if server is not None:
-            server.close()
+            server.close()  # closes the listening socket now
+        # A check runs apart from the handler that started it (it is shared by every connection to its host), so it
+        # is cancelled too: none outlives the fetch.
+        checks = [check for check in self._targets.values() if not check.done()]
         for handler in self._handlers:
             handler.cancel()
+        for check in checks:
+            check.cancel()
         await asyncio.gather(*self._handlers, return_exceptions=True)
-        if server is not None:
-            await server.wait_closed()
+        await asyncio.gather(*checks, return_exceptions=True)
+        # Every handler has closed its tunnels. `Server.wait_closed` is not awaited: on Windows a connection the
+        # browser reset is never detached from the server (CPython's proactor `_call_connection_lost` raises from
+        # `shutdown` before `_detach`), and the wait would never end.
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         # asyncio.start_server runs each connection's callback in a task of its own.
