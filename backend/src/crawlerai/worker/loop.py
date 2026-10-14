@@ -29,6 +29,7 @@ from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, FinishedOutcome, Job, JobKind, TaskOutcome
 from crawlerai.db.queue import (
     ClaimedTask,
+    JobEnding,
     LeaseLost,
     cancel_task,
     claim_tasks,
@@ -76,8 +77,15 @@ TaskResult = Finished | Failed | Postpone
 TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]
 
 
-async def run_worker(settings: Settings, handlers: Mapping[JobKind, TaskHandler], stop: asyncio.Event) -> None:
-    """Work until `stop` is set. The task in progress finishes; claimed tasks that have not started go back."""
+async def run_worker(
+    settings: Settings,
+    handlers: Mapping[JobKind, TaskHandler],
+    stop: asyncio.Event,
+    *,
+    ending: JobEnding | None = None,
+) -> None:
+    """Work until `stop` is set. The task in progress finishes; claimed tasks that have not started go back. `ending`
+    runs as a task's result ends its job (`settle_job`)."""
     worker = f"{socket.gethostname()}:{os.getpid()}:{secrets.token_hex(4)}"
     engine = create_async_engine(settings.database_url.get_secret_value())
     try:
@@ -92,17 +100,22 @@ async def run_worker(settings: Settings, handlers: Mapping[JobKind, TaskHandler]
                     if stop.is_set():
                         await _release(conn, tasks[index:])
                         break
-                    await _run(conn, task, handlers, redact_urls=settings.log_redact_urls)
+                    await _run(conn, task, handlers, ending, redact_urls=settings.log_redact_urls)
     finally:
         await engine.dispose()
 
 
 async def _run(
-    conn: AsyncConnection, task: ClaimedTask, handlers: Mapping[JobKind, TaskHandler], *, redact_urls: bool
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    handlers: Mapping[JobKind, TaskHandler],
+    ending: JobEnding | None,
+    *,
+    redact_urls: bool,
 ) -> None:
     try:
         async with conn.begin():
-            await _execute(conn, task, handlers, redact_urls=redact_urls)
+            await _execute(conn, task, handlers, ending, redact_urls=redact_urls)
     except LeaseLost:
         log.warning("url_task %s: lease lost; its work was rolled back", task.id)
     except Exception as error:
@@ -110,11 +123,16 @@ async def _run(
         log.warning("url_task %s: %s", task.id, message)
         with suppress(LeaseLost):
             async with conn.begin():
-                await fail_task(conn, task, message, transient=True)
+                await fail_task(conn, task, message, transient=True, ending=ending)
 
 
 async def _execute(
-    conn: AsyncConnection, task: ClaimedTask, handlers: Mapping[JobKind, TaskHandler], *, redact_urls: bool
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    handlers: Mapping[JobKind, TaskHandler],
+    ending: JobEnding | None,
+    *,
+    redact_urls: bool,
 ) -> None:
     job = (await conn.execute(select(Job.kind, Job.cancel_requested).where(Job.id == task.job_id))).one()
     if job.cancel_requested:
@@ -122,15 +140,22 @@ async def _execute(
         return
     handler = handlers.get(job.kind)
     if handler is None:
-        await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False)
+        await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False, ending=ending)
         return
     match await handler(task, conn):
         case Finished(outcome, reason, capture_id):
-            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id)
+            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
         case Failed(error, transient, after, exhausted, capture_id):
             text = _error_text(error, redact_urls=redact_urls)
             await fail_task(
-                conn, task, text, transient=transient, after=after, exhausted=exhausted, capture_id=capture_id
+                conn,
+                task,
+                text,
+                transient=transient,
+                after=after,
+                exhausted=exhausted,
+                capture_id=capture_id,
+                ending=ending,
             )
         case Postpone(after):
             await release_task(conn, task, after=after)

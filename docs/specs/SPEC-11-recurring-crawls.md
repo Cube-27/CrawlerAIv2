@@ -78,13 +78,19 @@ Out of scope (§22):
 
 ### 4.5 Listing diff (§14 row 4)
 
-- A "run" = one crawl/extract job over a site. During a run, every row URL seen in listing records is upserted
-  into `url_state` with `last_seen_at = now`, `missing_runs = 0`, `last_seen_job_id` (plumbing).
-- At job completion, for `url_state` rows of the site with `gone_at IS NULL` whose `last_seen_job_id != this
-  job` and which were seen in a previous *listing* of this site: `missing_runs += 1`; `missing_runs >= 2` →
-  `gone_at = now` and a `job_event(kind='url_gone', url)`.
-- New URLs (no `url_state` row) discovered from listing rows are queued as detail tasks in the same job when a
-  page-kind rule matches them (SPEC-10 frontier); otherwise they are recorded only.
+- A "run" = one records crawl that completed. The runs of one crawl are the records crawls with the same scope
+  (start URL, `include`, `exclude`, `max_depth`, `limit`, `page_kind_rules`) and schema: a recurring crawl is the
+  caller re-submitting the request (§14).
+- A run's listing is the URLs of its tasks that a page-kind rule matched, on the start URL's host, whether or not
+  their pages were reached. (No job stores listing records, so their row URLs cannot be the listing.)
+- At job completion, in the transaction that ends the job and before its end event, each URL of the listing is
+  upserted into `url_state` with `last_seen_at = now`, `missing_runs = 0`, `gone_at = NULL` and `last_seen_job_id`
+  = the job (plumbing). For the site's rows with `gone_at IS NULL` last seen by an earlier run of the same crawl:
+  `missing_runs += 1`; `missing_runs >= 2` → `gone_at = now` and a `job_event(kind='url_gone', url)`.
+- A run that saw part of its listing only counts no misses: one that reached its `limit`, one with an empty
+  listing, and one with a page no rule matched that ended `blocked`, `shell` or `failed` (its links were not read).
+  A navigation page that is `not_found` still counts.
+- New URLs are queued as tasks by the SPEC-10 frontier, which takes every URL a run finds in scope.
 - A URL seen again after `gone_at` was set gets `gone_at = NULL` and `missing_runs = 0`.
 
 ### 4.6 Error handling

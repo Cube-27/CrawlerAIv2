@@ -27,7 +27,8 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Scope
-from crawlerai.db.models import Extraction, Job, JobId, Project, UrlTask
+from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
+from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
@@ -39,7 +40,7 @@ from crawlerai.services.records import RecordPage
 from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
-from crawlerai.worker.loop import run_worker
+from crawlerai.worker.loop import TaskHandler, run_worker
 from tests.conftest import ParserCounter
 from tests.db.conftest import PRIVATE_HOST, resolve
 
@@ -131,7 +132,8 @@ async def run(engine: AsyncEngine, fetching: Fetching, data: EngineData | None, 
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    loop = asyncio.create_task(run_worker(settings, {"crawl": crawl_handler(fetching, data, None)}, stop))
+    handlers: dict[JobKind, TaskHandler] = {"crawl": crawl_handler(fetching, data, None)}
+    loop = asyncio.create_task(run_worker(settings, handlers, stop, ending=close_run))
     async with asyncio.timeout(60):
         while (await summary(engine, job_id)).status not in ("completed", "failed", "cancelled"):
             await asyncio.sleep(0.1)
@@ -357,6 +359,45 @@ async def test_a_target_the_guard_refuses_is_never_fetched(
 async def _results(engine: AsyncEngine, fetching: Fetching, job_id: JobId) -> Any:
     async with engine.connect() as conn:
         return await jobs.job_results(conn, job_id, ResultsQuery(), store=fetching.store)
+
+
+async def test_a_product_absent_from_two_consecutive_crawls_is_gone(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    web.pages |= {
+        f"{own_origin}/p/blue": page(product="Blue kettle"),
+        f"{own_origin}/p/red": page(product="Red kettle"),
+    }
+    request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/p/*")
+    runs = []
+    # SPEC-11 §7: the red kettle leaves the listing after the first run.
+    for listed in (("/p/blue", "/p/red"), ("/p/blue",), ("/p/blue",)):
+        web.pages[f"{own_origin}/"] = page(*listed)
+        submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)
+        await run(engine, fetching, engine_data, submitted.job_id)
+        runs.append(submitted.job_id)
+
+    host = own_origin.removeprefix("https://")
+    query = (
+        select(UrlState.canonical_url, UrlState.missing_runs, UrlState.gone_at.is_not(None), UrlState.last_seen_job_id)
+        .join(Site)
+        .where(Site.host == host)
+    )
+    async with engine.connect() as conn:
+        state = {url: tuple(rest) for url, *rest in await conn.execute(query)}
+        events = select(JobEvent.kind, JobEvent.payload).where(JobEvent.job_id == runs[2]).order_by(JobEvent.id)
+        last = [(kind, payload) for kind, payload in await conn.execute(events) if kind in ("url_gone", "completed")]
+    assert state == {
+        f"{own_origin}/p/blue": (0, False, runs[2]),
+        f"{own_origin}/p/red": (2, True, runs[0]),
+    }
+    # The gone URL is announced before the job's end event, which closes the event stream.
+    assert last == [("url_gone", {"url": f"{own_origin}/p/red"}), ("completed", {})]
 
 
 # The frontier on the url_task table.
