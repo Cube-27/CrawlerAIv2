@@ -42,6 +42,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
 | D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
 | D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
+| D-0718 | Rows keyed by the unsorted query form before #149 | needs-owner |
 
 ---
 
@@ -4782,4 +4783,60 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The `/jobs` table's Tasks column reads "N tasks: a queued, b done, …", the total and then each `url_task.status` some task has, in SPEC-01 §4.2 order; the per-outcome counts stay on the job page.
 - Alternatives: One column per task status; done/total only.
 - Why: Five count columns crowd the table at phone width, and done/total hides failures.
+- Reversible: yes
+
+### D-0711 — Learn jobs run in the worker process
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: `crawlerai worker` runs `run_learner` beside `run_worker`; it polls `next_learn_job` every 30 s and runs `run_learn_job` with an LLM client from settings.
+- Alternatives: A scheduler entry (it would hold the scheduler's turn for a whole run); a separate command.
+- Why: D-0624 named the worker; `run_learn_job` manages its own transactions; the scheduler starts runs once a minute.
+- Reversible: yes
+
+### D-0712 — A learn run still running after an hour ends as a failed run
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: The scheduler's `expire_learn_runs` ends runs `running` past `LEARN_RUN_TIMEOUT` (1 h) as `failed` with reason `expired`, and a run that finishes after expiry writes nothing; a job that cannot start ends `failed`. Answers D-0624's open items.
+- Alternatives: A job lease or heartbeat (a SPEC-01 queue change).
+- Why: A run makes a few role A calls of at most 120 s each per provider, so one hour means its process died.
+- Reversible: yes
+
+### D-0713 — Cancelling a learn job ends its run
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: Cancelling a queued learn job calls `learning_failed` in the cancel transaction; a running one is left to its run, which ends `cancelled` on `cancel_requested` (before, `settle_job` ended a task-less running job at once and left the state `learning`).
+- Alternatives: Settle a running learn job at once and end its state there.
+- Why: D-0622: every non-activating end calls `learning_failed`, and only the run knows when it has stopped.
+- Reversible: yes
+
+### D-0714 — Role C is bound in scrape, extract and crawl, not in batch or the captures replay
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: `scrape` records and the worker's `extract` and `crawl` handlers bind `role_c` charged to the job; batch (D-0631, D-0635) and the captures replay (D-0523, D-0524) bind none. The eval replay binds role C on every page, so batch records can differ from it by D-0631's choice.
+- Alternatives: Bind role C in batch too; make the replay skip role C per job kind.
+- Why: SPEC-07 §4.4 step 3, SPEC-10 §4.6, ARCHITECTURE §8.4; D-0507 deferred it only until SPEC-06 PR 4.
+- Reversible: yes
+
+### D-0715 — A worker task counts its fetch usage after the extraction
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: `fetch_page` returns the attempts of a reached page and the handler counts them (`count_fetch`) after extracting; crawl reads sitemaps after the page.
+- Alternatives: Commit the fetch usage in a transaction of its own (breaks INV-31's one transaction per task).
+- Why: D-0346: role C's client updates the job's usage on its own connection and would wait on the task's uncommitted job-row write.
+- Reversible: yes
+
+### D-0716 — The eval API takes the API key and is rate-limited; /labeling sits behind RequireKey
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: `/v1/eval` requires `require_api_key`; the labeling screens read through TanStack queries on `useApiClient`. Supersedes D-0344 and D-0380 for the eval API; `/healthz` stays public.
+- Alternatives: Keep the eval API unauthenticated in dev.
+- Why: SPEC-03 §4.10: "same API-key auth as everything else"; D-0344 misread it.
+- Reversible: yes
+
+### D-0717 — Every job kind keys `url_task.canonical_url` by `crawl.canonical.canonicalize`
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided
+- Decision: Scrape and batch use the sorted-query form, as extract and crawl do.
+- Alternatives: The url type's form (query order kept) for every kind.
+- Why: SPEC-10 §4.1; SPEC-05 §4.10 needs one entity key per page.
+- Reversible: yes
+
+### D-0718 — Rows keyed by the unsorted query form before #149
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: needs-owner
+- Decision: Question: `record.entity_key`, `url_state.canonical_url` and `url_task.canonical_url` written by scrape or batch for URLs with two or more query pairs out of order no longer match new writes, so those pages start a new version chain once. Options: (a) leave them; (b) a backfill migration that recomputes keys and merges chains. Recommendation: (a) (no production data yet). Blocked: nothing.
+- Alternatives: (b) a backfill migration.
+- Why: Rewriting stored data needs the owner (CLAUDE.md §4).
 - Reversible: yes

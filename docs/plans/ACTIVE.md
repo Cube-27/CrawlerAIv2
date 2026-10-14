@@ -32,7 +32,9 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1-L4 complete (2026-10-14), including D-0700's GET /v1/jobs (#146) and jobs table (#147). Next: whole-codebase integration review (owner, 2026-10-14), then separate frontend and backend testing.
+- L1-L4 complete (2026-10-14). Integration review (owner): R1-R6 fixed (#149); R7 (API recipe rung and collector in live acquisition; SPEC-02 §4.4, SPEC-09 §4.8) next as its own PR. Then the LLM cost history (owner), then browser UAT on crawler-test sites.
+- Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
+- Owner (D-0718): rows keyed by the unsorted query form before #149; recommendation (a) leave them (no production data yet).
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
@@ -47,7 +49,6 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Note for the owner once labels exist (from #32): the gate compares precision only (§4.8), so a required type the engine stops publishing shows up only as lower coverage, which the gate doesn't measure.
 - Note (from #26): the robots snapshot is per site, but robots.txt is per scheme, host and port (RFC 9309 §2.3); a site served on both `http` and `https` or a non-default port shares one snapshot.
 - Open (deferred by #100, D-0492): `VERSION` and `data/calibration.json` don't ship in the wheel, so CI and the image report `ENGINE_VERSION = unknown+cal.none`. Before the first deployment, one PR decides where `EngineData.load(data_dir)` gets its directory (package data or a settings path), ships GeoNames data and calibration with it, and makes the build write `VERSION`.
-- For SPEC-06 PR 4 (from #69): the LLM client commits usage on its own connection (D-0346), so a handler must not hold an uncommitted write to the job row when it calls the client.
 - Done: `claim_tasks` no longer claims more than `n` tasks (#24, D-0153).
 - Done: SonarCloud security findings that failed the gate on `main` fixed in code (#21, D-0141, D-0142).
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
