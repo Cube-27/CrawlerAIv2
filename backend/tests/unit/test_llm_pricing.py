@@ -11,11 +11,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from crawlerai.core.engine_version import backend_dir, data_dir
 from crawlerai.core.settings import LLMSettings
-from crawlerai.llm import pricing as pricing_module
 from crawlerai.llm.pricing import OverlappingPrices, PriceList, Pricing
 
+BACKEND = Path(__file__).resolve().parents[2]
 D1 = date(2030, 1, 1)
 D2 = date(2030, 6, 1)
 
@@ -58,15 +57,13 @@ SYNTHETIC = Pricing.of(
 
 
 def test_the_shipped_price_lists_price_every_default_model_of_the_settings() -> None:
-    backend = backend_dir(Path(pricing_module.__file__))
-    assert backend is not None
-    shipped = Pricing.read(data_dir(backend))
-    settings = LLMSettings()
+    # Read from this source tree: CI installs the package as a wheel, which has no backend/data.
+    shipped = Pricing.read(BACKEND / "data")
+    fields = LLMSettings.model_fields
     defaults = {
-        ("anthropic", settings.llm_fast_model_anthropic),
-        ("anthropic", settings.llm_strong_model_anthropic),
-        ("gemini", settings.llm_fast_model_gemini),
-        ("gemini", settings.llm_strong_model_gemini),
+        (provider, fields[f"llm_{model_class}_model_{provider}"].default)
+        for provider in ("anthropic", "gemini")
+        for model_class in ("fast", "strong")
     }
     checked = date(2026, 10, 14)
     assert {(p, m) for p, m in defaults if shipped.price(p, m, checked, prompt_tokens=1) is None} == set()
