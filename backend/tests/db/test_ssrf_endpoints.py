@@ -90,13 +90,11 @@ class Server:
 
 @pytest.fixture
 def server() -> Iterator[Server]:
-    state: list[Server] = []
-
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
         def do_GET(self) -> None:
-            status, headers, body = state[0].routes.get(self.path, (404, (), b"no route"))
+            status, headers, body = srv.routes.get(self.path, (404, (), b"no route"))
             self.send_response(status)
             for name, value in headers:
                 self.send_header(name, value)
@@ -109,10 +107,10 @@ def server() -> Iterator[Server]:
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     httpd.daemon_threads = True
-    state.append(Server(port=httpd.server_address[1]))
+    srv = Server(port=httpd.server_address[1])  # the handler reads it when a request arrives
     thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
-    yield state[0]
+    yield srv
     httpd.shutdown()
     httpd.server_close()
 
@@ -388,27 +386,28 @@ REDIRECTS: Sequence[tuple[str, str]] = [
 
 
 @pytest.mark.parametrize(("location", "reason"), REDIRECTS, ids=[location for location, _ in REDIRECTS])
-async def test_a_scrape_redirected_to_a_refused_target_is_a_problem(
-    client: httpx.AsyncClient, server: Server, site: str, location: str, reason: str
+@pytest.mark.parametrize(
+    ("moved", "path", "body"),
+    [
+        pytest.param(
+            "/moved", "/v1/scrape", lambda site: {"url": f"{site}/moved", "formats": ["markdown"]}, id="scrape"
+        ),
+        pytest.param("/", "/v1/map", lambda site: {"url": f"{site}/"}, id="map-start-page"),
+    ],
+)
+async def test_a_page_redirected_to_a_refused_target_is_a_problem(
+    client: httpx.AsyncClient,
+    server: Server,
+    site: str,
+    moved: str,
+    path: str,
+    body: Callable[[str], dict[str, Any]],
+    location: str,
+    reason: str,
 ) -> None:
-    server.redirect("/moved", location)
+    server.redirect(moved, location)
 
-    response = await client.post("/v1/scrape", json={"url": f"{site}/moved", "formats": ["markdown"]})
-
-    assert response.status_code == 422, response.text
-    assert {k: response.json()[k] for k in ("type", "detail")} == {
-        "type": "ssrf_rejected",
-        "detail": f"ssrf_rejected: {reason}",
-    }
-
-
-@pytest.mark.parametrize(("location", "reason"), REDIRECTS, ids=[location for location, _ in REDIRECTS])
-async def test_a_map_whose_start_page_redirects_to_a_refused_target_is_a_problem(
-    client: httpx.AsyncClient, server: Server, site: str, location: str, reason: str
-) -> None:
-    server.redirect("/", location)
-
-    response = await client.post("/v1/map", json={"url": f"{site}/"})
+    response = await client.post(path, json=body(site))
 
     assert response.status_code == 422, response.text
     assert {k: response.json()[k] for k in ("type", "detail")} == {
