@@ -41,6 +41,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0311 | GeoNames has no versioned download URL | needs-owner |
 | D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
 | D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
+| D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
 
 ---
 
@@ -4425,3 +4426,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Open a link to the endpoint.
 - Why: SPEC-12 §4.1: every request carries the bearer header, so exports are fetched with it and saved as files.
 - Reversible: yes
+
+### D-0661 — Only records tasks read or write `url_state`
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: decided
+- Decision: A `batch_scrape` task without `records` sends no validators and stores no validators or fingerprint.
+- Alternatives: every task maintains `url_state`.
+- Why: If validators or a fingerprint are stored for content no record was made from, a later records task would take a 304 or a near-equal fingerprint as `unchanged` and let a stale record stand. A job without records has no record to skip extraction for.
+- Reversible: yes.
+
+### D-0662 — A record stands for an unchanged page only if it is of the same schema version and config, and is not older than the last change
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: decided
+- Decision: A page is `unchanged` (by 304 or by fingerprint) only when `standing_record` finds a record that meets all of these:
+  - it belongs to the page's entity (D-0488) under the job's schema version;
+  - it was extracted in the same mode with the same config version;
+  - its `created_at` is no earlier than `url_state.last_changed_at`.
+  Validators are sent only in that case. They are stored only together with a stored record, or when the task ends `unchanged`.
+- Alternatives: `url_state` alone decides. Then a new schema version, a new config, or a change first seen by another schema's task would be skipped against a record that does not describe the page.
+- Why: `url_state` is keyed per URL (ARCHITECTURE §6), but records are per schema version and config. §4.6 says to fetch again when no record stands. INV-28 says a job extracts with what it pinned.
+- Reversible: yes.
+
+### D-0663 — `simhash64` declines a text without words
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: decided
+- Decision: `simhash64` returns `None` when no words remain after nonce stripping. The page then counts as changed and is extracted. If computing the fingerprint raises, the error is logged and the page is extracted (§4.6).
+- Alternatives: hash to 0, which would make every wordless page `unchanged` against every other wordless page.
+- Why: A page with no visible words gives the fingerprint nothing to compare, and its structured data can still change. This declines rather than guesses (C7).
+- Reversible: yes.
+
+### D-0664 — `url_task.record_id` is deferred to PR 3
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: decided
+- Decision: An `unchanged` task does not yet point at its standing record. A job's records results list only the records that job made. The `url_task.record_id` plumbing (§4.2) comes with the records service in PR 3, where an equal record fingerprint also needs a task to reference an existing record.
+- Alternatives: add the column (migration 0015) here, with no reader until PR 3.
+- Why: Its only reader is the records results, which PR 3 changes. A column with no reader is speculative.
+- Reversible: yes.
+
+### D-0665 — Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged`
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: needs-owner
+- Question: ARCHITECTURE §14 row 2 treats Hamming ≤ 3 as unchanged and skips extraction. On 100 fixed-seed 500-word texts, a one-word edit stays within 3 bits on 87 seeds and moves 4 to 6 bits on the other 13 (the test asserts at least 80, and that some exceed 3). So on a long page, a change to a single visible token (a price, a stock count, a date) usually skips extraction, and row 3's record version and change feed never see it. The threshold is meant to skip boilerplate-only changes. Nonces and whitespace are already ignored structurally, at Hamming 0.
+- Options:
+  - (a) Keep ≤ 3 as built here, and confirm on dev (D-0039).
+  - (b) Treat only Hamming 0 as unchanged, so SimHash serves only for its nonce and whitespace invariance. This changes ARCHITECTURE §14.
+  - (c) Make the threshold depend on text length.
+- Recommendation: (b), until dev results show which boilerplate changes ≤ 3 would absorb. It is a one-constant change (`UNCHANGED_BITS`).
+- Blocked: nothing in this PR. It affects whether PR 3's "a changed price yields a new record version" holds on real long pages.
