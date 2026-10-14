@@ -528,6 +528,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/usage/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Cost Report
+         * @description The LLM calls of the UTC days `start` to `end` (both included; by default the 30 days through today), with
+         *     their tokens and estimated cost in USD: in total, per day, per provider, model and prompt kind, and for the
+         *     costliest jobs. A cost is null when some of its tokens have no price. Calls made without a job are not
+         *     recorded, so they are not included.
+         */
+        get: operations["llm_cost_report_v1_usage_llm_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage/llm/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Job Costs
+         * @description The jobs with LLM calls in the range, newest first, each with those calls' tokens and estimated cost. Pass a
+         *     page's `next_cursor` as `cursor` for the page after it.
+         */
+        get: operations["llm_job_costs_v1_usage_llm_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -848,6 +892,32 @@ export interface components {
                 [key: string]: components["schemas"]["CorrectedSteps"] | null;
             };
         };
+        /** CostReport */
+        CostReport: {
+            /** Breakdown */
+            breakdown: components["schemas"]["ModelRoleUsage"][];
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            /** Days */
+            days: components["schemas"]["DayUsage"][];
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Top Jobs */
+            top_jobs: components["schemas"]["JobUsage"][];
+            total: components["schemas"]["LLMUsage"];
+        };
         /**
          * CrawlRequest
          * @description The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
@@ -927,6 +997,24 @@ export interface components {
             post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** Xpath */
             xpath: string;
+        };
+        /** DayUsage */
+        DayUsage: {
+            /** Calls */
+            calls: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Estimated Usd */
+            estimated_usd: number | null;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Unpriced Tokens */
+            unpriced_tokens: number;
         };
         /** DraftField */
         DraftField: {
@@ -1273,6 +1361,17 @@ export interface components {
             status: "ok";
         };
         /**
+         * JobCostPage
+         * @description One page of the jobs with LLM calls in the range, newest first; `next_cursor` is the `cursor` of the page after
+         *     it, None on the last.
+         */
+        JobCostPage: {
+            /** Items */
+            items: components["schemas"]["JobUsage"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
          * JobPage
          * @description One page of jobs, newest first; `next_cursor` is the `cursor` of the page after it, None on the last.
          */
@@ -1304,6 +1403,8 @@ export interface components {
              * @enum {string}
              */
             kind: "scrape" | "batch_scrape" | "map" | "crawl" | "extract" | "learn";
+            /** Llm Cost Usd */
+            llm_cost_usd: number | null;
             outcomes: components["schemas"]["OutcomeCounts"];
             /** Started At */
             started_at: string | null;
@@ -1318,6 +1419,34 @@ export interface components {
             };
             /** Webhook Url */
             webhook_url: string | null;
+        };
+        /** JobUsage */
+        JobUsage: {
+            /** Calls */
+            calls: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Estimated Usd */
+            estimated_usd: number | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "scrape" | "batch_scrape" | "map" | "crawl" | "extract" | "learn";
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Unpriced Tokens */
+            unpriced_tokens: number;
         };
         /**
          * JsonLdStep
@@ -1380,6 +1509,23 @@ export interface components {
             source: "jsonld" | "js_state" | "xhr" | "api";
         };
         JsonValue: unknown;
+        /**
+         * LLMUsage
+         * @description LLM calls and their tokens, with their estimated cost in USD: null when some of the tokens have no price
+         *     (`unpriced_tokens`), never a guess.
+         */
+        LLMUsage: {
+            /** Calls */
+            calls: number;
+            /** Estimated Usd */
+            estimated_usd: number | null;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Unpriced Tokens */
+            unpriced_tokens: number;
+        };
         /** LabelRow */
         LabelRow: {
             /** Fields */
@@ -1528,6 +1674,28 @@ export interface components {
             links: number;
             /** Sitemap */
             sitemap: number;
+        };
+        /**
+         * ModelRoleUsage
+         * @description The calls to one model for one role (`prompt_kind`, SPEC-06 §4.2).
+         */
+        ModelRoleUsage: {
+            /** Calls */
+            calls: number;
+            /** Estimated Usd */
+            estimated_usd: number | null;
+            /** Model */
+            model: string | null;
+            /** Prompt Kind */
+            prompt_kind: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Unpriced Tokens */
+            unpriced_tokens: number;
         };
         /** NewSchema */
         NewSchema: {
@@ -4349,6 +4517,114 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    llm_cost_report_v1_usage_llm_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    llm_job_costs_v1_usage_llm_jobs_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobCostPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

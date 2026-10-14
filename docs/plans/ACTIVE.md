@@ -32,9 +32,9 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1-L4 complete (2026-10-14). Integration review (owner): R1-R6 fixed (#149); R7 (API recipe rung and collector in live acquisition; SPEC-02 §4.4, SPEC-09 §4.8) next as its own PR. Then the LLM cost history (owner), then browser UAT on crawler-test sites.
+- L1-L4 complete (2026-10-14). Integration review (owner): R1-R6 fixed (#149); R7 (API recipe rung live) in progress. LLM cost history done (#148). Next: browser UAT on crawler-test sites (owner).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
-- Owner (D-0718): rows keyed by the unsorted query form before #149; recommendation (a) leave them (no production data yet).
+- Follow-ups from #148: an installed wheel has no backend/data, so pricing is empty and every cost reads unknown (joins the D-0492 packaging item); top jobs rank a job with unknown cost by its priced part.
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
@@ -158,6 +158,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | Role C detail + pipeline hook wiring | done (#107) | Bound in `config_ir.role_c` (D-0518); a failed call leaves fields `missing` with `LLMFailure.field_reason` (D-0519); missing optional fields ride along with a required gap (D-0520). |
 | 5 | Role C listing + labeling pre-fill endpoint | done (#111) | D-0534–D-0538. Role C reads a listing's rows only when structured data gives none. Follow-ups from review: `max_output_tokens` 16,384 may not hold 200 rows on wide schemas (a cut reply fails as `OutputInvalid`); the pre-fill's diagnostics (truncation, ungrounded values) are not returned to the labeler. |
 | 6 | Role S + prompt-hash reuse | done (#92) | `complete_json` takes an optional reply check sharing the one retry (D-0448); drafts keyed on the normalized prompt (D-0449). |
+| 7 | Prices as data + estimated LLM cost (with SPEC-10 PR 10, SPEC-12 PR 11) | done (#148) | D-0719–D-0727. ARCHITECTURE rev 11 (owner). Prices in `backend/data/llm/`; client adds `tokens_in` to usage metadata. |
 
 ## [SPEC-07 — API foundation, authentication, page content formats and `scrape`](../specs/SPEC-07-api-foundation-and-scrape.md)
 
@@ -214,6 +215,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | MCP server (stdio + HTTP) | done (#144) | D-0696–D-0699. `api/keys.py` moved to `services/keys.py`; runtime setup in `services/runtime.py`; `api` layered over `mcp_server`. Follow-ups: unexpected exception text reaches MCP clients (from review); each later markdown page rebuilds the capture's markdown; the worker still builds its fetching by hand beside `fetching_from_settings`. |
 | 8 | Endpoint-level SSRF matrix | done (#145) | D-0705–D-0706. Tests only, plus the worker's up-front guard check of a page task's URL. Follow-up from review: run the same matrix over the MCP tools (#144). |
 | 9 | `GET /v1/jobs` list | done (#146) | D-0707–D-0709. ARCHITECTURE rev 10 (D-0700). No migration. Follow-ups: one shared keyset-page helper for `list_records`, page outputs and `list_jobs`; a covering `url_task (job_id, status, outcome)` index or counters on `job` if listing large crawls is measured slow. |
+| 10 | `GET /v1/usage/llm`, `GET /v1/usage/llm/jobs`, job `llm_cost_usd` | done (#148) | D-0719–D-0727. Migration 0016 adds `ix_usage_event_job_id_id`. No MCP tool. |
 
 ## [SPEC-11 — Recurring crawls: conditional GET, fingerprints, record versions, listing diff](../specs/SPEC-11-recurring-crawls.md)
 
@@ -239,4 +241,5 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 8 | Change feed in Records | done (#141) | |
 | 9 | Labeling nav integration + shared shell polish | done (#93) | |
 | 10 | Jobs table on /jobs | done (#147) | D-0700. Uses `GET /v1/jobs` (#146). |
+| 11 | Settings screen with LLM usage & cost | done (#148) | D-0719, D-0725. Range presets; tables only. |
 

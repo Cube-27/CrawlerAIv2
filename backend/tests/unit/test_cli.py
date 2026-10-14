@@ -77,6 +77,8 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
         "/v1/scrape",
         "/v1/sites/{host}/configs",
         "/v1/sites/{host}/learn",
+        "/v1/usage/llm",
+        "/v1/usage/llm/jobs",
     ]
     assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
 

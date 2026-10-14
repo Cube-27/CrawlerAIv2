@@ -6,6 +6,7 @@ import { JobScreen } from "../screens/jobs/JobScreen";
 import { JobsScreen } from "../screens/jobs/JobsScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
 import { ScrapeScreen } from "../screens/scrape/ScrapeScreen";
+import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
 import { SiteScreen } from "../screens/sites/SiteScreen";
 import { SitesScreen } from "../screens/sites/SitesScreen";
@@ -48,6 +49,7 @@ export const routes: RouteObject[] = [
           // when `/healthz` reports `eval_ui`.
           { path: "labeling", element: <LabelingList /> },
           { path: "labeling/:pageId", element: <LabelingPage /> },
+          { path: "settings", element: <SettingsScreen /> },
         ],
       },
     ],

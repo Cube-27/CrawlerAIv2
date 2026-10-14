@@ -76,7 +76,7 @@ class LLMClient(Protocol):
   retry with the validation error appended; on provider 429/5xx/timeouts, failover to the next provider once.
 - Budget: before each call `budget_remaining(job_id, "llm_calls")` (SPEC-01); exhausted → `BudgetExhausted`,
   never a silent skip. After each call: `record_usage` for `llm_calls` (1) and `llm_tokens_in`/`llm_tokens_out`
-  with `metadata={prompt_kind, model, request_hash, latency_ms}` (INV-23).
+  with `metadata={prompt_kind, model, request_hash, latency_ms, tokens_in}` (INV-23; `tokens_in` for §4.8).
 - Recording: `extraction.llm_calls` gets `[{prompt_kind, provider, model, request_hash, tokens_in, tokens_out}]`
   — never the prompt text (it contains page content).
 - The `RecordedLLM` wrapper (SPEC-03) keys its cache on `request_hash`, so prompts must be deterministic
@@ -146,6 +146,23 @@ Labeling pre-fill variant (`c_prefill`, SPEC-03 4.10): identical, requests all f
   `llm_unavailable` / `llm_budget` — never a published guess.
 - Timeouts: 60 s per call (`fast`), 120 s (`strong`).
 
+### 4.8 Prices and estimated cost (ARCHITECTURE §1, rev 11)
+
+An estimated LLM cost is shown for visibility; it is not billing (owner, 2026-10-14).
+- Prices are versioned external data (C4): one file per provider, `backend/data/llm/<provider>-pricing.json`,
+  pinned in `backend/data/manifest.json`, each with its source pricing page and the date checked. A row gives a
+  model's USD price per million input and output tokens, the dates it applies (`effective_from`, inclusive, to
+  `effective_until`, exclusive; UTC), and, for a model priced by prompt length, the input-token range it applies
+  to. `crawlerai.llm.pricing` reads them and refuses two rows that could apply to one call.
+- A usage event's tokens are priced at the price that applied to its call: provider and model as recorded
+  (`model_or_pool` is the reply's model), the event's time (its UUIDv7 id's, RFC 9562 §5.7), and the call's input
+  tokens. So that output tokens can be priced by prompt length, the client adds `tokens_in` to the metadata of
+  each of a call's usage rows (§4.2).
+- Tokens no price applies to (an unlisted model, a date before the first checked price, a tiered price without
+  the prompt length) are counted as unpriced; any sum that includes them has a null estimate, never a guess (C7).
+- Calls with `job_id = None` (the labeling pre-fill, an eval replay's recording) write no usage event, so they
+  have no cost history.
+
 ## 5. Invariants
 
 INV-12 (alignment tests), INV-17 (no exec; ruff S102/S307), INV-23 (usage per call), INV-03 (prompts contain no
@@ -181,6 +198,7 @@ site names), INV-10 (deterministic request hashing for replay).
 | 4 | Role C detail + pipeline hook wiring | `llm/roles/c_extract`, SPEC-05 hook | unit, replay | Bucket appears in dev report. |
 | 5 | Role C listing + labeling pre-fill endpoint | same + SPEC-03 `prefill` | unit | Draft labels stored. |
 | 6 | Role S + prompt-hash reuse | `llm/roles/s_schema` | unit | One row per prompt. |
+| 7 | Prices as data + estimated LLM cost (with SPEC-10 PR 10, SPEC-12 PR 11; one PR) | `data/llm/*`, `llm/pricing`, `services/llm_costs` | unit, property, db | Every default model priced; one price per call; unpriced tokens give a null cost. |
 
 ## 9. Open issues
 

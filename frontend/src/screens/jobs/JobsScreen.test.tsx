@@ -37,6 +37,7 @@ function job(overrides: Partial<JobSummary> = {}): JobSummary {
       failed: 0,
     },
     usage: { pages_fetched: 2 },
+    llm_cost_usd: 0.0123,
     created_at: "2026-10-14T09:00:00Z",
     started_at: "2026-10-14T09:00:01Z",
     finished_at: null,
@@ -159,6 +160,7 @@ describe("Job screen", () => {
     expect(jobStatus()).toHaveTextContent("running");
     expect(rowsOf(screen.getByRole("grid", { name: "Tasks by outcome" }))).toEqual(["extracted2"]);
     expect(rowsOf(screen.getByRole("grid", { name: "Usage" }))).toEqual(["pages_fetched2"]);
+    expect(screen.getByText("Estimated LLM cost: $0.0123")).toBeInTheDocument();
     const events = screen.getByRole("grid", { name: "Events" });
     await waitFor(() => {
       expect(rowsOf(events)).toEqual([

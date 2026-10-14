@@ -7,6 +7,7 @@ import os
 import threading
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 
 _lock = threading.Lock()
 _last = (0, 0)  # (unix_ms, rand_a) of the previous value
@@ -36,3 +37,10 @@ def uuid7() -> uuid.UUID:
     value |= 0x7 << 76 | counter << 64
     value |= 0b10 << 62 | rand & (1 << 62) - 1
     return uuid.UUID(int=value)
+
+
+def uuid7_floor(at: datetime) -> uuid.UUID:
+    """The least UUID whose 48-bit timestamp is `at`'s millisecond (RFC 9562 §5.7): UUIDv7s made before `at` sort below
+    it and those made at or after it sort at or above it, so a time range is an id range."""
+    unix_ms = (at - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(milliseconds=1)
+    return uuid.UUID(int=(unix_ms & (1 << 48) - 1) << 80)

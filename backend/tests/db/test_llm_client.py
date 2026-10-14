@@ -92,6 +92,8 @@ async def test_a_call_writes_its_usage_events_and_counters(engine: AsyncEngine) 
         "model": "fake-model",
         "request_hash": request_hash(request(job_id)),
         "latency_ms": response.latency_ms,
+        # The call's prompt length, which a price tiered by prompt length needs for the output tokens too (§4.8).
+        "tokens_in": 120,
     }
     assert await _events(engine, job_id) == [
         ("llm_calls", "fake", "fake-model", 1, metadata),

@@ -21,6 +21,7 @@ from crawlerai.api.routers import (
     records,
     schemas,
     scrape,
+    usage,
 )
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.api.routers import map as map_router
@@ -62,6 +63,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(events.router)
     app.include_router(configs.router)
+    app.include_router(usage.router)
     if app.state.eval_ui:
         app.include_router(eval_router.router)
     mcp.mount(app)

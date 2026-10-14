@@ -427,6 +427,8 @@ class UsageEvent(Base):
     __table_args__ = (
         CheckConstraint(one_of("resource", UsageResource), name="resource"),
         CheckConstraint("quantity >= 0", name="quantity_non_negative"),
+        # A job's events, for the LLM cost on its summary (SPEC-06 §4.8, SPEC-10 §4.2).
+        Index(None, "job_id", "id"),
     )
 
     id: Mapped[UsageEventId] = mapped_column(primary_key=True, default=uuid7)

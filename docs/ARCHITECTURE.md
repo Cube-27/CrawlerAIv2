@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 9, 2026-10-13. No code exists.
+Status: design, rev 11, 2026-10-14. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -51,8 +51,9 @@ project is open source under AGPL-3.0 (Appendix A #26).
 | G6 | **Recurring crawls are cheap.** Change detection from day one. | LLM calls per 1k recurring pages ≈ 0. |
 | G7 | **Replayable.** Any record can be regenerated from its stored capture. | Replay harness in CI. |
 
-Usage (LLM tokens, browser-seconds, proxy bytes) is counted per job for visibility and runaway budgets. There is no
-billing (Appendix A #2).
+Usage (LLM tokens, browser-seconds, proxy bytes) is counted per job for visibility and runaway budgets. An
+estimated LLM cost, from the providers' published prices kept as versioned data, is shown for visibility too
+(owner, 2026-10-14). There is no billing (Appendix A #2).
 
 ### Non-goals
 
@@ -601,6 +602,7 @@ matches the engine. Correctness is measured in §16, per field status.
 | `/v1/schemas` | Create, read, update, delete. |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
 | `/v1/records`, `/v1/captures/{id}/replay` | Records with `field_meta`; replay a capture with the current engine. |
+| `GET /v1/usage/llm`, `GET /v1/usage/llm/jobs` | LLM calls, tokens and estimated cost for a range of UTC days: totals, per day, per provider, model and prompt kind, and the costliest jobs; per job, cursor-paginated. An estimate for visibility, not billing (§1). |
 
 Every field in a response carries `value`, `status`, `evidence`, `confidence`, `calibrated` and `locator`. Each
 record carries `mode` and `complete`.
@@ -715,7 +717,8 @@ subtraction.
 
 ## 17. Observability
 
-- **Usage counters** per job; per-job budgets stop runaway jobs.
+- **Usage counters** per job; per-job budgets stop runaway jobs. LLM usage is also shown with an estimated cost
+  (§1): tokens priced from versioned price data, unknown where no price applies (C7).
 - **Run events** per job (fetch outcomes, mode, LLM calls, abstentions, drift suspensions) are stored in Postgres
   and streamed over SSE.
 - **Metrics** (OpenTelemetry): pages/min, fetch outcome mix, mode mix, abstain rate, queue depth.
@@ -982,3 +985,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 8 | 2026-10-13 | **Parse once** (Appendix A #31, owner). §8: one `ParsedPage` per capture, shared by every consumer (INV-26). Appendix A #32: operational invariants INV-27–INV-32 (owner-selected). Comparisons with a named hosted crawler removed (owner). |
 | 9 | 2026-10-13 | **C11 amended** (Appendix A #33): a hard cognitive-complexity limit of 15 per function and a soft, warning-only limit of 800 lines per file; no other size, coverage or ratchet gates. INV-18 reworded; SPEC-00 §4.6 updated. |
 | 10 | 2026-10-14 | **`GET /v1/jobs`** (owner approval, D-0700): §13.1 lists jobs, newest first, with optional `kind` and `status` filters and cursor pagination, for SPEC-12's jobs table. SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
+| 11 | 2026-10-14 | **Estimated LLM cost** (owner approval, 2026-10-14). §1: an estimated LLM cost is shown for visibility; still no billing. §13.1: `GET /v1/usage/llm` and `GET /v1/usage/llm/jobs`. §17: usage shown with its estimated cost. Prices are versioned data under `backend/data/llm/` (C4); a call without a price has an unknown cost (C7). SPEC-06, SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |

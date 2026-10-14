@@ -454,6 +454,7 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         "counts",
         "outcomes",
         "usage",
+        "llm_cost_usd",
         "webhook_url",
         "engine_version",
     }
