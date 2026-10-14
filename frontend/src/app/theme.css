@@ -12,6 +12,9 @@
   --container-content: 80rem;
   /* The captured page's frame on the labeling screen: most of the viewport's height. */
   --height-page-view: 70dvh;
+  /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
+   * (no layout shift on paging). */
+  --height-table-page: 64rem;
 }
 
 @layer components {

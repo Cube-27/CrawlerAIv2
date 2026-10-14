@@ -113,6 +113,16 @@ function jobPage(items: JobSummary[], next_cursor: string | null = null) {
   return () => Response.json({ items, next_cursor } satisfies JobPage);
 }
 
+/** The jobs table, once it shows rows. */
+function findJobsGrid(): Promise<HTMLElement> {
+  return screen.findByRole("grid", { name: "Jobs" });
+}
+
+/** The query of each `GET /v1/jobs` the screen sent, in order. */
+function listQueries(calls: Call[]): string[] {
+  return calls.filter(({ path }) => path === "/v1/jobs").map(({ query }) => query);
+}
+
 function jobApi(extra: Record<string, (call: Call) => Response> = {}) {
   return stubApi({
     "GET /v1/jobs": jobPage([]),
@@ -477,7 +487,7 @@ describe("Jobs screen", () => {
   it("pages forward with the cursor the API returned, and back to the first page", async () => {
     const calls = jobApi({
       "GET /v1/jobs": (call) =>
-        call.query === "cursor=c2"
+        call.query.includes("cursor=c2")
           ? jobPage([job({ id: SECOND_JOB_ID, kind: "map" })])()
           : jobPage([job()], "c2")(),
     });
@@ -486,17 +496,82 @@ describe("Jobs screen", () => {
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(await screen.findByText("Map")).toBeInTheDocument();
+    expect(await within(await findJobsGrid()).findByText("Map")).toBeInTheDocument();
     expect(screen.getByText("Page 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(await screen.findByText("Page 1")).toBeInTheDocument();
-    expect(calls.filter(({ path }) => path === "/v1/jobs").map(({ query }) => query)).toEqual([
-      "",
-      "cursor=c2",
-      "",
-    ]);
+    expect(listQueries(calls)).toEqual(["limit=20", "cursor=c2&limit=20", "limit=20"]);
+  });
+
+  it("keeps the pager in place while the next page loads", async () => {
+    const gate: { release: () => void } = { release: () => undefined };
+    const pending = new Promise<void>((resolve) => {
+      gate.release = resolve;
+    });
+    jobApi({
+      "GET /v1/jobs": (call) =>
+        call.query.includes("cursor=c2")
+          ? jobPage([job({ id: SECOND_JOB_ID, kind: "map" })])()
+          : jobPage([job()], "c2")(),
+    });
+    // The second page answers only when released, so its loading state can be seen.
+    const fetchStub = globalThis.fetch;
+    vi.stubGlobal("fetch", async (request: Request) => {
+      if (request.url.includes("cursor=c2")) await pending;
+      return fetchStub(request);
+    });
+    await open("/jobs", "Jobs");
+    await screen.findByRole("grid", { name: "Jobs" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByLabelText("Loading jobs")).toBeInTheDocument();
+    expect(screen.getByText("Page 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+
+    gate.release();
+    expect(await within(await findJobsGrid()).findByText("Map")).toBeInTheDocument();
+  });
+
+  it("filters the jobs by kind and status, from the first page", async () => {
+    const calls = jobApi({
+      "GET /v1/jobs": (call) =>
+        call.query.includes("kind=crawl")
+          ? jobPage([job({ id: SECOND_JOB_ID, kind: "crawl", status: "failed" })])()
+          : jobPage([job()], "c2")(),
+    });
+    await open("/jobs", "Jobs");
+    await screen.findByRole("grid", { name: "Jobs" });
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByText("Page 2");
+
+    await userEvent.click(screen.getByRole("button", { name: /Kind/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "Crawl" }));
+    await userEvent.click(screen.getByRole("button", { name: /Status/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "failed" }));
+
+    await waitFor(() => {
+      expect(rowsOf(screen.getByRole("grid", { name: "Jobs" }))).toEqual([
+        "Crawl" + "failed" + "3 tasks: 1 queued, 2 done" + "2026-10-14T09:00:00Z",
+      ]);
+    });
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    expect(listQueries(calls).at(-1)).toBe("kind=crawl&status=failed&limit=20");
+  });
+
+  it("says when no job matches the filters", async () => {
+    jobApi({
+      "GET /v1/jobs": (call) => jobPage(call.query.includes("status=") ? [] : [job()])(),
+    });
+    await open("/jobs", "Jobs");
+    await screen.findByRole("grid", { name: "Jobs" });
+
+    await userEvent.click(screen.getByRole("button", { name: /Status/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "cancelled" }));
+
+    expect(await screen.findByText("No job matches these filters")).toBeInTheDocument();
   });
 
   it("says when there are no jobs yet", async () => {
