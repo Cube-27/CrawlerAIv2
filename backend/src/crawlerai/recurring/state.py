@@ -6,10 +6,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import FetchResult, Validators
-from crawlerai.db.models import SiteId, UrlState
+from crawlerai.db.models import Extraction, ExtractionMode, Record, RecordId, SchemaId, SiteId, UrlState
 from crawlerai.recurring.conditional import Unchanged, received
+from crawlerai.recurring.simhash import hamming
+from crawlerai.resolve.records import entity_key
 
-__all__ = ["record_fetch", "stored_validators"]
+__all__ = ["UNCHANGED_BITS", "record_content", "record_fetch", "standing_record", "stored_validators"]
+
+# SPEC-11 §4.3, ARCHITECTURE §14: fingerprints at most this many bits apart are the same content. A starting point,
+# to confirm on dev (D-0039).
+UNCHANGED_BITS = 3
 
 _OK = 200  # RFC 9110 §15.3.1: the response carries the page itself, and its validators describe it
 
@@ -42,6 +48,57 @@ async def record_fetch(
     await conn.execute(
         insert.on_conflict_do_update(index_elements=[UrlState.site_id, UrlState.canonical_url], set_=values)
     )
+
+
+async def standing_record(
+    conn: AsyncConnection,
+    site_id: SiteId,
+    canonical_url: str,
+    schema_id: SchemaId,
+    mode: ExtractionMode,
+    config_version: int | None,
+) -> RecordId | None:
+    """The record that stands for the page when it has not changed: the newest of its entity (`entity_key`) under the
+    schema version, extracted the way it would be now (the same `mode` and config version), and made no earlier than
+    the page's content last changed (`record_content`). None when there is none: the page must be extracted. A record
+    made before the page last changed describes content it no longer has, whichever task saw the change."""
+    changed = select(UrlState.last_changed_at).where(*_url(site_id, canonical_url)).scalar_subquery()
+    query = (
+        select(Record.id)
+        .join(Extraction, Extraction.id == Record.extraction_id)
+        .where(
+            Record.site_id == site_id,
+            Record.entity_key == entity_key(site_id, canonical_url),
+            Record.schema_id == schema_id,
+            Extraction.mode == mode,
+            Extraction.config_version.is_not_distinct_from(config_version),
+            changed.is_(None) | (Record.created_at >= changed),
+        )
+        .order_by(Record.id.desc())
+        .limit(1)
+    )
+    return (await conn.execute(query)).scalar_one_or_none()
+
+
+async def record_content(conn: AsyncConnection, site_id: SiteId, canonical_url: str, fingerprint: int) -> bool:
+    """Whether the page's content changed (§4.3): its fingerprint is more than `UNCHANGED_BITS` from the stored one,
+    or none is stored. A change stores the new fingerprint and sets `last_changed_at`; an unchanged page keeps the
+    stored one, so that small changes do not add up unseen."""
+    query = select(UrlState.content_fingerprint).where(*_url(site_id, canonical_url))
+    stored = (await conn.execute(query)).scalar_one_or_none()
+    if stored is not None and hamming(int(stored, 16), fingerprint) <= UNCHANGED_BITS:
+        return False
+    values = {"content_fingerprint": _hex(fingerprint), "last_changed_at": func.now()}
+    insert = pg_insert(UrlState).values(site_id=site_id, canonical_url=canonical_url, last_seen_at=func.now(), **values)
+    await conn.execute(
+        insert.on_conflict_do_update(index_elements=[UrlState.site_id, UrlState.canonical_url], set_=values)
+    )
+    return True
+
+
+def _hex(fingerprint: int) -> str:
+    """The fingerprint as `url_state.content_fingerprint` stores it: 16 lower-case hex digits."""
+    return f"{fingerprint:016x}"
 
 
 def _stores_validators(fetched: FetchResult) -> bool:

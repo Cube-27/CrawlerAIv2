@@ -39,6 +39,7 @@ from crawlerai.db.models import (
     SchemaDef,
     Site,
     SourceKind,
+    UrlState,
     UrlTask,
     UsageEvent,
     WebhookDelivery,
@@ -116,14 +117,14 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
 @pytest.fixture
 async def own_origin(database_url: str) -> AsyncIterator[str]:
     """An https origin on a host no other test uses, for tests that commit a site for it. The site, its captures, and
-    its records and progressive state are deleted afterwards (a task or extraction that named a capture keeps a NULL,
-    SPEC-01 §4.2)."""
+    its records, progressive state and url_state are deleted afterwards (a task or extraction that named a capture
+    keeps a NULL, SPEC-01 §4.2)."""
     host = f"shop-{uuid7().hex[-12:]}.example.test"
     yield f"https://{host}"
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:
         site_ids = select(Site.id).where(Site.host == host).scalar_subquery()
-        for model in (Record, ProgressiveState, Capture):
+        for model in (Record, ProgressiveState, Capture, UrlState):
             await connection.execute(delete(model).where(model.site_id.in_(site_ids)))
         await connection.execute(delete(Site).where(Site.host == host))
     await engine.dispose()

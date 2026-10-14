@@ -1,5 +1,6 @@
-"""`url_state` for conditional GET (SPEC-11 §4.2), against a real Postgres: a 200 stores the validators a URL answered
-with, a 304 only marks it seen, and the stored validators are what the next fetch sends."""
+"""`url_state` for conditional GET (SPEC-11 §4.2) and the content fingerprint (§4.3), against a real Postgres: a 200
+stores the validators a URL answered with, a 304 only marks it seen, and the stored validators are what the next fetch
+sends; a fingerprint more than three bits from the stored one is a change, and replaces it."""
 
 import uuid
 from collections.abc import Callable
@@ -13,7 +14,7 @@ from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import Project, Site, SiteId, UrlState
 from crawlerai.recurring.conditional import Unchanged
-from crawlerai.recurring.state import record_fetch, stored_validators
+from crawlerai.recurring.state import record_content, record_fetch, stored_validators
 
 pytestmark = pytest.mark.anyio
 
@@ -129,3 +130,73 @@ async def test_a_304_marks_the_url_seen_and_keeps_its_validators(
 
     now = (await conn.execute(select(func.now()))).scalar_one()
     assert await _row(conn, site_id) == (ETAG, LAST_MODIFIED, now)
+
+
+# The content fingerprint (§4.3).
+
+FINGERPRINT = 0x0123_4567_89AB_CDEF
+
+
+async def _content(conn: AsyncConnection, site_id: SiteId) -> tuple[str | None, datetime | None]:
+    query = select(UrlState.content_fingerprint, UrlState.last_changed_at).where(UrlState.site_id == site_id)
+    row = (await conn.execute(query)).one()
+    return (row.content_fingerprint, row.last_changed_at)
+
+
+async def _a_day_ago(conn: AsyncConnection, site_id: SiteId) -> datetime | None:
+    """Move the URL's last change a day back, so a later change is seen to set it again."""
+    moved = update(UrlState).where(UrlState.site_id == site_id).values(last_changed_at=func.now() - DAY)
+    return (await conn.execute(moved.returning(UrlState.last_changed_at))).scalar_one()
+
+
+async def test_a_first_fingerprint_is_a_change(conn: AsyncConnection) -> None:
+    site_id = await _site(conn)
+
+    assert await record_content(conn, site_id, URL, FINGERPRINT) is True
+
+    now = (await conn.execute(select(func.now()))).scalar_one()
+    assert await _content(conn, site_id) == ("0123456789abcdef", now)
+
+
+@pytest.mark.parametrize("flipped", [0, 1, 3])
+async def test_a_fingerprint_within_three_bits_is_unchanged_and_keeps_the_stored_one(
+    conn: AsyncConnection, flipped: int
+) -> None:
+    site_id = await _site(conn)
+    await record_content(conn, site_id, URL, FINGERPRINT)
+    changed_at = await _a_day_ago(conn, site_id)
+
+    assert await record_content(conn, site_id, URL, FINGERPRINT ^ ((1 << flipped) - 1)) is False
+
+    assert await _content(conn, site_id) == ("0123456789abcdef", changed_at)
+
+
+async def test_a_fingerprint_four_bits_away_is_a_change(conn: AsyncConnection) -> None:
+    site_id = await _site(conn)
+    await record_content(conn, site_id, URL, FINGERPRINT)
+    await _a_day_ago(conn, site_id)
+
+    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b1111 << 60) is True
+
+    now = (await conn.execute(select(func.now()))).scalar_one()
+    assert await _content(conn, site_id) == ("f123456789abcdef", now)
+
+
+async def test_small_changes_do_not_add_up_unseen(conn: AsyncConnection) -> None:
+    # Each step is 2 bits from the last, but the stored fingerprint stays the first: the second step is 4 from it.
+    site_id = await _site(conn)
+    await record_content(conn, site_id, URL, FINGERPRINT)
+
+    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b11) is False
+    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b1111) is True
+
+
+async def test_a_fingerprint_keeps_the_validators(
+    conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
+) -> None:
+    site_id = await _site(conn)
+    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS))
+
+    await record_content(conn, site_id, URL, FINGERPRINT)
+
+    assert await stored_validators(conn, site_id, URL) == Validators(etag=ETAG, last_modified=LAST_MODIFIED)
