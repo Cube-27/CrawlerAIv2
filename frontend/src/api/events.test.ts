@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { createApiClient } from "./client";
 import {
   EventStreamParser,
   followEvents,
@@ -6,6 +7,7 @@ import {
   type StreamEvent,
   type StreamState,
 } from "./events";
+import { openJobEvents } from "./jobs";
 
 /** A connection answered with `body`. */
 function answered(body: BodyInit, init?: ResponseInit): Opened {
@@ -124,6 +126,34 @@ describe("followEvents", () => {
 
     expect(run.requests).toEqual([null, null, null]);
     expect(run.states).toEqual(["connecting", "reconnecting", "reconnecting", "live", "ended"]);
+  });
+
+  it("reconnects after a server error or a rate limit whose body the client has read", async () => {
+    // openapi-fetch reads a non-OK answer's body to parse it, so the stream it hands back is locked.
+    const answers = [
+      () => new Response("upstream down", { status: 502 }),
+      () => Response.json({ status: 429, title: "Too many requests" }, { status: 429 }),
+      () => new Response(streamOf("id: 9\nevent: completed\ndata: {}\n\n")),
+    ];
+    vi.stubGlobal("fetch", (request: Request) => {
+      const next = answers.shift();
+      if (next === undefined) throw new Error(`no more connections expected: ${request.url}`);
+      return Promise.resolve(next());
+    });
+    const client = createApiClient({ baseUrl: "http://api.test", apiKey: "ck_test" });
+    const states: StreamState[] = [];
+
+    await followEvents({
+      open: (lastEventId, signal) => openJobEvents(client, "job-1", lastEventId, signal),
+      isEnd: (event) => event.kind === "completed",
+      onEvent: () => undefined,
+      onState: (state) => states.push(state),
+      onProblem: () => undefined,
+      signal: new AbortController().signal,
+      delayMs: () => 0,
+    });
+
+    expect(states).toEqual(["connecting", "reconnecting", "reconnecting", "live", "ended"]);
   });
 
   it("stops on a client error and reports its problem", async () => {
