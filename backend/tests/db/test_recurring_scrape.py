@@ -9,7 +9,6 @@ import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from hashlib import sha256
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
@@ -30,6 +29,7 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching
+from crawlerai.storage.capture_bundle import sha256_hex
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
@@ -74,7 +74,7 @@ class Origin:
     async def conditional(self, url: str, policy: FetchPolicy, *, validators: Validators | None) -> FetchResult:
         self.sent.append(validators)
         body = self.pages[url]
-        etag = f'"{sha256(body).hexdigest()[:16]}"'
+        etag = f'"{sha256_hex(body)[:16]}"'
         if self.etags and validators is not None and validators.etag == etag:
             return self.fetch_result(url, 304, b"")
         return self.fetch_result(url, 200, body, (("ETag", etag),) if self.etags else ())

@@ -1,6 +1,8 @@
 """`url_state` upkeep for recurring runs (SPEC-11 §4.1, ARCHITECTURE §6, §14): what a URL of a site last answered with,
 read before it is fetched again and written after."""
 
+from typing import Any
+
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -44,10 +46,7 @@ async def record_fetch(
         return
     validators = received(fetched)
     values = {"etag": validators.etag, "last_modified": validators.last_modified, "last_seen_at": func.now()}
-    insert = pg_insert(UrlState).values(site_id=site_id, canonical_url=canonical_url, **values)
-    await conn.execute(
-        insert.on_conflict_do_update(index_elements=[UrlState.site_id, UrlState.canonical_url], set_=values)
-    )
+    await _upsert(conn, site_id, canonical_url, values)
 
 
 async def standing_record(
@@ -55,13 +54,14 @@ async def standing_record(
     site_id: SiteId,
     canonical_url: str,
     schema_id: SchemaId,
-    mode: ExtractionMode,
     config_version: int | None,
 ) -> RecordId | None:
     """The record that stands for the page when it has not changed: the newest of its entity (`entity_key`) under the
-    schema version, extracted the way it would be now (the same `mode` and config version), and made no earlier than
-    the page's content last changed (`record_content`). None when there is none: the page must be extracted. A record
-    made before the page last changed describes content it no longer has, whichever task saw the change."""
+    schema version, extracted the way it would be now (by config `config_version`, or `adhoc` for None), and made no
+    earlier than the page's content last changed (`record_content`). None when there is none: the page must be
+    extracted. A record made before the page last changed describes content it no longer has, whichever task saw the
+    change."""
+    mode: ExtractionMode = "adhoc" if config_version is None else "config"
     changed = select(UrlState.last_changed_at).where(*_url(site_id, canonical_url)).scalar_subquery()
     query = (
         select(Record.id)
@@ -89,11 +89,18 @@ async def record_content(conn: AsyncConnection, site_id: SiteId, canonical_url: 
     if stored is not None and hamming(int(stored, 16), fingerprint) <= UNCHANGED_BITS:
         return False
     values = {"content_fingerprint": _hex(fingerprint), "last_changed_at": func.now()}
-    insert = pg_insert(UrlState).values(site_id=site_id, canonical_url=canonical_url, last_seen_at=func.now(), **values)
+    await _upsert(conn, site_id, canonical_url, values, last_seen_at=func.now())
+    return True
+
+
+async def _upsert(
+    conn: AsyncConnection, site_id: SiteId, canonical_url: str, values: dict[str, Any], **inserted: Any
+) -> None:
+    """Set `values` on the URL's row, inserting it (with `inserted` too) when it has none."""
+    insert = pg_insert(UrlState).values(site_id=site_id, canonical_url=canonical_url, **values, **inserted)
     await conn.execute(
         insert.on_conflict_do_update(index_elements=[UrlState.site_id, UrlState.canonical_url], set_=values)
     )
-    return True
 
 
 def _hex(fingerprint: int) -> str:

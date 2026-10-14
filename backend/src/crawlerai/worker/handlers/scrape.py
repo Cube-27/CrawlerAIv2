@@ -34,15 +34,13 @@ from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
 from crawlerai.config_ir.active import config_by_id
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import CaptureId, ExtractionConfigId, Job, RecordId, SchemaId, SiteId
+from crawlerai.db.models import CaptureId, ExtractionConfig, ExtractionConfigId, Job, RecordId, SchemaId, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
 from crawlerai.recurring.simhash import simhash64
 from crawlerai.recurring.state import record_content, record_fetch, standing_record, stored_validators
 from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.registry import get_by_id
-from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import BatchScrapeRequest, JobPins
 from crawlerai.services.fetching import Fetching, refusal
 from crawlerai.services.scrape_steps import (
@@ -77,17 +75,6 @@ class _Records:
     margins: DriftMargins | None
 
 
-@dataclass(frozen=True)
-class _Extractor:
-    """A records task's extraction, loaded before its page is fetched: the schema, the config (None: `adhoc`), and
-    the record that stands for the page while it is unchanged (`standing_record`)."""
-
-    records: _Records
-    schema: SchemaDef
-    config: ActiveConfig | None
-    standing: RecordId | None
-
-
 def scrape_handler(fetching: Fetching, data: EngineData | None, margins: DriftMargins | None) -> TaskHandler:
     """The `batch_scrape` handler of a worker that fetches with `fetching`; `data` is None in a worker without the
     engine's data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9)."""
@@ -113,11 +100,9 @@ async def _scrape(
 ) -> TaskResult:
     site = await site_row(conn, urlsplit(task.url).hostname or "")
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
-    extractor = None if records is None else await _extractor(conn, task, site.id, records)
+    standing = None if records is None else await _standing(conn, task, site.id, records)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6).
-    validators = None
-    if extractor is not None and extractor.standing is not None:
-        validators = await stored_validators(conn, site.id, task.canonical_url)
+    validators = None if standing is None else await stored_validators(conn, site.id, task.canonical_url)
     attempts: list[AttemptRecord] = []
 
     async def robots(url: str) -> FetchResult:
@@ -131,7 +116,7 @@ async def _scrape(
             attempts.extend(result.attempts)
             return result
 
-        return await fetch_unless_unchanged(fetch, validators, has_record=validators is not None)
+        return await fetch_unless_unchanged(fetch, validators, has_record=standing is not None)
 
     fetched = await fetch_politely(conn, task, site.id, policy, page, fetching.limiter, fetch_robots=robots)
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
@@ -143,19 +128,17 @@ async def _scrape(
     if (refused := refusal(fetched)) is not None:
         return Failed(refused, transient=False)
     capture_id = await new_capture(conn, fetching.store, site.id, fetched)
-    return await _settle(conn, task, site.id, fetched, capture_id, extractor)
+    return await _settle(conn, task, site.id, fetched, capture_id, records, standing)
 
 
-async def _extractor(conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: _Records) -> _Extractor:
-    schema = await get_by_id(conn, records.schema_id)
-    config = None
+async def _standing(conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: _Records) -> RecordId | None:
+    """The record that stands for the page while it is unchanged (`standing_record`), for the config the job pinned
+    (None: `adhoc`). Only the config's version is read here: the page may never be extracted."""
+    version = None
     if records.config_id is not None:
-        config = await config_by_id(conn, records.config_id, records.data.vocabulary)
-    if config is None:
-        standing = await standing_record(conn, site_id, task.canonical_url, schema.id, "adhoc", None)
-    else:
-        standing = await standing_record(conn, site_id, task.canonical_url, schema.id, "config", config.version)
-    return _Extractor(records, schema, config, standing)
+        query = select(ExtractionConfig.version).where(ExtractionConfig.id == records.config_id)
+        version = (await conn.execute(query)).scalar_one()
+    return await standing_record(conn, site_id, task.canonical_url, records.schema_id, version)
 
 
 async def _settle(
@@ -164,30 +147,34 @@ async def _settle(
     site_id: SiteId,
     fetched: FetchResult,
     capture_id: CaptureId,
-    extractor: _Extractor | None,
+    records: _Records | None,
+    standing: RecordId | None,
 ) -> TaskResult:
     outcome = BLOCK_OUTCOMES[fetched.block_class]
     if outcome == "failed":
         return Failed(fetched.attempts[-1].error or outcome, transient=True, capture_id=capture_id)
-    if extractor is None or outcome != "extracted":
+    if records is None or outcome != "extracted":
         return Finished(outcome, capture_id=capture_id)
     parsed = ParsedPage.of(fetched.bundle)
     changed = await _content_changed(conn, site_id, task.canonical_url, parsed)
-    if not changed and extractor.standing is not None:
+    if not changed and standing is not None:
         await record_fetch(conn, site_id, task.canonical_url, fetched)
         return Finished("unchanged", capture_id=capture_id)
-    executor = None if extractor.config is None else extractor.config.executor
-    data = extractor.records.data
-    extraction = await extract_page(fetched.bundle, extractor.schema, executor, None, data=data, parsed=parsed)
+    schema = await get_by_id(conn, records.schema_id)
+    config = None
+    if records.config_id is not None:
+        config = await config_by_id(conn, records.config_id, records.data.vocabulary)
+    executor = None if config is None else config.executor
+    extraction = await extract_page(fetched.bundle, schema, executor, None, data=records.data, parsed=parsed)
     stored = await store_page_record(
         conn,
         task,
         extraction,
         capture_id=capture_id,
         site_id=site_id,
-        schema=extractor.schema,
-        config=extractor.config,
-        margins=extractor.records.margins,
+        schema=schema,
+        config=config,
+        margins=records.margins,
     )
     if stored is None:
         return Failed(EXTRACTION_ERROR, transient=False, capture_id=capture_id)
