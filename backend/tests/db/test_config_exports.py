@@ -154,7 +154,6 @@ async def client(
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
     monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    monkeypatch.delenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", raising=False)
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
     async with world.engine.begin() as conn:
         key = await create_key(conn, "config-export-test")

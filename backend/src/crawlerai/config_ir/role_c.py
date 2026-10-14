@@ -62,6 +62,4 @@ def _reason(filled: c_extract.Filled) -> str | None:
 
 def _calls(kind: PromptKind, filled: c_extract.Filled) -> tuple[LLMCallRecord, ...]:
     """Every answered call, a failed one's too: each was charged to the job (F30)."""
-    reply = filled.reply
-    answered = reply.answered if isinstance(reply, LLMFailure) else reply.calls()
-    return tuple(LLMCallRecord(prompt_kind=kind, **call.model_dump()) for call in answered)
+    return tuple(LLMCallRecord(prompt_kind=kind, **call.model_dump()) for call in filled.reply.answered)

@@ -98,8 +98,10 @@ class LLMResponse(_Model):
     # The answered call whose invalid reply was retried (§4.2), if any: charged like the one that gave `data`.
     retried: tuple[AnsweredCall, ...] = ()
 
-    def calls(self) -> tuple[AnsweredCall, ...]:
-        """Every answered call that gave this response, in order: the retried one, then the one that gave `data`."""
+    @property
+    def answered(self) -> tuple[AnsweredCall, ...]:
+        """Every answered call that gave this response, in order: the retried one, then the one that gave `data`. A
+        failure's `LLMFailure.answered` is the same record."""
         final = AnsweredCall(
             provider=self.provider,
             model=self.model,
@@ -293,7 +295,10 @@ class MeteredClient:
             answer = await self._retry(req, f"{req.user}\n\n{RETRY_NOTE.format(error=checked.error)}", key, retried)
             checked = _check(answer.reply.text, validator, check)
         if isinstance(checked, _Invalid):
-            raise OutputInvalid(checked.error, answered=(*retried, answer.charged(key)))
+            answered = (*retried, answer.charged(key))
+            if answer.reply.cut:
+                raise OutputCut(req.max_output_tokens, answered=answered)
+            raise OutputInvalid(checked.error, answered=answered)
         return LLMResponse(
             data=checked,
             provider=answer.provider,

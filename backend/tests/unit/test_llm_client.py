@@ -322,6 +322,16 @@ def test_a_reply_cut_at_its_token_cap_is_not_retried() -> None:
     )
 
 
+def test_a_retry_cut_at_its_token_cap_names_the_cap() -> None:
+    cut = ProviderReply(model="fake-model", text='{"summ', tokens_in=9, tokens_out=256, cut=True)
+    provider = FakeProvider([reply("not json", tokens_out=7), cut])
+
+    with pytest.raises(OutputCut) as failure:
+        complete(provider)
+
+    assert [call.tokens_out for call in failure.value.answered] == [7, 256]
+
+
 def test_a_cut_reply_that_is_still_valid_is_taken() -> None:
     provider = FakeProvider(
         [ProviderReply(model="fake-model", text='{"summary": "s"}', tokens_in=9, tokens_out=4, cut=True)]
@@ -344,8 +354,8 @@ def test_a_retried_response_lists_both_calls() -> None:
 
     response = complete(provider)
 
-    assert [(call.provider, call.tokens_out) for call in response.calls()] == [("fake", 7), ("fake", 8)]
-    assert {call.request_hash for call in response.calls()} == {request_hash(REQUEST)}
+    assert [(call.provider, call.tokens_out) for call in response.answered] == [("fake", 7), ("fake", 8)]
+    assert {call.request_hash for call in response.answered} == {request_hash(REQUEST)}
 
 
 def test_a_retry_that_gets_no_answer_still_carries_the_first_call() -> None:
