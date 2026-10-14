@@ -259,6 +259,8 @@ class MeteredClient:
             "model": reply.model,
             "request_hash": key,
             "latency_ms": answer.latency_ms,
+            # On every row of the call, so its output tokens can be priced by its prompt length too (§4.8).
+            "tokens_in": reply.tokens_in,
         }
         usage: tuple[tuple[UsageResource, int], ...] = (
             ("llm_calls", 1),
