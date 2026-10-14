@@ -5058,3 +5058,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: The exception's class name.
 - Why: A stable code like scrape's other `last_error` codes; the job ends at once instead of after the lease (UAT F09).
 - Reversible: yes
+
+### D-0750 — The job event stream reconnects after 35 s without a byte
+- Date: 2026-10-14 · Spec/PR: UAT fix F08 (#152) · Status: decided
+- Decision: A stream silent for 35 s counts as dropped and reconnects with `Last-Event-ID`; any byte, a heartbeat too, resets the backoff. A reconnect rereads the job summary.
+- Alternatives: 30 s (exactly two heartbeats, no margin); refetch the summary on a timer.
+- Why: The server's keep-alive is 15 s of idle (SPEC-10 §4.2). `progress` isn't stored, so after a resume only the summary has the counts (UAT F08).
+- Reversible: yes
+
+### D-0751 — Paged tables hold 20 rows in a fixed-height box
+- Date: 2026-10-14 · Spec/PR: UAT fix F19 (#152) · Status: decided
+- Decision: `PagedTable` (components/) pages jobs, records and job results by 20 (`limit=20`) in a 66rem box (`--height-table-page`), with fixed column widths and the pager under it. Loading and error states fill the same box; taller rows scroll inside it.
+- Alternatives: Pad short pages with empty rows (React Aria rows are focusable, so blank rows reach keyboard and screen-reader users); the server's default of 50.
+- Why: The owner's rule: no layout shift on interaction (DESIGN.md, Data tables).
+- Reversible: yes
+
+### D-0752 — Scrape and batch forms don't offer listing pages for records
+- Date: 2026-10-14 · Spec/PR: UAT fix F21 (#152) · Status: decided
+- Decision: `PageKindChoices` disables Listing while Records is chosen, always showing "Records of listing pages are not available yet."; choosing Records clears a Listing choice.
+- Alternatives: Keep it enabled and let the 422 explain.
+- Why: The server always refuses the combination (D-0502, `check_records`).
+- Reversible: yes — drop the rule when scrape takes listing records.
+
+### D-0753 — A site page offers learning for any stored schema
+- Date: 2026-10-14 · Spec/PR: UAT fix F13 (#152) · Status: decided
+- Decision: Once its configs load, `/sites/{host}` shows a "Learn a config" form (schema picker, Learn now / Learn anyway), with or without configs.
+- Alternatives: Only in the empty state.
+- Why: A site without a config had no way to learn one from the UI (UAT F13); a site may need a config for another schema too.
+- Reversible: yes
+
+### D-0754 — Labeling prefill asks for confirmation
+- Date: 2026-10-14 · Spec/PR: UAT fix F15 (#152) · Status: decided
+- Decision: "Prefill from the LLM" asks first and is offered only for a page with no status or a draft; the stored draft and unsaved edits are replaced.
+- Alternatives: No confirmation.
+- Why: DESIGN.md: confirm before what can't be undone; D-0538: a prefill never replaces a labeled or checked page.
+- Reversible: yes
