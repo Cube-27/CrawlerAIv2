@@ -1,4 +1,4 @@
-"""Record versions (SPEC-11 §4.4, ARCHITECTURE §14 row 3, INV-11), against a real Postgres: a re-extracted entity whose
+"""Record versions (SPEC-11 §4.4, ARCHITECTURE §14 row 3), against a real Postgres: a re-extracted entity whose
 required values are unchanged adds no record row, and one whose fingerprint differs adds the next version, pointing at
 the one it supersedes and naming its changed fields."""
 

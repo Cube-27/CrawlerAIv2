@@ -52,6 +52,7 @@ function storedRecord(overrides: Partial<StoredRecord> = {}): StoredRecord {
     capture_id: CAPTURE_ID,
     schema_id: SCHEMA_ID,
     version: 3,
+    changed_fields: ["price"],
     mode: "adhoc",
     complete: false,
     confidence: 0.8,
@@ -143,6 +144,7 @@ describe("records screen: the list", () => {
         storedRecord({
           id: SECOND_ID,
           version: 1,
+          changed_fields: [],
           confidence: null,
           fields: {
             title: recordField({ value: "Red kettle" }),

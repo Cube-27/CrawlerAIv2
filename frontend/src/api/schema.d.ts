@@ -2028,11 +2028,14 @@ export interface components {
         /**
          * StoredRecord
          * @description A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
-         *     the schema version its fields follow, and its own version (§14).
+         *     the schema version its fields follow, its own version and the fields whose published value differs from the
+         *     version it supersedes, empty for an entity's first (§14, SPEC-11 §4.4).
          */
         StoredRecord: {
             /** Capture Id */
             capture_id: string | null;
+            /** Changed Fields */
+            changed_fields: string[];
             /** Complete */
             complete: boolean;
             /** Confidence */
@@ -3223,6 +3226,7 @@ export interface operations {
                 job_id?: string | null;
                 site?: string | null;
                 schema_id?: string | null;
+                changed_since?: string | null;
                 cursor?: string | null;
                 limit?: number;
             };

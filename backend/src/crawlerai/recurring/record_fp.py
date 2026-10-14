@@ -1,4 +1,4 @@
-"""Record fingerprints and changed fields (SPEC-11 §4.4, ARCHITECTURE §14 row 3, INV-10): what decides whether a
+"""Record fingerprints and changed fields (SPEC-11 §4.4, ARCHITECTURE §14 row 3): what decides whether a
 re-extracted entity is a new record version, and which of its fields changed. Both are pure functions of the records'
 published values (`record.data`, ARCHITECTURE §6).
 

@@ -4174,7 +4174,7 @@
         "type": "object"
       },
       "StoredRecord": {
-        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE \u00a715),\nthe schema version its fields follow, and its own version (\u00a714).",
+        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE \u00a715),\nthe schema version its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first (\u00a714, SPEC-11 \u00a74.4).",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -4187,6 +4187,13 @@
               }
             ],
             "title": "Capture Id"
+          },
+          "changed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Fields",
+            "type": "array"
           },
           "complete": {
             "title": "Complete",
@@ -4243,7 +4250,8 @@
           "id",
           "capture_id",
           "schema_id",
-          "version"
+          "version",
+          "changed_fields"
         ],
         "title": "StoredRecord",
         "type": "object"
@@ -6276,6 +6284,23 @@
                 }
               ],
               "title": "Schema Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "changed_since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed Since"
             }
           },
           {
