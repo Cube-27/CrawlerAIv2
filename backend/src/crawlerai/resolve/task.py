@@ -7,8 +7,9 @@ and crawl tasks (SPEC-10). Storing only serializes what resolution decided (INV-
 was chosen or why it was rejected, and the record holds the published values.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import JsonValue
 from sqlalchemy import insert
@@ -23,8 +24,9 @@ from crawlerai.db.models import (
     Extraction,
     ExtractionConfigId,
     ExtractionId,
+    ExtractionMode,
+    JobId,
     NormalizeStatus,
-    Record,
     RecordId,
     SiteId,
     TaskOutcome,
@@ -55,6 +57,26 @@ class StoredRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordSource:
+    """What every record of one extraction is stored with: the extraction, its job, site and mode, and the page."""
+
+    extraction_id: ExtractionId
+    job_id: JobId
+    site_id: SiteId
+    mode: ExtractionMode
+    page_url: str
+
+
+class RecordWriter(Protocol):
+    """Stores a page's records and returns them in the drafts' order (`store_records` in `recurring.versions`, which
+    versions them, SPEC-11 §4.4). A record can be one stored before, so its id need not be new."""
+
+    async def __call__(
+        self, conn: AsyncConnection, schema: SchemaDef, drafts: Sequence[RecordDraft], source: RecordSource
+    ) -> tuple[StoredRecord, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
 class Stored:
     """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`), the rows written for it, and each
     record's content: at most one record for a detail page, one per kept row for a listing."""
@@ -77,6 +99,7 @@ async def extract_task(
     role_c: RoleC | None,
     config: ActiveConfig | None,
     caller_supplied: bool,
+    write_records: RecordWriter,
 ) -> Stored:
     """Extract the task's capture and store the result in `conn`'s transaction. `caller_supplied` is true for
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
@@ -84,7 +107,8 @@ async def extract_task(
 
     `config` is the site's active config for the schema version and page kind (`config` mode, ARCHITECTURE §8.4).
     `role_c` calls the LLM client before this step writes anything, and the client commits usage on its own
-    connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row."""
+    connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row. `write_records`
+    stores the page's records."""
     executor = None if config is None else config.executor
     result = await extract_page(bundle, schema, executor, role_c, data=data)
     return await store_extraction(
@@ -96,6 +120,7 @@ async def extract_task(
         schema=schema,
         caller_supplied=caller_supplied,
         config=config,
+        write_records=write_records,
     )
 
 
@@ -108,6 +133,7 @@ async def store_extraction(
     site_id: SiteId,
     schema: SchemaDef,
     caller_supplied: bool,
+    write_records: RecordWriter,
     config: ActiveConfig | None = None,
 ) -> Stored:
     """Store `result`, `extract_page`'s for the task's capture, as `extract_task` does: for a caller that extracts
@@ -142,23 +168,8 @@ async def store_extraction(
     )
     if not drafts:
         return Stored(outcome, extraction_id, (), result)
-    values = [
-        {
-            "extraction_id": extraction_id,
-            "job_id": task.job_id,
-            "site_id": site_id,
-            "schema_id": schema.id,
-            "schema_version": schema.version,
-            "entity_key": draft.entity_key,
-            "data": draft.data,
-            "field_meta": {name: meta.model_dump(mode="json") for name, meta in draft.field_meta.items()},
-            "complete": draft.complete,
-            "mode": result.mode,
-        }
-        for draft in drafts
-    ]
-    inserted = await conn.execute(insert(Record).returning(Record.id, sort_by_parameter_order=True), values)
-    records = tuple(StoredRecord(record_id, draft) for record_id, draft in zip(inserted.scalars(), drafts, strict=True))
+    source = RecordSource(extraction_id, task.job_id, site_id, result.mode, task.canonical_url)
+    records = await write_records(conn, schema, drafts, source)
     return Stored(outcome, extraction_id, records, result)
 
 

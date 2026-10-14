@@ -23,6 +23,7 @@ from crawlerai.db.models import Candidate, Extraction, Job, JobId, Project, Reco
 from crawlerai.db.queue import ClaimedTask, insert_claimed
 from crawlerai.llm.client import MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
+from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, RoleC
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.records import entity_key
@@ -132,6 +133,7 @@ class _Setup:
             role_c=role_c,
             config=None,
             caller_supplied=caller_supplied,
+            write_records=store_records,
         )
 
     async def candidates(self, stored: Stored) -> list[tuple[Any, ...]]:
