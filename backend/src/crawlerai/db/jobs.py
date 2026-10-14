@@ -6,6 +6,7 @@ its table, with a compare-and-set update, so two workers racing on one row canno
 
 import uuid
 from collections.abc import Collection, Mapping, Sequence
+from datetime import datetime
 from typing import Any, Final
 
 from sqlalchemy import ColumnElement, func, insert, select, update
@@ -56,9 +57,17 @@ def settled_status(counts: Mapping[TaskStatus, int], *, cancel_requested: bool) 
 
 
 async def record_event(
-    conn: AsyncConnection, job_id: JobId, kind: str, payload: Mapping[str, Any] | None = None
+    conn: AsyncConnection,
+    job_id: JobId,
+    kind: str,
+    payload: Mapping[str, Any] | None = None,
+    *,
+    ts: datetime | None = None,
 ) -> None:
-    await conn.execute(insert(JobEvent).values(job_id=job_id, kind=kind, payload=dict(payload or {})))
+    """Append an event, stamped `ts`, or when it is recorded. A worker records a task's events at the end of the
+    task's transaction, where `now()` would be the time the transaction began (PostgreSQL §9.9.5)."""
+    values = {"job_id": job_id, "kind": kind, "payload": dict(payload or {}), "ts": ts or func.clock_timestamp()}
+    await conn.execute(insert(JobEvent).values(values))
 
 
 async def _move[S: str](
@@ -84,15 +93,18 @@ async def _move[S: str](
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
     """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at`, records an event of the
     same kind, which SSE reports, and owes the job's webhook, if it has one (SPEC-10 §4.2)."""
-    ending = not JOB_TRANSITIONS[target]
     values: dict[str, Any] = {}
     if target == "running":
         values["started_at"] = func.now()
-    if ending:
-        values["finished_at"] = func.now()
+    ended_at: datetime | None = None
+    if not JOB_TRANSITIONS[target]:
+        # The job ends when its last task settles, at the end of that task's transaction: `clock_timestamp()`, not
+        # `now()`, which is when the transaction began (PostgreSQL §9.9.5).
+        ended_at = (await conn.execute(select(func.clock_timestamp()))).scalar_one()
+        values["finished_at"] = ended_at
     await _move(conn, Job, job_id, JOB_TRANSITIONS, target, values)
-    if ending:
-        await record_event(conn, job_id, target)
+    if ended_at is not None:
+        await record_event(conn, job_id, target, ts=ended_at)
         await conn.execute(
             insert(WebhookDelivery).from_select(
                 ["job_id"], select(Job.id).where(Job.id == job_id, Job.webhook_url.is_not(None))

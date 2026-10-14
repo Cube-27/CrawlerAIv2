@@ -1,8 +1,9 @@
 import itertools
+from datetime import timedelta
 from typing import get_args
 
 import pytest
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import (
@@ -90,11 +91,17 @@ async def test_ending_a_job_stamps_finished_at_and_records_one_event(
     conn: AsyncConnection, terminal: JobStatus
 ) -> None:
     job_id = await _job(conn, "running")
+    # A job ends in the transaction of its last task, after that task's work: here 50 ms of it.
+    await conn.execute(select(func.pg_sleep(0.05)))
 
     await transition_job(conn, job_id, terminal)
 
     finished_at, created_at = (await conn.execute(select(Job.finished_at, Job.created_at))).one()
-    assert finished_at == created_at
+    assert finished_at is not None
+    ended_at = (await conn.execute(select(JobEvent.ts).where(JobEvent.job_id == job_id))).scalar_one()
+    # Stamped when the job ended, not when the transaction began (`created_at`, `now()`).
+    assert finished_at - created_at >= timedelta(milliseconds=50)
+    assert ended_at == finished_at
     assert await _events(conn, job_id) == [(terminal, {})]
 
 
