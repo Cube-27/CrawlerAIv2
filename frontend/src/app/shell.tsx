@@ -18,8 +18,11 @@ const SCREENS: NavEntry[] = [
   { href: "/jobs", label: "Jobs" },
 ];
 
-// With SPEC-03's screen, listed only when the backend serves the eval API (SPEC-12 §4.3).
-const WITH_LABELING: NavEntry[] = [...SCREENS, { href: "/labeling", label: "Labeling" }];
+const SETTINGS: NavEntry = { href: "/settings", label: "Settings" };
+
+// With SPEC-03's screen, listed only when the backend serves the eval API (SPEC-12 §4.3). Settings come last.
+const WITHOUT_LABELING: NavEntry[] = [...SCREENS, SETTINGS];
+const WITH_LABELING: NavEntry[] = [...SCREENS, { href: "/labeling", label: "Labeling" }, SETTINGS];
 
 /** Whether `pathname` is in the section `href` opens: the page itself or, except for the overview, a page under it. */
 function isCurrent(href: string, pathname: string): boolean {
@@ -28,7 +31,7 @@ function isCurrent(href: string, pathname: string): boolean {
 
 function MainNav() {
   const { pathname } = useLocation();
-  const entries = useEvalUi() ? WITH_LABELING : SCREENS;
+  const entries = useEvalUi() ? WITH_LABELING : WITHOUT_LABELING;
   return (
     <nav aria-label="Main" className="sm:w-48 sm:shrink-0">
       <ul className="flex flex-row flex-wrap gap-4 sm:flex-col sm:gap-2">

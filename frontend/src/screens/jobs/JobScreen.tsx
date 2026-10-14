@@ -12,6 +12,7 @@ import { OutcomeCounts } from "../../components/OutcomeCounts";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { UsageSummary } from "../../components/UsageSummary";
+import { formatUsd } from "../../components/usd";
 import { ExportActions } from "./ExportActions";
 import { JobResults } from "./JobResults";
 import { KIND_LABELS } from "./kinds";
@@ -76,6 +77,12 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
       </Section>
       <Section title="Usage">
         <UsageSummary usage={job.usage} />
+        <Typography.Paragraph size="sm">
+          Estimated LLM cost:{" "}
+          {job.llm_cost_usd === null
+            ? "unknown, some of its tokens have no price"
+            : formatUsd(job.llm_cost_usd)}
+        </Typography.Paragraph>
       </Section>
       <EventLog jobId={job.id} />
       <Section title="Results">
