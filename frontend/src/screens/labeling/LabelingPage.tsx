@@ -10,6 +10,7 @@ import {
   TextField,
   Typography,
 } from "@heroui/react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { useState, type ReactNode } from "react";
@@ -32,6 +33,7 @@ import {
   savedNotice,
   useDraft,
   useNormalize,
+  usePrefill,
   useSave,
   type Target,
 } from "./editorState";
@@ -108,10 +110,37 @@ function checkerBlockReason(page: PageDetail, checker: string): string | null {
   return null;
 }
 
-function LabelingHeader({ page }: Readonly<{ page: PageDetail }>) {
+/** D-0538: a prefill replaces a draft, never a labeled or checked page. */
+function canPrefill(page: PageDetail): boolean {
+  return page.status === null || page.status === "draft";
+}
+
+/** "Prefill from the LLM", after a confirmation: the draft it stores replaces the stored one and any unsaved edits. */
+function PrefillAction({
+  disabled,
+  onConfirm,
+}: Readonly<{ disabled: boolean; onConfirm: () => void }>) {
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button variant="secondary" isDisabled={disabled}>
+          Prefill from the LLM
+        </Button>
+      }
+      title="Prefill this page?"
+      confirmLabel="Prefill"
+      onConfirm={onConfirm}
+    >
+      Role C drafts the labels from the page. The draft replaces the stored draft and any edits not
+      saved. It never counts as labeled until a labeler marks it.
+    </ConfirmDialog>
+  );
+}
+
+function LabelingHeader({ page, actions }: Readonly<{ page: PageDetail; actions?: ReactNode }>) {
   return (
     <>
-      <PageHeader title="Labeling">
+      <PageHeader title="Labeling" actions={actions}>
         <SplitBadge split={page.split} />
         <LabelStatusChip status={page.status} />
         <Link href="/labeling">All pages</Link>
@@ -293,6 +322,27 @@ function CheckerActions({
   );
 }
 
+/** What the last save or prefill answered when it did not store: a newer pass, or the problem. */
+function EditorAlerts({
+  saver,
+  prefiller,
+}: Readonly<{ saver: ReturnType<typeof useSave>; prefiller: ReturnType<typeof usePrefill> }>) {
+  return (
+    <>
+      {saver.conflict || prefiller.conflict ? (
+        <ConflictAlert onReload={() => void saver.reload()} />
+      ) : null}
+      {prefiller.problem === null ? null : (
+        <ProblemAlert problem={{ title: "Not prefilled", detail: prefiller.problem }} />
+      )}
+      <SaveProblems
+        problem={saver.problem}
+        errors={saver.errors.filter((e) => !isFieldPath(e.field))}
+      />
+    </>
+  );
+}
+
 function PageEditor({
   page,
   etag,
@@ -304,6 +354,7 @@ function PageEditor({
   const edit = useDraft(page, names.page[0]);
   const { normalized, normalize } = useNormalize(page.id, edit.fieldAt, edit.setField);
   const saver = useSave(page.id, etag);
+  const prefiller = usePrefill(page.id, etag);
   const [pass, setPass] = useState<Pass>("labeler");
   const [labeler, setLabeler] = useState(page.labeler ?? "");
   const [checker, setChecker] = useState("");
@@ -347,12 +398,18 @@ function PageEditor({
 
   return (
     <section className="flex flex-col gap-4">
-      <LabelingHeader page={page} />
-      {saver.conflict ? <ConflictAlert onReload={() => void saver.reload()} /> : null}
-      <SaveProblems
-        problem={saver.problem}
-        errors={saver.errors.filter((e) => !isFieldPath(e.field))}
+      <LabelingHeader
+        page={page}
+        actions={
+          canPrefill(page) ? (
+            <PrefillAction
+              disabled={prefiller.prefilling || saver.saving}
+              onConfirm={() => void prefiller.prefill()}
+            />
+          ) : undefined
+        }
       />
+      <EditorAlerts saver={saver} prefiller={prefiller} />
       <div className="flex flex-col gap-4 lg:flex-row">
         <div className="min-w-0 lg:w-1/2">
           <PageView html={page.bundle_html} onPick={edit.pick} />

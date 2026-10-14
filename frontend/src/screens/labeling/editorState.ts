@@ -175,6 +175,39 @@ export function savedNotice(
   return `Saved as ${status} by ${names.labeler.trim()}.`;
 }
 
+/** Asking role C for a draft of the page's labels (`POST /v1/eval/pages/{id}/prefill`, SPEC-03 §4.10). The server
+ * replaces the stored draft and stores the new one, so the editor starts again from it; a refusal says why. */
+export function usePrefill(pageId: string, etag: string | null) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  const [problem, setProblem] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
+
+  async function prefill(): Promise<void> {
+    setProblem(null);
+    setConflict(false);
+    setPrefilling(true);
+    const { data, error, response } = await client.POST("/v1/eval/pages/{page_id}/prefill", {
+      params: { path: { page_id: pageId }, header: etag === null ? {} : { "if-match": etag } },
+    });
+    setPrefilling(false);
+    if (data !== undefined) {
+      toast.success(`Prefilled a draft (${data.prefill_source ?? "no source"}).`);
+      await queries.invalidateQueries({ queryKey: EVAL_PAGES });
+      return;
+    }
+    // D-0538: 409 is a page labeled or checked since it was read; 412 another pass stored since then.
+    if (response.status === 409 || response.status === 412) {
+      setConflict(true);
+      return;
+    }
+    setProblem(problemDetail(error) ?? `the server answered ${String(response.status)}.`);
+  }
+
+  return { problem, conflict, prefilling, prefill };
+}
+
 /** Saving one pass: the save in flight, and what the last save's answer was when it failed. */
 export function useSave(pageId: string, etag: string | null) {
   const client = useApiClient();
