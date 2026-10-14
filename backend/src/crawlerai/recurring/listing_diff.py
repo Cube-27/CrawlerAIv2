@@ -10,13 +10,20 @@ crawl found, whether or not its page was then reached.
 - each URL of the listing is seen: `missing_runs` 0, `gone_at` cleared, and the run noted as the last to hold it;
 - each URL an earlier run of the crawl last held, and this one did not, has missed one more run, and once it missed
   `GONE_AFTER_RUNS` in a row gets `gone_at` and a `url_gone` event.
-A run that reached its `limit` saw part of its listing only, and marks nothing missing; nor does one with an empty
-listing, whose pages were not read. A URL no listing held (one a scrape fetched) is never missing.
+A run that saw part of its listing only marks nothing missing: one that reached its `limit`, where the frontier stopped
+adding URLs; one with an empty listing, whose pages were not read; and one with a page no rule matched (a navigation
+page) that was not reached, as the crawl handler reads no links from a `blocked`, `shell` or failed page. A navigation
+page `not_found` is gone itself, and what only it listed is missing. A URL no listing held (one a scrape fetched) is
+never missing.
+
+The diffs of a site's runs take the site's row lock first, so two runs ending together never lock its `url_state` rows
+in opposite orders.
 
 New URLs are queued by the frontier, which takes every URL a run finds (SPEC-10 §4.5); nothing here adds tasks.
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Final
 from urllib.parse import urlsplit
 
@@ -26,7 +33,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Job, JobId, JobStatus, SchemaId, Site, SiteId, UrlState, UrlTask
+from crawlerai.db.models import Job, JobId, JobStatus, SchemaId, Site, SiteId, TaskOutcome, UrlState, UrlTask
 
 __all__ = ["GONE_AFTER_RUNS", "URL_GONE", "close_run"]
 
@@ -38,7 +45,20 @@ URL_GONE: Final = "url_gone"
 # and `webhook_url` change what is done with a page, not which pages are listed.
 _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_rules")
 
+# The outcomes of a page the crawl handler read no links from (`crawlerai.worker.handlers.crawl`).
+_UNREACHED: Final[frozenset[TaskOutcome]] = frozenset({"blocked", "shell", "failed"})
+
 _JobRow = Row[str, SchemaId | None, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _Listing:
+    """A run's listing: its URLs a page-kind rule matched, sorted (every run locks rows in one order); how many tasks
+    the job has; and whether a page no rule matched was not reached."""
+
+    urls: list[str]
+    tasks: int
+    unreached: bool
 
 
 async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> None:
@@ -49,26 +69,27 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     if job.kind != "crawl" or job.schema_id is None:
         return
     host = urlsplit(job.request["url"]).hostname
-    site_id = (await conn.execute(select(Site.id).where(Site.host == host))).scalar_one_or_none()
+    site = select(Site.id).where(Site.host == host).with_for_update()
+    site_id = (await conn.execute(site)).scalar_one_or_none()
     if site_id is None:
         return
-    listing, tasks = await _listing(conn, job_id, host)
-    if not listing:
+    listing = await _listing(conn, job_id, host)
+    if not listing.urls:
         return
-    await _seen(conn, site_id, job_id, listing)
-    if tasks >= job.request["limit"]:
+    await _seen(conn, site_id, job_id, listing.urls)
+    if listing.unreached or listing.tasks >= job.request["limit"]:
         return
     for url in await _missed(conn, site_id, job_id, job):
         await record_event(conn, job_id, URL_GONE, {"url": url})
 
 
-async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> tuple[list[str], int]:
-    """The job's URLs a page-kind rule matched, on `host`, sorted (rows are locked in one order by every run); and
-    how many tasks the job has."""
-    query = select(UrlTask.canonical_url, UrlTask.page_kind).where(UrlTask.job_id == job_id)
+async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> _Listing:
+    """The job's listing, of its URLs on `host`."""
+    query = select(UrlTask.canonical_url, UrlTask.page_kind, UrlTask.outcome).where(UrlTask.job_id == job_id)
     tasks = (await conn.execute(query)).all()
-    listed = (url for url, page_kind in tasks if page_kind is not None and urlsplit(url).hostname == host)
-    return sorted(listed), len(tasks)
+    listed = (url for url, page_kind, _ in tasks if page_kind is not None and urlsplit(url).hostname == host)
+    unreached = any(page_kind is None and outcome in _UNREACHED for _, page_kind, outcome in tasks)
+    return _Listing(sorted(listed), len(tasks), unreached)
 
 
 async def _seen(conn: AsyncConnection, site_id: SiteId, job_id: JobId, urls: Sequence[str]) -> None:

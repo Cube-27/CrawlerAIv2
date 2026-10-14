@@ -42,10 +42,10 @@ class Shop:
         request: dict[str, Any] | None = None,
         schema: bool = True,
         status: JobStatus = "completed",
-        extra: tuple[tuple[str, str | None], ...] = (),
+        extra: tuple[dict[str, Any], ...] = (),
     ) -> JobId:
-        """A run whose tasks are the start page, `paths` (each matched the crawl's rule) and `extra` (URL, page kind)
-        pairs; ended in `status`."""
+        """A run whose tasks are the start page, `paths` (each matched the crawl's rule) and `extra` tasks (their
+        `url_task` columns); ended in `status`."""
         default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
         job = {
             "project_id": default_project,
@@ -56,11 +56,16 @@ class Shop:
             "engine_version": "test",
         }
         job_id: JobId = (await self.conn.execute(insert(Job).values(job).returning(Job.id))).scalar_one()
-        tasks = [(self.url(""), None), *extra, *((self.url(path), "detail") for path in paths)]
-        rows = [{"job_id": job_id, "url": url, "canonical_url": url, "page_kind": kind} for url, kind in tasks]
-        await self.conn.execute(insert(UrlTask), rows)
+        tasks = [self.task(""), *extra, *(self.task(path, page_kind="detail") for path in paths)]
+        await self.conn.execute(insert(UrlTask), [{"job_id": job_id} | task for task in tasks])
         await close_run(self.conn, job_id, status)
         return job_id
+
+    def task(self, path: str, **columns: Any) -> dict[str, Any]:
+        """A task of a run at `path`: a page that ended `links_only` unless `columns` say otherwise."""
+        url = self.url(path) if "://" not in path else path
+        task = {"url": url, "canonical_url": url, "page_kind": None, "status": "done", "outcome": "links_only"}
+        return task | columns
 
     async def state(self) -> dict[str, tuple[int, bool]]:
         """Each URL's `url_state` row, by path: its missing runs, and whether it is gone."""
@@ -151,6 +156,31 @@ async def test_a_run_that_matched_no_url_marks_nothing_missing(shop: Shop) -> No
     assert await shop.state() == {"p/a": (0, False)}
 
 
+@pytest.mark.parametrize(
+    "unreached", [{"outcome": "blocked"}, {"outcome": "shell"}, {"status": "failed", "outcome": "failed"}]
+)
+async def test_a_run_with_an_unreached_navigation_page_marks_nothing_missing(
+    shop: Shop, unreached: dict[str, Any]
+) -> None:
+    await shop.run("p/a", "p/b")
+
+    # The category page that listed p/b added no links: p/b may still be listed.
+    for _ in range(2):
+        await shop.run("p/a", extra=(shop.task("c/1", **unreached),))
+
+    assert await shop.state() == {"p/a": (0, False), "p/b": (0, False)}
+
+
+async def test_a_navigation_page_that_is_not_found_lists_nothing(shop: Shop) -> None:
+    await shop.run("p/a", "p/b")
+
+    # A listing page that is gone is a real change: what only it listed is missing.
+    for _ in range(2):
+        await shop.run("p/a", extra=(shop.task("c/1", outcome="not_found"),))
+
+    assert await shop.state() == {"p/a": (0, False), "p/b": (2, True)}
+
+
 @pytest.mark.parametrize(("status", "schema"), [("failed", True), ("cancelled", True), ("completed", False)])
 async def test_only_a_completed_records_crawl_is_a_run(shop: Shop, status: JobStatus, schema: bool) -> None:
     await shop.run("p/a", "p/b")
@@ -162,7 +192,7 @@ async def test_only_a_completed_records_crawl_is_a_run(shop: Shop, status: JobSt
 
 
 async def test_urls_no_rule_matched_and_urls_off_the_start_host_are_not_in_the_listing(shop: Shop) -> None:
-    await shop.run("p/a", extra=((shop.url("c/1"), None), (f"https://de.{shop.host}/p/a", "detail")))
+    await shop.run("p/a", extra=(shop.task("c/1"), shop.task(f"https://de.{shop.host}/p/a", page_kind="detail")))
 
     assert await shop.state() == {"p/a": (0, False)}
 
