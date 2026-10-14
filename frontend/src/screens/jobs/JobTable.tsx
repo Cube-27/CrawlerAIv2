@@ -69,7 +69,8 @@ function JobFilterFields({
   );
 }
 
-function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
+/** Jobs as table rows, newest first; a row opens its job. The jobs screen and the overview show them. */
+export function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
   return (
     <Table>
       <Table.ScrollContainer>

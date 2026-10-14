@@ -12,10 +12,10 @@ function renderApp(path = "/") {
 }
 
 describe("app shell", () => {
-  it("renders the top bar, the navigation and, without a key, the connect screen", () => {
+  it("renders the sidebar, the navigation and, without a key, the connect screen", () => {
     renderApp();
 
-    expect(screen.getByRole("banner")).toHaveTextContent("CrawlerAI");
+    expect(screen.getByRole("complementary", { name: "Sidebar" })).toHaveTextContent("CrawlerAI");
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("main")).toContainElement(
       screen.getByRole("heading", { level: 1, name: "Connect" }),
@@ -48,7 +48,7 @@ describe("app shell", () => {
       within(nav)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Overview", "Scrape", "Schemas", "Records", "Sites", "Jobs", "Settings"]);
+    ).toEqual(["Overview", "Scrape", "Jobs", "Records", "Schemas", "Sites", "Settings"]);
   });
 
   it("hides the Labeling entry when /healthz fails", async () => {
@@ -92,24 +92,30 @@ describe("theme", () => {
     renderApp();
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(screen.getByRole("switch", { name: "Dark theme" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Dark theme" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("uses the light theme when the system prefers light", () => {
     renderApp();
 
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(screen.getByRole("switch", { name: "Dark theme" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Dark theme" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("sets data-theme on <html> and remembers the choice when toggled", async () => {
     renderApp();
 
-    await userEvent.click(screen.getByRole("switch", { name: "Dark theme" }));
+    await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     expect(localStorage.getItem("crawlerai.theme")).toBe("dark");
 
-    await userEvent.click(screen.getByRole("switch", { name: "Dark theme" }));
+    await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
     expect(localStorage.getItem("crawlerai.theme")).toBe("light");
   });
@@ -133,7 +139,7 @@ describe("theme", () => {
     renderApp();
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    await userEvent.click(screen.getByRole("switch", { name: "Dark theme" }));
+    await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
 });
