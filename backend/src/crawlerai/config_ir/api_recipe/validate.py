@@ -63,6 +63,11 @@ async def validate_recipe(
     return RecipeValidated(ApiRecipe(**proven.spec.model_dump(), map=dict(fields), proof=proof), report)
 
 
+def refused(reason: str) -> RecipeValidated:
+    """A recipe refused before held-out validation (binding, role D or header minimization), with `reason`."""
+    return RecipeValidated(None, RecipeReport(held_out=[], fields={}, refused=reason))
+
+
 def _refused(reports: Mapping[str, RecipeFieldReport]) -> str | None:
     if unpublished := [name for name, report in reports.items() if report.published == 0]:
         return "never_published: " + ", ".join(unpublished)

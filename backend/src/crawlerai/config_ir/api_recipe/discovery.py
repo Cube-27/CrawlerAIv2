@@ -76,11 +76,7 @@ def endpoint_request(bundle: CaptureBundle, endpoint: EndpointCandidate) -> Capt
     """The request to `endpoint` a capture holds a readable answer to, the first in capture order; `None` when it holds
     none. Held-out validation reads the captures that hold one (§4.7)."""
     key = _key(endpoint.requests[0])
-    for entry, data in zip(bundle.manifest.network_bodies, bundle.network, strict=True):
-        readable = _readable(entry, data)
-        if readable is not None and _key(readable[0]) == key:
-            return readable[0]
-    return None
+    return next((request for request, _ in _readables(bundle) if _key(request) == key), None)
 
 
 @dataclass(frozen=True)
@@ -121,16 +117,19 @@ def _bodies(sample: DiscoverySample, schema: SchemaDef, required: frozenset[str]
     """The page's readable bodies, the best-scoring one per endpoint, in capture order of first appearance."""
     page = ParsedPage.of(sample.bundle)
     best: dict[_EndpointKey, _Body] = {}
-    for entry, data in zip(sample.bundle.manifest.network_bodies, sample.bundle.network, strict=True):
-        readable = _readable(entry, data)
-        if readable is None:
-            continue
-        request, document = readable
+    for request, document in _readables(sample.bundle):
         body = _scored(request, document, page, sample, schema, required)
         key = _key(request)
         if key not in best or body.score > best[key].score:
             best[key] = body
     return best
+
+
+def _readables(bundle: CaptureBundle) -> Iterator[tuple[CapturedRequest, JsonValue]]:
+    """The capture's readable bodies, each with the request it answered, in capture order."""
+    for entry, data in zip(bundle.manifest.network_bodies, bundle.network, strict=True):
+        if (readable := _readable(entry, data)) is not None:
+            yield readable
 
 
 def _readable(entry: NetworkBody, data: bytes) -> tuple[CapturedRequest, JsonValue] | None:

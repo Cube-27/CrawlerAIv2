@@ -186,7 +186,8 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replay | None:
     policy = FetchPolicy()
 
     async def replay(request: JsonRequest) -> FetchResult:
-        # Nobody reads the attempts of a replay's robots.txt fetch: the run records only the replay's outcome.
+        # Nobody reads the attempts of a replay's robots.txt fetch: the run records only the replay's outcome. A list
+        # per replay, since the learner's replay lives as long as the worker.
         rules = engine_rules(engine, fetching.rungs.http, [])
         return await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
 

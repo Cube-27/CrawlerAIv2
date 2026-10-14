@@ -27,9 +27,8 @@ from crawlerai.config_ir.api_recipe.headers import NotLearnable, Proven, minimiz
 from crawlerai.config_ir.api_recipe.model import BoundBy
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage
 from crawlerai.config_ir.api_recipe.role_d import Rejected, bind_by_role_d
-from crawlerai.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidated, validate_recipe
+from crawlerai.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidated, refused, validate_recipe
 from crawlerai.config_ir.held_out import StoredPage
-from crawlerai.config_ir.validation import RecipeReport
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient
 from crawlerai.schemas.types import SchemaDef
@@ -54,8 +53,8 @@ async def learn_recipe(
         return None
     endpoint, pages = found
     bound = await _proven(client, endpoint.map, pages, schema, replay, job_id)
-    if not isinstance(bound, tuple):
-        return RecipeValidated(None, RecipeReport(held_out=[], fields={}, refused=bound))
+    if isinstance(bound, str):
+        return refused(bound)
     proven, bound_by = bound
     held = await asyncio.to_thread(_held_out, held_out, endpoint)
     return await validate_recipe(proven, bound_by, endpoint.map, held, schema, replay)
