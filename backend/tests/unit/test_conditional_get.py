@@ -38,7 +38,8 @@ VALIDATORS = Validators(etag=ETAG, last_modified=LAST_MODIFIED)
 
 @dataclass
 class Page:
-    """One page at `/p` with an entity tag and a modification date; `sent` holds the request headers of each GET."""
+    """One page at `/p` with an entity tag and a modification date, and `/moved`, which redirects to it; `sent` holds
+    the request headers of each GET."""
 
     port: int = 0
     etag: str = ETAG
@@ -48,6 +49,10 @@ class Page:
     @property
     def url(self) -> str:
         return f"http://shop.example.test:{self.port}/p"
+
+    @property
+    def moved(self) -> str:
+        return f"http://shop.example.test:{self.port}/moved"
 
     def status(self, headers: dict[str, str]) -> int:
         # RFC 9110 §13.1.2, §13.1.3: If-None-Match decides when present (weak comparison); If-Modified-Since only
@@ -70,6 +75,12 @@ def page() -> Iterator[Page]:
         def do_GET(self) -> None:
             headers = {name.lower(): value for name, value in self.headers.items()}
             state.sent.append(headers)
+            if self.path == "/moved":
+                self.send_response(301)
+                self.send_header("Location", "/p")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             status = state.status(headers)
             body = BODY if status == 200 else b""
             self.send_response(status)
@@ -104,9 +115,9 @@ class Loopback(SafeConnector):
         return await super().check(url)
 
 
-async def by_validators(page: Page, validators: Validators | None) -> FetchResult:
+async def by_validators(page: Page, validators: Validators | None, url: str | None = None) -> FetchResult:
     return await fetch_http(
-        page.url,
+        url or page.url,
         POLICY,
         engine_version="test",
         impersonate=IMPERSONATE_DEFAULT,
@@ -115,8 +126,8 @@ async def by_validators(page: Page, validators: Validators | None) -> FetchResul
     )
 
 
-def fetch(page: Page, validators: Validators | None = None) -> FetchResult:
-    return asyncio.run(by_validators(page, validators))
+def fetch(page: Page, validators: Validators | None = None, url: str | None = None) -> FetchResult:
+    return asyncio.run(by_validators(page, validators, url))
 
 
 def unless_unchanged(page: Page, sent: Validators | None, *, has_record: bool = True) -> FetchResult | Unchanged:
@@ -148,6 +159,17 @@ def test_only_the_validators_known_are_sent(page: Page) -> None:
     fetch(page, Validators(etag=None, last_modified=LAST_MODIFIED))
 
     assert conditional(page.sent[0]) == {"if-modified-since": LAST_MODIFIED}
+
+
+def test_the_validators_are_not_sent_past_a_redirect(page: Page) -> None:
+    # They describe the URL asked for; another resource's 304 must not stand for it.
+    result = fetch(page, VALIDATORS, page.moved)
+
+    assert [conditional(sent) for sent in page.sent] == [
+        {"if-none-match": ETAG, "if-modified-since": LAST_MODIFIED},
+        {},
+    ]
+    assert (result.bundle.manifest.status_code, result.bundle.body) == (200, BODY)
 
 
 # --- 304 means unchanged -----------------------------------------------------------------------------------------
@@ -182,6 +204,15 @@ def test_a_304_with_no_stored_record_is_fetched_again_once_without_validators(pa
         {"if-none-match": ETAG, "if-modified-since": LAST_MODIFIED},
         {},
     ]
+
+
+def test_a_failed_304_is_not_unchanged() -> None:
+    failed = _result((), status=304, error="timeout")
+
+    async def answer(_validators: Validators | None) -> FetchResult:
+        return failed
+
+    assert asyncio.run(fetch_unless_unchanged(answer, VALIDATORS, has_record=True)) is failed
 
 
 def test_without_validators_a_page_is_never_unchanged(page: Page) -> None:
@@ -252,7 +283,7 @@ def test_the_last_etag_and_last_modified_received_are_the_validators(
     assert received(_result(headers)) == expected
 
 
-def _result(headers: HeaderList) -> FetchResult:
+def _result(headers: HeaderList, *, status: int = 200, error: str | None = None) -> FetchResult:
     return fetch_result(
         url="https://shop.example.test/p",
         method="http",
@@ -260,8 +291,8 @@ def _result(headers: HeaderList) -> FetchResult:
         engine_version="test",
         fetched_at=datetime.now(UTC),
         started=0.0,
-        exchange=Exchange("https://shop.example.test/p", 200, (), headers),
+        exchange=Exchange("https://shop.example.test/p", status, (), headers),
         content=Content(body=b""),
-        block_class="ok",
-        error=None,
+        block_class="ok" if error is None else "error",
+        error=error,
     )

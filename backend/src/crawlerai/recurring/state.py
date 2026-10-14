@@ -26,13 +26,15 @@ async def stored_validators(conn: AsyncConnection, site_id: SiteId, canonical_ur
 async def record_fetch(
     conn: AsyncConnection, site_id: SiteId, canonical_url: str, fetched: FetchResult | Unchanged
 ) -> None:
-    """Record a fetch of the URL (§4.2). `Unchanged` marks it seen, keeping its validators. A 200 over HTTP stores the
-    validators it answered with, replacing the ones before, and none where it sent none. Any other result leaves the
-    state as it is: only the HTTP rung sends validators, and an API response describes its endpoint, not the page."""
+    """Record a fetch of the URL (§4.2). `Unchanged` marks it seen, keeping its validators. An `ok` 200 over HTTP from
+    the URL itself stores the validators it answered with, replacing the ones before, and none where it sent none. Any
+    other result leaves the state as it is: only the HTTP rung sends validators; an API response describes its
+    endpoint and a redirected one another resource, not the page; and a page not fetched whole (an error, a shell)
+    must not later be `unchanged`."""
     if isinstance(fetched, Unchanged):
         await conn.execute(update(UrlState).where(*_url(site_id, canonical_url)).values(last_seen_at=func.now()))
         return
-    if fetched.method != "http" or fetched.bundle.manifest.status_code != _OK:
+    if not _stores_validators(fetched):
         return
     validators = received(fetched)
     values = {"etag": validators.etag, "last_modified": validators.last_modified, "last_seen_at": func.now()}
@@ -40,6 +42,12 @@ async def record_fetch(
     await conn.execute(
         insert.on_conflict_do_update(index_elements=[UrlState.site_id, UrlState.canonical_url], set_=values)
     )
+
+
+def _stores_validators(fetched: FetchResult) -> bool:
+    manifest = fetched.bundle.manifest
+    is_page = manifest.final_url == manifest.url and fetched.method == "http"
+    return is_page and fetched.block_class == "ok" and manifest.status_code == _OK
 
 
 def _url(site_id: SiteId, canonical_url: str) -> tuple[ColumnElement[bool], ColumnElement[bool]]:

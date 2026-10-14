@@ -93,6 +93,32 @@ async def test_only_an_http_200_stores_validators(
     assert await _row(conn, site_id) is None
 
 
+async def test_a_200_that_failed_or_was_not_ok_stores_nothing(
+    conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
+) -> None:
+    # A body cut short (an error after the status line) or a shell was never extracted whole: a later 304 must not
+    # stand for it.
+    site_id = await _site(conn)
+    await record_fetch(
+        conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS, block_class="error", error="body_cap")
+    )
+    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS, block_class="shell"))
+
+    assert await _row(conn, site_id) is None
+
+
+async def test_a_redirected_200_stores_nothing(conn: AsyncConnection, fetch_result: Callable[..., FetchResult]) -> None:
+    # Its validators describe the resource redirected to, not the URL asked for.
+    site_id = await _site(conn)
+    moved = fetch_result(URL, 200, b"", VALIDATORS)
+    manifest = moved.bundle.manifest.model_copy(update={"final_url": f"{URL}/moved"})
+    await record_fetch(
+        conn, site_id, URL, moved.model_copy(update={"bundle": moved.bundle.model_copy(update={"manifest": manifest})})
+    )
+
+    assert await _row(conn, site_id) is None
+
+
 async def test_a_304_marks_the_url_seen_and_keeps_its_validators(
     conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
 ) -> None:

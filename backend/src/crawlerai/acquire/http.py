@@ -3,7 +3,7 @@
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested (ARCHITECTURE §7.1). Every failure becomes an `error` outcome with a short reason that never
-contains the URL. Given the validators a page last answered with, every request is conditional (SPEC-11 §4.2): an
+contains the URL. Given the validators a page last answered with, its request is conditional (SPEC-11 §4.2): an
 unchanged page answers 304 with no body.
 """
 
@@ -120,7 +120,9 @@ async def _follow(
             if hop == MAX_REDIRECTS:
                 raise _Failed("too_many_redirects", response)
             target = await _checked(connector.redirect(target, location), deadline, response)
-            response = await _get(session, target, policy, proxy, deadline, headers)
+            # The validators describe the URL asked for: sent past a redirect, another resource's 304 would stand
+            # for it.
+            response = await _get(session, target, policy, proxy, deadline, {})
     return response
 
 

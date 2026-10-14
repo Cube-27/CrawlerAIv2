@@ -29,7 +29,7 @@ async def fetch_unless_unchanged(
     unless there is no record of the page to stand for it (`has_record`): then the stored state has drifted, and the
     page is fetched once more without validators (§4.6). The result lists the attempts of both fetches."""
     result = await fetch(validators)
-    if validators is None or result.bundle.manifest.status_code != _NOT_MODIFIED:
+    if validators is None or result.block_class != "ok" or result.bundle.manifest.status_code != _NOT_MODIFIED:
         return result
     if has_record:
         return Unchanged(attempts=result.attempts, duration_ms=result.duration_ms)
