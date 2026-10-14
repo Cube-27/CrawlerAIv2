@@ -161,7 +161,9 @@ async def _run(engine: AsyncEngine, fetching: Fetching, data: EngineData | None,
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    loop = asyncio.create_task(run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None)}, stop))
+    loop = asyncio.create_task(
+        run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None, llm=None)}, stop)
+    )
     async with asyncio.timeout(60):
         while not await _ended(engine, job_ids):
             await asyncio.sleep(0.1)
@@ -202,6 +204,21 @@ async def test_a_submitted_batch_is_a_queued_job_with_one_task_per_canonical_url
     assert (summary.kind, summary.status, summary.counts.queued) == ("batch_scrape", "queued", 3)
     assert sorted(tasks) == [f"{own_origin}/a", f"{own_origin}/b", f"{own_origin}/c"]
     assert (job.schema_id, job.pinned, job.request["formats"]) == (None, None, ["markdown"])
+
+
+async def test_a_batch_keys_its_tasks_by_the_url_with_its_query_pairs_sorted(
+    engine: AsyncEngine, fetching: Fetching, own_origin: str
+) -> None:
+    # SPEC-10 §4.1: every job kind keys a page by one canonical form, so its records form one entity whatever job
+    # fetched it. Two orders of the same pairs are one page.
+    urls = [f"{own_origin}/p?id=5&color=red", f"{own_origin}/p?color=red&id=5"]
+
+    submitted = await submit_batch(engine, fetching.connector, _batch(urls, "markdown"), data=None)
+
+    async with engine.connect() as conn:
+        query = select(UrlTask.canonical_url).where(UrlTask.job_id == submitted.job_id)
+        canonical = (await conn.execute(query)).scalars().all()
+    assert canonical == [f"{own_origin}/p?color=red&id=5"]
 
 
 @pytest.mark.parametrize(

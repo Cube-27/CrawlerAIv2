@@ -57,6 +57,7 @@ interface Call {
   method: string;
   path: string;
   ifMatch: string | null;
+  authorization: string | null;
   body: unknown;
 }
 
@@ -69,11 +70,13 @@ function stubApi(replies: Record<string, Reply[]>): Call[] {
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     const key = `${request.method} ${path}`;
+    if (key === "GET /healthz") return Response.json({ status: "ok", eval_ui: true });
     const text = await request.text();
     calls.push({
       method: request.method,
       path,
       ifMatch: request.headers.get("If-Match"),
+      authorization: request.headers.get("Authorization"),
       body: text === "" ? null : (JSON.parse(text) as unknown),
     });
     const list = replies[key];
@@ -102,8 +105,13 @@ function pageReply(page: PageDetail, etag = ETAG): Response {
   return json(page, { headers: { ETag: etag } });
 }
 
-function renderAt(path: string) {
+const API_KEY = "ck_label";
+
+/** Opens `path`: without a key it goes to /connect first, and back once the key is connected (SPEC-12 §4.1). */
+async function renderAt(path: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
+  await userEvent.type(screen.getByLabelText(/API key/), API_KEY);
+  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
 }
 
 async function field(group: string) {
@@ -115,6 +123,16 @@ function puts(calls: Call[]): Call[] {
 }
 
 describe("labeling list", () => {
+  it("sends every labeling call with the connected API key (SPEC-03 §4.10)", async () => {
+    const calls = stubApi({ "GET /v1/eval/pages": [json([])] });
+    await renderAt("/labeling");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Labeling" })).toBeInTheDocument();
+    expect(calls.map((call) => [call.path, call.authorization])).toEqual([
+      ["/v1/eval/pages", `Bearer ${API_KEY}`],
+    ]);
+  });
+
   it("lists the dev pages with their status and links each to its labeling view", async () => {
     stubApi({
       "GET /v1/eval/pages": [
@@ -133,7 +151,7 @@ describe("labeling list", () => {
         ]),
       ],
     });
-    renderAt("/labeling");
+    await renderAt("/labeling");
 
     const row = await screen.findByRole("row", { name: new RegExp(PAGE_ID) });
 
@@ -144,7 +162,7 @@ describe("labeling list", () => {
 
   it("says how to turn the labeling API on when its routes are not mounted", async () => {
     stubApi({ "GET /v1/eval/pages": [json({ detail: "Not Found" }, { status: 404 })] });
-    renderAt("/labeling");
+    await renderAt("/labeling");
 
     expect(await screen.findByText("The labeling API is off.")).toBeInTheDocument();
     expect(screen.getByText(/to label pages/)).toHaveTextContent(
@@ -162,7 +180,7 @@ describe("labeler pass", () => {
       ],
       [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [json({}, { headers: { ETag: '"etag-2"' } })],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const title = await field("title");
     const price = await field("price");
 
@@ -178,6 +196,7 @@ describe("labeler pass", () => {
         method: "PUT",
         path: `/v1/eval/pages/${PAGE_ID}/labels`,
         ifMatch: ETAG,
+        authorization: `Bearer ${API_KEY}`,
         body: labeled,
       },
     ]);
@@ -191,7 +210,7 @@ describe("labeler pass", () => {
 
   it("disables the value and locator of a field marked absent", async () => {
     stubApi({ [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())] });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const price = await field("price");
 
     await userEvent.click(price.getByRole("checkbox", { name: "Absent from the page" }));
@@ -207,7 +226,7 @@ describe("labeler pass", () => {
       [`POST /v1/eval/pages/${PAGE_ID}/normalize`]: [json({ value: money })],
       [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [json({})],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const price = await field("price");
 
     await userEvent.type(price.getByRole("textbox", { name: "Raw text" }), "EUR 19.90");
@@ -237,7 +256,7 @@ describe("labeler pass", () => {
       [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
       [`POST /v1/eval/pages/${PAGE_ID}/normalize`]: [problem(501, "not_implemented")],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const price = await field("price");
 
     await userEvent.type(price.getByRole("textbox", { name: "Raw text" }), "EUR 19.90");
@@ -260,7 +279,7 @@ describe("labeler pass", () => {
         ]),
       ],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const price = await field("price");
 
     await userEvent.type(screen.getByRole("textbox", { name: "Labeler name" }), "ana");
@@ -283,7 +302,7 @@ describe("labeler pass", () => {
       [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
       [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [reply],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     await field("title");
 
     await userEvent.type(screen.getByRole("textbox", { name: "Labeler name" }), "ana");
@@ -297,7 +316,7 @@ describe("labeler pass", () => {
 
   it("names a value that is not JSON without calling the API", async () => {
     const calls = stubApi({ [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())] });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const title = await field("title");
 
     await userEvent.type(screen.getByRole("textbox", { name: "Labeler name" }), "ana");
@@ -313,7 +332,7 @@ describe("labeler pass", () => {
       [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
       [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [problem(412, "labels_changed")],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     await field("title");
 
     await userEvent.type(screen.getByRole("textbox", { name: "Labeler name" }), "ana");
@@ -326,7 +345,7 @@ describe("labeler pass", () => {
 
   it("fills the focused field's raw text and locator from a click on the page", async () => {
     stubApi({ [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())] });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const price = await field("price");
     const frame = screen.getByTitle<HTMLIFrameElement>("Captured page");
 
@@ -354,7 +373,7 @@ describe("checker pass", () => {
         pageReply(detailPage({ status: "labeled", labeler: "ana", labels: labeled })),
       ],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     await field("title");
 
     await userEvent.click(screen.getByRole("radio", { name: "Checker" }));
@@ -368,7 +387,7 @@ describe("checker pass", () => {
 
   it("cannot check a page that is not labeled yet", async () => {
     stubApi({ [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())] });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     await field("title");
 
     await userEvent.click(screen.getByRole("radio", { name: "Checker" }));
@@ -385,7 +404,7 @@ describe("checker pass", () => {
       ],
       [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [json({})],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const title = await field("title");
 
     expect(title.getByRole("textbox", { name: "Value (JSON)" })).toHaveValue('"Blue mug"');
@@ -416,7 +435,7 @@ describe("listing pages", () => {
       ],
       [`PUT /v1/eval/pages/${PAGE_ID}/labels`]: [json({})],
     });
-    renderAt(`/labeling/${PAGE_ID}`);
+    await renderAt(`/labeling/${PAGE_ID}`);
     const total = await field("total");
 
     await userEvent.click(total.getByRole("checkbox", { name: "Absent from the page" }));

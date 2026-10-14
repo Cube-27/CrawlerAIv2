@@ -1,10 +1,12 @@
 import { Chip, Table, Typography } from "@heroui/react";
+import { problemOf } from "../../api/hooks/query";
+import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
-import { useLoaderData } from "react-router";
+import { ProblemAlert } from "../../components/ProblemAlert";
 import { EmptyView } from "../../components/EmptyView";
 import { StatusLabel, type StatusTone } from "../../components/StatusLabel";
 import { EvalUiOff } from "./EvalUiOff";
-import type { listLoader, PageSummary } from "./loaders";
+import { useEvalPages, type PageSummary } from "./queries";
 
 export function statusText(status: PageSummary["status"]): string {
   return status ?? "not labeled";
@@ -75,14 +77,21 @@ function PageList({ pages }: Readonly<{ pages: PageSummary[] }>) {
 }
 
 export function LabelingList() {
-  const data = useLoaderData<typeof listLoader>();
+  const pages = useEvalPages();
 
   return (
     <section className="flex flex-col gap-4">
       <PageHeader title="Labeling">
         <SplitBadge split="dev" />
       </PageHeader>
-      {data.kind === "off" ? <EvalUiOff /> : <PageList pages={data.pages} />}
+      <PageListBody query={pages} />
     </section>
   );
+}
+
+function PageListBody({ query }: Readonly<{ query: ReturnType<typeof useEvalPages> }>) {
+  const problem = problemOf(query.error);
+  if (problem !== null) return <ProblemAlert problem={problem} />;
+  if (!query.isSuccess) return <LoadingView label="Loading eval pages" />;
+  return query.data.kind === "off" ? <EvalUiOff /> : <PageList pages={query.data.pages} />;
 }

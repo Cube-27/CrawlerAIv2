@@ -16,10 +16,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
+from crawlerai.api.auth import require_api_key
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.core.ids import uuid7
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
-from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, PageKind, SchemaId, Split
+from crawlerai.db.models import ApiKeyId, CaptureId, EvalCategory, EvalPageId, EvalRunId, PageKind, SchemaId, Split
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped
 from crawlerai.eval.labels import LabelStatus, parse_labels
 from crawlerai.eval.store import (
@@ -43,6 +44,7 @@ from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Cor
 PAGE_URL = "https://store.test/items/1"
 FINAL_URL = "https://store.test/items/1?ref=a"
 SCHEMA_ID = SchemaId(uuid7())
+KEY_ID = ApiKeyId(uuid7())
 SPECS: dict[str, FieldSpec] = {"title": FieldSpec(type=FieldType.TEXT), "price": FieldSpec(type=FieldType.MONEY)}
 HTML = (
     b"<html><head><title>Item</title><script>track()</script></head>"
@@ -185,6 +187,7 @@ def _request(
     app = create_app(eval_ui=backend is not None)
     if backend is not None:
         app.dependency_overrides[eval_router.labeling_backend] = lambda: backend
+        app.dependency_overrides[require_api_key] = lambda: KEY_ID
 
     async def send() -> httpx.Response:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api.test") as client:

@@ -36,6 +36,7 @@ from crawlerai.eval.store import (
     dev_store,
     private_store,
 )
+from crawlerai.llm.providers.from_settings import client_from_settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
@@ -47,6 +48,7 @@ from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
+from crawlerai.worker.learn import run_learner
 from crawlerai.worker.loop import TaskHandler, run_worker
 
 
@@ -82,20 +84,32 @@ async def _work() -> None:
     http = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
     )
-    async with aclosing(
-        SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
-    ) as browser:
-        rungs = Rungs(http=http, browser=browser.fetch, conditional=http)
-        fetching = Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
-        # Later specs register a handler for each job kind here.
-        data, margins = load_engine_data(), load_drift_margins()
-        handlers: dict[JobKind, TaskHandler] = {
-            "batch_scrape": scrape_handler(fetching, data, margins),
-            "crawl": crawl_handler(fetching, data, margins),
-            "extract": scrape_handler(fetching, data, margins),
-        }
-        # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
-        await run_worker(settings, handlers, _stop_on_signals(), ending=close_run)
+    engine = create_async_engine(settings.database_url.get_secret_value())
+    try:
+        async with aclosing(
+            SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
+        ) as browser:
+            rungs = Rungs(http=http, browser=browser.fetch, conditional=http)
+            store = open_store(settings.object_store)
+            fetching = Fetching(rungs, connector, store, HostLimiter())
+            llm = client_from_settings(settings, engine)
+            data, margins = load_engine_data(), load_drift_margins()
+            handlers: dict[JobKind, TaskHandler] = {
+                "batch_scrape": scrape_handler(fetching, data, margins, llm=None),  # a batch binds no role C (D-0631)
+                "crawl": crawl_handler(fetching, data, margins, llm=llm),
+                "extract": scrape_handler(fetching, data, margins, llm=llm),
+            }
+            stop = _stop_on_signals()
+            # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
+            work = [run_worker(settings, handlers, stop, ending=close_run)]
+            if data is not None:  # learning reads the vocabulary from the data files
+                learner = run_learner(
+                    engine, store, llm, stop, vocabulary=data.vocabulary, max_chars=settings.llm_a_max_chars
+                )
+                work.append(learner)
+            await asyncio.gather(*work)
+    finally:
+        await engine.dispose()
 
 
 async def _schedule() -> None:

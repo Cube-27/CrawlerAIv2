@@ -32,12 +32,21 @@ from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import SiteId
 from crawlerai.db.queue import ClaimedTask
+from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.simhash import simhash64
 from crawlerai.recurring.state import record_content, record_fetch
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import FetchOptions
-from crawlerai.worker.handlers.steps import FetchedPage, extract_records, fetch_page, load_job, unreached
+from crawlerai.worker.handlers.steps import (
+    FetchedPage,
+    Records,
+    count_fetch,
+    extract_records,
+    fetch_page,
+    load_job,
+    unreached,
+)
 from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult
 
 log = logging.getLogger(__name__)
@@ -52,10 +61,12 @@ class _PageFetch(BaseModel):
     locale: str | None
 
 
-def scrape_handler(fetching: Fetching, data: EngineData | None, margins: DriftMargins | None) -> TaskHandler:
+def scrape_handler(
+    fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient | None
+) -> TaskHandler:
     """The `batch_scrape` and `extract` handler of a worker that fetches with `fetching`; `data` is None in a worker
-    without the engine's data files, whose records tasks then fail. `margins` decide drift
-    suspensions (SPEC-08 §4.9)."""
+    without the engine's data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9);
+    role C runs on `llm` (None: no role C)."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         job = await load_job(conn, task, data, margins)
@@ -65,23 +76,32 @@ def scrape_handler(fetching: Fetching, data: EngineData | None, margins: DriftMa
         page = await fetch_page(conn, fetching, task, request.fetch, request.locale, recurring=records)
         if not isinstance(page, FetchedPage):
             return page
-        ended = unreached(page)
-        if ended is not None:
-            return ended
-        if records is None:
-            return Finished("extracted", capture_id=page.capture_id)
-        parsed = ParsedPage.of(page.result.bundle)
-        changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed)
-        if not changed and page.standing is not None:
-            await record_fetch(conn, page.site.id, task.canonical_url, page.result)
-            return Finished("unchanged", capture_id=page.capture_id)
-        result = await extract_records(conn, task, page, records, caller_supplied=True, parsed=parsed)
-        if isinstance(result, Finished):
-            # The validators are stored with the record made from the content they describe, never without it.
-            await record_fetch(conn, page.site.id, task.canonical_url, page.result)
+        result = await _settle(conn, task, page, records, llm)
+        await count_fetch(conn, task, page)
         return result
 
     return handle
+
+
+async def _settle(
+    conn: AsyncConnection, task: ClaimedTask, page: FetchedPage, records: Records | None, llm: LLMClient | None
+) -> TaskResult:
+    """The fetched page's result: its outcome when it was not reached or the job has no records, else its record's."""
+    ended = unreached(page)
+    if ended is not None:
+        return ended
+    if records is None:
+        return Finished("extracted", capture_id=page.capture_id)
+    parsed = ParsedPage.of(page.result.bundle)
+    changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed)
+    if not changed and page.standing is not None:
+        await record_fetch(conn, page.site.id, task.canonical_url, page.result)
+        return Finished("unchanged", capture_id=page.capture_id)
+    result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
+    if isinstance(result, Finished):
+        # The validators are stored with the record made from the content they describe, never without it.
+        await record_fetch(conn, page.site.id, task.canonical_url, page.result)
+    return result
 
 
 async def _content_changed(conn: AsyncConnection, site_id: SiteId, canonical_url: str, parsed: ParsedPage) -> bool:

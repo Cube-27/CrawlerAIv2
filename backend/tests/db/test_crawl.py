@@ -23,11 +23,14 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Scope
 from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
+from crawlerai.llm.client import LLMClient, MeteredClient, ProviderReply
+from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -127,12 +130,14 @@ def records_crawl(url: str, schema: SchemaDef, pattern: str, **members: Any) -> 
     return crawl(url, "records", schema={"id": str(schema.id)}, page_kind_rules=rules, **members)
 
 
-async def run(engine: AsyncEngine, fetching: Fetching, data: EngineData | None, job_id: JobId) -> None:
-    """Run a worker loop until the job has ended."""
+async def run(
+    engine: AsyncEngine, fetching: Fetching, data: EngineData | None, job_id: JobId, llm: LLMClient | None = None
+) -> None:
+    """Run a worker loop until the job has ended; role C runs on `llm`."""
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    handlers: dict[JobKind, TaskHandler] = {"crawl": crawl_handler(fetching, data, None)}
+    handlers: dict[JobKind, TaskHandler] = {"crawl": crawl_handler(fetching, data, None, llm=llm)}
     loop = asyncio.create_task(run_worker(settings, handlers, stop, ending=close_run))
     async with asyncio.timeout(60):
         while (await summary(engine, job_id)).status not in ("completed", "failed", "cancelled"):
@@ -260,6 +265,37 @@ async def test_a_page_is_parsed_once_for_its_links_and_its_record(
     # INV-26: one parse per parser of the one page fetched (the start page; `max_depth` 0 fetches none of its links).
     assert [task.outcome for task in (await tasks(engine, submitted.job_id)).values()] == ["extracted"]
     assert (parses["selectolax"].calls, parses["lxml"].calls <= 1) == (1, True)
+
+
+async def test_role_c_completes_a_discovered_page_whose_price_is_only_in_its_text(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # SPEC-10 §4.6, ARCHITECTURE §8.4: a crawl's page is extracted cold with role C for its missing required fields;
+    # without it, the page would end `no_match`. Role C's client commits usage while the task's transaction is open
+    # (D-0346), so the task writes the job's usage only after the extraction.
+    url = f"{own_origin}/p/blue"
+    status, body, block_class = page(product="Blue kettle", offers=False)
+    body = body.replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    web.pages[url] = (status, body, block_class)
+    text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
+    start = text.index("19.90 EUR")
+    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
+    request = records_crawl(url, kettle_schema, f"{own_origin}/p/*", max_depth=0)
+    submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)
+
+    await run(engine, fetching, engine_data, submitted.job_id, MeteredClient([FakeProvider([reply])], engine))
+
+    assert [task.outcome for task in (await tasks(engine, submitted.job_id)).values()] == ["extracted"]
+    async with engine.connect() as conn:
+        usage: dict[str, int] = (await conn.execute(select(Job.usage).where(Job.id == submitted.job_id))).scalar_one()
+    assert usage["llm_calls"] == 1
 
 
 async def test_with_rules_a_page_no_rule_matches_has_no_formats(

@@ -18,6 +18,7 @@ from sqlalchemy import Row, RowMapping, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.exporters.records import RecordFormat, export_records
+from crawlerai.config_ir.progressive import StateKey, learning_failed
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
@@ -244,15 +245,18 @@ async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
     await conn.execute(
         update(UrlTask).where(UrlTask.job_id == job_id, UrlTask.status == "queued").values(status="cancelled")
     )
-    locked = select(Job.status).where(Job.id == job_id).with_for_update()
-    status = (await conn.execute(locked)).scalar_one()
-    if not JOB_TRANSITIONS[status]:
+    locked = select(Job.status, Job.kind, Job.request).where(Job.id == job_id).with_for_update()
+    job = (await conn.execute(locked)).one()
+    if not JOB_TRANSITIONS[job.status]:
         return  # it ended while its tasks were cancelled
     await conn.execute(update(Job).where(Job.id == job_id).values(cancel_requested=True))
-    if status == "queued":
-        # No task of it was ever claimed: a claim starts its job in the same transaction.
+    if job.status == "queued":
+        # No task of it was ever claimed: a claim starts its job in the same transaction. A `learn` job that never
+        # started ends its state's run as a cancelled run does (D-0622).
+        if job.kind == "learn":
+            await learning_failed(conn, StateKey.from_request(job.request))
         await transition_job(conn, job_id, "cancelled")
-    else:
+    elif job.kind != "learn":  # a started learn run has no tasks, and ends itself on `cancel_requested`
         await settle_job(conn, job_id)
 
 

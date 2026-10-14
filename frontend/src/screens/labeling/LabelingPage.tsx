@@ -13,7 +13,9 @@ import {
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { useState, type ReactNode } from "react";
-import { useLoaderData } from "react-router";
+import { useParams } from "react-router";
+import { problemOf } from "../../api/hooks/query";
+import { LoadingView } from "../../components/LoadingView";
 import { EmptyView } from "../../components/EmptyView";
 import { FormActions } from "../../components/FormActions";
 import {
@@ -36,11 +38,15 @@ import {
 import { EvalUiOff } from "./EvalUiOff";
 import { FieldEditor } from "./FieldEditor";
 import { LabelStatusChip, SplitBadge } from "./LabelingList";
-import type { PageDetail, pageLoader } from "./loaders";
+import { useEvalPage, type PageDetail } from "./queries";
 import { PageView } from "./PageView";
 
 export function LabelingPage() {
-  const data = useLoaderData<typeof pageLoader>();
+  const query = useEvalPage(useParams()["pageId"] ?? "");
+  const problem = problemOf(query.error);
+  if (problem !== null) return <ProblemAlert problem={problem} />;
+  if (!query.isSuccess) return <LoadingView label="Loading the eval page" />;
+  const data = query.data;
 
   switch (data.kind) {
     case "off":

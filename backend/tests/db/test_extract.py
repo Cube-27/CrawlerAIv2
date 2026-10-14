@@ -22,10 +22,11 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, ProgressiveState, Record, UrlTask
-from crawlerai.llm.client import BudgetExhausted, MeteredClient, ProviderReply, Unconfigured
+from crawlerai.llm.client import BudgetExhausted, LLMClient, MeteredClient, ProviderReply, Unconfigured
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
@@ -145,12 +146,14 @@ async def _extract_jobs(engine: AsyncEngine) -> list[Any]:
         return list((await conn.execute(select(Job.id, Job.status).where(Job.kind == "extract"))).all())
 
 
-async def _run(engine: AsyncEngine, fetching: Fetching, data: EngineData, job_id: JobId) -> jobs.JobSummary:
+async def _run(
+    engine: AsyncEngine, fetching: Fetching, data: EngineData, job_id: JobId, llm: LLMClient = NO_LLM
+) -> jobs.JobSummary:
     """Run a worker loop until the job has ended, and return its summary."""
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    loop = asyncio.create_task(run_worker(settings, {"extract": scrape_handler(fetching, data, None)}, stop))
+    loop = asyncio.create_task(run_worker(settings, {"extract": scrape_handler(fetching, data, None, llm=llm)}, stop))
     async with asyncio.timeout(60):
         while (await _job(engine, job_id)).status not in ("completed", "failed", "cancelled"):
             await asyncio.sleep(0.1)
@@ -404,3 +407,34 @@ async def test_a_prompts_job_extracts_with_its_draft(
         records = (await conn.execute(select(Record.schema_id, Record.complete))).all()
     assert (summary.status, summary.outcomes.extracted) == ("completed", 2)
     assert records == [(submitted.schema_.id, True)] * 2
+
+
+async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # SPEC-10 §4.6, SPEC-05 §4.13: an extract page is extracted cold, and role C reads a missing required field from
+    # the page text. The client commits its usage on its own connection while the task's transaction is open (D-0346).
+    url = f"{own_origin}/p/1"
+    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    web.serve(url, body)
+    text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
+    start = text.index("19.90 EUR")
+    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
+    llm = MeteredClient([FakeProvider([reply])], engine)
+    request = _request([url], _by_id(kettle_schema))
+    submitted = await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
+
+    summary = await _run(engine, fetching, engine_data, submitted.job_id, llm)
+
+    assert (summary.status, summary.outcomes.extracted) == ("completed", 1)
+    async with engine.connect() as conn:
+        record = (await conn.execute(select(Record.complete, Record.data))).one()
+    assert (record.complete, record.data["price"]) == (True, {"amount": "19.90", "currency": "EUR"})
+    assert (await _job(engine, submitted.job_id)).usage["llm_calls"] == 1

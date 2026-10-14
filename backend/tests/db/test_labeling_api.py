@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Capture, EvalPage, SchemaDef, Site
+from crawlerai.db.models import ApiKey, Capture, EvalPage, SchemaDef, Site
 from crawlerai.eval.store import EvalPageRow, get_store
+from crawlerai.services.keys import create_key
 
 pytestmark = pytest.mark.anyio
 
@@ -46,6 +47,7 @@ async def client(
                 .returning(SchemaDef.id)
             )
         ).scalar_one()
+        key = await create_key(conn, "labeling-api-test")
     settings = Settings.model_validate({"database_url": database_url, "object_store": object_store})
     async with aclosing(get_store("dev", settings)) as store:
         capture_id = await store.put_capture(fetch_result(URL, body=BODY).bundle, "custom_store")
@@ -62,10 +64,15 @@ async def client(
     app = create_app(eval_ui=True)
     async with (
         app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api.test") as http,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://api.test",
+            headers={"authorization": f"Bearer {key.key}"},
+        ) as http,
     ):
         yield http, str(page_id)
     async with engine.begin() as conn:
+        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
         await conn.execute(delete(EvalPage).where(EvalPage.schema_name == SCHEMA))
         await conn.execute(delete(Capture).where(Capture.id == capture_id))
         await conn.execute(delete(Site).where(Site.host.like("%.labeling-api.example.test")))
@@ -121,3 +128,23 @@ async def test_a_pass_over_labels_read_before_another_pass_is_refused(client: tu
     assert labeled.status_code == 200
     assert (stale.status_code, stale.json()["type"]) == (412, "labels_changed")
     assert (await http.get(f"/v1/eval/pages/{page_id}")).json()["status"] == "labeled"
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/v1/eval/pages"),
+        ("GET", "/v1/eval/pages/{page_id}"),
+        ("PUT", "/v1/eval/pages/{page_id}/labels"),
+        ("POST", "/v1/eval/pages/{page_id}/prefill"),
+        ("POST", "/v1/eval/capture"),
+    ],
+)
+async def test_the_labeling_api_needs_an_api_key(client: tuple[httpx.AsyncClient, str], method: str, path: str) -> None:
+    # SPEC-03 §4.10: the labeling API has the same API-key auth as everything else.
+    http, page_id = client
+
+    response = await http.request(method, path.format(page_id=page_id), headers={"authorization": ""})
+
+    assert (response.status_code, response.headers["www-authenticate"]) == (401, "Bearer")
+    assert (await http.get(f"/v1/eval/pages/{page_id}")).json()["status"] is None
