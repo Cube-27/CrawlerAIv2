@@ -234,6 +234,48 @@ def test_a_page_fetch_asked_to_slow_down_is_kept_with_no_fallback_request() -> N
     assert [(a.method, a.status) for a in result.attempts] == [("http", 429)]
 
 
+def test_a_recipe_failure_after_the_page_fetch_keeps_that_page_with_no_second_fetch() -> None:
+    # §4.10: the fallback is the page over HTTP, which the recipe has just fetched; fetching it again is one more request.
+    api, http, page = StandIn(lambda _: httpx.Response(500, json={})), PageRung(), PageRung(SKU_PAGE)
+    url = f"{SITE}/p/desk-lamp"
+
+    result = asyncio.run(
+        acquire(url, POLICY, "http", Rungs(http=http, browser=PageRung()), recipe=_rung(SKU_RECIPE, api, page))
+    )
+
+    assert (page.calls, http.calls) == ([url], [])
+    assert (result.method, result.block_class, result.bundle.body) == ("http", "ok", SKU_PAGE)
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "error")]
+    assert len(result.bundle.manifest.fetch_policy["attempts"]) == 2  # type: ignore[arg-type]
+
+
+def test_a_page_fetched_for_an_unbound_recipe_is_kept() -> None:
+    api, http, page = StandIn(_products), PageRung(), PageRung(b"<html><h1>No sku</h1></html>")
+    url = f"{SITE}/p/desk-lamp"
+
+    result = asyncio.run(
+        acquire(url, POLICY, "http", Rungs(http=http, browser=PageRung()), recipe=_rung(SKU_RECIPE, api, page))
+    )
+
+    assert (page.calls, http.calls, api.requests) == ([url], [], [])
+    assert (result.method, result.block_class) == ("http", "ok")
+    assert [(a.method, a.error) for a in result.attempts] == [("http", None), ("api", "unbound_parameter")]
+
+
+def test_a_page_asked_of_the_browser_falls_back_to_the_browser_after_a_recipe_failure() -> None:
+    # A fetch whose policy names the browser is the configured method (§4.10); the HTTP page fetched to bind is not it.
+    api, browser, page = StandIn(lambda _: httpx.Response(500, json={})), PageRung(), PageRung(SKU_PAGE)
+    url = f"{SITE}/p/desk-lamp"
+    policy = FetchPolicy(method_hint="browser")
+
+    result = asyncio.run(
+        acquire(url, policy, "http", Rungs(http=PageRung(), browser=browser), recipe=_rung(SKU_RECIPE, api, page))
+    )
+
+    assert (page.calls, browser.calls) == ([url], [url])
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "error"), ("http", "ok")]
+
+
 # --- pagination (§4.8, ARCHITECTURE §8.6) -----------------------------------------------------------------------------
 
 ITEMS = [f"Lamp {n}" for n in range(5)]
@@ -292,6 +334,21 @@ def test_a_failed_page_ends_the_listing_and_is_yielded_last() -> None:
     pages = _pages(StandIn(failing), limit=10)
 
     assert [page.block_class for page in pages] == ["ok", "error"]
+
+
+def test_a_response_whose_rows_hold_no_object_ends_the_listing() -> None:
+    # The collector reads rows that are JSON objects only (RFC 8259 §4): rows of another kind are no rows to page on.
+    def scalars(request: httpx.Request) -> httpx.Response:
+        if request.url.params["offset"] == "0":
+            return _offsets(request)
+        return httpx.Response(200, json={"items": [1, 2]})
+
+    api = StandIn(scalars)
+
+    pages = _pages(api, limit=10)
+
+    assert len(pages) == 1
+    assert [r.url.params["offset"] for r in api.requests] == ["0", "2"]
 
 
 def test_a_recipe_without_pagination_has_no_pages() -> None:
