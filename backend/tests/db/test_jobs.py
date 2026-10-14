@@ -38,6 +38,7 @@ from crawlerai.db.models import (
     UrlTask,
 )
 from crawlerai.db.queue import complete_task, insert_claimed
+from crawlerai.recurring.versions import link_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import jobs
@@ -120,9 +121,10 @@ class World:
                 .values(job_id=job_id, url=url, canonical_url=url, status="done", outcome="extracted")
                 .returning(UrlTask.id)
             )
+            task_id = task.scalar_one()
             extraction = await conn.execute(
                 insert(Extraction)
-                .values(url_task_id=task.scalar_one(), engine_version="e", mode="adhoc")
+                .values(url_task_id=task_id, engine_version="e", mode="adhoc")
                 .returning(Extraction.id)
             )
             values = {
@@ -140,6 +142,7 @@ class World:
             record_id: RecordId = (
                 await conn.execute(insert(Record).values(**values).returning(Record.id))
             ).scalar_one()
+            await link_records(conn, task_id, [record_id])
         return record_id
 
     async def records(self, job_id: JobId, n: int) -> list[RecordId]:

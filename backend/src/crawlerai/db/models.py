@@ -525,6 +525,18 @@ class Record(Base):
     supersedes_record_id: Mapped[RecordId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
 
 
+class TaskRecord(Base):
+    """A record a task's page stands for (SPEC-11 §4.2, §4.4): one it stored, or the entity's latest version when the
+    page's record was unchanged and stored nothing. A job's records are those of its tasks (SPEC-10 §4.2 results).
+    Plumbing for §4.2's `url_task.record_id`, as a table because a listing page stands for one record per row."""
+
+    __tablename__ = "task_record"
+
+    url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id, ondelete="CASCADE"), primary_key=True)
+    # Indexed for the records a job lists, which join on it, and for a record's delete.
+    record_id: Mapped[RecordId] = mapped_column(ForeignKey(Record.id, ondelete="CASCADE"), primary_key=True, index=True)
+
+
 class EvalPageColumns:
     """The `eval_page` columns both eval databases share (ARCHITECTURE §6, SPEC-03 §4.3). Each database adds the
     split it may hold and the capture its rows reference.

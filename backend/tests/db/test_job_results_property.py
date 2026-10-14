@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.config_ir.exporters.records import RecordFormat, export_records
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Extraction, Job, JobId, Project, Record, SchemaDef, Site, UrlTask
+from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
@@ -77,7 +78,8 @@ async def _store(conn: AsyncConnection, schema: Schema, records: list[dict[str, 
         field_meta = {name: meta.model_dump() for name, meta in _metas(data).items()}
         values = {"data": data, "field_meta": field_meta, "complete": False, "mode": "adhoc", "entity_key": url}
         values |= {"schema_id": schema.id, "schema_version": schema.version}
-        await conn.execute(insert(Record).values(extraction_id=extraction_id, job_id=job_id, site_id=site_id, **values))
+        record = insert(Record).values(extraction_id=extraction_id, job_id=job_id, site_id=site_id, **values)
+        await link_records(conn, task_id, [(await conn.execute(record.returning(Record.id))).scalar_one()])
     return job_id
 
 

@@ -81,7 +81,12 @@ class _Site:
         extraction = insert(Extraction).values(url_task_id=task.id, engine_version="e", mode="adhoc")
         extraction_id = (await self.conn.execute(extraction.returning(Extraction.id))).scalar_one()
         source = RecordSource(
-            extraction_id=extraction_id, job_id=job_id, site_id=self.site_id, mode="adhoc", page_url=PAGE_URL
+            extraction_id=extraction_id,
+            task_id=task.id,
+            job_id=job_id,
+            site_id=self.site_id,
+            mode="adhoc",
+            page_url=PAGE_URL,
         )
         return await store_records(self.conn, self.schema, drafts, source)
 
