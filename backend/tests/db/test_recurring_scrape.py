@@ -1,5 +1,6 @@
 """A records job run again over the same pages (SPEC-11 §4.2, §4.3, §7): pages that did not change end `unchanged`
 and are not extracted, whether they answer 304 or their visible text is within three SimHash bits of the last run's.
+An unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward `pages_extracted` (ARCHITECTURE §8.3).
 
 Jobs run in a worker loop through the real queue. The web is a stub origin on an RFC 2606 host that can answer with
 an ETag and honour If-None-Match (RFC 9110 §13.1.2); no network, no browser.
@@ -15,7 +16,7 @@ from typing import Any
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import func, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -23,7 +24,21 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, Validators
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Capture, Extraction, Job, JobId, Project, Record, Site, TaskOutcome, UrlState, UrlTask
+from crawlerai.db.models import (
+    Capture,
+    Extraction,
+    ExtractionConfig,
+    Job,
+    JobId,
+    ProgressiveState,
+    Project,
+    Record,
+    Site,
+    SiteId,
+    TaskOutcome,
+    UrlState,
+    UrlTask,
+)
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
@@ -202,6 +217,52 @@ async def test_a_page_whose_text_changed_is_extracted_again(
     # And the next run finds the changed page unchanged against its new fingerprint.
     third = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
     assert third.tasks == {url: ("unchanged", True) for url in urls}
+
+
+async def _counted(engine: AsyncEngine, site_id: SiteId) -> tuple[dict[str, Any], int]:
+    """The site's config's drift window and the pages its progressive state counted."""
+    async with engine.connect() as conn:
+        window: dict[str, Any] = (
+            await conn.execute(select(ExtractionConfig.drift_window).where(ExtractionConfig.site_id == site_id))
+        ).scalar_one()
+        query = select(ProgressiveState.pages_extracted).where(ProgressiveState.site_id == site_id)
+        return window, (await conn.execute(query)).scalar_one()
+
+
+@pytest.mark.parametrize("etags", [False, True], ids=["fingerprint", "304"])
+async def test_unchanged_pages_join_no_drift_window_and_count_no_extracted_page(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    heading_config: Callable[[SiteId, SchemaDef, int], dict[str, Any]],
+    etags: bool,
+) -> None:
+    origin.etags = etags
+    urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red")]
+    origin.pages = {urls[0]: _page("Blue kettle"), urls[1]: _page("Red kettle")}
+    async with engine.begin() as conn:
+        site_id = (await conn.execute(select(Site.id).where(Site.host == own_origin[8:]))).scalar_one()
+        await conn.execute(insert(ExtractionConfig).values(heading_config(site_id, kettle_schema, 1)))
+    try:
+        await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
+        first = await _counted(engine, site_id)
+        again = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
+        unchanged = await _counted(engine, site_id)
+        origin.pages[urls[1]] = _page("Red teapot", OTHER_PROSE)
+        await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
+        changed = await _counted(engine, site_id)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+
+    assert first == ({"title": [[True, True]] * 2}, 2)
+    assert unchanged == first
+    assert again.tasks == {url: ("unchanged", not etags) for url in urls}
+    # The one page that changed is extracted with the config, so it joins the window and counts.
+    assert changed == ({"title": [[True, True]] * 3}, 3)
 
 
 async def test_a_page_that_changed_only_a_nonce_is_unchanged(
