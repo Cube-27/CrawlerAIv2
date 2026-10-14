@@ -22,7 +22,6 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key, revoke_key
 from crawlerai.api.webhooks import poster
 from crawlerai.core.data import DataFetchError, fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
@@ -41,6 +40,7 @@ from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
 from crawlerai.services.fetching import Fetching
+from crawlerai.services.keys import create_key, revoke_key
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode

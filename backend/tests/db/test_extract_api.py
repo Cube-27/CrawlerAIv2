@@ -21,13 +21,13 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.db.models import ApiKey, Job, UrlTask
 from crawlerai.llm.client import MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
+from crawlerai.services.keys import create_key
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import PRIVATE_HOST, resolve
 

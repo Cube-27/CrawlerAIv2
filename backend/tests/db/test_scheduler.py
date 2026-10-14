@@ -13,7 +13,6 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.api.keys import create_key
 from crawlerai.core.settings import Settings
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import (
@@ -31,6 +30,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import claim_tasks
 from crawlerai.scheduler.loop import Periodic, periodic, run_scheduler
+from crawlerai.services.keys import create_key
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio

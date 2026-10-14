@@ -12,9 +12,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.db.models import ApiKey
 from crawlerai.db.models import SchemaDef as SchemaRow
+from crawlerai.services.keys import create_key
 
 pytestmark = pytest.mark.anyio
 

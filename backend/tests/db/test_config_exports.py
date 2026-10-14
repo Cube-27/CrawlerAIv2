@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
     ApiKey,
@@ -39,6 +38,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.services.keys import create_key
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio

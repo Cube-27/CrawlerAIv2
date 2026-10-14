@@ -17,7 +17,6 @@ from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.db.jobs import record_event, transition_job
 from crawlerai.db.models import (
     ApiKey,
@@ -39,6 +38,7 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 from crawlerai.services import events, jobs
 from crawlerai.services.events import StreamEvent
+from crawlerai.services.keys import create_key
 
 pytestmark = pytest.mark.anyio
 
