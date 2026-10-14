@@ -68,7 +68,7 @@ class RecordSource:
 
 
 class RecordWriter(Protocol):
-    """Stores a page's records and returns them in the drafts' order (`recurring.versions.store_records`, which
+    """Stores a page's records and returns them in the drafts' order (`store_records` in `recurring.versions`, which
     versions them, SPEC-11 §4.4). A record can be one stored before, so its id need not be new."""
 
     async def __call__(
