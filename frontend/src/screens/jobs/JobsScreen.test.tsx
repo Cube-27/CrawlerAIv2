@@ -197,6 +197,33 @@ describe("Job screen", () => {
     ]);
   });
 
+  it("reads the job again when a dropped stream reconnects, so an end missed while away shows", async () => {
+    let status: JobSummary["status"] = "running";
+    const answers = [
+      () => {
+        status = "completed";
+        return sse(["1", "task_fetched", { url: "https://shop.example.test/item/1" }]);
+      },
+      // The second connection opens and stays quiet: the job ended while the stream was away.
+      () =>
+        new Response(new ReadableStream(), { headers: { "content-type": "text/event-stream" } }),
+    ];
+    jobApi({
+      [`GET ${JOB}`]: () => Response.json(job({ status })),
+      [`GET ${JOB}/events`]: () => {
+        const next = answers.shift();
+        if (next === undefined) throw new Error("no more connections expected");
+        return next();
+      },
+    });
+    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+
+    expect(await eventLog().findByText("live", {}, { timeout: 3000 })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(jobStatus()).toHaveTextContent("completed");
+    });
+  });
+
   it("shows the problem of a refused event stream", async () => {
     jobApi({
       [`GET ${JOB}/events`]: () => problem(404, { title: "Not found", detail: `no job ${JOB_ID}` }),
