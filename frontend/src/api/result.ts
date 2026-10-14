@@ -35,10 +35,10 @@ async function send<T>(
 ): Promise<Answer<T> | { kind: "failed"; problem: Problem }> {
   try {
     return await call();
-  } catch (thrown) {
+  } catch (error_) {
     return failure(
       "The API could not be reached.",
-      thrown instanceof Error ? thrown.message : null,
+      error_ instanceof Error ? error_.message : null,
     );
   }
 }

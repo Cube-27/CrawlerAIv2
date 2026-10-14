@@ -4,6 +4,7 @@ import { schemaVersionLabel } from "../../api/schemas";
 import type { ConfigDetail, ConfigSummary, FieldConfigStatus } from "../../api/configs";
 import { confidenceText } from "../../components/ConfidenceCell";
 import { ConfigStatusLabel, FieldConfigStatusLabel } from "../../components/ConfigStatusLabel";
+import { keyedTexts } from "../../components/keys";
 import { LocatorText } from "../../components/LocatorText";
 import { stepText } from "../../components/steps";
 import { configuredFields } from "./correction";
@@ -113,12 +114,14 @@ export function ConfigFieldsTable({ config }: Readonly<{ config: ConfigDetail }>
                   </Table.Cell>
                   <Table.Cell>
                     <ol className="flex flex-col gap-1">
-                      {steps.steps.map((step, index) => (
-                        // The position is the step's identity: the first valid value wins.
-                        <li key={index}>
-                          <LocatorText locator={stepText(step)} />
-                        </li>
-                      ))}
+                      {/* In order: the first valid value wins. */}
+                      {keyedTexts(steps.steps.map((step) => stepText(step))).map(
+                        ({ key, text }) => (
+                          <li key={key}>
+                            <LocatorText locator={text} />
+                          </li>
+                        ),
+                      )}
                     </ol>
                   </Table.Cell>
                   <Table.Cell>{confidenceText(steps.yield)}</Table.Cell>

@@ -2,6 +2,7 @@ import { Chip, Tooltip } from "@heroui/react";
 import type { FieldResult, FieldTypeSpec, ScalarFieldType } from "../api/field";
 import { isJsonObject, type JsonObject } from "../api/json";
 import { FieldStatusBadge } from "./FieldStatusBadge";
+import { keyedTexts } from "./keys";
 
 // The UI shows server values as they are (ARCHITECTURE §3): it joins the parts of a normalized value and never
 // rounds, converts or fills one in.
@@ -104,12 +105,13 @@ export function FieldValue({
   if (spec?.type === "list" && Array.isArray(field.value) && field.value.length > 0) {
     return (
       <span className="inline-flex flex-wrap gap-1">
-        {field.value.map((item, index) => (
-          // List items have no identity of their own; their order is the value's order.
-          <Chip key={index}>
-            <Chip.Label>{formatValue(item, spec.item)}</Chip.Label>
-          </Chip>
-        ))}
+        {keyedTexts(field.value.map((item) => formatValue(item, spec.item))).map(
+          ({ key, text }) => (
+            <Chip key={key}>
+              <Chip.Label>{text}</Chip.Label>
+            </Chip>
+          ),
+        )}
       </span>
     );
   }
