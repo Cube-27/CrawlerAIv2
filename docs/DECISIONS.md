@@ -4741,3 +4741,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Read the job's schema first (the job summary has no `schema_id`).
 - Why: The endpoint's union answer is the only signal the UI has.
 - Reversible: yes
+
+### D-0705 — A worker checks a page task's URL with the SSRF guard before it fetches
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 8 (#145) · Status: decided
+- Decision: `steps.fetch_page` runs `fetching.connector.check(task.url)` first; a refusal returns `Failed(<guard reason>, transient=False)` with no site row, capture or usage. A crawl-discovered subdomain that resolves to a private address was refused only at the robots.txt fetch, which `fetch_politely` retries as unreachable, so the task ended `blocked` instead of failing at once (SPEC-02 §4.11). A failed DNS lookup (`dns`) now also fails the task at once, as the page rung's refusal already did.
+- Alternatives: Fail the task on any refused attempt, robots.txt's included: that would also make a public host whose robots.txt redirects to a private address an SSRF failure rather than an unreachable robots.txt (RFC 9309 §2.3.1.4). Check at enqueue in the frontier: a lookup per discovered link, and it does not hold at fetch time.
+- Why: The same up-front check `scrape` and `map` make (`check_target`, D-0655); one extra resolution per task, while the rung still pins its own check.
+- Reversible: yes
+
+### D-0706 — The SSRF matrix pins only the test site past the guard
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 8 (#145) · Status: decided
+- Decision: `tests/db/test_ssrf_endpoints.py` runs the real `SafeConnector` and `fetch_http` against a local server; only the test site's host at the server's port is pinned to it. Redirect hops, sitemap and link locations and subdomains go through the real guard with a stub resolver.
+- Alternatives: Stub rungs that report a refusal, as the per-service tests do.
+- Why: The matrix exercises production's checks on every hop, not a stub's report of them.
+- Reversible: yes
