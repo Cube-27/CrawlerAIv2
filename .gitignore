@@ -26,6 +26,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+# The license scan's own environment (tools/license_scan.sh).
+.venv-licenses/
 venv/
 build/
 dist/
