@@ -13,6 +13,8 @@ the conventions every screen follows. Toolchain: SPEC-00 §4.3.
   directly in app code: HeroUI already wraps it with its styles.
 - Never add another UI or component library, and never hand-write component CSS. Icons come from one set,
   `@gravity-ui/icons` (MIT, the set HeroUI's documentation uses).
+- Typefaces are bundled with the app from Fontsource packages (SIL OFL 1.1), imported by `src/app/theme.css`. No page
+  loads a font, script or style from a third-party service.
 - `tools/theme_only_check.py` enforces this and the theming rule below, in CI (the frontend job), `make check` and
   pre-commit. App code may import only `@heroui/react`, the icon set and the non-UI runtime packages it lists; a
   new runtime dependency is added to that list in the PR that adds it.
@@ -22,8 +24,9 @@ the conventions every screen follows. Toolchain: SPEC-00 §4.3.
 Linear, for layout and patterns: a quiet, dense application UI. That means left sidebar navigation, list- and
 table-first screens, a compact page header (title left, primary action right), subtle borders over shadows, a
 neutral palette with one accent, keyboard-first use, and few modals. The reference guides layout, density and
-pattern choices only. Don't copy its styles or any brand asset: visual values stay HeroUI's defaults, and any tweak
-goes in `src/app/theme.css`.
+pattern choices only. Don't copy its styles or any brand asset: visual values start from HeroUI's defaults, and every
+tweak goes in `src/app/theme.css` (today: the Inter and JetBrains Mono typefaces, a neutral palette with one indigo
+accent, a compact type scale and outlined cards).
 
 ## Theming
 
@@ -53,9 +56,12 @@ screen or component.
 
 ## Layout
 
-- One app shell: a top bar, a left nav and the content area (`src/app/shell.tsx`).
+- One app shell (`src/app/shell.tsx`): a left sidebar and the content area. The sidebar holds the product mark, the
+  navigation in labelled groups with one icon per item (the current screen is marked by `aria-current`, shown with a
+  filled background), and at its foot Settings, Disconnect and the dark-theme toggle. The content sits on an inset
+  panel beside it.
 - Content is at most 1280px wide (`--container-content` in theme.css).
-- At phone width the nav moves above the content, gutters are 16px, and nothing scrolls horizontally.
+- At phone width the sidebar moves above the content, gutters are 16px, and nothing scrolls horizontally.
 
 ## Components
 
@@ -74,7 +80,10 @@ use it instead of composing their own. Each line ends with how it follows the re
 
 | Job | The one way | Reference |
 |---|---|---|
-| Page title and actions | `PageHeader`: the page's one h1, badges beside it, primary actions on the right. | Compact header, title left, primary action right. |
+| Page title and actions | `PageHeader`: the page's one h1, badges beside it, an optional one-line description under it, primary actions on the right. | Compact header, title left, primary action right. |
+| Open by key | `LookupForm`: one field with a search icon and its button on one row, to open an item by its id or host. | Quick open, no form page. |
+| Dates and times | `Timestamp`: an API timestamp as a short local date and 24-hour time in a `<time>` element, the exact instant in its tooltip; a missing one is a dash. Never show raw RFC 3339 text. | Quiet, readable metadata. |
+| Headline numbers | A HeroUI `Card` per number: label, value (`stat-value`), one muted line of context; a `Skeleton` while it loads and a dash when it can't load, in the same footprint. | Dense overview, no charts for a single number. |
 | Forms | HeroUI `Form`; one field per row, label above (`Label`), message below (`FieldError`, React Aria validation). A problem from the API shows above the fields as a `ProblemAlert`. Buttons go in `FormActions` after the fields: right-aligned, secondary (Cancel) first, primary last. | Dense single-column forms, one primary action. |
 | Field groups | HeroUI `Fieldset` with `Fieldset.Legend`. | Grouping by spacing and labels, not boxes. |
 | Data tables | HeroUI `Table`. Sorting: `allowsSorting` on `Table.Column` with `sortDescriptor`/`onSortChange` on the table. Pagination: `PagedTable`, a fixed-height box of `PAGE_SIZE` rows with `TablePagination` under it (previous/next by cursor, SPEC-07 §4.6); loading and problem states fill the same box, so paging moves nothing. Fixed column widths (`table-fixed`, a width per column, `truncate` in cells). Row actions: a row `href` to open the item; other actions on the item's page, or in a HeroUI `Dropdown` in the row's last column. | Table-first screens; open an item by its row. |

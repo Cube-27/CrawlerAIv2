@@ -1,5 +1,6 @@
 import { Table } from "@heroui/react";
 import type { DayUsage, JobUsage, LlmUsage, ModelRoleUsage } from "../../api/usage";
+import { Timestamp } from "../../components/Timestamp";
 import { KIND_LABELS } from "../jobs/kinds";
 import { jobPath } from "../jobs/paths";
 import { formatCost, formatCount, roleLabel } from "./costs";
@@ -121,7 +122,9 @@ export function TopJobsTable({ jobs }: Readonly<{ jobs: readonly JobUsage[] }>) 
             {(job) => (
               <Table.Row id={job.id} href={jobPath(job.job_id)}>
                 <Table.Cell>{KIND_LABELS[job.kind]}</Table.Cell>
-                <Table.Cell>{job.created_at}</Table.Cell>
+                <Table.Cell>
+                  <Timestamp value={job.created_at} />
+                </Table.Cell>
                 <UsageCells usage={job} />
               </Table.Row>
             )}

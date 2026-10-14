@@ -1,7 +1,5 @@
-import { Button, Description, Form, Input, Label, TextField } from "@heroui/react";
-import { useState } from "react";
 import { useNavigate } from "react-router";
-import { FormActions } from "../../components/FormActions";
+import { LookupForm } from "../../components/LookupForm";
 import { PageHeader } from "../../components/PageHeader";
 import { BatchDialog } from "./BatchDialog";
 import { CrawlDialog } from "./CrawlDialog";
@@ -14,11 +12,11 @@ import { jobPath } from "./paths";
  * job opens on its own page. */
 export function JobsScreen() {
   const navigate = useNavigate();
-  const [id, setId] = useState("");
   return (
     <section className="flex flex-col gap-6">
       <PageHeader
         title="Jobs"
+        description="Batch scrapes, crawls, maps and extracts, newest first."
         actions={
           <>
             <MapDialog />
@@ -28,23 +26,13 @@ export function JobsScreen() {
           </>
         }
       />
+      <LookupForm
+        label="Job ID"
+        placeholder="Paste a job id"
+        submitLabel="Open job"
+        onOpen={(id) => void navigate(jobPath(id))}
+      />
       <JobTable />
-      <Form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void navigate(jobPath(id.trim()));
-        }}
-      >
-        <TextField isRequired value={id} onChange={setId}>
-          <Label>Job ID</Label>
-          <Input autoComplete="off" spellCheck={false} />
-          <Description>The id a job was created with.</Description>
-        </TextField>
-        <FormActions>
-          <Button type="submit">Open job</Button>
-        </FormActions>
-      </Form>
     </section>
   );
 }

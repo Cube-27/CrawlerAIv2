@@ -124,7 +124,7 @@ describe("Settings screen", () => {
       "2031-01-0313,000300$0.0036",
       "2031-01-0221,500150Unknown: 550 tokens have no price",
     ]);
-    expect(rowsOf("Top jobs by cost")).toEqual(["Extract2031-01-02T09:00:00Z24,000400$0.0048"]);
+    expect(rowsOf("Top jobs by cost")).toEqual(["ExtractJan 2, 2031, 09:0024,000400$0.0048"]);
   });
 
   it("opens a job from the top jobs", async () => {
