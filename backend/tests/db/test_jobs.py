@@ -19,7 +19,6 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.core.ids import uuid7
 from crawlerai.db.jobs import start_jobs
 from crawlerai.db.models import (
@@ -43,6 +42,7 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import jobs
 from crawlerai.services.jobs import ExportPage, JobEnded, JobNotFound, NotExportable, PageOutputPage, ResultsQuery
+from crawlerai.services.keys import create_key
 from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
 

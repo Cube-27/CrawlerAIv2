@@ -4678,3 +4678,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Let Postgres abort one of two deadlocked runs and let the task retry.
 - Why: `_seen` locks rows in sorted order, but the `_missed` UPDATE locks them in scan order, so two runs of a site ending together could deadlock.
 - Reversible: yes
+
+### D-0696 — MCP over HTTP is stateless, answers JSON, and has no DNS-rebinding check
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 7 (#144) · Status: decided
+- Decision: The `/mcp` endpoint uses the SDK's stateless mode with JSON responses. DNS-rebinding protection is off.
+- Alternatives: Stateful sessions; SSE responses; the SDK's localhost-only Host allowlist.
+- Why: Stateless lets any API process take any request, with no session affinity. Every request authenticates with a bearer key that a browser never sends on its own (ARCHITECTURE §18, no cookies). The SDK's default Host allowlist would refuse every non-localhost deployment.
+- Reversible: yes — they are constructor arguments in `build_server`.
+
+### D-0697 — The API sits above the MCP server; key lookup and runtime setup move to `services`
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 7 (#144) · Status: decided
+- Decision: `.importlinter` layers `api` over `mcp_server` (they were independent siblings). `api/keys.py` moves to `services/keys.py`, and the app's runtime setup moves to `services/runtime.py` (`Runtime`, `open_runtime`, `fetching_from_settings`).
+- Alternatives: A third composition module that imports both; FastMCP's OAuth `TokenVerifier`; duplicating the key lookup in `mcp_server`.
+- Why: SPEC-10 §4.7 mounts the server in the API app and has both transports use the same auth. `mcp_server` still imports nothing from `api`.
+- Reversible: yes
+
+### D-0698 — MCP tool shapes
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 7 (#144) · Status: decided
+- Decision: `scrape`, `map`, `crawl_start` and `extract` take the REST body as `request`. A later markdown page is `scrape(cursor=...)` with no `request`; the cursor is `<capture_id>:<offset>`, and the page is rebuilt from the capture (§15). `extract` returns `{job_id, schema}`, as REST does (D-0686). `crawl_status` and `extract_status` share one body and return `{job, results}`, 10 results per page with a `cursor`, without checking the job's kind. `get_site_config(host)` lists the site's configs; `export_config(config_id, format)`.
+- Alternatives: Flattened arguments; a separate markdown-paging tool (§13.3 lists exactly ten); re-scraping with `max_age` for later pages (that could read a newer capture).
+- Why: One service call per tool, with the REST models as the input schemas. Of the readings of "`{job_id}`", this conservative one keeps the draft, which ARCHITECTURE §13.1 returns.
+- Reversible: yes
+
+### D-0699 — The stdio server looks up `CRAWLERAI_API_KEY` on every call, with no rate limit
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 7 (#144) · Status: decided
+- Decision: `crawlerai.mcp_server.stdio.key_bind` authenticates the key at each tool call; a revoked key fails the call.
+- Alternatives: Authenticate once at startup; put the API's token bucket in front.
+- Why: It is the same lookup as REST, and a revocation takes effect at once. A local stdio process has one client, so the network rate limit does not apply.
+- Reversible: yes

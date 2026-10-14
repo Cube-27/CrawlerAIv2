@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 and L2 complete (2026-10-14). L3: SPEC-10 PRs 1-6 done; in progress SPEC-10 PR 7 and SPEC-12 PR 7; next SPEC-10 PR 8. L4: SPEC-11 PRs 1-5 done; SPEC-12 PR 8 done. Sonar settings + debt reduction done (#138).
+- L1, L2 and L4 complete (2026-10-14). L3: SPEC-10 PRs 1-7 done; in progress SPEC-10 PR 8 and SPEC-12 PR 7. Sonar settings + debt reduction done (#138).
+- Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -209,7 +210,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | Frontier, rules, `crawl` | done (#137) | D-0672–D-0678. Shared page-task steps in `worker/handlers/steps.py`; `TargetsRejected`/`check_targets` replace `BatchRejected`. Follow-ups: the start task reads sitemaps again on a transient retry (seeds deduplicate); one `TargetRejected` with an optional member, and `insert_job`/`JobPins` out of `services.batch` into a shared submit module (simplify review). |
 | 5 | `extract` with globs and prompt | done (#140) | D-0681–D-0686. No migration. `batch.job_pins`/`batch.insert_tasks` shared by batch and extract. Follow-ups: lock the job row before a prompt job's tasks are inserted (a cancel during the draft); a process that dies during a draft leaves the job `running`. |
 | 6 | SSE events + webhooks | done (#132) | D-0639–D-0646. Migration 0014 adds `job.api_key_id`, `webhook_delivery` and the `job_event (job_id, id)` and `extraction (url_task_id)` indexes. Follow-ups: `crawl` and `extract` (PRs 4, 5) set `job.api_key_id` from the authenticated key, as `batch/scrape` does, or their webhooks end `failed` unsent; from review, a live stream can skip an event committed out of uuid7 order (D-0646). |
-| 7 | MCP server (stdio + HTTP) | todo | |
+| 7 | MCP server (stdio + HTTP) | done (#144) | D-0696–D-0699. `api/keys.py` moved to `services/keys.py`; runtime setup in `services/runtime.py`; `api` layered over `mcp_server`. Follow-ups: unexpected exception text reaches MCP clients (from review); each later markdown page rebuilds the capture's markdown; the worker still builds its fetching by hand beside `fetching_from_settings`. |
 | 8 | Endpoint-level SSRF matrix | todo | |
 
 ## [SPEC-11 — Recurring crawls: conditional GET, fingerprints, record versions, listing diff](../specs/SPEC-11-recurring-crawls.md)

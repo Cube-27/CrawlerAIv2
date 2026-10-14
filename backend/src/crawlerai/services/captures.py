@@ -1,5 +1,5 @@
 """The captures service (SPEC-07 §4.6, §4.7, ARCHITECTURE §13.1): replay a stored capture with the current engine,
-for debugging. Nothing a replay makes is stored.
+for debugging, and read a stored capture's markdown again. Nothing either makes is stored.
 
 A capture carries no schema of its own, so it replays against each schema version its stored records follow, the
 version the records were made with (schemas are immutable per version, §5.2), so a replayed record compares with
@@ -11,9 +11,11 @@ gets no role C.
 import asyncio
 
 from sqlalchemy import Row, select
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.config_ir.active import active_config
+from crawlerai.content.markdown import markdown
+from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
@@ -43,9 +45,7 @@ async def replay(
     resolves nothing (blocked, an error) adds none; an incomplete one adds its record with `complete=false`, as for
     any caller-supplied URL (§10)."""
     async with engine.connect() as conn:
-        capture = (await conn.execute(select(*_COLUMNS).where(Capture.id == capture_id))).one_or_none()
-        if capture is None:
-            raise CaptureNotFound(f"no capture {capture_id}")
+        capture = await _capture(conn, capture_id)
         schema_ids = (
             await conn.execute(
                 select(Record.schema_id)
@@ -65,6 +65,22 @@ async def replay(
         for schema, config in zip(schemas, configs, strict=True)
         for record in await _replay(bundle, schema, config, data, capture)
     ]
+
+
+async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId) -> str:
+    """The capture's markdown, made again from its bundle: a format is a function of the capture alone (ARCHITECTURE
+    §15, INV-26), so it equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it."""
+    async with engine.connect() as conn:
+        capture = await _capture(conn, capture_id)
+    bundle = await _bundle(store, capture)
+    return await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle)))
+
+
+async def _capture(conn: AsyncConnection, capture_id: CaptureId) -> _Capture:
+    capture = (await conn.execute(select(*_COLUMNS).where(Capture.id == capture_id))).one_or_none()
+    if capture is None:
+        raise CaptureNotFound(f"no capture {capture_id}")
+    return capture
 
 
 async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:

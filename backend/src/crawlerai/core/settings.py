@@ -62,6 +62,12 @@ class ApiSettings(_Base):
     api_rate_burst: PositiveInt = 40
 
 
+class McpSettings(_Base):
+    """What the MCP server's stdio process reads besides `Settings` (SPEC-10 §4.7): the API key it acts with."""
+
+    api_key: SecretStr
+
+
 LLMProviderName = Literal["anthropic", "gemini"]
 
 

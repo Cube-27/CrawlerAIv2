@@ -17,10 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.http import RequestFailed
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.api.keys import CreatedKey, create_key
 from crawlerai.api.webhooks import UNSIGNED, Poster, deliver_webhooks, poster
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import ApiKey, ApiKeyId, Job, JobEvent, JobId, JobStatus, Project, UrlTask, WebhookDelivery
+from crawlerai.services.keys import CreatedKey, create_key
 
 pytestmark = pytest.mark.anyio
 

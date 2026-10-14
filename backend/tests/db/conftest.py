@@ -32,7 +32,6 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
@@ -59,6 +58,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas import types as schema_types
 from crawlerai.services.fetching import Fetching
+from crawlerai.services.keys import create_key
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
 

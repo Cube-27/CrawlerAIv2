@@ -6,7 +6,7 @@ import string
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.api.keys import base62, generate_key, hash_key
+from crawlerai.services.keys import base62, generate_key, hash_key
 
 BASE62 = string.digits + string.ascii_uppercase + string.ascii_lowercase
 

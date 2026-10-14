@@ -11,9 +11,9 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.forwarded import Network, client_address
-from crawlerai.api.keys import authenticate, hash_key
 from crawlerai.api.problems import ProblemError
 from crawlerai.db.models import ApiKeyId
+from crawlerai.services.keys import authenticate, hash_key
 
 _BEARER = "bearer"  # the auth scheme is case-insensitive (RFC 9110 §11.1)
 
