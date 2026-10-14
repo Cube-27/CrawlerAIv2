@@ -67,6 +67,12 @@ class OpenGraphCollector:
         return CollectResult(entities=(entity,), candidates=candidates)
 
 
+def price_currencies(page: ParsedPage) -> list[str]:
+    """The `product:price:currency` values the page writes, in document order, read as `_metas` reads every OGP
+    property."""
+    return [meta.content for meta in _metas(page) if meta.property == _CURRENCY]
+
+
 def _metas(page: ParsedPage) -> list[_Meta]:
     """The OGP properties this collector reads, in document order. OGP writes properties in RDFa's `property`
     attribute; the HTML Standard's `name` attribute is read the same way (the `meta:` locator, SPEC-05 §4.3)."""

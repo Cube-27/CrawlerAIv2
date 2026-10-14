@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict
 
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
+from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary
 from crawlerai.content.context import page_context
@@ -276,7 +277,7 @@ class _Page:
     def read(cls, source: _Source) -> "_Page":
         manifest, schema, data = source.bundle.manifest, source.schema, source.data
         page = ParsedPage.of(source.bundle) if source.parsed is None else source.parsed
-        ctx = page_context(page, manifest.final_url, manifest.fetched_at)
+        ctx = with_stated_currencies(page_context(page, manifest.final_url, manifest.fetched_at), page)
         collected = collect_page(page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters)
         config = _Config.run(source.config, page, schema, ctx)
         canonical = canonical_link(page, manifest.final_url)

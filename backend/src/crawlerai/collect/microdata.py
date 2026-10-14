@@ -174,6 +174,29 @@ class MicrodataCollector:
         )
 
 
+def property_scalars(page: ParsedPage, prop: str) -> Iterator[str]:
+    """The values of the schema.org property `prop` written on elements of the page, in tree order, by the names rules
+    of the module docstring: a microdata `itemprop` in an item with a schema.org `itemtype` or as a full IRI, an RDFa
+    `property` under a schema.org `vocab`, as `schema:` or as a full IRI. Properties added through `itemref` are not
+    read: this reads what the page states, not which item holds it."""
+    root = page.tree.root
+    if root is None:
+        return
+    for element in _walk(root):
+        attributes = element.node.attributes
+        in_schema = _typed_in_schema(element.enclosing)
+        if prop in (_microdata_term(t, in_schema) for t in _tokens(attributes.get("itemprop"))):
+            yield _microdata_text(element.node)
+        if prop in (_rdfa_term(t, element.rdfa_schema) for t in _tokens(attributes.get("property"))):
+            yield _rdfa_text(element.node)
+
+
+def _typed_in_schema(item: _Element | None) -> bool:
+    """Whether the item element has a schema.org `itemtype`, so its microdata names are schema.org terms."""
+    attributes = item.node.attributes if item is not None else {}
+    return any(schema_term(t) is not None for t in _tokens(attributes.get("itemtype")))
+
+
 def _walk(root: LexborNode) -> Iterator[_Element]:
     """Every element in tree order, with its XPath, its RDFa vocabulary scope and its nearest enclosing item. Explicit
     stack, not recursion: document depth is not bounded by the interpreter's recursion limit."""

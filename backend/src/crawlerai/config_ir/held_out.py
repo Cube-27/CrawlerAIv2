@@ -28,6 +28,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.validation import Facts, HeldOutPage
 from crawlerai.content.context import page_context
@@ -272,4 +273,5 @@ async def _parsed(store: ObjectStore, object_key: str) -> tuple[CaptureBundle, P
 def _read(blob: bytes) -> tuple[CaptureBundle, ParsedPage, Context]:
     bundle = decode(blob)
     page = ParsedPage.of(bundle)
-    return bundle, page, page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
+    ctx = page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
+    return bundle, page, with_stated_currencies(ctx, page)

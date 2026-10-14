@@ -5220,3 +5220,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Add the override to the one file without it (the next new file forgets it again).
 - Why: Every screen test renders the whole app through its router; the one file without the override was the one that timed out under load.
 - Reversible: yes
+
+### D-0773 — Page currencies come from structured data only, read in `collect`
+- Date: 2026-10-14 · Spec/PR: SPEC-04 §4.4, UAT accuracy R1a (#161) · Status: decided
+- Decision: `Context.page_currencies` is the ISO 4217 codes the page writes, as written, in schema.org `priceCurrency` (any node, in JSON-LD, microdata or RDFa Lite) or OGP `product:price:currency`. `collect.currencies.with_stated_currencies` sets it after `page_context` in the pipeline, held-out validation and the labeling prefill. This fills what D-0487 left empty.
+- Alternatives: Read them in `content/context.py`, which sits below the collectors and cannot use their scope rules; read only Offer nodes, which misses PriceSpecification and AggregateOffer.
+- Why: SPEC-04 §4.4 names the page's structured data as the source; a page currency only narrows a symbol the text writes, never supplies a missing one (D-0301).
+- Reversible: yes

@@ -225,6 +225,38 @@ class JsonLdCollector:
         return self.vocabulary.specific_first(names)
 
 
+def property_scalars(page: ParsedPage, prop: str) -> Iterator[JsonValue]:
+    """The scalar values of the schema.org property `prop` on every JSON object of the page's blocks, typed or not,
+    in document order: a bare term where schema.org is the vocabulary, a full IRI anywhere (JSON-LD 1.1 §4.1.2).
+    Invalid blocks are skipped."""
+    for _, document in blocks(page, []):
+        for value, in_schema in _scoped_objects(document):
+            for key in _keys(prop, in_schema=in_schema):
+                yield from _scalars(value.get(key))
+
+
+def _scoped_objects(document: JsonValue) -> Iterator[tuple[Mapping[str, JsonValue], bool]]:
+    """Every object of `document` in document order, with whether schema.org is the vocabulary in its scope."""
+    stack: list[tuple[JsonValue, bool]] = [(document, False)]
+    while stack:
+        value, in_schema = stack.pop()
+        if isinstance(value, list):
+            stack.extend((item, in_schema) for item in reversed(value))
+        elif isinstance(value, dict):
+            if _CONTEXT_KEY in value:
+                in_schema = _in_schema(value[_CONTEXT_KEY], in_schema)
+            yield value, in_schema
+            stack.extend((child, in_schema) for key, child in reversed(value.items()) if key != _CONTEXT_KEY)
+
+
+def _scalars(written: JsonValue) -> Iterator[JsonValue]:
+    """The scalar values written for a property: each item of an array (§4.3.1), a value object's `@value` (§4.2)."""
+    for item in written if isinstance(written, list) else [written]:
+        scalar = item.get("@value") if isinstance(item, dict) else item
+        if scalar is not None and not isinstance(scalar, (list, dict)):
+            yield scalar
+
+
 def blocks(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[int, JsonValue]]:
     """Each `application/ld+json` block's JSON with its index; an invalid block is skipped with a diagnostic."""
     for index, script in enumerate(s for s in page.scripts if s.type == MEDIA_TYPE):

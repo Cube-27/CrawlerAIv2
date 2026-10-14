@@ -340,6 +340,18 @@ def test_role_c_is_asked_for_a_required_group_only_while_no_member_fills_it(
     assert [r.missing for r in role_c.requests] == asked
 
 
+def test_role_c_reads_the_page_with_the_currencies_its_structured_data_states() -> None:
+    # SPEC-04 §4.4: a microdata Offer that writes its price as text (`$12.50`) and its currency as USD; the price is
+    # left to role C, which normalizes the `$` it reads with the page's stated currency.
+    body = (
+        '<div itemscope itemtype="https://schema.org/Offer"><span itemprop="price">$12.50</span>'
+        '<meta itemprop="priceCurrency" content="USD"></div>'
+    )
+    role_c = FakeRoleC()
+    _extract(_bundle(_html(_product(price=None), body=body)), role_c=role_c)
+    assert [r.ctx.page_currencies for r in role_c.requests] == [("USD",)]
+
+
 def test_role_c_is_not_called_for_conflicts() -> None:
     # §4.13: a conflict is never sent to the LLM; with no single target every field is one.
     role_c = FakeRoleC()
