@@ -78,7 +78,7 @@ def test_exact_values_publish_only_when_all_agree(drawn: list[tuple[str, tuple[s
         assert result == Unpublished("missing", "no_candidates", ())
     elif len(values) == 1:
         assert isinstance(result, Chosen)
-        assert result.chosen.normalized == Ok(values.pop())
+        assert result.candidate.normalized == Ok(values.pop())
         assert len(result.agreeing) == len(drawn) - 1
     else:
         assert isinstance(result, Unpublished)
@@ -119,11 +119,11 @@ def test_offer_fields_publish_from_one_offer_that_all_offers_agree_with(
     if len(offers) == 1:
         assert published.keys() == {c.field for c in candidates}
     # One source object (INV-15).
-    assert len({p.chosen.entity_id for p in published.values()}) <= 1
+    assert len({p.candidate.entity_id for p in published.values()}) <= 1
     # Every Offer that states the field states the published value.
     for name, preference in published.items():
         stated = [c.normalized for c in candidates if c.field == name]
-        assert all(value == preference.chosen.normalized for value in stated)
+        assert all(value == preference.candidate.normalized for value in stated)
 
 
 def _offer_candidates(offers: list[tuple[dict[str, str] | None, str | None]]) -> list[Candidate]:

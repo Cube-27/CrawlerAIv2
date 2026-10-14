@@ -43,7 +43,8 @@ function isFieldTypeSpec(value: unknown): value is FieldTypeSpec {
   if (type === "list") return isFieldTypeSpec(value.item);
   if (type === "object")
     return isJsonObject(value.fields) && Object.values(value.fields).every(isFieldTypeSpec);
-  return SCALAR_FIELD_TYPES.some((scalar) => scalar === type);
+  const scalars: readonly unknown[] = SCALAR_FIELD_TYPES;
+  return scalars.includes(type);
 }
 
 /** Each field's type by its name, as a schema declares them. */

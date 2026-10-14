@@ -312,7 +312,8 @@ async def test_validators_are_sent_only_where_a_record_of_the_schema_version_sta
     assert same.tasks == {url: ("unchanged", False)}
     first, by_other, by_same = origin.sent
     assert (first, by_other) == (None, None)
-    assert by_same is not None and by_same.etag is not None
+    assert by_same is not None
+    assert by_same.etag is not None
 
 
 async def test_a_job_without_records_neither_reads_nor_writes_url_state(

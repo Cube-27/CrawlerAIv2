@@ -204,7 +204,8 @@ def test_a_binder_that_reads_the_page_fetches_the_html_page_first() -> None:
     assert [_sent(r) for r in api.requests] == [f"{ENDPOINT}/sku/9001"]
     assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "ok")]
     recorded = result.bundle.manifest.fetch_policy["attempts"]
-    assert isinstance(recorded, list) and len(recorded) == 2
+    assert isinstance(recorded, list)
+    assert len(recorded) == 2
     assert json.loads(result.bundle.body) == {"name": "Desk Lamp"}
 
 

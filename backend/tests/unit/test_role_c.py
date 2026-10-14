@@ -291,7 +291,8 @@ def test_the_listing_request_is_a_fast_listing_call_with_row_and_page_fields() -
     req = listing_request(LISTING_TEXT, ROW_SPECS, PAGE_SPECS, page_url=PAGE_URL, job_id=JOB)
 
     assert (req.prompt_kind, req.model_class, req.job_id) == ("c_extract_listing", "fast", JOB)
-    assert req.system.startswith(SYSTEM) and req.system != SYSTEM
+    assert req.system.startswith(SYSTEM)
+    assert req.system != SYSTEM
     assert (
         f"Row fields, for each listed item (at most {LISTING_MAX_ROWS} rows):\n"
         "- sku (identifier, scheme sku): Stock keeping unit\n- title (text): Name of the item\n\n"

@@ -230,7 +230,7 @@ async def list_pages(
 _ETAG = {"ETag": {"description": "Entity tag of the stored labels (RFC 9110 §8.8.3)", "schema": {"type": "string"}}}
 
 
-@router.get("/pages/{page_id}", response_model=PageDetail, responses={200: {"headers": _ETAG}, 404: PROBLEM_RESPONSE})
+@router.get("/pages/{page_id}", responses={200: {"headers": _ETAG}, 404: PROBLEM_RESPONSE})
 async def get_page(page_id: EvalPageId, backend: Backend, response: Response) -> PageDetail:
     try:
         page = await backend.store.get_page(page_id)
@@ -269,7 +269,6 @@ _LABELS_BODY = {"content": {"application/json": {"schema": {"$ref": "#/component
 
 @router.put(
     "/pages/{page_id}/labels",
-    response_model=PageSummary,
     responses={
         200: {"headers": _ETAG},
         404: PROBLEM_RESPONSE,
@@ -348,7 +347,6 @@ async def normalize(page_id: EvalPageId, body: NormalizeRequest) -> None:
 
 @router.post(
     "/pages/{page_id}/prefill",
-    response_model=Labels,
     responses={
         200: {"headers": _ETAG},
         404: PROBLEM_RESPONSE,
@@ -387,7 +385,7 @@ async def prefill(
     return labels
 
 
-@router.post("/capture", response_model=CaptureResponse)
+@router.post("/capture")
 async def capture(body: CaptureRequest, backend: Backend) -> CaptureResponse:
     """`crawlerai eval capture` into dev (§4.4): fetch each URL and store it as an unlabeled dev page."""
     try:

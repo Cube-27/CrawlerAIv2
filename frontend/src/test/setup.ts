@@ -7,9 +7,15 @@ import { prefersDark } from "./media";
 
 // jsdom has no ResizeObserver; HeroUI's toasts measure themselves with it. Layout is not under test here.
 class NoResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe(): void {
+    // Nothing to observe: jsdom lays nothing out, so no size ever changes.
+  }
+  unobserve(): void {
+    // Nothing is observed, so there is nothing to stop.
+  }
+  disconnect(): void {
+    // Nothing is observed, so there is nothing to stop.
+  }
 }
 
 // jsdom has no Web Animations API; HeroUI's tab indicator reads `getAnimations` when the selected tab changes.

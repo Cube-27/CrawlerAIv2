@@ -254,12 +254,14 @@ async def test_page_outputs_are_made_from_each_tasks_capture_and_paginate(
         2,
         1,
     )
-    assert isinstance(first, PageOutputPage) and isinstance(second, PageOutputPage)
+    assert isinstance(first, PageOutputPage)
+    assert isinstance(second, PageOutputPage)
     assert second.next_cursor is None
     blue, red, gone = first.items + second.items
     assert [item.url for item in (blue, red, gone)] == urls
     assert [item.outcome for item in (blue, red, gone)] == ["extracted", "extracted", "not_found"]
-    assert blue.markdown is not None and "boils water quickly" in blue.markdown
+    assert blue.markdown is not None
+    assert "boils water quickly" in blue.markdown
     assert blue.links == red.links == [f"{own_origin}/kettles/other"]
     assert (gone.capture_id is not None, gone.markdown, gone.links) == (True, None, None)
     assert (blue.html, blue.raw_html, blue.metadata) == (None, None, None)
@@ -288,7 +290,8 @@ async def test_a_schema_without_the_records_format_is_ignored(
     assert tuple(job) == (None, None)
     assert isinstance(results, PageOutputPage)
     [item] = results.items
-    assert item.markdown is not None and "boils water quickly" in item.markdown
+    assert item.markdown is not None
+    assert "boils water quickly" in item.markdown
 
 
 @pytest.mark.usefixtures("site")
@@ -312,7 +315,8 @@ async def test_records_are_stored_per_page_and_an_incomplete_page_is_partial(
     first = await _results(engine, fetching, submitted.job_id, limit=2)
     second = await _results(engine, fetching, submitted.job_id, limit=2, cursor=first.next_cursor)
     assert (summary.outcomes.extracted, summary.outcomes.partial) == (2, 1)
-    assert isinstance(first, RecordPage) and isinstance(second, RecordPage)
+    assert isinstance(first, RecordPage)
+    assert isinstance(second, RecordPage)
     records = first.items + second.items
     assert second.next_cursor is None
     titles = sorted((r.fields["title"].value, r.complete) for r in records)

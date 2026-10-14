@@ -4566,3 +4566,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: An explicit `unchanged` guard in the drift and count hooks.
 - Why: `ExtractionResult.outcome` cannot be `unchanged` (`resolve.types.Outcome`), so such a guard could never fire; it would be a speculative check.
 - Reversible: yes
+
+### D-0680 — Recurring Sonar test-style rules become ruff checks
+- Date: 2026-10-14 · Spec/PR: owner chore, Sonar settings and debt (#138) · Status: decided
+- Decision: ruff `PT018` (one condition per assert) and `PT022` (no `yield` in a fixture without teardown) are enabled for `backend/` and `tools/`. Neither is a size gate (C11).
+- Alternatives: Leave them to SonarCloud; scope a Sonar ignore to test paths.
+- Why: SonarCloud `python:S9073` (composite assert) fired 28 + 31 times in tests and `S9100` 4 times; a recurring finding gets a check (`docs/plans/RECURRING.md`). Both are real style findings, not false positives, so an ignore would be wrong.
+- Reversible: yes

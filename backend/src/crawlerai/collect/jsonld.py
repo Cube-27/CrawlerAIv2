@@ -36,6 +36,7 @@ from crawlerai.schemas.types import SchemaDef
 MEDIA_TYPE = "application/ld+json"
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
 _CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
+_CONTEXT_KEY = "@context"  # JSON-LD 1.1 §3.1
 # A reference to a node: the entity it is nested in, and that entity's property it is under.
 _Reference = tuple[str, str | None]
 
@@ -205,15 +206,15 @@ class JsonLdCollector:
                 continue
             if not isinstance(value, dict):
                 continue
-            if "@context" in value:
-                in_schema = _in_schema(value["@context"], in_schema)
+            if _CONTEXT_KEY in value:
+                in_schema = _in_schema(value[_CONTEXT_KEY], in_schema)
             found = _Object(value, block, path, in_schema, self._types(value.get("@type"), in_schema), enclosing, via)
             yield found
             inner = found.id if found.types else enclosing
             stack.extend(
                 (child, member(path, key), in_schema, inner, _member_via(found, key, via))
                 for key, child in reversed(value.items())
-                if key != "@context"
+                if key != _CONTEXT_KEY
             )
 
     def _types(self, declared: JsonValue, in_schema: bool) -> tuple[str, ...]:

@@ -171,9 +171,9 @@ def test_an_abstained_required_field_makes_the_page_incomplete() -> None:
 
 
 def test_outcomes_must_cover_exactly_the_schemas_fields() -> None:
-    fields = {"sku": _published()}
+    schema, fields = _schema(), {"sku": _published()}
     with pytest.raises(ValueError, match="do not match"):
-        assemble(_schema(), fields, site_id=SITE, canonical_url=URL, caller_supplied=True)
+        assemble(schema, fields, site_id=SITE, canonical_url=URL, caller_supplied=True)
 
 
 def test_the_entity_key_hashes_the_site_and_the_canonical_url() -> None:

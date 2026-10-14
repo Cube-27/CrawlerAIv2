@@ -44,10 +44,10 @@ Rejection = tuple[Candidate, str]  # a candidate that does not publish, with its
 
 @dataclass(frozen=True, slots=True)
 class Chosen:
-    """The field publishes `chosen`'s normalized value. `agreeing` are the other kept candidates equal to it; `kept`
-    are all the candidates that passed screening, `chosen` included."""
+    """The field publishes `candidate`'s normalized value. `agreeing` are the other kept candidates equal to it;
+    `kept` are all the candidates that passed screening, `candidate` included."""
 
-    chosen: Candidate
+    candidate: Candidate
     agreeing: tuple[Candidate, ...]
     rejected: tuple[Rejection, ...]
     kept: tuple[Candidate, ...] = ()

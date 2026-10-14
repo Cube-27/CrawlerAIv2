@@ -21,7 +21,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const KEY_REJECTED: ProblemSummary = { title: "The API rejected the key.", detail: null };
 
 /** Holds the API key in React state only: never in storage or cookies, so a reload returns to /connect (§18). */
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [state, setState] = useState<AuthState>({ apiKey: null, rejection: null });
 
   const connect = useCallback((apiKey: string) => {

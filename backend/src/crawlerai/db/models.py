@@ -85,9 +85,8 @@ def one_of(column: str, values: Any) -> str:
 
 
 # Shared with the private eval database's models, so both databases name and type things alike.
-TYPE_ANNOTATION_MAP: dict[Any, Any] = {
-    id_type: Uuid
-    for id_type in (
+TYPE_ANNOTATION_MAP: dict[Any, Any] = dict.fromkeys(
+    (
         ProjectId,
         ApiKeyId,
         SiteId,
@@ -103,8 +102,9 @@ TYPE_ANNOTATION_MAP: dict[Any, Any] = {
         UsageEventId,
         EvalPageId,
         EvalRunId,
-    )
-}
+    ),
+    Uuid,
+)
 NAMING_CONVENTION = {
     "pk": "pk_%(table_name)s",
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
@@ -126,6 +126,11 @@ def created_at_column() -> Mapped[datetime]:
 def empty_object_default() -> TextClause:
     """The server default of a JSONB object column: an empty object."""
     return text("'{}'::jsonb")
+
+
+def empty_array_default() -> TextClause:
+    """The server default of a JSONB array column: an empty array."""
+    return text("'[]'::jsonb")
 
 
 def version_positive() -> CheckConstraint:
@@ -193,7 +198,7 @@ class SchemaDef(Base):
     version: Mapped[int] = mapped_column(Integer)
     page_kind: Mapped[PageKind] = mapped_column(Text)
     fields: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    required_groups: Mapped[list[list[str]]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    required_groups: Mapped[list[list[str]]] = mapped_column(JSONB, server_default=empty_array_default())
     origin: Mapped[SchemaOrigin] = mapped_column(Text)
     status: Mapped[SchemaStatus] = mapped_column(Text)
 
@@ -452,7 +457,7 @@ class Extraction(Base):
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     llm_calls: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     # What the collectors skipped and why (SPEC-05 §4.14): an invalid JSON block, a collector that raised.
-    diagnostics: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    diagnostics: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
 
 
 class Candidate(Base):
@@ -509,7 +514,7 @@ class Record(Base):
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
     field_meta: Mapped[dict[str, Any]] = mapped_column(JSONB)
     complete: Mapped[bool] = mapped_column(Boolean)
-    changed_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    changed_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     fingerprint: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()

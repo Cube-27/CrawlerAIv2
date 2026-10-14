@@ -276,7 +276,9 @@ async def test_with_rules_a_page_no_rule_matches_has_no_formats(
     by_url = {item.url: item for item in results.items}
     assert (by_url[f"{own_origin}/"].outcome, by_url[f"{own_origin}/"].markdown) == ("links_only", None)
     blue = by_url[f"{own_origin}/p/blue"]
-    assert blue.outcome == "extracted" and blue.markdown is not None and "Blue kettle" in blue.markdown
+    assert blue.outcome == "extracted"
+    assert blue.markdown is not None
+    assert "Blue kettle" in blue.markdown
 
 
 async def test_without_rules_every_reached_page_has_its_formats(

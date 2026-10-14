@@ -27,7 +27,7 @@ async def healthz(engine: Annotated[AsyncEngine, Depends(database)], request: Re
     try:
         async with asyncio.timeout(PING_TIMEOUT_S), engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except (OSError, SQLAlchemyError, TimeoutError) as e:
+    except (OSError, SQLAlchemyError) as e:  # `asyncio.timeout` raises `TimeoutError`, an `OSError`
         # The error is left out: a connection error may name the database's address.
         raise ProblemError(503, "unavailable", "Unavailable", "the database did not answer") from e
     return Health(eval_ui=request.app.state.eval_ui)

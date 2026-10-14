@@ -134,8 +134,9 @@ def test_a_correction_the_config_cannot_take_is_refused_with_the_field(
 def test_a_row_field_needs_a_listing_with_a_row_selector() -> None:
     schema = _schema("listing", item=TEXT, heading=PAGE_TEXT)
     correction = Correction.model_validate({"fields": {"item": {"steps": [CELL]}}})
+    ir = _ir({"heading": _steps(H1)})
     with pytest.raises(InvalidCorrection) as raised:
-        correct(_ir({"heading": _steps(H1)}), schema, correction, engine_version="now", at=NOW)
+        correct(ir, schema, correction, engine_version="now", at=NOW)
     assert raised.value.errors == [("fields.item", "a row field needs the config's listing row selector")]
 
 

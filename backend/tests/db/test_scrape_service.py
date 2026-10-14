@@ -152,8 +152,11 @@ async def test_returns_the_requested_formats_of_the_fetched_page(
     assert result.outcome == "extracted"
     assert (result.url, result.final_url) == (url, url)
     assert result.raw_html == PAGE.decode()
-    assert result.html is not None and "<script" not in result.html and "<h1>Blue kettle</h1>" in result.html
-    assert result.markdown is not None and "boils water quickly" in result.markdown
+    assert result.html is not None
+    assert "<script" not in result.html
+    assert "<h1>Blue kettle</h1>" in result.html
+    assert result.markdown is not None
+    assert "boils water quickly" in result.markdown
     assert result.links == [f"{own_origin}/kettles/red"]
     assert result.metadata is not None
     assert (result.metadata.title, result.metadata.description, result.metadata.language) == (
@@ -198,7 +201,8 @@ async def test_records_a_completed_scrape_job_its_task_and_capture(
     job = await _row(engine, select(Job.kind, Job.status, Job.request, Job.started_at).where(Job.id == result.job_id))
     assert (job.kind, job.status) == ("scrape", "completed")
     assert job.started_at is not None
-    assert job.request["url"] == url and job.request["fetch"]["method_hint"] == "http"
+    assert job.request["url"] == url
+    assert job.request["fetch"]["method_hint"] == "http"
     task = await _row(engine, select(UrlTask).where(UrlTask.job_id == result.job_id))
     assert (task.status, task.outcome, task.capture_id, task.canonical_url) == (
         "done",
@@ -246,7 +250,8 @@ async def test_a_page_that_is_not_ok_is_an_outcome_without_formats(
     result = await scrape(engine, fetching, request(url, "markdown", "raw_html", fetch={"method_hint": "http"}))
 
     assert result.outcome == outcome
-    assert result.fetch is not None and result.fetch.status_code == status
+    assert result.fetch is not None
+    assert result.fetch.status_code == status
     assert (result.markdown, result.raw_html) == (None, None)
     task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("done", outcome)
@@ -286,7 +291,8 @@ async def test_a_shell_over_http_is_fetched_again_in_the_browser(
     result = await scrape(engine, fetching, request(url, "raw_html"))
 
     assert result.outcome == "extracted"
-    assert result.fetch is not None and result.fetch.method == "browser"
+    assert result.fetch is not None
+    assert result.fetch.method == "browser"
     assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
     assert result.raw_html == PAGE.decode()
     site = await _row(engine, select(Site.fetch_method).where(Site.host == urlsplit(url).hostname))
@@ -435,7 +441,8 @@ async def test_a_prompt_is_drafted_from_the_page_and_returned(
     assert list(result.schema_.fields) == ["title"]
     # The sample is the page's cleaned text (SPEC-06 §4.5), not its HTML.
     (call,) = provider.calls
-    assert "boils water quickly" in call.user and "<p>" not in call.user
+    assert "boils water quickly" in call.user
+    assert "<p>" not in call.user
     assert (result.usage.llm_calls, result.usage.llm_tokens_in, result.usage.llm_tokens_out) == (1, 900, 80)
     assert result.links == [f"{own_origin}/kettles/red"]
 
@@ -451,7 +458,8 @@ async def test_a_prompt_scraped_again_reuses_its_draft_without_a_call(
     first = await scrape(engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=llm)
     second = await scrape(engine, fetching, request(url, "links", schema={"prompt": f" {prompt} "}), llm=llm)
 
-    assert first.schema_ is not None and second.schema_ == first.schema_
+    assert first.schema_ is not None
+    assert second.schema_ == first.schema_
     assert len(provider.calls) == 1
     assert second.usage.llm_calls == 0
 
@@ -490,7 +498,8 @@ async def test_a_page_not_reached_is_not_drafted_from(
     )
 
     assert result.outcome == "blocked"
-    assert result.schema_ is None and "schema" not in result.model_dump(by_alias=True)
+    assert result.schema_ is None
+    assert "schema" not in result.model_dump(by_alias=True)
     assert provider.calls == []
 
 

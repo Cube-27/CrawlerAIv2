@@ -212,4 +212,4 @@ async def active_configs(conn: AsyncConnection, urls: list[str], schema: SchemaD
             configs.status == "active",
         )
     )
-    return {host: config_id for host, config_id in rows}
+    return dict(rows.tuples().all())

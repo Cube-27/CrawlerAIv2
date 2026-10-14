@@ -62,15 +62,16 @@ def _reason(filled: c_extract.Filled) -> str | None:
 
 def _calls(kind: PromptKind, filled: c_extract.Filled) -> tuple[LLMCallRecord, ...]:
     response = filled.reply
-    if isinstance(response, LLMFailure):
-        return ()
-    return (
-        LLMCallRecord(
-            prompt_kind=kind,
-            provider=response.provider,
-            model=response.model,
-            request_hash=response.request_hash,
-            tokens_in=response.tokens_in,
-            tokens_out=response.tokens_out,
-        ),
-    )
+    records: list[LLMCallRecord] = []
+    if not isinstance(response, LLMFailure):
+        records.append(
+            LLMCallRecord(
+                prompt_kind=kind,
+                provider=response.provider,
+                model=response.model,
+                request_hash=response.request_hash,
+                tokens_in=response.tokens_in,
+                tokens_out=response.tokens_out,
+            )
+        )
+    return tuple(records)
