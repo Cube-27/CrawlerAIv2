@@ -4945,3 +4945,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Wire them in #150.
 - Why: It needs a replay fetcher in the learner and network-body samples: design beyond R7's serving seam. The review report's Fix allows a second PR.
 - Reversible: yes
+
+### D-0734 — Recipe learning runs only after the config validates
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: `run_learn_job` learns an API recipe only when the HTML config validated.
+- Alternatives: Learn a recipe for a refused config too.
+- Why: `attach` lets a recipe into a validated config only (D-0583); replays for a refused config would be requests with no use.
+- Reversible: yes
+
+### D-0735 — Recipe learning is for detail schemas only
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: A listing run learns no recipe.
+- Alternatives: Learn a listing recipe without `pagination`.
+- Why: A listing recipe needs `pagination`/`rows`, which nothing discovers (D-0604); without them a listing would be served one page with no rows.
+- Reversible: yes
+
+### D-0736 — A recipe validates on held-out captures of its endpoint
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: A recipe's held-out pages are the held-out captures that hold an answer of the same endpoint (`discovery.endpoint_request`); fewer than `MIN_HELD_OUT` refuses it (`too_few_held_out`).
+- Alternatives: Replay every held-out page.
+- Why: SPEC-09 §4.7 validates "on the held-out captures (browser captures with network bodies)"; the conservative reading.
+- Reversible: yes
+
+### D-0737 — A recipe refused before validation is reported
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: `validation_report.api_recipe = {held_out: [], fields: {}, refused: "not_learnable: …" | "role_d_rejected: …"}`; no endpoint, or a listing, leaves `api_recipe` null.
+- Alternatives: Report nothing.
+- Why: An operator sees why a site with an endpoint has no recipe (D-0583, SPEC-08 §4.10).
+- Reversible: yes
+
+### D-0738 — A role D LLM failure fails the learning run
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: An LLM failure of role D ends the run as role A's does.
+- Alternatives: Activate the config without a recipe.
+- Why: Same handling as role A (D-0588); `role_d.bind_by_role_d` documents that its failures propagate.
+- Reversible: yes
+
+### D-0739 — Learning replays go with the default policy and the served path's politeness
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: `services.fetching.learning_replay`: the JSON rung with the default `FetchPolicy`, after the endpoint host's robots.txt (disallowed or unreachable → `blocked`, nothing sent) and at that host's rate, waiting in place.
+- Alternatives: No robots.txt or rate for replays.
+- Why: A `learn` job carries no fetch policy, and the default respects robots.txt; consistent with D-0731.
+- Reversible: yes
+
+### D-0740 — A replay's page URL is the capture's requested URL
+- Date: 2026-10-14 · Spec/PR: SPEC-09 §2, §7 follow-up to D-0733 (#151) · Status: decided
+- Decision: Binding and replay read the page URL from `manifest.url`.
+- Alternatives: `final_url`.
+- Why: Serving binds from the URL being acquired (SPEC-09 §4.8).
+- Reversible: yes
