@@ -138,7 +138,7 @@ async def test_a_permanent_failure_result_fails_the_task_and_the_job(engine: Asy
     await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
 
     assert await _tasks(engine) == [("failed", "failed", 1, "budget_exhausted")]
-    assert await _job_state(engine, job_id) == ("failed", ["failed"])
+    assert await _job_state(engine, job_id) == ("failed", ["task_failed", "failed"])
 
 
 async def test_a_finished_result_records_its_reason(engine: AsyncEngine) -> None:

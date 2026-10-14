@@ -11,10 +11,10 @@ import asyncio
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Literal, get_args
+from typing import Literal, NamedTuple, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Row, RowMapping, func, select, update
+from sqlalchemy import RowMapping, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.exporters.records import RecordFormat, export_records
@@ -106,6 +106,8 @@ class JobSummary(BaseModel):
     llm_cost_usd: float | None
     webhook_url: str | None
     engine_version: str
+    # The cancel was asked for (SPEC-01 §4.3); a running job stays running until its claimed tasks end.
+    cancel_requested: bool
 
 
 class JobPage(BaseModel):
@@ -140,12 +142,15 @@ class ExportPage(BaseModel):
 
 class PageOutput(BaseModel):
     """A task of a job without a schema, with the content formats the job asked for (ARCHITECTURE §8.5). The formats
-    are members only when the task reached its page and its capture is still kept."""
+    are members only when the task reached its page and its capture is still kept. `last_error` is why the task
+    failed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the
+    worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (SPEC-01 §4.8)."""
 
     task_id: UrlTaskId
     url: str
     status: TaskStatus
     outcome: TaskOutcome | None
+    last_error: str | None
     capture_id: CaptureId | None
     final_url: str | None
     fetched_at: datetime | None
@@ -184,6 +189,7 @@ _JOB_COLUMNS = (
     Job.usage,
     Job.webhook_url,
     Job.engine_version,
+    Job.cancel_requested,
 )
 
 
@@ -295,18 +301,19 @@ async def job_results(
     return ExportPage(format=query.format, content=content, next_cursor=page.next_cursor)
 
 
-# A task with its capture's columns, None where it has none (`_page_outputs`).
-_TaskRow = Row[
-    UrlTaskId,
-    str,
-    TaskStatus,
-    TaskOutcome | None,
-    CaptureId | None,
-    str | None,
-    datetime | None,
-    BlockClass | None,
-    str | None,
-]
+class _TaskRow(NamedTuple):
+    """A task with its capture's columns, None where it has none (`_page_outputs`)."""
+
+    id: UrlTaskId
+    url: str
+    status: TaskStatus
+    outcome: TaskOutcome | None
+    last_error: str | None
+    capture_id: CaptureId | None
+    final_url: str | None
+    fetched_at: datetime | None
+    block_class: BlockClass | None
+    object_key: str | None
 
 
 async def _page_outputs(
@@ -318,6 +325,7 @@ async def _page_outputs(
         UrlTask.url,
         UrlTask.status,
         UrlTask.outcome,
+        UrlTask.last_error,
         UrlTask.capture_id,
         Capture.final_url,
         Capture.fetched_at,
@@ -331,7 +339,7 @@ async def _page_outputs(
         .order_by(UrlTask.id)
         .limit(query.limit + 1)
     )
-    rows: list[_TaskRow] = list((await conn.execute(statement)).all())
+    rows = [_TaskRow(**row._mapping) for row in await conn.execute(statement)]
     items = [await _page_output(store, row, formats) for row in rows[: query.limit]]
     return PageOutputPage(items=items, next_cursor=items[-1].task_id if len(rows) > query.limit else None)
 
@@ -342,6 +350,7 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
         url=row.url,
         status=row.status,
         outcome=row.outcome,
+        last_error=row.last_error,
         capture_id=row.capture_id,
         final_url=row.final_url,
         fetched_at=row.fetched_at,

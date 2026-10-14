@@ -129,14 +129,45 @@ async def test_a_finished_task_records_its_fetch_extraction_and_abstentions_befo
     ]
 
 
-async def test_a_task_that_fetched_and_extracted_nothing_records_no_task_event(conn: AsyncConnection) -> None:
+async def test_a_task_that_fails_for_good_records_why_before_the_jobs_end(conn: AsyncConnection) -> None:
     job_id = await _job(conn)
     await _task(conn, job_id)
     [task] = await claim_tasks(conn, "w1", 1)
 
     await fail_task(conn, task, "no handler", transient=False)
 
-    assert await _events(conn, job_id) == [("failed", {})]
+    failed = {"task_id": str(task.id), "url": URL, "attempts": 1, "last_error": "no handler"}
+    assert await _events(conn, job_id) == [("task_failed", failed), ("failed", {})]
+
+
+async def test_a_failed_task_records_what_it_did_before_its_failure(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    task, capture_id = await _page(conn, job_id)
+
+    await fail_task(conn, task, "internal_error", transient=False, capture_id=capture_id)
+
+    kinds = [kind for kind, _ in await _events(conn, job_id)]
+    assert kinds == ["task_fetched", "task_extracted", "task_abstained", "task_failed", "failed"]
+
+
+async def test_a_task_failure_that_is_retried_records_no_event(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    await _task(conn, job_id)
+    [task] = await claim_tasks(conn, "w1", 1)
+
+    await fail_task(conn, task, "timeout", transient=True)
+
+    assert await _events(conn, job_id) == []
+
+
+async def test_a_task_that_ends_blocked_records_no_failure(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    await _task(conn, job_id)
+    [task] = await claim_tasks(conn, "w1", 1)
+
+    await complete_task(conn, task, "blocked", reason="robots")
+
+    assert await _events(conn, job_id) == [("completed", {})]
 
 
 async def test_a_cancelled_task_records_no_task_event(conn: AsyncConnection) -> None:

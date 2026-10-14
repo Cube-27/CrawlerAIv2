@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
-import type { JobPage, JobSummary, PageOutputPage } from "../../api/jobs";
+import type { JobPage, JobSummary, PageOutput, PageOutputPage } from "../../api/jobs";
 import type { RecordPage } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi, type Call } from "../../test/api";
@@ -43,6 +43,7 @@ function job(overrides: Partial<JobSummary> = {}): JobSummary {
     finished_at: null,
     engine_version: "0.0.0",
     webhook_url: null,
+    cancel_requested: false,
     ...overrides,
   };
 }
@@ -75,20 +76,18 @@ const records: RecordPage = {
   next_cursor: null,
 };
 
-const pages: PageOutputPage = {
-  items: [
-    {
-      task_id: TASK_ID,
-      url: "https://shop.example.test/item/1",
-      status: "done",
-      outcome: "extracted",
-      capture_id: null,
-      final_url: "https://shop.example.test/item/1",
-      fetched_at: "2026-10-14T09:00:02Z",
-    },
-  ],
-  next_cursor: null,
+const page: PageOutput = {
+  task_id: TASK_ID,
+  url: "https://shop.example.test/item/1",
+  status: "done",
+  outcome: "extracted",
+  last_error: null,
+  capture_id: null,
+  final_url: "https://shop.example.test/item/1",
+  fetched_at: "2026-10-14T09:00:02Z",
 };
+
+const pages: PageOutputPage = { items: [page], next_cursor: null };
 
 /** A `text/event-stream` answer (WHATWG HTML §9.2) carrying `events`, each `[id, kind, data]`; a null id is left out. */
 function sse(...events: [string | null, string, object][]): Response {
@@ -250,8 +249,68 @@ describe("Job screen", () => {
 
     const grid = await screen.findByRole("grid", { name: "Pages" });
     expect(rowsOf(grid)).toEqual([
-      "https://shop.example.test/item/1doneextracted2026-10-14T09:00:02Z",
+      "https://shop.example.test/item/1doneextracted—2026-10-14T09:00:02Z",
     ]);
+  });
+
+  it("shows why a page failed or was blocked, in full on hover", async () => {
+    const reason = `budget_exhausted:${" the job's budget ran out before this page".repeat(4)}`;
+    const failing: PageOutputPage = {
+      items: [
+        {
+          ...page,
+          status: "failed",
+          outcome: "failed",
+          last_error: reason,
+          final_url: null,
+          fetched_at: null,
+        },
+        {
+          ...page,
+          task_id: "0192a000-0000-7000-8000-000000000402",
+          url: "https://shop.example.test/item/2",
+          outcome: "blocked",
+          last_error: "robots",
+          final_url: null,
+          fetched_at: null,
+        },
+      ],
+      next_cursor: null,
+    };
+    jobApi({ [`GET ${JOB}/results`]: () => Response.json(failing) });
+    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+
+    const grid = await screen.findByRole("grid", { name: "Pages" });
+    expect(within(grid).getByRole("columnheader", { name: "Reason" })).toBeInTheDocument();
+    expect(rowsOf(grid)).toEqual([
+      `https://shop.example.test/item/1failedfailed${reason}—`,
+      "https://shop.example.test/item/2doneblockedrobots—",
+    ]);
+    await userEvent.hover(within(grid).getByRole("button", { name: reason }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
+  });
+
+  it("shows a task's failure in the event log, its data in full on hover", async () => {
+    const failed = {
+      task_id: TASK_ID,
+      url: "https://shop.example.test/item/1",
+      attempts: 3,
+      last_error: "lease expired",
+    };
+    jobApi({
+      [`GET ${JOB}/events`]: () => sse(["1", "task_failed", failed], ["2", "failed", {}]),
+    });
+    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+
+    const data = JSON.stringify(failed);
+    await waitFor(() => {
+      expect(rowsOf(screen.getByRole("grid", { name: "Events" }))).toEqual([
+        `task_failed1${data}`,
+        "failed2{}",
+      ]);
+    });
+    await userEvent.hover(eventLog().getByRole("button", { name: data }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(data);
   });
 
   it("exports every page of the records as CSV files", async () => {
@@ -317,6 +376,33 @@ describe("Job screen", () => {
     });
     expect(calls.filter(({ method }) => method === "DELETE")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Cancel job" })).not.toBeInTheDocument();
+  });
+
+  it("shows a running job's requested cancel until the job ends", async () => {
+    jobApi({
+      [`DELETE ${JOB}`]: () => Response.json(job({ cancel_requested: true })),
+    });
+    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    expect(jobStatus()).not.toHaveTextContent("cancel requested");
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel job" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel job" }));
+
+    await waitFor(() => {
+      expect(jobStatus()).toHaveTextContent("runningcancel requested");
+    });
+    expect(screen.queryByRole("button", { name: "Cancel job" })).not.toBeInTheDocument();
+  });
+
+  it("drops the requested cancel once the job has ended", async () => {
+    jobApi({
+      [`GET ${JOB}`]: () => Response.json(job({ status: "cancelled", cancel_requested: true })),
+    });
+    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+
+    expect(jobStatus()).toHaveTextContent("cancelled");
+    expect(jobStatus()).not.toHaveTextContent("cancel requested");
   });
 });
 

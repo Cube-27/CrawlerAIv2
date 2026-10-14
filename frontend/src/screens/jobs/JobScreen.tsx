@@ -11,6 +11,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { OutcomeCounts } from "../../components/OutcomeCounts";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
+import { StatusLabel } from "../../components/StatusLabel";
 import { UsageSummary } from "../../components/UsageSummary";
 import { formatUsd } from "../../components/usd";
 import { ExportActions } from "./ExportActions";
@@ -63,13 +64,18 @@ function JobTimes({ job }: Readonly<{ job: JobSummary }>) {
 }
 
 function JobView({ job }: Readonly<{ job: JobSummary }>) {
+  // A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2), which a dead worker's lease delays.
+  const cancellable = CANCELLABLE.has(job.status);
   return (
     <section className="flex flex-col gap-6">
       <PageHeader
         title={`${KIND_LABELS[job.kind]} job`}
-        actions={CANCELLABLE.has(job.status) ? <CancelAction id={job.id} /> : undefined}
+        actions={cancellable && !job.cancel_requested ? <CancelAction id={job.id} /> : undefined}
       >
         <JobStatusLabel status={job.status} />
+        {cancellable && job.cancel_requested ? (
+          <StatusLabel text="cancel requested" tone="warning" />
+        ) : null}
       </PageHeader>
       <JobTimes job={job} />
       <Section title="Tasks">

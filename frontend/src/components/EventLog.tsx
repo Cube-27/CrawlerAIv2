@@ -4,6 +4,7 @@ import type { StreamState } from "../api/events";
 import { useJobEvents } from "../api/hooks/events";
 import { ProblemAlert } from "./ProblemAlert";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
+import { TruncatedText } from "./TruncatedText";
 
 // One tone per stream state: receiving, waiting to reconnect (SPEC-12 §4.5), closed after the job's end, or refused.
 const STATE_TONES: Record<StreamState, StatusTone> = {
@@ -15,7 +16,8 @@ const STATE_TONES: Record<StreamState, StatusTone> = {
 };
 
 /** A job's run events as they are stored (`GET /v1/jobs/{id}/events`), live until the job ends. Each event's data is
- * shown as the server sent it. A dropped stream, or one silent past two heartbeats, reconnects after the last event
+ * shown as the server sent it, cut to its column and in full on hover or focus: a `task_failed` event carries why the
+ * task failed. A dropped stream, or one silent past two heartbeats, reconnects after the last event
  * received. */
 export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
   const { events, state, problem } = useJobEvents(jobId);
@@ -32,11 +34,14 @@ export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
       {problem === null ? null : <ProblemAlert problem={problem} />}
       <Table>
         <Table.ScrollContainer>
-          <Table.Content aria-label="Events">
+          {/* Fixed column widths: a long event truncates rather than moving the columns. */}
+          <Table.Content aria-label="Events" className="table-fixed">
             <Table.Header>
-              <Table.Column isRowHeader>Event</Table.Column>
-              <Table.Column>ID</Table.Column>
-              <Table.Column>Data</Table.Column>
+              <Table.Column isRowHeader className="w-1/6">
+                Event
+              </Table.Column>
+              <Table.Column className="w-1/3">ID</Table.Column>
+              <Table.Column className="w-1/2">Data</Table.Column>
             </Table.Header>
             <Table.Body
               items={rows}
@@ -46,10 +51,10 @@ export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
             >
               {(event) => (
                 <Table.Row id={event.key}>
-                  <Table.Cell>{event.kind}</Table.Cell>
-                  <Table.Cell>{event.id ?? "—"}</Table.Cell>
+                  <Table.Cell className="truncate">{event.kind}</Table.Cell>
+                  <Table.Cell className="truncate">{event.id ?? "—"}</Table.Cell>
                   <Table.Cell>
-                    <Typography.Code>{event.data}</Typography.Code>
+                    <TruncatedText text={event.data} />
                   </Table.Cell>
                 </Table.Row>
               )}
