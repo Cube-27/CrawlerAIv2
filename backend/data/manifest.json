@@ -48,6 +48,24 @@
       "license": "CC BY-SA 3.0 (schema.org), used as a vocabulary file only; attribution in NOTICE",
       "justification": "The schema.org vocabulary: types, properties and enumeration members that schema documents and enum vocabularies name (SPEC-04 §4.2, §4.6, D-0018), and the type hierarchy the structured-data collectors match `schema_org` paths by (SPEC-05 §4.5).",
       "fetched": true
+    },
+    {
+      "path": "llm/anthropic-pricing.json",
+      "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "version": "pricing page as checked on 2026-10-14",
+      "retrieved": "2026-10-14",
+      "sha256": "9ebaec7183c30e520c7c46f40800dd7afae5fcf4d30277e3cdf163125bd44d54",
+      "license": "Prices transcribed from the provider's public pricing page (facts; no license stated)",
+      "justification": "USD prices per million input and output tokens of the anthropic models, for the estimated LLM cost shown for visibility, not billing (SPEC-06 §4.8, ARCHITECTURE §1)."
+    },
+    {
+      "path": "llm/gemini-pricing.json",
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "version": "pricing page as checked on 2026-10-14",
+      "retrieved": "2026-10-14",
+      "sha256": "1d524b11a7c5ab9e7727681be28c4e014062776bd0a363ef578c1cd14b97933c",
+      "license": "Prices transcribed from the provider's public pricing page (facts; no license stated)",
+      "justification": "USD prices per million input and output tokens of the gemini models, for the estimated LLM cost shown for visibility, not billing (SPEC-06 §4.8, ARCHITECTURE §1)."
     }
   ]
 }

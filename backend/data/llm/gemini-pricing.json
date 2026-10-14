@@ -1,0 +1,143 @@
+{
+  "provider": "gemini",
+  "currency": "USD",
+  "checked": "2026-10-14",
+  "scope": "Source page and retrieval date: this file's entry in ../manifest.json. Paid tier, Standard, text input and text output (output includes thinking tokens) per million tokens. Batch, Flex, Priority, caching and grounding prices are not listed; the client uses none of them. effective_from is the date checked or a dated change on the page: earlier prices were not checked. effective_until is exclusive. A prompt-length tier applies when a call's input tokens are within [min_prompt_tokens, max_prompt_tokens].",
+  "prices": [
+    {
+      "model": "gemini-4-argon",
+      "effective_from": "2026-10-14",
+      "effective_until": "2026-12-01",
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "2.00",
+      "output_usd_per_mtok": "10.00"
+    },
+    {
+      "model": "gemini-4-argon",
+      "effective_from": "2026-12-01",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "4.00",
+      "output_usd_per_mtok": "20.00"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "effective_from": "2026-10-14",
+      "effective_until": "2027-01-01",
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.75",
+      "output_usd_per_mtok": "3.75"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "effective_from": "2027-01-01",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "1.50",
+      "output_usd_per_mtok": "7.50"
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "effective_from": "2026-10-14",
+      "effective_until": "2027-01-01",
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.75",
+      "output_usd_per_mtok": "3.75"
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "effective_from": "2027-01-01",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "1.50",
+      "output_usd_per_mtok": "7.50"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.30",
+      "output_usd_per_mtok": "2.50"
+    },
+    {
+      "model": "gemini-3.1-pro-preview",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": 200000,
+      "input_usd_per_mtok": "2.00",
+      "output_usd_per_mtok": "12.00"
+    },
+    {
+      "model": "gemini-3.1-pro-preview",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 200001,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "4.00",
+      "output_usd_per_mtok": "18.00"
+    },
+    {
+      "model": "gemini-3.1-flash-lite",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.25",
+      "output_usd_per_mtok": "1.50"
+    },
+    {
+      "model": "gemini-3-flash-preview",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.50",
+      "output_usd_per_mtok": "3.00"
+    },
+    {
+      "model": "gemini-2.5-pro",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": 200000,
+      "input_usd_per_mtok": "1.25",
+      "output_usd_per_mtok": "10.00"
+    },
+    {
+      "model": "gemini-2.5-pro",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 200001,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "2.50",
+      "output_usd_per_mtok": "15.00"
+    },
+    {
+      "model": "gemini-2.5-flash",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.30",
+      "output_usd_per_mtok": "2.50"
+    },
+    {
+      "model": "gemini-2.5-flash-lite",
+      "effective_from": "2026-10-14",
+      "effective_until": null,
+      "min_prompt_tokens": 0,
+      "max_prompt_tokens": null,
+      "input_usd_per_mtok": "0.10",
+      "output_usd_per_mtok": "0.40"
+    }
+  ]
+}
