@@ -10,6 +10,8 @@ import gzip
 import json
 import os
 import socket
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
@@ -389,6 +391,43 @@ def test_name_resolution_counts_against_the_time_budget(server: Server, path: st
     result = fetch(server, url, FetchPolicy(timeout_s=0.5), connector)
     assert outcome(result) == (status, "error", "timeout")
     assert time.monotonic() - started < 2.5
+
+
+_CANCEL_IN_FLIGHT = """
+import asyncio, sys
+from ipaddress import IPv4Address
+from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.ssrf import SafeConnector, Target
+from crawlerai.acquire.types import FetchPolicy
+
+class Pinned(SafeConnector):
+    async def check(self, url):
+        return Target(url=url, host="shop.example.test", port=int(sys.argv[2]), ip=IPv4Address("127.0.0.1"))
+
+async def main():
+    for _ in range(5):
+        fetch = asyncio.create_task(
+            fetch_http(sys.argv[1], FetchPolicy(), engine_version="test", impersonate="chrome", connector=Pinned())
+        )
+        await asyncio.sleep(0.2)
+        fetch.cancel()
+        try:
+            await fetch
+        except asyncio.CancelledError:
+            pass
+    print("cancelled")
+
+asyncio.run(main())
+"""
+
+
+def test_cancelling_a_fetch_in_flight_leaves_the_process_running(server: Server) -> None:
+    # An outer time cap (the crawl's sitemap reading) cancels a request whose body is still arriving. The fetch runs
+    # in a child process, since the failure is a native crash that would take the test run with it.
+    server.route("/p", Reply(200, (("Content-Type", "text/html"),), _PAGE, delay_s=5.0))
+    args = [sys.executable, "-c", _CANCEL_IN_FLIGHT, server.url("/p"), str(server.port)]
+    result = subprocess.run(args, capture_output=True, text=True, timeout=60, check=False)  # noqa: S603
+    assert (result.returncode, result.stdout.strip()) == (0, "cancelled")
 
 
 def test_a_refused_connection_is_a_network_error() -> None:
