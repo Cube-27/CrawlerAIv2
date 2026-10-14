@@ -19,6 +19,7 @@ from crawlerai.core.data import DataFetchError
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.core.settings import AcquireSettings, Settings
+from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic
 from crawlerai.storage.fs import FsStore
 
@@ -96,18 +97,18 @@ def _environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     _environment(monkeypatch)
-    calls: list[tuple[str, list[str], bool]] = []
+    calls: list[tuple[str, list[str], bool, object]] = []
 
-    async def run(settings: Settings, handlers: Mapping[str, object], stop: asyncio.Event) -> None:
-        calls.append((settings.database_url.get_secret_value(), sorted(handlers), stop.is_set()))
+    async def run(settings: Settings, handlers: Mapping[str, object], stop: asyncio.Event, *, ending: object) -> None:
+        calls.append((settings.database_url.get_secret_value(), sorted(handlers), stop.is_set(), ending))
 
     monkeypatch.setattr(cli, "run_worker", run)
 
     main(["worker"])
 
-    assert calls == [
-        ("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", ["batch_scrape", "crawl", "extract"], False)
-    ]
+    # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
+    url = "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai"
+    assert calls == [(url, ["batch_scrape", "crawl", "extract"], False, close_run)]
 
 
 def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_and_the_http_rung(
@@ -166,6 +167,9 @@ def test_the_scheduler_entries_and_their_intervals() -> None:
         ("trigger_learning", timedelta(minutes=1), 100),
         ("deliver_webhooks", timedelta(seconds=5), 1),
     ]
+    # A job its last expired lease ends is diffed too (SPEC-11 §4.5).
+    release = entries[0].run
+    assert isinstance(release, partial) and release.keywords == {"ending": close_run}
 
 
 def test_data_fetch_reports_each_fetched_entry(

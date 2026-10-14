@@ -37,6 +37,7 @@ from crawlerai.eval.store import (
     dev_store,
     private_store,
 )
+from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
 from crawlerai.services.fetching import Fetching
@@ -93,7 +94,8 @@ async def _work() -> None:
             "crawl": crawl_handler(fetching, data, margins),
             "extract": scrape_handler(fetching, data, margins),
         }
-        await run_worker(settings, handlers, _stop_on_signals())
+        # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
+        await run_worker(settings, handlers, _stop_on_signals(), ending=close_run)
 
 
 async def _schedule() -> None:
