@@ -1,9 +1,10 @@
 import asyncio
 import json
+import logging
 import shutil
 import subprocess
 import sysconfig
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
@@ -166,6 +167,39 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     [post] = posts  # webhooks go through the SSRF guard (SPEC-10 §4.2)
     assert isinstance(post, partial)
     assert type(post.keywords["connector"]) is SafeConnector
+
+
+@pytest.fixture
+def crawlerai_logger() -> Iterator[logging.Logger]:
+    """The package's logger, its handlers and level restored after the test."""
+    logger = logging.getLogger("crawlerai")
+    handlers, level = list(logger.handlers), logger.level
+    yield logger
+    logger.handlers[:] = handlers
+    logger.setLevel(level)
+
+
+@pytest.mark.parametrize(
+    ("command", "runner", "logger"), [("worker", "_work", "worker"), ("scheduler", "_schedule", "scheduler")]
+)
+def test_the_long_running_commands_log_info_to_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    crawlerai_logger: logging.Logger,
+    command: str,
+    runner: str,
+    logger: str,
+) -> None:
+    async def run() -> None:
+        logging.getLogger(f"crawlerai.{logger}.loop").info("started")
+        logging.getLogger(f"crawlerai.{logger}.loop").debug("idle")
+
+    monkeypatch.setattr(cli, runner, run)
+
+    main([command])
+
+    lines = capsys.readouterr().err.splitlines()
+    assert [line.split(" ", 2)[2] for line in lines] == [f"INFO crawlerai.{logger}.loop: started"]
 
 
 def test_the_scheduler_entries_and_their_intervals() -> None:
