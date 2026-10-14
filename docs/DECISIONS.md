@@ -4326,3 +4326,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A commit-ordered sequence column.
 - Why: §4.2 specifies id order; review lists the gap as a possible follow-up.
 - Reversible: yes
+
+### D-0647 — Worktree cleanup checks the merge itself
+- Date: 2026-10-14 · Spec/PR: chore, run-plan §2a (#133) · Status: decided
+- Decision: `cleanup_worktree.sh` removes nothing while a PR of the branch is open, or while a branch tip (local or remote) is neither the head of a merged PR nor in origin/main; a failed PR query also refuses. `/run-plan` §1.3 gives the gated `if merge_pr.sh ...; then ...; fi` form. No `merge_and_cleanup.sh` wrapper.
+- Alternatives: A merge-and-cleanup wrapper script; the skill rule alone.
+- Why: The check guards the destructive step for every caller and call order, including a `;` chain after a failed merge (#128).
+- Reversible: yes
+
+### D-0648 — Prompt suggestions off per agent pane
+- Date: 2026-10-14 · Spec/PR: chore, run-plan §2a (#133) · Status: decided
+- Decision: `start_agent.sh` opens each agent tab with `herdr tab create --env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`; the agent inherits it from the pane's shell (checked: a started agent printed `false`).
+- Alternatives: `promptSuggestionEnabled: false` in `.claude/settings.json` or `~/.claude`.
+- Why: It is scoped to orchestrated agents, and the owner's own sessions keep suggestions.
+- Reversible: yes
