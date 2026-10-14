@@ -152,8 +152,9 @@ async function connect(
     return { kind: "refused" };
   }
   if (!response.ok || response.body === null) {
-    // The connection is released before the reconnect; the body of a 5xx or 429 is not read.
-    await response.body?.cancel();
+    // The connection is released before the reconnect. The client has read a non-OK body to parse it, which locks the
+    // stream (WHATWG Streams §4.2.4: cancelling a locked stream rejects); only an unread body is cancelled.
+    if (response.body !== null && !response.body.locked) await response.body.cancel();
     return { kind: "dropped", received: false };
   }
   options.onState("live");
