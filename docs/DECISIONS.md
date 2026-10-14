@@ -4573,3 +4573,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Leave them to SonarCloud; scope a Sonar ignore to test paths.
 - Why: SonarCloud `python:S9073` (composite assert) fired 28 + 31 times in tests and `S9100` 4 times; a recurring finding gets a check (`docs/plans/RECURRING.md`). Both are real style findings, not false positives, so an ignore would be wrong.
 - Reversible: yes
+
+### D-0681 — `extract` glob syntax: a `*` makes a glob, on one literal origin
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 5 (#140) · Status: decided
+- Decision: An `urls` entry is a glob when it contains `*`. `?` and `[` alone leave it a URL; inside a glob they match as in `fnmatch`, like `include` patterns. A glob's scheme and authority must be literal, and its origin is canonicalized (`crawl.rules.url_glob`).
+- Alternatives: Treat `?` and `[` as glob characters too.
+- Why: A query starts with `?` (RFC 3986 §3.4) and an IPv6 host sits in `[]` (§3.2.2), so the alternative would make every URL with a query a glob. §4.6 expands a glob "on its host".
+- Reversible: yes
+
+### D-0682 — A glob is expanded by a map of its canonical origin
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 5 (#140) · Status: decided
+- Decision: The map starts at `https://host/`, so it reads the sitemaps robots.txt lists and the links on the root page. Globs on one origin share one map, and the maps for different origins run at once.
+- Alternatives: Start from the glob's literal path prefix.
+- Why: The path prefix may not exist as a page; sitemaps are found from the host whatever the start URL. Politeness is per host.
+- Reversible: yes
+
+### D-0683 — `extract` `limit` ≤ 1000, default 1000; no URL is a 422
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 5 (#140) · Status: decided
+- Decision: `limit` counts every task, with the given URLs placed before the URLs the globs found. When the globs match nothing and no other URL is given, the request is a 422 (`NothingToExtract`) and no extract job is stored.
+- Alternatives: The map's 5000; an empty job.
+- Why: 1000 is the batch bound (§4.3) for caller-supplied URLs. An empty job would report `completed` and hide that the globs matched nothing.
+- Reversible: yes
+
+### D-0684 — A prompt is drafted from the pages reached among the first three task URLs
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 5 (#140) · Status: decided
+- Decision: The first three task URLs (given URLs first) are fetched politely, with every rung, while the caller waits. The pages reached are the samples; no other URL is tried. If none is reached, the answer is a 422 and the job is `failed`. Sample fetches are not stored, and the worker fetches those pages again. The draft step is bounded by 120 s (D-0028); past that the answer is a 504.
+- Alternatives: Keep trying URLs until three are reached; store the sample captures for the tasks.
+- Why: §4.6 says "the first 1–3 concrete URLs", and the latency stays bounded. Reusing captures would couple the API's fetch with the task's fetch.
+- Reversible: yes
+
+### D-0685 — A prompt's job is stored and started before its draft
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 5 (#140) · Status: decided
+- Decision: The job is inserted and set `running` before the draft, so the draft's LLM and fetch usage and its `budget.llm_calls` attach to the job. Once the draft is made, its schema, pins and tasks are written in one transaction. Any failure of the draft moves the job `running → failed` with no tasks.
+- Alternatives: Draft first, under no job, then insert.
+- Why: The LLM client charges a job's budget and usage (SPEC-06 §4.7), which needs a job row. Follow-ups: a cancel that arrives during the draft (lock the row before inserting tasks); a process that dies during the draft leaves the job `running`, as with map and scrape.
+- Reversible: yes
+
+### D-0686 — `POST /v1/extract` always returns the schema it extracts with
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 5 (#140) · Status: decided
+- Decision: `{job_id, schema}` carries the schema for an `id` or `inline` schema as well as for a prompt's draft.
+- Alternatives: Return `schema` only for a prompt.
+- Why: The answer has one shape, and the caller sees the version the job pinned (INV-28).
+- Reversible: yes
