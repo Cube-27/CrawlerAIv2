@@ -5093,3 +5093,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: No confirmation.
 - Why: DESIGN.md: confirm before what can't be undone; D-0538: a prefill never replaces a labeled or checked page.
 - Reversible: yes
+
+### D-0755 — `start_agent.sh` accepts agent names matching `^[a-z0-9][a-z0-9-]*$`
+- Date: 2026-10-14 · Spec/PR: run-plan §2a chore (#155) · Status: decided
+- Decision: `tools/orchestrator/start_agent.sh` refuses any other NAME before it reads memory or opens a tab (`ERROR agent name must be lowercase ...`).
+- Alternatives: Reject only uppercase letters; leave it to herdr.
+- Why: herdr agent names are lowercase, and its help documents no other rule; every name the skills use fits this form, and a leading `-` would be read as an option.
+- Reversible: yes
