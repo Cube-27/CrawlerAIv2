@@ -31,8 +31,9 @@ pr_signals() {
   return "${PIPESTATUS[0]}"
 }
 ignored() {
+  local name=$1
   case ",$IGNORE," in
-    *",$1,"*) return 0 ;;
+    *",$name,"*) return 0 ;;
     *) return 1 ;;
   esac
 }

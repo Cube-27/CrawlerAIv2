@@ -14,7 +14,8 @@ err() { echo "ERROR $*" >&2; exit 1; }
 
 # Fails when the PR conflicts with its base; mergeable is UNKNOWN while GitHub is still computing it.
 check_conflict() {
-  case "$1" in
+  local state=$1
+  case "$state" in
     *CONFLICTING*|*DIRTY*) err "PR #$pr conflicts with main: rebase onto origin/main" ;;
     *) return 0 ;;
   esac
