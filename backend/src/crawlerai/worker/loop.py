@@ -144,6 +144,8 @@ async def _execute(
     if handler is None:
         await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False, ending=ending)
         return
+    # A task can run for minutes (a crawl's start reads the site's sitemaps); its start shows what the worker is on.
+    log.info("url_task %s: %s task of job %s: running", task.id, job.kind, task.job_id)
     match await handler(task, conn):
         case Finished(outcome, reason, capture_id):
             await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)

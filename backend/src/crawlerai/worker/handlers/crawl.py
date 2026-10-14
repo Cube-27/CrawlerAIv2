@@ -15,6 +15,7 @@ locked (`Frontier.enqueue`) only for the rest of the task's transaction.
 """
 
 import asyncio
+import logging
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
 from typing import Final
@@ -44,6 +45,8 @@ from crawlerai.worker.handlers.steps import (
     unreached,
 )
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskHandler, TaskResult
+
+log = logging.getLogger(__name__)
 
 SITEMAP_TIMEOUT_S: Final = TIMEOUT_S  # as long as a `map` reads a site's sitemaps (§4.4)
 
@@ -136,12 +139,19 @@ async def _sitemap_seeds(conn: AsyncConnection, fetching: Fetching, crawl: _Craw
     reader = SitemapReader(polite.sitemap_body, frontier.scope.host)
     start = roots(task.canonical_url, () if robots is None else robots.sitemaps)
     seeds: dict[str, None] = {}
-    with suppress(TimeoutError, TargetRejected):
-        async with asyncio.timeout(SITEMAP_TIMEOUT_S), aclosing(reader.urls(start)) as urls:
-            async for url in urls:
-                if frontier.admits(url):
-                    seeds[url] = None
-                if len(seeds) >= frontier.limit:
-                    break
+    capped = False
+    with suppress(TargetRejected):
+        try:
+            async with asyncio.timeout(SITEMAP_TIMEOUT_S), aclosing(reader.urls(start)) as urls:
+                async for url in urls:
+                    if frontier.admits(url):
+                        seeds[url] = None
+                    if len(seeds) >= frontier.limit:
+                        break
+        except TimeoutError:
+            capped = True
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
+    # The task's id and job, never a URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
+    stop = f"; stopped at the {SITEMAP_TIMEOUT_S:g} s time cap" if capped else ""
+    log.info("url_task %s: sitemaps of job %s: %d seeds%s", task.id, task.job_id, len(seeds), stop)
     return list(seeds)

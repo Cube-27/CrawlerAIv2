@@ -152,7 +152,7 @@ async def test_a_finished_result_records_its_reason(engine: AsyncEngine) -> None
     assert await _tasks(engine) == [("done", "blocked", 1, "robots")]
 
 
-async def test_the_worker_logs_its_start_each_tasks_result_and_its_stop(
+async def test_the_worker_logs_its_start_each_tasks_start_and_result_and_its_stop(
     engine: AsyncEngine, caplog: pytest.LogCaptureFixture
 ) -> None:
     job_id, ids = await _job(engine, 2)
@@ -166,7 +166,9 @@ async def test_the_worker_logs_its_start_each_tasks_result_and_its_stop(
     lines = [(r.levelname, r.getMessage().split(": ", 1)[1]) for r in caplog.records]
     assert lines == [
         ("INFO", "started; job kinds crawl"),
+        ("INFO", f"crawl task of job {job_id}: running"),
         ("INFO", f"crawl task of job {job_id}: extracted"),
+        ("INFO", f"crawl task of job {job_id}: running"),
         ("WARNING", f"crawl task of job {job_id}: failed: http 503"),
         ("INFO", "stopped"),
     ]
