@@ -5,17 +5,41 @@ Vocabularies come from versioned external data. Each file under `backend/data/` 
 match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawlerai data fetch` and not committed
 (SPEC-04 §4.6): its file may be absent, and when present it must match its hash. Prints one line per problem and
 exits 1, or prints one summary line and exits 0.
+
+Two files are fitted on dev rather than fetched (SPEC-05 §4.7, §4.9; D-0444, owner answer 2026-10-14):
+`source_precedence.yaml` and `calibration.json`. The fit commands rewrite them, so no sha256 can be pinned; they are
+not listed in the manifest, and each must instead carry the stamp `source_split: dev` (INV-02).
 """
 
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path, PurePosixPath
 
 DATA_DIR = PurePosixPath("backend/data")
 MANIFEST = DATA_DIR / "manifest.json"
 REQUIRED_FIELDS = ("path", "url", "version", "sha256", "license", "justification")
+# YAML 1.2.2 §8.2.2 (block mapping) and §7.3 (plain, single- and double-quoted scalars): the key `source_split` at
+# indentation 0, so a key of the document itself, with the value `dev`, and an optional trailing comment (§6.6).
+_YAML_DEV_STAMP = re.compile(r"""^source_split:[ \t]+(dev|'dev'|"dev")[ \t]*(#.*)?$""", re.MULTILINE)
+
+
+def json_dev_stamp(text: str) -> bool:
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(document, dict) and document.get("source_split") == "dev"
+
+
+def yaml_dev_stamp(text: str) -> bool:
+    return _YAML_DEV_STAMP.search(text) is not None
+
+
+# The dev-fitted files (top level of the data directory), each with how its stamp is read.
+DEV_FITTED = {"source_precedence.yaml": yaml_dev_stamp, "calibration.json": json_dev_stamp}
 
 
 def valid_entry_path(path: str) -> bool:
@@ -52,6 +76,8 @@ def path_problem(index: int, path: str, claimed: set[str]) -> str | None:
         return f"{MANIFEST}: entry {index} has an invalid path {path!r}"
     if path in claimed:
         return f"{MANIFEST}: entry {index} repeats path {path!r}"
+    if path in DEV_FITTED:
+        return f"{MANIFEST}: entry {index} pins {path!r}, a dev-fitted file checked by its stamp instead"
     return None
 
 
@@ -84,6 +110,15 @@ def check_entries(entries: list[object]) -> tuple[list[str], set[str], dict[str,
     return problems, claimed, pinned, fetched
 
 
+def stamp_problems(data_dir: Path, present: set[str]) -> list[str]:
+    """One problem for each dev-fitted file present without the stamp `source_split: dev`."""
+    return [
+        f"{DATA_DIR / path}: a dev-fitted file needs the stamp 'source_split: dev'"
+        for path in sorted(present & DEV_FITTED.keys())
+        if not DEV_FITTED[path]((data_dir / path).read_text(encoding="utf-8"))
+    ]
+
+
 def check(root: Path) -> tuple[list[str], int]:
     """Return the problems found and the number of pinned files."""
     manifest_path = root / MANIFEST
@@ -95,7 +130,8 @@ def check(root: Path) -> tuple[list[str], int]:
     data_dir = root / DATA_DIR
     files = (file for file in data_dir.rglob("*") if file.is_file() and file != manifest_path)
     present = {file.relative_to(data_dir).as_posix() for file in files}
-    for path in sorted(present - claimed):
+    problems.extend(stamp_problems(data_dir, present))
+    for path in sorted(present - claimed - DEV_FITTED.keys()):
         problems.append(f"{DATA_DIR / path}: not listed in {MANIFEST}")
     for path, sha256 in sorted(pinned.items()):
         if path in present:
