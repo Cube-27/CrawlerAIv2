@@ -24,6 +24,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import BaseModel, ConfigDict
+
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters, Collected, collect_page
@@ -33,7 +35,7 @@ from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
-from crawlerai.db.models import ExtractionMode
+from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration
@@ -53,7 +55,7 @@ from crawlerai.resolve.preference import (
 )
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome
-from crawlerai.schemas.types import SchemaDef, Scope
+from crawlerai.schemas.types import FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 log = logging.getLogger(__name__)
@@ -69,6 +71,16 @@ _NOT_SERVED: Mapping[BlockClass, Outcome] = {
     "not_found": "not_found",
     "error": "error",
 }
+
+
+class PinnedData(BaseModel):
+    """What a job pins of `EngineData` when it is submitted (INV-28): the precedence orders and the calibration. Its
+    pages resolve with these, whatever the files of the process that runs them say by then."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    orders: dict[FieldType, tuple[SourceKind, ...]]
+    calibration: Calibration | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +104,13 @@ class EngineData:
             calibration=load_calibration(data_dir / CALIBRATION_FILE),
             adapters=adapters,
         )
+
+    def pin(self) -> PinnedData:
+        return PinnedData(orders=dict(self.orders), calibration=self.calibration)
+
+    def pinned(self, pin: PinnedData) -> "EngineData":
+        """This data with `pin`'s orders and calibration in place of its own."""
+        return replace(self, orders=pin.orders, calibration=pin.calibration)
 
 
 @dataclass(frozen=True, slots=True)

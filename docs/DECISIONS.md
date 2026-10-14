@@ -3859,7 +3859,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0580 — Page outputs of format-only jobs come with SPEC-10 PR 2
-- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: decided
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: superseded by D-0630 (page outputs are made from the capture, not stored)
 - Decision: `/results` serves records only; page outputs (formats of a job without a schema) come with `batch/scrape`, which stores them.
 - Alternatives: Store page outputs in this row.
 - Why: Nothing stores them yet; outside this row's scope.
@@ -4192,4 +4192,67 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Jinja2 (BSD-3-Clause) renders `api_recipe.php.j2` with `StrictUndefined`, autoescape on and a `finalize` that accepts only `php_literal`, `php_comment` or `php_int` values (a `Markup` subclass).
 - Alternatives: `string.Template`; Python f-strings.
 - Why: §4.9 names a `.j2` template, and `finalize` turns a missing escape into an error rather than an injection into the PHP.
+- Reversible: yes
+
+### D-0628 — A batch takes a schema by id or inline, not a prompt
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: `POST /v1/batch/scrape` accepts `schema.id` or `schema.inline`; a `schema.prompt` is a 422.
+- Alternatives: Draft from the first URL synchronously, as `extract` (SPEC-10 PR 5) will.
+- Why: The draft needs a fetched page, which a batch submit does not wait for; the conservative reading of `schema?` in §4.3.
+- Reversible: yes
+
+### D-0629 — `records` is asked alone in a batch
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: A batch with `records` takes no other format.
+- Alternatives: Accept other formats and serve only records.
+- Why: §4.2 serves records for schema jobs and page outputs for format jobs; accepting both would silently drop the formats.
+- Reversible: yes
+
+### D-0630 — Page outputs are made from the capture when read
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: `GET /v1/jobs/{id}/results` for a job without a schema answers `PageOutputPage`: every task, oldest first by task id, with the formats the job asked for, made from its capture on read (supersedes D-0580).
+- Alternatives: A `page_output` table; blobs in the object store.
+- Why: A format is a function of the capture (§15): nothing else to store or expire; outputs go with the capture (30 days). Listing every task keeps the cursor stable while the job runs.
+- Reversible: yes
+
+### D-0631 — A records job pins its engine data and site configs in `job.pinned`
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: `job.pinned` (migration 0013, `JobPins`) holds the precedence orders and calibration and, per host, the config active for the schema version and page kind at submit; the schema version is `job.schema_id` (INV-28). A pinned config runs after it is suspended or replaced (its drift window then records nothing); a host without one stays cold for the job. LLM settings are not pinned: batch binds no role C.
+- Alternatives: Refuse tasks whose `engine_version` differs from the worker's; look up the active config per task.
+- Why: Workers load their own data files and configs change while a job runs; pinning keeps a job's remaining tasks the same.
+- Reversible: yes
+
+### D-0632 — A fetch error in a worker task is transient
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: A batch task whose fetch ends in `error` is retried up to `MAX_ATTEMPTS`, then `failed`; a refused redirect fails at once (INV-16).
+- Alternatives: Fail permanently, as the synchronous scrape does.
+- Why: The queue's retry exists for transient network errors, and nobody is waiting.
+- Reversible: yes
+
+### D-0633 — One browser per worker, restarted at most once per task
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: `worker.browser.SharedBrowser`: a fetch that leaves the browser disconnected relaunches it and fetches again; if that one dies too, its result stands and the next task launches a new one.
+- Alternatives: A browser per fetch, as the API does.
+- Why: INV-31 and SPEC-02 §4.8 (one browser per worker process).
+- Reversible: yes
+
+### D-0634 — `fetch_politely` fetches robots.txt with its own rung
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: `fetch_politely(..., fetch_robots=)`; the batch handler passes the HTTP rung for robots.txt and `acquire` for the page (#31 follow-up). Admitting the browser retry through `HostLimiter` and checking every attempt for `SLOW_DOWN` stay open.
+- Alternatives: One fetch for both.
+- Why: Through `acquire`, a robots.txt classifies as a shell and is fetched again in the browser.
+- Reversible: yes
+
+### D-0635 — No `budget` member on a batch
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: `BatchScrapeRequest` has no `budget`.
+- Alternatives: Accept and ignore it.
+- Why: A batch makes no LLM calls (no prompt, no role C), so a budget would bound nothing.
+- Reversible: yes
+
+### D-0636 — Shared scrape steps live in `services/scrape_steps`; `ScrapeInvalid` is `SchemaUnusable`
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 2 (#128) · Status: decided
+- Decision: The steps scrape and batch share moved to `services/scrape_steps.py`, and `ScrapeInvalid` was renamed `SchemaUnusable`.
+- Alternatives: `services/page_task.py`.
+- Why: The C3 scan reads `services.page` as a host under the `.page` TLD; the error is not scrape's alone.
 - Reversible: yes

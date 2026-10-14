@@ -332,6 +332,8 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(Text, server_default=text("'queued'"))
     webhook_url: Mapped[str | None] = mapped_column(Text)
     engine_version: Mapped[str] = mapped_column(Text)
+    # What its pages run with, pinned at submit (INV-28: `services.batch.JobPins`); NULL without records.
+    pinned: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     usage: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     created_at: Mapped[datetime] = created_at_column()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

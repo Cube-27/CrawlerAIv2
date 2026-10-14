@@ -15,15 +15,18 @@ from typing import get_args
 
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key, revoke_key
 from crawlerai.core.data import DataFetchError, fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
-from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
+from crawlerai.db.models import EvalCategory, EvalRunId, JobKind, PageKind, Split
 from crawlerai.eval import calibrate, promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
 from crawlerai.eval.store import (
@@ -35,9 +38,13 @@ from crawlerai.eval.store import (
 )
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
+from crawlerai.services.scrape import Fetching
+from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
-from crawlerai.worker.loop import run_worker
+from crawlerai.worker.browser import SharedBrowser
+from crawlerai.worker.handlers.scrape import scrape_handler
+from crawlerai.worker.loop import TaskHandler, run_worker
 
 
 def _print_openapi() -> None:
@@ -60,8 +67,29 @@ def _stop_on_signals() -> asyncio.Event:
 
 
 async def _work() -> None:
-    # Later specs register a handler for each job kind here.
-    await run_worker(Settings(), {}, _stop_on_signals())
+    settings = Settings()
+    connector = SafeConnector()
+    pools = settings.proxy_pools
+
+    async def fetch_in(session: BrowserSession, url: str, policy: FetchPolicy) -> FetchResult:
+        return await fetch_browser(
+            url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
+        )
+
+    http = partial(
+        fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
+    )
+    async with aclosing(
+        SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
+    ) as browser:
+        fetching = Fetching(
+            Rungs(http=http, browser=browser.fetch), connector, open_store(settings.object_store), HostLimiter()
+        )
+        # Later specs register a handler for each job kind here.
+        handlers: dict[JobKind, TaskHandler] = {
+            "batch_scrape": scrape_handler(fetching, load_engine_data(), load_drift_margins())
+        }
+        await run_worker(settings, handlers, _stop_on_signals())
 
 
 async def _schedule() -> None:

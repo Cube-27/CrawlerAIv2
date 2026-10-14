@@ -15,12 +15,12 @@ from crawlerai.services.schemas import InvalidSchema, SchemaConflict
 from crawlerai.services.scrape import (
     Fetching,
     RecordsUnavailable,
-    ScrapeInvalid,
     ScrapeRejected,
     ScrapeRequest,
     ScrapeResult,
     ScrapeTimedOut,
 )
+from crawlerai.services.scrape_steps import SchemaUnusable
 
 router = APIRouter(
     prefix="/v1/scrape",
@@ -49,7 +49,7 @@ async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
     except ScrapeRejected as e:
         # 422: the request names a target the API may not fetch (INV-16).
         raise ProblemError(422, "ssrf_rejected", "Target refused", e.reason) from e
-    except ScrapeInvalid as e:
+    except SchemaUnusable as e:
         raise invalid(str(e), [("schema", str(e))]) from e
     except InvalidSchema as e:
         raise invalid(str(e), [(f"schema.inline.{field}".rstrip("."), reason) for field, reason in e.errors]) from e

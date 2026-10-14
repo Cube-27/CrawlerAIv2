@@ -5,7 +5,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.services.scrape import SchemaPrompt, ScrapeRequest
+from crawlerai.services.scrape import ScrapeRequest
+from crawlerai.services.scrape_steps import SchemaPrompt
 
 URL = "https://shop.example.test/kettles/blue"
 

@@ -15,7 +15,7 @@ from crawlerai.config_ir.drift import Drifted, DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.progressive import StateKey
-from crawlerai.db.models import ExtractionConfig, JobId, SiteId
+from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, SiteId
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
@@ -33,6 +33,15 @@ async def active_config(
         return None
     executor = EngineExecutor(ExtractionConfigIR.model_validate(row.ir), vocabulary)
     return ActiveConfig(row.id, row.version, executor)
+
+
+async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, vocabulary: Vocabulary) -> ActiveConfig:
+    """Config `config_id` bound to its executor, whatever its status now: the config a job pinned when it was
+    submitted (INV-28)."""
+    configs = ExtractionConfig
+    row = (await conn.execute(select(configs.version, configs.ir).where(configs.id == config_id))).one()
+    executor = EngineExecutor(ExtractionConfigIR.model_validate(row.ir), vocabulary)
+    return ActiveConfig(config_id, row.version, executor)
 
 
 async def record_page(

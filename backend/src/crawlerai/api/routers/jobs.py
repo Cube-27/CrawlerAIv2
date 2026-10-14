@@ -1,5 +1,5 @@
 """`GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (SPEC-10 §4.2): a job's summary, its cancel, and its
-records a page at a time."""
+records or page outputs a page at a time."""
 
 from typing import Annotated
 
@@ -11,8 +11,17 @@ from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import conflict, not_found
 from crawlerai.db.models import JobId
 from crawlerai.services import jobs
-from crawlerai.services.jobs import ExportPage, JobEnded, JobNotFound, JobSummary, NotExportable, ResultsQuery
+from crawlerai.services.jobs import (
+    ExportPage,
+    JobEnded,
+    JobNotFound,
+    JobSummary,
+    NotExportable,
+    PageOutputPage,
+    ResultsQuery,
+)
 from crawlerai.services.records import RecordPage
+from crawlerai.services.scrape import Fetching
 
 router = APIRouter(
     prefix="/v1/jobs",
@@ -50,14 +59,16 @@ async def cancel_job(job_id: JobId, request: Request) -> JobSummary:
 @router.get("/{job_id}/results", responses={409: PROBLEM_RESPONSE})
 async def job_results(
     job_id: JobId, query: Annotated[ResultsQuery, Query()], request: Request
-) -> RecordPage | ExportPage:
+) -> RecordPage | ExportPage | PageOutputPage:
     """The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
-    `csv_records` or `markdown` text in the schema's columns. Pass a page's `next_cursor` as `cursor` for the page
-    after it. 409: an export of a job without a schema."""
+    `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
+    tasks, oldest first, each with the content formats the job asked for once its page was reached. Pass a page's
+    `next_cursor` as `cursor` for the page after it. 409: an export of a job without a schema."""
     engine: AsyncEngine = request.app.state.database
+    fetching: Fetching = request.app.state.fetching
     async with engine.connect() as conn:
         try:
-            return await jobs.job_results(conn, job_id, query)
+            return await jobs.job_results(conn, job_id, query, store=fetching.store)
         except JobNotFound as e:
             raise not_found(str(e)) from e
         except NotExportable as e:

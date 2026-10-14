@@ -80,6 +80,13 @@ async def _tasks(conn: AsyncConnection, *paths: str, attempts: int = 0) -> list[
     return sorted(tasks, key=lambda task: paths.index(task.url.removeprefix(ORIGIN)))
 
 
+async def _polite(
+    conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, policy: FetchPolicy, web: Web, limiter: HostLimiter
+) -> FetchResult | TaskResult:
+    """`fetch_politely` with `web` for both robots.txt and the page."""
+    return await fetch_politely(conn, task, site_id, policy, web, limiter, fetch_robots=web)
+
+
 async def _snapshot(conn: AsyncConnection, site_id: SiteId) -> RobotsSnapshot | None:
     stored = (await conn.execute(select(Site.robots_snapshot).where(Site.id == site_id))).scalar_one()
     return None if stored is None else RobotsSnapshot.model_validate_json(stored)
@@ -89,7 +96,7 @@ async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(conn
     site_id = await _site(conn)
     [task] = await _tasks(conn, "/private/a")
 
-    result = await fetch_politely(conn, task, site_id, FetchPolicy(), web, HostLimiter())
+    result = await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter())
 
     assert result == Finished("blocked", reason="robots")
     assert web.fetched == [f"{ORIGIN}/robots.txt"]
@@ -103,11 +110,25 @@ async def test_an_allowed_page_is_fetched_after_robots(conn: AsyncConnection, we
     web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
     [task] = await _tasks(conn, "/item/1")
 
-    result = await fetch_politely(conn, task, site_id, FetchPolicy(), web, HostLimiter())
+    result = await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter())
 
     assert isinstance(result, FetchResult)
     assert (result.bundle.manifest.url, result.bundle.body) == (f"{ORIGIN}/item/1", PAGE)
     assert web.fetched == [f"{ORIGIN}/robots.txt", f"{ORIGIN}/item/1"]
+
+
+async def test_robots_and_the_page_are_fetched_each_with_their_own_rung(
+    conn: AsyncConnection, web: Web, fetch_result: Callable[..., FetchResult]
+) -> None:
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
+    page_rung = Web(fetch_result, dict(web.pages))
+    [task] = await _tasks(conn, "/item/1")
+
+    result = await fetch_politely(conn, task, site_id, FetchPolicy(), page_rung, HostLimiter(), fetch_robots=web)
+
+    assert isinstance(result, FetchResult)
+    assert (web.fetched, page_rung.fetched) == ([f"{ORIGIN}/robots.txt"], [f"{ORIGIN}/item/1"])
 
 
 async def test_the_override_fetches_a_disallowed_page_without_reading_robots(conn: AsyncConnection, web: Web) -> None:
@@ -115,7 +136,7 @@ async def test_the_override_fetches_a_disallowed_page_without_reading_robots(con
     web.pages[f"{ORIGIN}/private/a"] = (200, PAGE, ())
     [task] = await _tasks(conn, "/private/a")
 
-    result = await fetch_politely(conn, task, site_id, OVERRIDE, web, HostLimiter())
+    result = await _polite(conn, task, site_id, OVERRIDE, web, HostLimiter())
 
     assert isinstance(result, FetchResult)
     assert web.fetched == [f"{ORIGIN}/private/a"]
@@ -128,12 +149,12 @@ async def test_a_fresh_snapshot_is_used_and_a_stale_one_refetched(conn: AsyncCon
     first, second = await _tasks(conn, "/private/a", "/private/b")
 
     # The fresh snapshot allows everything: no robots fetch, the page is fetched.
-    assert isinstance(await fetch_politely(conn, first, site_id, FetchPolicy(), web, HostLimiter()), FetchResult)
+    assert isinstance(await _polite(conn, first, site_id, FetchPolicy(), web, HostLimiter()), FetchResult)
     assert web.fetched == [f"{ORIGIN}/private/a"]
 
     stale = fresh.model_copy(update={"fetched_at": datetime.now(UTC) - timedelta(hours=25)})
     await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=stale.model_dump_json()))
-    result = await fetch_politely(conn, second, site_id, FetchPolicy(), web, HostLimiter())
+    result = await _polite(conn, second, site_id, FetchPolicy(), web, HostLimiter())
 
     assert result == Finished("blocked", reason="robots")
     assert web.fetched[1:] == [f"{ORIGIN}/robots.txt"]
@@ -148,7 +169,7 @@ async def test_a_missing_robots_file_allows_everything(conn: AsyncConnection, we
     web.pages[f"{ORIGIN}/private/a"] = (200, PAGE, ())
     [task] = await _tasks(conn, "/private/a")
 
-    assert isinstance(await fetch_politely(conn, task, site_id, FetchPolicy(), web, HostLimiter()), FetchResult)
+    assert isinstance(await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter()), FetchResult)
     snapshot = await _snapshot(conn, site_id)
     assert snapshot is not None
     assert (snapshot.status_code, snapshot.body) == (404, "")
@@ -159,7 +180,7 @@ async def test_an_unreachable_robots_file_fails_the_attempt_and_stores_nothing(c
     web.pages[f"{ORIGIN}/robots.txt"] = (503, b"", ())
     [task] = await _tasks(conn, "/item/1")
 
-    result = await fetch_politely(conn, task, site_id, FetchPolicy(), web, HostLimiter())
+    result = await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter())
 
     assert result == Failed("robots_unreachable", transient=True, exhausted="blocked")
     assert web.fetched == [f"{ORIGIN}/robots.txt"]
@@ -183,13 +204,11 @@ async def test_a_second_page_of_the_site_waits_out_the_interval_in_the_queue(
     clock = Clock()
     limiter = HostLimiter(clock)
 
-    assert isinstance(await fetch_politely(conn, first, site_id, FetchPolicy(), web, limiter), FetchResult)
+    assert isinstance(await _polite(conn, first, site_id, FetchPolicy(), web, limiter), FetchResult)
     clock.now += 0.25
-    assert await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(
-        wait - timedelta(seconds=0.25)
-    )
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(wait - timedelta(seconds=0.25))
     clock.now += (wait - timedelta(seconds=0.25)).total_seconds()
-    assert isinstance(await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter), FetchResult)
+    assert isinstance(await _polite(conn, second, site_id, FetchPolicy(), web, limiter), FetchResult)
     assert web.fetched == [f"{ORIGIN}/robots.txt", f"{ORIGIN}/item/1", f"{ORIGIN}/item/2"]
 
 
@@ -218,11 +237,11 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     clock = Clock()
     limiter = HostLimiter(clock)
 
-    result = await fetch_politely(conn, first, site_id, FetchPolicy(), web, limiter)
+    result = await _polite(conn, first, site_id, FetchPolicy(), web, limiter)
 
     assert result == Failed(f"http {status}", transient=True, after=asked, exhausted="blocked")
     # The site's other pages wait out the same pause.
-    assert await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
 
 
 @pytest.mark.parametrize("value", ["901", "3600", "99999999999999", "9" * 5000])
@@ -233,10 +252,8 @@ async def test_a_retry_after_beyond_15_min_blocks_the_task(conn: AsyncConnection
     clock = Clock()
     limiter = HostLimiter(clock)
 
-    assert await fetch_politely(conn, first, site_id, FetchPolicy(), web, limiter) == Finished(
-        "blocked", reason="http 429"
-    )
-    assert await fetch_politely(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(minutes=15))
+    assert await _polite(conn, first, site_id, FetchPolicy(), web, limiter) == Finished("blocked", reason="http 429")
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(minutes=15))
 
 
 async def test_through_the_worker_retry_after_sets_the_next_attempt_and_robots_end_the_task(
@@ -249,7 +266,7 @@ async def test_through_the_worker_retry_after_sets_the_next_attempt_and_robots_e
     limiter = HostLimiter()
 
     async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        result = await fetch_politely(conn, task, site_id, FetchPolicy(), web, limiter)
+        result = await _polite(conn, task, site_id, FetchPolicy(), web, limiter)
         return Finished("extracted") if isinstance(result, FetchResult) else result
 
     query = select(

@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import sysconfig
+from collections.abc import Mapping
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
@@ -50,6 +51,7 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
     assert document["info"]["title"] == "CrawlerAI"
     assert sorted(document["paths"]) == [
         "/healthz",
+        "/v1/batch/scrape",
         "/v1/captures/{capture_id}/replay",
         "/v1/configs/{config_id}",
         "/v1/configs/{config_id}/export",
@@ -89,16 +91,16 @@ def _environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     _environment(monkeypatch)
-    calls: list[tuple[str, object, bool]] = []
+    calls: list[tuple[str, list[str], bool]] = []
 
-    async def run(settings: Settings, handlers: object, stop: asyncio.Event) -> None:
-        calls.append((settings.database_url.get_secret_value(), handlers, stop.is_set()))
+    async def run(settings: Settings, handlers: Mapping[str, object], stop: asyncio.Event) -> None:
+        calls.append((settings.database_url.get_secret_value(), sorted(handlers), stop.is_set()))
 
     monkeypatch.setattr(cli, "run_worker", run)
 
     main(["worker"])
 
-    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", {}, False)]
+    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", ["batch_scrape"], False)]
 
 
 def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_and_the_http_rung(

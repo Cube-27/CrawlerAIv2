@@ -36,7 +36,7 @@ from crawlerai.llm.client import (
 )
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
-from crawlerai.services import scrape as scrape_service
+from crawlerai.services import scrape_steps
 from crawlerai.services.scrape import Fetching, ScrapeRejected, ScrapeRequest, ScrapeTimedOut, scrape
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, decode
@@ -402,7 +402,7 @@ async def test_a_timeout_while_the_formats_are_computed_fails_the_job(
         time.sleep(1)
         return ""
 
-    monkeypatch.setattr(scrape_service, "markdown", slow_markdown)
+    monkeypatch.setattr(scrape_steps, "markdown", slow_markdown)
     scrape_request = request(url, "markdown", timeout_s=0.5)
 
     with pytest.raises(ScrapeTimedOut):

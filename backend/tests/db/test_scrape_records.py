@@ -42,7 +42,8 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services.schemas import SchemaConflict
-from crawlerai.services.scrape import Fetching, RecordsUnavailable, ScrapeInvalid, ScrapeRequest, scrape
+from crawlerai.services.scrape import Fetching, RecordsUnavailable, ScrapeRequest, scrape
+from crawlerai.services.scrape_steps import SchemaUnusable
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -321,7 +322,7 @@ async def test_a_schema_id_records_cannot_use_is_refused_before_any_job(
     schema_id = await _unusable_schema(engine, kettle_schema, problem)
     scrape_request = _records(f"{own_origin}/kettles/blue", {"id": str(schema_id)})
 
-    with pytest.raises(ScrapeInvalid, match=message):
+    with pytest.raises(SchemaUnusable, match=message):
         await scrape(engine, fetching, scrape_request, data=engine_data)
 
     assert web.fetched == []
@@ -414,7 +415,7 @@ async def test_a_prompt_draft_of_another_page_kind_fails_the_job(
     llm = MeteredClient([FakeProvider([listing])], engine)
     scrape_request = _records(url, {"prompt": prompt})
 
-    with pytest.raises(ScrapeInvalid, match="is for listing pages, not detail"):
+    with pytest.raises(SchemaUnusable, match="is for listing pages, not detail"):
         await scrape(engine, fetching, scrape_request, llm=llm, data=engine_data)
 
     assert await _failed(engine, url) == ("failed", "invalid_schema", "failed")
