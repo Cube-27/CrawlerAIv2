@@ -102,12 +102,14 @@ class World:
             job_id: JobId = (await conn.execute(statement)).scalar_one()
         return job_id
 
-    async def tasks(self, job_id: JobId, rows: Sequence[tuple[TaskStatus, TaskOutcome | None]]) -> None:
+    async def tasks(
+        self, job_id: JobId, rows: Sequence[tuple[TaskStatus, TaskOutcome | None]], *, last_error: str | None = None
+    ) -> None:
         async with self.engine.begin() as conn:
             for status, outcome in rows:
                 url = f"{self.origin}/p/{uuid7().hex}"
                 values = {"job_id": job_id, "url": url, "canonical_url": url, "status": status, "outcome": outcome}
-                await conn.execute(insert(UrlTask).values(**values))
+                await conn.execute(insert(UrlTask).values(**values, last_error=last_error))
 
     async def record(self, job_id: JobId, data: Mapping[str, Any], field_meta: Mapping[str, Any]) -> RecordId:
         """A record of the world's schema, stored as a page task stores it."""
@@ -198,6 +200,7 @@ async def test_a_new_job_is_queued_with_every_count_at_zero(world: World) -> Non
     assert summary.counts.model_dump() == {"queued": 0, "claimed": 0, "done": 0, "failed": 0, "cancelled": 0}
     assert summary.outcomes.model_dump() == dict.fromkeys(OUTCOMES, 0)
     assert (summary.usage, summary.webhook_url, summary.engine_version) == ({}, "https://hooks.example.test/done", "e")
+    assert summary.cancel_requested is False
 
 
 async def test_the_summary_counts_tasks_by_status_and_by_outcome(world: World) -> None:
@@ -321,6 +324,7 @@ async def test_a_running_job_is_cancelled_once_its_claimed_task_finishes(world: 
 
     # The queued task never runs; the claimed one finishes, and then the job ends.
     assert (during.status, during.counts.queued, during.counts.cancelled, during.counts.claimed) == ("running", 0, 1, 1)
+    assert during.cancel_requested is True
     assert (after.status, after.counts.done, after.outcomes.extracted) == ("cancelled", 1, 1)
 
 
@@ -406,6 +410,22 @@ async def test_a_job_without_a_schema_has_no_records_to_export(world: World) -> 
         await _results(world.engine, job_id, format="csv_records")
 
 
+async def test_page_outputs_carry_each_tasks_last_error(world: World) -> None:
+    job_id = await world.job(status="completed")
+    await world.tasks(job_id, [("failed", "failed")], last_error="budget_exhausted")
+    await world.tasks(job_id, [("done", "blocked")], last_error="robots")
+    await world.tasks(job_id, [("done", "not_found")])
+
+    page = await _results(world.engine, job_id)
+
+    assert isinstance(page, PageOutputPage)
+    assert [(item.status, item.outcome, item.last_error) for item in page.items] == [
+        ("failed", "failed", "budget_exhausted"),
+        ("done", "blocked", "robots"),
+        ("done", "not_found", None),
+    ]
+
+
 # Over HTTP.
 
 
@@ -457,6 +477,7 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         "llm_cost_usd",
         "webhook_url",
         "engine_version",
+        "cancel_requested",
     }
     assert (body["id"], body["status"], body["counts"]["queued"], body["outcomes"]["partial"]) == (
         str(job_id),
@@ -487,7 +508,7 @@ async def test_delete_cancels_the_job(client: httpx.AsyncClient, world: World) -
     response = await client.delete(f"/v1/jobs/{job_id}")
 
     assert response.status_code == 200, response.text
-    assert response.json()["status"] == "cancelled"
+    assert (response.json()["status"], response.json()["cancel_requested"]) == ("cancelled", True)
 
 
 async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
@@ -539,6 +560,17 @@ async def test_results_are_served_as_records_or_as_an_export(client: httpx.Async
         "content": "colour,title,_status_colour,_status_title\r\n,Kettle 0,missing,published\r\n",
         "next_cursor": None,
     }
+
+
+async def test_page_outputs_are_served_with_their_last_error(client: httpx.AsyncClient, world: World) -> None:
+    job_id = await world.job(status="completed")
+    await world.tasks(job_id, [("done", "blocked")], last_error="robots")
+
+    response = await client.get(f"/v1/jobs/{job_id}/results")
+
+    assert response.status_code == 200, response.text
+    [item] = response.json()["items"]
+    assert (item["outcome"], item["last_error"]) == ("blocked", "robots")
 
 
 async def test_jobs_need_a_key(client: httpx.AsyncClient, world: World) -> None:

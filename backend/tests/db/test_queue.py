@@ -186,7 +186,7 @@ async def test_the_ending_hook_runs_once_in_the_ending_transaction_before_the_en
 
     # The job is still running when the hook runs; what it records comes before the end event.
     assert ending.calls == [(job_id, "completed", "running")]
-    assert await _job_state(conn, job_id) == ("completed", ["ending", "completed"])
+    assert await _job_state(conn, job_id) == ("completed", ["task_failed", "ending", "completed"])
 
 
 async def test_a_job_ended_by_an_expired_lease_runs_the_ending_hook(conn: AsyncConnection) -> None:
@@ -198,7 +198,7 @@ async def test_a_job_ended_by_an_expired_lease_runs_the_ending_hook(conn: AsyncC
     await release_expired_leases(conn, ending=ending)
 
     assert ending.calls == [(job_id, "failed", "running")]
-    assert await _job_state(conn, job_id) == ("failed", ["ending", "failed"])
+    assert await _job_state(conn, job_id) == ("failed", ["task_failed", "ending", "failed"])
 
 
 async def test_a_transient_failure_requeues_with_exponential_backoff(conn: AsyncConnection) -> None:
@@ -235,7 +235,7 @@ async def test_a_transient_failure_on_the_third_attempt_fails_the_task(conn: Asy
 
     row = await _row(conn, task_id)
     assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 3, "timeout")
-    assert await _job_state(conn, job_id) == ("failed", ["failed"])
+    assert await _job_state(conn, job_id) == ("failed", ["task_failed", "failed"])
 
 
 async def test_a_permanent_failure_fails_the_task_at_once(conn: AsyncConnection) -> None:
@@ -257,7 +257,7 @@ async def test_a_job_with_one_success_and_one_failure_completes(conn: AsyncConne
     await fail_task(conn, first, "boom", transient=False)
     await complete_task(conn, second, "blocked")
 
-    assert await _job_state(conn, job_id) == ("completed", ["completed"])
+    assert await _job_state(conn, job_id) == ("completed", ["task_failed", "completed"])
 
 
 async def test_last_error_is_cut_to_2_kb_on_a_character_boundary(conn: AsyncConnection) -> None:
@@ -444,7 +444,7 @@ async def test_an_expired_lease_on_the_last_attempt_fails_the_task_and_settles_t
 
     row = await _row(conn, task_id)
     assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 3, "lease expired")
-    assert await _job_state(conn, job_id) == ("failed", ["failed"])
+    assert await _job_state(conn, job_id) == ("failed", ["task_failed", "failed"])
 
 
 async def test_releasing_with_no_expired_lease_changes_nothing(conn: AsyncConnection) -> None:
