@@ -63,6 +63,7 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
         "/v1/eval/pages/{page_id}/labels",
         "/v1/eval/pages/{page_id}/normalize",
         "/v1/eval/pages/{page_id}/prefill",
+        "/v1/extract",
         "/v1/jobs/{job_id}",
         "/v1/jobs/{job_id}/events",
         "/v1/jobs/{job_id}/results",
@@ -104,7 +105,9 @@ def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(mon
 
     main(["worker"])
 
-    assert calls == [("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", ["batch_scrape", "crawl"], False)]
+    assert calls == [
+        ("postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai", ["batch_scrape", "crawl", "extract"], False)
+    ]
 
 
 def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_and_the_http_rung(

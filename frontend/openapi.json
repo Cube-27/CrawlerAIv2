@@ -1149,6 +1149,111 @@
         "title": "ExportRequest",
         "type": "object"
       },
+      "ExtractRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt`, and its page kind must be `page_kind`. `limit` bounds the job's tasks;\n`budget.llm_calls` bounds a prompt's draft. The `fetch` and `locale` are a scrape's (SPEC-07 \u00a74.4), for every URL.\n`webhook_url` is called when the job ends (\u00a74.2).",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/Budget",
+            "default": {
+              "llm_calls": 10
+            }
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions",
+            "default": {
+              "method_hint": "auto",
+              "respect_robots": true
+            }
+          },
+          "limit": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaPrompt"
+              }
+            ],
+            "title": "Schema"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Urls",
+            "type": "array"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "urls",
+          "schema",
+          "page_kind"
+        ],
+        "title": "ExtractRequest",
+        "type": "object"
+      },
+      "ExtractSubmitted": {
+        "description": "The queued job, and the schema its records are extracted with: a prompt's draft, or the schema named.",
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/SchemaDef"
+          }
+        },
+        "required": [
+          "job_id",
+          "schema"
+        ],
+        "title": "ExtractSubmitted",
+        "type": "object"
+      },
       "ExtractedRecord": {
         "description": "A record's content (\u00a76 `record`): `complete` when every required field and group published (\u00a710), and its\nconfidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with\nthese: they are not stored, so they have no id.",
         "properties": {
@@ -5913,6 +6018,143 @@
         "summary": "Prefill",
         "tags": [
           "eval"
+        ]
+      }
+    },
+    "/v1/extract": {
+      "post": {
+        "description": "Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded\nthrough a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the\ndraft is returned as `schema`. A target the API may not fetch, in `urls`, a glob's map or `webhook_url`, is a 422\nand nothing is queued.",
+        "operationId": "extract_records_v1_extract_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Extract Records",
+        "tags": [
+          "extract"
         ]
       }
     },

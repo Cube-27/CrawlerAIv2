@@ -1,5 +1,6 @@
-"""The handler of `batch_scrape` tasks (SPEC-10 §4.3): a scrape's steps (`crawlerai.services.scrape_steps`), run by a
-worker instead of while a caller waits.
+"""The handler of `batch_scrape` and `extract` tasks (SPEC-10 §4.3, §4.6): a scrape's steps
+(`crawlerai.services.scrape_steps`), run by a worker instead of while a caller waits. An `extract` job is a records job
+whose URLs are all caller-supplied, as a batch's are (ARCHITECTURE §10), so its tasks run as a records batch's do.
 
 The page is fetched politely (`crawlerai.worker.polite`): robots.txt over HTTP, the site's rate, backoff through the
 queue. Its capture is stored, and for `records` it is extracted with what the job pinned when it was submitted
@@ -24,6 +25,7 @@ the task at once (INV-16).
 import asyncio
 import logging
 
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.drift import DriftMargins
@@ -33,23 +35,33 @@ from crawlerai.db.queue import ClaimedTask
 from crawlerai.recurring.simhash import simhash64
 from crawlerai.recurring.state import record_content, record_fetch
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.services.batch import BatchScrapeRequest
 from crawlerai.services.fetching import Fetching
+from crawlerai.services.scrape_steps import FetchOptions
 from crawlerai.worker.handlers.steps import FetchedPage, extract_records, fetch_page, load_job, unreached
 from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult
 
 log = logging.getLogger(__name__)
 
 
+class _PageFetch(BaseModel):
+    """How the job's request asks its pages to be fetched: the members a batch and an extract request share."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    fetch: FetchOptions
+    locale: str | None
+
+
 def scrape_handler(fetching: Fetching, data: EngineData | None, margins: DriftMargins | None) -> TaskHandler:
-    """The `batch_scrape` handler of a worker that fetches with `fetching`; `data` is None in a worker without the
-    engine's data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9)."""
+    """The `batch_scrape` and `extract` handler of a worker that fetches with `fetching`; `data` is None in a worker
+    without the engine's data files, whose records tasks then fail. `margins` decide drift
+    suspensions (SPEC-08 §4.9)."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         job = await load_job(conn, task, data, margins)
         if isinstance(job, Failed):
             return job
-        request, records = BatchScrapeRequest.model_validate(job[0]), job[1]
+        request, records = _PageFetch.model_validate(job[0]), job[1]
         page = await fetch_page(conn, fetching, task, request.fetch, request.locale, recurring=records)
         if not isinstance(page, FetchedPage):
             return page

@@ -3,7 +3,7 @@ says otherwise, `include` globs over the canonical URL, and `exclude`, which win
 
 import pytest
 
-from crawlerai.crawl.rules import PageKindRule, Scope, page_kind_for
+from crawlerai.crawl.rules import PageKindRule, Scope, UrlGlob, is_glob, page_kind_for, url_glob
 
 HOST = "shop.example.test"
 
@@ -68,3 +68,58 @@ def test_a_url_no_rule_matches_has_no_page_kind() -> None:
     assert page_kind_for("https://shop.example.test/c/1", rules) is None
     assert page_kind_for("https://shop.example.test/P/1", rules) is None
     assert page_kind_for("https://shop.example.test/p/1", ()) is None
+
+
+# The URL globs of `extract` (SPEC-10 §4.6).
+
+
+@pytest.mark.parametrize(
+    ("url", "glob"),
+    [
+        ("https://shop.example.test/p/*", True),
+        ("https://shop.example.test/p/1?size=m", False),
+        ("https://[2001:db8::1]/p/1", False),
+    ],
+)
+def test_a_url_is_a_glob_when_it_has_a_star(url: str, glob: bool) -> None:
+    assert is_glob(url) is glob
+
+
+@pytest.mark.parametrize(
+    ("pattern", "origin", "canonical"),
+    [
+        ("https://Shop.Example.test/p/*", "https://shop.example.test/", "https://shop.example.test/p/*"),
+        (
+            "https://shop.example.test:443/p/*?c=[ab]",
+            "https://shop.example.test/",
+            "https://shop.example.test/p/*?c=[ab]",
+        ),
+        ("http://shop.example.test:8080/*", "http://shop.example.test:8080/", "http://shop.example.test:8080/*"),
+    ],
+)
+def test_a_glob_is_expanded_on_its_canonical_origin(pattern: str, origin: str, canonical: str) -> None:
+    assert url_glob(pattern) == UrlGlob(origin=origin, pattern=canonical)
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "https://*.example.test/p/*",
+        "https://shop.example.test:8*/p/1",
+        "https://shop.example.test?/p/*",
+        "http*://shop.example.test/p/*",
+        "ftp://shop.example.test/p/*",
+        "https:///p/*",
+        "/p/*",
+    ],
+)
+def test_a_glob_without_one_literal_http_host_has_no_origin(pattern: str) -> None:
+    assert url_glob(pattern) is None
+
+
+def test_a_glob_matches_the_canonical_urls_of_its_host_only() -> None:
+    glob = url_glob("https://SHOP.example.test/p/*")
+    assert glob is not None
+
+    assert Scope(HOST, include=(glob.pattern,)).admits("https://shop.example.test/p/1")
+    assert not Scope(HOST, include=(glob.pattern,)).admits("https://shop.example.test.other.test/p/1")

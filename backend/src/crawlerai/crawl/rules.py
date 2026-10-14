@@ -1,15 +1,21 @@
-"""URL rules of discovery requests (SPEC-10 §4.1, §4.4, §4.5): include and exclude globs, and a crawl's page-kind
-rules, `fnmatch`-style over the canonical URL. Patterns come from requests; this module names no host (INV-03).
+"""URL rules of discovery requests (SPEC-10 §4.1, §4.4, §4.5, §4.6): include and exclude globs, a crawl's page-kind
+rules, and the URL globs `extract` expands, `fnmatch`-style over the canonical URL. Patterns come from requests; this
+module names no host (INV-03).
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+from typing import Final
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
+from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import PageKind
+
+# The characters `fnmatch` gives a meaning (Python `fnmatch` docs: `*`, `?`, `[seq]`).
+_PATTERN_CHARACTERS: Final = frozenset("*?[")
 
 
 class PageKindRule(BaseModel):
@@ -48,3 +54,30 @@ class Scope:
 def _any_match(url: str, patterns: tuple[str, ...]) -> bool:
     # `fnmatchcase`: a URL path is case-sensitive (RFC 3986 §6.2.2.1), and `fnmatch` folds case on Windows.
     return any(fnmatchcase(url, pattern) for pattern in patterns)
+
+
+def is_glob(url: str) -> bool:
+    """Whether a requested URL is a glob to expand (§4.6): one with a `*`. `?` and `[` alone leave it a URL, since a
+    query starts with `?` (RFC 3986 §3.4) and an IPv6 host sits in `[]` (§3.2.2); in a glob, they match as in
+    `fnmatch`."""
+    return "*" in url
+
+
+@dataclass(frozen=True)
+class UrlGlob:
+    """A glob of `extract` (§4.6) on its origin: `origin` is its scheme and authority in canonical form
+    (`https://host/`), and `pattern` the glob with that origin, to match canonical URLs as a map's `include` does."""
+
+    origin: str
+    pattern: str
+
+
+def url_glob(pattern: str) -> UrlGlob | None:
+    """`pattern` on its origin; `None` for a glob that names no http(s) host, or whose scheme or authority (RFC 3986
+    §3) has a pattern character: a glob is expanded on one host."""
+    scheme, separator, rest = pattern.partition("://")
+    authority, slash, path = rest.partition("/")
+    if not separator or not slash or _PATTERN_CHARACTERS.intersection(scheme + authority):
+        return None
+    origin = canonicalize(f"{scheme}://{authority}/")
+    return None if origin is None else UrlGlob(origin=origin, pattern=origin + path)

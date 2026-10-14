@@ -10,7 +10,8 @@ has for the schema version and page kind (`job.pinned`, `JobPins`). A URL given 
 keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10).
 """
 
-from typing import Final, Self
+from collections.abc import Iterable
+from typing import Any, Final, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -129,21 +130,21 @@ async def submit_batch(
             webhook_url=request.webhook_url,
             api_key_id=api_key_id,
         )
-        rows = [
-            {
-                "job_id": job_id,
-                "url": url,
-                "canonical_url": canonical_url(url, None) or url,
-                "page_kind": request.page_kind,
-            }
-            for url in request.urls
-        ]
-        await conn.execute(
-            pg_insert(UrlTask)
-            .values(rows)
-            .on_conflict_do_nothing(index_elements=[UrlTask.job_id, UrlTask.canonical_url])
-        )
+        urls = [(url, canonical_url(url, None) or url) for url in request.urls]
+        await insert_tasks(conn, job_id, request.page_kind, urls)
     return BatchSubmitted(job_id=job_id)
+
+
+async def insert_tasks(
+    conn: AsyncConnection, job_id: JobId, page_kind: PageKind | None, urls: Iterable[tuple[str, str]]
+) -> None:
+    """Queue a task of `page_kind` per (URL, canonical URL) of `urls`; a canonical URL given twice is one task."""
+    rows = [
+        {"job_id": job_id, "url": url, "canonical_url": canonical, "page_kind": page_kind} for url, canonical in urls
+    ]
+    await conn.execute(
+        pg_insert(UrlTask).values(rows).on_conflict_do_nothing(index_elements=[UrlTask.job_id, UrlTask.canonical_url])
+    )
 
 
 async def records_schema(
@@ -175,10 +176,7 @@ async def insert_job(
 ) -> JobId:
     """Insert `request` as a queued job of `kind`. A records job (`schema`) pins its engine data and the configs
     active for the hosts of `urls` (INV-28, `JobPins`)."""
-    pinned = None
-    if schema is not None and data is not None:
-        pins = JobPins(engine_data=data.pin(), configs=await active_configs(conn, urls, schema))
-        pinned = pins.model_dump(mode="json")
+    pinned = None if schema is None or data is None else await job_pins(conn, data, urls, schema)
     statement = (
         insert(Job)
         .values(
@@ -195,6 +193,12 @@ async def insert_job(
     )
     job_id: JobId = (await conn.execute(statement)).scalar_one()
     return job_id
+
+
+async def job_pins(conn: AsyncConnection, data: EngineData, urls: list[str], schema: SchemaDef) -> dict[str, Any]:
+    """What a records job of `schema` over `urls` pins (INV-28, `JobPins`), as `job.pinned` stores it."""
+    pins = JobPins(engine_data=data.pin(), configs=await active_configs(conn, urls, schema))
+    return pins.model_dump(mode="json")
 
 
 async def active_configs(conn: AsyncConnection, urls: list[str], schema: SchemaDef) -> dict[str, ExtractionConfigId]:
