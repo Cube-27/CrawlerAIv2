@@ -111,8 +111,8 @@ function RunningJobs() {
     <StatTile
       label="Jobs running"
       query={jobs}
-      stat={(page) => ({
-        value: `${String(page.items.length)}${page.next_cursor === null ? "" : "+"}`,
+      stat={({ items, next_cursor: more }) => ({
+        value: `${String(items.length)}${more === null ? "" : "+"}`,
         caption: "Across every job kind",
       })}
     />
