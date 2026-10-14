@@ -1,104 +1,55 @@
 """`POST /v1/batch/scrape` over HTTP (SPEC-10 §4.3): what a client sends and gets back. What a batch does is the
 service's and the worker's (`test_batch_scrape.py`).
 
-The app runs with its real settings against the test database; its fetching is replaced by a stub resolver, so
-nothing leaves the process. Hosts are RFC 2606 names.
+The app runs as `submit_client` (conftest) sets it up: nothing leaves the process. Hosts are RFC 2606 names.
 """
 
-from collections.abc import AsyncIterator
-from ipaddress import ip_address
-from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.api.app import create_app
-from crawlerai.api.keys import create_key
 from crawlerai.db.models import ApiKey, Job, UrlTask
-from crawlerai.services.fetching import Fetching
-from crawlerai.storage.fs import FsStore
+from tests.db.conftest import PRIVATE_HOST
 
 pytestmark = pytest.mark.anyio
 
-PRIVATE_HOST = "intranet.example.test"
 URL = "https://shop.example.test/kettles/blue"
 
 
-@pytest.fixture
-async def client(
-    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> AsyncIterator[httpx.AsyncClient]:
-    """The app against the test database, without the engine's data files. `engine` deletes the jobs afterwards;
-    the key is deleted here."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-
-    async def resolve(host: str) -> list[IPAddress]:
-        return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
-
-    async def never(url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("submitting a batch fetches nothing")
-
-    async with engine.begin() as conn:
-        key = await create_key(conn, "batch-api-test")
-    app = create_app(eval_ui=False)
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
-        store = FsStore(tmp_path / "objects")
-        app.state.fetching = Fetching(Rungs(http=never, browser=never), SafeConnector(resolve), store, HostLimiter())
-        app.state.engine_data = None
-        yield client
-    keys_engine = create_async_engine(database_url)
-    async with keys_engine.begin() as conn:
-        # The key's jobs keep their rows until `engine` deletes them; they let go of the key first.
-        await conn.execute(update(Job).where(Job.api_key_id == key.id).values(api_key_id=None))
-        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-    await keys_engine.dispose()
+async def _post(submit_client: httpx.AsyncClient, **body: Any) -> httpx.Response:
+    return await submit_client.post("/v1/batch/scrape", json=body)
 
 
-async def _post(client: httpx.AsyncClient, **body: Any) -> httpx.Response:
-    return await client.post("/v1/batch/scrape", json=body)
-
-
-async def test_a_batch_is_accepted_and_queued(client: httpx.AsyncClient, engine: AsyncEngine) -> None:
-    response = await _post(client, urls=[URL, URL.replace("blue", "red")], formats=["markdown"])
+async def test_a_batch_is_accepted_and_queued(submit_client: httpx.AsyncClient, engine: AsyncEngine) -> None:
+    response = await _post(submit_client, urls=[URL, URL.replace("blue", "red")], formats=["markdown"])
 
     assert response.status_code == 202, response.text
     job_id = response.json()["job_id"]
     async with engine.connect() as conn:
         tasks = (await conn.execute(select(UrlTask.status).where(UrlTask.job_id == job_id))).scalars().all()
     assert tasks == ["queued", "queued"]
-    status = await client.get(f"/v1/jobs/{job_id}")
+    status = await submit_client.get(f"/v1/jobs/{job_id}")
     assert (status.json()["kind"], status.json()["counts"]["queued"]) == ("batch_scrape", 2)
 
 
-async def test_a_batch_records_the_key_that_submitted_it(client: httpx.AsyncClient, engine: AsyncEngine) -> None:
-    response = await _post(client, urls=[URL], formats=["markdown"], webhook_url="https://hooks.example.test/done")
+async def test_a_batch_records_the_key_that_submitted_it(submit_client: httpx.AsyncClient, engine: AsyncEngine) -> None:
+    response = await _post(
+        submit_client, urls=[URL], formats=["markdown"], webhook_url="https://hooks.example.test/done"
+    )
 
     job_id = response.json()["job_id"]
     async with engine.connect() as conn:
         label = select(ApiKey.label).join(Job, Job.api_key_id == ApiKey.id).where(Job.id == job_id)
-        assert (await conn.execute(label)).scalar_one() == "batch-api-test"  # its secret signs the webhook
+        assert (await conn.execute(label)).scalar_one() == "submit-api-test"  # its secret signs the webhook
 
 
 async def test_a_private_target_is_refused_with_the_member_that_names_it(
-    client: httpx.AsyncClient, engine: AsyncEngine
+    submit_client: httpx.AsyncClient, engine: AsyncEngine
 ) -> None:
-    response = await _post(client, urls=[URL, f"https://{PRIVATE_HOST}/admin"], formats=["markdown"])
+    response = await _post(submit_client, urls=[URL, f"https://{PRIVATE_HOST}/admin"], formats=["markdown"])
 
     assert response.status_code == 422, response.text
     body = response.json()
@@ -108,16 +59,18 @@ async def test_a_private_target_is_refused_with_the_member_that_names_it(
         assert (await conn.execute(select(Job.id).where(Job.kind == "batch_scrape"))).all() == []
 
 
-async def test_batch_problems(client: httpx.AsyncClient) -> None:
+async def test_batch_problems(submit_client: httpx.AsyncClient) -> None:
     schema = {"id": "01a13754-8791-738c-86ed-bc3b329d7fb1"}
     responses = {
         "prompt": await _post(
-            client, urls=[URL], formats=["records"], schema={"prompt": "kettles"}, page_kind="detail"
+            submit_client, urls=[URL], formats=["records"], schema={"prompt": "kettles"}, page_kind="detail"
         ),
         "records with markdown": await _post(
-            client, urls=[URL], formats=["records", "markdown"], schema=schema, page_kind="detail"
+            submit_client, urls=[URL], formats=["records", "markdown"], schema=schema, page_kind="detail"
         ),
-        "no engine data": await _post(client, urls=[URL], formats=["records"], schema=schema, page_kind="detail"),
+        "no engine data": await _post(
+            submit_client, urls=[URL], formats=["records"], schema=schema, page_kind="detail"
+        ),
     }
 
     statuses = {name: (r.status_code, r.json()["type"]) for name, r in responses.items()}
@@ -128,7 +81,7 @@ async def test_batch_problems(client: httpx.AsyncClient) -> None:
     }
 
 
-async def test_a_batch_needs_a_key(client: httpx.AsyncClient) -> None:
-    del client.headers["authorization"]
+async def test_a_batch_needs_a_key(submit_client: httpx.AsyncClient) -> None:
+    del submit_client.headers["authorization"]
 
-    assert (await _post(client, urls=[URL], formats=["markdown"])).status_code == 401
+    assert (await _post(submit_client, urls=[URL], formats=["markdown"])).status_code == 401

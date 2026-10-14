@@ -112,6 +112,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/crawl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Crawl Site
+         * @description Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,
+         *     `max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern
+         *     matches is extracted; with rules, any other page is fetched for its links only. A target the API may not fetch, in
+         *     `url` or `webhook_url`, is a 422 and nothing is queued.
+         */
+        post: operations["crawl_site_v1_crawl_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/eval/capture": {
         parameters: {
             query?: never;
@@ -780,6 +803,56 @@ export interface components {
             fields: {
                 [key: string]: components["schemas"]["CorrectedSteps"] | null;
             };
+        };
+        /**
+         * CrawlRequest
+         * @description The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
+         *     page the crawl extracts: `records` is asked alone, and a `schema.prompt` is not taken. `include` and `exclude`
+         *     globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is
+         *     called when the job ends (§4.2).
+         */
+        CrawlRequest: {
+            /** Exclude */
+            exclude?: string[];
+            /**
+             * @default {
+             *       "method_hint": "auto",
+             *       "respect_robots": true
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions"];
+            /** Formats */
+            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            /** Include */
+            include?: string[];
+            /**
+             * Limit
+             * @default 500
+             */
+            limit: number;
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Max Depth
+             * @default 3
+             */
+            max_depth: number;
+            /** Page Kind Rules */
+            page_kind_rules?: components["schemas"]["PageKindRule"][];
+            /** Schema */
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | null;
+            /** Url */
+            url: string;
+            /** Webhook Url */
+            webhook_url?: string | null;
+        };
+        /** CrawlSubmitted */
+        CrawlSubmitted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
         };
         /**
          * CssStep
@@ -1460,6 +1533,19 @@ export interface components {
             text: string | null;
             /** Url */
             url: string;
+        };
+        /**
+         * PageKindRule
+         * @description A crawl's rule (§4.5): a URL `pattern` matches is extracted as a `page_kind` page.
+         */
+        PageKindRule: {
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Pattern */
+            pattern: string;
         };
         /** PageMetadata */
         PageMetadata: {
@@ -2558,6 +2644,80 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    crawl_site_v1_crawl_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrawlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrawlSubmitted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

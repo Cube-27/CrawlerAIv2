@@ -4510,3 +4510,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `>`; a job–record link table so that job results list unchanged entities too.
 - Why: `>=` can only repeat a record, which its id deduplicates, while `>` could lose one. §6 has no link table.
 - Reversible: yes
+
+### D-0672 — `include` globs admit the start host and its subdomains only
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: The crawl frontier takes a URL only if its host is the start URL's host or a subdomain of it (RFC 1034 §3.1), even when an `include` glob matches a URL on another host. `map`'s `Scope` is unchanged.
+- Alternatives: Any host an `include` matches.
+- Why: This settles the #130 follow-up. It is the conservative reading of D-0037 and §4.5 ("on the same host"): a crawl never fetches from a site the caller did not name.
+- Reversible: yes
+
+### D-0673 — Sitemap seeds are read by the start URL's task, in the worker
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: The start task reads the sitemaps over HTTP, politely: it waits for the site's rate in place, within map's 60 s timeout. It adds the URLs in scope (up to `limit`) as depth-0 seeds with no parent, even when the start page is disallowed or not reached. A refused or timed-out sitemap read keeps the seeds read so far.
+- Alternatives: Read sitemaps at submit, which would block the caller up to 60 s; one task per sitemap.
+- Why: Submit stays fast, and the seeds commit atomically with the start task. A retry after a transient failure reads the sitemaps again; the seeds deduplicate (review of #137).
+- Reversible: yes
+
+### D-0674 — A records crawl needs rules of one page kind, the schema's
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: `formats: ["records"]` (asked alone) needs a non-empty `page_kind_rules`, all with the schema's page kind (listing refused as in scrape and batch). Format crawls take rules of any kind. A format crawl with no rules gives every reached page its formats; with rules, unmatched pages are `links_only`.
+- Alternatives: Extract every page when there are no rules.
+- Why: A job has one schema with one page kind, and a records crawl without rules would extract nothing (§13.2).
+- Reversible: yes
+
+### D-0675 — Crawl `limit` ≤ 5000, default 500; `max_depth` default 3
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: The bounds of `map` (D-0038, its `MAX_LIMIT` reused) and the §4.5 example.
+- Alternatives: No upper bound.
+- Why: `limit` bounds the job's tasks, and a crawl enqueues at most what a map of the site returns.
+- Reversible: yes
+
+### D-0676 — No `prompt`, no `budget` on a crawl
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: As batch (D-0628, D-0635): `schema.prompt` is a 422 and there is no `budget` member.
+- Alternatives: Draft the schema from the start page synchronously.
+- Why: Drafting needs a fetched page and role S; PR 5 builds that for `extract`, and crawl can reuse it then.
+- Reversible: yes
+
+### D-0677 — Page outputs only for `extracted` tasks
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: `/v1/jobs/{id}/results` lists every task of a format job (D-0630), but gives formats only to a task whose outcome is `extracted`. A `links_only` page keeps its capture (for its links) and shows no formats.
+- Alternatives: Leave `links_only` tasks out of the listing.
+- Why: Listing every task keeps the cursor stable while the job runs. For batch jobs nothing changes: a done task with an `ok` page is `extracted`.
+- Reversible: yes
+
+### D-0678 — Pinned configs cover the start host only; crawl tasks do not use conditional GET
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 4 (#137) · Status: decided
+- Decision: A records crawl pins the config active for the start URL's host at submit; pages on a subdomain an `include` admits are extracted cold for the whole job. Crawl tasks fetch whole pages (no validators, no 304 `unchanged`): link discovery needs the body. Batch keeps SPEC-11's conditional GET through `steps.fetch_page(recurring=...)`.
+- Alternatives: Pin at first fetch per host; conditional GET for crawl pages that lead nowhere.
+- Why: INV-28 pins at submit, when the subdomains are not known. Recurring crawls are SPEC-11 PR 4's to decide.
+- Reversible: yes

@@ -7,15 +7,12 @@ from fastapi import APIRouter, Depends, Request, status
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
-from crawlerai.api.problems import ProblemError, conflict, invalid, records_unavailable
+from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import batch
-from crawlerai.services.batch import BatchRejected, BatchScrapeRequest, BatchSubmitted
+from crawlerai.services.batch import BatchScrapeRequest, BatchSubmitted
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.schemas import InvalidSchema, SchemaConflict
-from crawlerai.services.scrape import RecordsUnavailable
-from crawlerai.services.scrape_steps import SchemaUnusable
 
 router = APIRouter(
     prefix="/v1/batch/scrape",
@@ -33,16 +30,5 @@ async def batch_scrape(
     scraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued."""
     fetching: Fetching = request.app.state.fetching
     data: EngineData | None = request.app.state.engine_data
-    try:
+    with submission_problems():
         return await batch.submit_batch(request.app.state.database, fetching.connector, body, data=data, api_key_id=key)
-    except BatchRejected as e:
-        # 422: the request names a target the API may not fetch (INV-16).
-        raise ProblemError(422, "ssrf_rejected", "Target refused", str(e), [(e.member, e.reason)]) from e
-    except SchemaUnusable as e:
-        raise invalid(str(e), [("schema", str(e))]) from e
-    except InvalidSchema as e:
-        raise invalid(str(e), [(f"schema.inline.{field}".rstrip("."), reason) for field, reason in e.errors]) from e
-    except SchemaConflict as e:
-        raise conflict(str(e)) from e
-    except RecordsUnavailable as e:
-        raise records_unavailable(str(e)) from e

@@ -282,8 +282,9 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
         final_url=row.final_url,
         fetched_at=row.fetched_at,
     )
-    # Only a page the task reached has formats (SPEC-07 §4.8).
-    if row.status != "done" or row.block_class != "ok" or row.object_key is None or row.final_url is None:
+    # Only a page the task reached and extracted has formats (SPEC-07 §4.8): a crawl's `links_only` page was reached,
+    # for its links, and is never extracted (ARCHITECTURE §13.2).
+    if row.outcome != "extracted" or row.object_key is None or row.final_url is None:
         return output
     made = await asyncio.to_thread(_formats_of, store, row.object_key, row.final_url, formats)
     return output if made is None else output.model_copy(update=made)

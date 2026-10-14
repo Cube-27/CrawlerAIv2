@@ -44,6 +44,7 @@ from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.browser import SharedBrowser
+from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
 
@@ -86,8 +87,10 @@ async def _work() -> None:
         rungs = Rungs(http=http, browser=browser.fetch, conditional=http)
         fetching = Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
         # Later specs register a handler for each job kind here.
+        data, margins = load_engine_data(), load_drift_margins()
         handlers: dict[JobKind, TaskHandler] = {
-            "batch_scrape": scrape_handler(fetching, load_engine_data(), load_drift_margins())
+            "batch_scrape": scrape_handler(fetching, data, margins),
+            "crawl": crawl_handler(fetching, data, margins),
         }
         await run_worker(settings, handlers, _stop_on_signals())
 
