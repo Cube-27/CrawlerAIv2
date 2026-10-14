@@ -137,7 +137,7 @@ describe("records screen: the list", () => {
       {
         method: "GET",
         path: "/v1/records",
-        query: `schema_id=${SCHEMA_ID}&site=shop.example.test`,
+        query: `schema_id=${SCHEMA_ID}&site=shop.example.test&limit=20`,
         authorization: "Bearer ck_first",
         body: null,
       },
@@ -219,9 +219,9 @@ describe("records screen: the list", () => {
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(await screen.findByText("Page 1")).toBeInTheDocument();
     expect(calls.filter(({ path }) => path === "/v1/records").map(({ query }) => query)).toEqual([
-      `schema_id=${SCHEMA_ID}`,
-      `schema_id=${SCHEMA_ID}&cursor=c2`,
-      `schema_id=${SCHEMA_ID}`,
+      `schema_id=${SCHEMA_ID}&limit=20`,
+      `schema_id=${SCHEMA_ID}&cursor=c2&limit=20`,
+      `schema_id=${SCHEMA_ID}&limit=20`,
     ]);
   });
 
@@ -257,8 +257,8 @@ describe("records screen: the list", () => {
 
     await waitFor(() => {
       expect(recordQueries(calls)).toEqual([
-        `schema_id=${SCHEMA_ID}`,
-        `schema_id=${SCHEMA_ID}&changed_since=2026-10-01T09%3A30%3A00.000Z`,
+        `schema_id=${SCHEMA_ID}&limit=20`,
+        `schema_id=${SCHEMA_ID}&changed_since=2026-10-01T09%3A30%3A00.000Z&limit=20`,
       ]);
     });
   });
@@ -286,8 +286,8 @@ describe("records screen: the list", () => {
 
     await waitFor(() => {
       expect(recordQueries(calls)).toEqual([
-        `schema_id=${SCHEMA_ID}&changed_since=2026-10-01T09%3A30%3A00.000Z`,
-        `schema_id=${SCHEMA_ID}`,
+        `schema_id=${SCHEMA_ID}&changed_since=2026-10-01T09%3A30%3A00.000Z&limit=20`,
+        `schema_id=${SCHEMA_ID}&limit=20`,
       ]);
     });
   });

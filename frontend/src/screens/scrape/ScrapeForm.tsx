@@ -14,14 +14,9 @@ import { SchemaSelect } from "../../components/SchemaSelect";
 import { FormActions } from "../../components/FormActions";
 import { FormatChoices } from "../../components/FormatChoices";
 import { LimitField } from "../../components/LimitField";
-import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
-import {
-  NO_RECORDS_PAGE_KINDS,
-  parseJsonObject,
-  withFormats,
-  type SchemaSource,
-  type ScrapeFormState,
-} from "./form";
+import { PageKindChoices, withFormats } from "../../components/PageKindChoices";
+import { METHOD_HINTS } from "../../components/requestOptions";
+import { parseJsonObject, type SchemaSource, type ScrapeFormState } from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["none", "None"],
@@ -151,7 +146,6 @@ export function ScrapeForm({
   onChange: (form: ScrapeFormState) => void;
   onSubmit: () => void;
 }>) {
-  const records = form.formats.includes("records");
   return (
     <Form
       className="flex flex-col gap-4"
@@ -191,18 +185,9 @@ export function ScrapeForm({
           }}
         />
         <SchemaInput form={form} onChange={onChange} />
-        {/* SPEC-07 §4.4: `page_kind` is required when the formats include records. */}
-        <Choices
-          label="Page kind"
-          options={PAGE_KINDS}
+        <PageKindChoices
           value={form.pageKind}
-          isRequired={records}
-          {...(records
-            ? {
-                disabled: NO_RECORDS_PAGE_KINDS,
-                description: "Records of listing pages are not available yet.",
-              }
-            : {})}
+          formats={form.formats}
           onChange={(pageKind) => {
             onChange({ ...form, pageKind });
           }}

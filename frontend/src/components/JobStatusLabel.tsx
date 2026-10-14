@@ -19,9 +19,18 @@ const TASK_STATUS_TONES: Record<TaskStatus, StatusTone> = {
   cancelled: "neutral",
 };
 
+/** Each `job.status` as people read it: its own name. */
+export const JOB_STATUS_TEXT: Readonly<Record<JobStatus, string>> = {
+  queued: "queued",
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
 /** A job's status as its text and icon. */
 export function JobStatusLabel({ status }: Readonly<{ status: JobStatus }>) {
-  return <StatusLabel text={status} tone={JOB_STATUS_TONES[status]} />;
+  return <StatusLabel text={JOB_STATUS_TEXT[status]} tone={JOB_STATUS_TONES[status]} />;
 }
 
 /** A task's status as its text and icon. */

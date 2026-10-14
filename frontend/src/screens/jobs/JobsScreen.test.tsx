@@ -345,6 +345,23 @@ describe("Jobs screen", () => {
     });
   });
 
+  it("offers detail pages only for a batch's records, which the server refuses for listing pages", async () => {
+    jobApi();
+    await open("/jobs", "Jobs");
+    await userEvent.click(screen.getByRole("button", { name: "New batch" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.click(
+      within(dialog.getByRole("radiogroup", { name: "Page kind" })).getByLabelText("Listing"),
+    );
+
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Records" }));
+
+    const kinds = within(dialog.getByRole("radiogroup", { name: "Page kind" }));
+    expect(kinds.getByLabelText("Listing")).toBeDisabled();
+    expect(kinds.getByLabelText("Listing")).not.toBeChecked();
+    expect(dialog.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
+  });
+
   it("shows a refused batch's problem with the member it names", async () => {
     jobApi({
       "POST /v1/batch/scrape": () =>

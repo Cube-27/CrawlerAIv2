@@ -13,7 +13,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { OutcomeLabel } from "../../components/OutcomeLabel";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { RecordTable } from "../../components/RecordTable";
-import { TablePagination } from "../../components/TablePagination";
+import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
 import { RecordInspector } from "../records/RecordInspector";
 
 /** The job's records in the columns of their schema, each opening the record inspector. */
@@ -79,23 +79,18 @@ function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
  * job without a schema. */
 export function JobResults({ jobId }: Readonly<{ jobId: string }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
-  const results = useJobResults(jobId, cursor);
-  const problem = problemOf(results.error);
-  if (problem !== null) return <ProblemAlert problem={problem} />;
-  if (!results.isSuccess) return <LoadingView label="Loading results" />;
-  const { data } = results;
+  const results = useJobResults(jobId, { cursor, limit: PAGE_SIZE });
+  const data = results.data;
   return (
-    <div className="flex flex-col gap-3">
-      {data.kind === "records" ? (
-        <JobRecords records={data.page.items} />
-      ) : (
-        <PageOutputs pages={data.page.items} />
-      )}
-      <TablePagination
-        summary={`Page ${String(page)}`}
-        onPrevious={previous}
-        onNext={nextTo(data.page.next_cursor)}
-      />
-    </div>
+    <PagedTable
+      problem={problemOf(results.error)}
+      loading={data === undefined ? "Loading results" : null}
+      page={page}
+      onPrevious={previous}
+      onNext={data === undefined ? null : nextTo(data.page.next_cursor)}
+    >
+      {data?.kind === "records" ? <JobRecords records={data.page.items} /> : null}
+      {data?.kind === "pages" ? <PageOutputs pages={data.page.items} /> : null}
+    </PagedTable>
   );
 }

@@ -128,13 +128,13 @@ export function cancelJob(client: ApiClient, id: string): Promise<ApiResult<JobS
   );
 }
 
-/** The job's results at `cursor` (the first page when null), at the server's page size. */
+/** The job's results at `cursor` (the first page when null), `limit` at most. */
 export async function listJobResults(
   client: ApiClient,
   id: string,
-  cursor: string | null,
+  { cursor, limit }: { cursor: string | null; limit: number },
 ): Promise<ApiResult<ResultsPage>> {
-  const query: ResultsQuery = cursor === null ? {} : { cursor };
+  const query: ResultsQuery = { ...(cursor === null ? {} : { cursor }), limit };
   const result = await apiResult(() => results(client, id, query), "Listing the job's results");
   return result.kind === "done" ? { kind: "done", value: resultsPage(result.value) } : result;
 }

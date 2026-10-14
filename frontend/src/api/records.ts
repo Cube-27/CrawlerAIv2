@@ -34,18 +34,17 @@ export function activeFilters(filters: RecordFilters): Partial<RecordFilters> {
   return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
 }
 
-function recordQuery(filters: RecordFilters, cursor: string | null): RecordQuery {
-  return { ...activeFilters(filters), ...(cursor === null ? {} : { cursor }) };
+function recordQuery(filters: RecordFilters, cursor: string | null, limit: number): RecordQuery {
+  return { ...activeFilters(filters), ...(cursor === null ? {} : { cursor }), limit };
 }
 
-/** The page of records at `cursor` (the first page when null); the page size is the server's. */
+/** The page of records at `cursor` (the first page when null), `limit` records at most. */
 export function listRecords(
   client: ApiClient,
-  filters: RecordFilters,
-  cursor: string | null,
+  { filters, cursor, limit }: { filters: RecordFilters; cursor: string | null; limit: number },
 ): Promise<ApiResult<RecordPage>> {
   return apiResult(
-    () => client.GET("/v1/records", { params: { query: recordQuery(filters, cursor) } }),
+    () => client.GET("/v1/records", { params: { query: recordQuery(filters, cursor, limit) } }),
     "Listing the records",
   );
 }

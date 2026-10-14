@@ -20,8 +20,8 @@ export interface JobEvents {
 }
 
 /** Follows `GET /v1/jobs/{id}/events` while mounted. A `progress` event reads the job's summary again; the end event
- * reads its summary and results again. A reconnect reads both again too: the stream resumes after the last event, but
- * `progress` is not stored, so the counts and an end missed while away come only from the summary. */
+ * reads its summary and results again. A reconnect reads the summary again too: the stream resumes after the last
+ * event, but `progress` is not stored, so the counts come only from the summary. */
 export function useJobEvents(
   id: string,
   delayMs: (attempt: number) => number = backoffMs,
@@ -53,8 +53,7 @@ export function useJobEvents(
       onState: (next) => {
         if (signal.aborted) return;
         if (previous === "reconnecting" && next === "live") {
-          void queryClient.invalidateQueries({ queryKey: jobKey(id) });
-          void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
+          void queryClient.invalidateQueries({ queryKey: jobKey(id) }, { cancelRefetch: false });
         }
         previous = next;
         setState(next);

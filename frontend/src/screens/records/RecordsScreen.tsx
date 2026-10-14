@@ -7,11 +7,9 @@ import { useSchema } from "../../api/hooks/schemas";
 import { activeFilters, type RecordFilters, type StoredRecord } from "../../api/records";
 import { useCursorPages } from "../../components/cursors";
 import { EmptyView } from "../../components/EmptyView";
-import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
-import { ProblemAlert } from "../../components/ProblemAlert";
+import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
 import { RecordTable } from "../../components/RecordTable";
-import { TablePagination } from "../../components/TablePagination";
 import { RecordFiltersForm } from "./RecordFilters";
 import { RecordInspector } from "./RecordInspector";
 
@@ -29,28 +27,28 @@ function filtersOf(params: URLSearchParams): RecordFilters {
 function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
   const [open, setOpen] = useState<StoredRecord | null>(null);
-  const records = useRecords(filters, cursor);
+  const records = useRecords({ filters, cursor, limit: PAGE_SIZE });
   const schema = useSchema(filters.schema_id);
-  const problem = problemOf(records.error ?? schema.error);
   // Stable while the schema is, so opening a record leaves the table's columns and cells as they are.
   const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
+  const ready = records.isSuccess && schema.isSuccess;
+  const items = records.data?.items ?? [];
 
-  if (problem !== null) return <ProblemAlert problem={problem} />;
-  if (!records.isSuccess || !schema.isSuccess) return <LoadingView label="Loading records" />;
-
-  const { items, next_cursor: next } = records.data;
   return (
-    <div className="flex flex-col gap-3">
-      {items.length === 0 ? (
-        <EmptyView title="No records">No record matches these filters.</EmptyView>
-      ) : (
-        <RecordTable label="Records" records={items} fieldTypes={fieldTypes} onOpen={setOpen} />
-      )}
-      <TablePagination
-        summary={`Page ${String(page)}`}
+    <>
+      <PagedTable
+        problem={problemOf(records.error ?? schema.error)}
+        loading={ready ? null : "Loading records"}
+        page={page}
         onPrevious={previous}
-        onNext={nextTo(next)}
-      />
+        onNext={records.isSuccess ? nextTo(records.data.next_cursor) : null}
+      >
+        {items.length === 0 ? (
+          <EmptyView title="No records">No record matches these filters.</EmptyView>
+        ) : (
+          <RecordTable label="Records" records={items} fieldTypes={fieldTypes} onOpen={setOpen} />
+        )}
+      </PagedTable>
       {open === null ? null : (
         <RecordInspector
           key={open.id}
@@ -61,7 +59,7 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 

@@ -2,9 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useSubmitBatch } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
-import { Choices } from "../../components/Choices";
 import { FormatChoices } from "../../components/FormatChoices";
-import { PAGE_KINDS } from "../../components/requestOptions";
+import { PageKindChoices, withFormats } from "../../components/PageKindChoices";
 import { buildBatch, INITIAL_BATCH, type BatchFormState } from "./form";
 import { JobDialog } from "./JobDialog";
 import { FetchFields, JobSchemaFields, LinesField } from "./JobFields";
@@ -40,7 +39,7 @@ function BatchForm({ onCancel }: Readonly<{ onCancel: () => void }>) {
       <FormatChoices
         value={form.formats}
         onChange={(formats) => {
-          setForm({ ...form, formats });
+          setForm(withFormats(form, formats));
         }}
       />
       <JobSchemaFields
@@ -49,13 +48,10 @@ function BatchForm({ onCancel }: Readonly<{ onCancel: () => void }>) {
           setForm({ ...form, schema });
         }}
       />
-      {/* SPEC-07 §4.4: `page_kind` is required when the formats include records. */}
-      <Choices
-        label="Page kind"
+      <PageKindChoices
         name="page_kind"
-        options={PAGE_KINDS}
         value={form.pageKind}
-        isRequired={form.formats.includes("records")}
+        formats={form.formats}
         onChange={(pageKind) => {
           setForm({ ...form, pageKind });
         }}

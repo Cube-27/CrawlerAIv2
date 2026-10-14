@@ -47,11 +47,11 @@ export function useJob(id: string) {
 }
 
 /** The job's results at `cursor`. */
-export function useJobResults(id: string, cursor: string | null) {
+export function useJobResults(id: string, page: { cursor: string | null; limit: number }) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...jobResultsKey(id), cursor],
-    queryFn: () => unwrap(listJobResults(client, id, cursor)),
+    queryKey: [...jobResultsKey(id), page],
+    queryFn: () => unwrap(listJobResults(client, id, page)),
   });
 }
 
