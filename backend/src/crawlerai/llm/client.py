@@ -123,7 +123,8 @@ class Provider(Protocol):
     def name(self) -> str: ...
 
     async def complete(self, call: ProviderCall) -> ProviderReply:
-        """Raises `ProviderError` on a rate limit, a server error or a timeout."""
+        """Raises `ProviderError` on a rate limit, a server error or a timeout, and `ProviderRefused` when the
+        provider refuses the request."""
         ...
 
 
@@ -134,7 +135,8 @@ class ProviderError(Exception):
 def is_transient(status: int) -> bool:
     """Whether an HTTP status says the provider did not answer this time: 408 Request Timeout (RFC 9110 §15.5.9),
     429 Too Many Requests (RFC 6585 §4) or a 5xx server error (RFC 9110 §15.6). Other errors are the request's own
-    fault (a bad key, an unknown model, a refused schema); another provider would not fix them, so they propagate."""
+    fault (a bad key, an unknown model, a refused schema): the provider raises `ProviderRefused`, which is not failed
+    over."""
     return status in (408, 429) or 500 <= status <= 599
 
 
@@ -157,6 +159,16 @@ class ProviderUnavailable(LLMFailure):
     """No provider answered (§4.7)."""
 
     code = field_reason = "llm_unavailable"
+
+
+class ProviderRefused(ProviderUnavailable):
+    """A provider refused the request: an HTTP error status that `is_transient` does not cover. The call gave no reply,
+    as when no provider answers, so the fields stay `missing` with `llm_unavailable` (§4.7); the message keeps the
+    provider's reason. A retry or another provider would not fix the request, so it is neither."""
+
+    @classmethod
+    def status(cls, provider: str, status: int, message: str) -> "ProviderRefused":
+        return cls(f"{provider}: HTTP {status}: {message}")
 
 
 class OutputInvalid(LLMFailure):

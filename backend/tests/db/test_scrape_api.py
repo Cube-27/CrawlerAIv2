@@ -26,6 +26,7 @@ from crawlerai.db.models import ApiKey, Job
 from crawlerai.llm.client import MeteredClient, ProviderError, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
@@ -41,7 +42,12 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue kettle</title></head
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
-        {"page_kind": "detail", "fields": {"title": {"type": "text", "required": True, "description": "Product name"}}}
+        to_wire(
+            {
+                "page_kind": "detail",
+                "fields": {"title": {"type": "text", "required": True, "description": "Product name"}},
+            }
+        )
     ),
     tokens_in=900,
     tokens_out=80,

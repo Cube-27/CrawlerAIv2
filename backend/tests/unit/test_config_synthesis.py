@@ -11,6 +11,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir import step_wire
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, XPathStep
 from crawlerai.config_ir.synthesis import ROW, Synthesis, synthesize
@@ -67,8 +68,29 @@ def _detail(n: int) -> SamplePage:
 SAMPLE = [_detail(n) for n in range(1, 6)]
 
 
+def _wire(step: dict[str, Any]) -> dict[str, Any]:
+    """An IR step document as role A writes it (`step_wire`), even one the IR refuses."""
+    selector = next(key for key in step_wire.SELECTORS if key in step)
+    post = [
+        {"op": op, "pattern": params.get("pattern", ""), "repl": params.get("repl", "")}
+        for item in step.get("post", [])
+        for op, params in item.items()
+    ]
+    return {
+        "selector": selector,
+        "expression": step[selector],
+        "when_type": step.get("when_type", ""),
+        "source": step.get("source", ""),
+        "post": post,
+    }
+
+
+def _steps(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"steps": [_wire(step) for step in steps]}
+
+
 def _fields(**steps: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"fields": {name: {"steps": list(s)} for name, s in steps.items()}}
+    return {"fields": {name: _steps(s) for name, s in steps.items()}}
 
 
 def _run(
@@ -109,8 +131,8 @@ def test_the_output_schema_has_steps_for_the_asked_fields_and_no_place_for_a_val
     _run(client)
     validator = Draft202012Validator(client.requests[0].output_schema)
     assert validator.is_valid(_fields(title=[TITLE]))
-    assert not validator.is_valid({"fields": {"title": {"steps": [TITLE], "value": "Item 1"}}})
-    assert not validator.is_valid(_fields(title=[{**TITLE, "value": "Item 1"}]))
+    assert not validator.is_valid({"fields": {"title": {**_steps([TITLE]), "value": "Item 1"}}})
+    assert not validator.is_valid({"fields": {"title": {"steps": [{**_wire(TITLE), "value": "Item 1"}]}}})
     assert not validator.is_valid(_fields(title=[TITLE], other=[TITLE]))
 
 
@@ -135,7 +157,7 @@ def test_a_failing_field_is_repaired_with_its_previous_steps_and_diagnostics() -
     assert (list(result.ir.fields), result.repairs) == (["title"], 1)
     repair = client.requests[1]
     assert (repair.prompt_kind, repair.model_class) == ("a_repair", "strong")
-    assert '- title: [{"xpath": "normalize-space(//h2)"}]' in repair.user
+    assert '- title: [{"expression": "normalize-space(//h2)", "post": [], "selector": "xpath"' in repair.user
     assert '  - page 1: value_mismatch("Other 1", "Item 1")' in repair.user
 
 
@@ -167,7 +189,7 @@ def test_a_repair_asks_only_for_the_fields_that_failed() -> None:
         ({"xpath": "//h1 | //h2"}, "page 1: multi_match(2)"),
         ({"xpath": "//h3"}, "page 1: no_match"),
         ({"xpath": "lower-case(//h1)"}, "step 0: invalid_xpath("),
-        ({"xpath": "//h1", "regex": "h1"}, "step 0: invalid_step(a step has exactly one selector key"),
+        ({"regex": "<h1>(.*)</h1>", "source": "xhr"}, "step 0: invalid_step(Extra inputs are not permitted"),
     ],
 )
 def test_each_failure_has_its_diagnostic(step: dict[str, Any], diagnostic: str) -> None:
@@ -251,9 +273,9 @@ LISTING_SAMPLE = [_listing_page(n) for n in range(1, 6)]
 
 
 def _listing_reply(row: dict[str, Any] | None = None, **fields: list[dict[str, Any]]) -> dict[str, Any]:
-    listing: dict[str, Any] = {"fields": {name: {"steps": steps} for name, steps in fields.items()}}
+    listing: dict[str, Any] = {"fields": {name: _steps(steps) for name, steps in fields.items()}}
     if row is not None:
-        listing["row"] = row
+        listing["row"] = _wire(row)
     return listing
 
 
@@ -264,7 +286,7 @@ def _run_listing(client: ScriptedClient, sample: list[SamplePage] = LISTING_SAMP
 
 def test_a_listing_gets_its_row_selector_row_fields_and_next() -> None:
     reply = {
-        "fields": {"next_page_url": {"steps": [NEXT_STEP]}},
+        **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK]),
     }
     client = ScriptedClient(reply)
@@ -277,19 +299,21 @@ def test_a_listing_gets_its_row_selector_row_fields_and_next() -> None:
 
 
 def test_next_takes_one_step() -> None:
-    reply = {
-        "fields": {"next_page_url": {"steps": [NEXT_STEP]}},
+    wrong = {"xpath": "//a[@rel='prev']/@href"}
+    first = {
+        **_fields(next_page_url=[wrong, NEXT_STEP]),
         "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK]),
     }
-    client = ScriptedClient(reply)
-    _run_listing(client)
-    validator = Draft202012Validator(client.requests[0].output_schema)
-    assert not validator.is_valid({**reply, "fields": {"next_page_url": {"steps": [NEXT_STEP, NEXT_STEP]}}})
+    client = ScriptedClient(first, _fields(next_page_url=[NEXT_STEP]))
+    result = _run_listing(client)
+    assert "  - step 1: invalid_step(next_page_url takes one step)" in client.requests[1].user
+    assert result.ir.listing is not None
+    assert result.ir.listing.next == XPathStep.model_validate(NEXT_STEP)
 
 
 def test_a_row_selector_with_too_few_rows_is_repaired_with_its_row_fields() -> None:
     first = {
-        "fields": {"next_page_url": {"steps": [NEXT_STEP]}},
+        **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply({"css": "ul > li:first-child"}, title=[ROW_TITLE], link=[ROW_LINK]),
     }
     second = {"listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK])}
@@ -304,7 +328,7 @@ def test_a_row_selector_with_too_few_rows_is_repaired_with_its_row_fields() -> N
 
 def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
     first = {
-        "fields": {"next_page_url": {"steps": [NEXT_STEP]}},
+        **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[{"attr": "class"}]),
     }
     second = {"listing": _listing_reply(link=[ROW_LINK])}
@@ -313,14 +337,14 @@ def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
     repair = client.requests[1]
     schema: Any = repair.output_schema
     assert list(schema["properties"]) == ["listing"]
-    assert 'the row selector is {"css": "ul > li"' in repair.user
+    assert 'the row selector is {"expression": "ul > li", "post": [], "selector": "css"' in repair.user
     assert result.ir.listing is not None
     assert result.ir.listing.fields["link"].steps == [XPathStep(xpath="a/@href")]
 
 
 def test_without_a_verified_row_there_is_no_listing_and_next_is_left_out() -> None:
     reply = {
-        "fields": {"next_page_url": {"steps": [NEXT_STEP]}},
+        **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply({"attr": "class"}, title=[ROW_TITLE], link=[ROW_LINK]),
     }
     client = ScriptedClient(reply, *[{"listing": _listing_reply({"attr": "class"}, title=[], link=[])}] * 3)

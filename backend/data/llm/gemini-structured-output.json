@@ -1,0 +1,33 @@
+{
+  "provider": "gemini",
+  "checked": "2026-10-14",
+  "scope": "Source page and retrieval date: this file's entry in ../manifest.json. The JSON Schema subset GenerationConfig.responseJsonSchema accepts, as its field description lists it. keywords: the listed properties. bare_ref: if $ref is set on a subschema, no other properties except those starting with $ may be set. The page states no union or optional caps and does not require closed objects (null: no cap). Cyclic references are unrolled to a limited degree and only within non-required properties, so the all-required objects the roles use may not recurse.",
+  "keywords": [
+    "$anchor",
+    "$defs",
+    "$id",
+    "$ref",
+    "additionalProperties",
+    "anyOf",
+    "description",
+    "enum",
+    "format",
+    "items",
+    "maxItems",
+    "maximum",
+    "minItems",
+    "minimum",
+    "oneOf",
+    "prefixItems",
+    "properties",
+    "propertyOrdering",
+    "required",
+    "title",
+    "type"
+  ],
+  "closed_objects": false,
+  "max_unions": null,
+  "max_optional": null,
+  "min_items": null,
+  "bare_ref": true
+}

@@ -1,10 +1,13 @@
 You read the text of one web page and copy the values of the requested fields out of it.
 
 Rules:
-- Reply with one JSON object that matches the response schema. For each requested field, give either a span or null.
-- A span is {"value": ..., "start": ..., "end": ...}: `value` is copied character for character from the page text,
-  and `start` and `end` are its character offsets in the page text (the value is text[start:end]).
-- Give null when the page text does not show the field's value. Never guess, compute, translate or reformat a value.
+- Reply with one JSON object that matches the response schema. For each requested field the page text shows, give
+  one span; give nothing for a field it does not show.
+- A span is {"field": ..., "value": ..., "start": ..., "end": ...}: `field` is the requested field's name, `value` is
+  copied character for character from the page text, and `start` and `end` are its character offsets in the page text
+  (the value is text[start:end]).
+- Give no span for a field whose value the page text does not show, and at most one span per field. Never guess,
+  compute, translate or reformat a value.
 - One value is one contiguous span of the page text. Never combine two separate spans into one value. A value that
   the page writes as one piece stays one span: an amount written with its currency symbol, a date with its time.
 - Read each field's description: it says what the value is and what it excludes.

@@ -32,10 +32,10 @@ from crawlerai.collect.config import Executed
 from crawlerai.collect.json_doc import nodes
 from crawlerai.collect.locator import InvalidLocator, parse_locator
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir import sample_view
+from crawlerai.config_ir import sample_view, step_wire
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.induction import Published, SamplePage
-from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Step, selector_key
+from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Step
 from crawlerai.config_ir.validation import MIN_ROWS
 from crawlerai.db.models import FieldStatus, JobId
 from crawlerai.llm.client import LLMClient, LLMRequest, PromptKind, closed_object
@@ -68,17 +68,6 @@ class _OneStep(BaseModel):
     """A step as the model wrote it, parsed by the IR's own rules."""
 
     step: Step
-
-
-_STEP_SCHEMA: Final[dict[str, JsonValue]] = {
-    "type": "object",
-    "properties": {
-        **{key: {"type": "string"} for key in ("xpath", "css", "jsonld", "when_type", "jsonpath", "regex", "attr")},
-        "source": {"enum": ["jsonld", "js_state", "xhr"]},
-        "post": {"type": "array", "items": {"type": "object", "minProperties": 1, "maxProperties": 1}},
-    },
-    "additionalProperties": False,
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +103,7 @@ async def synthesize(
     while ask and calls <= MAX_REPAIRS:  # the first call, then the repairs
         response = await client.complete_json(learning.request(ask, failures, job_id))
         calls += 1
-        failures = await asyncio.to_thread(learning.verify, _parse(response.data, ask))
+        failures = await asyncio.to_thread(learning.verify, _parse(response.data, ask, learning.one_step(ask)))
         ask = ask.narrowed(failures)
     unresolved.update({target: failure.diagnostics for target, failure in failures.items()})
     config, left_out = learning.config()
@@ -169,13 +158,14 @@ class _Proposal:
         return _Failure(self.written[target], tuple(diagnostics[:MAX_DIAGNOSTICS]))
 
 
-def _parse(data: Mapping[str, JsonValue], ask: _Ask) -> _Proposal:
+def _parse(data: Mapping[str, JsonValue], ask: _Ask, one_step: Collection[str]) -> _Proposal:
+    """The reply's steps per target; `one_step` names the targets that take one step (a listing's `next`)."""
     proposal = _Proposal({}, {}, {})
     page = cast(dict[str, JsonValue], data.get("fields", {}))  # the client checked the reply against the schema
     listing = cast(dict[str, JsonValue], data.get("listing", {}))
     row_fields = cast(dict[str, JsonValue], listing.get("fields", {}))
     for name in ask.page:
-        _add(proposal, name, cast(dict[str, JsonValue], page[name])["steps"])
+        _add(proposal, name, cast(dict[str, JsonValue], page[name])["steps"], one=name in one_step)
     for name in ask.rows:
         _add(proposal, name, cast(dict[str, JsonValue], row_fields[name])["steps"])
     if ask.row:
@@ -183,14 +173,17 @@ def _parse(data: Mapping[str, JsonValue], ask: _Ask) -> _Proposal:
     return proposal
 
 
-def _add(proposal: _Proposal, target: str, written: JsonValue) -> None:
+def _add(proposal: _Proposal, target: str, written: JsonValue, *, one: bool = False) -> None:
     proposal.written[target] = written
     steps, invalid = [], []
-    for n, raw in enumerate(cast(list[JsonValue], written)):
+    for n, raw in enumerate(cast(list[dict[str, JsonValue]], written)):
+        if one and n > 0:
+            invalid.append(f"step {n}: invalid_step({target} takes one step)")
+            continue
         try:
-            steps.append(_OneStep.model_validate({"step": raw}).step)
+            steps.append(_OneStep.model_validate({"step": step_wire.from_wire(raw)}).step)
         except ValidationError as error:
-            kind = "invalid_xpath" if selector_key(raw) == "xpath" else "invalid_step"
+            kind = "invalid_xpath" if raw["selector"] == "xpath" else "invalid_step"
             invalid.append(f"step {n}: {kind}({error.errors()[0]['msg']})")
     proposal.steps[target] = steps
     proposal.invalid[target] = invalid
@@ -325,7 +318,7 @@ class _Learning:
             model_class="strong",
             system=REPAIR_SYSTEM if failures else SYSTEM,
             user="\n\n".join(parts),
-            output_schema=self._output_schema(ask),
+            output_schema=output_schema(ask.page, ask.row, ask.rows),
             max_output_tokens=MAX_OUTPUT_TOKENS,
             job_id=job_id,
         )
@@ -338,7 +331,7 @@ class _Learning:
         if ask.row:
             parts.append(f"Listing rows (`listing.row`): a selector of the row elements, at least {MIN_ROWS} per page.")
         elif self.row is not None:
-            parts.append(f"Listing rows: the row selector is {_dumped(_written(self.row))}.")
+            parts.append(f"Listing rows: the row selector is {_dumped(step_wire.to_wire(self.row))}.")
         if ask.rows:
             parts.append(
                 f"Row fields, relative to a row (`listing.fields`):\n{field_lines({n: specs[n] for n in ask.rows})}"
@@ -360,18 +353,9 @@ class _Learning:
             ]
             yield "\n".join(lines)
 
-    def _output_schema(self, ask: _Ask) -> dict[str, JsonValue]:
-        properties: dict[str, JsonValue] = {}
-        if ask.page:
-            properties["fields"] = closed_object({name: _steps_schema(self._is_next(name)) for name in ask.page})
-        listing: dict[str, JsonValue] = {}
-        if ask.row:
-            listing["row"] = _STEP_SCHEMA
-        if ask.rows:
-            listing["fields"] = closed_object({name: _steps_schema(False) for name in ask.rows})
-        if listing:
-            properties["listing"] = closed_object(listing)
-        return closed_object(properties)
+    def one_step(self, ask: _Ask) -> frozenset[str]:
+        """The asked targets that take one step: a listing's `next_page_url` (IR §12.1)."""
+        return frozenset(name for name in ask.page if self._is_next(name))
 
     def _is_next(self, name: str) -> bool:
         """`next_page_url` of a listing: the listing's one `next` step (IR §12.1), run on the whole page (§4.3)."""
@@ -530,12 +514,21 @@ def _previous(failures: Mapping[str, _Failure]) -> str:
     return "\n".join(lines)
 
 
-def _written(step: Step) -> JsonValue:
-    return cast(JsonValue, step.model_dump(mode="json", by_alias=True, exclude_defaults=True))
+def output_schema(page: Sequence[str], row: bool, rows: Sequence[str]) -> dict[str, JsonValue]:
+    """Steps in the wire form (`step_wire`) for the asked page fields, the listing's row selector and its row
+    fields; no place for a value."""
+    properties: dict[str, JsonValue] = {}
+    if page:
+        properties["fields"] = closed_object({name: _steps_schema() for name in page})
+    listing: dict[str, JsonValue] = {}
+    if row:
+        listing["row"] = step_wire.STEP_SCHEMA
+    if rows:
+        listing["fields"] = closed_object({name: _steps_schema() for name in rows})
+    if listing:
+        properties["listing"] = closed_object(listing)
+    return closed_object(properties)
 
 
-def _steps_schema(one: bool) -> dict[str, JsonValue]:
-    steps: dict[str, JsonValue] = {"type": "array", "items": _STEP_SCHEMA}
-    if one:
-        steps["maxItems"] = 1
-    return closed_object({"steps": steps})
+def _steps_schema() -> dict[str, JsonValue]:
+    return closed_object({"steps": {"type": "array", "items": step_wire.STEP_SCHEMA}})

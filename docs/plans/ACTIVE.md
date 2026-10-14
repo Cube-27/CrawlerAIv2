@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- UAT fix PRs (from the 2026-10-14 UAT): runtime #153 merged; LLM layer (fix/uat-llm) and frontend (fix/uat-frontend) in flight. Next: UAT re-run of the record-dependent features, then a data-accuracy plan. Blocked: exposing task failure/block reasons in the jobs API (D-0745, needs-owner).
+- UAT fix PRs (from the 2026-10-14 UAT): runtime #153 and LLM layer #154 merged; frontend (fix/uat-frontend) in flight. Next: UAT re-run of the record-dependent features, then a data-accuracy plan. Blocked: task failure/block reasons in the jobs API (D-0745); simple pages skip the LLM only once source precedence can be committed (OPEN_QUESTIONS #19 / D-0444).
+- Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim enum for `rows`; SPEC-06 lines 115 and 186 still describe role C's reply as `null` per field.
 - Follow-ups from #153: a task still adds to `job.usage` mid-transaction (`record_usage`, role C's usage in `_visit`), which locks the job row until the task commits; recording usage at the task's end would let no later network I/O hold up a cancel. Declare `anyio` as a direct dependency (`services/events.py`, `mcp_server` import it).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
 - Follow-ups from #150 review: a max_age-reused api capture can meet a config with no recipe; config_recipe parses the recipe a second time.

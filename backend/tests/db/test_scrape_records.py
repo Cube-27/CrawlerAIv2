@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import JsonValue
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -36,8 +37,9 @@ from crawlerai.db.models import (
     UrlTask,
 )
 from crawlerai.db.models import SchemaDef as SchemaRow
-from crawlerai.llm.client import MeteredClient, ProviderReply
+from crawlerai.llm.client import MeteredClient, ProviderRefused, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
+from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -59,7 +61,12 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue kettle</title></head
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
-        {"page_kind": "detail", "fields": {"title": {"type": "text", "required": True, "description": "Product name"}}}
+        to_wire(
+            {
+                "page_kind": "detail",
+                "fields": {"title": {"type": "text", "required": True, "description": "Product name"}},
+            }
+        )
     ),
     tokens_in=900,
     tokens_out=80,
@@ -222,8 +229,8 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     web.pages[url] = (200, body, "ok")
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
-    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
+    price = {"field": "price", "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": [price]}), tokens_in=7, tokens_out=3)
     llm = MeteredClient([FakeProvider([reply])], engine)
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), llm=llm, data=engine_data)
@@ -233,6 +240,34 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     price_field = result.records[0].fields["price"]
     assert (price_field.value, price_field.source_kind) == ({"amount": "19.90", "currency": "EUR"}, "llm")
     assert result.usage.llm_calls == 1
+
+
+async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # SPEC-06 §4.7: the provider refusing the request (a 400) leaves the asked fields missing with its reason.
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, _product_page(url, offers=False), "ok")
+    provider = FakeProvider([ProviderRefused.status("fake", 400, "schema refused")])
+
+    result = await scrape(
+        engine,
+        fetching,
+        _records(url, {"id": str(kettle_schema.id)}),
+        llm=MeteredClient([provider], engine),
+        data=engine_data,
+    )
+
+    assert (result.outcome, len(provider.calls), result.usage.llm_calls) == ("partial", 1, 0)
+    assert result.records is not None
+    fields = result.records[0].fields
+    assert (fields["price"].status, fields["price"].reason) == ("missing", "llm_unavailable")
+    assert fields["title"].status == "published"
 
 
 async def test_each_extracted_or_partial_page_counts_toward_progressive_state(
@@ -464,10 +499,10 @@ async def test_a_prompt_draft_of_another_page_kind_fails_the_job(
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, _product_page(url), "ok")
-    title = {"type": "text", "required": True, "description": "Product name", "scope": "row"}
+    title: dict[str, JsonValue] = {"type": "text", "required": True, "description": "Product name", "scope": "row"}
     listing = ProviderReply(
         model="fake-strong",
-        text=json.dumps({"page_kind": "listing", "fields": {"title": title}}),
+        text=json.dumps(to_wire({"page_kind": "listing", "fields": {"title": title}})),
         tokens_in=1,
         tokens_out=1,
     )

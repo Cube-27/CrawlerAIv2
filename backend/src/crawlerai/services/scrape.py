@@ -94,6 +94,8 @@ from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
 MAX_TIMEOUT_S: Final = 120  # D-0028
+# A scrape task's `last_error` when it failed for no reason the service declares.
+INTERNAL_ERROR: Final = "internal_error"
 # The process that runs a scrape's task, named as a worker names itself (`crawlerai.worker.loop`).
 _CLAIMANT: Final = f"api:{socket.gethostname()}:{os.getpid()}"
 _NO_LLM: Final = Unconfigured("no LLM provider is configured")
@@ -240,7 +242,8 @@ async def scrape(
     `data`, `SchemaUnusable` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
     `InvalidSchema` for an inline schema. Raises, failing the job: `TargetRejected` for a refused redirect,
     `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
-    `SchemaUnusable` for a draft of another page kind."""
+    `SchemaUnusable` for a draft of another page kind. Any other exception fails the job with `internal_error` and
+    propagates."""
     await check_target(fetching.connector, request.url)
     work = _Work(llm, data, margins, await _named_schema(engine, request, data))
     task = await _start(engine, request, work.schema)
@@ -258,6 +261,10 @@ async def scrape(
         raise
     except LLMFailure as e:
         await _fail(engine, task, e.code)
+        raise
+    except Exception:
+        # Anything else is this process's fault; the job still ends now, not when the task's lease runs out.
+        await _fail(engine, task, INTERNAL_ERROR)
         raise
 
 

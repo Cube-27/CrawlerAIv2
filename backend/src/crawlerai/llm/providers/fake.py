@@ -1,6 +1,7 @@
 """Scripted test doubles (SPEC-06 §6): no provider is called in CI.
 
-`FakeProvider` answers each call with the next scripted reply, or raises the next scripted `ProviderError`, and keeps
+`FakeProvider` answers each call with the next scripted reply, or raises the next scripted error (a `ProviderError`, or
+a `ProviderRefused`), and keeps
 the calls it received so tests can check what the client sent. `ScriptedClient` does the same one level up, for a role
 under test: it stands in for the LLM client.
 """
@@ -22,7 +23,7 @@ from crawlerai.llm.client import (
 
 
 class FakeProvider:
-    def __init__(self, script: Iterable[ProviderReply | ProviderError], name: str = "fake") -> None:
+    def __init__(self, script: Iterable[ProviderReply | Exception], name: str = "fake") -> None:
         self.name = name
         self._script = list(script)
         self.calls: list[ProviderCall] = []
@@ -32,7 +33,7 @@ class FakeProvider:
         if not self._script:
             raise ProviderError("no scripted reply left")
         step = self._script.pop(0)
-        if isinstance(step, ProviderError):
+        if isinstance(step, Exception):
             raise step
         return step
 

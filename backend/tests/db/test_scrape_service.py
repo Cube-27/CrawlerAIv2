@@ -27,15 +27,19 @@ from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import Capture, Job, Site, UrlTask, UsageEvent
 from crawlerai.llm.client import (
     BudgetExhausted,
+    LLMRequest,
+    LLMResponse,
     MeteredClient,
     OutputInvalid,
     ProviderError,
     ProviderReply,
     ProviderUnavailable,
+    ReplyCheck,
     Unconfigured,
 )
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.services import scrape_steps
 from crawlerai.services.fetching import Fetching, TargetRejected
 from crawlerai.services.scrape import ScrapeRequest, ScrapeTimedOut, scrape
@@ -62,7 +66,12 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue  kettle</title>
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
-        {"page_kind": "detail", "fields": {"title": {"type": "text", "required": True, "description": "Product name"}}}
+        to_wire(
+            {
+                "page_kind": "detail",
+                "fields": {"title": {"type": "text", "required": True, "description": "Product name"}},
+            }
+        )
     ),
     tokens_in=900,
     tokens_out=80,
@@ -70,7 +79,7 @@ DRAFT_REPLY = ProviderReply(
 # Valid JSON for the output schema, but a field without a description, which the draft check refuses.
 UNDESCRIBED = ProviderReply(
     model="fake-strong",
-    text=json.dumps({"page_kind": "detail", "fields": {"title": {"type": "text"}}}),
+    text=json.dumps(to_wire({"page_kind": "detail", "fields": {"title": {"type": "text"}}})),
     tokens_in=1,
     tokens_out=1,
 )
@@ -538,3 +547,23 @@ async def test_a_draft_the_llm_cannot_give_fails_the_job(
         await scrape(engine, fetching, scrape_request, llm=llm)
 
     assert await _failed(engine, url) == ("failed", last_error, "failed")
+
+
+class _Broken:
+    """An LLM client that fails in a way no caller expects."""
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        raise RuntimeError("synthetic failure")
+
+
+async def test_a_scrape_that_fails_unexpectedly_ends_its_job_at_once(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
+) -> None:
+    # F09: the job is not left `running` with its task claimed until the lease runs out.
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, PAGE, "ok", None)
+
+    with pytest.raises(RuntimeError, match="synthetic failure"):
+        await scrape(engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=_Broken())
+
+    assert await _failed(engine, url) == ("failed", "internal_error", "failed")

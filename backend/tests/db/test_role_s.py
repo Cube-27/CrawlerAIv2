@@ -16,6 +16,7 @@ from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.llm.client import MeteredClient, OutputInvalid, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name, draft_schema
+from crawlerai.llm.roles.s_wire import to_wire
 
 pytestmark = pytest.mark.anyio
 
@@ -31,7 +32,7 @@ UNDESCRIBED: dict[str, Any] = {"page_kind": "detail", "fields": {"title": {"type
 
 
 def reply(document: dict[str, Any]) -> ProviderReply:
-    return ProviderReply(model="fake-strong", text=json.dumps(document), tokens_in=900, tokens_out=80)
+    return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
 
 @pytest.fixture

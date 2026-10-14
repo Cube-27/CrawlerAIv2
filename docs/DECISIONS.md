@@ -5030,3 +5030,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: (a) `PageOutput.last_error: str | null` on `/results` plus a `task_failed` event `{task_id, url, attempts, last_error}`; (b) a per-task listing endpoint, which also covers records jobs; (c) leave it. Also: `cancel_requested: bool` on the job summary, so the job page can show "cancel requested" while a dead worker's lease runs out.
 - Why: A public API change beyond the spec (CLAUDE.md §4). Recommendation: (a) plus `cancel_requested`; additive fields, and the worker already writes `last_error` redacted (SPEC-01 §4). Blocks the F17 UI (fix/uat-frontend).
 - Reversible: yes
+
+### D-0746 — Role replies use wire forms inside every provider's structured-output subset
+- Date: 2026-10-14 · Spec/PR: UAT fix F01–F04, F09 (#154) · Status: decided
+- Decision: Role C replies with a list of `{field, value, start, end}` claims (a field claimed twice is dropped, C7); role S with `llm/roles/s_wire` (fields as a list, `""`/`[]` for an absent parameter, nesting unrolled to `MAX_DEPTH`); role A with `config_ir/step_wire` (`{selector, expression, when_type, source, post}`), a listing's extra `next` steps being `invalid_step` instead of the schema's `maxItems: 1`. Each reply is read back into the role's model; SPEC-06 §4.2, §4.4, §4.5 and SPEC-08 §4.6 clarified.
+- Alternatives: Strip unsupported keywords per provider (can't fix recursion or the union cap); instruct JSON without native structured output.
+- Why: Constrained decoding on both providers for any field count; ARCHITECTURE §11's grounding and selector rules are unchanged.
+- Reversible: yes
+
+### D-0747 — Provider structured-output subsets are versioned data
+- Date: 2026-10-14 · Spec/PR: UAT fix F01–F04, F09 (#154) · Status: decided
+- Decision: `backend/data/llm/{anthropic,gemini}-structured-output.json`, pinned in the manifest with the provider's documentation page, read by `llm.schema_subset`; a property test checks every role's schema against each.
+- Alternatives: Constants in code citing the documentation URLs, which the C3 scan refuses.
+- Why: C4, following the pricing files (SPEC-06 §4.8).
+- Reversible: yes
+
+### D-0748 — A provider's refusal is `ProviderRefused`
+- Date: 2026-10-14 · Spec/PR: UAT fix F01–F04, F09 (#154) · Status: decided
+- Decision: An HTTP error status that `is_transient` does not cover raises `ProviderRefused`, a subclass of `ProviderUnavailable` (code and field reason `llm_unavailable`, problem 503) carrying the provider's status and message; it is neither retried nor failed over.
+- Alternatives: A new code or problem type (a public API shape); failing over on a refusal.
+- Why: SPEC-06 §4.7 names `llm_unavailable` for a call without a reply; `is_transient` already says other statuses are not failed over.
+- Reversible: yes
+
+### D-0749 — A scrape that fails for an undeclared reason records `internal_error`
+- Date: 2026-10-14 · Spec/PR: UAT fix F01–F04, F09 (#154) · Status: decided
+- Decision: `services.scrape` fails the task and job with `last_error = internal_error` on any exception it does not declare, then re-raises.
+- Alternatives: The exception's class name.
+- Why: A stable code like scrape's other `last_error` codes; the job ends at once instead of after the lease (UAT F09).
+- Reversible: yes

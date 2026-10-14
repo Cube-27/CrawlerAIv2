@@ -685,7 +685,7 @@ class GroundingLLM:
         title = next(line for line in text.split("\n") if line.startswith("Item "))
         start = text.index(title)
         return LLMResponse(
-            data={"fields": {"title": {"value": title, "start": start, "end": start + len(title)}, "summary": None}},
+            data={"fields": [{"field": "title", "value": title, "start": start, "end": start + len(title)}]},
             provider="provider-a",
             model="model-a",
             tokens_in=len(req.user),

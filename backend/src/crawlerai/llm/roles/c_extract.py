@@ -1,11 +1,11 @@
 """Role C: grounded values read from a page's cleaned text (SPEC-06 §4.4, ARCHITECTURE §8.4, §8.6, §11).
 
 The model reads the page's cleaned text, never its HTML, with each requested field's name, type and description, and
-replies with one verbatim span or `null` per field. Each span is aligned to the text (`llm.grounding`, INV-12): a
-value the text does not contain is dropped, and an aligned one is normalized like any collector's raw value and
-proposed as a `source_kind='llm'` candidate with its `text:<start>-<end>` locator. Resolution then treats it like any
-candidate (`llm_grounded` bucket); a value its normalizer declines stays a candidate, which preference rejects as
-`invalid`.
+replies with one verbatim span for each field the page shows, and none for a field it does not. Each span is aligned
+to the text (`llm.grounding`, INV-12): a value the text does not contain is dropped, and an aligned one is normalized
+like any collector's raw value and proposed as a `source_kind='llm'` candidate with its `text:<start>-<end>` locator.
+Resolution then treats it like any candidate (`llm_grounded` bucket); a value its normalizer declines stays a
+candidate, which preference rejects as `invalid`.
 
 A detail call fills fields of one entity, the target. A listing call returns rows, in page order, and the page's own
 fields: each row that proposes a value becomes an entity of its own (`row_entity`), which owns that row's candidates;
@@ -48,17 +48,10 @@ PROMPT_KIND: Final[PromptKind] = "c_extract_detail"
 LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 PREFILL_PROMPT_KIND: Final[PromptKind] = "c_prefill"
 
-# `{"value": ..., "start": ..., "end": ...}` (§4.3): what `SpanClaim` reads.
-_SPAN: Final[dict[str, JsonValue]] = {
-    "type": "object",
-    "properties": {
-        "value": {"type": "string"},
-        "start": {"type": "integer", "minimum": 0},
-        "end": {"type": "integer", "minimum": 0},
-    },
-    "required": ["value", "start", "end"],
-    "additionalProperties": False,
-}
+# The field names a claim may name: each is one requested field's verbatim span (§4.3), and a field the page does not
+# show has no claim. A list of claims, rather than an object of `span | null` per field, keeps the schema inside every
+# provider's structured-output subset (`llm.schema_subset`: no unions, no optional properties) for any number of fields.
+_FIELD: Final = "field"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,17 +73,16 @@ class FilledListing(Filled):
 
 
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
-    """`{fields: {<name>: span | null}}` for exactly the requested fields (§4.4)."""
-    return closed_object({"fields": _spans(fields)})
+    """`{fields: [{field, value, start, end}]}`: a claim per requested field the page shows (§4.4)."""
+    return closed_object({"fields": _claims(fields)})
 
 
 def listing_output_schema(row_fields: Sequence[str], page_fields: Sequence[str]) -> dict[str, JsonValue]:
-    """`{rows: [{<name>: span | null}], page: {<name>: span | null}}` (§4.4); `page` only when page fields are
-    asked. The row cap is in the prompt and applied to the reply, not in the schema: a longer list is cut, not
-    retried."""
-    properties: dict[str, JsonValue] = {"rows": {"type": "array", "items": _spans(row_fields)}}
+    """`{rows: [[claim]], page: [claim]}` (§4.4): each row's claims, and the page fields' only when they are asked.
+    The row cap is in the prompt and applied to the reply, not in the schema: a longer list is cut, not retried."""
+    properties: dict[str, JsonValue] = {"rows": {"type": "array", "items": _claims(row_fields)}}
     if page_fields:
-        properties["page"] = _spans(page_fields)
+        properties["page"] = _claims(page_fields)
     return closed_object(properties)
 
 
@@ -166,7 +158,7 @@ async def extract_detail(
         return Filled((), failure, (*notes, f"role C: {failure.field_reason}"))
     # Aligning and normalizing are CPU work: a thread keeps the event loop serving other tasks meanwhile.
     reader = _Reader(fields, read, ctx)
-    read_fields = await asyncio.to_thread(reader.read, _object(response.data["fields"]), owner, "")
+    read_fields = await asyncio.to_thread(reader.read, _list(response.data["fields"]), owner, "")
     return Filled(read_fields.candidates, response, (*notes, *read_fields.dropped))
 
 
@@ -203,12 +195,12 @@ def _read_listing(
     replies = cast(list[JsonValue], response.data["rows"])  # the client checked it against the output schema
     if len(replies) > LISTING_MAX_ROWS:
         notes = (*notes, f"role C gave {len(replies)} rows; kept the first {LISTING_MAX_ROWS}")
-    page = _Reader(page_fields, read, ctx).read(_object(response.data.get("page", {})), PAGE, "")
+    page = _Reader(page_fields, read, ctx).read(_list(response.data.get("page", [])), PAGE, "")
     rows_reader = _Reader(row_fields, read, ctx)
     candidates, dropped, rows = list(page.candidates), list(page.dropped), list[Entity]()
     for position, reply in enumerate(replies[:LISTING_MAX_ROWS]):
         entity = row_entity(position)
-        row = rows_reader.read(_object(reply), entity.id, f"rows[{position}].")
+        row = rows_reader.read(_list(reply), entity.id, f"rows[{position}].")
         candidates.extend(row.candidates)
         dropped.extend(row.dropped)
         if row.candidates:
@@ -216,8 +208,16 @@ def _read_listing(
     return FilledListing(tuple(candidates), response, (*notes, *dropped), tuple(rows))
 
 
-def _spans(fields: Sequence[str]) -> dict[str, JsonValue]:
-    return closed_object({name: {"anyOf": [_SPAN, {"type": "null"}]} for name in sorted(fields)})
+def _claims(fields: Sequence[str]) -> dict[str, JsonValue]:
+    claim = closed_object(
+        {
+            _FIELD: {"type": "string", "enum": list[JsonValue](sorted(fields))},
+            "value": {"type": "string"},
+            "start": {"type": "integer"},
+            "end": {"type": "integer"},
+        }
+    )
+    return {"type": "array", "items": claim}
 
 
 def _cut(text: str, limit: int) -> tuple[str, tuple[str, ...]]:
@@ -248,8 +248,8 @@ def _field_line(name: str, spec: FieldSpec) -> str:
     return f"- {name} ({kind}): {spec.description or ''}".rstrip()
 
 
-def _object(value: JsonValue) -> dict[str, JsonValue]:
-    return cast(dict[str, JsonValue], value)  # the client checked the reply against the output schema
+def _list(value: JsonValue) -> list[dict[str, JsonValue]]:
+    return cast(list[dict[str, JsonValue]], value)  # the client checked the reply against the output schema
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,29 +260,32 @@ class _Read:
 
 @dataclass(frozen=True, slots=True)
 class _Reader:
-    """Reads one `{<name>: span | null}` object of a reply into candidates."""
+    """Reads one list of claims of a reply into candidates."""
 
     fields: Mapping[str, FieldSpec]
     text: str
     ctx: Context
 
-    def read(self, replies: Mapping[str, JsonValue], owner: str, path: str) -> _Read:
+    def read(self, claims: Sequence[Mapping[str, JsonValue]], owner: str, path: str) -> _Read:
         candidates: list[Candidate] = []
         dropped: list[str] = []
         for name in sorted(self.fields):
-            reply = replies.get(name)
-            if reply is None:
+            given = [claim for claim in claims if claim[_FIELD] == name]
+            if not given:
                 continue  # the page does not show it: the field stays missing
-            candidate = self._candidate(reply, name, owner)
+            if len(given) > 1:  # two values for one field: neither is taken (C7)
+                dropped.append(f"role C: {path}{name} claimed {len(given)} times")
+                continue
+            candidate = self._candidate(given[0], name, owner)
             if candidate is None:
                 dropped.append(f"role C: {path}{name} ungrounded")
             else:
                 candidates.append(candidate)
         return _Read(tuple(candidates), tuple(dropped))
 
-    def _candidate(self, reply: JsonValue, name: str, owner: str) -> Candidate | None:
-        """The reply's span as a candidate, or None when the text does not contain it (ungrounded, §4.3)."""
-        span = align(SpanClaim.model_validate(reply), self.text)
+    def _candidate(self, claim: Mapping[str, JsonValue], name: str, owner: str) -> Candidate | None:
+        """The claim's span as a candidate, or None when the text does not contain it (ungrounded, §4.3)."""
+        span = align(SpanClaim.model_validate({k: v for k, v in claim.items() if k != _FIELD}), self.text)
         if span is None:
             return None
         return Candidate(

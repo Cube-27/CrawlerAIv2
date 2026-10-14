@@ -12,8 +12,6 @@ from typing import Any
 import httpx
 import httpx2
 import pytest
-from anthropic import APIStatusError
-from google.genai.errors import ClientError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.llm.client import (
@@ -23,6 +21,7 @@ from crawlerai.llm.client import (
     Provider,
     ProviderCall,
     ProviderError,
+    ProviderRefused,
     ProviderReply,
 )
 from crawlerai.llm.providers.anthropic import AnthropicProvider
@@ -84,7 +83,6 @@ class Vendor:
     body: Callable[[str], dict[str, Any]]
     build: Callable[[list[Any], Handler], Provider]
     timeout_error: Callable[..., Exception]  # the transport's timeout exception
-    rejected: type[Exception]
 
 
 def _anthropic(requests: list[Any], handler: Handler) -> Provider:
@@ -105,8 +103,8 @@ def _gemini(requests: list[Any], handler: Handler) -> Provider:
     return GeminiProvider("test-key", MODELS, httpx.AsyncClient(transport=httpx.MockTransport(respond)))
 
 
-ANTHROPIC = Vendor("anthropic", anthropic_body, _anthropic, httpx2.ReadTimeout, APIStatusError)
-GEMINI = Vendor("gemini", gemini_body, _gemini, httpx.ReadTimeout, ClientError)
+ANTHROPIC = Vendor("anthropic", anthropic_body, _anthropic, httpx2.ReadTimeout)
+GEMINI = Vendor("gemini", gemini_body, _gemini, httpx.ReadTimeout)
 VENDORS = pytest.mark.parametrize("vendor", [ANTHROPIC, GEMINI], ids=lambda vendor: vendor.name)
 
 
@@ -217,11 +215,14 @@ def test_a_timeout_is_a_provider_error(vendor: Vendor) -> None:
 
 @VENDORS
 @pytest.mark.parametrize("status", [400, 401, 404])
-def test_a_rejected_request_is_not_a_provider_error(vendor: Vendor, status: int) -> None:
-    # A bad key, an unknown model or a refused schema would fail on any provider, so it is not failed over.
-    provider = vendor.build([], failing(status))
-    with pytest.raises(vendor.rejected):
+def test_a_rejected_request_is_refused_with_the_providers_message(vendor: Vendor, status: int) -> None:
+    # A bad key, an unknown model or a refused schema: the request's own fault, which a retry does not fix (§4.7).
+    requests: list[Any] = []
+    provider = vendor.build(requests, failing(status))
+
+    with pytest.raises(ProviderRefused, match=f"{vendor.name}: HTTP {status}: .*synthetic error") as refused:
         run(provider)
+    assert (refused.value.code, refused.value.field_reason, len(requests)) == ("llm_unavailable", "llm_unavailable", 1)
 
 
 # --- failover between the two (§4.2) ---
@@ -248,3 +249,25 @@ def test_the_client_fails_over_from_one_provider_to_the_other(first: Vendor, sec
     response = asyncio.run(client.complete_json(request))
 
     assert (response.provider, response.data, len(down), len(up)) == (second.name, {"summary": "a summary"}, 1, 1)
+
+
+def test_a_refused_request_is_not_failed_over() -> None:
+    refused: list[Any] = []
+    other: list[Any] = []
+    client = MeteredClient(
+        [ANTHROPIC.build(refused, failing(400)), GEMINI.build(other, answering(GEMINI))],
+        create_async_engine("postgresql+asyncpg://127.0.0.1/unused"),  # no job: never connected
+    )
+    request = LLMRequest(
+        prompt_kind="s_draft",
+        model_class="strong",
+        system="system prompt",
+        user="user prompt",
+        output_schema=SCHEMA,
+        max_output_tokens=256,
+        job_id=None,
+    )
+
+    with pytest.raises(ProviderRefused):
+        asyncio.run(client.complete_json(request))
+    assert (len(refused), len(other)) == (1, 0)

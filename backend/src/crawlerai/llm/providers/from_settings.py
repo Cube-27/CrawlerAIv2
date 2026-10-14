@@ -1,6 +1,7 @@
 """The configured providers, in failover order (SPEC-06 §4.2): `CRAWLERAI_LLM_PROVIDERS`, the model per class for
 each, and each one's API key."""
 
+import logging
 from typing import assert_never
 
 from pydantic import SecretStr
@@ -11,6 +12,8 @@ from crawlerai.llm.client import LLMClient, MeteredClient, ModelClass, Unconfigu
 from crawlerai.llm.providers.anthropic import AnthropicProvider
 from crawlerai.llm.providers.gemini import GeminiProvider
 
+log = logging.getLogger(__name__)
+
 
 def providers_from_settings(settings: LLMSettings) -> list[AnthropicProvider | GeminiProvider]:
     """Raises `ValueError` when a listed provider has no API key: the client is not built half-configured."""
@@ -19,10 +22,12 @@ def providers_from_settings(settings: LLMSettings) -> list[AnthropicProvider | G
 
 def client_from_settings(settings: LLMSettings, engine: AsyncEngine) -> LLMClient:
     """The configured providers' client, or, when a listed provider has no API key, an `Unconfigured` one that names
-    the missing key on every call: a process starts without keys, and work that needs no call still runs."""
+    the missing key on every call: a process starts without keys, and work that needs no call still runs. The log
+    names the missing key once, when the process builds its client."""
     try:
         return MeteredClient(providers_from_settings(settings), engine)
     except ValueError as e:
+        log.warning("LLM calls are unavailable: %s", e)
         return Unconfigured(str(e))
 
 

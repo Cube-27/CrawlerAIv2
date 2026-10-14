@@ -1,5 +1,6 @@
-"""The config IR model (SPEC-08 §4.2, ARCHITECTURE §12.1): every valid IR survives a JSON round trip, CSS steps
-carry an XPath 1.0 translation that selects the same elements, and malformed steps and post ops are refused."""
+"""The config IR model (SPEC-08 §4.2, ARCHITECTURE §12.1): every valid IR survives a JSON round trip, and every step
+one through role A's wire form (§4.6), CSS steps carry an XPath 1.0 translation that selects the same elements, and
+malformed steps and post ops are refused."""
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -8,10 +9,12 @@ from typing import Any
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from jsonschema import Draft202012Validator
 from lxml import html
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, NormalizeOp
+from crawlerai.config_ir import step_wire
+from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, NormalizeOp, Step
 from crawlerai.schemas.types import FieldType
 
 _TAGS = ["div", "span", "p", "a", "li", "ul"]
@@ -109,6 +112,21 @@ def test_ir_survives_a_json_round_trip(document: dict[str, Any]) -> None:
     ir = ExtractionConfigIR.model_validate(document)
     assert ExtractionConfigIR.model_validate_json(ir.model_dump_json()) == ir
     assert ExtractionConfigIR.model_validate(ir.model_dump(mode="json")) == ir
+
+
+class _OneStep(BaseModel):
+    step: Step
+
+
+# `api` is the source of API recipe steps (SPEC-09), which role A does not write.
+@given(_step.filter(lambda raw: raw.get("source") != "api"))
+def test_a_step_survives_role_a_wire_form(raw: dict[str, Any]) -> None:
+    step = _OneStep.model_validate({"step": raw}).step
+
+    wire = step_wire.to_wire(step)
+
+    assert list(Draft202012Validator(step_wire.STEP_SCHEMA).iter_errors(wire)) == []
+    assert _OneStep.model_validate({"step": step_wire.from_wire(wire)}).step == step
 
 
 @pytest.mark.parametrize(

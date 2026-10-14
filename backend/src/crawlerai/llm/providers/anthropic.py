@@ -2,8 +2,9 @@
 
 The reply is constrained by `output_config.format` (`json_schema`); the client still validates it (§4.2). The SDK's own
 retries are off: a rate limit, a server error or a timeout raises `ProviderError` at once, and the client fails over
-(§4.2). No sampling parameter is sent: the current Claude models reject a non-default `temperature` with a 400, so
-temperature 0 (§4.2) cannot be asked for here; replays stay deterministic through the recorded cache (INV-10).
+(§4.2); any other error status raises `ProviderRefused`. No sampling parameter is sent: the current Claude models
+reject a non-default `temperature` with a 400, so temperature 0 (§4.2) cannot be asked for here; replays stay
+deterministic through the recorded cache (INV-10).
 """
 
 from collections.abc import Mapping
@@ -12,7 +13,7 @@ import httpx2
 from anthropic import APIConnectionError, APIStatusError, AsyncAnthropic
 from anthropic.types import TextBlock
 
-from crawlerai.llm.client import ModelClass, ProviderCall, ProviderError, ProviderReply, is_transient
+from crawlerai.llm.client import ModelClass, ProviderCall, ProviderError, ProviderRefused, ProviderReply, is_transient
 
 
 class AnthropicProvider:
@@ -41,7 +42,7 @@ class AnthropicProvider:
         except APIStatusError as error:
             if is_transient(error.status_code):
                 raise ProviderError(f"HTTP {error.status_code}") from error
-            raise
+            raise ProviderRefused.status(self.name, error.status_code, error.message) from error
         # Thinking blocks may precede the answer; the answer is the text.
         text = "".join(block.text for block in message.content if isinstance(block, TextBlock))
         return ProviderReply(

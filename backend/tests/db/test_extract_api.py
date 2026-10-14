@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 import pytest
+from pydantic import JsonValue
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -25,6 +26,7 @@ from crawlerai.db.models import ApiKey, Job, UrlTask
 from crawlerai.llm.client import MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.keys import create_key
@@ -33,7 +35,7 @@ from tests.db.conftest import PRIVATE_HOST, resolve
 
 pytestmark = pytest.mark.anyio
 
-DRAFT = {
+DRAFT: dict[str, JsonValue] = {
     "page_kind": "detail",
     "fields": {"title": {"type": "text", "required": True, "description": "The name", "schema_org": "Product.name"}},
 }
@@ -49,7 +51,9 @@ def pages(own_origin: str) -> dict[str, bytes]:
 
 @pytest.fixture
 def provider() -> FakeProvider:
-    return FakeProvider([ProviderReply(model="fake-strong", text=json.dumps(DRAFT), tokens_in=9, tokens_out=8)])
+    return FakeProvider(
+        [ProviderReply(model="fake-strong", text=json.dumps(to_wire(DRAFT)), tokens_in=9, tokens_out=8)]
+    )
 
 
 @pytest.fixture

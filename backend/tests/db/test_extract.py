@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -26,9 +26,17 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, ProgressiveState, Record, UrlTask
-from crawlerai.llm.client import BudgetExhausted, LLMClient, MeteredClient, ProviderReply, Unconfigured
+from crawlerai.llm.client import (
+    BudgetExhausted,
+    LLMClient,
+    MeteredClient,
+    ProviderRefused,
+    ProviderReply,
+    Unconfigured,
+)
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
@@ -45,15 +53,25 @@ from tests.db.conftest import PRIVATE_HOST, resolve
 pytestmark = pytest.mark.anyio
 
 NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
+TITLE: dict[str, JsonValue] = {
+    "type": "text",
+    "required": True,
+    "description": "The product's name",
+    "schema_org": "Product.name",
+}
+PRICE: dict[str, JsonValue] = {
+    "type": "money",
+    "required": True,
+    "description": "The price",
+    "schema_org": "Offer.price+priceCurrency",
+}
 NO_LLM = Unconfigured("no provider")
 
 
 def _draft_reply(page_kind: str = "detail") -> ProviderReply:
     """A role S reply: a draft schema document without name and version (SPEC-06 §4.5)."""
-    document = {"page_kind": page_kind, "fields": {"title": TITLE, "price": PRICE}}
-    return ProviderReply(model="fake-strong", text=json.dumps(document), tokens_in=900, tokens_out=80)
+    document: dict[str, JsonValue] = {"page_kind": page_kind, "fields": {"title": TITLE, "price": PRICE}}
+    return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
 
 def _page(name: str, *, offers: bool = True) -> bytes:
@@ -425,8 +443,8 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     web.serve(url, body)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
-    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
+    price = {"field": "price", "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": [price]}), tokens_in=7, tokens_out=3)
     llm = MeteredClient([FakeProvider([reply])], engine)
     request = _request([url], _by_id(kettle_schema))
     submitted = await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
@@ -438,3 +456,30 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
         record = (await conn.execute(select(Record.complete, Record.data))).one()
     assert (record.complete, record.data["price"]) == (True, {"amount": "19.90", "currency": "EUR"})
     assert (await _job(engine, submitted.job_id)).usage["llm_calls"] == 1
+
+
+async def test_a_refused_role_c_call_leaves_the_field_missing_and_is_not_retried(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # SPEC-06 §4.7: a call the provider refuses gives no reply, like an unavailable provider; the page keeps its
+    # structured values, and its task ends instead of being retried with the same request.
+    url = f"{own_origin}/p/1"
+    web.serve(url, _page("Blue kettle", offers=False))
+    provider = FakeProvider([ProviderRefused.status("fake", 400, "schema refused")] * 3)
+    request = _request([url], _by_id(kettle_schema))
+    submitted = await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
+
+    summary = await _run(engine, fetching, engine_data, submitted.job_id, MeteredClient([provider], engine))
+
+    assert (summary.status, summary.outcomes.partial, len(provider.calls)) == ("completed", 1, 1)
+    async with engine.connect() as conn:
+        record = (await conn.execute(select(Record.complete, Record.data))).one()
+        task = (await conn.execute(select(UrlTask.status, UrlTask.attempts))).one()
+    assert (record.complete, record.data["title"], record.data.get("price")) == (False, "Blue kettle", None)
+    assert tuple(task) == ("done", 1)
+    assert (await _job(engine, submitted.job_id)).usage.get("llm_calls", 0) == 0
