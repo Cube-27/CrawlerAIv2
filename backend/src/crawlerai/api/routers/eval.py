@@ -21,6 +21,7 @@ from selectolax.lexbor import LexborHTMLParser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE, Model
 from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, not_found
 from crawlerai.content.html import remove_scripting_attributes
@@ -106,8 +107,15 @@ def labeling_backend(request: Request) -> LabelingBackend:
 
 Backend = Annotated[LabelingBackend, Depends(labeling_backend)]
 
-# Request validation answers with a problem (`api.problems`), declared here in place of FastAPI's own 422 body.
-router = APIRouter(prefix="/v1/eval", tags=["eval"], lifespan=_lifespan, responses={422: PROBLEM_RESPONSE})
+# SPEC-03 §4.10: the same API-key auth, and so the same rate limit, as everything else. Request validation answers
+# with a problem (`api.problems`), declared here in place of FastAPI's own 422 body.
+router = APIRouter(
+    prefix="/v1/eval",
+    tags=["eval"],
+    lifespan=_lifespan,
+    dependencies=[Depends(require_api_key)],
+    responses={401: PROBLEM_RESPONSE, 422: PROBLEM_RESPONSE, 429: PROBLEM_RESPONSE},
+)
 
 
 def _invalid(detail: str, errors: Sequence[LabelError] = ()) -> ProblemError:
