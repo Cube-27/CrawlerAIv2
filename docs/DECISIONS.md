@@ -4615,3 +4615,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Return `schema` only for a prompt.
 - Why: The answer has one shape, and the caller sees the version the job pinned (INV-28).
 - Reversible: yes
+
+### D-0687 — Records' "Changed since" is entered and shown in UTC
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 8 (#141) · Status: decided
+- Decision: The changed-since filter is a HeroUI `DateField` at minute granularity in the UTC zone, shown with its zone, and sent as `toAbsoluteString()` (ISO 8601, `Z`).
+- Alternatives: The viewer's local zone (the instant sent would depend on the browser's zone, and tests on the machine's zone). A free-text ISO field (no validation from React Aria).
+- Why: The most conservative reading. The instant on screen is exactly the one sent, whoever opens the shared URL. SPEC-12 §4.1 keeps the filters in the URL.
+- Reversible: yes. Change the zone constant in `RecordFilters.tsx`.
+
+### D-0688 — `@internationalized/date` as a direct frontend runtime dependency
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 8 (#141) · Status: decided
+- Decision: Pin `@internationalized/date` 3.12.4 and allow it in `tools/theme_only_check.py`. It is not UI; it is the value type HeroUI's `DateField` takes.
+- Alternatives: A native `datetime-local` input via HeroUI `Input` (local zone only, uneven browser support).
+- Why: DESIGN.md: a new runtime dependency is added to the theme-only list in the PR that adds it. It is Apache-2.0 and already resolved as HeroUI's peer.
+- Reversible: yes
