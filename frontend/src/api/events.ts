@@ -60,9 +60,15 @@ export class EventStreamParser {
 /** Where a followed stream is: opening, receiving, waiting to reconnect, closed after its last event, or refused. */
 export type StreamState = "connecting" | "live" | "reconnecting" | "ended" | "failed";
 
+/** An opened connection: the response, and the body already parsed from an error answer (openapi-fetch reads it). */
+export interface Opened {
+  response: Response;
+  error?: unknown;
+}
+
 export interface FollowOptions {
   /** Opens one connection, resuming after `lastEventId` (from the start when null). */
-  open: (lastEventId: string | null, signal: AbortSignal) => Promise<Response>;
+  open: (lastEventId: string | null, signal: AbortSignal) => Promise<Opened>;
   /** Whether `event` is the stream's last: after it the stream is not reopened. */
   isEnd: (event: StreamEvent) => boolean;
   onEvent: (event: StreamEvent) => void;
@@ -92,10 +98,9 @@ function isRefusal(status: number): boolean {
   return status >= 400 && status < 500 && status !== 429;
 }
 
-async function refusal(response: Response): Promise<Problem> {
-  const body: unknown = await response.json().catch(() => null);
+function refusal({ response, error }: Opened): Problem {
   return (
-    problemOf(response, body) ?? {
+    problemOf(response, error) ?? {
       title: `The event stream was refused (HTTP ${String(response.status)}).`,
       detail: null,
       errors: [],
@@ -132,15 +137,16 @@ async function connect(
   lastEventId: string | null,
   options: FollowOptions,
 ): Promise<Connection> {
-  let response: Response;
+  let opened: Opened;
   try {
-    response = await options.open(lastEventId, options.signal);
+    opened = await options.open(lastEventId, options.signal);
   } catch {
     // A network failure, or the stop: either way this connection is over.
     return { kind: "dropped", received: false };
   }
+  const { response } = opened;
   if (isRefusal(response.status)) {
-    options.onProblem(await refusal(response));
+    options.onProblem(refusal(opened));
     return { kind: "refused" };
   }
   if (!response.ok || response.body === null) return { kind: "dropped", received: false };

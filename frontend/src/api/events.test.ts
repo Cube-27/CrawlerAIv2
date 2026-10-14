@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EventStreamParser, followEvents, type StreamEvent, type StreamState } from "./events";
+import {
+  EventStreamParser,
+  followEvents,
+  type Opened,
+  type StreamEvent,
+  type StreamState,
+} from "./events";
+
+/** A connection answered with `body`. */
+function answered(body: BodyInit, init?: ResponseInit): Opened {
+  return { response: new Response(body, init) };
+}
 
 function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -68,7 +79,7 @@ interface Run {
 }
 
 /** Follows a stream whose connections answer `responses` in turn, with no wait between them. */
-async function follow(responses: (() => Response)[]): Promise<Run> {
+async function follow(responses: (() => Opened)[]): Promise<Run> {
   const run: Run = { requests: [], events: [], states: [], problem: null };
   await followEvents({
     open: (lastEventId) => {
@@ -92,9 +103,9 @@ async function follow(responses: (() => Response)[]): Promise<Run> {
 describe("followEvents", () => {
   it("reconnects after a dropped stream with the last id received as Last-Event-ID", async () => {
     const run = await follow([
-      () => new Response(streamOf("id: 1\nevent: task_fetched\ndata: {}\n\nid: 2\ndata: {}\n\n")),
+      () => answered(streamOf("id: 1\nevent: task_fetched\ndata: {}\n\nid: 2\ndata: {}\n\n")),
       () =>
-        new Response(streamOf("event: progress\ndata: {}\n\nid: 3\nevent: completed\ndata: {}\n\n")),
+        answered(streamOf("event: progress\ndata: {}\n\nid: 3\nevent: completed\ndata: {}\n\n")),
     ]);
 
     expect(run.requests).toEqual([null, "2"]);
@@ -104,11 +115,11 @@ describe("followEvents", () => {
 
   it("reconnects after a server error and a network failure", async () => {
     const run = await follow([
-      () => new Response("down", { status: 503 }),
+      () => answered("down", { status: 503 }),
       () => {
         throw new TypeError("network");
       },
-      () => new Response(streamOf("id: 9\nevent: completed\ndata: {}\n\n")),
+      () => answered(streamOf("id: 9\nevent: completed\ndata: {}\n\n")),
     ]);
 
     expect(run.requests).toEqual([null, null, null]);
@@ -116,14 +127,12 @@ describe("followEvents", () => {
   });
 
   it("stops on a client error and reports its problem", async () => {
-    const body = JSON.stringify({ status: 404, title: "Not found", detail: "no job" });
-    const run = await follow([
-      () =>
-        new Response(body, {
-          status: 404,
-          headers: { "content-type": "application/problem+json" },
-        }),
-    ]);
+    const body = { status: 404, title: "Not found", detail: "no job" };
+    const response = new Response(null, {
+      status: 404,
+      headers: { "content-type": "application/problem+json" },
+    });
+    const run = await follow([() => ({ response, error: body })]);
 
     expect(run.problem).toBe("Not found");
     expect(run.states).toEqual(["connecting", "failed"]);
