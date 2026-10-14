@@ -222,11 +222,14 @@ async def run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, job
     }
     stop = asyncio.Event()
     loop = asyncio.create_task(run_worker(settings, handlers, stop))
-    async with asyncio.timeout(60):
-        while await _status(engine, job_id) not in ("completed", "failed", "cancelled"):
-            await asyncio.sleep(0.1)
-    stop.set()
-    await loop
+    try:
+        async with asyncio.timeout(60):
+            while await _status(engine, job_id) not in ("completed", "failed", "cancelled"):
+                await asyncio.sleep(0.1)
+    finally:
+        # A timed-out wait stops the worker too, before the fixtures delete what it would claim.
+        stop.set()
+        await loop
     async with engine.connect() as conn:
         rows = await conn.execute(select(UrlTask).where(UrlTask.job_id == job_id))
     return {row.url: row for row in rows}
