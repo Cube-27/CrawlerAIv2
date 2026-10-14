@@ -37,8 +37,10 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.db.queue import settle_job
+from crawlerai.llm.pricing import default_pricing
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
+from crawlerai.services.llm_costs import costs_of_jobs
 from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
 from crawlerai.services.scrape_steps import Formats, PageFormat, format_member, page_formats
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
@@ -99,6 +101,9 @@ class JobSummary(BaseModel):
     counts: TaskCounts
     outcomes: OutcomeCounts
     usage: dict[str, int]  # per `usage_event.resource` (SPEC-01 §4.6)
+    # The estimated cost of its LLM calls in USD, for visibility, not billing (SPEC-06 §4.8); null when some of their
+    # tokens have no price.
+    llm_cost_usd: float | None
     webhook_url: str | None
     engine_version: str
 
@@ -206,7 +211,8 @@ async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:
 
 
 async def _summaries(conn: AsyncConnection, jobs: Sequence[RowMapping]) -> list[JobSummary]:
-    """The summaries of `jobs` (rows of `_JOB_COLUMNS`), in their order, with their tasks counted in one query."""
+    """The summaries of `jobs` (rows of `_JOB_COLUMNS`), in their order, with their tasks counted in one query and
+    their LLM costs summed in another, at the shipped prices."""
     statuses = {job["id"]: dict.fromkeys(get_args(TaskStatus), 0) for job in jobs}
     outcomes = {job["id"]: dict.fromkeys(get_args(TaskOutcome), 0) for job in jobs}
     if jobs:
@@ -219,8 +225,14 @@ async def _summaries(conn: AsyncConnection, jobs: Sequence[RowMapping]) -> list[
             statuses[job_id][status] += n
             if outcome is not None:
                 outcomes[job_id][outcome] += n
+    costs = await costs_of_jobs(conn, list(statuses), default_pricing())
     return [
-        JobSummary(**job, counts=TaskCounts(**statuses[job["id"]]), outcomes=OutcomeCounts(**outcomes[job["id"]]))
+        JobSummary(
+            **job,
+            counts=TaskCounts(**statuses[job["id"]]),
+            outcomes=OutcomeCounts(**outcomes[job["id"]]),
+            llm_cost_usd=costs[job["id"]],
+        )
         for job in jobs
     ]
 
