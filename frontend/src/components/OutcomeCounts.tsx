@@ -17,6 +17,16 @@ const OUTCOMES: readonly TaskOutcome[] = [
   "failed",
 ];
 
+/** A job's tasks in one line: their total, then each status some task has, as "3 tasks: 1 queued, 2 done". */
+export function TaskCountsText({ counts }: Readonly<{ counts: TaskCounts }>) {
+  const total = STATUSES.reduce((sum, status) => sum + counts[status], 0);
+  const parts = STATUSES.filter((status) => counts[status] > 0).map(
+    (status) => `${String(counts[status])} ${status}`,
+  );
+  const tasks = `${String(total)} ${total === 1 ? "task" : "tasks"}`;
+  return <>{parts.length === 0 ? tasks : `${tasks}: ${parts.join(", ")}`}</>;
+}
+
 /** A job's tasks by status, and by outcome for those that have one (SPEC-10 §4.2). Outcomes no task has are left
  * out. */
 export function OutcomeCounts({
