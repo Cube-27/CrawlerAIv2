@@ -169,3 +169,87 @@ def test_malformed_manifest_fails(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert result.stdout.startswith("backend/data/manifest.json: not valid JSON")
+
+
+# --- dev-fitted files (D-0444, owner answer 2026-10-14): exempt from the pin, checked by their stamp ---
+
+PRECEDENCE = b"source_split: dev\ntext:\n- jsonld\n- og\n"
+CALIBRATION = json.dumps({"calibration_version": 1, "source_split": "dev", "buckets": {}}).encode()
+
+
+def test_dev_fitted_files_need_no_manifest_entry(tmp_path: Path) -> None:
+    files = {"list.txt": CONTENT, "source_precedence.yaml": PRECEDENCE, "calibration.json": CALIBRATION}
+    root = make_root(tmp_path, files, {"entries": [entry("list.txt")]})
+
+    result = run_check(root)
+
+    assert result.returncode == 0, result.stdout
+    assert result.stdout == "data-manifest: ok, 1 files\n"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"source_split: 'dev'\n", b'source_split: "dev"  # fitted on dev\n', b"text: [jsonld]\nsource_split: dev\n"],
+)
+def test_a_precedence_stamp_may_be_quoted_commented_or_not_first(tmp_path: Path, content: bytes) -> None:
+    root = make_root(tmp_path, {"source_precedence.yaml": content}, {"entries": []})
+
+    result = run_check(root)
+
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"text:\n- jsonld\n",  # no stamp
+        b"source_split: hidden\ntext:\n- jsonld\n",  # fitted on another split
+        b"text:\n  source_split: dev\n",  # nested, so not the file's stamp
+    ],
+)
+def test_a_precedence_file_without_a_dev_stamp_fails(tmp_path: Path, content: bytes) -> None:
+    root = make_root(tmp_path, {"source_precedence.yaml": content}, {"entries": []})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        "backend/data/source_precedence.yaml: a dev-fitted file needs the stamp 'source_split: dev'"
+    ]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"{}", b'{"source_split": "fresh"}', b'[{"source_split": "dev"}]', b"{not json"],
+)
+def test_a_calibration_without_a_dev_stamp_fails(tmp_path: Path, content: bytes) -> None:
+    root = make_root(tmp_path, {"calibration.json": content}, {"entries": []})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        "backend/data/calibration.json: a dev-fitted file needs the stamp 'source_split: dev'"
+    ]
+
+
+def test_only_the_top_level_fitted_files_are_exempt(tmp_path: Path) -> None:
+    root = make_root(tmp_path, {"vocab/calibration.json": CALIBRATION}, {"entries": []})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        "backend/data/vocab/calibration.json: not listed in backend/data/manifest.json"
+    ]
+
+
+def test_a_dev_fitted_file_is_not_pinned_in_the_manifest(tmp_path: Path) -> None:
+    root = make_root(tmp_path, {"calibration.json": CALIBRATION}, {"entries": [entry("calibration.json", CALIBRATION)]})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        "backend/data/manifest.json: entry 0 pins 'calibration.json', a dev-fitted file checked by its stamp instead"
+    ]
