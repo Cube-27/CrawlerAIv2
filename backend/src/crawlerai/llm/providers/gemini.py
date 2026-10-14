@@ -3,7 +3,8 @@ output.
 
 The reply is constrained by `response_json_schema` with `response_mime_type="application/json"`; the client still
 validates it (§4.2). Temperature is 0 (§4.2). The SDK does not retry unless asked to, so a rate limit, a server error
-or a timeout raises `ProviderError` at once and the client fails over (§4.2).
+or a timeout raises `ProviderError` at once and the client fails over (§4.2); any other error status raises
+`ProviderRefused`.
 """
 
 from collections.abc import Mapping
@@ -12,7 +13,7 @@ import httpx
 from google import genai
 from google.genai import errors, types
 
-from crawlerai.llm.client import ModelClass, ProviderCall, ProviderError, ProviderReply, is_transient
+from crawlerai.llm.client import ModelClass, ProviderCall, ProviderError, ProviderRefused, ProviderReply, is_transient
 
 
 class GeminiProvider:
@@ -42,7 +43,7 @@ class GeminiProvider:
         except errors.APIError as error:
             if is_transient(error.code):
                 raise ProviderError(f"HTTP {error.code}") from error
-            raise
+            raise ProviderRefused.status(self.name, error.code, error.message or "") from error
         usage = response.usage_metadata or types.GenerateContentResponseUsageMetadata()
         return ProviderReply(
             model=response.model_version or model,

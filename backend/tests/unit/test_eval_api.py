@@ -34,6 +34,7 @@ from crawlerai.eval.store import (
 )
 from crawlerai.llm.client import (
     OutputInvalid,
+    ProviderRefused,
     ProviderUnavailable,
 )
 from crawlerai.llm.providers.fake import ScriptedClient
@@ -660,7 +661,11 @@ def test_prefill_with_a_stale_if_match_is_refused_before_the_call() -> None:
 
 @pytest.mark.parametrize(
     ("failure", "status"),
-    [(ProviderUnavailable("no provider answered"), 503), (OutputInvalid("at $: not an object"), 502)],
+    [
+        (ProviderUnavailable("no provider answered"), 503),
+        (ProviderRefused.status("fake", 400, "schema refused"), 503),
+        (OutputInvalid("at $: not an object"), 502),
+    ],
 )
 def test_prefill_without_a_valid_reply_stores_nothing(failure: Exception, status: int) -> None:
     backend = FakeBackend(llm=ScriptedClient(failure))
