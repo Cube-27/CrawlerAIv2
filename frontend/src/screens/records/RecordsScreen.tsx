@@ -5,6 +5,7 @@ import { problemOf } from "../../api/hooks/query";
 import { useRecords } from "../../api/hooks/records";
 import { useSchema } from "../../api/hooks/schemas";
 import { activeFilters, type RecordFilters, type StoredRecord } from "../../api/records";
+import { useCursorPages } from "../../components/cursors";
 import { EmptyView } from "../../components/EmptyView";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
@@ -24,12 +25,10 @@ function filtersOf(params: URLSearchParams): RecordFilters {
   };
 }
 
-/** One page of the filtered records with previous and next. The API pages forward by cursor (SPEC-07 §4.6), so the
- * cursors of the pages before are kept here; the first page has none. */
+/** One page of the filtered records with previous and next. */
 function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
-  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const { cursor, page, previous, nextTo } = useCursorPages();
   const [open, setOpen] = useState<StoredRecord | null>(null);
-  const cursor = cursors.at(-1) ?? null;
   const records = useRecords(filters, cursor);
   const schema = useSchema(filters.schema_id);
   const problem = problemOf(records.error ?? schema.error);
@@ -48,21 +47,9 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
         <RecordTable label="Records" records={items} fieldTypes={fieldTypes} onOpen={setOpen} />
       )}
       <TablePagination
-        summary={`Page ${String(cursors.length)}`}
-        onPrevious={
-          cursors.length > 1
-            ? () => {
-                setCursors(cursors.slice(0, -1));
-              }
-            : null
-        }
-        onNext={
-          next === null
-            ? null
-            : () => {
-                setCursors([...cursors, next]);
-              }
-        }
+        summary={`Page ${String(page)}`}
+        onPrevious={previous}
+        onNext={nextTo(next)}
       />
       {open === null ? null : (
         <RecordInspector

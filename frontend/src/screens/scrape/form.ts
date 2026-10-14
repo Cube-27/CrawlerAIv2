@@ -1,4 +1,5 @@
 import { isJsonObject, type JsonObject } from "../../api/json";
+import { orderedFormats } from "../../components/FormatChoices";
 import type {
   MethodHint,
   PageKind,
@@ -6,16 +7,6 @@ import type {
   ScrapeFormat,
   ScrapeRequest,
 } from "../../api/scrape";
-
-/** The formats in the order SPEC-07 §4.4 lists them; a request sends the chosen ones in this order. */
-export const FORMATS: readonly (readonly [ScrapeFormat, string])[] = [
-  ["markdown", "Markdown"],
-  ["html", "HTML"],
-  ["raw_html", "Raw HTML"],
-  ["links", "Links"],
-  ["metadata", "Metadata"],
-  ["records", "Records"],
-];
 
 export type SchemaSource = "none" | "id" | "inline" | "prompt";
 
@@ -87,7 +78,7 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   if (choice.kind === "invalid") return null;
   return {
     url: form.url.trim(),
-    formats: FORMATS.map(([format]) => format).filter((format) => form.formats.includes(format)),
+    formats: orderedFormats(form.formats),
     schema: choice.schema,
     page_kind: form.pageKind,
     fetch: { method_hint: form.methodHint },

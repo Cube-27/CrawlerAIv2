@@ -4706,3 +4706,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Authenticate once at startup; put the API's token bucket in front.
 - Why: It is the same lookup as REST, and a revocation takes effect at once. A local stdio process has one client, so the network rate limit does not apply.
 - Reversible: yes
+
+### D-0700 — The `/jobs` screen opens a job by id; a jobs table needs a `GET /v1/jobs` endpoint
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided (owner, 2026-10-14): add GET /v1/jobs; built in SPEC-10 PR 9 and SPEC-12 PR 9
+- Decision: `/jobs` has the create dialogs and an "Open job" form by id; a new job opens on its own page. SPEC-12 §4.3's jobs table (kind, status, counts, created) is not built: ARCHITECTURE §13.1 has no endpoint that lists jobs.
+- Alternatives: (a) add `GET /v1/jobs` to §13.1 and SPEC-10 (a public API change); (b) amend SPEC-12 §4.3 to the id lookup.
+- Why: Adding an endpoint changes the public API, which is the owner's call (CLAUDE.md §4). Same shape as D-0656 for sites. Recommendation: (a) when operators need the list; (b) until then. Blocks nothing.
+- Reversible: yes
+
+### D-0701 — A job export is saved as one file per server page
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided
+- Decision: An export reads `GET /v1/jobs/{id}/results?format=…&limit=200` page by page and saves each page's `content` as its own file, `job-<id>.<ext>` or `job-<id>-<n>.<ext>` when there are several.
+- Alternatives: Join the pages in the browser; export only the page shown.
+- Why: Each page is a whole document (its own CSV header or JSON array); joining them is format logic the UI does not hold (§3). 200 is the largest page the API allows.
+- Reversible: yes
+
+### D-0702 — The event log lists stored events; `progress` re-reads the job, the end event re-reads job and results
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided
+- Decision: `EventLog` lists each stored event (kind, id, data as sent). A `progress` event invalidates the job summary query; the end event (`completed`, `failed`, `cancelled`) invalidates the summary and the results. Reconnect waits 1 s doubling to 30 s, back to 1 s after a connection that delivered an event; a 4xx other than 429 stops the stream and shows its problem.
+- Alternatives: Patch the cached summary from `progress` data (a hand-checked shape); poll the job.
+- Why: The counts shown stay the server's typed answer; RFC 9110 §15.5: a 4xx won't succeed if repeated.
+- Reversible: yes
+
+### D-0703 — Job create flows are HeroUI Modals; map shows its URLs in its dialog
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided
+- Decision: Batch, crawl, extract and map open as Modal dialogs from the page header (SPEC-12 §4.3 "create dialogs"). Map makes no job, so its URLs show in the dialog, one per line in a read-only text area, with the source counts and a `truncated` warning.
+- Alternatives: Separate create routes.
+- Why: The spec names dialogs; the text area lets a viewer copy URLs into a batch.
+- Reversible: yes
+
+### D-0704 — The job results table follows the results page's shape
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided
+- Decision: A `format=json` results page whose items have `fields` is a records page (RecordTable in the columns of the first record's schema, rows open the record inspector); otherwise the page outputs table (URL, task status, outcome, fetched at). An empty page is shown as "No records yet".
+- Alternatives: Read the job's schema first (the job summary has no `schema_id`).
+- Why: The endpoint's union answer is the only signal the UI has.
+- Reversible: yes

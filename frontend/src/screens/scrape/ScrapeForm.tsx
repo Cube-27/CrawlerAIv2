@@ -1,21 +1,20 @@
 import {
   Button,
-  Checkbox,
-  CheckboxGroup,
   Description,
   FieldError,
   Fieldset,
   Form,
   Input,
   Label,
-  NumberField,
   TextArea,
   TextField,
 } from "@heroui/react";
 import { Choices } from "../../components/Choices";
 import { FormActions } from "../../components/FormActions";
-import type { MethodHint, PageKind } from "../../api/scrape";
-import { FORMATS, parseJsonObject, type SchemaSource, type ScrapeFormState } from "./form";
+import { FormatChoices } from "../../components/FormatChoices";
+import { LimitField } from "../../components/LimitField";
+import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
+import { parseJsonObject, type SchemaSource, type ScrapeFormState } from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["none", "None"],
@@ -23,43 +22,6 @@ const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["inline", "Inline JSON"],
   ["prompt", "From a prompt"],
 ];
-
-const PAGE_KINDS: readonly (readonly [PageKind, string])[] = [
-  ["detail", "Detail"],
-  ["listing", "Listing"],
-];
-
-const METHOD_HINTS: readonly (readonly [MethodHint, string])[] = [
-  ["auto", "Auto"],
-  ["http", "HTTP"],
-  ["browser", "Browser"],
-];
-
-function FormatChoices({
-  form,
-  onChange,
-}: Readonly<{ form: ScrapeFormState; onChange: (form: ScrapeFormState) => void }>) {
-  return (
-    <CheckboxGroup
-      value={[...form.formats]}
-      onChange={(values) => {
-        onChange({ ...form, formats: FORMATS.map(([f]) => f).filter((f) => values.includes(f)) });
-      }}
-    >
-      <Label>Formats</Label>
-      {FORMATS.map(([format, text]) => (
-        <Checkbox key={format} value={format}>
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-            <Label>{text}</Label>
-          </Checkbox.Content>
-        </Checkbox>
-      ))}
-    </CheckboxGroup>
-  );
-}
 
 /** The input for the chosen schema source: an id, a SchemaDef as JSON, or a prompt for role S. */
 function SchemaInput({
@@ -121,43 +83,6 @@ function SchemaInput({
       return exhaustive;
     }
   }
-}
-
-/** A whole number of at least `minValue`; empty leaves the value to the server. */
-function LimitField({
-  label,
-  name,
-  value,
-  minValue,
-  maxValue,
-  onChange,
-}: Readonly<{
-  label: string;
-  name: string;
-  value: number;
-  minValue: number;
-  maxValue?: number;
-  onChange: (value: number) => void;
-}>) {
-  return (
-    <NumberField
-      name={name}
-      value={value}
-      minValue={minValue}
-      {...(maxValue === undefined ? {} : { maxValue })}
-      formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
-      onChange={onChange}
-    >
-      <Label>{label}</Label>
-      <NumberField.Group>
-        <NumberField.DecrementButton />
-        <NumberField.Input />
-        <NumberField.IncrementButton />
-      </NumberField.Group>
-      <Description>Empty: the server default.</Description>
-      <FieldError />
-    </NumberField>
-  );
 }
 
 function LimitFields({
@@ -245,7 +170,12 @@ export function ScrapeForm({
         <Input autoComplete="off" />
         <FieldError />
       </TextField>
-      <FormatChoices form={form} onChange={onChange} />
+      <FormatChoices
+        value={form.formats}
+        onChange={(formats) => {
+          onChange({ ...form, formats });
+        }}
+      />
       <Fieldset>
         <Fieldset.Legend>Extraction</Fieldset.Legend>
         <Choices

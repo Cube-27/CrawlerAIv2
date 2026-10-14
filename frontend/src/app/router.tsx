@@ -2,6 +2,8 @@ import type { RouteObject } from "react-router";
 import { ApiQueryProvider } from "../api/hooks/query";
 import { ConnectScreen } from "../screens/connect/ConnectScreen";
 import { HomeScreen } from "../screens/home/HomeScreen";
+import { JobScreen } from "../screens/jobs/JobScreen";
+import { JobsScreen } from "../screens/jobs/JobsScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
 import { ScrapeScreen } from "../screens/scrape/ScrapeScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
@@ -41,6 +43,8 @@ export const routes: RouteObject[] = [
           { path: "sites", element: <SitesScreen /> },
           { path: "sites/:host", element: <SiteScreen /> },
           { path: "configs/:id", element: <ConfigScreen /> },
+          { path: "jobs", element: <JobsScreen /> },
+          { path: "jobs/:id", element: <JobScreen /> },
         ],
       },
       // SPEC-03 §4.10. The eval routes take no API key (D-0344); the shell lists them when `/healthz` reports

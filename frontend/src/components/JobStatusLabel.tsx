@@ -1,0 +1,30 @@
+import type { JobStatus, TaskStatus } from "../api/jobs";
+import { StatusLabel, type StatusTone } from "./StatusLabel";
+
+// One tone per `job.status` (SPEC-01 §4.2): waiting, in progress, or ended; a cancel is the caller's own end.
+const JOB_STATUS_TONES: Record<JobStatus, StatusTone> = {
+  queued: "neutral",
+  running: "accent",
+  completed: "success",
+  failed: "danger",
+  cancelled: "neutral",
+};
+
+// One tone per `url_task.status` (SPEC-01 §4.2), as for jobs; `claimed` is a task a worker is running.
+const TASK_STATUS_TONES: Record<TaskStatus, StatusTone> = {
+  queued: "neutral",
+  claimed: "accent",
+  done: "success",
+  failed: "danger",
+  cancelled: "neutral",
+};
+
+/** A job's status as its text and icon. */
+export function JobStatusLabel({ status }: Readonly<{ status: JobStatus }>) {
+  return <StatusLabel text={status} tone={JOB_STATUS_TONES[status]} />;
+}
+
+/** A task's status as its text and icon. */
+export function TaskStatusLabel({ status }: Readonly<{ status: TaskStatus }>) {
+  return <StatusLabel text={status} tone={TASK_STATUS_TONES[status]} />;
+}

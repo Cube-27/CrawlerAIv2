@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1, L2 and L4 complete (2026-10-14). L3: SPEC-10 PRs 1-7 done; in progress SPEC-10 PR 8 and SPEC-12 PR 7. Sonar settings + debt reduction done (#138).
+- L1, L2 and L4 complete (2026-10-14). L3: SPEC-10 PRs 1-7 and SPEC-12 PR 7 done; in progress SPEC-10 PR 8.
+- Owner (D-0700, 2026-10-14): add GET /v1/jobs (ARCHITECTURE §13.1 and SPEC-10 amended in SPEC-10 PR 9), then the SPEC-12 §4.3 jobs table in SPEC-12 PR 9.
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
@@ -233,7 +234,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 4 | Schemas screens | done (#87) | |
 | 5 | Records screen + inspector + replay | done (#97) | |
 | 6 | Sites & configs + StepsEditor + corrections + export | done (#134) | |
-| 7 | Jobs screens + EventLog (SSE) + exports | todo | |
+| 7 | Jobs screens + EventLog (SSE) + exports | done (#143) | |
 | 8 | Change feed in Records | done (#141) | |
 | 9 | Labeling nav integration + shared shell polish | done (#93) | |
 
