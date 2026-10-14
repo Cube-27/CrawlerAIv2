@@ -13,6 +13,7 @@ from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.rungs import acquire
+from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
 from crawlerai.config_ir.active import config_by_id
 from crawlerai.config_ir.drift import DriftMargins
@@ -95,11 +96,16 @@ async def fetch_page(
 ) -> FetchedPage | TaskResult:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. The attempts count as the job's usage. A request the SSRF
-    guard refused fails the task at once (INV-16).
+    guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
+    fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
     With `recurring`, the records the task extracts with, a page a record already stands for (`standing_record`) is
     fetched with the validators it last answered with, and a 304 ends the task `unchanged` with no capture (SPEC-11
     §4.2)."""
+    try:
+        await fetching.connector.check(task.url)
+    except SsrfRejected as e:
+        return Failed(str(e), transient=False)
     site = await site_row(conn, urlsplit(task.url).hostname or "")
     policy = fetch_policy(options, locale, site.proxy_pool)
     standing = None if recurring is None else await _standing(conn, task, site.id, recurring)
