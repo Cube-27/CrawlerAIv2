@@ -4629,3 +4629,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A native `datetime-local` input via HeroUI `Input` (local zone only, uneven browser support).
 - Why: DESIGN.md: a new runtime dependency is added to the theme-only list in the PR that adds it. It is Apache-2.0 and already resolved as HeroUI's peer.
 - Reversible: yes
+
+### D-0689 — A run's listing is the URLs its frontier gave a page kind, on the start host
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: The listing of a records crawl is the canonical URLs of its tasks that matched a page-kind rule, on the start URL's host. A URL counts whether or not its page was reached.
+- Alternatives: The row URLs of listing records, as SPEC-11 §4.5 first worded it.
+- Why: No job stores listing records (`check_records`, D-0674). The rule-matched URLs are the catalog the crawl found, through listing pages or sitemaps. Subdomain URLs are left out, as pinned configs leave them out (D-0678).
+- Reversible: yes
+
+### D-0690 — The runs of a crawl are the records crawls with the same scope
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: Only URLs last held by an earlier job of kind `crawl` are counted missing. That job must have the same `schema_id` and the same request `url`, `include`, `exclude`, `max_depth`, `limit` and `page_kind_rules`.
+- Alternatives: Every `url_state` row of the site.
+- Why: §14: a recurring crawl is the caller re-submitting the job. Site-wide, two crawls of different sections of a site would each mark the other's URLs gone after two runs.
+- Reversible: yes
+
+### D-0691 — A run that saw part of its listing only marks nothing missing
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: Three kinds of run count no misses: one that reached its `limit`; one that listed nothing; and one with a page no rule matched that ended `blocked`, `shell` or `failed`. Its URLs are still marked seen. A navigation page that ended `not_found` still counts.
+- Alternatives: Count every run.
+- Why: Each of those runs may have missed URLs that are still listed. The frontier stops at `limit`, and the crawl handler reads no links from an unreached page, so a blocked category page would otherwise mark its products gone after two runs (review of #142). A `not_found` page is itself a change in the listing. All of these decline rather than guess (C7).
+- Reversible: yes
+
+### D-0692 — The diff runs in the transaction that ends the job, before its end event
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: `settle_job` takes an optional `JobEnding` hook. `complete_task`, `fail_task` and `release_expired_leases` pass it through, and the worker and the scheduler pass `close_run`. A cancelled or failed job is not a run.
+- Alternatives: A scheduler sweep over completed jobs, after the end; diffing in the worker after the task commits.
+- Why: `db` sits below `recurring` in the import layers, so the hook is injected. Events recorded after the end event can fall outside the batch in which the SSE stream reads the end event and closes.
+- Reversible: yes
+
+### D-0693 — `url_state.last_seen_job_id` (migration 0015)
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: Nullable, FK `job`, `ON DELETE SET NULL`. A row that no listing held (one written by a scrape's conditional GET) stays NULL and is never counted missing.
+- Alternatives: A separate "seen in a listing" flag.
+- Why: §4.5 names this plumbing column. It also gives the job to compare scopes with.
+- Reversible: yes
+
+### D-0694 — SPEC-11 §4.5 clarifying edit
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: §4.5 now states D-0689–D-0692. The listing is the rule-matched URLs on the start host, and the runs are records crawls with the same scope. Partial runs count no misses, the diff runs before the end event, and the frontier queues new URLs.
+- Alternatives: Leave §4.5 on listing records and the whole site.
+- Why: No job produces listing records, and a site-wide diff marks URLs from other crawls gone. ARCHITECTURE §14 row 4 is unchanged, so this is a clarifying edit (CLAUDE.md §6).
+- Reversible: yes
+
+### D-0695 — The listing diff takes the site's row lock first
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 4 (#142) · Status: decided
+- Decision: `close_run` reads the site with `SELECT … FOR UPDATE` before it touches `url_state`.
+- Alternatives: Let Postgres abort one of two deadlocked runs and let the task retry.
+- Why: `_seen` locks rows in sorted order, but the `_missed` UPDATE locks them in scan order, so two runs of a site ending together could deadlock.
+- Reversible: yes
