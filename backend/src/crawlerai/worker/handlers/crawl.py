@@ -28,12 +28,21 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.crawl.frontier import Frontier, discovered
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.queue import ClaimedTask
+from crawlerai.llm.client import LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, recording
 from crawlerai.services.map import TIMEOUT_S
 from crawlerai.services.scrape_steps import fetch_policy, record_fetch_usage, site_row
-from crawlerai.worker.handlers.steps import FetchedPage, Records, extract_records, fetch_page, load_job, unreached
+from crawlerai.worker.handlers.steps import (
+    FetchedPage,
+    Records,
+    count_fetch,
+    extract_records,
+    fetch_page,
+    load_job,
+    unreached,
+)
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskHandler, TaskResult
 
 SITEMAP_TIMEOUT_S: Final = TIMEOUT_S  # as long as a `map` reads a site's sitemaps (§4.4)
@@ -41,24 +50,29 @@ SITEMAP_TIMEOUT_S: Final = TIMEOUT_S  # as long as a `map` reads a site's sitema
 
 @dataclass(frozen=True)
 class _Crawl:
-    """A task of a crawl: the request, its frontier, and what the task extracts records with (None: formats)."""
+    """A task of a crawl: the request, its frontier, what the task extracts records with (None: formats), and the
+    client role C runs on (None: no role C)."""
 
     task: ClaimedTask
     request: CrawlRequest
     frontier: Frontier
     records: Records | None
+    llm: LLMClient | None
 
 
-def crawl_handler(fetching: Fetching, data: EngineData | None, margins: DriftMargins | None) -> TaskHandler:
+def crawl_handler(
+    fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient | None
+) -> TaskHandler:
     """The `crawl` handler of a worker that fetches with `fetching`; `data` is None in a worker without the engine's
-    data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9)."""
+    data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9); role C runs on `llm`
+    (None: no role C)."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         job = await load_job(conn, task, data, margins)
         if isinstance(job, Failed):
             return job
         request, records = CrawlRequest.model_validate(job[0]), job[1]
-        return await _run(conn, fetching, _Crawl(task, request, request.frontier(), records))
+        return await _run(conn, fetching, _Crawl(task, request, request.frontier(), records, llm))
 
     return handle
 
@@ -68,8 +82,10 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     page = await fetch_page(conn, fetching, task, crawl.request.fetch, crawl.request.locale)
     if isinstance(page, (Failed, Postpone)):  # the task runs again: what it adds, it adds then
         return page
-    seeds = await _sitemap_seeds(conn, fetching, crawl) if task.canonical_url == crawl.request.start else []
     result, found = (page, ()) if isinstance(page, Finished) else await _visit(conn, crawl, page)
+    if isinstance(page, FetchedPage):
+        await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
+    seeds = await _sitemap_seeds(conn, fetching, crawl) if task.canonical_url == crawl.request.start else []
     await crawl.frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
     await crawl.frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
     return result
@@ -91,7 +107,9 @@ async def _visit(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage) -> tup
         return Finished("links_only", capture_id=page.capture_id), found
     if crawl.records is None:
         return Finished("extracted", capture_id=page.capture_id), found
-    result = await extract_records(conn, crawl.task, page, crawl.records, caller_supplied=False, parsed=parsed)
+    result = await extract_records(
+        conn, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, parsed=parsed
+    )
     return result, found
 
 

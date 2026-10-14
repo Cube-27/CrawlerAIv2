@@ -2,7 +2,8 @@
 extracts with as the job pinned them (INV-28); fetching its page politely and storing the capture; the result a page
 that was not reached ends with; and extracting and storing a reached page's record.
 
-Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31).
+Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The fetch
+of a reached page is counted as the job's usage after its extraction (`count_fetch`, D-0346).
 """
 
 from dataclasses import dataclass
@@ -17,9 +18,11 @@ from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
 from crawlerai.config_ir.active import config_by_id
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import CaptureId, ExtractionConfig, ExtractionConfigId, Job, RecordId, SchemaId, SiteId
 from crawlerai.db.queue import ClaimedTask
+from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
 from crawlerai.recurring.state import record_fetch, standing_record, stored_validators
 from crawlerai.resolve.pipeline import EngineData, extract_page
@@ -76,13 +79,15 @@ async def load_job(
 
 @dataclass(frozen=True)
 class FetchedPage:
-    """The task's page as fetched, its site, its stored capture, and the record that stands for it while it is
-    unchanged (`fetch_page`'s `recurring`)."""
+    """The task's page as fetched, its site, its stored capture, the record that stands for it while it is unchanged
+    (`fetch_page`'s `recurring`), and the fetch attempts, which `count_fetch` counts as the job's usage."""
 
     site: SiteRow
     result: FetchResult
     capture_id: CaptureId
-    standing: RecordId | None = None
+    standing: RecordId | None
+    attempts: tuple[AttemptRecord, ...]
+    proxy_pool: str | None
 
 
 async def fetch_page(
@@ -123,16 +128,23 @@ async def fetch_page(
         return await fetch_unless_unchanged(fetch, validators, has_record=standing is not None)
 
     fetched = await fetch_politely(conn, task, site.id, policy, page, fetching.limiter, fetch_robots=robots)
+    if isinstance(fetched, FetchResult):
+        if (refused := refusal(fetched)) is None:
+            capture_id = await new_capture(conn, fetching.store, site.id, fetched)
+            return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool)
+        fetched = Failed(refused, transient=False)
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)
         return Finished("unchanged")
-    if not isinstance(fetched, FetchResult):
-        return fetched
-    if (refused := refusal(fetched)) is not None:
-        return Failed(refused, transient=False)
-    capture_id = await new_capture(conn, fetching.store, site.id, fetched)
-    return FetchedPage(site, fetched, capture_id, standing)
+    return fetched
+
+
+async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
+    """Count the page's fetch attempts as the job's usage. A handler counts them once it has extracted the page: role
+    C's client updates the job's usage on a connection of its own, and would wait on this transaction's write to the
+    job's row (D-0346)."""
+    await record_fetch_usage(conn, task.job_id, page.attempts, page.proxy_pool)
 
 
 async def _standing(conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records) -> RecordId | None:
@@ -161,17 +173,20 @@ async def extract_records(
     records: Records,
     *,
     caller_supplied: bool,
+    llm: LLMClient | None,
     parsed: ParsedPage | None = None,
 ) -> TaskResult:
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
-    pinned config, else cold. `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered
+    pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13);
+    None binds no role C. `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered
     page may end `no_match`."""
     schema = await get_by_id(conn, records.schema_id)
     config = None
     if records.config_id is not None:
         config = await config_by_id(conn, records.config_id, records.data.vocabulary)
     executor = None if config is None else config.executor
-    extraction = await extract_page(page.result.bundle, schema, executor, None, data=records.data, parsed=parsed)
+    gap_fill = None if llm is None else role_c(llm, job_id=task.job_id)
+    extraction = await extract_page(page.result.bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)
     stored = await store_page_record(
         conn,
         task,
