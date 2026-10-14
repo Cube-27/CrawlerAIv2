@@ -1,5 +1,4 @@
 import { Button, Typography } from "@heroui/react";
-import type { ReactNode } from "react";
 import { useParams } from "react-router";
 import { useCancelJob, useJob } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
@@ -11,6 +10,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { OutcomeCounts } from "../../components/OutcomeCounts";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
+import { Section } from "../../components/Section";
 import { StatusLabel } from "../../components/StatusLabel";
 import { Timestamp } from "../../components/Timestamp";
 import { UsageSummary } from "../../components/UsageSummary";
@@ -43,15 +43,6 @@ function CancelAction({ id }: Readonly<{ id: string }>) {
       </ConfirmDialog>
       {problem === null ? null : <ProblemAlert problem={problem} />}
     </>
-  );
-}
-
-function Section({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
-  return (
-    <section className="flex flex-col gap-3">
-      <Typography.Heading level={2}>{title}</Typography.Heading>
-      {children}
-    </section>
   );
 }
 

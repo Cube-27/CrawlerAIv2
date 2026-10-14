@@ -26,15 +26,13 @@ interface NavEntry {
 }
 
 interface NavGroup {
-  /** The group's heading in the sidebar; the first group has none. */
-  title: string | null;
+  /** The group's heading in the sidebar. */
+  title: string;
   entries: NavEntry[];
 }
 
-const OVERVIEW: NavGroup = {
-  title: null,
-  entries: [{ href: "/", label: "Overview", icon: House }],
-};
+// The overview comes first, above the groups; Settings come last, at the foot of the sidebar.
+const OVERVIEW: NavEntry = { href: "/", label: "Overview", icon: House };
 
 const EXTRACT: NavGroup = {
   title: "Extract",
@@ -59,10 +57,9 @@ const EVALUATE: NavGroup = {
   entries: [{ href: "/labeling", label: "Labeling", icon: Tag }],
 };
 
-// Settings come last, at the foot of the sidebar.
 const SETTINGS: NavEntry = { href: "/settings", label: "Settings", icon: Gear };
 
-const WITHOUT_LABELING: NavGroup[] = [OVERVIEW, EXTRACT, CONFIGURE];
+const WITHOUT_LABELING: NavGroup[] = [EXTRACT, CONFIGURE];
 const WITH_LABELING: NavGroup[] = [...WITHOUT_LABELING, EVALUATE];
 
 /** Whether `pathname` is in the section `href` opens: the page itself or, except for the overview, a page under it. */
@@ -97,11 +94,12 @@ function MainNav() {
       aria-label="Main"
       className="flex flex-row flex-wrap gap-1 sm:flex-1 sm:flex-col sm:flex-nowrap sm:gap-0"
     >
+      <ul className="contents sm:flex sm:flex-col">
+        <NavItem entry={OVERVIEW} pathname={pathname} />
+      </ul>
       {groups.map((group) => (
-        <div key={group.title ?? "overview"} className="contents sm:block">
-          {group.title === null ? null : (
-            <p className="nav-heading hidden sm:block">{group.title}</p>
-          )}
+        <div key={group.title} className="contents sm:block">
+          <p className="nav-heading hidden sm:block">{group.title}</p>
           <ul className="contents sm:flex sm:flex-col sm:gap-0.5">
             {group.entries.map((entry) => (
               <NavItem key={entry.href} entry={entry} pathname={pathname} />
@@ -121,16 +119,15 @@ function SidebarFooter() {
   const { apiKey, disconnect } = useAuth();
   const dark = theme === "dark";
   return (
-    <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-      {apiKey === null ? (
-        <span />
-      ) : (
+    <div className="flex items-center gap-2 border-t border-border pt-3">
+      {apiKey === null ? null : (
         <Button variant="ghost" size="sm" onPress={disconnect}>
           <ArrowRightFromSquare aria-hidden="true" />
           Disconnect
         </Button>
       )}
       <ToggleButton
+        className="ms-auto"
         isIconOnly
         size="sm"
         variant="ghost"
@@ -150,7 +147,7 @@ function Sidebar() {
   return (
     <aside
       aria-label="Sidebar"
-      className="flex flex-col gap-3 border-b border-border p-3 sm:sticky sm:top-0 sm:h-dvh sm:w-sidebar sm:shrink-0 sm:border-b-0"
+      className="flex flex-col gap-3 border-b border-border p-3 sm:sticky sm:top-0 sm:h-dvh sm:w-sidebar sm:overflow-y-auto sm:shrink-0 sm:border-b-0"
     >
       <div className="flex items-center gap-2.5 px-2 py-1">
         <span className="brand-mark" aria-hidden="true">

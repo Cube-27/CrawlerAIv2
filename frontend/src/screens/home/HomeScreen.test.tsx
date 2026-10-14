@@ -92,7 +92,7 @@ describe("overview", () => {
     expect(within(recent).getByRole("row", { name: /Crawl/ })).toBeVisible();
     const jobQueries = calls.filter((call) => call.path === "/v1/jobs").map((call) => call.query);
     expect(jobQueries.some((query) => query.includes("status=running"))).toBe(true);
-    expect(jobQueries.some((query) => query.includes("limit=8"))).toBe(true);
+    expect(jobQueries.some((query) => query.includes("limit=20"))).toBe(true);
   });
 
   it("says when there are no jobs yet, and shows a number it cannot read as a dash", async () => {

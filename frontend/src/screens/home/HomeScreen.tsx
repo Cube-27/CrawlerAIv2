@@ -1,6 +1,7 @@
 import { Card, Link, Skeleton, Typography } from "@heroui/react";
 import { Layers, Magnifier, Thunderbolt } from "@gravity-ui/icons";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import type { ComponentType, SVGProps } from "react";
 import { useJobs } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import { useSchemas } from "../../api/hooks/schemas";
@@ -10,9 +11,9 @@ import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
 import { PAGE_SIZE } from "../../components/PagedTable";
 import { ProblemAlert } from "../../components/ProblemAlert";
-import { formatUsd } from "../../components/usd";
+import { Section } from "../../components/Section";
 import { JobRows } from "../jobs/JobTable";
-import { rangeStart } from "../settings/costs";
+import { formatCost, formatCount, RANGES, rangeStart } from "../settings/costs";
 
 /** The recent jobs the overview lists; `h-table-recent` in theme.css holds this many rows. */
 const RECENT_JOBS = 8;
@@ -64,24 +65,35 @@ function ActionTile({ action }: Readonly<{ action: Action }>) {
   );
 }
 
-/** One headline number. `value` is null while it loads; the tile keeps its size in every state. */
-function StatTile({
+interface Stat {
+  value: string;
+  caption: string;
+}
+
+/** One headline number from one query. Loading shows a skeleton and an error a dash; the caption is a single
+ * truncated line (full text in its tooltip), so the tile keeps its size in every state (no layout shift). */
+function StatTile<T>({
   label,
-  value,
-  caption,
-}: Readonly<{ label: string; value: string | null; caption: string }>) {
+  query,
+  stat,
+}: Readonly<{ label: string; query: UseQueryResult<T>; stat: (data: T) => Stat }>) {
+  let shown: Stat | null;
+  if (query.isError) shown = { value: "—", caption: "Could not load" };
+  else if (query.isSuccess) shown = stat(query.data);
+  else shown = null;
+  const caption = shown?.caption ?? "Loading";
   return (
     <Card>
       <Card.Header>
         <Card.Description>{label}</Card.Description>
       </Card.Header>
       <Card.Content>
-        {value === null ? (
+        {shown === null ? (
           <Skeleton className="h-8 w-24" />
         ) : (
-          <span className="stat-value">{value}</span>
+          <span className="stat-value">{shown.value}</span>
         )}
-        <Typography.Paragraph size="sm" color="muted">
+        <Typography.Paragraph size="sm" color="muted" className="truncate" title={caption}>
           {caption}
         </Typography.Paragraph>
       </Card.Content>
@@ -95,49 +107,48 @@ function RunningJobs() {
     cursor: null,
     limit: PAGE_SIZE,
   });
-  if (jobs.isError) return <StatTile label="Jobs running" value="—" caption="Could not load" />;
-  if (!jobs.isSuccess) return <StatTile label="Jobs running" value={null} caption="Loading" />;
-  const more = jobs.data.next_cursor === null ? "" : "+";
   return (
     <StatTile
       label="Jobs running"
-      value={`${String(jobs.data.items.length)}${more}`}
-      caption="Batch scrapes, crawls, maps, extracts and learning runs"
+      query={jobs}
+      stat={(page) => ({
+        value: `${String(page.items.length)}${page.next_cursor === null ? "" : "+"}`,
+        caption: "Across every job kind",
+      })}
     />
   );
 }
 
 function SchemaCount() {
-  const schemas = useSchemas();
-  if (schemas.isError) return <StatTile label="Schemas" value="—" caption="Could not load" />;
-  if (!schemas.isSuccess) return <StatTile label="Schemas" value={null} caption="Loading" />;
-  const names = new Set(schemas.data.map((schema) => schema.name));
   return (
     <StatTile
       label="Schemas"
-      value={String(names.size)}
-      caption={`${String(schemas.data.length)} versions in all`}
+      query={useSchemas()}
+      stat={(schemas) => ({
+        value: formatCount(new Set(schemas.map((schema) => schema.name)).size),
+        caption: `${formatCount(schemas.length)} versions in all`,
+      })}
     />
   );
 }
 
 function LlmCost() {
-  const report = useLlmCostReport(rangeStart("30"));
-  const label = "LLM cost, last 30 days";
-  if (report.isError) return <StatTile label={label} value="—" caption="Could not load" />;
-  if (!report.isSuccess) return <StatTile label={label} value={null} caption="Loading" />;
-  const { estimated_usd: usd, calls } = report.data.total;
   return (
     <StatTile
-      label={label}
-      value={usd === null ? "—" : formatUsd(usd)}
-      caption={usd === null ? `${String(calls)} calls, cost unknown` : `${String(calls)} calls`}
+      label={`LLM cost, ${RANGES["30"].toLowerCase()}`}
+      query={useLlmCostReport(rangeStart("30"))}
+      stat={({ total }) =>
+        total.estimated_usd === null
+          ? { value: "—", caption: formatCost(total) }
+          : { value: formatCost(total), caption: `${formatCount(total.calls)} calls` }
+      }
     />
   );
 }
 
 function RecentJobsContent() {
-  const jobs = useJobs({ filters: NO_FILTERS, cursor: null, limit: RECENT_JOBS });
+  // The Jobs screen's first page: one cached query for both screens, of which the overview shows the newest few.
+  const jobs = useJobs({ filters: NO_FILTERS, cursor: null, limit: PAGE_SIZE });
   const problem = problemOf(jobs.error);
   if (problem !== null) return <ProblemAlert problem={problem} />;
   if (!jobs.isSuccess) return <LoadingView label="Loading recent jobs" />;
@@ -146,23 +157,7 @@ function RecentJobsContent() {
       <EmptyView title="No jobs yet">Scrape a page or run a job, and it shows up here.</EmptyView>
     );
   }
-  return <JobRows jobs={jobs.data.items} />;
-}
-
-function Section({
-  title,
-  action,
-  children,
-}: Readonly<{ title: string; action?: ReactNode; children: ReactNode }>) {
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <Typography.Heading level={2}>{title}</Typography.Heading>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
+  return <JobRows jobs={jobs.data.items.slice(0, RECENT_JOBS)} />;
 }
 
 /** The start screen: what to do first, the headline numbers, and the latest jobs. */
