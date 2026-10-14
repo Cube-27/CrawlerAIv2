@@ -13,8 +13,8 @@ adapter over the same services (§3: "MCP and the UI hold no logic of their own"
 ## 2. Scope
 
 Core:
-- `POST /v1/batch/scrape`, `POST /v1/map`, `POST /v1/crawl`, `POST /v1/extract`, `GET/DELETE /v1/jobs/{id}`,
-  `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` (SSE), webhooks.
+- `POST /v1/batch/scrape`, `POST /v1/map`, `POST /v1/crawl`, `POST /v1/extract`, `GET /v1/jobs`,
+  `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` (SSE), webhooks.
 - Crawl frontier: sitemaps, page links, pagination (SPEC-05 4.12); canonicalization, dedup, include/exclude
   globs, depth, limit; page-kind rules; URLs matching no rule are link-only (§13.2, §23).
 - MCP server: official SDK, stdio + streamable HTTP, API-key auth, the ten tools of §13.3, output rules.
@@ -55,6 +55,10 @@ Out of scope:
   settings it runs with; later changes apply only to jobs submitted after them (INV-28).
 - Each task runs in its own DB session and transaction; a failed task or a crashed browser never fails the job's
   other tasks, and a crashed shared browser is restarted at most once per task (INV-31).
+- `GET /v1/jobs?kind&status&cursor&limit` → `{items: [job summary], next_cursor}`: every job, newest first (by
+  id; ids are UUIDv7), optionally only those of one `kind` and/or one `status`. Pagination as `/results`: `limit`
+  1–200 (default 50); pass `next_cursor` as `cursor` for the next page; `next_cursor` is null on the last page.
+  Added with owner approval (ARCHITECTURE rev 10, D-0700); no MCP tool (§13.3).
 - `DELETE /v1/jobs/{id}` → `cancel_requested` (SPEC-01); status becomes `cancelled` when no task is running.
 - `GET /v1/jobs/{id}/results?cursor&limit&format=json|json_records|csv_records|markdown` → paginated records (SPEC-07
   field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`.
@@ -173,6 +177,7 @@ published values unchanged), INV-28 (settings pinned at submit), INV-31 (task is
 | 6 | SSE events + webhooks | `routers/events`, `api/webhooks` | unit | Resume + signature. |
 | 7 | MCP server (stdio + HTTP) | `mcp_server/*` | SDK client tests | All ten tools. |
 | 8 | Endpoint-level SSRF matrix | tests | unit | All rejected. |
+| 9 | `GET /v1/jobs` list | `services/jobs`, `routers/jobs` | router tests | Newest first; `kind`/`status` filters; cursor pages. |
 
 ## 9. Open issues
 

@@ -596,6 +596,7 @@ matches the engine. Correctness is measured in §16, per field status.
 | `POST /v1/map` | URL discovery: sitemaps (robots `Sitemap:`, `/sitemap.xml`, indexes) plus page links. Include/exclude, limit. |
 | `POST /v1/crawl` | Async. Start URL, include/exclude globs, depth, limit, `formats`, optional `schema` with page-kind rules per URL pattern. |
 | `POST /v1/extract` | Async. URLs (globs expanded through `map`) plus `schema` or `prompt` → records, in progressive mode. Returns the drafted schema when a prompt was used. |
+| `GET /v1/jobs` | Jobs, newest first, each with its status summary; optional `kind` and `status` filters; cursor-paginated. |
 | `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status, cancel, paginated results, server-sent events for progress (from stored run events). A webhook on completion. |
 | `/v1/schemas` | Create, read, update, delete. |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
@@ -980,3 +981,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 7 | 2026-10-13 | **Owner answers** (Appendix A #30). §16.3: complementary suppression for hidden and fresh aggregates (D-0234, OPEN_QUESTIONS #16). |
 | 8 | 2026-10-13 | **Parse once** (Appendix A #31, owner). §8: one `ParsedPage` per capture, shared by every consumer (INV-26). Appendix A #32: operational invariants INV-27–INV-32 (owner-selected). Comparisons with a named hosted crawler removed (owner). |
 | 9 | 2026-10-13 | **C11 amended** (Appendix A #33): a hard cognitive-complexity limit of 15 per function and a soft, warning-only limit of 800 lines per file; no other size, coverage or ratchet gates. INV-18 reworded; SPEC-00 §4.6 updated. |
+| 10 | 2026-10-14 | **`GET /v1/jobs`** (owner approval, D-0700): §13.1 lists jobs, newest first, with optional `kind` and `status` filters and cursor pagination, for SPEC-12's jobs table. SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
