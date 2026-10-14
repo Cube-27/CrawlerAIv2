@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from crawlerai.core.settings import LLMSettings
@@ -43,19 +41,6 @@ def _list(*rows: dict[str, Any], provider: str = "fakeai") -> PriceList:
     )
 
 
-# A model whose price changes on D2, and one priced by prompt length (up to 1000 tokens, then over).
-SYNTHETIC = Pricing.of(
-    [
-        _list(
-            _row("dated", effective_until=D2.isoformat()),
-            _row("dated", effective_from=D2.isoformat(), input_usd_per_mtok="3", output_usd_per_mtok="6"),
-            _row("tiered", max_prompt_tokens=1000),
-            _row("tiered", min_prompt_tokens=1001, input_usd_per_mtok="5", output_usd_per_mtok="10"),
-        )
-    ]
-)
-
-
 def test_the_shipped_price_lists_price_every_default_model_of_the_settings() -> None:
     # Read from this source tree: CI installs the package as a wheel, which has no backend/data.
     shipped = Pricing.read(BACKEND / "data")
@@ -66,38 +51,33 @@ def test_the_shipped_price_lists_price_every_default_model_of_the_settings() -> 
         for model_class in ("fast", "strong")
     }
     checked = date(2026, 10, 14)
-    assert {(p, m) for p, m in defaults if shipped.price(p, m, checked, prompt_tokens=1) is None} == set()
+    priced = {
+        (p.provider, p.model)
+        for p in shipped.prices
+        if p.min_prompt_tokens == 0
+        and p.effective_from <= checked
+        and (p.effective_until is None or checked < p.effective_until)
+    }
+    assert defaults - priced == set()
 
 
-def test_a_price_is_found_by_provider_model_date_and_prompt_length() -> None:
-    assert SYNTHETIC.price("fakeai", "dated", D1, prompt_tokens=10) is not None
-    found = SYNTHETIC.price("fakeai", "dated", D2, prompt_tokens=10)
-    assert found is not None
-    assert (found.input_usd_per_mtok, found.output_usd_per_mtok) == (Decimal(3), Decimal(6))
-    over = SYNTHETIC.price("fakeai", "tiered", D1, prompt_tokens=1001)
-    assert over is not None
-    assert over.input_usd_per_mtok == Decimal(5)
-    up_to = SYNTHETIC.price("fakeai", "tiered", D1, prompt_tokens=1000)
-    assert up_to is not None
-    assert up_to.input_usd_per_mtok == Decimal(1)
-
-
-def test_there_is_no_price_for_an_unknown_model_provider_or_date() -> None:
-    assert SYNTHETIC.price("fakeai", "unlisted", D1, prompt_tokens=1) is None
-    assert SYNTHETIC.price("otherai", "dated", D1, prompt_tokens=1) is None
-    # Before the first effective date nothing was checked, so nothing is assumed (C7).
-    assert SYNTHETIC.price("fakeai", "dated", date(2029, 12, 31), prompt_tokens=1) is None
-
-
-def test_a_tiered_price_needs_the_prompt_length() -> None:
-    assert SYNTHETIC.price("fakeai", "tiered", D1, prompt_tokens=None) is None
-    assert SYNTHETIC.price("fakeai", "dated", D1, prompt_tokens=None) is not None
-
-
-@given(st.dates(min_value=D1, max_value=date(2040, 1, 1)), st.integers(min_value=0, max_value=10**7))
-def test_every_call_after_the_first_date_has_exactly_one_price(on: date, prompt_tokens: int) -> None:
-    for model in ("dated", "tiered"):
-        assert len([p for p in SYNTHETIC.prices if p.model == model and p.applies(on, prompt_tokens)]) == 1
+def test_a_price_change_and_prompt_length_tiers_that_meet_are_accepted() -> None:
+    pricing = Pricing.of(
+        [
+            _list(
+                _row("dated", effective_until=D2.isoformat()),
+                _row("dated", effective_from=D2.isoformat(), input_usd_per_mtok="3"),
+                _row("tiered", max_prompt_tokens=1000),
+                _row("tiered", min_prompt_tokens=1001, input_usd_per_mtok="5"),
+            )
+        ]
+    )
+    assert [(p.model, p.input_usd_per_mtok) for p in pricing.prices] == [
+        ("dated", Decimal(1)),
+        ("dated", Decimal(3)),
+        ("tiered", Decimal(1)),
+        ("tiered", Decimal(5)),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -119,9 +99,10 @@ def test_prices_that_could_both_apply_to_one_call_are_refused(rows: tuple[dict[s
 
 def test_the_same_model_of_two_providers_is_two_prices() -> None:
     both = Pricing.of([_list(_row("m")), _list(_row("m", input_usd_per_mtok="7"), provider="otherai")])
-    other = both.price("otherai", "m", D1, prompt_tokens=1)
-    assert other is not None
-    assert other.input_usd_per_mtok == Decimal(7)
+    assert [(p.provider, p.input_usd_per_mtok) for p in both.prices] == [
+        ("fakeai", Decimal(1)),
+        ("otherai", Decimal(7)),
+    ]
 
 
 @pytest.mark.parametrize(

@@ -15,6 +15,7 @@ Calls made without a job (the labeling pre-fill, an eval replay's recording) wri
 they are not in this history.
 """
 
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -24,12 +25,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import (
     BigInteger,
     ColumnElement,
-    DateTime,
     FromClause,
     Numeric,
     Row,
     Select,
     Text,
+    Uuid,
     and_,
     case,
     cast,
@@ -55,10 +56,6 @@ TOP_JOBS: Final = 10
 _TOKENS: Final = ("llm_tokens_in", "llm_tokens_out")
 
 
-def _today() -> date:
-    return datetime.now(UTC).date()
-
-
 class CostQuery(BaseModel):
     """A range of UTC days, both ends included: by default the 30 days through today."""
 
@@ -69,7 +66,7 @@ class CostQuery(BaseModel):
 
     @property
     def last_day(self) -> date:
-        return _today() if self.end is None else self.end
+        return datetime.now(UTC).date() if self.end is None else self.end
 
     @property
     def first_day(self) -> date:
@@ -143,14 +140,14 @@ class JobCostPage(BaseModel):
 
 
 async def cost_report(conn: AsyncConnection, query: CostQuery, pricing: Pricing) -> CostReport:
-    costed = _costed(pricing, (query.first_day, query.last_day))
+    first, last = query.first_day, query.last_day
+    costed = _costed(pricing, (first, last))
     total = (await conn.execute(select(*_sums(costed)))).one()
     by_day = {row.day: row for row in await _grouped(conn, costed, costed.c.day)}
     breakdown = await _grouped(conn, costed, costed.c.provider, costed.c.model, costed.c.prompt_kind)
     top = await conn.execute(
         _jobs(costed).order_by(func.sum(costed.c.usd).desc(), costed.c.job_id.desc()).limit(TOP_JOBS)
     )
-    first, last = query.first_day, query.last_day
     days = [first + timedelta(days=n) for n in range((last - first).days + 1)]
     return CostReport(
         start=first,
@@ -236,24 +233,26 @@ def _jobs(costed: FromClause) -> Select[Any]:
 
 
 def _event_time() -> ColumnElement[datetime]:
-    """The event's creation time: its UUIDv7 id's leading 48 bits, Unix milliseconds (RFC 9562 §5.7)."""
+    """The event's creation time, for its day: its UUIDv7 id's leading 48 bits, Unix milliseconds (RFC 9562 §5.7).
+    Ranges of time compare ids with `uuid7_floor` instead."""
     hex_ms = func.substr(func.replace(cast(UsageEvent.id, Text), "-", ""), 1, 12)
     unix_ms = cast(cast(literal("x") + hex_ms, BIT(48)), BigInteger)
     return func.to_timestamp(unix_ms / 1000.0)
 
 
-def _midnight(day: date) -> datetime:
-    return datetime.combine(day, time(), tzinfo=UTC)
+def _id_floor(day: date) -> uuid.UUID:
+    """The lowest UUIDv7 id of the UTC day `day`."""
+    return uuid7_floor(datetime.combine(day, time(), tzinfo=UTC))
 
 
 def _price_table(pricing: Pricing) -> FromClause:
-    """The prices as a table: one row per price, its dates as UTC midnights."""
+    """The prices as a table: one row per price, its dates as the lowest UUIDv7 ids of their UTC midnights, so an
+    event's id says whether the price applies to it."""
     columns = (
         column("provider", Text),
         column("model", Text),
-        column("valid_from", DateTime(timezone=True)),
-        column("valid_until", DateTime(timezone=True)),
-        column("tiered", BigInteger),
+        column("from_id", Uuid),
+        column("until_id", Uuid),
         column("min_prompt", BigInteger),
         column("max_prompt", BigInteger),
         column("usd_in", Numeric),
@@ -263,9 +262,8 @@ def _price_table(pricing: Pricing) -> FromClause:
         (
             p.provider,
             p.model,
-            _midnight(p.effective_from),
-            None if p.effective_until is None else _midnight(p.effective_until),
-            int(p.tiered),
+            _id_floor(p.effective_from),
+            None if p.effective_until is None else _id_floor(p.effective_until),
             p.min_prompt_tokens,
             p.max_prompt_tokens,
             p.input_usd_per_mtok,
@@ -283,7 +281,6 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
     None): its day, job, provider, model and prompt kind, its calls or tokens, its priced cost and its unpriced
     tokens."""
     event = UsageEvent
-    at = _event_time()
     price = _price_table(pricing)
     is_tokens = event.resource.in_(_TOKENS)
     # The call's prompt length: the input row's quantity, or the metadata the client puts on each of its rows.
@@ -295,10 +292,10 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
         is_tokens,
         price.c.provider == event.provider,
         price.c.model == event.model_or_pool,
-        at >= price.c.valid_from,
-        or_(price.c.valid_until.is_(None), at < price.c.valid_until),
+        event.id >= price.c.from_id,
+        or_(price.c.until_id.is_(None), event.id < price.c.until_id),
         or_(
-            price.c.tiered == 0,
+            and_(price.c.min_prompt == 0, price.c.max_prompt.is_(None)),  # not priced by prompt length
             and_(
                 prompt_tokens >= price.c.min_prompt,
                 or_(price.c.max_prompt.is_(None), prompt_tokens <= price.c.max_prompt),
@@ -313,7 +310,7 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
     priced = price.c.provider.is_not(None)
     statement = (
         select(
-            func.date(func.timezone("UTC", at)).label("day"),
+            func.date(func.timezone("UTC", _event_time())).label("day"),
             event.job_id,
             event.provider,
             event.model_or_pool.label("model"),
@@ -330,9 +327,7 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
     )
     if days is not None:
         first, last = days
-        statement = statement.where(
-            event.id >= uuid7_floor(_midnight(first)), event.id < uuid7_floor(_midnight(last + timedelta(days=1)))
-        )
+        statement = statement.where(event.id >= _id_floor(first), event.id < _id_floor(last + timedelta(days=1)))
     if job_ids is not None:
         statement = statement.where(event.job_id.in_(list(job_ids)))
     return statement.subquery("costed")

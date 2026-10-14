@@ -66,21 +66,6 @@ class PriceList(BaseModel):
 class Price(_Row):
     provider: str
 
-    @property
-    def tiered(self) -> bool:
-        """Whether the price holds only for some prompt lengths."""
-        return self.min_prompt_tokens > 0 or self.max_prompt_tokens is not None
-
-    def applies(self, on: date, prompt_tokens: int | None) -> bool:
-        """Whether the price applies to a call on `on` with `prompt_tokens` input tokens; a tiered price needs them."""
-        in_period = self.effective_from <= on and (self.effective_until is None or on < self.effective_until)
-        if not self.tiered:
-            return in_period
-        if prompt_tokens is None:
-            return False
-        upper = self.max_prompt_tokens
-        return in_period and self.min_prompt_tokens <= prompt_tokens and (upper is None or prompt_tokens <= upper)
-
     def overlaps(self, other: "Price") -> bool:
         """Whether both prices could apply to one call: same provider and model, shared dates and prompt lengths."""
         if (self.provider, self.model) != (other.provider, other.model):
@@ -94,7 +79,8 @@ class Price(_Row):
 
 @dataclass(frozen=True)
 class Pricing:
-    """Every known price; at most one applies to any call (`of` refuses lists where two could)."""
+    """Every known price; at most one applies to any call (`of` refuses lists where two could). The matching rule
+    itself is SQL, where the calls are (`crawlerai.services.llm_costs`)."""
 
     prices: tuple[Price, ...]
 
@@ -115,13 +101,6 @@ class Pricing:
             PriceList.model_validate(json.loads((directory / name).read_text(encoding="utf-8"))) for name in PRICE_FILES
         ]
         return cls.of(lists)
-
-    def price(self, provider: str, model: str, on: date, *, prompt_tokens: int | None) -> Price | None:
-        """The price of a call to `model` of `provider` on `on` with `prompt_tokens` input tokens, or None."""
-        return next(
-            (p for p in self.prices if (p.provider, p.model) == (provider, model) and p.applies(on, prompt_tokens)),
-            None,
-        )
 
 
 @cache
