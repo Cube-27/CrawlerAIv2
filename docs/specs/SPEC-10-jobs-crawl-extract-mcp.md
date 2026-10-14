@@ -51,7 +51,9 @@ Out of scope:
 
 - Common response: `{id, kind, status, created_at, started_at, finished_at, counts: {queued, claimed, done,
   failed, cancelled}, outcomes: {extracted, partial, unchanged, links_only, blocked, shell, not_found, no_match,
-  failed}, usage, webhook_url, engine_version}` (outcome names as `url_task.outcome`, §6).
+  failed}, usage, webhook_url, engine_version, cancel_requested}` (outcome names as `url_task.outcome`, §6).
+  `cancel_requested` is true once a cancel was asked for; a running job stays `running` until its claimed tasks end.
+  Added with owner approval (ARCHITECTURE rev 12, D-0745).
 - A job pins, when submitted, the schema version, site config versions, calibration, source precedence and LLM
   settings it runs with; later changes apply only to jobs submitted after them (INV-28).
 - Each task runs in its own DB session and transaction; a failed task or a crashed browser never fails the job's
@@ -69,11 +71,15 @@ Out of scope:
   Added with owner approval (ARCHITECTURE rev 11); no MCP tool (§13.3).
 - `DELETE /v1/jobs/{id}` → `cancel_requested` (SPEC-01); status becomes `cancelled` when no task is running.
 - `GET /v1/jobs/{id}/results?cursor&limit&format=json|json_records|csv_records|markdown` → paginated records (SPEC-07
-  field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`.
+  field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`. A page
+  output carries its task's `last_error: str | null`: why it failed, or why it ended with its outcome when the
+  outcome alone does not say (a `blocked` task's `robots`), as the worker recorded it (SPEC-01 §4.8). Added with
+  owner approval (ARCHITECTURE rev 12, D-0745).
 - `GET /v1/jobs/{id}/events` → SSE from `job_event` ordered by id, `Last-Event-ID` resume, heartbeat every 15 s,
   event kinds: `task_fetched` (method, block_class), `task_extracted` (outcome, mode, llm_calls), `task_abstained`
-  (fields), `drift_suspended`, `learning_started/finished`, `progress` (counts), `completed`, `failed`,
-  `cancelled`. Payloads contain the task URL (the caller supplied the job) — no redaction needed at the API, but
+  (fields), `task_failed` (task_id, url, attempts, last_error; when a task ends `failed`, after its last attempt or a
+  permanent failure; added with owner approval, ARCHITECTURE rev 12, D-0745), `drift_suspended`,
+  `learning_started/finished`, `progress` (counts), `completed`, `failed`, `cancelled`. Payloads contain the task URL (the caller supplied the job) — no redaction needed at the API, but
   the worker's logs still honour `CRAWLERAI_LOG_REDACT_URLS`.
 - Webhook: on `completed`/`failed`/`cancelled`, `POST webhook_url` with the job summary, header
   `X-CrawlerAI-Signature: sha256=HMAC(secret, body)` where the secret is per API key (plumbing column

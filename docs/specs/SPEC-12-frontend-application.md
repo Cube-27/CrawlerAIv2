@@ -98,7 +98,10 @@ frontend/src/
 - **Jobs**: create dialogs for batch/map/crawl/extract mirroring the request DTOs (page-kind rules as a small
   table editor); jobs table (kind, status, counts, created); job detail: OutcomeCounts, UsageSummary, EventLog,
   results table (RecordTable or page outputs) with export actions (`json_records`, `csv_records`, `markdown`),
-  cancel button.
+  cancel button. Page outputs show each page's `last_error` as a reason, truncated in a fixed-width column and in
+  full on hover or focus; the EventLog shows `task_failed` events with their data. While a running or queued job's
+  `cancel_requested` is true, the job page shows "cancel requested" beside its status in place of the cancel
+  button (owner, 2026-10-14; ARCHITECTURE rev 12, D-0745).
 - **Settings**: last nav entry; the LLM cost section described in §2 item 8. The job detail shows its
   `llm_cost_usd` under usage.
 - **Labeling**: SPEC-03's screen; nav entry shown only when the backend reports `eval_ui: true` in
