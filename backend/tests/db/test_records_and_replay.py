@@ -65,10 +65,10 @@ def _document(name: str) -> SchemaDocument:
     )
 
 
-def _product(name: str, *, price: bool = True) -> dict[str, Any]:
+def _product(name: str, *, price: bool = True, amount: str = "19.90") -> dict[str, Any]:
     node: dict[str, Any] = {"@context": "https://schema.org", "@type": "Product", "name": name}
     if price:
-        node["offers"] = {"@type": "Offer", "price": "19.90", "priceCurrency": "EUR"}
+        node["offers"] = {"@type": "Offer", "price": amount, "priceCurrency": "EUR"}
     return node
 
 
@@ -76,8 +76,8 @@ def _html(node: dict[str, Any]) -> bytes:
     return f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
 
 
-def _page(name: str, *, price: bool = True) -> bytes:
-    return _html(_product(name, price=price))
+def _page(name: str, *, price: bool = True, amount: str = "19.90") -> bytes:
+    return _html(_product(name, price=price, amount=amount))
 
 
 @dataclass
@@ -223,6 +223,44 @@ async def test_a_record_whose_capture_expired_is_listed_without_one(world: World
     [record] = (await _list(world.engine, job_id=made.job_id)).items
 
     assert (record.id, record.capture_id) == (made.record_id, None)
+
+
+async def test_a_page_scraped_again_unchanged_answers_with_its_record_and_stores_no_other(world: World) -> None:
+    first = await world.scrape("/p/1", _page("Blue kettle"))
+
+    again = await world.scrape("/p/1", _page("Blue kettle"))
+
+    assert again.record_id == first.record_id
+    assert [r.id for r in (await _list(world.engine, schema_id=world.schema.id)).items] == [first.record_id]
+    assert (await _list(world.engine, job_id=again.job_id)).items == []
+
+
+async def test_a_changed_price_is_listed_as_version_2_naming_price(world: World) -> None:
+    first = await world.scrape("/p/1", _page("Blue kettle"))
+
+    changed = await world.scrape("/p/1", _page("Blue kettle", amount="17.50"))
+
+    newest, oldest = (await _list(world.engine, schema_id=world.schema.id)).items
+    assert (newest.id, newest.version, newest.changed_fields) == (changed.record_id, 2, ["price"])
+    assert newest.fields["price"].value == {"amount": "17.50", "currency": "EUR"}
+    assert (oldest.id, oldest.version, oldest.changed_fields) == (first.record_id, 1, [])
+
+
+async def test_changed_since_lists_the_new_versions_and_new_entities_stored_from_then(world: World) -> None:
+    await world.scrape("/p/1", _page("Kettle 1"))
+    await world.scrape("/p/2", _page("Kettle 2"))
+    async with world.engine.connect() as conn:
+        since = (await conn.execute(select(func.now()))).scalar_one()
+    changed = await world.scrape("/p/1", _page("Kettle 1", amount="17.50"))
+    await world.scrape("/p/2", _page("Kettle 2"))
+    new = await world.scrape("/p/3", _page("Kettle 3"))
+
+    page = await _list(world.engine, schema_id=world.schema.id, changed_since=since)
+
+    assert [(r.id, r.version, r.changed_fields) for r in page.items] == [
+        (new.record_id, 1, []),
+        (changed.record_id, 2, ["price"]),
+    ]
 
 
 # The captures service.
@@ -389,7 +427,17 @@ async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx
     )
 
     [newest] = first.json()["items"]
-    assert set(newest) == {"id", "capture_id", "schema_id", "version", "mode", "complete", "confidence", "fields"}
+    assert set(newest) == {
+        "id",
+        "capture_id",
+        "schema_id",
+        "version",
+        "changed_fields",
+        "mode",
+        "complete",
+        "confidence",
+        "fields",
+    }
     assert (newest["id"], newest["capture_id"]) == (str(made[1].record_id), str(made[1].capture_id))
     assert newest["fields"]["price"]["value"] == {"amount": "19.90", "currency": "EUR"}
     assert set(newest["fields"]["title"]) == ATTRIBUTES
@@ -397,7 +445,32 @@ async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx
     assert second.json()["next_cursor"] is None
 
 
-@pytest.mark.parametrize("query", [{"limit": 0}, {"limit": 201}, {"cursor": "not-an-id"}, {"page": 2}])
+async def test_changed_since_narrows_the_listed_records(client: httpx.AsyncClient, world: World) -> None:
+    await world.scrape("/p/1", _page("Kettle 1"))
+    async with world.engine.connect() as conn:
+        since = (await conn.execute(select(func.now()))).scalar_one()
+    changed = await world.scrape("/p/1", _page("Kettle 1", amount="17.50"))
+
+    query = {"schema_id": str(world.schema.id), "changed_since": since.isoformat()}
+    response = await client.get("/v1/records", params=query)
+
+    assert response.status_code == 200, response.text
+    [record] = response.json()["items"]
+    assert (record["id"], record["version"], record["changed_fields"]) == (str(changed.record_id), 2, ["price"])
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        {"limit": 0},
+        {"limit": 201},
+        {"cursor": "not-an-id"},
+        {"page": 2},
+        {"changed_since": "yesterday"},
+        # A time without its offset names no instant (RFC 3339 §4.4).
+        {"changed_since": "2026-10-01T00:00:00"},
+    ],
+)
 async def test_a_query_outside_the_filters_is_a_validation_problem(
     client: httpx.AsyncClient, query: dict[str, Any]
 ) -> None:

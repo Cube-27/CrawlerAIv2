@@ -10,7 +10,7 @@ record's published value, unchanged (INV-27), and `None` for a field that did no
 from collections.abc import Mapping
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
 from sqlalchemy import RowMapping, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -25,6 +25,7 @@ _COLUMNS = (
     Record.id,
     Record.schema_id,
     Record.version,
+    Record.changed_fields,
     Record.mode,
     Record.complete,
     Record.data,
@@ -68,11 +69,13 @@ class ScrapedRecord(ExtractedRecord):
 
 class StoredRecord(ScrapedRecord):
     """A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
-    the schema version its fields follow, and its own version (§14)."""
+    the schema version its fields follow, its own version and the fields whose published value differs from the
+    version it supersedes, empty for an entity's first (§14, SPEC-11 §4.4)."""
 
     capture_id: CaptureId | None
     schema_id: SchemaId
     version: int
+    changed_fields: list[str]
 
 
 class RecordPage(BaseModel):
@@ -85,13 +88,17 @@ class RecordPage(BaseModel):
 
 
 class RecordFilter(BaseModel):
-    """The records to list: those of a job, of a site (its host), of a schema version, or any combination."""
+    """The records to list: those of a job, of a site (its host), of a schema version, stored at or after a time, or
+    any combination. Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed
+    of recurring runs (SPEC-11 §4.4). An entity re-extracted unchanged stores no record, so it is not listed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job_id: JobId | None = None
     site: str | None = None
     schema_id: SchemaId | None = None
+    # An instant: a time with its offset (RFC 3339 §5.6).
+    changed_since: AwareDatetime | None = None
     cursor: RecordId | None = None
     limit: int = Field(default=50, ge=1, le=MAX_PAGE)
 
@@ -112,6 +119,8 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
         statement = statement.join(Site, Site.id == Record.site_id).where(Site.host == query.site.lower())
     if query.schema_id is not None:
         statement = statement.where(Record.schema_id == query.schema_id)
+    if query.changed_since is not None:
+        statement = statement.where(Record.created_at >= query.changed_since)
     if query.cursor is not None:
         statement = statement.where(Record.id < query.cursor)
     rows = (await conn.execute(statement)).mappings().all()
@@ -126,7 +135,8 @@ def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
     fields = {
         name: RecordField.model_validate({**meta, "value": data.get(name)}) for name, meta in row["field_meta"].items()
     }
-    columns = {name: row[name] for name in ("id", "capture_id", "schema_id", "version", "mode", "complete")}
+    names = ("id", "capture_id", "schema_id", "version", "changed_fields", "mode", "complete")
+    columns = {name: row[name] for name in names}
     return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields)
 
 
