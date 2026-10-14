@@ -5,10 +5,12 @@ failed run does.
 
 Pages are made the way a page task makes them (`extract_task`) from synthetic pages on an RFC 2606 host: the title
 comes from JSON-LD, the price only from the page text, which a scripted role C reads in cold mode. Role A is a
-scripted client; no provider is called.
+scripted client; no provider is called. On an API-backed site the pages are browser captures whose network bodies hold
+the values, and a stand-in API (`httpx.MockTransport`) answers the run's replays (SPEC-09 §2, §7).
 """
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
@@ -20,10 +22,13 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.base import Candidate
-from crawlerai.config_ir.active import active_config
+from crawlerai.config_ir.active import active_config, config_recipe
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
+from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.config_ir.learning import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
@@ -55,12 +60,16 @@ from crawlerai.resolve.task import Stored, extract_task
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services.jobs import cancel_job
+from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, sha256_hex
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.learn import run_learner
 
 pytestmark = pytest.mark.anyio
 
 PRICE_STEP = {"xpath": "normalize-space(//p[@class='price'])"}
+# The API an API-backed site's pages fetch their values from: page `/p/<n>` from `<ENDPOINT>/<n>`.
+ENDPOINT = "https://api.example.test/v1/products"
+StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
 
 def _document(name: str) -> SchemaDocument:
@@ -74,6 +83,27 @@ def _page(n: int) -> bytes:
     script = f'<script type="application/ld+json">{node}</script>'
     body = f"<h1>Kettle {n}</h1><p class='price'>{n}.50 EUR</p>"
     return f"<html><head>{script}</head><body>{body}</body></html>".encode()
+
+
+def _answer(n: int) -> bytes:
+    """The API's answer for product `n`."""
+    return json.dumps({"data": {"name": f"Kettle {n}", "price": f"{n}.50", "currency": "EUR"}}).encode()
+
+
+def _browser_capture(fetched: FetchResult, n: int) -> FetchResult:
+    """`fetched` as the browser captured it, with the API's answer for product `n` among its network bodies."""
+    data = _answer(n)
+    entry = NetworkBody(
+        url=f"{ENDPOINT}/{n}",
+        status=200,
+        content_type="application/json",
+        sha256=sha256_hex(data),
+        file="network/0001.json",
+        method="GET",
+    )
+    manifest = fetched.bundle.manifest.model_copy(update={"method": "browser", "network_bodies": (entry,)})
+    bundle = CaptureBundle(manifest=manifest, body=fetched.bundle.body, network=(data,))
+    return fetched.model_copy(update={"bundle": bundle})
 
 
 class TextRoleC:
@@ -150,10 +180,13 @@ class Site_:
     def key(self) -> StateKey:
         return StateKey(self.site_id, self.schema.id, self.schema.version, "detail")
 
-    async def extract(self, n: int, role_c: TextRoleC) -> Stored:
-        """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one."""
+    async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False) -> Stored:
+        """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one; with
+        `api`, fetched by the browser, which captured the API's answer for it."""
         url = f"{self.origin}/p/{n}"
         fetched = self.fetch_result(url, 200, _page(n), (("Content-Type", "text/html"),))
+        if api:
+            fetched = _browser_capture(fetched, n)
         async with self.engine.begin() as conn:
             project = select(Project.id).where(Project.name == "default").scalar_subquery()
             job = insert(Job).values(project_id=project, kind="scrape", request={}, schema_id=self.schema.id)
@@ -184,19 +217,25 @@ class Site_:
             )
         return stored
 
-    async def pages(self, count: int) -> None:
+    async def pages(self, count: int, *, api: bool = False) -> None:
         async with self.engine.begin() as conn:
             await conn.execute(insert(ProgressiveState).values(**self.key.columns()))
         role_c = TextRoleC()
         for n in range(1, count + 1):
-            assert (await self.extract(n, role_c)).outcome == "extracted"
+            assert (await self.extract(n, role_c, api=api)).outcome == "extracted"
 
-    async def learn(self, role_a: RoleA) -> tuple[JobId, Learned | None]:
+    async def learn(self, role_a: RoleA, replay: Replay | None = None) -> tuple[JobId, Learned | None]:
         async with self.engine.begin() as conn:
             job_id = await next_learn_job(conn)
         assert job_id is not None
         learned = await run_learn_job(
-            self.engine, self.store, role_a, job_id, vocabulary=self.data.vocabulary, max_chars=120_000
+            self.engine,
+            self.store,
+            role_a,
+            job_id,
+            vocabulary=self.data.vocabulary,
+            max_chars=120_000,
+            replay=replay,
         )
         return job_id, learned
 
@@ -276,6 +315,62 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
             await conn.execute(select(Record.mode).where(Record.extraction_id == stored.extraction_id))
         ).scalar_one()
     assert (extraction.mode, extraction.config_version, extraction.llm_calls, record_mode) == ("config", 1, 0, "config")
+
+
+def _replay(stand_in_api: StandInApi, products: range, sent: list[str]) -> Replay:
+    """The run's replays, answered by the stand-in API for `products`; each request's URL is added to `sent`."""
+    fetcher = stand_in_api({f"{ENDPOINT}/{n}": _answer(n) for n in products})
+
+    async def replay(request: JsonRequest) -> FetchResult:
+        sent.append(request.url)
+        return await fetcher(request, FetchPolicy(timeout_s=5))
+
+    return replay
+
+
+async def test_a_site_whose_values_come_from_an_api_is_learned_with_a_validated_recipe(
+    site: Site_, stand_in_api: StandInApi
+) -> None:
+    await site.pages(8, api=True)
+    await _forced(site)
+    sent: list[str] = []
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY), _replay(stand_in_api, range(1, 9), sent))
+
+    assert learned is not None
+    assert learned.config_id is not None
+    async with site.engine.connect() as conn:
+        recipe = await config_recipe(conn, learned.config_id)
+    status, payload = await site.finished(job_id)
+    held_out = payload["report"]["api_recipe"]["held_out"]
+    assert recipe == ApiRecipe(
+        method="GET",
+        url=f"{ENDPOINT}/{{p1}}",
+        params_from_url={"p1": "path:1"},
+        headers={"Accept": "application/json"},
+        map={"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
+        proof=Proof(validated_on=held_out, headers_tried=0, bound_by="deterministic"),
+    )
+    assert (status, len(held_out), payload["report"]["api_recipe"]["refused"]) == ("completed", 3, None)
+    # Five sample replays prove the headers, three held-out ones validate the recipe.
+    assert len(sent) == 8
+
+
+async def test_a_recipe_that_does_not_validate_leaves_the_config_without_one(
+    site: Site_, stand_in_api: StandInApi
+) -> None:
+    await site.pages(8, api=True)
+    await _forced(site)
+
+    # The API answers only the five most recent products, the sample (§4.4): the held-out pages do not reproduce.
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY), _replay(stand_in_api, range(4, 9), []))
+
+    assert learned is not None
+    assert learned.config_id is not None
+    async with site.engine.connect() as conn:
+        assert await config_recipe(conn, learned.config_id) is None
+    status, payload = await site.finished(job_id)
+    assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "not_reproduced: price, title")
 
 
 async def _forced(site: Site_) -> None:
@@ -382,19 +477,28 @@ async def test_a_job_another_process_started_is_not_run_again(site: Site_) -> No
     assert job_id is not None
 
     learned = await run_learn_job(
-        site.engine, site.store, RoleA(), job_id, vocabulary=site.data.vocabulary, max_chars=120_000
+        site.engine, site.store, RoleA(), job_id, vocabulary=site.data.vocabulary, max_chars=120_000, replay=None
     )
 
     assert learned is None
 
 
-async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: Site_) -> None:
-    await site.pages(8)
+async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: Site_, stand_in_api: StandInApi) -> None:
+    await site.pages(8, api=True)
     async with site.engine.begin() as conn:
         assert await trigger_learning(conn, batch=10) == 1
     stop = asyncio.Event()
+    sent: list[str] = []
     learner = asyncio.create_task(
-        run_learner(site.engine, site.store, RoleA(PRICE_REPLY), stop, vocabulary=site.data.vocabulary, max_chars=1000)
+        run_learner(
+            site.engine,
+            site.store,
+            RoleA(PRICE_REPLY),
+            stop,
+            vocabulary=site.data.vocabulary,
+            max_chars=1000,
+            replay=_replay(stand_in_api, range(1, 9), sent),
+        )
     )
 
     async with asyncio.timeout(30):
@@ -403,7 +507,12 @@ async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: Site_) -> Non
     stop.set()
     await learner
 
-    assert (await site.state()).mode == "active"
+    state = await site.state()
+    assert state.mode == "active"
+    # The learner's runs replay recipes: the config it activated has one.
+    async with site.engine.connect() as conn:
+        assert await config_recipe(conn, state.active_config_id) is not None
+    assert len(sent) == 8
 
 
 async def test_cancelling_a_queued_learn_job_ends_its_run(site: Site_) -> None:
