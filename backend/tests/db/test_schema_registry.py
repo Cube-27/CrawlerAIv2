@@ -38,7 +38,10 @@ async def test_sync_inserts_the_presets_once(conn: AsyncConnection) -> None:
     inserted = await registry.sync_presets(conn)
     again = await registry.sync_presets(conn)
 
-    assert [(s.name, s.version, s.origin, s.status) for s in inserted] == [(n, 1, "preset", "active") for n in PRESETS]
+    assert [(s.name, s.version, s.origin, s.status) for s in inserted] == [
+        (p.name, p.version, "preset", "active") for p in load_presets()
+    ]
+    assert [s.name for s in inserted] == PRESETS
     assert again == []
 
 
@@ -46,7 +49,7 @@ async def test_synced_presets_read_back_as_written_with_every_field_described(co
     await registry.sync_presets(conn)
 
     for preset in load_presets():
-        stored = await registry.get(conn, preset.name, 1)
+        stored = await registry.get(conn, preset.name, preset.version)
         assert SchemaDocument.model_validate(stored.model_dump(include=set(SchemaDocument.model_fields))) == preset
         assert all(spec.description for spec in stored.fields.values())
 
@@ -55,21 +58,24 @@ async def test_a_changed_preset_without_a_version_bump_is_refused(conn: AsyncCon
     await registry.sync_presets(conn)
     preset = load_presets()[0]
     changed = preset.model_copy(update={"required_groups": []})
-    bumped = changed.model_copy(update={"version": 2})
+    bumped = changed.model_copy(update={"version": preset.version + 1})
     new_preset = _custom("event_listing")
 
     with pytest.raises(PresetConflict, match="bump"):
         await registry.sync_presets(conn, [new_preset, changed])
     assert [s.name for s in await registry.list_schemas(conn)] == PRESETS  # nothing inserted
-    assert [(s.name, s.version) for s in await registry.sync_presets(conn, [bumped])] == [(preset.name, 2)]
+    assert [(s.name, s.version) for s in await registry.sync_presets(conn, [bumped])] == [
+        (preset.name, preset.version + 1)
+    ]
 
 
 async def test_a_preset_older_than_a_stored_preset_version_is_refused(conn: AsyncConnection) -> None:
     await registry.sync_presets(conn)
     preset = load_presets()[0]
-    await registry.sync_presets(conn, [preset.model_copy(update={"version": 2, "required_groups": []})])
+    newer = preset.version + 1
+    await registry.sync_presets(conn, [preset.model_copy(update={"version": newer, "required_groups": []})])
 
-    with pytest.raises(PresetConflict, match="version 2 is stored"):
+    with pytest.raises(PresetConflict, match=f"version {newer} is stored"):
         await registry.sync_presets(conn, [preset])
 
 
@@ -186,7 +192,9 @@ def test_the_sync_command_inserts_the_presets(
     finally:
         asyncio.run(_delete_presets(database_url))
 
-    assert first.splitlines() == [f"inserted preset {n} version 1" for n in PRESETS] + ["4 preset version(s) inserted"]
+    assert first.splitlines() == [f"inserted preset {p.name} version {p.version}" for p in load_presets()] + [
+        "4 preset version(s) inserted"
+    ]
     assert second == "0 preset version(s) inserted\n"
 
 

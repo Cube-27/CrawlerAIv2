@@ -229,7 +229,7 @@ Types not in this table are added when a schema needs them, each with its one no
 
 | Preset | Required fields |
 |---|---|
-| `commerce_detail` | `title`, `price`, `availability`, `url`, `image_url`, `brand`; group (`sku` \| `gtin`) |
+| `commerce_detail` | `title`, `price`, `availability`, `url`, `image_url`; group (`sku` \| `gtin`); `brand` when shown |
 | `commerce_listing` | row: `title`, `url`; `price` when shown; page: `next_page_url` |
 | `job_detail` | `title`, `company`, `locations`, `description`, `apply_url`, `date_posted` |
 | `job_listing` | row: `title`, `url`; `location` when shown; page: `next_page_url` |
@@ -912,6 +912,7 @@ implementation go in `DECISIONS.md`, not here.
 | 32 | Operational invariants (2026-10-13) | No layer after resolution changes a published value; a job pins its settings at submit; cookies stay inside one fetch; untrusted bodies are bounded; one task's failure never fails another; forwarded headers only from trusted proxies and no API keys created at startup (INV-27–INV-32). |
 | 33 | Complexity and file length (2026-10-13) | Cognitive complexity of at most 15 per function is a hard check in CI and `make check`, for backend, tools and frontend code. 800 lines per file is a soft limit: CI warns, never fails, and a file past it is split by meaning, not to meet the number. Coverage gates and ratchets stay forbidden (C11). |
 | 34 | Embedded-state admission (2026-10-14) | A visible `js_state` or `xhr` value with no other candidate to equal is admitted only for field types with a checkable syntax (§8.1); opaque types such as text and sku admit by equality only. Accuracy Q2, option (a). |
+| 35 | `brand` optional (2026-10-14) | "Brand is not that important": preset `commerce_detail` version 2 makes `brand` optional (§5.3). A page without a brand is complete, and the gap rule no longer asks role C for it. |
 
 ---
 
@@ -992,3 +993,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 11 | 2026-10-14 | **Estimated LLM cost** (owner approval, 2026-10-14). §1: an estimated LLM cost is shown for visibility; still no billing. §13.1: `GET /v1/usage/llm` and `GET /v1/usage/llm/jobs`. §17: usage shown with its estimated cost. Prices are versioned data under `backend/data/llm/` (C4); a call without a price has an unknown cost (C7). SPEC-06, SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
 | 12 | 2026-10-14 | **Task failure reasons** (owner approval, D-0745 option a). §13.1: a job's summary carries `cancel_requested`; a page output carries its task's `last_error`. §17: a `task_failed` run event, with the task's reason, when a task fails for good. All additive. SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
 | 13 | 2026-10-15 | **Embedded-state admission** (owner approval, accuracy Q2 option a; Appendix A #34). §8.1: a visible `js_state` or `xhr` value is admitted on its own only for field types with a checkable syntax; opaque types admit by equality only. SPEC-05 §4.5 updated. |
+| 14 | 2026-10-15 | **`brand` optional** (owner approval, accuracy Q1; Appendix A #35). §5.3: `commerce_detail` version 2 lists `brand` as shown-when-present. SPEC-04 §4.2 updated. |

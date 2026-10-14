@@ -84,8 +84,9 @@ Rules:
 
 Presets (§5.3), exactly these core fields, each with `schema_org` mapping:
 - `commerce_detail`: title (text, req), price (money, req), availability (enum ItemAvailability, req), url (url,
-  req), image_url (image_url, req), brand (text, req), sku (identifier sku), gtin (identifier gtin);
-  `required_groups: [["sku","gtin"]]`.
+  req), image_url (image_url, req), brand (text), sku (identifier sku), gtin (identifier gtin);
+  `required_groups: [["sku","gtin"]]`. Version 2: `brand` optional (ARCHITECTURE Appendix A #35); version 1 had
+  it required.
 - `commerce_listing`: row: title (req), url (req), price; page: next_page_url (url).
 - `job_detail`: title (req), company (text, req, `JobPosting.hiringOrganization.name`), locations (list<location>,
   req), description (long_text, req), apply_url (url, req, `JobPosting.url` — see Open issues), date_posted
