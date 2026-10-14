@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). L2: only SPEC-12 PR 6 left, in progress. L3: SPEC-10 PRs 1-3 and 6 done; next SPEC-10 PR 4. L4 in progress: SPEC-11 PR 2, SPEC-11 PR 3.
+- L1 and L2 complete (2026-10-14). L3 in progress: SPEC-10 PR 4; next SPEC-10 PRs 5, 7, 8 and SPEC-12 PR 7. L4 in progress: SPEC-11 PR 2, SPEC-11 PR 3. Frontend: owner wants no design review (DESIGN.md + HeroUI defaults).
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -231,7 +231,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 3 | Scrape screen | done (#82) | |
 | 4 | Schemas screens | done (#87) | |
 | 5 | Records screen + inspector + replay | done (#97) | |
-| 6 | Sites & configs + StepsEditor + corrections + export | todo | |
+| 6 | Sites & configs + StepsEditor + corrections + export | done (#134) | |
 | 7 | Jobs screens + EventLog (SSE) + exports | todo | |
 | 8 | Change feed in Records | todo | |
 | 9 | Labeling nav integration + shared shell polish | done (#93) | |
