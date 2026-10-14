@@ -83,9 +83,8 @@ async def _work() -> None:
     async with aclosing(
         SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
     ) as browser:
-        fetching = Fetching(
-            Rungs(http=http, browser=browser.fetch), connector, open_store(settings.object_store), HostLimiter()
-        )
+        rungs = Rungs(http=http, browser=browser.fetch, conditional=http)
+        fetching = Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
         # Later specs register a handler for each job kind here.
         handlers: dict[JobKind, TaskHandler] = {
             "batch_scrape": scrape_handler(fetching, load_engine_data(), load_drift_margins())

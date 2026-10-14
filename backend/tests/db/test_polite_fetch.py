@@ -20,6 +20,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, claim_tasks
+from crawlerai.recurring.conditional import Unchanged
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult, run_worker
 from crawlerai.worker.polite import fetch_politely
 
@@ -82,7 +83,7 @@ async def _tasks(conn: AsyncConnection, *paths: str, attempts: int = 0) -> list[
 
 async def _polite(
     conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, policy: FetchPolicy, web: Web, limiter: HostLimiter
-) -> FetchResult | TaskResult:
+) -> FetchResult | Unchanged | TaskResult:
     """`fetch_politely` with `web` for both robots.txt and the page."""
     return await fetch_politely(conn, task, site_id, policy, web, limiter, fetch_robots=web)
 
@@ -267,7 +268,7 @@ async def test_through_the_worker_retry_after_sets_the_next_attempt_and_robots_e
 
     async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         result = await _polite(conn, task, site_id, FetchPolicy(), web, limiter)
-        return Finished("extracted") if isinstance(result, FetchResult) else result
+        return Finished("extracted") if isinstance(result, FetchResult | Unchanged) else result
 
     query = select(
         UrlTask.url,

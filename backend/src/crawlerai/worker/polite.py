@@ -4,6 +4,7 @@ The order: robots.txt (unless the job's operator override says otherwise), then 
 A wait never sleeps in the worker: the task goes back to the queue, and the worker moves on to other sites.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -15,7 +16,11 @@ from crawlerai.acquire.robots import Fetch, site_robots
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
 from crawlerai.db.queue import ClaimedTask, retry_delay
+from crawlerai.recurring.conditional import Unchanged
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
+
+# A page fetch, which answers `Unchanged` when it sent validators the page still matches (SPEC-11 §4.2).
+PageFetch = Callable[[str], Awaitable[FetchResult | Unchanged]]
 
 
 async def fetch_politely(
@@ -23,14 +28,14 @@ async def fetch_politely(
     task: ClaimedTask,
     site_id: SiteId,
     policy: FetchPolicy,
-    fetch: Fetch,
+    fetch: PageFetch,
     limiter: HostLimiter,
     *,
     fetch_robots: Fetch,
-) -> FetchResult | TaskResult:
-    """The page as `fetch` fetched it, or the result the task ends this run with. robots.txt is fetched with
-    `fetch_robots`, a plain HTTP rung: through `acquire`, a robots.txt would classify as a shell and be fetched again
-    in the browser. The task ends this run with:
+) -> FetchResult | Unchanged | TaskResult:
+    """The page as `fetch` fetched it, `Unchanged` included, or the result the task ends this run with. robots.txt is
+    fetched with `fetch_robots`, a plain HTTP rung: through `acquire`, a robots.txt would classify as a shell and be
+    fetched again in the browser. The task ends this run with:
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page;
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
@@ -51,6 +56,8 @@ async def fetch_politely(
         return Postpone(wait)
 
     result = await fetch(task.url)
+    if isinstance(result, Unchanged):
+        return result
     manifest = result.bundle.manifest
     if manifest.status_code not in SLOW_DOWN:
         return result

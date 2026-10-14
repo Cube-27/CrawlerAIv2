@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 and L2 complete (2026-10-14). L3 in progress: SPEC-10 PR 4; next SPEC-10 PRs 5, 7, 8 and SPEC-12 PR 7. L4 in progress: SPEC-11 PR 2, SPEC-11 PR 3. Frontend: owner wants no design review (DESIGN.md + HeroUI defaults).
+- L1 and L2 complete (2026-10-14). L3 in progress: SPEC-10 PR 4 (#137); next SPEC-10 PRs 5, 7, 8 and SPEC-12 PR 7. L4 in progress: SPEC-11 PR 3 (#136). Chore in progress: Sonar settings + debt reduction (owner).
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -217,7 +217,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | `url_state` helpers + conditional GET | done (#131) | |
-| 2 | SimHash + content fingerprint skip | todo | |
+| 2 | SimHash + content fingerprint skip | done (#135) | D-0661–D-0665. `url_task.record_id` (unchanged tasks pointing at their standing record) is deferred to PR 3 (D-0664). D-0665 (Hamming ≤ 3 lets a one-word change pass as unchanged) is needs-owner. |
 | 3 | Record fingerprint + versions + `changed_since` | todo | |
 | 4 | Listing diff + `gone_at` | todo | |
 | 5 | Drift/`pages_extracted` exclusions for unchanged pages | todo | |
