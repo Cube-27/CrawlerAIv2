@@ -360,6 +360,7 @@ describe("records screen: the inspector", () => {
   it.each([
     [storedRecord(), "Changed from version 2: price"],
     [storedRecord({ version: 1, changed_fields: [] }), "The first version of this record."],
+    [storedRecord({ changed_fields: [] }), "No published value changed from version 2."],
   ])("says what changed from the version the record supersedes", async (record, text) => {
     stubApi({
       "GET /v1/schemas": schemaList,
