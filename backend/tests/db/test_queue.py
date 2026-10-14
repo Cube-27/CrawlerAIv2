@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.db.jobs import record_event
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import (
     LEASE,
@@ -158,6 +159,50 @@ async def test_completing_the_last_task_completes_the_job_once(conn: AsyncConnec
         ("done", "extracted", "w1"),
         ("done", "no_match", "w1"),
     ]
+
+
+class Ending:
+    """A job-ending hook that notes each call, with the job's status as the hook sees it, and records an event."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[JobId, JobStatus, str]] = []
+
+    async def __call__(self, conn: AsyncConnection, job_id: JobId, status: JobStatus) -> None:
+        self.calls.append((job_id, status, (await _job_state(conn, job_id))[0]))
+        await record_event(conn, job_id, "ending")
+
+
+async def _events(conn: AsyncConnection, job_id: JobId) -> list[str]:
+    query = select(JobEvent.kind).where(JobEvent.job_id == job_id).order_by(JobEvent.id)
+    return list((await conn.execute(query)).scalars())
+
+
+async def test_the_ending_hook_runs_once_in_the_ending_transaction_before_the_end_event(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    await _tasks(conn, job_id, 2)
+    first, second = await claim_tasks(conn, "w1", 2)
+    ending = Ending()
+
+    await complete_task(conn, first, "extracted", ending=ending)
+    assert ending.calls == []
+
+    await fail_task(conn, second, "gone", transient=False, ending=ending)
+
+    # The job is still running when the hook runs; what it records comes before the end event.
+    assert ending.calls == [(job_id, "completed", "running")]
+    assert await _events(conn, job_id) == ["ending", "completed"]
+
+
+async def test_a_job_ended_by_an_expired_lease_runs_the_ending_hook(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
+    await _expire(conn, await _claim_one(conn))
+    ending = Ending()
+
+    await release_expired_leases(conn, ending=ending)
+
+    assert ending.calls == [(job_id, "failed", "running")]
+    assert await _events(conn, job_id) == ["ending", "failed"]
 
 
 async def test_a_transient_failure_requeues_with_exponential_backoff(conn: AsyncConnection) -> None:

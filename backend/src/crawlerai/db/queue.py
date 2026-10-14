@@ -13,10 +13,12 @@ a transient failure of the attempt.
 
 Finishing a task records its run events (`crawlerai.db.task_events`) and settles its job in the same transaction.
 The job row is locked first, so of two workers finishing a job's last two tasks, the second one waits, then sees the
-first one's task as finished and ends the job.
+first one's task as finished and ends the job. A caller may pass an `ending` hook, which runs in that transaction just
+before the job ends: what it writes commits with the end, and the events it records come before the end event.
 """
 
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -37,6 +39,7 @@ from crawlerai.db.models import (
     FinishedOutcome,
     Job,
     JobId,
+    JobStatus,
     PageKind,
     TaskOutcome,
     TaskStatus,
@@ -49,6 +52,9 @@ LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
 BACKOFF_BASE: Final = timedelta(seconds=30)
 LAST_ERROR_BYTES: Final = 2048
+
+# Runs as a job ends (`settle_job`): the job, and the status it is about to end in.
+JobEnding = Callable[[AsyncConnection, JobId, JobStatus], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -139,11 +145,13 @@ async def complete_task(
     *,
     reason: str | None = None,
     capture_id: CaptureId | None = None,
+    ending: JobEnding | None = None,
 ) -> None:
     """Finish a task with `outcome`; `reason`, kept in `last_error`, says why when the outcome alone does not (a
-    `blocked` task's `robots`, SPEC-02 §4.6). `capture_id` is the page the task fetched, if it fetched one."""
+    `blocked` task's `robots`, SPEC-02 §4.6). `capture_id` is the page the task fetched, if it fetched one. `ending`
+    runs if this ends the job (`settle_job`)."""
     values: dict[str, Any] = {} if capture_id is None else {"capture_id": capture_id}
-    await _finish(conn, task, "done", outcome=outcome, last_error=reason, **values)
+    await _finish(conn, task, "done", ending, outcome=outcome, last_error=reason, **values)
 
 
 def retry_delay(attempts: int) -> timedelta:
@@ -161,11 +169,12 @@ async def fail_task(
     after: timedelta | None = None,
     exhausted: TaskOutcome = "failed",
     capture_id: CaptureId | None = None,
+    ending: JobEnding | None = None,
 ) -> None:
     """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
     asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `retry_delay`. A permanent failure, or the last
     attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`).
-    `capture_id` is the page the failed attempt fetched, if it fetched one."""
+    `capture_id` is the page the failed attempt fetched, if it fetched one. `ending` runs if this ends the job."""
     values: dict[str, Any] = {"last_error": _cut(error)}
     if capture_id is not None:
         values["capture_id"] = capture_id
@@ -173,14 +182,14 @@ async def fail_task(
         delay = retry_delay(task.attempts) if after is None else after
         await _move(conn, task, "queued", next_attempt_at=func.now() + delay, **values)
     elif exhausted == "failed":
-        await _finish(conn, task, "failed", outcome="failed", **values)
+        await _finish(conn, task, "failed", ending, outcome="failed", **values)
     else:
-        await _finish(conn, task, "done", outcome=exhausted, **values)
+        await _finish(conn, task, "done", ending, outcome=exhausted, **values)
 
 
 async def cancel_task(conn: AsyncConnection, task: ClaimedTask) -> None:
     """End a claimed task of a job whose cancel was requested, without running it (§4.3)."""
-    await _finish(conn, task, "cancelled")
+    await _finish(conn, task, "cancelled", None)
 
 
 async def release_task(conn: AsyncConnection, task: ClaimedTask, *, after: timedelta = timedelta(0)) -> None:
@@ -189,9 +198,10 @@ async def release_task(conn: AsyncConnection, task: ClaimedTask, *, after: timed
     await _move(conn, task, "queued", attempts=UrlTask.attempts - 1, next_attempt_at=func.now() + after)
 
 
-async def release_expired_leases(conn: AsyncConnection) -> int:
+async def release_expired_leases(conn: AsyncConnection, *, ending: JobEnding | None = None) -> int:
     """Requeue, after the usual backoff, or fail on the last attempt, every claimed task whose lease has run out
     (§4.3), and return how many there were. Tasks a worker is finishing right now are skipped; the next run sees them.
+    `ending` runs for each job this ends.
     """
     expired = (
         select(*_CLAIMED_COLUMNS)
@@ -202,7 +212,7 @@ async def release_expired_leases(conn: AsyncConnection) -> int:
     )
     tasks = await _claimed(conn, expired)
     for task in tasks:
-        await fail_task(conn, task, "lease expired", transient=True)
+        await fail_task(conn, task, "lease expired", transient=True, ending=ending)
     return len(tasks)
 
 
@@ -214,11 +224,13 @@ async def _claimed(conn: AsyncConnection, statement: Executable) -> list[Claimed
     return [ClaimedTask(**row._mapping) for row in await conn.execute(statement)]
 
 
-async def _finish(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
+async def _finish(
+    conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, ending: JobEnding | None, **values: Any
+) -> None:
     await _move(conn, task, target, **values)
     if target != "cancelled":  # a cancelled task did not run
         await record_task_events(conn, task.id)
-    await settle_job(conn, task.job_id)
+    await settle_job(conn, task.job_id, ending)
 
 
 async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **values: Any) -> None:
@@ -230,8 +242,8 @@ async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **
         raise LeaseLost(task.id) from lost
 
 
-async def settle_job(conn: AsyncConnection, job_id: JobId) -> None:
-    """End a running job once its tasks allow it (`settled_status`)."""
+async def settle_job(conn: AsyncConnection, job_id: JobId, ending: JobEnding | None = None) -> None:
+    """End a running job once its tasks allow it (`settled_status`), running `ending` first."""
     job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == job_id).with_for_update())).one()
     if job.status != "running":
         return
@@ -245,5 +257,8 @@ async def settle_job(conn: AsyncConnection, job_id: JobId) -> None:
         select(UrlTask.status, func.count()).where(UrlTask.job_id == job_id).group_by(UrlTask.status)
     )
     target = settled_status(dict(counts.all()), cancel_requested=job.cancel_requested)
-    if target is not None:
-        await transition_job(conn, job_id, target)
+    if target is None:
+        return
+    if ending is not None:
+        await ending(conn, job_id, target)
+    await transition_job(conn, job_id, target)
