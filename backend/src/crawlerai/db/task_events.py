@@ -23,14 +23,15 @@ _ABSTAINED: Final = "abstained"
 async def record_task_events(conn: AsyncConnection, task_id: UrlTaskId) -> None:
     task = (
         await conn.execute(
-            select(UrlTask.job_id, UrlTask.url, UrlTask.outcome, UrlTask.capture_id).where(UrlTask.id == task_id)
+            select(
+                UrlTask.job_id, UrlTask.url, UrlTask.outcome, UrlTask.capture_id, Capture.method, Capture.block_class
+            )
+            .outerjoin(Capture, Capture.id == UrlTask.capture_id)
+            .where(UrlTask.id == task_id)
         )
     ).one()
     if task.capture_id is not None:
-        capture = (
-            await conn.execute(select(Capture.method, Capture.block_class).where(Capture.id == task.capture_id))
-        ).one()
-        payload = {"url": task.url, "method": capture.method, "block_class": capture.block_class}
+        payload = {"url": task.url, "method": task.method, "block_class": task.block_class}
         await record_event(conn, task.job_id, TASK_FETCHED, payload)
     # A retried task can have run the resolver more than once; its last run is the one its outcome comes from.
     extraction = (

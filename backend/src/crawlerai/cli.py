@@ -176,8 +176,16 @@ async def _apikey_create(label: str) -> None:
         await engine.dispose()
     # The key is printed this once; only its hash is stored (SPEC-07 §4.2). The webhook secret, which verifies the
     # signature of the key's webhooks (SPEC-10 §4.2), is printed with it.
-    created_key = {"id": str(created.id), "label": created.label, "key": created.key}
-    print(json.dumps(created_key | {"webhook_secret": created.webhook_secret}))
+    print(
+        json.dumps(
+            {
+                "id": str(created.id),
+                "label": created.label,
+                "key": created.key,
+                "webhook_secret": created.webhook_secret,
+            }
+        )
+    )
 
 
 async def _apikey_revoke(parser: argparse.ArgumentParser, key_id: uuid.UUID) -> None:

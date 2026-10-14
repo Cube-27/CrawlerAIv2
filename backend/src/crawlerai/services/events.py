@@ -41,14 +41,12 @@ async def check_job(conn: AsyncConnection, job_id: JobId) -> None:
         raise JobNotFound(f"no job {job_id}")
 
 
-async def events_after(
-    conn: AsyncConnection, job_id: JobId, after: JobEventId | None, limit: int = BATCH
-) -> list[StreamEvent]:
-    """The job's stored events after `after` (all of them for None), in id order, at most `limit`."""
+async def events_after(conn: AsyncConnection, job_id: JobId, after: JobEventId | None) -> list[StreamEvent]:
+    """The job's stored events after `after` (all of them for None), in id order, at most `BATCH`."""
     query = select(JobEvent.id, JobEvent.kind, JobEvent.payload).where(JobEvent.job_id == job_id)
     if after is not None:
         query = query.where(JobEvent.id > after)
-    rows = await conn.execute(query.order_by(JobEvent.id).limit(limit))
+    rows = await conn.execute(query.order_by(JobEvent.id).limit(BATCH))
     return [StreamEvent(id=row.id, kind=row.kind, data=row.payload) for row in rows]
 
 

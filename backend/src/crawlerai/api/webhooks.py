@@ -48,11 +48,7 @@ class _Due:
 
 
 def poster(connector: SafeConnector) -> Poster:
-    return partial(_post, connector=connector)
-
-
-async def _post(url: str, body: bytes, headers: Mapping[str, str], *, connector: SafeConnector) -> int:
-    return await post(url, body, headers, connector=connector, timeout_s=TIMEOUT_S)
+    return partial(post, connector=connector, timeout_s=TIMEOUT_S)
 
 
 def signature(secret: str, body: bytes) -> str:
@@ -88,19 +84,19 @@ async def deliver_webhooks(conn: AsyncConnection, post: Poster, *, batch: int) -
 
 async def _deliver(conn: AsyncConnection, row: _Due, post: Poster) -> None:
     if row.secret is None:
-        await _set(conn, row, status="failed", last_error=UNSIGNED)
+        await _set(conn, row.job_id, status="failed", last_error=UNSIGNED)
         return
     body = (await get_job(conn, row.job_id)).model_dump_json().encode()
     headers = {"Content-Type": "application/json", SIGNATURE_HEADER: signature(row.secret, body)}
     error = await _attempt(post, row.url, body, headers)
     attempts = row.attempts + 1
     if error is None:
-        await _set(conn, row, status="delivered", attempts=attempts, last_error=None)
+        await _set(conn, row.job_id, status="delivered", attempts=attempts, last_error=None)
     elif attempts >= MAX_ATTEMPTS:
-        await _set(conn, row, status="failed", attempts=attempts, last_error=error)
+        await _set(conn, row.job_id, status="failed", attempts=attempts, last_error=error)
     else:
         retry_at = func.now() + retry_delay(attempts)
-        await _set(conn, row, attempts=attempts, last_error=error, next_attempt_at=retry_at)
+        await _set(conn, row.job_id, attempts=attempts, last_error=error, next_attempt_at=retry_at)
 
 
 async def _attempt(post: Poster, url: str, body: bytes, headers: Mapping[str, str]) -> str | None:
@@ -112,5 +108,5 @@ async def _attempt(post: Poster, url: str, body: bytes, headers: Mapping[str, st
     return None if 200 <= status < 300 else f"status {status}"
 
 
-async def _set(conn: AsyncConnection, row: _Due, **values: Any) -> None:
-    await conn.execute(update(WebhookDelivery).where(WebhookDelivery.job_id == row.job_id).values(**values))
+async def _set(conn: AsyncConnection, job_id: JobId, **values: Any) -> None:
+    await conn.execute(update(WebhookDelivery).where(WebhookDelivery.job_id == job_id).values(**values))
