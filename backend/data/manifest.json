@@ -66,6 +66,24 @@
       "sha256": "1d524b11a7c5ab9e7727681be28c4e014062776bd0a363ef578c1cd14b97933c",
       "license": "Prices transcribed from the provider's public pricing page (facts; no license stated)",
       "justification": "USD prices per million input and output tokens of the gemini models, for the estimated LLM cost shown for visibility, not billing (SPEC-06 §4.8, ARCHITECTURE §1)."
+    },
+    {
+      "path": "llm/anthropic-structured-output.json",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "version": "documentation page as checked on 2026-10-14",
+      "retrieved": "2026-10-14",
+      "sha256": "dae936046beb77e2b95c7d10c6b680a47d959a369876019069ee0674a1fa173c",
+      "license": "Limits transcribed from the provider's public API documentation (facts; no license stated)",
+      "justification": "The JSON Schema subset Anthropic structured outputs (output_config.format) accepts: every role's output schema is checked against it (SPEC-06 §4.2)."
+    },
+    {
+      "path": "llm/gemini-structured-output.json",
+      "url": "https://ai.google.dev/api/generate-content#GenerationConfig",
+      "version": "documentation page as checked on 2026-10-14",
+      "retrieved": "2026-10-14",
+      "sha256": "5f5c4d872194a07e3fabadeff153965b36cdcc2f91f0c70c1e91dcad9d45125e",
+      "license": "Limits transcribed from the provider's public API documentation (facts; no license stated)",
+      "justification": "The JSON Schema subset Gemini GenerationConfig.responseJsonSchema accepts: every role's output schema is checked against it (SPEC-06 §4.2)."
     }
   ]
 }

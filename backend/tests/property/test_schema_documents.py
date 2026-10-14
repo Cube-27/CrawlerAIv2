@@ -1,13 +1,16 @@
-"""Schema documents (SPEC-04 §6): generated valid documents round-trip through the model and its JSON, and a
-`schema_org` path that breaks the schema.org naming conventions is rejected wherever it appears."""
+"""Schema documents (SPEC-04 §6): generated valid documents round-trip through the model and its JSON, and through
+role S's wire form (SPEC-06 §4.5), and a `schema_org` path that breaks the schema.org naming conventions is rejected
+wherever it appears."""
 
 from typing import Any, get_args
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
+from crawlerai.llm.roles.s_wire import from_wire, to_wire, wire_schema
 from crawlerai.schemas.types import FieldType, IdentifierScheme, SchemaDocument
 
 _names = st.from_regex(r"[a-z][a-z0-9_]{0,10}", fullmatch=True)
@@ -76,6 +79,18 @@ def test_valid_documents_round_trip_through_json(raw: dict[str, Any]) -> None:
         **raw,
         "fields": _without_defaults(raw["fields"]),
     }
+
+
+@given(_documents)
+def test_valid_documents_round_trip_through_the_role_s_wire_form(raw: dict[str, Any]) -> None:
+    document = SchemaDocument.model_validate(raw)
+
+    wire = to_wire(document.model_dump(mode="json", exclude={"name", "version"}, exclude_none=True))
+
+    assert list(Draft202012Validator(wire_schema()).iter_errors(wire)) == []
+    assert (
+        SchemaDocument.model_validate({**from_wire(wire), "name": raw["name"], "version": raw["version"]}) == document
+    )
 
 
 def _without_defaults(fields: dict[str, Any]) -> dict[str, Any]:

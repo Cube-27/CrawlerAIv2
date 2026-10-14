@@ -3,20 +3,22 @@ write values. A program runs your steps on the sample pages and keeps a field on
 the value already published for it.
 
 Reply with one JSON object that matches the response schema. A field's `steps` run in order on a page, and the first
-step whose value is valid wins. Each step has exactly one selector:
+step whose value is valid wins. A step is {"selector", "expression", "when_type", "source", "post"}: `selector` names
+its kind and `expression` is the selector itself:
 - `xpath`: an XPath 1.0 expression, run on the page's HTML. A node-set gives each node's text; `normalize-space(...)`
   gives one trimmed string; `.../@name` gives an attribute. In a listing row field it runs relative to the row node,
   so start it with `.` (an absolute `//` path searches the whole page).
 - `css`: a CSS selector, run like the XPath it translates to.
 - `jsonld`: a JSONPath (starting with `$`) run on each schema.org node of the page's JSON-LD (each object with an
-  `@type`), with `when_type` to keep only nodes of that schema.org type.
-- `jsonpath` with `source`: a JSONPath run on the page's JSON documents: `jsonld` (the JSON-LD blocks as written),
-  `js_state` (JSON in other script elements) or `xhr` (captured JSON responses).
+  `@type`); `when_type` keeps only nodes of that schema.org type.
+- `jsonpath`: a JSONPath run on the page's JSON documents named by `source`: `jsonld` (the JSON-LD blocks as
+  written), `js_state` (JSON in other script elements) or `xhr` (captured JSON responses).
 - `regex`: a regular expression run on the raw HTML source; its first group (or the whole match) is the value. Use it
   only when no other selector reaches the value.
 - `attr`: an attribute of the listing row node.
-A step may add `post`, a list of operations applied in order: `{"trim": {}}`, `{"regex_replace": {"pattern": ...,
-"repl": ...}}`, `{"absolutize_url": {}}`, or `{"<field type>": {}}` to check the value is valid for that type.
+Give `""` for `when_type` and `source` when the step has none. `post` is a list of operations applied in order, each
+{"op", "pattern", "repl"}: `trim`, `absolutize_url`, `regex_replace` (with its `pattern` and `repl`), or a field type
+to check the value is valid for that type; give `""` for `pattern` and `repl` when the op has none.
 
 Rules:
 - A single-valued field's step must select exactly one value on a page; more than one is rejected. A list field's

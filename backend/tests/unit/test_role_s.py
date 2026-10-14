@@ -3,21 +3,24 @@ accepts a schema document without its name and version."""
 
 import json
 import uuid
+from typing import cast
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
+from pydantic import JsonValue
 
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import request_hash
 from crawlerai.llm.roles.s_schema import SAMPLE_MAX_CHARS, draft_name, draft_request, output_schema
+from crawlerai.llm.roles.s_wire import from_wire, to_wire
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldType
 
 JOB = JobId(uuid.UUID(int=1))
 
-DRAFT = {
+DRAFT: dict[str, JsonValue] = {
     "page_kind": "detail",
     "required_groups": [["sku", "gtin"]],
     "fields": {
@@ -102,6 +105,62 @@ def test_an_empty_prompt_is_refused() -> None:
 def test_the_output_schema_accepts_a_document_without_name_and_version() -> None:
     validator = Draft202012Validator(output_schema())
 
-    assert list(validator.iter_errors(DRAFT)) == []
-    assert not validator.is_valid({**DRAFT, "name": "chosen_by_the_model"})
-    assert not validator.is_valid({**DRAFT, "version": 2})
+    assert list(validator.iter_errors(to_wire(DRAFT))) == []
+    assert not validator.is_valid({**to_wire(DRAFT), "name": "chosen_by_the_model"})
+    assert not validator.is_valid({**to_wire(DRAFT), "version": 2})
+
+
+def test_the_wire_form_has_no_recursion_and_unrolls_nesting_to_the_depth_limit() -> None:
+    nested: dict[str, JsonValue] = {
+        "page_kind": "detail",
+        "fields": {
+            "tags": {"type": "list", "description": "Tags", "item": {"type": "text"}},
+            "seller": {
+                "type": "object",
+                "description": "Seller",
+                "fields": {"name": {"type": "text", "description": "N"}},
+            },
+        },
+    }
+
+    wire = to_wire(nested)
+
+    assert [entry["name"] for entry in cast(list[dict[str, JsonValue]], wire["fields"])] == ["tags", "seller"]
+    assert from_wire(wire) == {
+        "page_kind": "detail",
+        "required_groups": [],
+        "fields": {
+            "tags": {
+                "type": "list",
+                "required": False,
+                "scope": "row",
+                "description": "Tags",
+                "item": {"type": "text", "required": False, "scope": "row"},
+            },
+            "seller": {
+                "type": "object",
+                "required": False,
+                "scope": "row",
+                "description": "Seller",
+                "fields": {"name": {"type": "text", "required": False, "scope": "row", "description": "N"}},
+            },
+        },
+    }
+    assert "$ref" not in json.dumps(cast(dict[str, JsonValue], output_schema()["$defs"])["field_3"])
+
+
+def test_a_field_name_given_twice_is_refused() -> None:
+    wire = to_wire({"page_kind": "detail", "fields": {"a": {"type": "text"}}})
+    wire["fields"] = cast(list[JsonValue], wire["fields"]) * 2
+
+    with pytest.raises(ValueError, match="fields: field 'a' given twice"):
+        from_wire(wire)
+
+
+def test_a_list_with_two_items_is_refused() -> None:
+    wire = to_wire({"page_kind": "detail", "fields": {"a": {"type": "list", "item": {"type": "text"}}}})
+    entry = cast(list[dict[str, JsonValue]], wire["fields"])[0]
+    entry["item"] = cast(list[JsonValue], entry["item"]) * 2
+
+    with pytest.raises(ValueError, match=r"fields\.a: a list has one item, not 2"):
+        from_wire(wire)

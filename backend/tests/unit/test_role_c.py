@@ -3,7 +3,7 @@ candidates, dropped ungrounded values, capped rows, and failures that leave fiel
 client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -76,8 +76,13 @@ def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"
     return asyncio.run(extract_detail(client, text, specs(*fields), CTX, owner=OWNER, job_id=JOB))
 
 
+def claims(fields: Mapping[str, dict[str, JsonValue] | None]) -> list[JsonValue]:
+    """The reply's claims for `fields`, a field given as None having none."""
+    return [{"field": name, **value} for name, value in fields.items() if value is not None]
+
+
 def reply(**fields: dict[str, JsonValue] | None) -> dict[str, JsonValue]:
-    return {"fields": dict(fields)}
+    return {"fields": claims(fields)}
 
 
 # --- the request ---
@@ -105,14 +110,23 @@ def test_the_same_fields_in_any_order_give_the_same_request_hash() -> None:
     assert request_hash(first) == request_hash(second)
 
 
-def test_the_output_schema_takes_a_span_or_null_for_exactly_the_requested_fields() -> None:
+def test_the_output_schema_takes_spans_of_the_requested_fields_only() -> None:
     validator = Draft202012Validator(output_schema(["title", "released"]))
 
     assert validator.is_valid(reply(title=span("Widget One", 0), released=None))
-    assert not validator.is_valid(reply(title=span("Widget One", 0)))  # every requested field answers
-    assert not validator.is_valid(reply(title=None, released=None, sku=None))  # and no other
-    assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0}, released=None))
-    assert not validator.is_valid({**reply(title=None, released=None), "note": "x"})
+    assert validator.is_valid(reply())  # a page that shows none of them
+    assert not validator.is_valid(reply(sku=span("W-1", 0)))  # no other field
+    assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0}))
+    assert not validator.is_valid({"fields": [{**span("Widget One", 0), "field": "title", "note": "x"}]})
+    assert not validator.is_valid({**reply(), "note": "x"})
+
+
+def test_a_field_claimed_twice_is_dropped() -> None:
+    client = ScriptedClient({"fields": claims({"title": span("Widget One", 0)}) * 2})
+
+    filled = extract(client, ["title"])
+
+    assert (filled.candidates, filled.diagnostics) == ((), ("role C: title claimed 2 times",))
 
 
 def test_a_long_text_is_cut_at_the_detail_limit_and_the_cut_is_recorded() -> None:
@@ -283,8 +297,10 @@ def extract_rows(
     return asyncio.run(extract_listing(client, text, ROW_SPECS, page, CTX, job_id=JOB))
 
 
-def rows_reply(*rows: dict[str, JsonValue], **page: dict[str, JsonValue] | None) -> dict[str, JsonValue]:
-    return {"rows": list(rows), "page": dict(page)}
+def rows_reply(
+    *rows: Mapping[str, dict[str, JsonValue] | None], **page: dict[str, JsonValue] | None
+) -> dict[str, JsonValue]:
+    return {"rows": [claims(row) for row in rows], "page": claims(page)}
 
 
 def test_the_listing_request_is_a_fast_listing_call_with_row_and_page_fields() -> None:
@@ -314,8 +330,9 @@ def test_the_listing_output_schema_takes_rows_of_spans_and_the_page_fields() -> 
     validator = Draft202012Validator(listing_output_schema(["title", "sku"], ["heading"]))
 
     assert validator.is_valid(rows_reply({"title": span("Widget One", 0), "sku": None}, heading=None))
-    assert not validator.is_valid(rows_reply({"title": span("Widget One", 0)}, heading=None))  # every row field
-    assert not validator.is_valid(rows_reply({"title": None, "sku": None, "price": None}, heading=None))
+    assert validator.is_valid(rows_reply({}, heading=span("All widgets", 0)))
+    assert not validator.is_valid(rows_reply({"price": span("9", 0)}, heading=None))  # a row field only
+    assert not validator.is_valid(rows_reply(title=span("Widget One", 0)))  # in its row
     assert not validator.is_valid({"rows": []})  # the page fields asked
 
 
@@ -350,7 +367,7 @@ def test_an_ungrounded_row_value_is_dropped_with_its_row_and_field() -> None:
 
 
 def test_rows_past_the_cap_are_cut_and_the_cut_is_recorded() -> None:
-    row: dict[str, JsonValue] = {"title": span("Widget One", 0), "sku": None}
+    row: dict[str, dict[str, JsonValue] | None] = {"title": span("Widget One", 0), "sku": None}
     client = ScriptedClient(rows_reply(*[row] * (LISTING_MAX_ROWS + 3), heading=None))
 
     filled = extract_rows(client)
@@ -380,7 +397,7 @@ def test_a_listing_call_without_a_valid_reply_gives_no_rows() -> None:
 
 def test_the_listing_hook_asks_the_row_fields_and_missing_page_fields_and_records_the_call() -> None:
     schema = SCHEMA.model_copy(update={"page_kind": "listing", "fields": ROW_SPECS | PAGE_SPECS})
-    client = ScriptedClient({"rows": [{"title": span("Widget One", 0), "sku": None}]})
+    client = ScriptedClient({"rows": [claims({"title": span("Widget One", 0), "sku": None})]})
     request = ListingGapRequest(
         ParsedPage("<html><body><p>Widget One</p></body></html>"), schema, CTX, ("title", "sku"), ()
     )

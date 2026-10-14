@@ -36,6 +36,7 @@ from crawlerai.llm.client import (
 )
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.services import scrape_steps
 from crawlerai.services.fetching import Fetching, TargetRejected
 from crawlerai.services.scrape import ScrapeRequest, ScrapeTimedOut, scrape
@@ -62,7 +63,12 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue  kettle</title>
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
-        {"page_kind": "detail", "fields": {"title": {"type": "text", "required": True, "description": "Product name"}}}
+        to_wire(
+            {
+                "page_kind": "detail",
+                "fields": {"title": {"type": "text", "required": True, "description": "Product name"}},
+            }
+        )
     ),
     tokens_in=900,
     tokens_out=80,
@@ -70,7 +76,7 @@ DRAFT_REPLY = ProviderReply(
 # Valid JSON for the output schema, but a field without a description, which the draft check refuses.
 UNDESCRIBED = ProviderReply(
     model="fake-strong",
-    text=json.dumps({"page_kind": "detail", "fields": {"title": {"type": "text"}}}),
+    text=json.dumps(to_wire({"page_kind": "detail", "fields": {"title": {"type": "text"}}})),
     tokens_in=1,
     tokens_out=1,
 )

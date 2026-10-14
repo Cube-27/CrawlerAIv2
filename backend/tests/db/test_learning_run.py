@@ -163,7 +163,9 @@ class RoleA:
         )
 
 
-PRICE_REPLY = {"fields": {"price": {"steps": [PRICE_STEP]}}}
+# Role A's reply: `PRICE_STEP` in the wire form (`config_ir.step_wire`).
+PRICE_WIRE = {"selector": "xpath", "expression": PRICE_STEP["xpath"], "when_type": "", "source": "", "post": []}
+PRICE_REPLY = {"fields": {"price": {"steps": [PRICE_WIRE]}}}
 
 
 @dataclass

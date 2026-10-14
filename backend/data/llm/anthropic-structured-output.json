@@ -1,0 +1,33 @@
+{
+  "provider": "anthropic",
+  "checked": "2026-10-14",
+  "scope": "Source page and retrieval date: this file's entry in ../manifest.json. The JSON Schema subset structured outputs (output_config.format) accept, from the page's 'JSON Schema limitations' and 'Schema complexity limits' sections. keywords: every keyword the page lists as supported, plus the annotations title and description. closed_objects: additionalProperties must be false on every object. max_unions: the cap on parameters that use anyOf or type arrays. max_optional: the cap on properties not listed in required. min_items: the minItems values supported. bare_ref: whether a $ref must stand alone (not stated, so false). Recursive schemas are not supported.",
+  "keywords": [
+    "$defs",
+    "$ref",
+    "additionalProperties",
+    "allOf",
+    "anyOf",
+    "const",
+    "default",
+    "definitions",
+    "description",
+    "enum",
+    "format",
+    "items",
+    "minItems",
+    "pattern",
+    "properties",
+    "required",
+    "title",
+    "type"
+  ],
+  "closed_objects": true,
+  "max_unions": 16,
+  "max_optional": 24,
+  "min_items": [
+    0,
+    1
+  ],
+  "bare_ref": false
+}

@@ -1,9 +1,10 @@
 """Role S: a draft schema from a prompt (SPEC-06 §4.5, ARCHITECTURE §5.4, §11).
 
 The model reads the caller's prompt, the cleaned text of one to three sample pages, the field types and the presets as
-examples, and replies with a schema document without its name and version. The client checks the reply against the
-document's JSON Schema and then, through the role's reply check, as a `SchemaDocument`, whose rules (every field
-described, nesting, required groups) JSON Schema does not express; either failure takes the client's one retry.
+examples, and replies with a schema document without its name and version, in the wire form every provider's
+structured output accepts (`s_wire`). The client checks the reply against the wire form's JSON Schema and then,
+through the role's reply check, read back as a `SchemaDocument`, whose rules (every field described, nesting, required
+groups) JSON Schema does not express; either failure takes the client's one retry.
 
 The draft is stored as `draft_<sha256(prompt)[:12]>` version 1 with `origin='prompt_draft'`, and the same prompt
 (after whitespace normalization) returns the stored row without a call: one prompt gives one stable schema (§5.4).
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMRequest
 from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS
+from crawlerai.llm.roles.s_wire import from_wire, to_wire, wire_schema
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import SchemaExists, SchemaNotFound
 from crawlerai.schemas.types import FieldType, SchemaDef, SchemaDocument
@@ -65,11 +67,8 @@ def draft_name(prompt: str) -> str:
 
 @cache
 def output_schema() -> dict[str, JsonValue]:
-    """The `SchemaDocument` JSON Schema without `name` and `version`, which are ours to set."""
-    schema = SchemaDocument.model_json_schema()
-    properties = {k: v for k, v in schema["properties"].items() if k not in ("name", "version")}
-    required = [k for k in schema.get("required", []) if k in properties]
-    return {**schema, "properties": properties, "required": required}
+    """A schema document without `name` and `version`, which are ours to set, in the wire form (`s_wire`)."""
+    return wire_schema()
 
 
 @cache
@@ -77,7 +76,7 @@ def _examples() -> str:
     """The field types, one line each, and the presets as documents without name and version (fixed per process)."""
     types = "\n".join(f"- {kind.value}: {definition}" for kind, definition in TYPE_DEFINITIONS.items())
     presets = "\n".join(
-        json.dumps(p.model_dump(mode="json", exclude={"name", "version"}, exclude_none=True))
+        json.dumps(to_wire(p.model_dump(mode="json", exclude={"name", "version"}, exclude_none=True)))
         for p in registry.load_presets()
     )
     return f"Field types:\n{types}\n\nExample schemas (presets):\n{presets}"
@@ -144,7 +143,7 @@ async def _stored(engine: AsyncEngine, name: str) -> SchemaDef | None:
 
 
 def _document(data: dict[str, JsonValue], name: str) -> SchemaDocument:
-    return SchemaDocument.model_validate({**data, "name": name, "version": 1})
+    return SchemaDocument.model_validate({**from_wire(data), "name": name, "version": 1})
 
 
 def _invalid(data: dict[str, JsonValue], name: str) -> str | None:
@@ -153,4 +152,6 @@ def _invalid(data: dict[str, JsonValue], name: str) -> str | None:
         _document(data, name)
     except ValidationError as error:
         return "; ".join(f"at {'.'.join(map(str, e['loc'])) or 'root'}: {e['msg']}" for e in error.errors())
+    except ValueError as error:
+        return str(error)
     return None
