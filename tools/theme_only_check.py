@@ -32,7 +32,10 @@ PALETTES = (
 
 # The packages app code may import. `@heroui/react` is the only UI package, with one icon set beside it; the rest are
 # not UI. A new runtime dependency is added here in the PR that adds it to package.json.
-RUNTIME_PACKAGES = r"@heroui/react|@gravity-ui/icons|react|react-dom|react-router|openapi-fetch|@tanstack/react-query"
+RUNTIME_PACKAGES = (
+    r"@heroui/react|@gravity-ui/icons|react|react-dom|react-router|openapi-fetch|@tanstack/react-query"
+    r"|@internationalized/date"
+)
 
 # Each rule's structural property: visual values live only in the theme layer, and @heroui/react is the single UI
 # layer (DESIGN.md, Theming and Stack).
