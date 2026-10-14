@@ -282,6 +282,29 @@ describe("config screen: correction", () => {
     ]);
   });
 
+  it("sends a stored normalize operation in the form the server reads: keyed by its field type", async () => {
+    const calls = configApi({ [`PUT /v1/configs/${V2_ID}`]: json(corrected) });
+    await open(`/configs/${V2_ID}`, HOST);
+    const form = await openTab("Correct");
+
+    const path = within(form.getByRole("group", { name: "price" })).getByRole("textbox", {
+      name: "JSON-LD path",
+    });
+    await userEvent.clear(path);
+    await userEvent.type(path, "$.offers.lowPrice");
+    await userEvent.click(form.getByRole("button", { name: "Submit correction" }));
+
+    await screen.findByRole("region", { name: "Correction result" });
+    expect(calls.find((call) => call.method === "PUT")?.body).toEqual({
+      fields: {
+        price: {
+          steps: [{ jsonld: "$.offers.lowPrice", when_type: "Product", post: [{ money: {} }] }],
+        },
+      },
+      confirm: [],
+    });
+  });
+
   it("removes a field whose steps were all removed", async () => {
     const calls = configApi({ [`PUT /v1/configs/${V2_ID}`]: json(corrected) });
     await open(`/configs/${V2_ID}`, HOST);

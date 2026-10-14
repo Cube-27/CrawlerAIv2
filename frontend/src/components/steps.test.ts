@@ -17,7 +17,7 @@ describe("steps: from a stored config to a correction", () => {
     expect(STORED.map((step) => toCorrectedStep(draftOf(step)))).toEqual([
       { xpath: "//h1", post: [{ trim: {} }] },
       { css: "h1.title", post: [] },
-      { jsonld: "$.offers.price", when_type: "Product", post: [{ type: "money" }] },
+      { jsonld: "$.offers.price", when_type: "Product", post: [{ money: {} }] },
       { jsonpath: "$.product.title", source: "js_state", post: [] },
       { regex: "SKU: (\\w+)", post: [{ regex_replace: { pattern: "-", repl: "" } }] },
       { attr: "href", post: [{ absolutize_url: {} }] },

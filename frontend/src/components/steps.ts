@@ -132,7 +132,9 @@ function correctedPostOp(op: PostOp): CorrectedPostOp {
     case "absolutize_url":
       return { absolutize_url: {} };
     case "normalize":
-      return { type: op.type };
+      // The server tells post operations apart by their one key (`_post_op_kind` in `config_ir/model.py`), a field
+      // type for a normalize operation; `{type}`, the generated input type's form, is refused there.
+      return { [op.type]: {} } as CorrectedPostOp;
     case "regex_replace":
       return { regex_replace: { pattern: op.pattern, repl: op.repl } };
   }
