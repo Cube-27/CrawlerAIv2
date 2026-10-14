@@ -331,7 +331,7 @@ def page_formats(page: ParsedPage, final_url: str, requested: list[PageFormat]) 
     """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26)."""
     formats: Formats = {}
     if "markdown" in requested:
-        formats["markdown"] = markdown(page)
+        formats["markdown"] = markdown(page, final_url)
     if "html" in requested:
         formats["html"] = cleaned_html(page)
     if "raw_html" in requested:

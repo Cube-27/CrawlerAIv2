@@ -147,7 +147,7 @@ def test_the_content_formats_read_one_parse_per_parser(parses: Parses) -> None:
     final_url = "https://shop.example.test/p/1"
 
     assert page.lxml_tree.xpath("count(//p)") == 1  # another consumer of the lxml tree, as an XPath step is
-    assert markdown(page) == "Hello **world**"
+    assert markdown(page, final_url) == "Hello **world**"
     assert "<script" not in cleaned_html(page)
     assert links(page, final_url) == ()
     assert metadata(page, final_url).structured_data_types == ("Product",)

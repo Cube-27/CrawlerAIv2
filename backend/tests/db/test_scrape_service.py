@@ -414,7 +414,7 @@ async def test_a_timeout_while_the_formats_are_computed_fails_the_job(
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    def slow_markdown(page: ParsedPage) -> str:
+    def slow_markdown(page: ParsedPage, final_url: str) -> str:
         time.sleep(1)
         return ""
 
