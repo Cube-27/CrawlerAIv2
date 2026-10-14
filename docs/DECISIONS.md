@@ -4340,3 +4340,52 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `promptSuggestionEnabled: false` in `.claude/settings.json` or `~/.claude`.
 - Why: It is scoped to orchestrated agents, and the owner's own sessions keep suggestions.
 - Reversible: yes
+
+### D-0649 — Crawl canonical form sorts the query by name
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: `crawl.canonical` is the url type's canonical form with the query's non-empty `&` pairs stably sorted by their form-decoded name (UTF-16 code units), WHATWG `URLSearchParams.sort()` order; the pairs keep their bytes and are not re-serialized. An empty query keeps its `?` (SPEC-04 §4.4).
+- Alternatives: No sorting; full `URLSearchParams` re-serialization.
+- Why: SPEC-10 §4.1 asks for a sorted query and only WHATWG/RFC 3986 normalizations; `sort()` is the WHATWG one. Re-serializing would rewrite bytes (`%20` → `+`) a server may read differently.
+- Reversible: yes
+
+### D-0650 — `map` sitemap scope and depth
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: Only sitemaps on the start URL's exact host are fetched (robots `Sitemap:` lines elsewhere are ignored; `/sitemap.xml` is the fallback). A root is depth 0 and an index child +1, read to depth 3. The 50k cap counts canonical page URLs read. Page URLs from sitemaps on any host are kept or dropped by the request's scope, so an `include` can name a subdomain (D-0037).
+- Alternatives: Fetch cross-host sitemaps robots.txt lists; count index entries toward the 50k.
+- Why: The most conservative reading of "same exact host" (§4.4, D-0037): every fetch stays on one site's robots and rate.
+- Reversible: yes
+
+### D-0651 — `map` past its timeout returns what it found
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: At 60 s, `map` returns the URLs found so far with `truncated: true`, and the job is `completed`. `truncated` also covers more URLs than `limit`, the 50k cap and the depth cap. The start page's links are fetched before the sitemaps.
+- Alternatives: A 504 problem, as `scrape` does.
+- Why: Discovery has a useful partial answer, and `truncated` tells the caller it is incomplete.
+- Reversible: yes
+
+### D-0652 — `map` `sources` count returned URLs, sitemap first
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: `sources.sitemap + sources.links == len(urls)`; a URL both sources found counts as a sitemap's. Sitemap URLs come first in `urls`.
+- Alternatives: Count each source's distinct finds, overlapping.
+- Why: The counts describe the answer the caller got.
+- Reversible: yes
+
+### D-0653 — XML sitemaps only, read by element name
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: Only XML urlsets and indexes are read, matched by local element name with or without the sitemaps.org namespace; plain-text sitemaps are skipped.
+- Alternatives: Also read text sitemaps.
+- Why: A soft-404 HTML page would read as a text sitemap; XML declines cleanly (C7). The text format can be added if dev shows sites that need it.
+- Reversible: yes
+
+### D-0654 — `.sitemaps.org` in the site-literal allowlist
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: Allow `.sitemaps.org` under standards bodies in `tools/site_literal_allowlist.txt`.
+- Alternatives: None: the protocol's XML namespace is `http://www.sitemaps.org/schemas/sitemap/0.9`.
+- Why: It is the protocol's own host, like `www.w3.org` (C3 allows standards hosts).
+- Reversible: yes
+
+### D-0655 — Shared fetch steps in `services.fetching`
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 3 (#130) · Status: decided
+- Decision: `Fetching` moves from `services.scrape` to a new `services.fetching`, with `site_rules`, `admitted` and one SSRF refusal path: `TargetRejected` (replacing `ScrapeRejected`), `check_target` and `refusal(result)` (scrape and map raise on it, the `batch_scrape` handler returns `Failed`); the 422 is `api.problems.target_refused`. `site_row`, `DEFAULT_PROJECT` and `record_fetch_usage` stay in `services.scrape_steps` (#128); `record_fetch_usage` takes attempt records, so no caller keeps a page body only to count it.
+- Alternatives: Import `scrape`'s private helpers; a `MapRejected` copy of `ScrapeRejected`.
+- Why: One copy of the INV-16 refusal check and of the waiting fetch's robots and rate steps for every service that fetches (SPEC-10 PR 4/7 reuse them).
+- Reversible: yes
