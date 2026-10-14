@@ -36,15 +36,13 @@ export function useJobEvents(
     const { signal } = controller;
     const onEvent = (event: StreamEvent) => {
       if (signal.aborted) return;
-      if (event.kind === PROGRESS) {
+      const ended = ENDS.has(event.kind);
+      if (event.kind === PROGRESS || ended) {
         void queryClient.invalidateQueries({ queryKey: jobKey(id) });
-        return;
       }
+      if (event.kind === PROGRESS) return;
       setEvents((previous) => [...previous, event]);
-      if (ENDS.has(event.kind)) {
-        void queryClient.invalidateQueries({ queryKey: jobKey(id) });
-        void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
-      }
+      if (ended) void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
     };
     void followEvents({
       open: (lastEventId, abort) => openJobEvents(client, id, lastEventId, abort),

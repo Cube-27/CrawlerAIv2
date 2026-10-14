@@ -1,4 +1,5 @@
-import { problemOf, type Problem } from "./problem";
+import type { Problem } from "./problem";
+import { failed } from "./result";
 
 /** One server-sent event (WHATWG HTML §9.2): its type (`event`), its data, and the last event id the stream had set
  * when it was dispatched, which a reconnecting client sends back as `Last-Event-ID`. */
@@ -89,11 +90,15 @@ type Connection = { kind: "ended" } | { kind: "dropped"; received: boolean } | {
 
 function wait(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    const stop = () => {
       clearTimeout(timer);
       resolve();
-    });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", stop);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", stop, { once: true });
   });
 }
 
@@ -103,14 +108,7 @@ function isRefusal(status: number): boolean {
 }
 
 function refusal({ response, error }: Opened): Problem {
-  return (
-    problemOf(response, error) ?? {
-      title: `The event stream was refused (HTTP ${String(response.status)}).`,
-      detail: null,
-      errors: [],
-      retryAfter: null,
-    }
-  );
+  return failed(response, error, "Opening the event stream").problem;
 }
 
 /** Reads one connection's events until it closes, the end event arrives, or the stream is stopped. */
@@ -153,7 +151,11 @@ async function connect(
     options.onProblem(refusal(opened));
     return { kind: "refused" };
   }
-  if (!response.ok || response.body === null) return { kind: "dropped", received: false };
+  if (!response.ok || response.body === null) {
+    // The connection is released before the reconnect; the body of a 5xx or 429 is not read.
+    await response.body?.cancel();
+    return { kind: "dropped", received: false };
+  }
   options.onState("live");
   try {
     return await readEvents(response.body, parser, options);

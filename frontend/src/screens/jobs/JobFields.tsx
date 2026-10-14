@@ -20,7 +20,7 @@ import type { JobSchemaState } from "./form";
 type SchemaSources = readonly (readonly [SchemaSource, string])[];
 
 /** A batch's or crawl's schema sources: they take no prompt. */
-export const JOB_SCHEMA_SOURCES: SchemaSources = [
+const JOB_SCHEMA_SOURCES: SchemaSources = [
   ["none", "None"],
   ["id", "Stored schema"],
   ["inline", "Inline JSON"],

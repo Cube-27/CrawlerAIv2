@@ -19,7 +19,7 @@ function failure(
 }
 
 /** The problem an error answer carries, or a stand-in naming `what` failed and the HTTP status. */
-function failed(response: Response, error: unknown, what: string) {
+export function failed(response: Response, error: unknown, what: string) {
   const problem = problemOf(response, error);
   return problem === null
     ? failure(
