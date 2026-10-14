@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 and L2 complete (2026-10-14). L3 in progress: SPEC-10 PR 4 (#137); next SPEC-10 PRs 5, 7, 8 and SPEC-12 PR 7. L4 in progress: SPEC-11 PR 3 (#136). Chore in progress: Sonar settings + debt reduction (owner).
+- L1 and L2 complete (2026-10-14). L3 in progress: SPEC-10 PR 4 (#137); next SPEC-10 PRs 5, 7, 8 and SPEC-12 PR 7. L4: SPEC-11 PRs 1-3 done, PR 5 in progress, PR 4 after crawl. Chore in progress: Sonar settings + debt reduction (owner).
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -218,7 +218,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | `url_state` helpers + conditional GET | done (#131) | |
 | 2 | SimHash + content fingerprint skip | done (#135) | D-0661–D-0665. `url_task.record_id` (unchanged tasks pointing at their standing record) is deferred to PR 3 (D-0664). D-0665 (Hamming ≤ 3 lets a one-word change pass as unchanged) is needs-owner. |
-| 3 | Record fingerprint + versions + `changed_since` | todo | |
+| 3 | Record fingerprint + versions + `changed_since` | done (#136) | D-0666–D-0671. No migration. Follow-ups: (a) with #135, a page whose text moves > 3 bits while its required fields stay equal gets `last_changed_at` set but no new record, so `standing_record` (`created_at >= last_changed_at`) finds none and the page is re-extracted every run; an equal fingerprint also returns a record of another mode/config, which `standing_record` rejects. Fix: when the fingerprint is equal, touch the standing record or compare against the record's fingerprint in `standing_record`. (b) `url_task.record_id` (D-0664) is still not built. (c) From review: an unchanged re-scrape emits no `task.abstained` (task_events reads `Record.extraction_id`); `changed_since` on `created_at` can miss a late-committing row for non-overlapping pollers. (d) Unchanged scrapes answer with the stored record but the current mode/confidence; that capture is not replayable. (e) SPEC-11 §5 cites INV-10/INV-11 wrongly; §4.4's `url_state.record_fingerprint` wording needs a clarifying edit. |
 | 4 | Listing diff + `gone_at` | todo | |
 | 5 | Drift/`pages_extracted` exclusions for unchanged pages | todo | |
 

@@ -4468,3 +4468,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
   - (c) Make the threshold depend on text length.
 - Recommendation: (b), until dev results show which boilerplate changes ≤ 3 would absorb. It is a one-constant change (`UNCHANGED_BITS`).
 - Blocked: nothing in this PR. It affects whether PR 3's "a changed price yields a new record version" holds on real long pages.
+
+### D-0666 — Record versions compare with the entity's latest `record` row
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 3 (#136) · Status: decided
+- Decision: A new record is compared with the latest `record` row of (site, schema_id, entity_key): the highest `version`, then the newest id. It is compared with that row's stored `record.fingerprint`, not with `url_state.record_fingerprint`. Records stored before PR 3 have no fingerprint, so the next extraction of each supersedes it.
+- Alternatives: Compare with `url_state.record_fingerprint`.
+- Why: `url_state` is keyed (site, URL), has no schema, and holds one fingerprint per URL, while a listing has one entity per row. §4.4 compares per (site, entity, schema), and that key already has an index.
+- Reversible: yes
+
+### D-0667 — Record versions do not write `url_state`
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 3 (#136) · Status: decided
+- Decision: `store_records` writes neither `url_state.record_fingerprint` nor `last_changed_at`. The column `record_fingerprint` stays unused; versions compare with `record.fingerprint` (D-0666).
+- Alternatives: UPDATE both on a detail page that adds a version (as first built in #136).
+- Why: `url_state` is per URL, and `last_changed_at` is when the page's content last changed (#135, D-0662). When a new schema version stored its first record, that write made the original schema's record stop standing, and `test_recurring_scrape` caught it after the rebase onto #135. §4.4's "`url_state.record_fingerprint` ... updated" needs a clarifying spec edit.
+- Reversible: yes
+
+### D-0668 — What the record fingerprint and `changed_fields` cover
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 3 (#136) · Status: decided
+- Decision: The fingerprint is sha256 over canonical JSON of the required fields and required-group members that published. A field that did not publish is left out, so it differs from a published `null`. `changed_fields` covers every schema field, in schema order, and compares canonical JSON, so `true` ≠ `1`. A first version has `[]`.
+- Alternatives: Include unpublished fields as `null`; limit `changed_fields` to the fingerprinted fields.
+- Why: §4.4 counts "fields that became published or abstained" as changed.
+- Reversible: yes
+
+### D-0669 — Concurrent record writers take an advisory lock per (site, schema)
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 3 (#136) · Status: decided
+- Decision: `store_records` takes `pg_advisory_xact_lock` on (site, schema) before it reads the latest versions.
+- Alternatives: UNIQUE (site_id, schema_id, entity_key, version). That needs a migration, and existing databases already hold duplicate version-1 rows from repeated scrapes.
+- Why: No migration is needed. A task's transaction already serializes on the same site and schema at its progressive-state row.
+- Reversible: yes
+
+### D-0670 — The record writer is a required argument of `resolve.task`
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 3 (#136) · Status: decided
+- Decision: `store_extraction` and `extract_task` take `write_records: RecordWriter`, which is `store_records` from `recurring.versions`.
+- Alternatives: Move `resolve.task` above `recurring`; version records after resolve has stored them.
+- Why: The import layers put resolve below recurring, and a required argument means no caller can store unversioned records.
+- Reversible: yes
+
+### D-0671 — `changed_since` is inclusive and needs an offset; unchanged entities are not in a job's results
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 3 (#136) · Status: decided
+- Decision: `GET /v1/records?changed_since` filters `record.created_at >= changed_since` and requires an RFC 3339 offset (422 otherwise). An entity re-extracted unchanged stores no record, so it is not in that job's results. Its scrape answers with the stored record's id.
+- Alternatives: `>`; a job–record link table so that job results list unchanged entities too.
+- Why: `>=` can only repeat a record, which its id deduplicates, while `>` could lose one. §6 has no link table.
+- Reversible: yes
