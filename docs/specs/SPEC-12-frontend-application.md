@@ -25,6 +25,10 @@ Core screens:
 6. **Jobs** (create batch/map/crawl/extract; list; detail with live events over SSE, outcome counts, usage,
    results table and export) — L3.
 7. **Labeling** — from SPEC-03 (already built in L0; this spec only integrates navigation and shared components).
+8. **Settings** — an "LLM usage & cost" section from `GET /v1/usage/llm` (owner, 2026-10-14; ARCHITECTURE rev 11):
+   a range (last 7, 30, 90 or 365 days), totals, a breakdown by model and role, the top jobs by cost linking to
+   each job, and a per-day table. Tables only (DESIGN.md: no charts). An unknown cost reads "Unknown" with its
+   unpriced token count.
 
 Out of scope (§22 and non-goals):
 - Review queue UI beyond labeling and config correction; site health dashboard; alerts; any chart of
@@ -95,6 +99,8 @@ frontend/src/
   table editor); jobs table (kind, status, counts, created); job detail: OutcomeCounts, UsageSummary, EventLog,
   results table (RecordTable or page outputs) with export actions (`json_records`, `csv_records`, `markdown`),
   cancel button.
+- **Settings**: last nav entry; the LLM cost section described in §2 item 8. The job detail shows its
+  `llm_cost_usd` under usage.
 - **Labeling**: SPEC-03's screen; nav entry shown only when the backend reports `eval_ui: true` in
   `/healthz` (plumbing field).
 
@@ -145,6 +151,7 @@ shows status/evidence/confidence/calibrated/locator). The UI never changes serve
 | 8 | Change feed in Records | `screens/records` | vitest | `changed_fields` shown. | L4 |
 | 9 | Labeling nav integration + shared shell polish | `app/shell` | vitest | Nav gated by `eval_ui`. | L1 |
 | 10 | Jobs table on /jobs | `screens/jobs` | vitest | Table of kind, status, counts, created from `GET /v1/jobs`, paged. | L3 |
+| 11 | Settings screen with LLM usage & cost (with SPEC-06 PR 7, SPEC-10 PR 10; one PR) | `screens/settings`, `app/shell` | vitest | Totals, breakdown, top jobs linking to jobs, per day; range changes the request. | L3 |
 
 ## 9. Open issues
 
