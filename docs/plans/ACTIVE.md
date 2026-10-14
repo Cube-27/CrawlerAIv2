@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- UAT fix PRs done (#152-#155); source precedence committed (#156, OQ #19 (a)); task failure reasons in the jobs API (#157, D-0745 (a)). Next: UAT re-run of the record-dependent features with LLM calls per site, then a data-accuracy plan. Open: drift_margins.json (OQ #20 / D-0576).
+- UAT re-run fixes: records/jobs #158 merged; LLM layer (fix/uat2-llm) and frontend (fix/uat2-frontend) in flight. Next: data-accuracy plan from the re-run quality backlog. Follow-up: job results paging cost grows with job size (task_record IN-subquery); measure a results page on a ~100k-task job before redesigning (paging by task id is the likely cheaper fix). Open: drift_margins.json (OQ #20 / D-0576), sites list (D-0656).
+- Follow-ups from #158: job results paging cost grows with job size (the `task_record` IN-subquery builds the job's whole record set per page); measure a results page on a ~100k-task job before redesigning (paging by task id is the likely cheaper fix). A clarifying SPEC-11 §4.2 edit naming `task_record` in place of `url_task.record_id` (D-0762).
 - Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim enum for `rows`; SPEC-06 lines 115 and 186 still describe role C's reply as `null` per field.
 - Follow-ups from #153: a task still adds to `job.usage` mid-transaction (`record_usage`, role C's usage in `_visit`), which locks the job row until the task commits; recording usage at the task's end would let no later network I/O hold up a cancel. Declare `anyio` as a direct dependency (`services/events.py`, `mcp_server` import it).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
