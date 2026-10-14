@@ -170,36 +170,32 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
 
 
 @pytest.fixture
-def crawlerai_logger() -> Iterator[logging.Logger]:
+def crawlerai_logger() -> Iterator[None]:
     """The package's logger, its handlers and level restored after the test."""
     logger = logging.getLogger("crawlerai")
     handlers, level = list(logger.handlers), logger.level
-    yield logger
+    yield
     logger.handlers[:] = handlers
     logger.setLevel(level)
 
 
-@pytest.mark.parametrize(
-    ("command", "runner", "logger"), [("worker", "_work", "worker"), ("scheduler", "_schedule", "scheduler")]
-)
+@pytest.mark.usefixtures("crawlerai_logger")
+@pytest.mark.parametrize(("command", "runner"), [("worker", "_work"), ("scheduler", "_schedule")])
 def test_the_long_running_commands_log_info_to_stderr(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    crawlerai_logger: logging.Logger,
-    command: str,
-    runner: str,
-    logger: str,
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str, runner: str
 ) -> None:
+    logger = logging.getLogger(f"crawlerai.{command}.loop")
+
     async def run() -> None:
-        logging.getLogger(f"crawlerai.{logger}.loop").info("started")
-        logging.getLogger(f"crawlerai.{logger}.loop").debug("idle")
+        logger.info("started")
+        logger.debug("idle")
 
     monkeypatch.setattr(cli, runner, run)
 
     main([command])
 
     lines = capsys.readouterr().err.splitlines()
-    assert [line.split(" ", 2)[2] for line in lines] == [f"INFO crawlerai.{logger}.loop: started"]
+    assert [line.split(" ", 2)[2] for line in lines] == [f"INFO crawlerai.{command}.loop: started"]
 
 
 def test_the_scheduler_entries_and_their_intervals() -> None:

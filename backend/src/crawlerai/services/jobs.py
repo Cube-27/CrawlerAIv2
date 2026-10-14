@@ -257,8 +257,7 @@ async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
     await conn.execute(
         update(UrlTask).where(UrlTask.job_id == job_id, UrlTask.status == "queued").values(status="cancelled")
     )
-    # FOR NO KEY UPDATE, as `settle_job` takes: a running task's inserts that refer to the job (its extraction, record,
-    # events) hold FOR KEY SHARE on the row until the task commits, which FOR UPDATE would wait for.
+    # FOR NO KEY UPDATE, as `settle_job` takes, so a running task's inserts that refer to the job do not hold it up.
     locked = select(Job.status, Job.kind, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
     job = (await conn.execute(locked)).one()
     if not JOB_TRANSITIONS[job.status]:

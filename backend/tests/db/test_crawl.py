@@ -398,9 +398,9 @@ async def test_a_target_the_guard_refuses_is_never_fetched(
 
 async def _cancel_while_reading_sitemaps(
     engine: AsyncEngine, fetching: Fetching, web: Web, request: CrawlRequest, data: EngineData | None
-) -> jobs.JobSummary:
+) -> None:
     """Cancel the crawl while its start page's task reads the site's sitemap, which can take up to the sitemap time
-    cap; the summary the cancel answered."""
+    cap: the cancel answers at once, and the job ends `cancelled` once that task finishes."""
     origin = request.start.removesuffix("/")
     sitemap = f"{origin}/products.xml"
     web.pages |= {f"{origin}/robots.txt": robots(f"Sitemap: {sitemap}"), sitemap: urlset(f"{origin}/p/1")}
@@ -416,9 +416,9 @@ async def _cancel_while_reading_sitemaps(
     finally:
         release.set()
     await worker
+    assert (requested.status, requested.counts.claimed) == ("running", 1)
     assert (await summary(engine, submitted.job_id)).status == "cancelled"
     assert sorted(await tasks(engine, submitted.job_id)) == [request.start]
-    return requested
 
 
 async def test_a_cancel_does_not_wait_for_the_sitemaps_being_read(
@@ -426,9 +426,7 @@ async def test_a_cancel_does_not_wait_for_the_sitemaps_being_read(
 ) -> None:
     web.pages[f"{own_origin}/"] = page("/p/2")
 
-    requested = await _cancel_while_reading_sitemaps(engine, fetching, web, crawl(f"{own_origin}/"), None)
-
-    assert (requested.status, requested.counts.claimed) == ("running", 1)
+    await _cancel_while_reading_sitemaps(engine, fetching, web, crawl(f"{own_origin}/"), None)
 
 
 async def test_a_cancel_does_not_wait_for_the_sitemaps_after_a_record_was_stored(
@@ -443,9 +441,7 @@ async def test_a_cancel_does_not_wait_for_the_sitemaps_after_a_record_was_stored
     web.pages[f"{own_origin}/"] = page("/p/2", product="Blue kettle")
     request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/*")
 
-    requested = await _cancel_while_reading_sitemaps(engine, fetching, web, request, engine_data)
-
-    assert (requested.status, requested.counts.claimed) == ("running", 1)
+    await _cancel_while_reading_sitemaps(engine, fetching, web, request, engine_data)
 
 
 async def _results(engine: AsyncEngine, fetching: Fetching, job_id: JobId) -> Any:

@@ -164,8 +164,8 @@ async def test_the_worker_logs_its_start_each_tasks_result_and_its_stop(
         await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
 
     lines = [(r.levelname, r.getMessage().split(": ", 1)[1]) for r in caplog.records]
-    assert lines[0] == ("INFO", "started; job kinds crawl")
-    assert lines[1:] == [
+    assert lines == [
+        ("INFO", "started; job kinds crawl"),
         ("INFO", f"crawl task of job {job_id}: extracted"),
         ("WARNING", f"crawl task of job {job_id}: failed: http 503"),
         ("INFO", "stopped"),

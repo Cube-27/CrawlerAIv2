@@ -11,7 +11,9 @@ dependencies = [
     "babel>=2.16,<3",
     "boto3>=1.35,<2",
     "cssselect>=1.2,<2",
-    "curl-cffi>=0.16,<1",
+    # acquire/http.py works around 0.16's handle release order through the session's internals (UAT F06): an
+    # upgrade re-checks that workaround.
+    "curl-cffi>=0.16,<0.17",
     "dateparser>=1.2,<2",
     "fastapi>=0.115,<1",
     "google-genai>=2.30,<3",

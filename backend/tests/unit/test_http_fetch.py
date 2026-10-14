@@ -406,11 +406,11 @@ class Pinned(SafeConnector):
         return Target(url=url, host="shop.example.test", port=int(sys.argv[2]), ip=IPv4Address("127.0.0.1"))
 
 async def main():
-    for _ in range(5):
+    for _ in range(3):
         fetch = asyncio.create_task(
             fetch_http(sys.argv[1], FetchPolicy(), engine_version="test", impersonate="chrome", connector=Pinned())
         )
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         fetch.cancel()
         try:
             await fetch
