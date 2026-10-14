@@ -278,6 +278,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Timestamps render in the viewer's time zone; tests pin one so the expected text is the same everywhere.
+    env: { TZ: "UTC" },
     css: false,
     // A screen test renders the whole app through its router and connects first: about 1 s alone, but several
     // times that while the suite's files run in parallel on a loaded machine (UAT F25, F35). One budget for every

@@ -5255,3 +5255,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep `None` and leave `api_recipe` out of the report.
 - Why: D-0583: the report says why; a forced learn on an API-backed site said nothing.
 - Reversible: yes
+
+### D-0778 — Typefaces are bundled with the app, not loaded from a font service
+- Date: 2026-10-15 · Spec/PR: DESIGN.md, UI refresh (#164) · Status: decided
+- Decision: Inter and JetBrains Mono come from the Fontsource packages (`@fontsource-variable/*`, OFL-1.1), imported only by `src/app/theme.css`; no page loads a font, script or style from a third-party service.
+- Alternatives: A Google Fonts `@import`.
+- Why: A self-hosted tool should make no third-party request on each load and should work offline.
+- Reversible: yes
+
+### D-0779 — Timestamps show in the viewer's time zone on a 24-hour clock
+- Date: 2026-10-15 · Spec/PR: DESIGN.md, UI refresh (#164) · Status: decided
+- Decision: `Timestamp` renders an API time as a short local date and 24-hour time in a `<time>` element, the exact instant in `dateTime` and its tooltip; tests pin `TZ=UTC`.
+- Alternatives: Raw RFC 3339 text; a 12-hour clock.
+- Why: Readable dates; a column of times lines up without AM/PM markers.
+- Reversible: yes

@@ -1,5 +1,4 @@
 import { Button, Typography } from "@heroui/react";
-import type { ReactNode } from "react";
 import { useParams } from "react-router";
 import { useCancelJob, useJob } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
@@ -11,7 +10,9 @@ import { LoadingView } from "../../components/LoadingView";
 import { OutcomeCounts } from "../../components/OutcomeCounts";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
+import { Section } from "../../components/Section";
 import { StatusLabel } from "../../components/StatusLabel";
+import { Timestamp } from "../../components/Timestamp";
 import { UsageSummary } from "../../components/UsageSummary";
 import { formatUsd } from "../../components/usd";
 import { ExportActions } from "./ExportActions";
@@ -45,20 +46,12 @@ function CancelAction({ id }: Readonly<{ id: string }>) {
   );
 }
 
-function Section({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
-  return (
-    <section className="flex flex-col gap-3">
-      <Typography.Heading level={2}>{title}</Typography.Heading>
-      {children}
-    </section>
-  );
-}
-
 function JobTimes({ job }: Readonly<{ job: JobSummary }>) {
   return (
     <Typography.Paragraph size="sm" color="muted">
-      Job <Typography.Code>{job.id}</Typography.Code> · created {job.created_at} · started{" "}
-      {job.started_at ?? "—"} · finished {job.finished_at ?? "—"}
+      Job <Typography.Code>{job.id}</Typography.Code> · created <Timestamp value={job.created_at} />{" "}
+      · started <Timestamp value={job.started_at} /> · finished{" "}
+      <Timestamp value={job.finished_at} />
     </Typography.Paragraph>
   );
 }

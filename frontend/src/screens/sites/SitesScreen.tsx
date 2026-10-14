@@ -1,7 +1,6 @@
-import { Button, Description, Form, Input, Label, TextField } from "@heroui/react";
-import { useState } from "react";
+import { Card } from "@heroui/react";
 import { useNavigate } from "react-router";
-import { FormActions } from "../../components/FormActions";
+import { LookupForm } from "../../components/LookupForm";
 import { PageHeader } from "../../components/PageHeader";
 import { sitePath } from "./paths";
 
@@ -9,26 +8,26 @@ import { sitePath } from "./paths";
  * of sites, so the host is entered here. */
 export function SitesScreen() {
   const navigate = useNavigate();
-  const [host, setHost] = useState("");
   return (
     <section className="flex flex-col gap-6">
-      <PageHeader title="Sites" />
-      <Form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void navigate(sitePath(host.trim()));
-        }}
-      >
-        <TextField isRequired value={host} onChange={setHost}>
-          <Label>Host</Label>
-          <Input autoComplete="off" spellCheck={false} />
-          <Description>The site's host name, as its records name it.</Description>
-        </TextField>
-        <FormActions>
-          <Button type="submit">Open site</Button>
-        </FormActions>
-      </Form>
+      <PageHeader
+        title="Sites"
+        description="Each site keeps its learned configs: review them, correct a field, or learn again."
+      />
+      <Card>
+        <Card.Header>
+          <Card.Title>Open a site</Card.Title>
+          <Card.Description>Enter the site's host name, as its records name it.</Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <LookupForm
+            label="Host"
+            placeholder="shop.example.com"
+            submitLabel="Open site"
+            onOpen={(host) => void navigate(sitePath(host))}
+          />
+        </Card.Content>
+      </Card>
     </section>
   );
 }

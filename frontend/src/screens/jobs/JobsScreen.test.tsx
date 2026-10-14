@@ -246,7 +246,7 @@ describe("Job screen", () => {
 
     const grid = await screen.findByRole("grid", { name: "Pages" });
     expect(rowsOf(grid)).toEqual([
-      "https://shop.example.test/item/1doneextracted—2026-10-14T09:00:02Z",
+      "https://shop.example.test/item/1doneextracted—Oct 14, 2026, 09:00",
     ]);
   });
 
@@ -569,8 +569,8 @@ describe("Jobs table", () => {
 
     const table = await screen.findByRole("grid", { name: "Jobs" });
     expect(rowsOf(table)).toEqual([
-      "Batch scrape" + "running" + "3 tasks: 1 queued, 2 done" + "2026-10-14T09:00:00Z",
-      "Crawl" + "failed" + "4 tasks: 3 failed, 1 cancelled" + "2026-10-13T08:00:00Z",
+      "Batch scrape" + "running" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00",
+      "Crawl" + "failed" + "4 tasks: 3 failed, 1 cancelled" + "Oct 13, 2026, 08:00",
     ]);
   });
 
@@ -656,7 +656,7 @@ describe("Jobs table", () => {
 
     await waitFor(() => {
       expect(rowsOf(screen.getByRole("grid", { name: "Jobs" }))).toEqual([
-        "Crawl" + "failed" + "3 tasks: 1 queued, 2 done" + "2026-10-14T09:00:00Z",
+        "Crawl" + "failed" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00",
       ]);
     });
     expect(screen.getByText("Page 1")).toBeInTheDocument();

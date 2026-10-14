@@ -4,6 +4,7 @@ import type { FieldTypes } from "../../api/field";
 import type { ScrapeResponse } from "../../api/scrape";
 import { OutcomeLabel } from "../../components/OutcomeLabel";
 import { RecordList } from "../../components/RecordFields";
+import { Timestamp } from "../../components/Timestamp";
 import {
   DraftSchemaView,
   FetchView,
@@ -89,7 +90,7 @@ export const ScrapeResult = memo(function ScrapeResult({
         )}
         {response.fetched_at === null ? null : (
           <Typography.Paragraph size="sm" color="muted">
-            Fetched {response.fetched_at}
+            Fetched <Timestamp value={response.fetched_at} />
           </Typography.Paragraph>
         )}
       </div>

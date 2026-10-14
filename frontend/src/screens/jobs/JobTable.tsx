@@ -9,6 +9,7 @@ import { JOB_STATUS_TEXT, JobStatusLabel } from "../../components/JobStatusLabel
 import { isOptionOf, OptionSelect } from "../../components/OptionSelect";
 import { TaskCountsText } from "../../components/OutcomeCounts";
 import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
+import { Timestamp } from "../../components/Timestamp";
 import { KIND_LABELS } from "./kinds";
 import { jobPath } from "./paths";
 
@@ -69,7 +70,8 @@ function JobFilterFields({
   );
 }
 
-function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
+/** Jobs as table rows, newest first; a row opens its job. The jobs screen and the overview show them. */
+export function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
   return (
     <Table>
       <Table.ScrollContainer>
@@ -93,7 +95,9 @@ function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
                 <Table.Cell className="truncate">
                   <TaskCountsText counts={job.counts} />
                 </Table.Cell>
-                <Table.Cell className="truncate">{job.created_at}</Table.Cell>
+                <Table.Cell className="truncate">
+                  <Timestamp value={job.created_at} />
+                </Table.Cell>
               </Table.Row>
             )}
           </Table.Body>

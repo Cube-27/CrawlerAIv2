@@ -13,6 +13,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { OutcomeLabel } from "../../components/OutcomeLabel";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { RecordTable } from "../../components/RecordTable";
+import { Timestamp } from "../../components/Timestamp";
 import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
 import { TruncatedText } from "../../components/TruncatedText";
 import { RecordInspector } from "../records/RecordInspector";
@@ -74,7 +75,9 @@ function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
                 <Table.Cell>
                   {page.last_error === null ? "—" : <TruncatedText text={page.last_error} />}
                 </Table.Cell>
-                <Table.Cell className="truncate">{page.fetched_at ?? "—"}</Table.Cell>
+                <Table.Cell className="truncate">
+                  <Timestamp value={page.fetched_at} />
+                </Table.Cell>
               </Table.Row>
             )}
           </Table.Body>
