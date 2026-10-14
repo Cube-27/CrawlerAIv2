@@ -2,37 +2,9 @@ import { Xmark } from "@gravity-ui/icons";
 import { Button, DateField, Description, Form, Input, Label, TextField } from "@heroui/react";
 import { parseAbsolute, toZoned, today, type ZonedDateTime } from "@internationalized/date";
 import { useMemo, useState } from "react";
-import { problemOf } from "../../api/hooks/query";
-import { useSchemas } from "../../api/hooks/schemas";
 import type { RecordFilters } from "../../api/records";
-import { schemaVersionLabel } from "../../api/schemas";
 import { FormActions } from "../../components/FormActions";
-import { OptionSelect } from "../../components/OptionSelect";
-import { ProblemAlert } from "../../components/ProblemAlert";
-
-function SchemaSelect({
-  value,
-  onChange,
-}: Readonly<{ value: string; onChange: (schemaId: string) => void }>) {
-  const query = useSchemas();
-  const problem = problemOf(query.error);
-  const options = Object.fromEntries(
-    (query.data ?? []).map((schema) => [schema.id, schemaVersionLabel(schema)]),
-  );
-  return (
-    <>
-      {problem === null ? null : <ProblemAlert problem={problem} />}
-      <OptionSelect
-        label="Schema"
-        options={options}
-        value={value === "" ? null : value}
-        isRequired
-        accepts={(key): key is string => typeof key === "string" && key in options}
-        onChange={onChange}
-      />
-    </>
-  );
-}
+import { SchemaSelect } from "../../components/SchemaSelect";
 
 function OptionalText({
   label,
