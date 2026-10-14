@@ -64,7 +64,6 @@ async def database(
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
     monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    monkeypatch.delenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", raising=False)
     keys_engine = create_async_engine(database_url)
     async with keys_engine.connect() as conn:
         keys = set((await conn.execute(select(ApiKey.id))).scalars())

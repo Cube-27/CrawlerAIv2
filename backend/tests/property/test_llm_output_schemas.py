@@ -2,6 +2,7 @@
 fields a schema can ask for: a provider refuses a schema outside it with a 400, and the role then extracts nothing."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import given
@@ -32,6 +33,35 @@ def test_role_c_detail(subset: SchemaSubset, fields: list[str]) -> None:
 @given(names, st.lists(st.from_regex(rf"^{NAME_PATTERN}$", fullmatch=True), max_size=10, unique=True))
 def test_role_c_listing(subset: SchemaSubset, rows: list[str], page: list[str]) -> None:
     assert violations(c_extract.listing_output_schema(rows, page), subset) == []
+
+
+def _arrays(schema: JsonValue) -> int:
+    """How many array schemas `schema` holds, at any depth."""
+    if isinstance(schema, list):
+        return sum(_arrays(item) for item in schema)
+    if not isinstance(schema, dict):
+        return 0
+    return (schema.get("type") == "array") + sum(_arrays(value) for value in schema.values())
+
+
+@given(names)
+def test_a_role_c_detail_reply_holds_one_claim_per_field_asked(fields: list[str]) -> None:
+    # F29: a closed object with one required claim per field and no array, so no reply can run on with more claims
+    # than the fields asked (neither provider's subset has `maxItems` and `maxLength` both).
+    schema: Any = c_extract.output_schema(fields)
+    claims = schema["properties"]["fields"]
+
+    assert (_arrays(schema), sorted(claims["properties"]), claims["required"]) == (0, sorted(fields), sorted(fields))
+    assert claims["additionalProperties"] is False
+
+
+@given(names, st.lists(st.from_regex(rf"^{NAME_PATTERN}$", fullmatch=True), max_size=10, unique=True))
+def test_a_role_c_listing_row_holds_one_claim_per_row_field(rows: list[str], page: list[str]) -> None:
+    # The rows are the one array; their count is capped in the prompt and cut on reading (§4.4).
+    schema: Any = c_extract.listing_output_schema(rows, page)
+    row = schema["properties"]["rows"]["items"]
+
+    assert (_arrays(schema), sorted(row["properties"]), row["additionalProperties"]) == (1, sorted(rows), False)
 
 
 @PROVIDERS

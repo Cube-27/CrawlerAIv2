@@ -1,0 +1,24 @@
+"""Tests are hermetic: the developer's `CRAWLERAI_*` variables (the Makefile exports `.env` under `make check`) never
+reach a test, so a settings object a test builds reads only what the test sets. The test databases' own variables
+(`CRAWLERAI_TEST_*`) are the exception: they name where DB tests may write."""
+
+import os
+
+import pytest
+
+from crawlerai.core.settings import LLMSettings
+
+
+def test_no_process_crawlerai_variable_reaches_a_test() -> None:
+    leaked = [name for name in os.environ if name.upper().startswith("CRAWLERAI_")]
+    assert [name for name in leaked if not name.upper().startswith("CRAWLERAI_TEST_")] == []
+
+
+def test_settings_built_in_a_test_see_only_the_tests_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "gemini")
+    settings = LLMSettings()
+    assert (settings.llm_providers, settings.llm_api_key_anthropic, settings.llm_api_key_gemini) == (
+        ("gemini",),
+        None,
+        None,
+    )

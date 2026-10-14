@@ -3,6 +3,7 @@ candidates, dropped ungrounded values, capped rows, and failures that leave fiel
 client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 
 import asyncio
+import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
@@ -11,6 +12,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 from pydantic import JsonValue
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.config_ir.role_c import role_c
@@ -18,17 +20,22 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
 from crawlerai.llm.client import (
+    AnsweredCall,
     BudgetExhausted,
     LLMFailure,
+    MeteredClient,
     OutputInvalid,
+    ProviderRefused,
+    ProviderReply,
     ProviderUnavailable,
     request_hash,
 )
-from crawlerai.llm.providers.fake import ScriptedClient
+from crawlerai.llm.providers.fake import FakeProvider, ScriptedClient
 from crawlerai.llm.roles.c_extract import (
     DETAIL_MAX_CHARS,
     LISTING_MAX_CHARS,
     LISTING_MAX_ROWS,
+    MAX_OUTPUT_TOKENS,
     SYSTEM,
     Filled,
     FilledListing,
@@ -76,9 +83,13 @@ def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"
     return asyncio.run(extract_detail(client, text, specs(*fields), CTX, owner=OWNER, job_id=JOB))
 
 
-def claims(fields: Mapping[str, dict[str, JsonValue] | None]) -> list[JsonValue]:
-    """The reply's claims for `fields`, a field given as None having none."""
-    return [{"field": name, **value} for name, value in fields.items() if value is not None]
+# The claim of a field the page does not show.
+ABSENT: dict[str, JsonValue] = {"value": "", "start": 0, "end": 0}
+
+
+def claims(fields: Mapping[str, dict[str, JsonValue] | None]) -> dict[str, JsonValue]:
+    """The reply's claims for `fields`, a field given as None claimed empty."""
+    return {name: ABSENT if value is None else value for name, value in fields.items()}
 
 
 def reply(**fields: dict[str, JsonValue] | None) -> dict[str, JsonValue]:
@@ -110,23 +121,17 @@ def test_the_same_fields_in_any_order_give_the_same_request_hash() -> None:
     assert request_hash(first) == request_hash(second)
 
 
-def test_the_output_schema_takes_spans_of_the_requested_fields_only() -> None:
+def test_the_output_schema_takes_one_span_of_each_requested_field() -> None:
     validator = Draft202012Validator(output_schema(["title", "released"]))
 
     assert validator.is_valid(reply(title=span("Widget One", 0), released=None))
-    assert validator.is_valid(reply())  # a page that shows none of them
-    assert not validator.is_valid(reply(sku=span("W-1", 0)))  # no other field
-    assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0}))
-    assert not validator.is_valid({"fields": [{**span("Widget One", 0), "field": "title", "note": "x"}]})
-    assert not validator.is_valid({**reply(), "note": "x"})
-
-
-def test_a_field_claimed_twice_is_dropped() -> None:
-    client = ScriptedClient({"fields": claims({"title": span("Widget One", 0)}) * 2})
-
-    filled = extract(client, ["title"])
-
-    assert (filled.candidates, filled.diagnostics) == ((), ("role C: title claimed 2 times",))
+    assert validator.is_valid(reply(title=None, released=None))  # a page that shows none of them
+    assert not validator.is_valid(reply(title=span("Widget One", 0)))  # every field is claimed
+    assert not validator.is_valid(reply(title=None, released=None, sku=span("W-1", 0)))  # no other field
+    assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0}, released=None))
+    assert not validator.is_valid(reply(title={**span("Widget One", 0), "note": "x"}, released=None))
+    assert not validator.is_valid({"fields": [span("Widget One", 0)]})  # no list of claims
+    assert not validator.is_valid({**reply(title=None, released=None), "note": "x"})
 
 
 def test_a_long_text_is_cut_at_the_detail_limit_and_the_cut_is_recorded() -> None:
@@ -215,18 +220,18 @@ def test_a_candidate_is_always_the_text_at_its_locator(text: str, data: st.DataO
 
 
 @pytest.mark.parametrize(
-    ("failure", "reason"),
+    ("failure", "diagnostic"),
     [
-        (BudgetExhausted("no llm_calls left"), "llm_budget"),
-        (ProviderUnavailable("fake: 503"), "llm_unavailable"),
-        (OutputInvalid("at $: not an object"), "llm_output_invalid"),
+        (BudgetExhausted("no llm_calls left"), "role C: llm_budget"),
+        (ProviderUnavailable("fake: 503"), "role C: llm_unavailable (fake: 503)"),
+        (OutputInvalid("at $: not an object"), "role C: llm_output_invalid"),
     ],
 )
-def test_a_call_without_a_valid_reply_leaves_the_reason_and_no_candidates(failure: LLMFailure, reason: str) -> None:
+def test_a_call_without_a_valid_reply_leaves_the_reason_and_no_candidates(failure: LLMFailure, diagnostic: str) -> None:
     filled = extract(ScriptedClient(failure))
 
     assert (filled.candidates, filled.reply) == ((), failure)
-    assert filled.diagnostics == (f"role C: {reason}",)
+    assert filled.diagnostics == (diagnostic,)
 
 
 def test_other_errors_propagate() -> None:
@@ -279,6 +284,62 @@ def test_a_failed_call_is_recorded_as_the_hooks_failure_without_a_call() -> None
     assert (answer.candidates, answer.llm_calls, answer.failure) == ((), (), "llm_budget")
 
 
+def test_a_failure_after_answered_calls_records_each_of_them() -> None:
+    # F30: the calls were charged to the job, so the extraction counts them too.
+    hashed = request_hash(detail_request("Widget One", specs("title"), page_url=PAGE_URL, job_id=JOB))
+    charged = tuple(
+        AnsweredCall(provider="fake", model="fake-fast", request_hash=hashed, tokens_in=10, tokens_out=n)
+        for n in (40, 50)
+    )
+    request = gap_request("<html><body><h1>Widget One</h1></body></html>", ("title",))
+
+    answer = fill(ScriptedClient(OutputInvalid("at $: not an object", answered=charged)), request)
+
+    assert [(call.prompt_kind, call.tokens_out) for call in answer.llm_calls] == [
+        ("c_extract_detail", 40),
+        ("c_extract_detail", 50),
+    ]
+    assert (answer.failure, answer.diagnostics) == ("llm_output_invalid", ("role C: llm_output_invalid",))
+
+
+def test_a_refusal_puts_its_cause_in_the_page_diagnostic() -> None:
+    # F33: "llm_unavailable" alone does not say that the model id is unknown.
+    filled = extract(ScriptedClient(ProviderRefused("fake", "fast-model", 404, "model: fast-model not found")))
+
+    assert filled.diagnostics == ("role C: llm_unavailable (fake: HTTP 404: model: fast-model not found)",)
+
+
+# --- a recorded runaway reply (F29) ---
+
+# A provider's reply that ran on to its token cap: the claim's value never closes.
+RUNAWAY = ProviderReply(
+    model="fake-fast",
+    text='{"fields": {"title": {"value": "Widget One' + " Widget One" * 2000,
+    tokens_in=1500,
+    tokens_out=4096,
+    cut=True,
+)
+
+
+def test_a_runaway_reply_leaves_the_fields_declined_after_one_charged_call() -> None:
+    valid = ProviderReply(model="fake-fast", text=json.dumps(reply(title=None)), tokens_in=1, tokens_out=1)
+    provider = FakeProvider([RUNAWAY, valid])  # a retry would get the valid reply
+    client = MeteredClient([provider], create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))  # never connected
+    request = gap_request("<html><body><h1>Widget One</h1></body></html>", ("title",))
+
+    async def run() -> GapReply:
+        return await role_c(client, job_id=None).detail(request)
+
+    answer = asyncio.run(run())
+
+    assert len(provider.calls) == 1  # not retried
+    assert (answer.candidates, answer.failure) == ((), "llm_output_invalid")
+    assert [(call.tokens_in, call.tokens_out) for call in answer.llm_calls] == [(1500, 4096)]
+    assert answer.diagnostics == (
+        f"role C: llm_output_invalid (the reply stopped at its cap of {MAX_OUTPUT_TOKENS} output tokens)",
+    )
+
+
 # --- listings (§4.4, ARCHITECTURE §8.6) ---
 
 LISTING_TEXT = "Widget One 19.90\nWidget Two 24.90\nAll widgets"
@@ -328,11 +389,13 @@ def test_a_listing_request_without_page_fields_asks_for_rows_only() -> None:
 
 def test_the_listing_output_schema_takes_rows_of_spans_and_the_page_fields() -> None:
     validator = Draft202012Validator(listing_output_schema(["title", "sku"], ["heading"]))
+    row = {"title": span("Widget One", 0), "sku": None}
 
-    assert validator.is_valid(rows_reply({"title": span("Widget One", 0), "sku": None}, heading=None))
-    assert validator.is_valid(rows_reply({}, heading=span("All widgets", 0)))
-    assert not validator.is_valid(rows_reply({"price": span("9", 0)}, heading=None))  # a row field only
-    assert not validator.is_valid(rows_reply(title=span("Widget One", 0)))  # in its row
+    assert validator.is_valid(rows_reply(row, heading=None))
+    assert validator.is_valid(rows_reply(heading=span("All widgets", 0)))
+    assert not validator.is_valid(rows_reply({"title": None}, heading=None))  # every row field is claimed
+    assert not validator.is_valid(rows_reply({**row, "price": span("9", 0)}, heading=None))  # a row field only
+    assert not validator.is_valid({"rows": [], "page": claims({"heading": None, "title": None})})  # in its row
     assert not validator.is_valid({"rows": []})  # the page fields asked
 
 
@@ -392,7 +455,7 @@ def test_a_listing_call_without_a_valid_reply_gives_no_rows() -> None:
     filled = extract_rows(ScriptedClient(failure))
 
     assert (filled.rows, filled.candidates, filled.reply) == ((), (), failure)
-    assert filled.diagnostics == ("role C: llm_unavailable",)
+    assert filled.diagnostics == ("role C: llm_unavailable (fake: 503)",)
 
 
 def test_the_listing_hook_asks_the_row_fields_and_missing_page_fields_and_records_the_call() -> None:

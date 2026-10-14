@@ -52,35 +52,36 @@ ANSWER = '{"summary": "a summary"}'
 Handler = Callable[[Any], tuple[int, dict[str, Any]]]
 
 
-def anthropic_body(text: str) -> dict[str, Any]:
+def anthropic_body(text: str, cut: bool = False) -> dict[str, Any]:
     return {
         "id": "msg_1",
         "type": "message",
         "role": "assistant",
         "model": "strong-model-version",
         "content": [{"type": "thinking", "thinking": "", "signature": "sig"}, {"type": "text", "text": text}],
-        "stop_reason": "end_turn",
+        "stop_reason": "max_tokens" if cut else "end_turn",
         "stop_sequence": None,
         "usage": {"input_tokens": 12, "output_tokens": 4},
     }
 
 
-def gemini_body(text: str) -> dict[str, Any]:
+def gemini_body(text: str, cut: bool = False) -> dict[str, Any]:
+    finish = "MAX_TOKENS" if cut else "STOP"
     return {
-        "candidates": [{"content": {"role": "model", "parts": [{"text": text}]}, "finishReason": "STOP"}],
+        "candidates": [{"content": {"role": "model", "parts": [{"text": text}]}, "finishReason": finish}],
         "usageMetadata": {"promptTokenCount": 12, "candidatesTokenCount": 3, "thoughtsTokenCount": 1},
         "modelVersion": "strong-model-version",
     }
 
 
-def error_body(status: int) -> dict[str, Any]:
-    return {"type": "error", "error": {"code": status, "message": "synthetic error", "status": "ERROR"}}
+def error_body(status: int, message: str = "synthetic error") -> dict[str, Any]:
+    return {"type": "error", "error": {"code": status, "message": message, "status": "ERROR"}}
 
 
 @dataclass(frozen=True)
 class Vendor:
     name: str
-    body: Callable[[str], dict[str, Any]]
+    body: Callable[[str, bool], dict[str, Any]]
     build: Callable[[list[Any], Handler], Provider]
     timeout_error: Callable[..., Exception]  # the transport's timeout exception
 
@@ -112,8 +113,8 @@ def run(provider: Provider, call: ProviderCall = CALL) -> ProviderReply:
     return asyncio.run(provider.complete(call))
 
 
-def answering(vendor: Vendor, text: str = ANSWER) -> Handler:
-    return lambda _request: (200, vendor.body(text))
+def answering(vendor: Vendor, text: str = ANSWER, cut: bool = False) -> Handler:
+    return lambda _request: (200, vendor.body(text, cut))
 
 
 def failing(status: int) -> Handler:
@@ -135,6 +136,18 @@ def test_anthropic_asks_for_the_class_model_with_a_json_schema_output() -> None:
         "system": "system prompt",
         "messages": [{"role": "user", "content": "user prompt"}],
         "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}},
+    }
+
+
+def test_an_anthropic_fast_call_asks_for_low_effort() -> None:
+    # F29: thinking tokens count against `max_tokens`; copying spans out of a page needs no reasoning.
+    requests: list[Any] = []
+    run(ANTHROPIC.build(requests, answering(ANTHROPIC)), CALL.model_copy(update={"model_class": "fast"}))
+
+    [request] = requests
+    assert json.loads(request.content)["output_config"] == {
+        "format": {"type": "json_schema", "schema": SCHEMA},
+        "effort": "low",
     }
 
 
@@ -185,6 +198,12 @@ def test_the_reply_text_model_and_token_counts_are_read(vendor: Vendor) -> None:
 
 
 @VENDORS
+@pytest.mark.parametrize("cut", [False, True])
+def test_a_reply_stopped_at_the_token_cap_is_marked_cut(vendor: Vendor, cut: bool) -> None:
+    assert run(vendor.build([], answering(vendor, '{"summ', cut))).cut is cut
+
+
+@VENDORS
 def test_an_invalid_reply_is_passed_on_for_the_client_to_check(vendor: Vendor) -> None:
     assert run(vendor.build([], answering(vendor, "not json"))).text == "not json"
 
@@ -223,6 +242,18 @@ def test_a_rejected_request_is_refused_with_the_providers_message(vendor: Vendor
     with pytest.raises(ProviderRefused, match=f"{vendor.name}: HTTP {status}: .*synthetic error") as refused:
         run(provider)
     assert (refused.value.code, refused.value.field_reason, len(requests)) == ("llm_unavailable", "llm_unavailable", 1)
+    assert (refused.value.provider, refused.value.model, refused.value.status) == (vendor.name, "strong-model", status)
+
+
+@VENDORS
+def test_a_refusal_never_carries_the_api_key(vendor: Vendor) -> None:
+    provider = vendor.build([], lambda _request: (401, error_body(401, "key test-key is not valid")))
+
+    with pytest.raises(ProviderRefused) as refused:
+        run(provider)
+
+    assert "test-key" not in str(refused.value)
+    assert "key [redacted] is not valid" in str(refused.value)
 
 
 # --- failover between the two (§4.2) ---

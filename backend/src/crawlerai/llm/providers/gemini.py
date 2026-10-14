@@ -13,7 +13,15 @@ import httpx
 from google import genai
 from google.genai import errors, types
 
-from crawlerai.llm.client import ModelClass, ProviderCall, ProviderError, ProviderRefused, ProviderReply, is_transient
+from crawlerai.llm.client import (
+    ModelClass,
+    ProviderCall,
+    ProviderError,
+    ProviderRefused,
+    ProviderReply,
+    is_transient,
+    redacted,
+)
 
 
 class GeminiProvider:
@@ -24,6 +32,7 @@ class GeminiProvider:
     ) -> None:
         """`models` maps each model class to a model id (settings); `http_client` is for tests."""
         self._sdk = genai.Client(api_key=api_key, http_options=types.HttpOptions(httpx_async_client=http_client))
+        self._key = api_key
         self.models = dict(models)
 
     async def complete(self, call: ProviderCall) -> ProviderReply:
@@ -43,12 +52,14 @@ class GeminiProvider:
         except errors.APIError as error:
             if is_transient(error.code):
                 raise ProviderError(f"HTTP {error.code}") from error
-            raise ProviderRefused.status(self.name, error.code, error.message or "") from error
+            raise ProviderRefused(self.name, model, error.code, redacted(error.message or "", self._key)) from error
         usage = response.usage_metadata or types.GenerateContentResponseUsageMetadata()
+        candidates = response.candidates or []
         return ProviderReply(
             model=response.model_version or model,
             text=response.text or "",
             tokens_in=usage.prompt_token_count or 0,
             # Thinking tokens are billed as output.
             tokens_out=(usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0),
+            cut=any(candidate.finish_reason == types.FinishReason.MAX_TOKENS for candidate in candidates),
         )

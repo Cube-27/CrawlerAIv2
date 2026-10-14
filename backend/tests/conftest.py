@@ -1,6 +1,6 @@
 """Hypothesis profiles: CI runs every property test with a fixed `max_examples=200` (SPEC-04 §6); local runs keep
-the Hypothesis default. GitHub Actions sets `CI`. For INV-26, counters of HTML parser constructions. For API adapters
-and recipes (SPEC-02 §4.9, SPEC-09), a stand-in API."""
+the Hypothesis default. GitHub Actions sets `CI`. Every test runs without the process's `CRAWLERAI_*` variables. For
+INV-26, counters of HTML parser constructions. For API adapters and recipes (SPEC-02 §4.9, SPEC-09), a stand-in API."""
 
 import os
 from collections.abc import Callable, Mapping
@@ -19,6 +19,19 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 
 settings.register_profile("ci", max_examples=200)
 settings.load_profile("ci" if os.environ.get("CI") else "default")
+
+# The test databases' variables, which name where DB tests may write (`tests/db/conftest.py`).
+_TEST_DATABASE_PREFIX = "CRAWLERAI_TEST_"
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every `CRAWLERAI_*` variable of the process is removed while a test runs: `make check` exports the developer's
+    `.env` (keys, model ids), and settings a test builds read the environment. A test sets what it needs."""
+    for name in list(os.environ):
+        upper = name.upper()
+        if upper.startswith("CRAWLERAI_") and not upper.startswith(_TEST_DATABASE_PREFIX):
+            monkeypatch.delenv(name)
 
 
 class ParserCounter:

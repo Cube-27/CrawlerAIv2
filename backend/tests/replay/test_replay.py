@@ -684,8 +684,12 @@ class GroundingLLM:
         text = req.user.split("<page_text>\n", 1)[1].rsplit("\n</page_text>", 1)[0]
         title = next(line for line in text.split("\n") if line.startswith("Item "))
         start = text.index(title)
+        # Every asked field is claimed, empty when the page does not show it (SPEC-06 §4.4).
+        asked = json.loads(json.dumps(req.output_schema))["properties"]["fields"]["required"]
+        claims: dict[str, JsonValue] = {name: {"value": "", "start": 0, "end": 0} for name in asked}
+        claims["title"] = {"value": title, "start": start, "end": start + len(title)}
         return LLMResponse(
-            data={"fields": [{"field": "title", "value": title, "start": start, "end": start + len(title)}]},
+            data={"fields": claims},
             provider="provider-a",
             model="model-a",
             tokens_in=len(req.user),

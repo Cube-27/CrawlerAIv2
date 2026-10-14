@@ -5164,3 +5164,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Settle the job in its own transaction after the task's.
 - Why: A job settles at the end of its last task's transaction, where `now()` is when that transaction began (PostgreSQL §9.9.5). The queue's leases already use `clock_timestamp()` for the same reason.
 - Reversible: yes
+
+### D-0765 — Role C replies with one required claim per asked field
+- Date: 2026-10-14 · Spec/PR: UAT re-run F29 (#159) · Status: decided
+- Decision: Role C's wire form is `{fields: {<name>: {value, start, end}}}`, a closed object with one required claim per asked field; an empty value means the page does not show it. Listing rows and page fields use the same shape. This supersedes D-0746 for role C (its list of claims, and the dropped "claimed twice" case); SPEC-06 §4.4 updated.
+- Alternatives: Keep the list with `maxItems` (Anthropic's subset has none); a per-provider schema.
+- Why: Bounds a reply's claims by the fields asked within both providers' structured-output subsets; neither has `maxLength`, so a value is bounded by the token cap (D-0767).
+- Reversible: yes
+
+### D-0766 — A fast Anthropic call asks for low effort
+- Date: 2026-10-14 · Spec/PR: UAT re-run F29 (#159) · Status: decided
+- Decision: The Anthropic provider sends `output_config.effort = "low"` for `model_class="fast"`; a `strong` call keeps the model's default.
+- Alternatives: `thinking: disabled` (refused by some current models); a setting per model class.
+- Why: Current Claude models think by default, and thinking tokens count against `max_tokens`; role C copies spans. A configured model without `effort` support would be refused, and the refusal is logged (D-0769).
+- Reversible: yes
+
+### D-0767 — A reply cut at its output cap is not retried
+- Date: 2026-10-14 · Spec/PR: UAT re-run F29 (#159) · Status: decided
+- Decision: A provider stop reason `max_tokens` / `MAX_TOKENS` marks the reply `cut`; an invalid cut reply, first or retry, raises `OutputCut` (reason `llm_output_invalid`), and a cut first reply is not retried. A complete, schema-invalid reply keeps the one retry (SPEC-06 §4.2).
+- Alternatives: Retry with a larger cap.
+- Why: The same request with the same cap is cut again, and both calls are paid (UAT: 6 of 6).
+- Reversible: yes
+
+### D-0768 — Failed calls count on the extraction
+- Date: 2026-10-14 · Spec/PR: UAT re-run F30 (#159) · Status: decided
+- Decision: `LLMFailure.answered` and `LLMResponse.answered` carry every call that answered, a retried one included; role C records them in `extraction.llm_calls`, so the extraction and the `task_extracted` event match usage.
+- Alternatives: Count successful calls only (the old behaviour, which disagreed with usage); derive the count from usage events by `request_hash`.
+- Why: Each answered call is charged (INV-23).
+- Reversible: yes
+
+### D-0769 — Provider refusals are logged once, and their cause is in the diagnostic
+- Date: 2026-10-14 · Spec/PR: UAT re-run F33 (#159) · Status: decided
+- Decision: `ProviderRefused` carries provider, model, status and the provider's message with the API key redacted; the client logs it at WARNING once per (provider, model, status). A page diagnostic appends the cause for `ProviderUnavailable`, `ProviderRefused` and `OutputCut`; a schema error's message, which can quote page text, is left out.
+- Alternatives: Log every failure; dedupe per process at module level.
+- Why: A refusal repeats on every call until the settings change, and its message is what the operator needs.
+- Reversible: yes
+
+### D-0770 — Tests never see the process's `CRAWLERAI_*` variables
+- Date: 2026-10-14 · Spec/PR: UAT re-run F27 (#159) · Status: decided
+- Decision: An autouse fixture in `backend/tests/conftest.py` removes every `CRAWLERAI_*` variable except `CRAWLERAI_TEST_*` (the test databases) for each test; per-test key removals are dropped.
+- Alternatives: `monkeypatch.delenv` in each settings test; stop exporting `.env` in the Makefile.
+- Why: `make check` exports the developer's `.env`, and settings a test builds read the environment.
+- Reversible: yes
