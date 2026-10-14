@@ -72,7 +72,7 @@ function ConfigTabs({ config }: Readonly<{ config: ConfigDetail }>) {
 }
 
 function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
-  const learning = useLearn(config);
+  const learning = useLearn({ site: config.site, schemaId: config.schema_id });
   const learnProblem = problemOf(learning.learn.error);
   const schemaLabel = useSchemaLabel();
   return (

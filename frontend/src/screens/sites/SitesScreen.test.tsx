@@ -189,6 +189,38 @@ describe("sites screen", () => {
     expect(await screen.findByText("No configs yet")).toBeInTheDocument();
   });
 
+  it("starts learning a site that has no config yet, for the schema chosen", async () => {
+    const calls = stubApi({
+      [`GET /v1/sites/${HOST}/configs`]: json({ items: [] }),
+      "GET /v1/schemas": json({ items: [schema] }),
+      [`POST /v1/sites/${HOST}/learn`]: () => Response.json({ job_id: JOB_ID }, { status: 202 }),
+    });
+    await open(`/sites/${HOST}`, HOST);
+    await screen.findByText("No configs yet");
+
+    await userEvent.click(screen.getByRole("button", { name: /Schema/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "item_detail version 2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Learn now" }));
+
+    expect(await screen.findByText(`Learning started as job ${JOB_ID}.`)).toBeInTheDocument();
+    expect(calls.filter((call) => call.method === "POST")).toMatchObject([
+      { path: `/v1/sites/${HOST}/learn`, body: { schema_id: SCHEMA_ID, force: false } },
+    ]);
+  });
+
+  it("asks for a schema before it starts learning a site", async () => {
+    const calls = stubApi({
+      [`GET /v1/sites/${HOST}/configs`]: json({ items: [] }),
+      "GET /v1/schemas": json({ items: [schema] }),
+    });
+    await open(`/sites/${HOST}`, HOST);
+    await screen.findByText("No configs yet");
+
+    await userEvent.click(screen.getByRole("button", { name: "Learn now" }));
+
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
   it("shows the problem for a site the API doesn't know", async () => {
     stubApi({
       [`GET /v1/sites/${HOST}/configs`]: () =>
