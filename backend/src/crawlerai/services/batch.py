@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import (
     ApiKeyId,
     ExtractionConfig,
@@ -32,7 +33,6 @@ from crawlerai.db.models import (
     Site,
     UrlTask,
 )
-from crawlerai.normalize.url import canonical_url
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import check_targets
@@ -70,7 +70,7 @@ class BatchScrapeRequest(Input):
     @classmethod
     def _absolute_http_urls(cls, urls: list[str]) -> list[str]:
         for index, url in enumerate(urls):
-            if canonical_url(url, None) is None:
+            if canonicalize(url) is None:
                 raise ValueError(f"urls[{index}] is not an absolute http or https URL")
         return urls
 
@@ -130,7 +130,7 @@ async def submit_batch(
             webhook_url=request.webhook_url,
             api_key_id=api_key_id,
         )
-        urls = [(url, canonical_url(url, None) or url) for url in request.urls]
+        urls = [(url, canonicalize(url) or url) for url in request.urls]
         await insert_tasks(conn, job_id, request.page_kind, urls)
     return BatchSubmitted(job_id=job_id)
 

@@ -42,11 +42,11 @@ from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
 from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
 from crawlerai.llm.roles.s_schema import draft_schema
-from crawlerai.normalize.url import canonical_url
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
@@ -110,7 +110,7 @@ class ScrapeRequest(Input):
     @field_validator("url")
     @classmethod
     def _absolute_http_url(cls, url: str) -> str:
-        if canonical_url(url, None) is None:
+        if canonicalize(url) is None:
             raise ValueError("not an absolute http or https URL")
         return url
 
@@ -279,7 +279,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef 
                 .returning(Job.id)
             )
         ).scalar_one()
-        canonical = canonical_url(request.url, None) or request.url
+        canonical = canonicalize(request.url) or request.url
         return await insert_claimed(conn, job_id, request.url, canonical, request.page_kind, _CLAIMANT)
 
 
