@@ -6,8 +6,11 @@ each field's normalizer, the only filter, and becomes a candidate only when:
 - the field has candidates from another source kind and the value is `equal` to one of them (SPEC-04 §4.5). It is
   then owned by that candidate's entity and is not independent: it agrees with a value it was admitted for, so it
   never counts toward `agreed` (§10);
-- the field has no candidate from another source kind and the value is visible in the page text. It is then owned by
-  the page, like other page-level values, and is independent.
+- the field has no candidate from another source kind, its type has a syntax the normalizer checks
+  (`normalize.dispatch.checkable`: money, enum, date, location, range, a check-digit identifier, an absolute URL), and
+  the value is visible in the page text. It is then owned by the page, like other page-level values, and is
+  independent. Text and other opaque types admit by equality only: any visible string normalizes as text, so
+  visibility alone says nothing of which field a leaf is (owner, accuracy Q2 option a).
 
 A field with candidates from other kinds admits values only by equality ("leaves are considered only for fields still
 lacking a candidate or for agreement checks"), so a value both equal and visible is not independent.
@@ -15,6 +18,7 @@ lacking a candidate or for agreement checks"), so a value both equal and visible
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
@@ -24,7 +28,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.locator import format_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import equal, normalize
+from crawlerai.normalize.dispatch import checkable, equal, normalize
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 StateKind = Literal["js_state", "xhr"]
@@ -90,13 +94,12 @@ def _admitted(
     ctx: Context,
     anchors: Mapping[str, list[_Anchor]],
 ) -> Iterator[Candidate]:
-    visible: bool | None = None  # the same for every field, so computed at most once, and only when needed
+    # The same for every field, so computed at most once, and only when a field needs it.
+    visible = cache(lambda: page.visible_values.visible(str(raw)))
     for name, spec in schema.fields.items():
         field_anchors = anchors.get(name)
-        if field_anchors is None:
-            visible = page.visible_values.visible(str(raw)) if visible is None else visible
-            if not visible:
-                continue
+        if field_anchors is None and not (checkable(raw, spec) and visible()):
+            continue
         normalized = normalize(raw, spec, ctx)
         if isinstance(normalized, Ok):
             for owner, independent in _owners(normalized.value, spec, field_anchors):

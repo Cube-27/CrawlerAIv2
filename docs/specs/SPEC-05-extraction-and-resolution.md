@@ -147,7 +147,10 @@ an empty result with a diagnostic).
 - **js_state**: every `<script type="application/json">` and every `<script>` whose text, after the first `=`
   of a `window.<ident>` / `var|let|const <ident>` assignment, parses as JSON (structural; no site key names).
   Values become candidates only if (a) `equal(normalized, other.normalized)` for some candidate from another
-  source kind (then `independent=False`), or (b) `visible(raw)` (then `independent=True`). Keys are not mapped
+  source kind (then `independent=False`), or (b) `visible(raw)` and `checkable(raw, spec)` (then `independent=True`):
+  the field's type has a syntax its normalizer checks (money, enum, date, datetime, location, range, a gtin or isbn
+  identifier, a url given absolute; `normalize.dispatch.checkable`). Text and other opaque types admit by (a) only,
+  since any visible string normalizes as text (ARCHITECTURE §8.1, Appendix A #34). Keys are not mapped
   through anything; every scalar leaf is tested against the field's normalizer, which is the only filter. To
   bound cost, leaves are considered only for fields still lacking a candidate or for agreement checks.
 - **xhr**: the bundle's captured JSON bodies, same admission rule as js_state. (Also feeds SPEC-09 discovery.)

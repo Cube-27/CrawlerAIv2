@@ -5269,3 +5269,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Raw RFC 3339 text; a 12-hour clock.
 - Why: Readable dates; a column of times lines up without AM/PM markers.
 - Reversible: yes
+
+### D-0780 — Which field types admit a visible js_state/xhr value on its own
+- Date: 2026-10-15 · Spec/PR: SPEC-05 §4.5, ARCHITECTURE §8.1, Appendix A #34 (#166) · Status: decided
+- Decision: `normalize.dispatch.checkable`: money, enum, date, datetime, location and range always; an identifier under `gtin` or `isbn` (check digit); a url or image_url only when the raw value is an absolute http(s) URL; a list as its item; text, long_text and object never.
+- Alternatives: Count relative URLs too (any token resolves against the page); count every identifier scheme.
+- Why: Owner answer to accuracy Q2, option (a): visibility is evidence only where the normalizer rejects arbitrary text.
+- Reversible: yes

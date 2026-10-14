@@ -72,6 +72,28 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
     return registered is not None and registered[1](a, b, spec)
 
 
+# The types whose normalizer accepts only a grammar or a vocabulary, so arbitrary text declines: money (ISO 4217 and
+# CLDR amounts), enum (a versioned vocabulary), date and datetime (ISO 8601, CLDR patterns), location (gazetteer place
+# names) and range (amounts or quantities). Text accepts any string; an object's sub-fields say nothing of one leaf.
+_CHECKABLE = frozenset(
+    {FieldType.MONEY, FieldType.ENUM, FieldType.DATE, FieldType.DATETIME, FieldType.LOCATION, FieldType.RANGE}
+)
+
+
+def checkable(raw: Raw, spec: FieldSpec) -> bool:
+    """Whether `raw` normalizing as `spec`'s type would be evidence that it is a value of the type, because the type
+    has a syntax its normalizer checks (ARCHITECTURE §8.1, SPEC-05 §4.5). An identifier qualifies only under a scheme
+    with a check digit, a url only when `raw` is absolute (a relative reference resolves from any word), and a list
+    as its item does."""
+    if spec.type is FieldType.LIST:
+        return checkable(raw, _item(spec))
+    if spec.type is FieldType.IDENTIFIER:
+        return identifier.has_check_digit(spec)
+    if spec.type in (FieldType.URL, FieldType.IMAGE_URL):
+        return url.is_absolute(raw)
+    return spec.type in _CHECKABLE
+
+
 def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
     """SPEC-04 §4.4: `Ok` with the items that normalize, the others dropped and reported; with none, the list
     declines. A single value stands for a list of one (JSON-LD 1.1 §4.3.1: a value and an array of it are the same)."""

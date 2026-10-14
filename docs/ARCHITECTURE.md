@@ -364,7 +364,10 @@ capture (blocked/shell → stop)
 - **Embedded JSON state and XHR bodies** have no standard keys. A value becomes a candidate only when:
   - it equals a value from another source kind, in which case it is marked `independent=false` and never counts
     toward `agreed` (§10); or
-  - it is visible in the page text (`independent=true`).
+  - it is visible in the page text (`independent=true`), and the field's type has a syntax its normalizer checks:
+    money, enum, date, datetime, location, range, an identifier with a check digit (gtin, isbn), or a url given
+    absolute. Any visible string normalizes as text, so text and the other opaque types admit by equality only
+    (Appendix A #34).
 - **Locator.** Every candidate carries a locator: `<scheme>:<address>`. Schemes are `jsonld`, `microdata`, `meta`,
   `js_state`, `xhr`, `adapter`, `api`, `config` and `text` (character offsets). The exact format is in SPEC-05.
   Induction (§8.3) generalizes locators.
@@ -908,6 +911,7 @@ implementation go in `DECISIONS.md`, not here.
 | 31 | Parse once (2026-10-13) | A capture body is parsed at most once per parser per pipeline run; every consumer reads one shared `ParsedPage` (§8). The release executor is the only exception. |
 | 32 | Operational invariants (2026-10-13) | No layer after resolution changes a published value; a job pins its settings at submit; cookies stay inside one fetch; untrusted bodies are bounded; one task's failure never fails another; forwarded headers only from trusted proxies and no API keys created at startup (INV-27–INV-32). |
 | 33 | Complexity and file length (2026-10-13) | Cognitive complexity of at most 15 per function is a hard check in CI and `make check`, for backend, tools and frontend code. 800 lines per file is a soft limit: CI warns, never fails, and a file past it is split by meaning, not to meet the number. Coverage gates and ratchets stay forbidden (C11). |
+| 34 | Embedded-state admission (2026-10-14) | A visible `js_state` or `xhr` value with no other candidate to equal is admitted only for field types with a checkable syntax (§8.1); opaque types such as text and sku admit by equality only. Accuracy Q2, option (a). |
 
 ---
 
@@ -987,3 +991,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 10 | 2026-10-14 | **`GET /v1/jobs`** (owner approval, D-0700): §13.1 lists jobs, newest first, with optional `kind` and `status` filters and cursor pagination, for SPEC-12's jobs table. SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
 | 11 | 2026-10-14 | **Estimated LLM cost** (owner approval, 2026-10-14). §1: an estimated LLM cost is shown for visibility; still no billing. §13.1: `GET /v1/usage/llm` and `GET /v1/usage/llm/jobs`. §17: usage shown with its estimated cost. Prices are versioned data under `backend/data/llm/` (C4); a call without a price has an unknown cost (C7). SPEC-06, SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
 | 12 | 2026-10-14 | **Task failure reasons** (owner approval, D-0745 option a). §13.1: a job's summary carries `cancel_requested`; a page output carries its task's `last_error`. §17: a `task_failed` run event, with the task's reason, when a task fails for good. All additive. SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
+| 13 | 2026-10-15 | **Embedded-state admission** (owner approval, accuracy Q2 option a; Appendix A #34). §8.1: a visible `js_state` or `xhr` value is admitted on its own only for field types with a checkable syntax; opaque types admit by equality only. SPEC-05 §4.5 updated. |
