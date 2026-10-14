@@ -443,8 +443,8 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     web.serve(url, body)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"field": "price", "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
-    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": [price]}), tokens_in=7, tokens_out=3)
+    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
     llm = MeteredClient([FakeProvider([reply])], engine)
     request = _request([url], _by_id(kettle_schema))
     submitted = await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
@@ -470,7 +470,7 @@ async def test_a_refused_role_c_call_leaves_the_field_missing_and_is_not_retried
     # structured values, and its task ends instead of being retried with the same request.
     url = f"{own_origin}/p/1"
     web.serve(url, _page("Blue kettle", offers=False))
-    provider = FakeProvider([ProviderRefused.status("fake", 400, "schema refused")] * 3)
+    provider = FakeProvider([ProviderRefused("fake", "fake-fast", 400, "schema refused")] * 3)
     request = _request([url], _by_id(kettle_schema))
     submitted = await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
 

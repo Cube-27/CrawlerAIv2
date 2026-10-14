@@ -1,6 +1,5 @@
-
 On a listing page:
-- The page lists several items. Reply with `rows`: one list of spans per listed item, in the order the page text
+- The page lists several items. Reply with `rows`: one object of spans per listed item, in the order the page text
   shows them, each holding the row fields of that item only. Never move a value from one item to another.
 - Reply with `page` for the page fields: the spans of values about the page itself, not about one listed item.
 - Give at most the number of rows the request names; stop at the last item the page text shows.

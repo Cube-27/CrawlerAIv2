@@ -3,8 +3,10 @@ and usage.
 
 `MeteredClient` asks its first `Provider` for JSON, fails over to the next one once if the first does not answer
 (a rate limit, a server error or a timeout), checks the reply against the request's JSON Schema (draft 2020-12) and
-retries once with the validation error appended. Before every provider call it checks the job's `llm_calls` budget;
-after every call that answered, it records `llm_calls`, `llm_tokens_in` and `llm_tokens_out` (INV-23). Usage is
+retries once with the validation error appended. A reply cut at the request's output token cap is not retried: the
+retry would ask the same with the same cap. A provider's refusal is logged once per provider, model and status. Before
+every provider call it checks the job's `llm_calls` budget; after every call that answered, it records `llm_calls`,
+`llm_tokens_in` and `llm_tokens_out` (INV-23), and a failure carries the calls that answered before it. Usage is
 committed in a transaction of its own, never the caller's: a task that fails afterwards rolls its transaction back,
 and the calls it made must still count against the job's budget (D-0151). So a caller must not hold an uncommitted
 write to the job's row when it calls the client: the client's own `UPDATE job` would wait on that lock.
@@ -13,6 +15,7 @@ Model output is data: it is parsed as JSON and validated, never executed (INV-17
 """
 
 import json
+import logging
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -26,6 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.db.models import JobId, UsageResource
 from crawlerai.db.usage import BUDGET_EXHAUSTED, budget_remaining, record_usage
 from crawlerai.storage.capture_bundle import sha256_hex
+
+log = logging.getLogger(__name__)
 
 # The role of each call (SPEC-06 §4.2); `usage_event.metadata.prompt_kind` and the replay key carry it.
 PromptKind = Literal["c_extract_detail", "c_extract_listing", "c_prefill", "a_synth", "a_repair", "d_bind", "s_draft"]
@@ -71,6 +76,17 @@ def closed_object(properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
+class AnsweredCall(_Model):
+    """One provider call that answered, charged to the request's job (INV-23), as `extraction.llm_calls` records it
+    (§4.2)."""
+
+    provider: str
+    model: str
+    request_hash: str
+    tokens_in: int
+    tokens_out: int
+
+
 class LLMResponse(_Model):
     data: dict[str, JsonValue]  # validated against the request's output_schema
     provider: str
@@ -79,6 +95,19 @@ class LLMResponse(_Model):
     tokens_out: int
     latency_ms: int
     request_hash: str
+    # The answered call whose invalid reply was retried (§4.2), if any: charged like the one that gave `data`.
+    retried: tuple[AnsweredCall, ...] = ()
+
+    def calls(self) -> tuple[AnsweredCall, ...]:
+        """Every answered call that gave this response, in order: the retried one, then the one that gave `data`."""
+        final = AnsweredCall(
+            provider=self.provider,
+            model=self.model,
+            request_hash=self.request_hash,
+            tokens_in=self.tokens_in,
+            tokens_out=self.tokens_out,
+        )
+        return (*self.retried, final)
 
 
 # A role's own check of a reply that matches the output schema: why the reply is invalid, or None. JSON Schema can't
@@ -116,6 +145,7 @@ class ProviderReply(_Model):
     text: str  # the raw reply, parsed and validated by the client
     tokens_in: int
     tokens_out: int
+    cut: bool = False  # the reply stopped at the call's `max_output_tokens`
 
 
 class Provider(Protocol):
@@ -132,6 +162,11 @@ class ProviderError(Exception):
     """The provider did not answer: a rate limit, a server error or a timeout."""
 
 
+def redacted(message: str, secret: str) -> str:
+    """`message` without `secret`: a provider's error message is logged and stored, and must never carry its key."""
+    return message.replace(secret, "[redacted]") if secret else message
+
+
 def is_transient(status: int) -> bool:
     """Whether an HTTP status says the provider did not answer this time: 408 Request Timeout (RFC 9110 §15.5.9),
     429 Too Many Requests (RFC 6585 §4) or a 5xx server error (RFC 9110 §15.6). Other errors are the request's own
@@ -142,10 +177,19 @@ def is_transient(status: int) -> bool:
 
 class LLMFailure(Exception):
     """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type, and
-    `field_reason` as the reason of the fields the call was for, which stay `missing`."""
+    `field_reason` as the reason of the fields the call was for, which stay `missing`. `answered` holds the calls that
+    answered before it failed, which are charged all the same (an invalid reply, then its retry)."""
 
     code: ClassVar[str]
     field_reason: ClassVar[str]
+
+    def __init__(self, message: str = "", *, answered: tuple[AnsweredCall, ...] = ()) -> None:
+        super().__init__(message)
+        self.answered = answered
+
+    def cause(self) -> str | None:
+        """What a page's diagnostics may say of the failure besides its reason: never page content."""
+        return None
 
 
 class BudgetExhausted(LLMFailure):
@@ -160,21 +204,37 @@ class ProviderUnavailable(LLMFailure):
 
     code = field_reason = "llm_unavailable"
 
+    def cause(self) -> str | None:
+        return str(self)  # each provider's status or error, without the request
+
 
 class ProviderRefused(ProviderUnavailable):
     """A provider refused the request: an HTTP error status that `is_transient` does not cover. The call gave no reply,
     as when no provider answers, so the fields stay `missing` with `llm_unavailable` (§4.7); the message keeps the
     provider's reason. A retry or another provider would not fix the request, so it is neither."""
 
-    @classmethod
-    def status(cls, provider: str, status: int, message: str) -> "ProviderRefused":
-        return cls(f"{provider}: HTTP {status}: {message}")
+    def __init__(self, provider: str, model: str, status: int, message: str) -> None:
+        super().__init__(f"{provider}: HTTP {status}: {message}")
+        self.provider = provider
+        self.model = model
+        self.status = status
 
 
 class OutputInvalid(LLMFailure):
     """The reply did not match the output schema, after the one retry (§4.7)."""
 
     code = field_reason = "llm_output_invalid"
+
+
+class OutputCut(OutputInvalid):
+    """The reply stopped at the request's `max_output_tokens` before it was valid. It is not retried: the retry would
+    ask the same with the same cap (§4.7)."""
+
+    def __init__(self, max_output_tokens: int, *, answered: tuple[AnsweredCall, ...]) -> None:
+        super().__init__(f"the reply stopped at its cap of {max_output_tokens} output tokens", answered=answered)
+
+    def cause(self) -> str | None:
+        return str(self)
 
 
 class Unconfigured:
@@ -199,6 +259,16 @@ class _Answer:
     reply: ProviderReply
     latency_ms: int
 
+    def charged(self, key: str) -> AnsweredCall:
+        reply = self.reply
+        return AnsweredCall(
+            provider=self.provider,
+            model=reply.model,
+            request_hash=key,
+            tokens_in=reply.tokens_in,
+            tokens_out=reply.tokens_out,
+        )
+
 
 class MeteredClient:
     def __init__(self, providers: Sequence[Provider], engine: AsyncEngine) -> None:
@@ -208,18 +278,22 @@ class MeteredClient:
             raise ValueError("an LLM client needs one or two providers")
         self._providers = tuple(providers)
         self._engine = engine
+        self._refusals_logged: set[tuple[str, str, int]] = set()
 
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         key = request_hash(req)
         validator = Draft202012Validator(req.output_schema)
         answer = await self._call(req, req.user, key)
         checked = _check(answer.reply.text, validator, check)
+        retried: tuple[AnsweredCall, ...] = ()
         if isinstance(checked, _Invalid):
-            retry_user = f"{req.user}\n\n{RETRY_NOTE.format(error=checked.error)}"
-            answer = await self._call(req, retry_user, key)
+            if answer.reply.cut:
+                raise OutputCut(req.max_output_tokens, answered=(answer.charged(key),))
+            retried = (answer.charged(key),)
+            answer = await self._retry(req, f"{req.user}\n\n{RETRY_NOTE.format(error=checked.error)}", key, retried)
             checked = _check(answer.reply.text, validator, check)
         if isinstance(checked, _Invalid):
-            raise OutputInvalid(checked.error)
+            raise OutputInvalid(checked.error, answered=(*retried, answer.charged(key)))
         return LLMResponse(
             data=checked,
             provider=answer.provider,
@@ -228,7 +302,16 @@ class MeteredClient:
             tokens_out=answer.reply.tokens_out,
             latency_ms=answer.latency_ms,
             request_hash=key,
+            retried=retried,
         )
+
+    async def _retry(self, req: LLMRequest, user: str, key: str, retried: tuple[AnsweredCall, ...]) -> "_Answer":
+        """The retry's answer; a failure of the retry still carries the call that answered before it."""
+        try:
+            return await self._call(req, user, key)
+        except LLMFailure as failure:
+            failure.answered = (*retried, *failure.answered)
+            raise
 
     async def _call(self, req: LLMRequest, user: str, key: str) -> _Answer:
         """One answered call, charged to the request's job: budget first, usage after. The first provider is asked;
@@ -251,11 +334,22 @@ class MeteredClient:
             except ProviderError as error:
                 errors.append(f"{provider.name}: {error}")
                 continue
+            except ProviderRefused as refused:
+                self._log_refusal(refused)
+                raise
             answer = _Answer(provider.name, reply, round((time.monotonic() - started) * 1000))
             if req.job_id is not None:
                 await self._record(req.job_id, req, key, answer)
             return answer
         raise ProviderUnavailable("; ".join(errors))
+
+    def _log_refusal(self, refused: ProviderRefused) -> None:
+        """Once per provider, model and status in this process: a refusal repeats on every call until the settings
+        change, and its message (an unknown model, a bad key, a refused schema) is what the operator needs."""
+        seen = (refused.provider, refused.model, refused.status)
+        if seen not in self._refusals_logged:
+            self._refusals_logged.add(seen)
+            log.warning("LLM provider %s refused model %s: %s", refused.provider, refused.model, refused)
 
     async def _check_budget(self, job_id: JobId) -> None:
         async with self._engine.connect() as conn:

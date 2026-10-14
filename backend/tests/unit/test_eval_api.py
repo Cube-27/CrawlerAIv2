@@ -546,12 +546,16 @@ def test_normalize_is_not_implemented_yet() -> None:
 # The cleaned text of `HTML` is "Blue mug\nBuy\nEUR 19.90".
 
 
-def _span(field: str, value: str, start: int) -> dict[str, JsonValue]:
-    return {"field": field, "value": value, "start": start, "end": start + len(value)}
+def _span(value: str, start: int) -> dict[str, JsonValue]:
+    return {"value": value, "start": start, "end": start + len(value)}
+
+
+# Role C's claim of a field the page does not show.
+_ABSENT: dict[str, JsonValue] = {"value": "", "start": 0, "end": 0}
 
 
 def test_prefill_stores_and_returns_a_draft_of_the_grounded_normalized_values() -> None:
-    client = ScriptedClient({"fields": [_span("title", "Blue mug", 0), _span("price", "EUR 19.90", 13)]})
+    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": _span("EUR 19.90", 13)}})
     backend = FakeBackend(llm=client)
     page = backend.store.add()
 
@@ -590,7 +594,7 @@ def test_prefill_stores_and_returns_a_draft_of_the_grounded_normalized_values() 
 def test_prefill_leaves_null_ungrounded_and_declined_values_unlabeled() -> None:
     # A pre-fill never claims a field is absent: that is the labeler's call (G2).
     specs = SPECS | {"sku": FieldSpec(type=FieldType.IDENTIFIER, scheme="sku")}
-    client = ScriptedClient({"fields": [_span("price", "Buy", 9), _span("sku", "Q-9", 0)]})
+    client = ScriptedClient({"fields": {"title": _ABSENT, "price": _span("Buy", 9), "sku": _span("Q-9", 0)}})
     backend = FakeBackend(llm=client, specs=specs)
     page = backend.store.add()
 
@@ -606,8 +610,8 @@ def test_prefill_of_a_listing_labels_rows_in_page_order_and_page_fields() -> Non
         "heading": FieldSpec(type=FieldType.TEXT, scope="page"),
     }
     reply: dict[str, JsonValue] = {
-        "rows": [[_span("title", "Buy", 9)], [], [_span("title", "Blue mug", 0)]],
-        "page": [_span("heading", "EUR 19.90", 13)],
+        "rows": [{"title": _span("Buy", 9)}, {"title": _ABSENT}, {"title": _span("Blue mug", 0)}],
+        "page": {"heading": _span("EUR 19.90", 13)},
     }
     client = ScriptedClient(reply)
     backend = FakeBackend(llm=client, specs=specs)
@@ -626,7 +630,7 @@ def test_prefill_of_a_listing_labels_rows_in_page_order_and_page_fields() -> Non
 
 
 def test_prefill_replaces_a_draft() -> None:
-    client = ScriptedClient({"fields": [_span("title", "Blue mug", 0)]})
+    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": _ABSENT}})
     backend = FakeBackend(llm=client)
     page = backend.store.add(_stored(_labels("draft")), labeler="ana")
 
@@ -663,7 +667,7 @@ def test_prefill_with_a_stale_if_match_is_refused_before_the_call() -> None:
     ("failure", "status"),
     [
         (ProviderUnavailable("no provider answered"), 503),
-        (ProviderRefused.status("fake", 400, "schema refused"), 503),
+        (ProviderRefused("fake", "fake-fast", 400, "schema refused"), 503),
         (OutputInvalid("at $: not an object"), 502),
     ],
 )

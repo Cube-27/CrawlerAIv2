@@ -229,8 +229,8 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     web.pages[url] = (200, body, "ok")
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"field": "price", "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
-    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": [price]}), tokens_in=7, tokens_out=3)
+    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
     llm = MeteredClient([FakeProvider([reply])], engine)
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), llm=llm, data=engine_data)
@@ -253,7 +253,7 @@ async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
     # SPEC-06 §4.7: the provider refusing the request (a 400) leaves the asked fields missing with its reason.
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, _product_page(url, offers=False), "ok")
-    provider = FakeProvider([ProviderRefused.status("fake", 400, "schema refused")])
+    provider = FakeProvider([ProviderRefused("fake", "fake-fast", 400, "schema refused")])
 
     result = await scrape(
         engine,
@@ -268,6 +268,34 @@ async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
     fields = result.records[0].fields
     assert (fields["price"].status, fields["price"].reason) == ("missing", "llm_unavailable")
     assert fields["title"].status == "published"
+
+
+async def test_a_role_c_call_that_fails_after_answering_counts_its_calls_as_usage_does(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # F30: two answered, invalid replies (the one retry, SPEC-06 §4.2) are charged; the extraction says so too.
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, _product_page(url, offers=False), "ok")
+    invalid = ProviderReply(model="fake-fast", text="not json", tokens_in=7, tokens_out=3)
+    provider = FakeProvider([invalid, invalid])
+
+    result = await scrape(
+        engine,
+        fetching,
+        _records(url, {"id": str(kettle_schema.id)}),
+        llm=MeteredClient([provider], engine),
+        data=engine_data,
+    )
+
+    async with engine.connect() as conn:
+        extraction = (await conn.execute(select(Extraction.llm_calls, Extraction.diagnostics))).one()
+    assert (len(provider.calls), result.usage.llm_calls, extraction.llm_calls) == (2, 2, 2)
+    assert "role C: llm_output_invalid" in extraction.diagnostics
 
 
 async def test_each_extracted_or_partial_page_counts_toward_progressive_state(

@@ -5,6 +5,7 @@ tests run on an engine that never connects; budgets and usage (INV-23) are in `t
 import asyncio
 import hashlib
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -15,15 +16,20 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
+from crawlerai.llm import client as client_module
 from crawlerai.llm.client import (
+    AnsweredCall,
     LLMRequest,
     LLMResponse,
     MeteredClient,
+    OutputCut,
     OutputInvalid,
     ProviderError,
+    ProviderRefused,
     ProviderReply,
     ProviderUnavailable,
     is_transient,
+    redacted,
     request_hash,
 )
 from crawlerai.llm.providers.fake import FakeProvider
@@ -151,6 +157,7 @@ def test_a_valid_reply_becomes_the_response() -> None:
         "tokens_in": 12,
         "tokens_out": 4,
         "request_hash": request_hash(REQUEST),
+        "retried": (),
     }
     [call] = provider.calls
     assert (call.model_class, call.system, call.user, call.output_schema, call.max_output_tokens) == (
@@ -294,3 +301,96 @@ def test_a_client_has_one_or_two_providers(count: int) -> None:
 )
 def test_only_timeouts_rate_limits_and_server_errors_are_transient(status: int, transient: bool) -> None:
     assert is_transient(status) is transient
+
+
+# --- a reply cut at its token cap, and the calls a failure was charged for (F29, F30) ---
+
+
+def test_a_reply_cut_at_its_token_cap_is_not_retried() -> None:
+    # The retry would ask the same with the same cap, and run into it again.
+    provider = FakeProvider([ProviderReply(model="fake-model", text='{"summ', tokens_in=9, tokens_out=256, cut=True)])
+
+    with pytest.raises(OutputCut, match="stopped at its cap of 256 output tokens") as cut:
+        complete(provider)
+
+    assert len(provider.calls) == 1
+    assert (cut.value.field_reason, cut.value.cause()) == ("llm_output_invalid", str(cut.value))
+    assert cut.value.answered == (
+        AnsweredCall(
+            provider="fake", model="fake-model", request_hash=request_hash(REQUEST), tokens_in=9, tokens_out=256
+        ),
+    )
+
+
+def test_a_cut_reply_that_is_still_valid_is_taken() -> None:
+    provider = FakeProvider(
+        [ProviderReply(model="fake-model", text='{"summary": "s"}', tokens_in=9, tokens_out=4, cut=True)]
+    )
+    assert complete(provider).data == {"summary": "s"}
+
+
+def test_output_invalid_carries_both_answered_calls() -> None:
+    provider = FakeProvider([reply("not json", tokens_out=7), reply('{"summary": 3}', tokens_out=8)])
+
+    with pytest.raises(OutputInvalid) as invalid:
+        complete(provider)
+
+    assert [call.tokens_out for call in invalid.value.answered] == [7, 8]
+    assert invalid.value.cause() is None  # a schema error may quote the reply, so the page's diagnostic leaves it out
+
+
+def test_a_retried_response_lists_both_calls() -> None:
+    provider = FakeProvider([reply("not json", tokens_out=7), reply('{"summary": "s"}', tokens_out=8)])
+
+    response = complete(provider)
+
+    assert [(call.provider, call.tokens_out) for call in response.calls()] == [("fake", 7), ("fake", 8)]
+    assert {call.request_hash for call in response.calls()} == {request_hash(REQUEST)}
+
+
+def test_a_retry_that_gets_no_answer_still_carries_the_first_call() -> None:
+    provider = FakeProvider([reply("not json", tokens_out=7), ProviderError("503")])
+
+    with pytest.raises(ProviderUnavailable) as unavailable:
+        complete(provider)
+
+    assert [call.tokens_out for call in unavailable.value.answered] == [7]
+
+
+def test_a_failure_before_any_answer_carries_no_call() -> None:
+    with pytest.raises(ProviderUnavailable) as unavailable:
+        complete(FakeProvider([ProviderError("503")]))
+    assert unavailable.value.answered == ()
+
+
+# --- a provider's refusal is logged (F33) ---
+
+
+def test_a_refusal_is_logged_once_per_provider_model_and_status(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Alembic's `fileConfig` (migrations/env.py) disables existing loggers when a DB test migrates in this process.
+    monkeypatch.setattr(client_module.log, "disabled", False)
+    unknown = ProviderRefused("fake", "fast-model", 404, "model: fast-model not found")
+    provider = FakeProvider([unknown, unknown, ProviderRefused("fake", "fast-model", 401, "invalid key")])
+    client = MeteredClient([provider], create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))
+
+    with caplog.at_level(logging.WARNING, logger="crawlerai.llm.client"):
+        for _ in range(3):
+            with pytest.raises(ProviderRefused):
+                asyncio.run(client.complete_json(REQUEST))
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "LLM provider fake refused model fast-model: fake: HTTP 404: model: fast-model not found",
+        "LLM provider fake refused model fast-model: fake: HTTP 401: invalid key",
+    ]
+
+
+def test_a_refusal_states_its_cause_for_the_page() -> None:
+    refused = ProviderRefused("fake", "fast-model", 404, "model not found")
+    assert (refused.field_reason, refused.cause()) == ("llm_unavailable", "fake: HTTP 404: model not found")
+
+
+def test_a_secret_is_redacted_from_a_message() -> None:
+    assert redacted("bad key sk-123 given", "sk-123") == "bad key [redacted] given"
+    assert redacted("no key here", "") == "no key here"
