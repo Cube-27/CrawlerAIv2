@@ -14,12 +14,16 @@ UV_RUN ?= uv run
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs:///$(patsubst /%,%,$(CURDIR))/.data/objects)
 export
 
-.PHONY: dev db db-down migrate api api-client check check-data check-tools check-backend \
+.PHONY: dev up db db-down migrate api api-client check check-data check-tools check-backend \
 	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme
 
-## Start Postgres, apply migrations and run the API on http://localhost:8000. Later rows add the worker, the
-## scheduler and the frontend here.
+## Start Postgres, apply migrations and run the API on http://localhost:8000.
 dev: db migrate api
+
+## The whole app in one terminal: Postgres and migrations, then the API, a worker, the scheduler and the frontend
+## on http://localhost:5173 (tools/dev_up.sh). Ctrl+C stops them all.
+up: db migrate
+	bash tools/dev_up.sh
 
 db:
 	$(COMPOSE) up -d --wait
