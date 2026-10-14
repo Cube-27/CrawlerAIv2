@@ -1,15 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { ExtractedRecord, RecordPage, ReplayResult, StoredRecord } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
 import { recordField } from "../../test/records";
-
-// The screen types into fields and opens a drawer with user-event, which is slow in jsdom.
-vi.setConfig({ testTimeout: 20_000 });
+import { connect } from "../../test/connect";
 
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
 const OTHER_SCHEMA_ID = "0192a000-0000-7000-8000-000000000102";
@@ -71,8 +69,7 @@ const replayReply = (result: ReplayResult) => () => Response.json(result);
 
 async function open(path: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await connect();
   await screen.findByRole("heading", { level: 1, name: "Records" });
 }
 

@@ -8,9 +8,7 @@ import type { RecordPage } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi, type Call } from "../../test/api";
 import { recordField } from "../../test/records";
-
-// The forms type into several fields with user-event, which is slow in jsdom.
-vi.setConfig({ testTimeout: 20_000 });
+import { connect } from "../../test/connect";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -135,8 +133,7 @@ function jobApi(extra: Record<string, (call: Call) => Response> = {}) {
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await connect();
   await screen.findByRole("heading", { level: 1, name: heading });
 }
 

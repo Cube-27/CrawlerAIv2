@@ -1,13 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { RecordField, ScrapeResponse } from "../../api/scrape";
 import { problem, stubApi } from "../../test/api";
-
-// The form types into several fields with user-event, which is slow in jsdom.
-vi.setConfig({ testTimeout: 20_000 });
+import { connect } from "../../test/connect";
 
 // `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
 
@@ -105,8 +103,7 @@ function schemaList(): Response {
 
 async function openScrape() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/scrape"] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await connect();
   await screen.findByRole("heading", { level: 1, name: "Scrape" });
 }
 

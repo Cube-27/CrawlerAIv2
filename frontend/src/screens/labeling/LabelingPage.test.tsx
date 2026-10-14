@@ -4,10 +4,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { components } from "../../api/schema";
-
-// These tests type into many fields with user-event, which is slow in jsdom; the default 5 s is too tight on a
-// loaded machine.
-vi.setConfig({ testTimeout: 20_000 });
+import { connect } from "../../test/connect";
 
 type PageDetail = components["schemas"]["PageDetail"];
 type Labels = components["schemas"]["Labels"];
@@ -110,8 +107,7 @@ const API_KEY = "ck_label";
 /** Opens `path`: without a key it goes to /connect first, and back once the key is connected (SPEC-12 §4.1). */
 async function renderAt(path: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), API_KEY);
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await connect(API_KEY);
 }
 
 async function field(group: string) {

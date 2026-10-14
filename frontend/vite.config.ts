@@ -279,5 +279,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // A screen test renders the whole app through its router and connects first: about 1 s alone, but several
+    // times that while the suite's files run in parallel on a loaded machine (UAT F25, F35). One budget for every
+    // file, in place of a per-file override that a new screen's tests forget.
+    testTimeout: 20_000,
   },
 });

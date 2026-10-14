@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { healthReply, problem, stubApi } from "../test/api";
 import { prefersDark } from "../test/media";
 import { routes } from "./router";
+import { connect } from "../test/connect";
 
 function renderApp(path = "/") {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
@@ -70,8 +71,7 @@ describe("app shell", () => {
     });
     renderApp("/labeling/page-1");
     // The labeling routes need a key (SPEC-03 §4.10): /connect first, then back.
-    await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
-    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await connect();
 
     // The labeling route renders once its page has answered.
     await screen.findByText("No dev eval page has this id.");
