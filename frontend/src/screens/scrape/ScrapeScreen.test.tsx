@@ -98,6 +98,11 @@ const withRecords = scrapeResponse({
   ],
 });
 
+/** `GET /v1/schemas`: the stored schemas the form offers. */
+function schemaList(): Response {
+  return Response.json({ items: [{ ...itemSchema, status: "active", page_kind: "detail" }] });
+}
+
 async function openScrape() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/scrape"] })} />);
   await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
@@ -115,7 +120,8 @@ async function fillRecordsByIdForm() {
   await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/items/1");
   await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
   await choose("Schema", "Stored schema");
-  await userEvent.type(screen.getByRole("textbox", { name: "Schema ID" }), SCHEMA_ID);
+  await userEvent.click(screen.getByRole("button", { name: /Stored schema/ }));
+  await userEvent.click(await screen.findByRole("option", { name: "item_detail version 2" }));
   await choose("Page kind", "Detail");
 }
 
@@ -142,6 +148,7 @@ describe("scrape screen: the request", () => {
   it("posts the request SPEC-07 defines, with the key, and leaves empty limits to the server", async () => {
     const calls = stubApi({
       "POST /v1/scrape": () => Response.json(withRecords),
+      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
     await openScrape();
@@ -150,7 +157,7 @@ describe("scrape screen: the request", () => {
     await submit();
 
     await screen.findByRole("tab", { name: "Records" });
-    expect(calls[0]).toEqual({
+    expect(calls.find(({ method }) => method === "POST")).toEqual({
       method: "POST",
       path: "/v1/scrape",
       query: "",
@@ -196,6 +203,7 @@ describe("scrape screen: records and schemas", () => {
   it("shows each record field with its value, status, confidence, evidence, source and locator", async () => {
     stubApi({
       "POST /v1/scrape": () => Response.json(withRecords),
+      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
     await openScrape();
@@ -220,6 +228,7 @@ describe("scrape screen: records and schemas", () => {
   it("renders a conflict field as an em dash with reason disagree, its status, and no value", async () => {
     stubApi({
       "POST /v1/scrape": () => Response.json(withRecords),
+      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
     await openScrape();
@@ -236,6 +245,7 @@ describe("scrape screen: records and schemas", () => {
   it("shows field values as JSON when the schema can't be read", async () => {
     stubApi({
       "POST /v1/scrape": () => Response.json(withRecords),
+      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () =>
         problem(404, { type: "not_found", title: "Not found" }),
     });
@@ -258,6 +268,7 @@ describe("scrape screen: records and schemas", () => {
   it("still shows the records when the schema request itself fails", async () => {
     stubApi({
       "POST /v1/scrape": () => Response.json(withRecords),
+      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => {
         throw new TypeError("network down");
       },
@@ -310,6 +321,22 @@ describe("scrape screen: records and schemas", () => {
       "aria-invalid",
       "true",
     );
+    expect(calls).toEqual([]);
+  });
+
+  it("offers detail pages only for records, which the server refuses for listing pages", async () => {
+    const calls = stubApi({});
+    await openScrape();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
+    await choose("Page kind", "Listing");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
+
+    const kinds = within(screen.getByRole("radiogroup", { name: "Page kind" }));
+    expect(kinds.getByLabelText("Listing")).toBeDisabled();
+    expect(kinds.getByLabelText("Listing")).not.toBeChecked();
+    expect(screen.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
+    await submit();
     expect(calls).toEqual([]);
   });
 

@@ -6,9 +6,10 @@ import { ProblemAlert } from "./ProblemAlert";
 
 /** A required choice of one stored schema version, by id. */
 export function SchemaSelect({
+  label = "Schema",
   value,
   onChange,
-}: Readonly<{ value: string; onChange: (schemaId: string) => void }>) {
+}: Readonly<{ label?: string; value: string; onChange: (schemaId: string) => void }>) {
   const query = useSchemas();
   const problem = problemOf(query.error);
   const options = Object.fromEntries(
@@ -18,7 +19,7 @@ export function SchemaSelect({
     <>
       {problem === null ? null : <ProblemAlert problem={problem} />}
       <OptionSelect
-        label="Schema"
+        label={label}
         options={options}
         value={value === "" ? null : value}
         isRequired

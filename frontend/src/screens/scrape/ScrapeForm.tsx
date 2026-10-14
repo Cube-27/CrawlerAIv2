@@ -10,11 +10,18 @@ import {
   TextField,
 } from "@heroui/react";
 import { Choices } from "../../components/Choices";
+import { SchemaSelect } from "../../components/SchemaSelect";
 import { FormActions } from "../../components/FormActions";
 import { FormatChoices } from "../../components/FormatChoices";
 import { LimitField } from "../../components/LimitField";
 import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
-import { parseJsonObject, type SchemaSource, type ScrapeFormState } from "./form";
+import {
+  NO_RECORDS_PAGE_KINDS,
+  parseJsonObject,
+  withFormats,
+  type SchemaSource,
+  type ScrapeFormState,
+} from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["none", "None"],
@@ -23,7 +30,7 @@ const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["prompt", "From a prompt"],
 ];
 
-/** The input for the chosen schema source: an id, a SchemaDef as JSON, or a prompt for role S. */
+/** The input for the chosen schema source: a stored schema, a SchemaDef as JSON, or a prompt for role S. */
 function SchemaInput({
   form,
   onChange,
@@ -33,17 +40,13 @@ function SchemaInput({
       return null;
     case "id":
       return (
-        <TextField
-          isRequired
+        <SchemaSelect
+          label="Stored schema"
           value={form.schemaId}
           onChange={(schemaId) => {
             onChange({ ...form, schemaId });
           }}
-        >
-          <Label>Schema ID</Label>
-          <Input autoComplete="off" />
-          <FieldError />
-        </TextField>
+        />
       );
     case "inline":
       return (
@@ -148,6 +151,7 @@ export function ScrapeForm({
   onChange: (form: ScrapeFormState) => void;
   onSubmit: () => void;
 }>) {
+  const records = form.formats.includes("records");
   return (
     <Form
       className="flex flex-col gap-4"
@@ -173,7 +177,7 @@ export function ScrapeForm({
       <FormatChoices
         value={form.formats}
         onChange={(formats) => {
-          onChange({ ...form, formats });
+          onChange(withFormats(form, formats));
         }}
       />
       <Fieldset>
@@ -192,7 +196,13 @@ export function ScrapeForm({
           label="Page kind"
           options={PAGE_KINDS}
           value={form.pageKind}
-          isRequired={form.formats.includes("records")}
+          isRequired={records}
+          {...(records
+            ? {
+                disabled: NO_RECORDS_PAGE_KINDS,
+                description: "Records of listing pages are not available yet.",
+              }
+            : {})}
           onChange={(pageKind) => {
             onChange({ ...form, pageKind });
           }}

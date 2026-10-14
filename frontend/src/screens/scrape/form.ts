@@ -40,6 +40,22 @@ export const INITIAL_FORM: ScrapeFormState = {
   llmCalls: Number.NaN,
 };
 
+/** The page kinds whose records the server refuses: SPEC-07 §4.4 and D-0502 leave listing records out of a scrape
+ * (`check_records`). */
+export const NO_RECORDS_PAGE_KINDS: readonly PageKind[] = ["listing"];
+
+/** `form` with `formats`; asking for records clears a page kind whose records the server refuses. */
+export function withFormats(
+  form: ScrapeFormState,
+  formats: readonly ScrapeFormat[],
+): ScrapeFormState {
+  const refused =
+    formats.includes("records") &&
+    form.pageKind !== null &&
+    NO_RECORDS_PAGE_KINDS.includes(form.pageKind);
+  return { ...form, formats, ...(refused ? { pageKind: null } : {}) };
+}
+
 /** The JSON object in `text`, or null when it is not one. The server validates it as a SchemaDef. */
 export function parseJsonObject(text: string): JsonObject | null {
   try {
