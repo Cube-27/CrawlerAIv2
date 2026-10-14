@@ -395,6 +395,7 @@ def test_name_resolution_counts_against_the_time_budget(server: Server, path: st
 
 _CANCEL_IN_FLIGHT = """
 import asyncio, sys
+from asyncio import run
 from ipaddress import IPv4Address
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector, Target
@@ -417,7 +418,7 @@ async def main():
             pass
     print("cancelled")
 
-asyncio.run(main())
+run(main())
 """
 
 
