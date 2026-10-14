@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 from pydantic import JsonValue
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Extraction, Job, JobId, Project, Record, Site, SiteId, UrlState
+from crawlerai.db.models import Extraction, Job, JobId, Project, Record, Site, SiteId
 from crawlerai.db.queue import insert_claimed
 from crawlerai.recurring.record_fp import record_fingerprint
 from crawlerai.recurring.versions import store_records
@@ -194,24 +194,3 @@ async def test_listing_rows_version_one_by_one_in_their_order(conn: AsyncConnect
     assert after[0].id == before[0].id
     assert after[1].id != before[1].id
     assert [row["version"] for row in await site.rows()] == [1, 1, 2]
-
-
-async def test_a_new_version_of_a_detail_page_updates_its_url_state(site: _Site, conn: AsyncConnection) -> None:
-    await conn.execute(insert(UrlState).values(site_id=site.site_id, canonical_url=PAGE_URL, last_seen_at=func.now()))
-    await site.run(site.draft(KETTLE))
-    state = select(UrlState.record_fingerprint, UrlState.last_changed_at).where(UrlState.site_id == site.site_id)
-
-    assert (await conn.execute(state)).one() == (
-        record_fingerprint(KETTLE, site.schema),
-        (await conn.execute(select(func.now()))).scalar_one(),
-    )
-
-
-async def test_an_unchanged_detail_page_leaves_its_url_state(site: _Site, conn: AsyncConnection) -> None:
-    await site.run(site.draft(KETTLE))
-    await conn.execute(insert(UrlState).values(site_id=site.site_id, canonical_url=PAGE_URL, last_seen_at=func.now()))
-
-    await site.run(site.draft(KETTLE))
-
-    state = select(UrlState.record_fingerprint, UrlState.last_changed_at).where(UrlState.site_id == site.site_id)
-    assert (await conn.execute(state)).one() == (None, None)

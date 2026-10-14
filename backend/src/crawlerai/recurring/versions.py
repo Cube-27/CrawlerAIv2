@@ -5,6 +5,9 @@ Each record is compared with the latest version of its entity, the record with t
 the highest `version`. An equal fingerprint (`recurring.record_fp`) stores nothing and answers with that version; a
 different one, or none stored, adds the next version, superseding it and naming its changed fields. This is the
 `resolve.task.RecordWriter` a page task stores its records with.
+
+`url_state` is not written here: it is per URL, and its `last_changed_at` is when the page's content last changed
+(`recurring.state.record_content`), which a record of one schema version must not move for the others.
 """
 
 import hashlib
@@ -12,11 +15,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import RowMapping, func, insert, select, update
+from sqlalchemy import RowMapping, func, insert, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Record, RecordId, SiteId, UrlState
+from crawlerai.db.models import Record, RecordId, SiteId
 from crawlerai.recurring.record_fp import changed_fields, record_fingerprint
 from crawlerai.resolve.records import FieldMeta, RecordDraft
 from crawlerai.resolve.task import RecordSource, StoredRecord
@@ -55,8 +58,6 @@ async def store_records(
             new.append(_New(position, draft, fingerprint, previous))
     for record, record_id in zip(new, await _insert(conn, schema, source, new), strict=True):
         stored[record.position] = StoredRecord(record_id, record.draft)
-    if new and schema.page_kind == "detail":
-        await _changed_page(conn, source, new[0].fingerprint)
     return tuple(record for record in stored if record is not None)
 
 
@@ -120,13 +121,3 @@ def _values(schema: SchemaDef, source: RecordSource, record: _New) -> dict[str, 
         values["supersedes_record_id"] = previous["id"]
         values["changed_fields"] = changed_fields(previous["data"], draft.data, schema)
     return values
-
-
-async def _changed_page(conn: AsyncConnection, source: RecordSource, fingerprint: str) -> None:
-    """A detail page's entity is its URL (`resolve.records.entity_key`), so its `url_state` row, where it has one,
-    keeps the record fingerprint and when it last changed (§14)."""
-    await conn.execute(
-        update(UrlState)
-        .where(UrlState.site_id == source.site_id, UrlState.canonical_url == source.page_url)
-        .values(record_fingerprint=fingerprint, last_changed_at=func.now())
-    )
