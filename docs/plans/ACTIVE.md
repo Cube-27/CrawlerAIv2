@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). L2 complete except SPEC-12 PR 6, which awaits an owner design check. L3 in progress: SPEC-10 PR 3 (#130), SPEC-10 PR 6. L4 in progress: SPEC-11 PR 1.
+- L1 complete (2026-10-14). L2 complete except SPEC-12 PR 6 (next; owner wants no design review, so follow DESIGN.md + HeroUI defaults). L3 in progress: SPEC-10 PR 3 (#130), SPEC-10 PR 6 (#132). L4: SPEC-11 PR 1 done.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -216,7 +216,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | `url_state` helpers + conditional GET | todo | |
+| 1 | `url_state` helpers + conditional GET | done (#131) | |
 | 2 | SimHash + content fingerprint skip | todo | |
 | 3 | Record fingerprint + versions + `changed_since` | todo | |
 | 4 | Listing diff + `gone_at` | todo | |
