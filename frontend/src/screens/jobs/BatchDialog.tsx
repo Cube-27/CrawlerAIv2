@@ -1,14 +1,13 @@
-import { Fieldset } from "@heroui/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useSubmitBatch } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import { Choices } from "../../components/Choices";
 import { FormatChoices } from "../../components/FormatChoices";
-import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
+import { PAGE_KINDS } from "../../components/requestOptions";
 import { buildBatch, INITIAL_BATCH, type BatchFormState } from "./form";
 import { JobDialog } from "./JobDialog";
-import { JobSchemaFields, LinesField, UrlField } from "./JobFields";
+import { FetchFields, JobSchemaFields, LinesField } from "./JobFields";
 import { JobForm } from "./JobForm";
 import { jobPath } from "./paths";
 
@@ -61,26 +60,13 @@ function BatchForm({ onCancel }: Readonly<{ onCancel: () => void }>) {
           setForm({ ...form, pageKind });
         }}
       />
-      <Fieldset>
-        <Fieldset.Legend>Fetch and notification</Fieldset.Legend>
-        <Choices
-          label="Fetch method"
-          options={METHOD_HINTS}
-          value={form.methodHint}
-          onChange={(methodHint) => {
-            setForm({ ...form, methodHint });
-          }}
-        />
-        <UrlField
-          label="Webhook URL"
-          name="webhook_url"
-          isRequired={false}
-          value={form.webhookUrl}
-          onChange={(webhookUrl) => {
-            setForm({ ...form, webhookUrl });
-          }}
-        />
-      </Fieldset>
+      <FetchFields
+        methodHint={form.methodHint}
+        webhookUrl={form.webhookUrl}
+        onChange={(change) => {
+          setForm({ ...form, ...change });
+        }}
+      />
     </JobForm>
   );
 }

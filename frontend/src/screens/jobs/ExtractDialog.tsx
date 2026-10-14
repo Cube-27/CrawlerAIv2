@@ -5,10 +5,10 @@ import { useSubmitExtract } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import { Choices } from "../../components/Choices";
 import { LimitField } from "../../components/LimitField";
-import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
+import { PAGE_KINDS } from "../../components/requestOptions";
 import { buildExtract, INITIAL_EXTRACT, type ExtractFormState } from "./form";
 import { JobDialog } from "./JobDialog";
-import { EXTRACT_SCHEMA_SOURCES, JobSchemaFields, LinesField, UrlField } from "./JobFields";
+import { EXTRACT_SCHEMA_SOURCES, FetchFields, JobSchemaFields, LinesField } from "./JobFields";
 import { JobForm } from "./JobForm";
 import { jobPath } from "./paths";
 
@@ -17,15 +17,7 @@ type Edit = (change: Partial<ExtractFormState>) => void;
 function LimitFields({ form, edit }: Readonly<{ form: ExtractFormState; edit: Edit }>) {
   return (
     <Fieldset>
-      <Fieldset.Legend>Fetch and limits</Fieldset.Legend>
-      <Choices
-        label="Fetch method"
-        options={METHOD_HINTS}
-        value={form.methodHint}
-        onChange={(methodHint) => {
-          edit({ methodHint });
-        }}
-      />
+      <Fieldset.Legend>Limits</Fieldset.Legend>
       <LimitField
         label="URL limit"
         name="limit"
@@ -42,15 +34,6 @@ function LimitFields({ form, edit }: Readonly<{ form: ExtractFormState; edit: Ed
         minValue={0}
         onChange={(llmCalls) => {
           edit({ llmCalls });
-        }}
-      />
-      <UrlField
-        label="Webhook URL"
-        name="webhook_url"
-        isRequired={false}
-        value={form.webhookUrl}
-        onChange={(webhookUrl) => {
-          edit({ webhookUrl });
         }}
       />
     </Fieldset>
@@ -104,6 +87,7 @@ function ExtractForm({ onCancel }: Readonly<{ onCancel: () => void }>) {
         }}
       />
       <LimitFields form={form} edit={edit} />
+      <FetchFields methodHint={form.methodHint} webhookUrl={form.webhookUrl} onChange={edit} />
     </JobForm>
   );
 }

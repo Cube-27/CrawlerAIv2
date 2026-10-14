@@ -3,13 +3,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useSubmitCrawl } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
-import { Choices } from "../../components/Choices";
 import { FormatChoices } from "../../components/FormatChoices";
 import { LimitField } from "../../components/LimitField";
-import { METHOD_HINTS } from "../../components/requestOptions";
 import { buildCrawl, INITIAL_CRAWL, type CrawlFormState } from "./form";
 import { JobDialog } from "./JobDialog";
-import { JobSchemaFields, LinesField, UrlField } from "./JobFields";
+import { FetchFields, JobSchemaFields, LinesField, UrlField } from "./JobFields";
 import { JobForm } from "./JobForm";
 import { PageKindRules } from "./PageKindRules";
 import { jobPath } from "./paths";
@@ -107,26 +105,7 @@ function CrawlForm({ onCancel }: Readonly<{ onCancel: () => void }>) {
         }}
       />
       <ScopeFields form={form} edit={edit} />
-      <Fieldset>
-        <Fieldset.Legend>Fetch and notification</Fieldset.Legend>
-        <Choices
-          label="Fetch method"
-          options={METHOD_HINTS}
-          value={form.methodHint}
-          onChange={(methodHint) => {
-            edit({ methodHint });
-          }}
-        />
-        <UrlField
-          label="Webhook URL"
-          name="webhook_url"
-          isRequired={false}
-          value={form.webhookUrl}
-          onChange={(webhookUrl) => {
-            edit({ webhookUrl });
-          }}
-        />
-      </Fieldset>
+      <FetchFields methodHint={form.methodHint} webhookUrl={form.webhookUrl} onChange={edit} />
     </JobForm>
   );
 }

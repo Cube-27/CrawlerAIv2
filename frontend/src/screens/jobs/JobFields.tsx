@@ -7,7 +7,9 @@ import {
   TextArea,
   TextField,
 } from "@heroui/react";
+import type { MethodHint } from "../../api/scrape";
 import { Choices } from "../../components/Choices";
+import { METHOD_HINTS } from "../../components/requestOptions";
 import { SchemaSelect } from "../../components/SchemaSelect";
 import { parseJsonObject } from "../scrape/form";
 import type { SchemaSource } from "../scrape/form";
@@ -142,5 +144,39 @@ export function UrlField({
       <Input autoComplete="off" />
       <FieldError />
     </TextField>
+  );
+}
+
+/** How a job's pages are fetched, and where its end is sent (`webhook_url`, optional). */
+export function FetchFields({
+  methodHint,
+  webhookUrl,
+  onChange,
+}: Readonly<{
+  methodHint: MethodHint;
+  webhookUrl: string;
+  onChange: (change: { methodHint?: MethodHint; webhookUrl?: string }) => void;
+}>) {
+  return (
+    <Fieldset>
+      <Fieldset.Legend>Fetch and notification</Fieldset.Legend>
+      <Choices
+        label="Fetch method"
+        options={METHOD_HINTS}
+        value={methodHint}
+        onChange={(next) => {
+          onChange({ methodHint: next });
+        }}
+      />
+      <UrlField
+        label="Webhook URL"
+        name="webhook_url"
+        isRequired={false}
+        value={webhookUrl}
+        onChange={(next) => {
+          onChange({ webhookUrl: next });
+        }}
+      />
+    </Fieldset>
   );
 }
