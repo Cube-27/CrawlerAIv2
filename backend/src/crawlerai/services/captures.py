@@ -94,6 +94,8 @@ async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
 async def _replay(
     bundle: CaptureBundle, schema: SchemaDef, config: ActiveConfig | None, data: EngineData, capture: _Capture
 ) -> list[ExtractedRecord]:
+    if config is not None:
+        config = config.for_capture(bundle.manifest, data.adapters)
     result = await extract_page(bundle, schema, None if config is None else config.executor, None, data=data)
     if result.entity is None:
         return []

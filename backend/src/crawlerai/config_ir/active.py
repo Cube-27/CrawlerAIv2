@@ -11,6 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir.api_recipe.execute import RecipeExecutor
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import Drifted, DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
@@ -31,8 +33,7 @@ async def active_config(
     row = (await conn.execute(select(configs.id, configs.version, configs.ir).where(*active))).one_or_none()
     if row is None:
         return None
-    executor = EngineExecutor(ExtractionConfigIR.model_validate(row.ir), vocabulary)
-    return ActiveConfig(row.id, row.version, executor)
+    return _bound(row.id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
 
 
 async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, vocabulary: Vocabulary) -> ActiveConfig:
@@ -40,8 +41,23 @@ async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, voc
     submitted (INV-28)."""
     configs = ExtractionConfig
     row = (await conn.execute(select(configs.version, configs.ir).where(configs.id == config_id))).one()
-    executor = EngineExecutor(ExtractionConfigIR.model_validate(row.ir), vocabulary)
-    return ActiveConfig(config_id, row.version, executor)
+    return _bound(config_id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
+
+
+async def config_recipe(conn: AsyncConnection, config_id: ExtractionConfigId) -> ApiRecipe | None:
+    """The API recipe of config `config_id`, which serves its pages (SPEC-09 §4.8); None when it has none."""
+    query = select(ExtractionConfig.ir["api_recipe"]).where(ExtractionConfig.id == config_id)
+    recipe: object = (await conn.execute(query)).scalar_one()
+    return None if recipe is None else ApiRecipe.model_validate(recipe)
+
+
+def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, vocabulary: Vocabulary) -> ActiveConfig:
+    """The config bound to its executor, and to its recipe's when it has one: the recipe's locators name the config
+    (D-0600)."""
+    executor = EngineExecutor(ir, vocabulary)
+    recipe = ir.api_recipe
+    api = None if recipe is None else RecipeExecutor.of(recipe, str(config_id), executor.field_status)
+    return ActiveConfig(config_id, version, executor, api)
 
 
 async def record_page(
@@ -53,7 +69,8 @@ async def record_page(
     job_id: JobId,
 ) -> list[Drifted]:
     """Add `result`, a page `config` ran on, to the config's drift window, and return the fields it suspended. A page
-    that was not served or did not resolve shows nothing about the config, and is not recorded."""
-    if result.outcome not in ("extracted", "partial"):
+    that was not served or did not resolve shows nothing about the config, and is not recorded; nor is one its recipe
+    served (`ActiveConfig.drifts`)."""
+    if not config.drifts or result.outcome not in ("extracted", "partial"):
         return []
     return await record_run(conn, config.id, result.candidates, margins=margins, job_id=job_id)

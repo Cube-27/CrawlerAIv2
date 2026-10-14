@@ -8,7 +8,7 @@ was chosen or why it was rejected, and the record holds the published values.
 """
 
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from pydantic import JsonValue
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.config import ConfigExecutor
+from crawlerai.collect.run import Adapters
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import Candidate as CandidateRow
 from crawlerai.db.models import (
@@ -37,7 +38,7 @@ from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.records import RecordDraft, assemble, assemble_listing
 from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,20 @@ class ActiveConfig:
     id: ExtractionConfigId
     version: int
     executor: ConfigExecutor
+    # The executor of the `api` captures the config's API recipe fetched (SPEC-09 §4.8); None without a recipe.
+    api: ConfigExecutor | None = None
+    # Whether a page `executor` ran on joins the config's drift window (SPEC-08 §4.9), which measures its page steps.
+    drifts: bool = True
+
+    def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig":
+        """The config as it runs on the capture `manifest` describes. An `api` capture no active adapter detects holds
+        the JSON the config's recipe fetched (`acquire` tries adapters first): the recipe's executor reads it, and as
+        the page steps did not run, the page joins no drift window."""
+        if self.api is None or manifest.method != "api":
+            return self
+        if adapters is not None and adapters.detect(manifest.url) is not None:
+            return self
+        return replace(self, executor=self.api, api=None, drifts=False)
 
 
 @dataclass(frozen=True, slots=True)

@@ -4903,3 +4903,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep a Python lookup beside the SQL.
 - Why: Two copies could drift untested.
 - Reversible: yes
+
+### D-0728 — A recipe serves a page only when its record is all the caller reads
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 follow-up, integration review R7 (#150) · Status: decided
+- Decision: `scrape` with formats `["records"]` only; `batch_scrape` and `extract` records tasks; `crawl` records pages at `max_depth` only. Other pages are fetched themselves, and `max_age` reuses an `api` capture only for a record-only scrape.
+- Alternatives: Always serve through the recipe.
+- Why: A JSON body has no markdown, links or metadata of the page (SPEC-07 formats, SPEC-10 §4.5 link discovery); the most conservative reading of SPEC-09 §4.8.
+- Reversible: yes
+
+### D-0729 — A page the recipe served joins no drift window
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 follow-up, integration review R7 (#150) · Status: decided
+- Decision: `ActiveConfig.drifts` is false for the recipe's executor; a page that fell back to HTML (§4.10) is recorded as usual.
+- Alternatives: Record the `api` candidates as the fields' observations.
+- Why: The window measures the config's page steps (SPEC-08 §4.9), which did not run; recording the page would show every field unmatched and suspend it.
+- Reversible: yes
+
+### D-0730 — The page fetched to bind is the fallback (refines D-0601)
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 follow-up, integration review R7 (#150) · Status: decided
+- Decision: When the recipe fails (not 429/503) after its HTML page fetch reached the page, the rung's result is that page, with every attempt recorded; not for `method_hint=browser`.
+- Alternatives: Fetch the page again (the #125 behaviour).
+- Why: The second fetch is one more request for the same page: §4.10 falls back to the configured method, and that page is its HTTP form.
+- Reversible: yes
+
+### D-0731 — Endpoint politeness
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 follow-up, integration review R7 (#150) · Status: decided
+- Decision: The endpoint's host gets a `site` row on first use; its robots.txt is checked when the policy respects robots, and a disallowed or unreachable one gives a `blocked` `api` attempt (`robots` / `robots_unreachable`) and the page is fetched instead. The request is admitted at the host's rate; the caller's admitted turn on the page's host goes to the first request there, and another waits in place (worker included, at most the host interval).
+- Alternatives: No robots.txt or rate for endpoints; postpone the task.
+- Why: SPEC-02 §4.6, RFC 9309 §2.3.1.4. A rung cannot postpone a task; waiting in place matches `PoliteHttp`.
+- Reversible: yes
+
+### D-0732 — The recipe executor's field status
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 follow-up, integration review R7 (#150) · Status: decided
+- Decision: The config's field status, restricted to the fields the recipe maps.
+- Alternatives: Every mapped field `corroborated`.
+- Why: Role C is not asked for fields the executor covers (SPEC-08 §4.8); a mapped field the config does not run stays open to role C. `api` values are in the `adapter` bucket either way.
+- Reversible: yes
+
+### D-0733 — Recipe learning is a second PR
+- Date: 2026-10-14 · Spec/PR: SPEC-09 PR 5 follow-up, integration review R7 (#150) · Status: decided
+- Decision: Discovery, binding, role D, header minimization and held-out validation are wired into `run_learn_job` in `fix/recipe-learning`.
+- Alternatives: Wire them in #150.
+- Why: It needs a replay fetcher in the learner and network-body samples: design beyond R7's serving seam. The review report's Fix allows a second PR.
+- Reversible: yes

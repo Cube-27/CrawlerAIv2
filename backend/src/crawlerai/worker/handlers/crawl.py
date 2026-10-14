@@ -79,7 +79,10 @@ def crawl_handler(
 
 async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> TaskResult:
     task = crawl.task
-    page = await fetch_page(conn, fetching, task, crawl.request.fetch, crawl.request.locale)
+    # A page whose links the crawl reads is fetched itself: an API recipe's JSON has none (SPEC-09 §4.8).
+    reads_links = task.depth < crawl.frontier.max_depth or task.page_kind is None
+    served = None if reads_links else crawl.records
+    page = await fetch_page(conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served)
     if isinstance(page, (Failed, Postpone)):  # the task runs again: what it adds, it adds then
         return page
     result, found = (page, ()) if isinstance(page, Finished) else await _visit(conn, crawl, page)

@@ -73,7 +73,8 @@ def scrape_handler(
         if isinstance(job, Failed):
             return job
         request, records = _PageFetch.model_validate(job[0]), job[1]
-        page = await fetch_page(conn, fetching, task, request.fetch, request.locale, recurring=records)
+        # A records job asks for nothing else of its pages (`BatchScrapeRequest`, `ExtractRequest`).
+        page = await fetch_page(conn, fetching, task, request.fetch, request.locale, recurring=records, served=records)
         if not isinstance(page, FetchedPage):
             return page
         result = await _settle(conn, task, page, records, llm)

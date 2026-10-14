@@ -15,6 +15,7 @@ from typing import Protocol
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.politeness import SLOW_DOWN
 from crawlerai.acquire.types import (
     AttemptRecord,
@@ -47,6 +48,9 @@ class Rungs:
     adapters: Registry = field(default_factory=lambda: Registry((), active=()))
     # The HTTP rung in its conditional form, for fetches given validators; without it they are sent nowhere.
     conditional: ConditionalRung | None = None
+    # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with
+    # (SPEC-09 §4.8); without it no recipe serves a page.
+    json: JsonFetcher | None = None
 
 
 async def acquire(

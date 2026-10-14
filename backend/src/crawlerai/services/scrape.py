@@ -14,7 +14,8 @@ from. A draft the LLM could not give (no provider, no budget, an invalid reply) 
 and stores the extraction and the record (`resolve.task`). A scrape URL is caller-supplied, so a page whose required
 fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10). A site with an
 active config for the schema version extracts in `config` mode (SPEC-08 §4.8), and the page joins the config's drift
-window (§4.9). The formats,
+window (§4.9). A scrape that asks for the record only is served by the config's API recipe when it has one (SPEC-09
+§4.8): a JSON body has no markdown, links or metadata of the page, so other formats fetch the page. The formats,
 the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same canonical URL
 that reached its page within that many seconds is read again instead of fetching.
 """
@@ -35,7 +36,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.config_ir.active import active_config
+from crawlerai.config_ir.active import active_config, config_recipe
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.metadata import PageMetadata
@@ -51,7 +53,16 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetching import Fetching, TargetRejected, admitted, check_target, refusal, site_rules
+from crawlerai.services.fetching import (
+    Fetching,
+    TargetRejected,
+    admitted,
+    check_target,
+    engine_rules,
+    recipe_rung,
+    refusal,
+    site_rules,
+)
 from crawlerai.services.records import ScrapedRecord
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
@@ -294,14 +305,21 @@ async def _run(
     """The fetch runs outside any transaction, so a slow page holds no connection or row lock; what it found is
     written in one transaction after it. A recent capture `max_age` allows is read instead of fetching."""
     host = urlsplit(request.url).hostname or ""
+    records_only = set(request.formats) == {"records"}
     async with engine.begin() as conn:
         site = await site_row(conn, host)
-        row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age) if request.max_age else None
+        row = None
+        if request.max_age:
+            row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age, records_only=records_only)
         config = await _config(conn, site.id, work)
+        recipe = await config_recipe(conn, config.id) if config is not None and records_only else None
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
     attempts: list[AttemptRecord] = []
-    page = recent.result if recent else await polite_fetch(engine, fetching, request.url, host, policy, site, attempts)
+    if recent is None:
+        page = await polite_fetch(engine, fetching, request.url, host, policy, site, attempts, recipe=recipe)
+    else:
+        page = recent.result
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
@@ -335,8 +353,11 @@ async def _run(
 _CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
 
 
-async def _recent_capture(conn: AsyncConnection, site_id: SiteId, canonical: str, max_age: int) -> _CaptureRow | None:
-    """The latest capture of `canonical` that reached its page (§4.8) within `max_age` seconds and has not expired.
+async def _recent_capture(
+    conn: AsyncConnection, site_id: SiteId, canonical: str, max_age: int, *, records_only: bool
+) -> _CaptureRow | None:
+    """The latest capture of `canonical` that reached its page (§4.8) within `max_age` seconds and has not expired;
+    one an API recipe fetched only for a scrape that asks for the record only, as it holds JSON, not the page.
     Captures are found through the tasks that fetched them, which hold the canonical URL."""
     query = (
         select(Capture.id, Capture.object_key, Capture.duration_ms, Capture.fetch_policy)
@@ -351,6 +372,8 @@ async def _recent_capture(conn: AsyncConnection, site_id: SiteId, canonical: str
         .order_by(Capture.fetched_at.desc())
         .limit(1)
     )
+    if not records_only:
+        query = query.where(Capture.method != "api")
     return (await conn.execute(query)).one_or_none()
 
 
@@ -398,6 +421,7 @@ async def _derive(
         check_usable(drafted, request.page_kind)
     # §4.4 step 3: role C fills required fields left missing, charged to the job. No write to the job's row is open
     # here: the job was committed before the fetch, and the task is written after (D-0346).
+    config = None if config is None else config.for_capture(result.bundle.manifest, work.data.adapters)
     executor = None if config is None else config.executor
     gap_fill = role_c(work.llm, job_id=task.job_id)
     extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
@@ -427,10 +451,13 @@ async def polite_fetch(
     policy: FetchPolicy,
     site: SiteRow,
     attempts: list[AttemptRecord],
+    *,
+    recipe: ApiRecipe | None = None,
 ) -> FetchResult | str:
     """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
-    (SPEC-02 §4.6). The attempts of every fetch made, robots.txt's too, are added to `attempts`. Raises
-    `TargetRejected` when the guard refused a request of the fetch (INV-16)."""
+    (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`). The attempts
+    of every fetch made, robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a
+    request of the fetch (INV-16)."""
     robots: Robots | None = None
     if policy.respect_robots:
         robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
@@ -440,7 +467,10 @@ async def polite_fetch(
         if not robots.allows(url):
             return "robots"
     await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    result = await acquire(url, policy, site.fetch_method, fetching.rungs)
+    rung = None
+    if recipe is not None:
+        rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
+    result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung)
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)

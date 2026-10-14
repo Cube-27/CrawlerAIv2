@@ -15,6 +15,7 @@ from typing import get_args
 
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.politeness import HostLimiter
@@ -89,7 +90,8 @@ async def _work() -> None:
         async with aclosing(
             SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
         ) as browser:
-            rungs = Rungs(http=http, browser=browser.fetch, conditional=http)
+            json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
+            rungs = Rungs(http=http, browser=browser.fetch, conditional=http, json=json)
             store = open_store(settings.object_store)
             fetching = Fetching(rungs, connector, store, HostLimiter())
             llm = client_from_settings(settings, engine)

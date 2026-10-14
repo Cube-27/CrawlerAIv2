@@ -13,10 +13,12 @@ from urllib.parse import urlsplit
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.acquire.robots import Fetch
 from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
-from crawlerai.config_ir.active import config_by_id
+from crawlerai.config_ir.active import config_by_id, config_recipe
+from crawlerai.config_ir.api_recipe.execute import RecipeRung
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
@@ -28,7 +30,7 @@ from crawlerai.recurring.state import record_fetch, standing_record, stored_vali
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.schemas.registry import get_by_id
 from crawlerai.services.batch import JobPins
-from crawlerai.services.fetching import Fetching, recording, refusal
+from crawlerai.services.fetching import Fetching, endpoint_rules, recipe_rung, recording, refusal
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
@@ -98,6 +100,7 @@ async def fetch_page(
     locale: str | None,
     *,
     recurring: Records | None = None,
+    served: Records | None = None,
 ) -> FetchedPage | TaskResult:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. The attempts count as the job's usage. A request the SSRF
@@ -106,7 +109,10 @@ async def fetch_page(
 
     With `recurring`, the records the task extracts with, a page a record already stands for (`standing_record`) is
     fetched with the validators it last answered with, and a 304 ends the task `unchanged` with no capture (SPEC-11
-    §4.2)."""
+    §4.2).
+
+    With `served`, the records the task extracts with when they are all it reads of the page, the config they name
+    serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`)."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -118,10 +124,11 @@ async def fetch_page(
     validators = None if standing is None else await stored_validators(conn, site.id, task.canonical_url)
     attempts: list[AttemptRecord] = []
     robots = recording(fetching.rungs.http, policy, attempts)
+    recipe = await _recipe(conn, fetching, task, served, robots)
 
     async def page(url: str) -> FetchResult | Unchanged:
         async def fetch(sent: Validators | None) -> FetchResult:
-            result = await acquire(url, policy, site.fetch_method, fetching.rungs, validators=sent)
+            result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=recipe, validators=sent)
             attempts.extend(result.attempts)
             return result
 
@@ -138,6 +145,20 @@ async def fetch_page(
         await record_fetch(conn, site.id, task.canonical_url, fetched)
         return Finished("unchanged")
     return fetched
+
+
+async def _recipe(
+    conn: AsyncConnection, fetching: Fetching, task: ClaimedTask, served: Records | None, robots: Fetch
+) -> RecipeRung | None:
+    """The API recipe of the config `served` names, bound to fetch the task's page; robots.txt of its endpoint is
+    fetched with `robots`, and read in the task's transaction."""
+    if served is None or served.config_id is None:
+        return None
+    recipe = await config_recipe(conn, served.config_id)
+    if recipe is None:
+        return None
+    host = urlsplit(task.url).hostname or ""
+    return recipe_rung(fetching, recipe, host, lambda url, policy: endpoint_rules(conn, url, policy, robots))
 
 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
@@ -183,7 +204,8 @@ async def extract_records(
     schema = await get_by_id(conn, records.schema_id)
     config = None
     if records.config_id is not None:
-        config = await config_by_id(conn, records.config_id, records.data.vocabulary)
+        pinned = await config_by_id(conn, records.config_id, records.data.vocabulary)
+        config = pinned.for_capture(page.result.bundle.manifest, records.data.adapters)
     executor = None if config is None else config.executor
     gap_fill = None if llm is None else role_c(llm, job_id=task.job_id)
     extraction = await extract_page(page.result.bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)

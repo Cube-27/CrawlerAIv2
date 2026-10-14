@@ -8,6 +8,7 @@ from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.politeness import HostLimiter
@@ -50,7 +51,8 @@ def fetching_from_settings(settings: Settings) -> Fetching:
     http = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
     )
-    rungs = Rungs(http=http, browser=browser, conditional=http)
+    json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
+    rungs = Rungs(http=http, browser=browser, conditional=http, json=json)
     return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
 
 
