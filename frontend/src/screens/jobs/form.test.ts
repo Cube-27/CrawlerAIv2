@@ -2,9 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildBatch,
   buildCrawl,
+  buildExtract,
   buildMap,
   INITIAL_BATCH,
   INITIAL_CRAWL,
+  INITIAL_EXTRACT,
   INITIAL_MAP,
   lines,
 } from "./form";
@@ -24,7 +26,7 @@ describe("buildBatch", () => {
       ...INITIAL_BATCH,
       urls: "https://a.example.test/1\nhttps://a.example.test/2",
       formats: ["records", "markdown"],
-      schema: { source: "id", id: "s-1", json: "" },
+      schema: { source: "id", id: "s-1", json: "", prompt: "" },
       pageKind: "detail",
     });
 
@@ -41,7 +43,7 @@ describe("buildBatch", () => {
     const request = buildBatch({
       ...INITIAL_BATCH,
       urls: "https://a.example.test/1",
-      schema: { source: "inline", id: "", json: '{"name":"x"}' },
+      schema: { source: "inline", id: "", json: '{"name":"x"}', prompt: "" },
       webhookUrl: " https://hooks.example.test/done ",
     });
 
@@ -53,7 +55,10 @@ describe("buildBatch", () => {
 
   it("declines an inline schema that is not a JSON object", () => {
     expect(
-      buildBatch({ ...INITIAL_BATCH, schema: { source: "inline", id: "", json: "[1]" } }),
+      buildBatch({
+        ...INITIAL_BATCH,
+        schema: { source: "inline", id: "", json: "[1]", prompt: "" },
+      }),
     ).toBeNull();
   });
 });
@@ -81,6 +86,32 @@ describe("buildCrawl", () => {
       max_depth: 2,
       fetch: { method_hint: "auto" },
     });
+  });
+});
+
+describe("buildExtract", () => {
+  it("sends the URLs and globs, the prompt, the page kind, and the limits that are set", () => {
+    const request = buildExtract({
+      ...INITIAL_EXTRACT,
+      urls: "https://a.example.test/item/*\nhttps://a.example.test/item/1",
+      schema: { source: "prompt", id: "", json: "", prompt: "title and price" },
+      pageKind: "detail",
+      llmCalls: 3,
+    });
+
+    expect(request).toEqual({
+      urls: ["https://a.example.test/item/*", "https://a.example.test/item/1"],
+      schema: { prompt: "title and price" },
+      page_kind: "detail",
+      budget: { llm_calls: 3 },
+      fetch: { method_hint: "auto" },
+    });
+  });
+
+  it("declines a request without a page kind", () => {
+    expect(
+      buildExtract({ ...INITIAL_EXTRACT, schema: { ...INITIAL_EXTRACT.schema, id: "s-1" } }),
+    ).toBeNull();
   });
 });
 

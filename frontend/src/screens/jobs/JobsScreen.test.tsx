@@ -346,6 +346,34 @@ describe("Jobs screen", () => {
     });
   });
 
+  it("queues an extract with a prompt and opens the new job", async () => {
+    const calls = jobApi({
+      "POST /v1/extract": () =>
+        Response.json(
+          { job_id: JOB_ID, schema: { ...schema, origin: "prompt_draft" } },
+          { status: 202 },
+        ),
+      [`GET ${JOB}`]: () => Response.json(job({ kind: "extract" })),
+    });
+    await open("/jobs", "Jobs");
+
+    await userEvent.click(screen.getByRole("button", { name: "New extract" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText("URLs"), "https://shop.example.test/item/*");
+    await userEvent.click(dialog.getByLabelText("From a prompt"));
+    await userEvent.type(dialog.getByLabelText("Prompt"), "title and price");
+    await userEvent.click(dialog.getByLabelText("Detail"));
+    await userEvent.click(dialog.getByRole("button", { name: "Queue extract" }));
+
+    await screen.findByRole("heading", { level: 1, name: "Extract job" });
+    expect(calls.find(({ path }) => path === "/v1/extract")?.body).toEqual({
+      urls: ["https://shop.example.test/item/*"],
+      schema: { prompt: "title and price" },
+      page_kind: "detail",
+      fetch: { method_hint: "auto" },
+    });
+  });
+
   it("maps a site and lists the URLs found", async () => {
     const calls = jobApi({
       "POST /v1/map": () =>

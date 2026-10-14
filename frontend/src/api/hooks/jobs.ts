@@ -8,8 +8,10 @@ import {
   mapUrls,
   submitBatch,
   submitCrawl,
+  submitExtract,
   type BatchRequest,
   type CrawlRequest,
+  type ExtractRequest,
   type ExportFormat,
   type ExportPage,
   type MapRequest,
@@ -81,6 +83,11 @@ export function useSubmitBatch() {
 export function useSubmitCrawl() {
   const client = useApiClient();
   return useMutation({ mutationFn: (body: CrawlRequest) => unwrap(submitCrawl(client, body)) });
+}
+
+export function useSubmitExtract() {
+  const client = useApiClient();
+  return useMutation({ mutationFn: (body: ExtractRequest) => unwrap(submitExtract(client, body)) });
 }
 
 /** A map changes nothing on the server. */

@@ -10,27 +10,44 @@ import {
 import { Choices } from "../../components/Choices";
 import { SchemaSelect } from "../../components/SchemaSelect";
 import { parseJsonObject } from "../scrape/form";
-import type { JobSchemaSource, JobSchemaState } from "./form";
+import type { SchemaSource } from "../scrape/form";
+import type { JobSchemaState } from "./form";
 
 /** Inputs the job forms share. */
 
-const SCHEMA_SOURCES: readonly (readonly [JobSchemaSource, string])[] = [
+type SchemaSources = readonly (readonly [SchemaSource, string])[];
+
+/** A batch's or crawl's schema sources: they take no prompt. */
+export const JOB_SCHEMA_SOURCES: SchemaSources = [
   ["none", "None"],
   ["id", "Stored schema"],
   ["inline", "Inline JSON"],
 ];
 
-/** The job's schema: none, a stored version, or a SchemaDef as JSON (the server validates it). */
+/** An extract's: it needs a schema, and may have one drafted from a prompt (SPEC-10 §4.6). */
+export const EXTRACT_SCHEMA_SOURCES: SchemaSources = [
+  ["id", "Stored schema"],
+  ["inline", "Inline JSON"],
+  ["prompt", "From a prompt"],
+];
+
+/** The job's schema from one of `sources`: a stored version, a SchemaDef as JSON (the server validates it), or a
+ * prompt the server drafts one from. */
 export function JobSchemaFields({
+  sources = JOB_SCHEMA_SOURCES,
   value,
   onChange,
-}: Readonly<{ value: JobSchemaState; onChange: (schema: JobSchemaState) => void }>) {
+}: Readonly<{
+  sources?: SchemaSources;
+  value: JobSchemaState;
+  onChange: (schema: JobSchemaState) => void;
+}>) {
   return (
     <Fieldset>
       <Fieldset.Legend>Extraction</Fieldset.Legend>
       <Choices
         label="Schema"
-        options={SCHEMA_SOURCES}
+        options={sources}
         value={value.source}
         onChange={(source) => {
           onChange({ ...value, source });
@@ -56,6 +73,22 @@ export function JobSchemaFields({
           <Label>Schema JSON</Label>
           <TextArea rows={6} />
           <Description>A SchemaDef; the server validates it.</Description>
+          <FieldError />
+        </TextField>
+      ) : null}
+      {value.source === "prompt" ? (
+        <TextField
+          isRequired
+          value={value.prompt}
+          onChange={(prompt) => {
+            onChange({ ...value, prompt });
+          }}
+        >
+          <Label>Prompt</Label>
+          <TextArea rows={3} />
+          <Description>
+            Describes the fields to extract; the server drafts a schema from the first pages.
+          </Description>
           <FieldError />
         </TextField>
       ) : null}

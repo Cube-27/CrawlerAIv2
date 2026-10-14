@@ -5,10 +5,11 @@ import { FormActions } from "../../components/FormActions";
 import { PageHeader } from "../../components/PageHeader";
 import { BatchDialog } from "./BatchDialog";
 import { CrawlDialog } from "./CrawlDialog";
+import { ExtractDialog } from "./ExtractDialog";
 import { MapDialog } from "./MapDialog";
 import { jobPath } from "./paths";
 
-/** Starts batch scrapes, crawls and maps, and opens a job by id. The API reads jobs one at a time
+/** Starts batch scrapes, crawls, extracts and maps, and opens a job by id. The API reads jobs one at a time
  * (`GET /v1/jobs/{id}`) and has no list of jobs, so a job is opened by its id; a new job opens on its own. */
 export function JobsScreen() {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export function JobsScreen() {
           <>
             <MapDialog />
             <CrawlDialog />
+            <ExtractDialog />
             <BatchDialog />
           </>
         }

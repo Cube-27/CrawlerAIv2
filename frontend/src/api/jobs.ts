@@ -43,6 +43,15 @@ export type CrawlRequest = Omit<
   limit?: number;
   max_depth?: number;
 };
+export type ExtractRequest = Omit<
+  Schemas["ExtractRequest"],
+  "fetch" | "schema" | "budget" | "limit"
+> & {
+  fetch: Pick<Schemas["FetchOptions"], "method_hint">;
+  schema: SchemaRef;
+  budget?: Schemas["Budget"];
+  limit?: number;
+};
 export type MapRequest = Pick<Schemas["MapRequest"], "url" | "include" | "exclude"> &
   Partial<Pick<Schemas["MapRequest"], "limit" | "use_sitemaps" | "use_links">>;
 
@@ -151,6 +160,19 @@ export async function submitCrawl(
     // The server applies the defaults this request leaves out (see `CrawlRequest`).
     () => client.POST("/v1/crawl", { body: body as Schemas["CrawlRequest"] }),
     "Queuing the crawl",
+  );
+  return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
+}
+
+/** Queues an extract; a prompt is drafted into a schema first (SPEC-10 §4.6). The answer is the new job's id. */
+export async function submitExtract(
+  client: ApiClient,
+  body: ExtractRequest,
+): Promise<ApiResult<string>> {
+  const result = await apiResult(
+    // The server applies the defaults this request leaves out (see `ExtractRequest`).
+    () => client.POST("/v1/extract", { body: body as Schemas["ExtractRequest"] }),
+    "Queuing the extract",
   );
   return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
 }
