@@ -292,6 +292,19 @@ describe("records screen: the list", () => {
     });
   });
 
+  it("keeps its column widths fixed and truncates long values, so paging moves no column", async () => {
+    stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
+      "GET /v1/records": page([storedRecord()]),
+    });
+    await open(RECORDS_PATH);
+
+    const table = await screen.findByRole("grid", { name: "Records" });
+    expect(table).toHaveClass("table-fixed");
+    for (const cell of within(table).getAllByRole("gridcell")) expect(cell).toHaveClass("truncate");
+  });
+
   it("says when no record matches", async () => {
     stubApi({
       "GET /v1/schemas": schemaList,

@@ -60,8 +60,10 @@ export function RecordTable({
   return (
     <Table>
       <Table.ScrollContainer>
+        {/* Fixed column widths: a page of long values truncates rather than moving the columns. */}
         <Table.Content
           aria-label={label}
+          className="table-fixed"
           onRowAction={(key) => {
             const record = records.find(({ id }) => id === key);
             if (record !== undefined) onOpen(record);
@@ -77,7 +79,7 @@ export function RecordTable({
           <Table.Body items={records}>
             {(record) => (
               <Table.Row id={record.id} columns={columns}>
-                {(column) => <Table.Cell>{column.render(record)}</Table.Cell>}
+                {(column) => <Table.Cell className="truncate">{column.render(record)}</Table.Cell>}
               </Table.Row>
             )}
           </Table.Body>

@@ -48,24 +48,27 @@ function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
   return (
     <Table>
       <Table.ScrollContainer>
-        <Table.Content aria-label="Pages">
+        {/* Fixed column widths: a page of long URLs truncates rather than moving the columns. */}
+        <Table.Content aria-label="Pages" className="table-fixed">
           <Table.Header>
-            <Table.Column isRowHeader>URL</Table.Column>
-            <Table.Column>Status</Table.Column>
-            <Table.Column>Outcome</Table.Column>
-            <Table.Column>Fetched</Table.Column>
+            <Table.Column isRowHeader className="w-1/2">
+              URL
+            </Table.Column>
+            <Table.Column className="w-1/6">Status</Table.Column>
+            <Table.Column className="w-1/6">Outcome</Table.Column>
+            <Table.Column className="w-1/6">Fetched</Table.Column>
           </Table.Header>
           <Table.Body items={pages.map((page) => ({ id: page.task_id, page }))}>
             {({ id, page }) => (
               <Table.Row id={id}>
-                <Table.Cell>{page.final_url ?? page.url}</Table.Cell>
+                <Table.Cell className="truncate">{page.final_url ?? page.url}</Table.Cell>
                 <Table.Cell>
                   <TaskStatusLabel status={page.status} />
                 </Table.Cell>
                 <Table.Cell>
                   {page.outcome === null ? "—" : <OutcomeLabel outcome={page.outcome} />}
                 </Table.Cell>
-                <Table.Cell>{page.fetched_at ?? "—"}</Table.Cell>
+                <Table.Cell className="truncate">{page.fetched_at ?? "—"}</Table.Cell>
               </Table.Row>
             )}
           </Table.Body>
