@@ -30,6 +30,7 @@ from crawlerai.db.models import (
     Candidate,
     Extraction,
     ExtractionConfig,
+    ExtractionConfigId,
     Job,
     JobId,
     JobKind,
@@ -150,7 +151,7 @@ def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
 @pytest.fixture
 async def recipe_config(
     engine: AsyncEngine, own_origin: str, site: SiteId, lamp_schema: SchemaDef
-) -> AsyncIterator[uuid.UUID]:
+) -> AsyncIterator[ExtractionConfigId]:
     """The site's active config for the schema, with its API recipe."""
     values = {
         "site_id": site,
@@ -166,7 +167,7 @@ async def recipe_config(
     async with engine.begin() as conn:
         config_id = (
             await conn.execute(insert(ExtractionConfig).values(values).returning(ExtractionConfig.id))
-        ).scalar()
+        ).scalar_one()
     yield config_id
     async with engine.begin() as conn:
         await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site))
@@ -187,7 +188,7 @@ async def _stored(engine: AsyncEngine, job_id: JobId) -> tuple[dict[str, Any], l
             .where(Candidate.extraction_id == record.extraction_id)
             .order_by(Candidate.field, Candidate.source_kind)
         )
-        return record.data, [tuple(row) for row in rows]
+        return record.data, [(row.field, row.source_kind, row.chosen) for row in rows]
 
 
 # The scrape service.

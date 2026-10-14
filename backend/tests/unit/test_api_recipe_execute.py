@@ -235,7 +235,7 @@ def test_a_page_fetch_asked_to_slow_down_is_kept_with_no_fallback_request() -> N
 
 
 def test_a_recipe_failure_after_the_page_fetch_keeps_that_page_with_no_second_fetch() -> None:
-    # §4.10: the fallback is the page over HTTP, which the recipe has just fetched; fetching it again is one more request.
+    # §4.10: the fallback is the page over HTTP, which the recipe has just fetched: fetching it again is one more.
     api, http, page = StandIn(lambda _: httpx.Response(500, json={})), PageRung(), PageRung(SKU_PAGE)
     url = f"{SITE}/p/desk-lamp"
 
