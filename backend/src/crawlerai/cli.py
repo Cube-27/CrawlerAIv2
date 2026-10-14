@@ -91,6 +91,7 @@ async def _work() -> None:
         handlers: dict[JobKind, TaskHandler] = {
             "batch_scrape": scrape_handler(fetching, data, margins),
             "crawl": crawl_handler(fetching, data, margins),
+            "extract": scrape_handler(fetching, data, margins),
         }
         await run_worker(settings, handlers, _stop_on_signals())
 

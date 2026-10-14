@@ -300,7 +300,7 @@ async def _run(
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
     attempts: list[AttemptRecord] = []
-    page = recent.result if recent else await _fetch(engine, fetching, request.url, host, policy, site, attempts)
+    page = recent.result if recent else await polite_fetch(engine, fetching, request.url, host, policy, site, attempts)
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
@@ -416,7 +416,7 @@ def _fetch_members(result: FetchResult, capture_id: CaptureId) -> _FetchMembers:
     )
 
 
-async def _fetch(
+async def polite_fetch(
     engine: AsyncEngine,
     fetching: Fetching,
     url: str,
@@ -425,8 +425,9 @@ async def _fetch(
     site: SiteRow,
     attempts: list[AttemptRecord],
 ) -> FetchResult | str:
-    """The page as fetched, or why robots.txt kept it from being fetched (SPEC-02 §4.6). The attempts of every fetch
-    made, robots.txt's too, are added to `attempts`."""
+    """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
+    (SPEC-02 §4.6). The attempts of every fetch made, robots.txt's too, are added to `attempts`. Raises
+    `TargetRejected` when the guard refused a request of the fetch (INV-16)."""
     robots: Robots | None = None
     if policy.respect_robots:
         robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)

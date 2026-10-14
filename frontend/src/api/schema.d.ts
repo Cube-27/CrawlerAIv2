@@ -256,6 +256,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extract Records
+         * @description Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded
+         *     through a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the
+         *     draft is returned as `schema`. A target the API may not fetch, in `urls`, a glob's map or `webhook_url`, is a 422
+         *     and nothing is queued.
+         */
+        post: operations["extract_records_v1_extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -926,6 +949,58 @@ export interface components {
              * @enum {string}
              */
             format: "json" | "platform_draft";
+        };
+        /**
+         * ExtractRequest
+         * @description The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
+         *     inline, or asks for a draft from a `prompt`, and its page kind must be `page_kind`. `limit` bounds the job's tasks;
+         *     `budget.llm_calls` bounds a prompt's draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL.
+         *     `webhook_url` is called when the job ends (§4.2).
+         */
+        ExtractRequest: {
+            /**
+             * @default {
+             *       "llm_calls": 10
+             *     }
+             */
+            budget: components["schemas"]["Budget"];
+            /**
+             * @default {
+             *       "method_hint": "auto",
+             *       "respect_robots": true
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions"];
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Schema */
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"];
+            /** Urls */
+            urls: string[];
+            /** Webhook Url */
+            webhook_url?: string | null;
+        };
+        /**
+         * ExtractSubmitted
+         * @description The queued job, and the schema its records are extracted with: a prompt's draft, or the schema named.
+         */
+        ExtractSubmitted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            schema: components["schemas"]["SchemaDef"];
         };
         /**
          * ExtractedRecord
@@ -3042,6 +3117,100 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    extract_records_v1_extract_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtractRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtractSubmitted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

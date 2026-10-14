@@ -1,0 +1,281 @@
+"""The extract service (SPEC-10 §4.6, ARCHITECTURE §13.1): records of one page kind from URLs and URL globs, as one
+job of kind `extract` with a `url_task` per page. Workers run the tasks as they run a records batch's
+(`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns the records.
+
+A URL with a `*` is a glob (`is_glob`), expanded through `map` on its host (§4.4): the URLs the host's
+sitemaps and start page give that the glob matches. The tasks are the given URLs, then each glob's URLs, once each in
+canonical form, cut at `limit`. Every URL is caller-supplied, those a glob gave too (ARCHITECTURE §10): a page whose
+required fields don't all publish keeps its record, `complete=false`, with outcome `partial`.
+
+The schema is named by id or given inline, or drafted from a `prompt` by role S (SPEC-06 §4.5) while the caller
+waits: from the cleaned text of the first pages, up to three, of those reached among the first three task URLs. The
+draft is returned with the job. Each task is extracted in its site's progressive mode (ARCHITECTURE §8.3): the job
+pins the engine data and the configs active when it was submitted (INV-28), and its pages count toward the site's
+learning trigger (SPEC-08 §4.4).
+
+Submitting checks every URL, each glob's origin and `webhook_url` with the SSRF guard first (INV-16), and the fetches
+of a map or a draft go through it too. Nothing is stored for a refused target, an unusable schema, or no URL to
+extract (beyond the `map` jobs of the globs). A prompt's job is stored before its draft, which charges the job's
+`budget`, and is `failed` when the draft cannot be made: no sample page reached, a refused redirect, an LLM failure,
+a draft of another page kind, or the timeout.
+"""
+
+import asyncio
+import itertools
+from typing import Final, Self, cast
+from urllib.parse import urlsplit
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+from crawlerai.acquire.types import AttemptRecord, FetchResult
+from crawlerai.content.page import ParsedPage
+from crawlerai.crawl.canonical import canonicalize
+from crawlerai.crawl.rules import UrlGlob, is_glob, url_glob
+from crawlerai.db.jobs import transition_job
+from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, UrlTask
+from crawlerai.llm.client import LLMClient
+from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.schemas.types import SchemaDef
+from crawlerai.services.batch import MAX_URLS, JobPins, active_configs, insert_job
+from crawlerai.services.fetching import Fetching, check_targets
+from crawlerai.services.map import MapRequest, map_urls
+from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable, polite_fetch
+from crawlerai.services.scrape_steps import (
+    FetchOptions,
+    Input,
+    SchemaById,
+    SchemaInline,
+    SchemaPrompt,
+    absolute_http_url,
+    check_records,
+    check_usable,
+    fetch_policy,
+    named_schema,
+    record_fetch_usage,
+    site_row,
+)
+
+# The bound on a prompt's draft, its sample fetches included: the longest a scrape may wait (D-0028).
+DRAFT_TIMEOUT_S: Final = float(MAX_TIMEOUT_S)
+
+
+class ExtractRequest(Input):
+    """The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
+    inline, or asks for a draft from a `prompt`, and its page kind must be `page_kind`. `limit` bounds the job's tasks;
+    `budget.llm_calls` bounds a prompt's draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL.
+    `webhook_url` is called when the job ends (§4.2)."""
+
+    urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
+    schema_: SchemaById | SchemaInline | SchemaPrompt = Field(alias="schema")
+    page_kind: PageKind
+    limit: int = Field(default=MAX_URLS, ge=1, le=MAX_URLS)
+    fetch: FetchOptions = FetchOptions()
+    locale: str | None = None
+    budget: Budget = Budget()
+    webhook_url: str | None = None
+
+    @field_validator("urls")
+    @classmethod
+    def _urls_and_globs(cls, urls: list[str]) -> list[str]:
+        for index, url in enumerate(urls):
+            if is_glob(url) and url_glob(url) is None:
+                raise ValueError(f"urls[{index}] is not a glob on one http or https host")
+            if not is_glob(url) and canonicalize(url) is None:
+                raise ValueError(f"urls[{index}] is not an absolute http or https URL")
+        return urls
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _absolute_webhook_url(cls, url: str | None) -> str | None:
+        return None if url is None else absolute_http_url(url)
+
+    @model_validator(mode="after")
+    def _schema_of_the_page_kind(self) -> Self:
+        check_records(["records"], self.schema_, self.page_kind)
+        return self
+
+    def targets(self) -> list[tuple[str, str]]:
+        """What the SSRF guard checks of `urls`, by member: each URL, and each glob's origin."""
+        return [(f"urls[{index}]", _target(url)) for index, url in enumerate(self.urls)]
+
+
+def _target(url: str) -> str:
+    glob = url_glob(url) if is_glob(url) else None
+    return url if glob is None else glob.origin
+
+
+class ExtractSubmitted(BaseModel):
+    """The queued job, and the schema its records are extracted with: a prompt's draft, or the schema named."""
+
+    model_config = ConfigDict(frozen=True, validate_by_name=True, serialize_by_alias=True)
+
+    job_id: JobId
+    schema_: SchemaDef = Field(alias="schema")
+
+
+class NothingToExtract(Exception):
+    """The request's globs matched no URL, and it gives no other."""
+
+
+class NoSamplePage(Exception):
+    """None of the pages a prompt is drafted from was reached (SPEC-06 §4.5: role S drafts from fetched pages)."""
+
+
+class DraftTimedOut(Exception):
+    def __init__(self, timeout_s: float) -> None:
+        super().__init__(f"the draft did not finish within {timeout_s:g} s")
+
+
+async def submit_extract(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    request: ExtractRequest,
+    *,
+    llm: LLMClient,
+    data: EngineData | None,
+    api_key_id: ApiKeyId | None = None,
+    draft_timeout_s: float = DRAFT_TIMEOUT_S,
+) -> ExtractSubmitted:
+    """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
+    (§4.2). Raises, storing no extract job: `TargetsRejected` for a refused target, `RecordsUnavailable` without
+    `data`, `named_schema`'s errors for a schema that cannot be used, `TargetRejected` for a refused fetch of a map, and
+    `NothingToExtract`. Raises, failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM
+    client's `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
+    await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url)
+    if data is None:
+        raise RecordsUnavailable("this process has not loaded the engine's data files")
+    schema = await named_schema(engine, request.schema_, request.page_kind)
+    urls = await _task_urls(engine, fetching, request)
+    if not urls:
+        raise NothingToExtract("the request's globs matched no URL")
+    if schema is None:
+        # `named_schema` returns the schema of every request but a prompt's.
+        prompt = cast(SchemaPrompt, request.schema_).prompt
+        return await _drafted(engine, fetching, llm, request, prompt, urls, data, api_key_id, draft_timeout_s)
+    async with engine.begin() as conn:
+        job_id = await _insert_job(conn, request, schema, data, urls, api_key_id)
+        await _insert_tasks(conn, job_id, request.page_kind, urls)
+    return ExtractSubmitted(job_id=job_id, schema_=schema)
+
+
+async def _task_urls(engine: AsyncEngine, fetching: Fetching, request: ExtractRequest) -> dict[str, str]:
+    """The job's task URLs by canonical form, in order: the given URLs, then each glob's, at most `limit`. The globs
+    of one origin are expanded by one map, and the origins' maps run at once (politeness is per host)."""
+    globs = [glob for url in request.urls if is_glob(url) and (glob := url_glob(url)) is not None]
+    origins = list(dict.fromkeys(glob.origin for glob in globs))
+    expanded = await asyncio.gather(*(_expand(engine, fetching, request, origin, globs) for origin in origins))
+    urls: dict[str, str] = {}
+    given = ((url, canonicalize(url) or url) for url in request.urls if not is_glob(url))
+    for url, canonical in itertools.chain(given, *expanded):
+        if len(urls) == request.limit:
+            break
+        urls.setdefault(canonical, url)
+    return urls
+
+
+async def _expand(
+    engine: AsyncEngine, fetching: Fetching, request: ExtractRequest, origin: str, globs: list[UrlGlob]
+) -> list[tuple[str, str]]:
+    """The URLs that a map of `origin` finds and its globs match; a map's URLs are canonical (§4.4), so each is its own
+    canonical form."""
+    include = [glob.pattern for glob in globs if glob.origin == origin]
+    found = await map_urls(engine, fetching, MapRequest(url=origin, include=include, limit=request.limit))
+    return [(url, url) for url in found.urls]
+
+
+async def _insert_job(
+    conn: AsyncConnection,
+    request: ExtractRequest,
+    schema: SchemaDef | None,
+    data: EngineData | None,
+    urls: dict[str, str],
+    api_key_id: ApiKeyId | None,
+) -> JobId:
+    return await insert_job(
+        conn,
+        "extract",
+        request,
+        schema=schema,
+        data=data,
+        urls=list(urls.values()),
+        webhook_url=request.webhook_url,
+        api_key_id=api_key_id,
+    )
+
+
+async def _insert_tasks(conn: AsyncConnection, job_id: JobId, page_kind: PageKind, urls: dict[str, str]) -> None:
+    rows = [
+        {"job_id": job_id, "url": url, "canonical_url": canonical, "page_kind": page_kind}
+        for canonical, url in urls.items()
+    ]
+    await conn.execute(pg_insert(UrlTask).values(rows))
+
+
+async def _drafted(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    llm: LLMClient,
+    request: ExtractRequest,
+    prompt: str,
+    urls: dict[str, str],
+    data: EngineData,
+    api_key_id: ApiKeyId | None,
+    timeout_s: float,
+) -> ExtractSubmitted:
+    """The job of a prompt, stored and started before its draft, which charges its usage and budget, then given the
+    draft, its pins and its tasks; it fails when no draft is made."""
+    async with engine.begin() as conn:
+        job_id = await _insert_job(conn, request, None, None, urls, api_key_id)
+        await transition_job(conn, job_id, "running")
+    try:
+        async with asyncio.timeout(timeout_s):
+            samples = await _samples(engine, fetching, request, job_id, list(urls.values())[:MAX_SAMPLES])
+            drafted = await draft_schema(engine, llm, prompt=prompt, samples=samples, job_id=job_id)
+        check_usable(drafted, request.page_kind)
+    except Exception as e:
+        async with engine.begin() as conn:
+            await transition_job(conn, job_id, "failed")
+        if isinstance(e, TimeoutError):
+            raise DraftTimedOut(timeout_s) from e
+        raise
+    async with engine.begin() as conn:
+        pins = JobPins(engine_data=data.pin(), configs=await active_configs(conn, list(urls.values()), drafted))
+        await conn.execute(
+            update(Job).where(Job.id == job_id).values(schema_id=drafted.id, pinned=pins.model_dump(mode="json"))
+        )
+        await _insert_tasks(conn, job_id, request.page_kind, urls)
+    return ExtractSubmitted(job_id=job_id, schema_=drafted)
+
+
+async def _samples(
+    engine: AsyncEngine, fetching: Fetching, request: ExtractRequest, job_id: JobId, urls: list[str]
+) -> list[str]:
+    """The cleaned text of each of `urls` reached, fetched one after another as a scrape fetches its page; the fetches
+    count as the job's usage. Raises `NoSamplePage` when none was reached."""
+    samples: list[str] = []
+    for url in urls:
+        host = urlsplit(url).hostname or ""
+        async with engine.begin() as conn:
+            site = await site_row(conn, host)
+        policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
+        attempts: list[AttemptRecord] = []
+        try:
+            page = await polite_fetch(engine, fetching, url, host, policy, site, attempts)
+        finally:
+            async with engine.begin() as conn:
+                await record_fetch_usage(conn, job_id, attempts, policy.proxy_pool)
+        if isinstance(page, FetchResult) and page.block_class == "ok":
+            # Parsing and rendering the text are CPU work: a thread keeps the event loop free.
+            samples.append(await asyncio.to_thread(_cleaned_text, page))
+    if not samples:
+        raise NoSamplePage("none of the pages to draft the schema from was reached")
+    return samples
+
+
+def _cleaned_text(page: FetchResult) -> str:
+    # Role S's sample pages are their cleaned text (SPEC-06 §4.5).
+    return ParsedPage.of(page.bundle).cleaned_text.text
