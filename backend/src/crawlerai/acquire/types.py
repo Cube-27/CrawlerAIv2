@@ -7,7 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveFloat, Pos
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-__all__ = ["AttemptRecord", "BlockClass", "FetchPolicy", "FetchResult", "check_robots_override", "policy_with_attempts"]
+__all__ = [
+    "AttemptRecord",
+    "BlockClass",
+    "FetchPolicy",
+    "FetchResult",
+    "Validators",
+    "check_robots_override",
+    "policy_with_attempts",
+]
 
 
 class _Frozen(BaseModel):
@@ -36,6 +44,14 @@ class FetchPolicy(_Frozen):
     def _override_has_a_reason(self) -> "FetchPolicy":
         check_robots_override(self.respect_robots, self.robots_override_reason)
         return self
+
+
+class Validators(_Frozen):
+    """What a page last answered with, sent back so that an unchanged page answers 304 with no body (RFC 9110 §13.1).
+    Each value is kept as received: an entity tag is opaque, and If-Modified-Since repeats the date exactly."""
+
+    etag: str | None
+    last_modified: str | None
 
 
 class AttemptRecord(_Frozen):

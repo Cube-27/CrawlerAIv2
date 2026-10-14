@@ -4256,3 +4256,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `services/page_task.py`.
 - Why: The C3 scan reads `services.page` as a host under the `.page` TLD; the error is not scrape's alone.
 - Reversible: yes
+
+### D-0637 — Validators reach the HTTP rung through `Rungs.conditional`
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 1 (#131) · Status: decided
+- Decision: `acquire(..., validators=)` calls `Rungs.conditional` (a `ConditionalRung` that `fetch_http` satisfies) instead of `Rungs.http`. Every other rung keeps `(url, policy)`. Validators go on the first request only, never past a redirect.
+- Alternatives: `Rungs.http` taking validators, which changes about 10 test stubs; validators on `FetchPolicy`, which is per-request policy recorded in every manifest.
+- Why: SPEC-11 §4.2 sends validators on the HTTP rung only, and the binding follows the `recipe` pattern. Every `Rungs` that needs conditional GET must set `conditional`; the worker's `Rungs` in `cli.py` is wired in SPEC-11 PR 2.
+- Reversible: yes
+
+### D-0638 — Validators are stored from `ok`, unredirected HTTP 200 responses only, and replaced as a pair
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 1 (#131) · Status: decided
+- Decision: `record_fetch` writes `etag` and `last_modified` only from an HTTP 200 that is `ok` and has `final_url == url`. Each is replaced by the value received, or NULL when the response omits it. A 304 is `unchanged` only when the fetch is `ok`.
+- Alternatives: Also store them from browser navigations; keep an old validator when a new 200 omits it.
+- Why: Only the HTTP rung sends validators. API and redirected responses describe another resource. A page not fetched whole must not later be `unchanged` (RFC 9110 §8.8).
+- Reversible: yes

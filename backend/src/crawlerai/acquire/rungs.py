@@ -4,21 +4,37 @@ worked remembered in `site.fetch_method`.
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) and no other rung. A site whose active
 config has an API recipe is served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the
 config IR sits above `acquire` (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`.
-Every rung is a function of (url, policy), so `acquire` decides and records only.
+Every rung is a function of (url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's
+conditional form, which also takes the validators a page last answered with (SPEC-11 §4.2).
 """
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import SLOW_DOWN
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult, policy_with_attempts
+from crawlerai.acquire.types import (
+    AttemptRecord,
+    BlockClass,
+    FetchPolicy,
+    FetchResult,
+    Validators,
+    policy_with_attempts,
+)
 from crawlerai.adapters.registry import Registry
 from crawlerai.db.models import FetchMethod, Site, SiteId
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
+
+
+class ConditionalRung(Protocol):
+    """The HTTP rung sending `validators` (`crawlerai.acquire.http.fetch_http`)."""
+
+    def __call__(self, url: str, policy: FetchPolicy, *, validators: Validators | None) -> Awaitable[FetchResult]: ...
+
 
 # ARCHITECTURE §7.1: the HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
@@ -29,17 +45,25 @@ class Rungs:
     http: Rung
     browser: Rung
     adapters: Registry = field(default_factory=lambda: Registry((), active=()))
+    # The HTTP rung in its conditional form, for fetches given validators; without it they are sent nowhere.
+    conditional: ConditionalRung | None = None
 
 
 async def acquire(
-    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs, *, recipe: Rung | None = None
+    url: str,
+    policy: FetchPolicy,
+    remembered: FetchMethod,
+    rungs: Rungs,
+    *,
+    recipe: Rung | None = None,
+    validators: Validators | None = None,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any. Otherwise through `recipe`, the active config's
     API recipe bound to its fetch (SPEC-09 §4.8), when the site has one: its result is kept when it is `ok` or asks
     for fewer requests, and otherwise the page is fetched as if there were no recipe (§4.10). Without a recipe, fetch
     it with `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched
     again in the browser, and the browser's outcome is kept only if it is `ok`. The result lists every attempt, in its
-    bundle's manifest too."""
+    bundle's manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
     if (adapter := rungs.adapters.detect(url)) is not None:
         return await adapter.fetch(url, policy)
     served: FetchResult | None = None
@@ -47,18 +71,21 @@ async def acquire(
         served = await recipe(url, policy)
         if served.block_class == "ok" or slow_down(served):
             return served
-    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs)
+    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators)
     if served is not None:
         attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms
     return with_attempts(kept, attempts, duration_ms)
 
 
 async def _page(
-    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs
+    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs, validators: Validators | None
 ) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
-    result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
+    if method == "http" and rungs.conditional is not None:
+        result = await rungs.conditional(url, policy, validators=validators)
+    else:
+        result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     kept, attempts, duration_ms = result, result.attempts, result.duration_ms
     if policy.method_hint == "auto" and method == "http" and _browser_may_pass(result):
         retry = await rungs.browser(url, policy)
