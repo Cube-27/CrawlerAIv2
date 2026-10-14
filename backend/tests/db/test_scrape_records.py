@@ -164,9 +164,11 @@ async def test_records_carry_every_field_attribute(
     title, price = record.fields["title"], record.fields["price"]
     assert (title.value, title.status, title.reason, title.evidence) == ("Blue kettle", "published", None, "structured")
     assert (title.source_kind, title.calibrated, title.confidence, title.derived_by) == ("jsonld", False, None, None)
-    assert title.locator is not None and title.locator.startswith("jsonld:0:")
+    assert title.locator is not None
+    assert title.locator.startswith("jsonld:0:")
     assert price.value == {"amount": "19.90", "currency": "EUR"}
-    assert result.markdown is not None and "boils water quickly" in result.markdown
+    assert result.markdown is not None
+    assert "boils water quickly" in result.markdown
     async with engine.connect() as conn:
         row = (await conn.execute(select(Record).where(Record.id == record.id))).one()
         task = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == result.job_id))).scalar_one()
@@ -269,7 +271,8 @@ async def test_an_inline_schema_is_stored_once_and_reused(
     first = await scrape(engine, fetching, _records(url, inline), data=engine_data)
     second = await scrape(engine, fetching, _records(url, inline), data=engine_data)
 
-    assert first.records is not None and second.records is not None
+    assert first.records is not None
+    assert second.records is not None
     assert first.records[0].fields["title"].value == "Blue kettle"
     jobs = [first.job_id, second.job_id]
     async with engine.connect() as conn:
@@ -394,7 +397,8 @@ async def test_a_prompt_draft_is_the_schema_of_the_records(
 
     result = await scrape(engine, fetching, _records(url, {"prompt": prompt}), llm=llm, data=engine_data)
 
-    assert result.schema_ is not None and result.records is not None
+    assert result.schema_ is not None
+    assert result.records is not None
     (record,) = result.records
     assert list(record.fields) == ["title"]
     stored = await _row(engine, select(Record.schema_id).where(Record.id == record.id))
@@ -441,7 +445,8 @@ async def test_max_age_reuses_a_recent_capture_without_fetching(
     assert (second.outcome, second.capture_id, second.fetched_at) == ("extracted", first.capture_id, first.fetched_at)
     assert second.fetch == first.fetch
     assert second.raw_html == first.raw_html
-    assert second.records is not None and second.records[0].complete
+    assert second.records is not None
+    assert second.records[0].complete
     assert second.usage.http_requests == 0
     task = await _row(engine, select(UrlTask.outcome, UrlTask.capture_id).where(UrlTask.job_id == second.job_id))
     assert tuple(task) == ("extracted", first.capture_id)

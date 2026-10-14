@@ -297,7 +297,8 @@ def test_a_row_selector_with_too_few_rows_is_repaired_with_its_row_fields() -> N
     result = _run_listing(client)
     assert "  - page 1: rows(1, 3)" in client.requests[1].user
     assert "  - row_not_verified" in client.requests[1].user
-    assert result.ir.listing is not None and sorted(result.ir.listing.fields) == ["link", "title"]
+    assert result.ir.listing is not None
+    assert sorted(result.ir.listing.fields) == ["link", "title"]
     assert result.ir.listing.next is not None
 
 
@@ -313,7 +314,8 @@ def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
     schema: Any = repair.output_schema
     assert list(schema["properties"]) == ["listing"]
     assert 'the row selector is {"css": "ul > li"' in repair.user
-    assert result.ir.listing is not None and result.ir.listing.fields["link"].steps == [XPathStep(xpath="a/@href")]
+    assert result.ir.listing is not None
+    assert result.ir.listing.fields["link"].steps == [XPathStep(xpath="a/@href")]
 
 
 def test_without_a_verified_row_there_is_no_listing_and_next_is_left_out() -> None:

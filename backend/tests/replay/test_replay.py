@@ -453,7 +453,8 @@ def test_a_snapshot_whose_ir_the_model_refuses_drops_the_page() -> None:
     store = MemoryStore()
     asyncio.run(add_page(store, 1, config_snapshot={"ir": {**IR, "ir_version": "2"}}))
     error = dropped_error(store)
-    assert error.startswith("invalid config_snapshot: ") and "ir_version" in error
+    assert error.startswith("invalid config_snapshot: ")
+    assert "ir_version" in error
 
 
 def test_a_missing_bundle_drops_the_page() -> None:

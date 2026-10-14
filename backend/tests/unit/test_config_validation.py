@@ -240,7 +240,8 @@ def _validate_listing(pages: list[HeldOutPage]) -> Validated:
 
 def test_a_listing_with_three_rows_on_every_page_keeps_its_row_fields_and_next() -> None:
     result = _validate_listing([_listing(["A", "B", "C"]) for _ in range(3)])
-    assert result.ir is not None and result.ir.listing is not None
+    assert result.ir is not None
+    assert result.ir.listing is not None
     assert result.ir.listing.fields["title"].status == "uncorroborated"
     assert result.ir.listing.next is not None
     listing = result.report.model_dump(mode="json")["listing"]
@@ -272,7 +273,8 @@ def test_rows_are_not_reproduced_when_the_config_finds_a_row_the_engine_did_not(
 def test_a_next_step_that_is_not_reproduced_is_dropped_and_the_rows_stay() -> None:
     pages = [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), _listing(["A", "B", "C"], next_href="/p/9")]
     result = _validate_listing(pages)
-    assert result.ir is not None and result.ir.listing is not None
+    assert result.ir is not None
+    assert result.ir.listing is not None
     assert result.ir.listing.next is None
     assert list(result.ir.listing.fields) == ["title"]
 

@@ -363,8 +363,9 @@ def test_a_role_c_call_without_a_reply_leaves_the_asked_fields_missing_with_its_
 def test_a_role_c_failure_is_not_a_resolution_error() -> None:
     # A replay's missing recording must reach the harness, which drops the page (SPEC-03 §4.5).
     role_c = FakeRoleC(error=LookupError("no recorded response"))
+    bundle = _bundle(_html(_product(price=None)))
     with pytest.raises(LookupError, match="no recorded response"):
-        _extract(_bundle(_html(_product(price=None))), role_c=role_c)
+        _extract(bundle, role_c=role_c)
 
 
 # --- api captures (D-0445) ---
@@ -596,8 +597,9 @@ def test_a_listing_schema_without_row_fields_does_not_call_role_c() -> None:
 
 
 def test_a_listing_role_c_error_propagates() -> None:
+    html, role_c = _html(), FakeRoleC(error=LookupError("no recorded response"))
     with pytest.raises(LookupError, match="no recorded response"):
-        _listing(_html(), role_c=FakeRoleC(error=LookupError("no recorded response")))
+        _listing(html, role_c=role_c)
 
 
 def test_a_listing_parses_the_capture_once_per_parser(parses: Parses) -> None:

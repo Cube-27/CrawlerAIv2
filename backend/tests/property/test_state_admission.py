@@ -66,7 +66,8 @@ def _other(source_kind: str, entity_id: str, raw: str) -> Candidate:
 def _check(admitted: tuple[Candidate, ...], kind: str, others: list[Candidate], page: ParsedPage) -> None:
     anchors = [o for o in others if o.source_kind != kind]
     for candidate in admitted:
-        assert isinstance(candidate.raw, str) and isinstance(candidate.normalized, Ok)
+        assert isinstance(candidate.raw, str)
+        assert isinstance(candidate.normalized, Ok)
         if candidate.independent:
             assert (candidate.entity_id, anchors) == ("page", [])
             assert page.visible_values.visible(candidate.raw)

@@ -74,4 +74,5 @@ def test_json_keys_are_cut_to_their_limit() -> None:
     page = ParsedPage(f'<html><head><script type="application/json">{{{members}}}</script></head></html>')
     keys = json_keys(page)
     assert len(keys.text) == KEYS_MAX_CHARS
-    assert keys.note is not None and keys.note.startswith(f"the first {KEYS_MAX_CHARS} of ")
+    assert keys.note is not None
+    assert keys.note.startswith(f"the first {KEYS_MAX_CHARS} of ")

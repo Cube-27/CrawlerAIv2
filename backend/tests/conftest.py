@@ -2,7 +2,7 @@
 the Hypothesis default. GitHub Actions sets `CI`. For INV-26, counters of HTML parser constructions."""
 
 import os
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import pytest
@@ -33,9 +33,9 @@ class ParserCounter:
 
 
 @pytest.fixture
-def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[Mapping[str, ParserCounter]]:
+def parses(monkeypatch: pytest.MonkeyPatch) -> Mapping[str, ParserCounter]:
     """INV-26: the selectolax and lxml parser constructions while the test runs."""
     counters = {"selectolax": ParserCounter(), "lxml": ParserCounter()}
     monkeypatch.setattr(lexbor, "LexborHTMLParser", counters["selectolax"].wrap(lexbor.LexborHTMLParser))
     monkeypatch.setattr(lxml_html, "document_fromstring", counters["lxml"].wrap(lxml_html.document_fromstring))
-    yield counters
+    return counters

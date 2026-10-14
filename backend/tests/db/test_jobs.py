@@ -315,7 +315,9 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
     rest = await _results(world.engine, job_id, format="json_records", cursor=getattr(page, "next_cursor", None))
     markdown = await _results(world.engine, job_id, format="markdown")
 
-    assert isinstance(page, ExportPage) and isinstance(rest, ExportPage) and isinstance(markdown, ExportPage)
+    assert isinstance(page, ExportPage)
+    assert isinstance(rest, ExportPage)
+    assert isinstance(markdown, ExportPage)
     assert list(csv.reader(io.StringIO(page.content))) == [
         ["colour", "title", "_status_colour", "_status_title"],
         ["blue", "Kettle 1", "published", "published"],

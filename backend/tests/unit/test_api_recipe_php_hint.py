@@ -165,4 +165,5 @@ def test_a_comment_is_one_line_reading_back_as_the_string_it_was_made_from(value
 
     assert json.loads(comment) == value
     assert "?>" not in comment
-    assert comment.isascii() and comment.isprintable()
+    assert comment.isascii()
+    assert comment.isprintable()
