@@ -192,7 +192,7 @@ site names), INV-10 (deterministic request hashing for replay).
 - Grounding: property tests — for generated texts and spans, `align` returns the exact span; for values absent
   from the text, drop; for repeated values, nearest-to-hint.
 - Role C: with the fake provider returning crafted outputs: ungrounded values dropped; type-invalid dropped;
-  `null` → missing; listing rows capped; truncation recorded. No real provider in CI.
+  an empty claim → missing; a reply cut at its cap → missing, one call; listing rows capped; truncation recorded. No real provider in CI.
 - Role S: fake provider output validated as SchemaDef; repeat prompt returns the stored draft without a call.
 - Dev replay (SPEC-03) with `RecordedLLM`: the `llm_grounded` bucket appears in the dev report.
 - CI gates: backend job; site-literal scan on `prompts/`.
