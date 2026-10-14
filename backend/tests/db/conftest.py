@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from ipaddress import ip_address
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -46,6 +47,7 @@ from crawlerai.db.models import (
     Record,
     SchemaDef,
     Site,
+    SiteId,
     SourceKind,
     UrlState,
     UrlTask,
@@ -55,6 +57,7 @@ from crawlerai.db.models import (
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.schemas import types as schema_types
 from crawlerai.services.fetching import Fetching
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
@@ -202,6 +205,41 @@ def fetch_result() -> Callable[..., FetchResult]:
         return FetchResult(
             bundle=CaptureBundle(manifest=manifest, body=body, network=()), duration_ms=1, attempts=(attempt,)
         )
+
+    return make
+
+
+@pytest.fixture
+def heading_config() -> Callable[[SiteId, schema_types.SchemaDef, int], dict[str, Any]]:
+    """A factory for an active `extraction_config` row of a detail schema, version `version`, whose one field, the
+    title, is read from the page's heading."""
+
+    def make(site_id: SiteId, schema: schema_types.SchemaDef, version: int) -> dict[str, Any]:
+        ir = {
+            "ir_version": "1",
+            "site": "unused.example.test",
+            "schema": {"name": schema.name, "version": schema.version},
+            "page_kind": "detail",
+            "fetch": {"method": "http"},
+            "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
+            "provenance": {
+                "origin": "induced",
+                "validated_on": [],
+                "learned_at": "2026-10-01T00:00:00Z",
+                "engine_version": "t",
+            },
+        }
+        return {
+            "site_id": site_id,
+            "schema_id": schema.id,
+            "schema_version": schema.version,
+            "page_kind": "detail",
+            "version": version,
+            "status": "active",
+            "ir": ir,
+            "origin": "induced",
+            "field_status": {"title": "corroborated"},
+        }
 
     return make
 
