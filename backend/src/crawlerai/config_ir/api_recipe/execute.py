@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, fetch_result
 from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import ApiCollector
 from crawlerai.collect.config import Executed
@@ -72,7 +72,11 @@ class RecipeRung:
         if isinstance(bound, FetchResult):
             return bound
         request, page = bound
-        result = self._unbound(url, policy) if request is None else await self.fetch_json(request, policy)
+        result = (
+            self._unserved(url, policy, "unbound_parameter")
+            if request is None
+            else await self.fetch_json(request, policy)
+        )
         # A fetch whose policy names the browser falls back to the browser, not to the HTML page fetched to bind.
         return _after(page, result, fallback=policy.method_hint != "browser")
 
@@ -89,7 +93,7 @@ class RecipeRung:
             return
         request, page = bound
         if request is None:
-            yield _after(page, self._unbound(url, policy))
+            yield _after(page, self._unserved(url, policy, "unbound_parameter"))
             return
         for n in range(limit):
             value = str(pagination.start + n * pagination.step)
@@ -122,22 +126,24 @@ class RecipeRung:
             data = await asyncio.to_thread(_page_data, page)
         return request_for(self.recipe, url, data), page
 
-    def _unbound(self, url: str, policy: FetchPolicy) -> FetchResult:
-        return self._unserved(url, policy, "unbound_parameter")
-
     def _unserved(self, url: str, policy: FetchPolicy, reason: str) -> FetchResult:
-        return fetch_result(
-            url=url,
-            method="api",
-            policy=policy,
-            engine_version=self.engine_version,
-            fetched_at=datetime.now(UTC),
-            started=time.monotonic(),
-            exchange=None,
-            content=Content(body=b""),
-            block_class="error",
-            error=reason,
-        )
+        return unserved(url, policy, self.engine_version, "error", reason)
+
+
+def unserved(url: str, policy: FetchPolicy, engine_version: str, block_class: BlockClass, reason: str) -> FetchResult:
+    """The recipe's result for the page at `url` when it sent no request: `reason` says why."""
+    return fetch_result(
+        url=url,
+        method="api",
+        policy=policy,
+        engine_version=engine_version,
+        fetched_at=datetime.now(UTC),
+        started=time.monotonic(),
+        exchange=None,
+        content=Content(body=b""),
+        block_class=block_class,
+        error=reason,
+    )
 
 
 def _after(page: FetchResult | None, result: FetchResult, *, fallback: bool = False) -> FetchResult:

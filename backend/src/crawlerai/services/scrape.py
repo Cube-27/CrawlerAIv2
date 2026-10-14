@@ -29,7 +29,7 @@ from typing import Any, Final, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
-from sqlalchemy import ColumnElement, Row, func, or_, select, true
+from sqlalchemy import Row, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -359,7 +359,6 @@ async def _recent_capture(
     """The latest capture of `canonical` that reached its page (§4.8) within `max_age` seconds and has not expired;
     one an API recipe fetched only for a scrape that asks for the record only, as it holds JSON, not the page.
     Captures are found through the tasks that fetched them, which hold the canonical URL."""
-    page_or_any: ColumnElement[bool] = true() if records_only else Capture.method != "api"
     query = (
         select(Capture.id, Capture.object_key, Capture.duration_ms, Capture.fetch_policy)
         .join(UrlTask, UrlTask.capture_id == Capture.id)
@@ -369,11 +368,12 @@ async def _recent_capture(
             Capture.block_class == "ok",
             or_(Capture.expires_at.is_(None), Capture.expires_at > func.now()),
             UrlTask.canonical_url == canonical,
-            page_or_any,
         )
         .order_by(Capture.fetched_at.desc())
         .limit(1)
     )
+    if not records_only:
+        query = query.where(Capture.method != "api")
     return (await conn.execute(query)).one_or_none()
 
 
@@ -467,8 +467,9 @@ async def polite_fetch(
         if not robots.allows(url):
             return "robots"
     await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    rules = engine_rules(engine, fetching.rungs.http, attempts)
-    rung = None if recipe is None else recipe_rung(fetching, recipe, host, rules)
+    rung = None
+    if recipe is not None:
+        rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
     result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung)
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:

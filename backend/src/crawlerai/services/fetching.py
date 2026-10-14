@@ -5,22 +5,19 @@ page's (SPEC-09 §4.8).
 """
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.outcome import Content, fetch_result
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.execute import RecipeRung
+from crawlerai.config_ir.api_recipe.execute import RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
@@ -145,13 +142,6 @@ def engine_rules(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord])
     return rules
 
 
-@dataclass
-class _Turn:
-    """The host whose turn at its rate (SPEC-02 §4.6) the caller was admitted for, until a request takes it."""
-
-    host: str | None
-
-
 def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: SiteRules) -> RecipeRung | None:
     """`recipe` bound to this process's rungs (SPEC-09 §4.8), for a page on `page_host` whose robots.txt the caller
     has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
@@ -162,41 +152,29 @@ def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: Si
     json = fetching.rungs.json
     if json is None:
         return None
-    turn = _Turn(page_host)
+    # The host whose turn at its rate the caller was admitted for, until a request takes it.
+    turn: str | None = page_host
     http = fetching.rungs.http
 
     async def page(url: str, policy: FetchPolicy) -> FetchResult:
-        turn.host = None  # the page is the first request: its host's turn is the one the caller took
+        nonlocal turn
+        turn = None  # the page is the first request: its host's turn is the one the caller took
         return await http(url, policy)
 
     async def endpoint(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        nonlocal turn
         allowed = await rules(request.url, policy)
         if isinstance(allowed, str):
-            return _not_sent(request, policy, allowed)
+            # As a page robots.txt keeps from being fetched: `blocked`.
+            return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", allowed)
         host = urlsplit(request.url).hostname or ""
-        if host == turn.host:
-            turn.host = None
+        if host == turn:
+            turn = None
         else:
             await admitted(fetching.limiter, host, *allowed)
         return await json(request, policy)
 
     return RecipeRung(recipe, endpoint, page, ENGINE_VERSION)
-
-
-def _not_sent(request: JsonRequest, policy: FetchPolicy, reason: str) -> FetchResult:
-    """The recipe's result for a request robots.txt kept from being sent (`reason`), as a page's would be: `blocked`."""
-    return fetch_result(
-        url=request.page_url,
-        method="api",
-        policy=policy,
-        engine_version=ENGINE_VERSION,
-        fetched_at=datetime.now(UTC),
-        started=time.monotonic(),
-        exchange=None,
-        content=Content(body=b""),
-        block_class="blocked",
-        error=reason,
-    )
 
 
 @dataclass(frozen=True)
