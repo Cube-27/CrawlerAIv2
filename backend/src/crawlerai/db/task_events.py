@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Capture, Extraction, JobId, Record, TaskOutcome, UrlTask, UrlTaskId
+from crawlerai.db.models import Capture, Extraction, Record, UrlTask, UrlTaskId
 
 TASK_FETCHED: Final = "task_fetched"
 TASK_EXTRACTED: Final = "task_extracted"
@@ -43,16 +43,6 @@ async def record_task_events(conn: AsyncConnection, task_id: UrlTaskId) -> None:
     if task.capture_id is not None:
         payload = {"url": task.url, "method": task.method, "block_class": task.block_class}
         await record_event(conn, task.job_id, TASK_FETCHED, payload)
-    await _record_extraction(conn, task_id, task.job_id, task.url, task.outcome)
-    # Only the `failed` status is a failure: a task that ended `blocked` or `not_found` is `done` (SPEC-01 §4.3).
-    if task.status == "failed":
-        payload = {"task_id": str(task_id), "url": task.url, "attempts": task.attempts, "last_error": task.last_error}
-        await record_event(conn, task.job_id, TASK_FAILED, payload)
-
-
-async def _record_extraction(
-    conn: AsyncConnection, task_id: UrlTaskId, job_id: JobId, url: str, outcome: TaskOutcome | None
-) -> None:
     # A retried task can have run the resolver more than once; its last run is the one its outcome comes from.
     extraction = (
         await conn.execute(
@@ -62,12 +52,15 @@ async def _record_extraction(
             .limit(1)
         )
     ).one_or_none()
-    if extraction is None:
-        return
-    payload = {"url": url, "outcome": outcome, "mode": extraction.mode, "llm_calls": extraction.llm_calls}
-    await record_event(conn, job_id, TASK_EXTRACTED, payload)
-    query = select(Record.field_meta).where(Record.extraction_id == extraction.id)
-    metas: list[dict[str, Any]] = list((await conn.execute(query)).scalars())
-    abstained = sorted({field for meta in metas for field, entry in meta.items() if entry["status"] == _ABSTAINED})
-    if abstained:
-        await record_event(conn, job_id, TASK_ABSTAINED, {"url": url, "fields": abstained})
+    if extraction is not None:
+        payload = {"url": task.url, "outcome": task.outcome, "mode": extraction.mode, "llm_calls": extraction.llm_calls}
+        await record_event(conn, task.job_id, TASK_EXTRACTED, payload)
+        query = select(Record.field_meta).where(Record.extraction_id == extraction.id)
+        metas: list[dict[str, Any]] = list((await conn.execute(query)).scalars())
+        abstained = sorted({field for meta in metas for field, entry in meta.items() if entry["status"] == _ABSTAINED})
+        if abstained:
+            await record_event(conn, task.job_id, TASK_ABSTAINED, {"url": task.url, "fields": abstained})
+    # Only the `failed` status is a failure: a task that ended `blocked` or `not_found` is `done` (SPEC-01 §4.3).
+    if task.status == "failed":
+        payload = {"task_id": str(task_id), "url": task.url, "attempts": task.attempts, "last_error": task.last_error}
+        await record_event(conn, task.job_id, TASK_FAILED, payload)
