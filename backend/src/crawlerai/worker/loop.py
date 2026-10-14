@@ -88,6 +88,7 @@ async def run_worker(
     runs as a task's result ends its job (`settle_job`)."""
     worker = f"{socket.gethostname()}:{os.getpid()}:{secrets.token_hex(4)}"
     engine = create_async_engine(settings.database_url.get_secret_value())
+    log.info("worker %s: started; job kinds %s", worker, ", ".join(sorted(handlers)))
     try:
         async with engine.connect() as conn:
             while not stop.is_set():
@@ -103,6 +104,7 @@ async def run_worker(
                     await _run(conn, task, handlers, ending, redact_urls=settings.log_redact_urls)
     finally:
         await engine.dispose()
+        log.info("worker %s: stopped", worker)
 
 
 async def _run(
@@ -145,6 +147,8 @@ async def _execute(
     match await handler(task, conn):
         case Finished(outcome, reason, capture_id):
             await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
+            # The task's id and job, never its URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
+            log.info("url_task %s: %s task of job %s: %s", task.id, job.kind, task.job_id, outcome)
         case Failed(error, transient, after, exhausted, capture_id):
             text = _error_text(error, redact_urls=redact_urls)
             await fail_task(
@@ -157,6 +161,7 @@ async def _execute(
                 capture_id=capture_id,
                 ending=ending,
             )
+            log.warning("url_task %s: %s task of job %s: failed: %s", task.id, job.kind, task.job_id, text)
         case Postpone(after):
             await release_task(conn, task, after=after)
         case unreachable:

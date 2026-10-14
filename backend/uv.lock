@@ -394,7 +394,7 @@ requires-dist = [
     { name = "babel", specifier = ">=2.16,<3" },
     { name = "boto3", specifier = ">=1.35,<2" },
     { name = "cssselect", specifier = ">=1.2,<2" },
-    { name = "curl-cffi", specifier = ">=0.16,<1" },
+    { name = "curl-cffi", specifier = ">=0.16,<0.17" },
     { name = "dateparser", specifier = ">=1.2,<2" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "google-genai", specifier = ">=2.30,<3" },

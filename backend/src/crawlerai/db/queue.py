@@ -244,7 +244,10 @@ async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **
 
 async def settle_job(conn: AsyncConnection, job_id: JobId, ending: JobEnding | None = None) -> None:
     """End a running job once its tasks allow it (`settled_status`), running `ending` first."""
-    job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == job_id).with_for_update())).one()
+    # FOR NO KEY UPDATE: it serializes with every other write to the job's row, but not with a running task's inserts
+    # that refer to the job (FOR KEY SHARE, PostgreSQL row-level locks), which hold until that task commits.
+    locked = select(Job.status, Job.cancel_requested).where(Job.id == job_id).with_for_update(key_share=True)
+    job = (await conn.execute(locked)).one()
     if job.status != "running":
         return
     # Most finished tasks leave others open. The partial index on open tasks answers that without counting every

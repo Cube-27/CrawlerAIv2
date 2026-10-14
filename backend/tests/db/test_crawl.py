@@ -80,17 +80,21 @@ def robots(*lines: str) -> Page:
 @dataclass
 class Web:
     """Answers each URL from `pages` over HTTP; anything else is a 404. A URL in `refused` redirects to a private
-    address: the rung reports the guard's refusal as the attempt's error. The browser is never used."""
+    address: the rung reports the guard's refusal as the attempt's error. A URL in `held` answers once its event is
+    set. The browser is never used."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, Page] = field(default_factory=dict)
     refused: set[str] = field(default_factory=set)
+    held: dict[str, asyncio.Event] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
         if url in self.refused:
             return self.fetch_result(url, 0, b"", block_class="error", error="ssrf_rejected: private_address")
         self.fetched.append(url)
+        if url in self.held:
+            await self.held[url].wait()
         status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
         return self.fetch_result(url, status, body, block_class=block_class)
 
@@ -390,6 +394,54 @@ async def test_a_target_the_guard_refuses_is_never_fetched(
     assert (moved.outcome, moved.attempts, moved.last_error) == ("failed", 1, "ssrf_rejected: private_address")
     assert sorted(found) == [f"{own_origin}/", f"{own_origin}/moved", f"{own_origin}/p/2"]
     assert (await summary(engine, submitted.job_id)).status == "completed"
+
+
+async def _cancel_while_reading_sitemaps(
+    engine: AsyncEngine, fetching: Fetching, web: Web, request: CrawlRequest, data: EngineData | None
+) -> None:
+    """Cancel the crawl while its start page's task reads the site's sitemap, which can take up to the sitemap time
+    cap: the cancel answers at once, and the job ends `cancelled` once that task finishes."""
+    origin = request.start.removesuffix("/")
+    sitemap = f"{origin}/products.xml"
+    web.pages |= {f"{origin}/robots.txt": robots(f"Sitemap: {sitemap}"), sitemap: urlset(f"{origin}/p/1")}
+    web.held[sitemap] = release = asyncio.Event()
+    submitted = await submit_crawl(engine, fetching.connector, request, data=data)
+    worker = asyncio.create_task(run(engine, fetching, data, submitted.job_id))
+    async with asyncio.timeout(30):
+        while sitemap not in web.fetched:
+            await asyncio.sleep(0.05)
+    try:
+        async with asyncio.timeout(5), engine.begin() as conn:
+            requested = await jobs.cancel_job(conn, submitted.job_id)
+    finally:
+        release.set()
+    await worker
+    assert (requested.status, requested.counts.claimed) == ("running", 1)
+    assert (await summary(engine, submitted.job_id)).status == "cancelled"
+    assert sorted(await tasks(engine, submitted.job_id)) == [request.start]
+
+
+async def test_a_cancel_does_not_wait_for_the_sitemaps_being_read(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    web.pages[f"{own_origin}/"] = page("/p/2")
+
+    await _cancel_while_reading_sitemaps(engine, fetching, web, crawl(f"{own_origin}/"), None)
+
+
+async def test_a_cancel_does_not_wait_for_the_sitemaps_after_a_record_was_stored(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # The start page is extracted first: the rows its record adds refer to the job's row.
+    web.pages[f"{own_origin}/"] = page("/p/2", product="Blue kettle")
+    request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/*")
+
+    await _cancel_while_reading_sitemaps(engine, fetching, web, request, engine_data)
 
 
 async def _results(engine: AsyncEngine, fetching: Fetching, job_id: JobId) -> Any:

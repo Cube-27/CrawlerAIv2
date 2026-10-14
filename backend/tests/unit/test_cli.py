@@ -1,9 +1,10 @@
 import asyncio
 import json
+import logging
 import shutil
 import subprocess
 import sysconfig
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
@@ -16,7 +17,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
-from crawlerai.core.data import DataFetchError
+from crawlerai.core.data import DataReport
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.core.settings import AcquireSettings, Settings
@@ -168,6 +169,35 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     assert type(post.keywords["connector"]) is SafeConnector
 
 
+@pytest.fixture
+def crawlerai_logger() -> Iterator[None]:
+    """The package's logger, its handlers and level restored after the test."""
+    logger = logging.getLogger("crawlerai")
+    handlers, level = list(logger.handlers), logger.level
+    yield
+    logger.handlers[:] = handlers
+    logger.setLevel(level)
+
+
+@pytest.mark.usefixtures("crawlerai_logger")
+@pytest.mark.parametrize(("command", "runner"), [("worker", "_work"), ("scheduler", "_schedule")])
+def test_the_long_running_commands_log_info_to_stderr(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str, runner: str
+) -> None:
+    logger = logging.getLogger(f"crawlerai.{command}.loop")
+
+    async def run() -> None:
+        logger.info("started")
+        logger.debug("idle")
+
+    monkeypatch.setattr(cli, runner, run)
+
+    main([command])
+
+    lines = capsys.readouterr().err.splitlines()
+    assert [line.split(" ", 2)[2] for line in lines] == [f"INFO crawlerai.{command}.loop: started"]
+
+
 def test_the_scheduler_entries_and_their_intervals() -> None:
     async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("not called")
@@ -198,9 +228,9 @@ def test_data_fetch_reports_each_fetched_entry(
     calls: list[Path] = []
     monkeypatch.setattr(cli, "_data_dir", lambda: tmp_path)
 
-    def fetch_data(directory: Path) -> list[str]:
+    def fetch_data(directory: Path) -> DataReport:
         calls.append(directory)
-        return ["present geonames/countryInfo.txt", "fetched geonames/cities15000.zip"]
+        return DataReport(written=["present geonames/countryInfo.txt", "fetched geonames/cities15000.zip"], refused=[])
 
     monkeypatch.setattr(cli, "fetch_data", fetch_data)
 
@@ -210,22 +240,24 @@ def test_data_fetch_reports_each_fetched_entry(
     assert capsys.readouterr().out == "present geonames/countryInfo.txt\nfetched geonames/cities15000.zip\n"
 
 
-def test_data_fetch_exits_2_on_a_refused_entry(
+def test_data_fetch_reports_every_entry_then_exits_2_on_a_refused_one(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     monkeypatch.setattr(cli, "_data_dir", lambda: tmp_path)
-
-    def fetch_data(directory: Path) -> list[str]:
-        raise DataFetchError("geonames/countryInfo.txt: sha256 0 does not match the manifest")
-
-    monkeypatch.setattr(cli, "fetch_data", fetch_data)
+    report = DataReport(
+        written=["fetched geonames/countryInfo.txt"],
+        refused=["geonames/cities15000.zip: sha256 0 does not match the manifest", "other.txt: download failed: x"],
+    )
+    monkeypatch.setattr(cli, "fetch_data", lambda _directory: report)
 
     with pytest.raises(SystemExit) as exit_info:
         main(["data", "fetch"])
 
     assert exit_info.value.code == 2
-    assert capsys.readouterr().err == (
-        "crawlerai data fetch: geonames/countryInfo.txt: sha256 0 does not match the manifest\n"
+    assert capsys.readouterr() == (
+        "fetched geonames/countryInfo.txt\n",
+        "crawlerai data fetch: geonames/cities15000.zip: sha256 0 does not match the manifest\n"
+        "crawlerai data fetch: other.txt: download failed: x\n",
     )
 
 

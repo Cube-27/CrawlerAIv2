@@ -20,11 +20,15 @@ pnpm licenses list --json >"$out/node-licenses.json"
 pnpm sbom --sbom-format cyclonedx >"$out/node-sbom.cdx.json"
 
 cd "$root/backend"
+# An environment of its own: syncing the project's `.venv` would remove the files of a running worker or scheduler,
+# which Windows refuses while they are in use, and would uninstall the project from the developer's environment.
+venv="$root/backend/.venv-licenses"
+export UV_PROJECT_ENVIRONMENT="$venv"
 # Dependencies only, so nothing is built (SonarCloud S8541) and the project itself (AGPL-3.0, LICENSE) is not
 # installed: the deny-list applies to what it depends on.
 uv sync --frozen --all-groups --no-build --no-install-project
 uv run --no-sync --no-build pip-licenses --from=all --format=json --with-system >"$out/python-licenses.json"
-uv run --no-sync --no-build cyclonedx-py environment --pyproject pyproject.toml --output-reproducible .venv \
+uv run --no-sync --no-build cyclonedx-py environment --pyproject pyproject.toml --output-reproducible "$venv" \
   >"$out/python-sbom.cdx.json"
 uv run --no-sync --no-build python "$root/tools/license_policy.py" \
   --python "$out/python-licenses.json" --node "$out/node-licenses.json"

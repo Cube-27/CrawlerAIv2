@@ -10,7 +10,8 @@ UV_RUN ?= uv run
 
 # `.env` assignments override variables exported in the shell; command-line variables (`make dev VAR=...`) win.
 -include .env
-CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs://$(CURDIR)/.data/objects)
+# `fs:///` then the path without its leading slash: `/home/x` and Windows' `C:/x` both give an absolute path URL.
+CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs:///$(patsubst /%,%,$(CURDIR))/.data/objects)
 export
 
 .PHONY: dev db db-down migrate api api-client check check-data check-tools check-backend \

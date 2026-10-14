@@ -10,6 +10,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import Any, Final
 
+import anyio
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -56,7 +57,12 @@ async def stream(
     """The job's events after `after`, as they are stored, until its end event; a stream that resumes after the end
     event closes at once."""
     while True:
-        ended, batch = await _poll(engine, job_id, after)
+        # A client that drops the stream cancels it through the server's cancel scope, which cancels every await
+        # until the scope exits, the pooled connection's reset and close too: a connection half closed that way went
+        # back to the pool and failed the next request to draw it. Shielded, a poll finishes and returns its
+        # connection, and the cancellation lands at the sleep after it.
+        with anyio.CancelScope(shield=True):
+            ended, batch = await _poll(engine, job_id, after)
         stored = [event.id for event in batch if event.id is not None]
         for event in batch:
             yield event

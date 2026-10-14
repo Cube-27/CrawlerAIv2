@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
+import anyio
 import httpx
 import pytest
 from sqlalchemy import delete, func, insert, select
@@ -291,6 +292,25 @@ async def test_the_stream_waits_for_events_written_after_it_started(engine: Asyn
 
     assert received[0] == "task_fetched"
     assert received[-1] == "completed"
+
+
+async def test_a_stream_cancelled_mid_poll_leaves_the_pool_usable(engine: AsyncEngine, database_url: str) -> None:
+    # A client that drops the stream cancels it wherever it is, often inside a poll's query. The server cancels it
+    # through an anyio cancel scope, which cancels every await under it until it exits, the connection's cleanup's
+    # too. One pooled connection makes every request after it reuse the connection the stream held.
+    job_id, _ = await _stored(engine, [])
+    pooled = create_async_engine(database_url, pool_size=1, max_overflow=0)
+    statuses = []
+    try:
+        for round_ in range(30):
+            with anyio.move_on_after(0.002 * round_):
+                await _drain(events.stream(pooled, job_id, None, poll_s=0))
+            async with pooled.connect() as conn:
+                statuses.append((await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one())
+    finally:
+        await pooled.dispose()
+
+    assert statuses == ["running"] * 30
 
 
 # Over HTTP.

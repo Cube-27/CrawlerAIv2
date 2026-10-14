@@ -1,6 +1,7 @@
 """The scheduler loop against a real Postgres, with committed data (SPEC-01 §4.3)."""
 
 import asyncio
+import logging
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -187,6 +188,27 @@ async def test_a_batched_entry_that_fills_its_batch_runs_again_at_once_until_its
     await _scheduler_until(engine, [Periodic("drain", timedelta(hours=1), drain, batch=2)], drained, timeout=10)
 
     assert runs == [2, 2, 1]
+
+
+async def test_the_scheduler_logs_its_start_and_each_entry_that_did_work(
+    engine: AsyncEngine, caplog: pytest.LogCaptureFixture
+) -> None:
+    results = [3, 0]
+
+    async def drain(conn: AsyncConnection) -> int:
+        return results.pop(0) if results else 0
+
+    async def drained() -> bool:
+        return not results
+
+    with caplog.at_level(logging.INFO, logger="crawlerai.scheduler.loop"):
+        await _scheduler_until(engine, [Periodic("drain", QUICK, drain)], drained, timeout=10)
+
+    # An entry that found nothing to do logs nothing at INFO: entries run every few seconds.
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.INFO] == [
+        "scheduler: started; entries drain",
+        "scheduler: drain: 3",
+    ]
 
 
 async def test_stopping_ends_the_scheduler_while_it_waits(engine: AsyncEngine) -> None:

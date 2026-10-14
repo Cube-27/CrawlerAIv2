@@ -4,11 +4,12 @@ pinned sha256 and written under the data directory; nothing else is written."""
 import hashlib
 import json
 from collections.abc import Callable
+from http.client import IncompleteRead
 from pathlib import Path
 
 import pytest
 
-from crawlerai.core.data import DataFetchError, fetch_data
+from crawlerai.core.data import DataReport, fetch_data
 
 CONTENT = b"geonameid\tname\n"
 
@@ -47,7 +48,7 @@ def test_a_fetched_entry_is_downloaded_and_written(tmp_path: Path) -> None:
     report = fetch_data(directory, _serving({"https://data.example.org/geo/cities.txt": CONTENT}, calls))
 
     assert (directory / "geo" / "cities.txt").read_bytes() == CONTENT
-    assert report == ["fetched geo/cities.txt"]
+    assert report == DataReport(written=["fetched geo/cities.txt"], refused=[])
 
 
 def test_a_file_that_already_matches_is_not_downloaded_again(tmp_path: Path) -> None:
@@ -58,7 +59,7 @@ def test_a_file_that_already_matches_is_not_downloaded_again(tmp_path: Path) -> 
     report = fetch_data(directory, _serving({}, calls))
 
     assert calls == []
-    assert report == ["present cities.txt"]
+    assert report == DataReport(written=["present cities.txt"], refused=[])
 
 
 def test_a_committed_entry_is_not_fetched(tmp_path: Path) -> None:
@@ -68,17 +69,51 @@ def test_a_committed_entry_is_not_fetched(tmp_path: Path) -> None:
     report = fetch_data(directory, _serving({}, calls))
 
     assert calls == []
-    assert report == []
+    assert report == DataReport(written=[], refused=[])
 
 
 def test_a_download_that_does_not_match_its_hash_is_refused_and_not_written(tmp_path: Path) -> None:
     directory = _data_dir(tmp_path, _entry("cities.txt"))
     download = _serving({"https://data.example.org/cities.txt": b"changed upstream"}, [])
 
-    with pytest.raises(DataFetchError, match=r"cities\.txt: sha256 .* does not match the manifest"):
-        fetch_data(directory, download)
+    report = fetch_data(directory, download)
 
+    got = hashlib.sha256(b"changed upstream").hexdigest()
+    assert report.refused == [
+        f"cities.txt: sha256 {got} does not match the manifest; the source changed, so the entry needs re-pinning"
+    ]
     assert sorted(p.name for p in directory.iterdir()) == ["manifest.json"]
+
+
+def test_a_refused_entry_does_not_stop_the_entries_after_it(tmp_path: Path) -> None:
+    directory = _data_dir(
+        tmp_path, _entry("changed.txt"), _entry("http.txt", url="http://data.example.org/h"), _entry("ok.txt")
+    )
+    files = {"https://data.example.org/changed.txt": b"changed upstream", "https://data.example.org/ok.txt": CONTENT}
+
+    report = fetch_data(directory, _serving(files, []))
+
+    assert (directory / "ok.txt").read_bytes() == CONTENT
+    assert report.written == ["fetched ok.txt"]
+    assert [line.split(":")[0] for line in report.refused] == ["changed.txt", "http.txt"]
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [(OSError("connection refused"), "connection refused"), (IncompleteRead(b"geo"), "IncompleteRead(3 bytes read)")],
+    ids=["network", "cut_short"],
+)
+def test_a_failed_download_is_refused_and_the_next_entry_fetched(tmp_path: Path, error: Exception, reason: str) -> None:
+    directory = _data_dir(tmp_path, _entry("down.txt"), _entry("ok.txt"))
+
+    def download(url: str) -> bytes:
+        if url.endswith("down.txt"):
+            raise error
+        return CONTENT
+
+    report = fetch_data(directory, download)
+
+    assert report == DataReport(written=["fetched ok.txt"], refused=[f"down.txt: download failed: {reason}"])
 
 
 def test_a_stale_file_is_replaced(tmp_path: Path) -> None:
@@ -88,7 +123,7 @@ def test_a_stale_file_is_replaced(tmp_path: Path) -> None:
     report = fetch_data(directory, _serving({"https://data.example.org/cities.txt": CONTENT}, []))
 
     assert (directory / "cities.txt").read_bytes() == CONTENT
-    assert report == ["fetched cities.txt"]
+    assert report == DataReport(written=["fetched cities.txt"], refused=[])
 
 
 @pytest.mark.parametrize("path", ["../outside.txt", "/etc/outside.txt", "a/../../outside.txt"])
@@ -96,9 +131,9 @@ def test_an_entry_path_outside_the_data_directory_is_refused(tmp_path: Path, pat
     directory = _data_dir(tmp_path, _entry(path))
     download = _serving({f"https://data.example.org/{path}": CONTENT}, [])
 
-    with pytest.raises(DataFetchError, match="outside the data directory"):
-        fetch_data(directory, download)
+    report = fetch_data(directory, download)
 
+    assert report.refused == [f"{path}: outside the data directory"]
     assert not (tmp_path / "outside.txt").exists()
 
 
@@ -107,7 +142,7 @@ def test_only_https_urls_are_fetched(tmp_path: Path) -> None:
     calls: list[str] = []
     download = _serving({}, calls)
 
-    with pytest.raises(DataFetchError, match="not an https URL"):
-        fetch_data(directory, download)
+    report = fetch_data(directory, download)
 
+    assert report.refused == ["cities.txt: http://data.example.org/cities.txt is not an https URL"]
     assert calls == []

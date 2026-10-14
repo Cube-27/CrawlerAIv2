@@ -185,7 +185,9 @@ async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
 
 async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
     """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`."""
-    job = (await conn.execute(select(Job.status, Job.request).where(Job.id == job_id).with_for_update())).one()
+    # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
+    locked = select(Job.status, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
+    job = (await conn.execute(locked)).one()
     if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
         await transition_job(conn, job_id, "running")
     # The state may have moved on already (an operator's config, a cancel), and then there is no run to end.

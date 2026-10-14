@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import logging
 import signal
 import sys
 import uuid
@@ -24,7 +25,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
-from crawlerai.core.data import DataFetchError, fetch_data
+from crawlerai.core.data import fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.models import EvalCategory, EvalRunId, JobKind, PageKind, Split
@@ -373,11 +374,22 @@ def _run_openapi(_parser: argparse.ArgumentParser, _args: argparse.Namespace) ->
     _print_openapi()
 
 
+def _log_to_stderr() -> None:
+    """Send the package's INFO and above to stderr, for the long-running commands: the API's are uvicorn's to set up."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger = logging.getLogger("crawlerai")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def _run_worker(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    _log_to_stderr()
     asyncio.run(_work())
 
 
 def _run_scheduler(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    _log_to_stderr()
     asyncio.run(_schedule())
 
 
@@ -403,10 +415,13 @@ def _run_apikey_revoke(parser: argparse.ArgumentParser, args: argparse.Namespace
 
 def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
     try:
-        for line in fetch_data(_data_dir()):
-            print(line)
-    except (DataFetchError, EvalCliError) as e:
+        report = fetch_data(_data_dir())
+    except EvalCliError as e:
         parser.exit(2, f"crawlerai data fetch: {e}\n")
+    for line in report.written:
+        print(line)
+    if report.refused:
+        parser.exit(2, "".join(f"crawlerai data fetch: {line}\n" for line in report.refused))
 
 
 def _run_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

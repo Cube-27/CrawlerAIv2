@@ -1,6 +1,7 @@
 """The queue and the worker loop across several connections, with committed data (SPEC-01 §6, §7)."""
 
 import asyncio
+import logging
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import timedelta
@@ -149,6 +150,26 @@ async def test_a_finished_result_records_its_reason(engine: AsyncEngine) -> None
     await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
 
     assert await _tasks(engine) == [("done", "blocked", 1, "robots")]
+
+
+async def test_the_worker_logs_its_start_each_tasks_result_and_its_stop(
+    engine: AsyncEngine, caplog: pytest.LogCaptureFixture
+) -> None:
+    job_id, ids = await _job(engine, 2)
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        return Finished("extracted") if task.id == ids[0] else Failed("http 503", transient=False)
+
+    with caplog.at_level(logging.INFO, logger="crawlerai.worker.loop"):
+        await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+
+    lines = [(r.levelname, r.getMessage().split(": ", 1)[1]) for r in caplog.records]
+    assert lines == [
+        ("INFO", "started; job kinds crawl"),
+        ("INFO", f"crawl task of job {job_id}: extracted"),
+        ("WARNING", f"crawl task of job {job_id}: failed: http 503"),
+        ("INFO", "stopped"),
+    ]
 
 
 async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engine: AsyncEngine) -> None:
