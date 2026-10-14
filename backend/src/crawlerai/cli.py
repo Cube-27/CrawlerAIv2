@@ -24,7 +24,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
-from crawlerai.core.data import DataFetchError, fetch_data
+from crawlerai.core.data import fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.models import EvalCategory, EvalRunId, JobKind, PageKind, Split
@@ -403,10 +403,13 @@ def _run_apikey_revoke(parser: argparse.ArgumentParser, args: argparse.Namespace
 
 def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
     try:
-        for line in fetch_data(_data_dir()):
-            print(line)
-    except (DataFetchError, EvalCliError) as e:
+        report = fetch_data(_data_dir())
+    except EvalCliError as e:
         parser.exit(2, f"crawlerai data fetch: {e}\n")
+    for line in report.written:
+        print(line)
+    if report.refused:
+        parser.exit(2, "".join(f"crawlerai data fetch: {line}\n" for line in report.refused))
 
 
 def _run_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

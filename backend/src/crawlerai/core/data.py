@@ -11,6 +11,7 @@ import os
 import tempfile
 import urllib.request
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -18,8 +19,17 @@ MANIFEST = "manifest.json"
 _TIMEOUT_SECONDS = 120
 
 
-class DataFetchError(Exception):
-    """A fetched entry could not be written as the manifest pins it."""
+class _Refused(Exception):
+    """An entry that could not be written as the manifest pins it."""
+
+
+@dataclass(frozen=True)
+class DataReport:
+    """What `fetch_data` did: one line per entry it wrote or found in place (`fetched <path>`, `present <path>`), and
+    one per entry it refused (`<path>: <reason>`)."""
+
+    written: list[str]
+    refused: list[str]
 
 
 def _download(url: str) -> bytes:
@@ -29,37 +39,45 @@ def _download(url: str) -> bytes:
     return body
 
 
-def fetch_data(data_dir: Path, download: Callable[[str], bytes] = _download) -> list[str]:
+def fetch_data(data_dir: Path, download: Callable[[str], bytes] = _download) -> DataReport:
     """Download each fetched entry of `data_dir`'s manifest that is missing or differs from its pinned sha256.
 
-    Returns one line per fetched entry (`fetched <path>` or `present <path>`). Raises `DataFetchError` on an entry
-    whose path leaves `data_dir`, whose URL is not https, or whose download does not match its hash; a refused
-    download is not written.
+    Every entry is tried, so one that is refused leaves the others fetched. An entry is refused when its path leaves
+    `data_dir`, its URL is not https, its download fails, or the download does not match its hash; a refused entry
+    is not written.
     """
     root = data_dir.resolve()
     manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
-    report: list[str] = []
+    report = DataReport(written=[], refused=[])
     for entry in manifest["entries"]:
         if entry.get("fetched") is not True:
             continue
-        path, url, sha256 = str(entry["path"]), str(entry["url"]), str(entry["sha256"]).lower()
-        # The manifest is data: a path that resolves outside the data directory is never written.
-        target = (root / path).resolve()
-        if not target.is_relative_to(root):
-            raise DataFetchError(f"{path}: outside the data directory")
-        if urlsplit(url).scheme != "https":
-            raise DataFetchError(f"{path}: {url} is not an https URL")
-        if target.is_file() and _sha256(target.read_bytes()) == sha256:
-            report.append(f"present {path}")
-            continue
-        content = download(url)
-        if (got := _sha256(content)) != sha256:
-            raise DataFetchError(
-                f"{path}: sha256 {got} does not match the manifest; the source changed, so the entry needs re-pinning"
-            )
-        _write_atomically(target, content)
-        report.append(f"fetched {path}")
+        path = str(entry["path"])
+        try:
+            report.written.append(_fetch_entry(root, path, str(entry["url"]), str(entry["sha256"]).lower(), download))
+        except _Refused as refused:
+            report.refused.append(f"{path}: {refused}")
     return report
+
+
+def _fetch_entry(root: Path, path: str, url: str, sha256: str, download: Callable[[str], bytes]) -> str:
+    """Write one entry unless it is already in place; its report line. Raises `_Refused`."""
+    # The manifest is data: a path that resolves outside the data directory is never written.
+    target = (root / path).resolve()
+    if not target.is_relative_to(root):
+        raise _Refused("outside the data directory")
+    if urlsplit(url).scheme != "https":
+        raise _Refused(f"{url} is not an https URL")
+    if target.is_file() and _sha256(target.read_bytes()) == sha256:
+        return f"present {path}"
+    try:
+        content = download(url)
+    except OSError as e:  # urllib's URLError and socket timeouts are OSErrors
+        raise _Refused(f"download failed: {e}") from e
+    if (got := _sha256(content)) != sha256:
+        raise _Refused(f"sha256 {got} does not match the manifest; the source changed, so the entry needs re-pinning")
+    _write_atomically(target, content)
+    return f"fetched {path}"
 
 
 def _sha256(content: bytes) -> str:
