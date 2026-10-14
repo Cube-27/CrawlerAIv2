@@ -5143,3 +5143,24 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep the button, which cancels again idempotently.
 - Why: UAT F16 expected a visible pending state, and a second cancel has no effect.
 - Reversible: yes
+
+### D-0762 — A job's records are the ones its tasks stand for, through `task_record`
+- Date: 2026-10-14 · Spec/PR: UAT re-run F28 (#158) · Status: decided
+- Decision: `task_record (url_task_id, record_id)` (migration 0017; both FKs `ON DELETE CASCADE`, PK on both, index on `record_id`). `store_records` links each record it answers with, stored or found unchanged; an `unchanged` task (304 or SimHash) links its standing record. `RecordFilter.job_id` (job results, exports, MCP status results, `/v1/records?job_id`) selects through it. The migration backfills from `record.extraction_id → extraction.url_task_id`.
+- Alternatives: `url_task.record_id` as SPEC-11 §4.2 names it, which cannot hold a listing page's one record per row; `Record.job_id` OR links for unchanged entities only, which gives two definitions of a job's records.
+- Why: SPEC-11 §4.2/§4.4 say the task references the existing latest record, and job results carry `changed_fields` per record. This is plumbing for the column §4.2 names, generalized to listings (D-0664 deferred it).
+- Reversible: yes
+
+### D-0763 — A re-extraction that changes only `field_meta` stores nothing
+- Date: 2026-10-14 · Spec/PR: UAT re-run F31 (#158) · Status: decided
+- Decision: SPEC-11 §4.4 as written: an equal record fingerprint inserts nothing and leaves the stored row, its reasons and provenance included, unchanged. The stored `field_meta` describes the extraction that stored the record.
+- Alternatives: Rewrite the stored row's `field_meta` in place, which mixes two extractions in one row and breaks that record's replay (INV-10); store a new version on a reason-only change, which contradicts §4.4, adds versions on every LLM outage and recovery, and has empty `changed_fields`.
+- Why: The spec is explicit, and both alternatives are less conservative. Fresh reasons belong with the task's extraction, not the record.
+- Reversible: yes
+
+### D-0764 — Job end times and event times use `clock_timestamp()`
+- Date: 2026-10-14 · Spec/PR: UAT re-run F34 (#158) · Status: decided
+- Decision: `transition_job` stamps `finished_at` and the end event's `ts` with one `clock_timestamp()` value; `record_event` stamps every event with `clock_timestamp()`.
+- Alternatives: Settle the job in its own transaction after the task's.
+- Why: A job settles at the end of its last task's transaction, where `now()` is when that transaction began (PostgreSQL §9.9.5). The queue's leases already use `clock_timestamp()` for the same reason.
+- Reversible: yes

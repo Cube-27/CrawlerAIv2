@@ -14,7 +14,18 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
 from sqlalchemy import RowMapping, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import CaptureId, Extraction, ExtractionMode, JobId, Record, RecordId, SchemaId, Site
+from crawlerai.db.models import (
+    CaptureId,
+    Extraction,
+    ExtractionMode,
+    JobId,
+    Record,
+    RecordId,
+    SchemaId,
+    Site,
+    TaskRecord,
+    UrlTask,
+)
 from crawlerai.resolve.records import FieldMeta, RecordContent, record_confidence
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas import registry
@@ -89,8 +100,9 @@ class RecordPage(BaseModel):
 
 class RecordFilter(BaseModel):
     """The records to list: those of a job, of a site (its host), of a schema version, stored at or after a time, or
-    any combination. Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed
-    of recurring runs (SPEC-11 §4.4). An entity re-extracted unchanged stores no record, so it is not listed."""
+    any combination. A job's are those its pages stand for, stored by it or found unchanged (SPEC-11 §4.2, §4.4).
+    Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring
+    runs (§4.4). An entity re-extracted unchanged stores no record, so `changed_since` does not list it again."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -113,7 +125,9 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
         .limit(query.limit + 1)
     )
     if query.job_id is not None:
-        statement = statement.where(Record.job_id == query.job_id)
+        # A job's records are those its tasks stand for: each stored, or found unchanged (SPEC-11 §4.2, §4.4).
+        of_job = select(TaskRecord.record_id).join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+        statement = statement.where(Record.id.in_(of_job.where(UrlTask.job_id == query.job_id)))
     if query.site is not None:
         # Hosts compare without case (RFC 4343), and sites are stored lowercase.
         statement = statement.join(Site, Site.id == Record.site_id).where(Site.host == query.site.lower())

@@ -3,7 +3,8 @@ entities were extracted before.
 
 Each record is compared with the latest version of its entity, the record with the same (site, schema, entity key) and
 the highest `version`. An equal fingerprint (`recurring.record_fp`) stores nothing and answers with that version; a
-different one, or none stored, adds the next version, superseding it and naming its changed fields. This is the
+different one, or none stored, adds the next version, superseding it and naming its changed fields. Either way the
+task stands for the record it answers with (`task_record`, §4.2), so that its job lists it. This is the
 `resolve.task.RecordWriter` a page task stores its records with.
 
 `url_state` is not written here: it is per URL, and its `last_changed_at` is when the page's content last changed
@@ -17,15 +18,16 @@ from typing import Any
 
 from sqlalchemy import RowMapping, func, insert, select
 from sqlalchemy.dialects.postgresql import distinct_on
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Record, RecordId, SiteId
+from crawlerai.db.models import Record, RecordId, SiteId, TaskRecord, UrlTaskId
 from crawlerai.recurring.record_fp import changed_fields, record_fingerprint
 from crawlerai.resolve.records import FieldMeta, RecordDraft
 from crawlerai.resolve.task import RecordSource, StoredRecord
 from crawlerai.schemas.types import SchemaDef
 
-__all__ = ["store_records"]
+__all__ = ["link_records", "store_records"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +60,17 @@ async def store_records(
             new.append(_New(position, draft, fingerprint, previous))
     for record, record_id in zip(new, await _insert(conn, schema, source, new), strict=True):
         stored[record.position] = StoredRecord(record_id, record.draft)
-    return tuple(record for record in stored if record is not None)
+    records = tuple(record for record in stored if record is not None)
+    await link_records(conn, source.task_id, [record.id for record in records])
+    return records
+
+
+async def link_records(conn: AsyncConnection, task_id: UrlTaskId, record_ids: Sequence[RecordId]) -> None:
+    """Record that the task's page stands for `record_ids`: those it stored, or the latest versions it found
+    unchanged. A listing's rows can name one entity twice, so a link already there is kept."""
+    if record_ids:
+        rows = [{"url_task_id": task_id, "record_id": record_id} for record_id in dict.fromkeys(record_ids)]
+        await conn.execute(pg_insert(TaskRecord).values(rows).on_conflict_do_nothing())
 
 
 async def _lock(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:

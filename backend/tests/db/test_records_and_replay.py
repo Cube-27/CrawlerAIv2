@@ -232,7 +232,8 @@ async def test_a_page_scraped_again_unchanged_answers_with_its_record_and_stores
 
     assert again.record_id == first.record_id
     assert [r.id for r in (await _list(world.engine, schema_id=world.schema.id)).items] == [first.record_id]
-    assert (await _list(world.engine, job_id=again.job_id)).items == []
+    # The job that found it unchanged lists it too (SPEC-11 §4.2, §4.4).
+    assert [r.id for r in (await _list(world.engine, job_id=again.job_id)).items] == [first.record_id]
 
 
 async def test_a_changed_price_is_listed_as_version_2_naming_price(world: World) -> None:

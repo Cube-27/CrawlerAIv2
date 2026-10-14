@@ -31,6 +31,7 @@ from crawlerai.db.models import (
     RecordId,
     SiteId,
     TaskOutcome,
+    UrlTaskId,
 )
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok
@@ -73,9 +74,11 @@ class StoredRecord:
 
 @dataclass(frozen=True, slots=True)
 class RecordSource:
-    """What every record of one extraction is stored with: the extraction, its job, site and mode, and the page."""
+    """What every record of one extraction is stored with: the extraction, its task, job, site and mode, and the
+    page."""
 
     extraction_id: ExtractionId
+    task_id: UrlTaskId
     job_id: JobId
     site_id: SiteId
     mode: ExtractionMode
@@ -183,7 +186,7 @@ async def store_extraction(
     )
     if not drafts:
         return Stored(outcome, extraction_id, (), result)
-    source = RecordSource(extraction_id, task.job_id, site_id, result.mode, task.canonical_url)
+    source = RecordSource(extraction_id, task.id, task.job_id, site_id, result.mode, task.canonical_url)
     records = await write_records(conn, schema, drafts, source)
     return Stored(outcome, extraction_id, records, result)
 

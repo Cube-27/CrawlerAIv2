@@ -9,8 +9,10 @@ network, no Chromium. The limiter's clock jumps ahead on every reading, so the s
 import asyncio
 import itertools
 import json
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,7 @@ from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
 from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
+from crawlerai.worker.handlers import crawl as crawl_handler_module
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
 from tests.conftest import ParserCounter
@@ -375,6 +378,33 @@ async def test_sitemap_urls_in_scope_are_seeds(
     assert {(task.depth, task.parent_task_id) for task in found.values()} == {(0, None)}
 
 
+async def test_reading_sitemaps_stops_at_the_time_cap_and_is_logged(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    web.pages |= {
+        f"{own_origin}/robots.txt": robots(f"Sitemap: {own_origin}/a.xml", f"Sitemap: {own_origin}/b.xml"),
+        f"{own_origin}/a.xml": urlset(f"{own_origin}/p/1"),
+        f"{own_origin}/b.xml": urlset(f"{own_origin}/p/2"),
+        f"{own_origin}/": page(),
+    }
+    web.held[f"{own_origin}/b.xml"] = asyncio.Event()  # never answers
+    monkeypatch.setattr(crawl_handler_module, "SITEMAP_TIMEOUT_S", 0.5)
+    submitted = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/", max_depth=0), data=None)
+
+    with caplog.at_level(logging.INFO, logger="crawlerai"):
+        await run(engine, fetching, None, submitted.job_id)
+
+    # The seeds read before the cap are kept.
+    assert sorted(await tasks(engine, submitted.job_id)) == [f"{own_origin}/", f"{own_origin}/p/1"]
+    lines = [r.getMessage().split(": ", 1)[1] for r in caplog.records if r.name.endswith(".crawl")]
+    assert lines == [f"sitemaps of job {submitted.job_id}: 1 seeds; stopped at the 0.5 s time cap"]
+
+
 async def test_a_target_the_guard_refuses_is_never_fetched(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
@@ -413,11 +443,16 @@ async def _cancel_while_reading_sitemaps(
     try:
         async with asyncio.timeout(5), engine.begin() as conn:
             requested = await jobs.cancel_job(conn, submitted.job_id)
+            requested_at: datetime = (await conn.execute(select(func.clock_timestamp()))).scalar_one()
     finally:
         release.set()
     await worker
     assert (requested.status, requested.counts.claimed) == ("running", 1)
-    assert (await summary(engine, submitted.job_id)).status == "cancelled"
+    ended = await summary(engine, submitted.job_id)
+    assert ended.status == "cancelled"
+    # It ended when the task reading the sitemap did, after the cancel was requested (F34).
+    assert ended.finished_at is not None
+    assert ended.finished_at > requested_at
     assert sorted(await tasks(engine, submitted.job_id)) == [request.start]
 
 

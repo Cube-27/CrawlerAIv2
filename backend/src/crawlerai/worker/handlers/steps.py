@@ -27,6 +27,7 @@ from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
 from crawlerai.recurring.state import record_fetch, standing_record, stored_validators
+from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.schemas.registry import get_by_id
 from crawlerai.services.batch import JobPins
@@ -143,6 +144,8 @@ async def fetch_page(
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)
+        # The task stands for the record that stood for the 304 (`fetch_unless_unchanged` takes none without one).
+        await link_records(conn, task.id, [] if standing is None else [standing])
         return Finished("unchanged")
     return fetched
 

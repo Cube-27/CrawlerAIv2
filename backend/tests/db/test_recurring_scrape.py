@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -42,8 +42,11 @@ from crawlerai.db.models import (
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from crawlerai.services import jobs
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching
+from crawlerai.services.jobs import ResultsQuery
+from crawlerai.services.records import RecordPage
 from crawlerai.storage.capture_bundle import sha256_hex
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.scrape import scrape_handler
@@ -134,6 +137,7 @@ class Run:
 
     tasks: dict[str, tuple[TaskOutcome | None, bool]]
     extractions: int
+    job_id: JobId | None = field(default=None, compare=False)
 
 
 async def _run_job(
@@ -158,7 +162,7 @@ async def _run_job(
         )
         tasks = {row.url: (row.outcome, row.capture_id is not None) for row in rows}
         extracted = select(func.count()).select_from(Extraction).join(UrlTask).where(UrlTask.job_id == job_id)
-        return Run(tasks, (await conn.execute(extracted)).scalar_one())
+        return Run(tasks, (await conn.execute(extracted)).scalar_one(), job_id)
 
 
 def _records(schema: SchemaDef) -> dict[str, Any]:
@@ -169,6 +173,16 @@ async def _ended(engine: AsyncEngine, job_id: JobId) -> bool:
     async with engine.connect() as conn:
         status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
     return status in ("completed", "failed", "cancelled")
+
+
+async def _results(engine: AsyncEngine, run: Run) -> list[tuple[JsonValue, int, list[str]]]:
+    """The job's results: each record's title, version and changed fields, newest first."""
+    assert run.job_id is not None
+    async with engine.connect() as conn:
+        page = await jobs.job_results(conn, run.job_id, ResultsQuery(), store=FsStore(Path("unused")))
+    assert isinstance(page, RecordPage)
+    assert page.next_cursor is None
+    return [(record.fields["title"].value, record.version, record.changed_fields) for record in page.items]
 
 
 async def _count(engine: AsyncEngine, model: type[Record] | type[Capture]) -> int:
@@ -199,6 +213,50 @@ async def test_a_rerun_over_unchanged_pages_is_unchanged_and_extracts_nothing(
     assert again == Run({url: ("unchanged", not etags) for url in urls}, extractions=0)
     assert await _count(engine, Record) == records
     assert await _count(engine, Capture) == captures + (0 if etags else 2)
+    # The rerun's results are the records that stand for its pages, as stored by the first run (§4.2, §4.4).
+    assert await _results(engine, again) == await _results(engine, first)
+    assert sorted(await _results(engine, again)) == [("Blue kettle", 1, []), ("Red kettle", 1, [])]
+
+
+async def test_a_page_extracted_again_with_equal_values_lists_its_standing_record(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red")]
+    origin.pages = {urls[0]: _page("Blue kettle")}
+    await _run_job(engine, fetching, engine_data, urls[:1], _records(kettle_schema))
+    # The blue page's text changes but its values do not: it is extracted, and its record stores nothing new.
+    origin.pages = {urls[0]: _page("Blue kettle", OTHER_PROSE), urls[1]: _page("Red kettle")}
+    records = await _count(engine, Record)
+
+    both = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
+
+    assert both.tasks == {url: ("extracted", True) for url in urls}
+    assert await _count(engine, Record) == records + 1
+    assert sorted(await _results(engine, both)) == [("Blue kettle", 1, []), ("Red kettle", 1, [])]
+
+
+async def test_a_new_version_is_listed_by_the_job_that_stored_it_with_its_changed_fields(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    origin.pages = {url: _page("Blue kettle")}
+    first = await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
+    origin.pages = {url: _page("Blue teapot", OTHER_PROSE)}
+
+    again = await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
+
+    assert await _results(engine, first) == [("Blue kettle", 1, [])]
+    assert await _results(engine, again) == [("Blue teapot", 2, ["title"])]
 
 
 async def test_a_page_whose_text_changed_is_extracted_again(

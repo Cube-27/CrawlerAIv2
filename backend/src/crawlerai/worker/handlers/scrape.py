@@ -35,6 +35,7 @@ from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.simhash import simhash64
 from crawlerai.recurring.state import record_content, record_fetch
+from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import FetchOptions
@@ -97,6 +98,7 @@ async def _settle(
     changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed)
     if not changed and page.standing is not None:
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
+        await link_records(conn, task.id, (page.standing,))
         return Finished("unchanged", capture_id=page.capture_id)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):
