@@ -1,6 +1,8 @@
 """The page content formats (SPEC-07 §4.5, ARCHITECTURE §8.5): markdown, cleaned html, links and metadata, each
 read from the shared `ParsedPage`."""
 
+import re
+
 from lxml import etree
 
 from crawlerai.content.html import cleaned_html, is_javascript_url
@@ -26,28 +28,77 @@ ARTICLE = (
 
 
 def test_markdown_is_the_main_content_with_its_links_and_images() -> None:
-    assert markdown(ParsedPage(ARTICLE)) == (
+    assert markdown(ParsedPage(ARTICLE), FINAL_URL) == (
         "# Folding chairs for small rooms\n\n"
-        "A folding chair saves space when it is not in use. This guide compares [frame materials](/guide/frames) and"
-        " seat widths across common designs.\n\n"
+        "A folding chair saves space when it is not in use. This guide compares"
+        " [frame materials](https://shop.example.test/guide/frames) and seat widths across common designs.\n\n"
         "Steel frames carry more weight, while beech frames are lighter and quieter on wooden floors. Both fold flat"
         " to under five centimetres.\n\n"
-        "![A folded chair](/img/chair.png)\n\n"
+        "![A folded chair](https://shop.example.test/img/chair.png)\n\n"
         "Seat widths range from forty to fifty centimetres; wider seats need a larger storage gap."
     )
 
 
 def test_markdown_of_a_page_without_content_is_empty() -> None:
-    assert markdown(ParsedPage("")) == ""
+    assert markdown(ParsedPage(""), FINAL_URL) == ""
 
 
 def test_markdown_leaves_the_shared_lxml_tree_as_parsed() -> None:
     page = ParsedPage(ARTICLE)
     before = etree.tostring(page.lxml_tree)
 
-    markdown(page)
+    markdown(page, FINAL_URL)
 
     assert etree.tostring(page.lxml_tree) == before
+
+
+# Main content whose source carries layout whitespace (indented blocks, line breaks and blank-line runs, as templates
+# write them), a nested list, a `pre` block whose whitespace is content, and a `<base href>`.
+LAYOUT = (
+    '<html lang="en"><head><base href="https://cdn.example.test/site/"></head><body><article>'
+    "<h1>Notes on folding chairs</h1>"
+    "<div>\n        <span>A folding chair saves space when it is not in use, and this note says why.</span>\n"
+    "        <span>by <small>A. Writer</small>\n        </span>\n"
+    "\n\n\n    </div>"
+    "<p>Steel frames carry more weight, while beech frames are lighter and quieter on wooden floors, as the"
+    '\n        <a href="about/a-writer">writer</a>\n        explains.</p>'
+    "<ul><li>Steel<ul><li>Powder coated</li><li>Chromed</li></ul></li><li>Beech</li></ul>"
+    "<pre>fold()\n    lock()</pre>"
+    '<p>Seat widths range from forty to fifty centimetres. <img src="img/seat.png" alt="A seat"></p>'
+    "</article></body></html>"
+)
+LIST_ITEM = re.compile(r"\s*(?:[-+*]|\d+[.)])\s")
+
+
+def _outside_fences(text: str) -> list[str]:
+    lines: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced:
+            lines.append(line)
+    return lines
+
+
+def test_markdown_targets_resolve_against_the_document_base_url() -> None:
+    # HTML Living Standard §2.4.1: `<base href>` sets the base; RFC 3986 §5.2 resolves against it.
+    text = markdown(ParsedPage(LAYOUT), FINAL_URL)
+
+    assert "](https://cdn.example.test/site/about/a-writer)" in text
+    assert "](https://cdn.example.test/site/img/seat.png)" in text
+    assert not re.search(r"\]\((?!https?://)", text)
+
+
+def test_markdown_drops_layout_whitespace_but_keeps_list_nesting_and_code() -> None:
+    text = markdown(ParsedPage(LAYOUT), FINAL_URL)
+
+    # CommonMark §4.4: no line outside code starts a code block by its indentation, unless it nests a list item.
+    assert all(not line.startswith("    ") for line in _outside_fences(text) if not LIST_ITEM.match(line))
+    # CommonMark §4.9: one blank line separates blocks.
+    assert "\n\n\n" not in text
+    assert "  - Powder coated" in text
+    assert "fold()\n    lock()" in text
 
 
 def test_html_drops_script_style_noscript_and_template_and_keeps_the_rest() -> None:

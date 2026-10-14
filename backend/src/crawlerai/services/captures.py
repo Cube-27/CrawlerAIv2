@@ -73,7 +73,7 @@ async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: Captu
     async with engine.connect() as conn:
         capture = await _capture(conn, capture_id)
     bundle = await _bundle(store, capture)
-    return await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle)))
+    return await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle), bundle.manifest.final_url))
 
 
 async def _capture(conn: AsyncConnection, capture_id: CaptureId) -> _Capture:

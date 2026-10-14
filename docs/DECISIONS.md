@@ -5227,3 +5227,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Read them in `content/context.py`, which sits below the collectors and cannot use their scope rules; read only Offer nodes, which misses PriceSpecification and AggregateOffer.
 - Why: SPEC-04 §4.4 names the page's structured data as the source; a page currency only narrows a symbol the text writes, never supplies a missing one (D-0301).
 - Reversible: yes
+
+### D-0774 — Markdown targets are resolved by lxml on a tree copy, not by trafilatura's `url=`
+- Date: 2026-10-15 · Spec/PR: SPEC-07 §4.5, UAT accuracy markdown item 2 (#162) · Status: decided
+- Decision: `content.markdown` resolves every link and resource target against the document base URL with `make_links_absolute` on a deep copy of the lxml tree, then runs trafilatura without `url`.
+- Alternatives: trafilatura's `url=` (resolves link targets against the host only, not RFC 3986 §5.2); rewriting targets in the Markdown output.
+- Why: RFC 3986 resolution against the HTML Standard's document base URL, and the shared tree stays as parsed (INV-26).
+- Reversible: yes
+
+### D-0775 — Markdown layout whitespace is dropped per line after extraction
+- Date: 2026-10-15 · Spec/PR: SPEC-07 §4.5, UAT accuracy markdown item 3 (#162) · Status: decided
+- Decision: Outside fenced code, a line's leading whitespace is dropped unless the line is a list item, and runs of blank lines become one (CSS Text Level 3 `white-space: normal`; CommonMark §4.4, §4.9, §5.2).
+- Alternatives: Collapse text-node whitespace on the tree before trafilatura, which merged separate `div` blocks into one paragraph.
+- Why: Per line, list nesting and code survive and blocks stay apart.
+- Reversible: yes
