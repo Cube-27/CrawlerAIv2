@@ -76,6 +76,7 @@ UsageResource = Literal[
 Split = Literal["dev", "hidden", "fresh"]
 PrivateSplit = Literal["hidden", "fresh"]
 EvalCategory = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]
+WebhookStatus = Literal["pending", "delivered", "failed"]
 
 
 def one_of(column: str, values: Any) -> str:
@@ -339,6 +340,9 @@ class Job(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # The key that submitted the job: its `webhook_secret` signs the job's webhook (SPEC-10 §4.2). NULL for a job no
+    # key submitted (a learning run).
+    api_key_id: Mapped[ApiKeyId | None] = mapped_column(ForeignKey(ApiKey.id))
 
 
 class UrlTask(Base):
@@ -380,12 +384,33 @@ class JobEvent(Base):
     """A run event of a job (ARCHITECTURE §17), stored so that SSE clients can resume (SPEC-01 §4.2)."""
 
     __tablename__ = "job_event"
+    # The event stream reads a job's events in id order, after the last one sent (SPEC-10 §4.2).
+    __table_args__ = (Index(None, "job_id", "id"),)
 
     id: Mapped[JobEventId] = mapped_column(primary_key=True, default=uuid7)
     job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     kind: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
+
+
+class WebhookDelivery(Base):
+    """The completion webhook of an ended job (SPEC-10 §4.2): `pending` until it is delivered or its attempts run out.
+    Written with the job's end, so a job never ends without its webhook being owed."""
+
+    __tablename__ = "webhook_delivery"
+    __table_args__ = (
+        CheckConstraint(one_of("status", WebhookStatus), name="status"),
+        CheckConstraint("attempts >= 0", name="attempts_non_negative"),
+        # The scheduler reads the pending deliveries that are due.
+        Index(None, "next_attempt_at", postgresql_where=text("status = 'pending'")),
+    )
+
+    job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id), primary_key=True)
+    status: Mapped[WebhookStatus] = mapped_column(Text, server_default=text("'pending'"))
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_error: Mapped[str | None] = mapped_column(Text)
 
 
 class UsageEvent(Base):
@@ -417,7 +442,8 @@ class Extraction(Base):
     )
 
     id: Mapped[ExtractionId] = mapped_column(primary_key=True, default=uuid7)
-    url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id))
+    # Indexed for a finished task's events, which report its extraction (SPEC-10 §4.2).
+    url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id), index=True)
     # Captures expire after 30 days (ARCHITECTURE §15) and the extraction, which records cite, stays. Indexed for
     # that delete.
     capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete="SET NULL"), index=True)

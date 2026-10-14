@@ -92,9 +92,10 @@ async def test_a_created_key_is_shown_once_stored_hashed_and_accepted(
     row = await _row(keys, created["id"])
     [response] = await _whoami(created["key"])
 
-    assert sorted(created) == ["id", "key", "label"]
+    assert sorted(created) == ["id", "key", "label", "webhook_secret"]
     assert created["label"] == "ci"
     assert (row.hashed_key, row.label, row.revoked_at) == (hash_key(created["key"]), "ci", None)
+    assert created["webhook_secret"] == row.webhook_secret  # the receiver verifies webhook signatures with it
     assert created["key"] not in (row.hashed_key, row.webhook_secret)
     assert response.status_code == 200
     assert response.json() == {"key": created["id"]}

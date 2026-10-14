@@ -29,6 +29,7 @@ class CreatedKey:
     id: ApiKeyId
     label: str
     key: str  # the only time the key exists outside its holder
+    webhook_secret: str  # signs the webhooks of the key's jobs (SPEC-10 §4.2)
 
 
 def base62(raw: bytes) -> str:
@@ -53,9 +54,10 @@ def hash_key(key: str) -> str:
 async def create_key(conn: AsyncConnection, label: str) -> CreatedKey:
     key = generate_key()
     # The per-key webhook signing secret (SPEC-10 §4.2) is drawn now, as the column requires one.
-    values = {"hashed_key": hash_key(key), "label": label, "webhook_secret": secrets.token_hex(_KEY_BYTES)}
+    webhook_secret = secrets.token_hex(_KEY_BYTES)
+    values = {"hashed_key": hash_key(key), "label": label, "webhook_secret": webhook_secret}
     key_id = (await conn.execute(insert(ApiKey).values(**values).returning(ApiKey.id))).scalar_one()
-    return CreatedKey(id=key_id, label=label, key=key)
+    return CreatedKey(id=key_id, label=label, key=key, webhook_secret=webhook_secret)
 
 
 async def revoke_key(conn: AsyncConnection, key_id: uuid.UUID) -> RevokeOutcome:

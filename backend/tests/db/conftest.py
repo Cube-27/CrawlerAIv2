@@ -41,6 +41,7 @@ from crawlerai.db.models import (
     SourceKind,
     UrlTask,
     UsageEvent,
+    WebhookDelivery,
 )
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
@@ -97,7 +98,17 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(database_url)
     yield engine
     async with engine.begin() as connection:
-        for model in (Candidate, Record, Extraction, ProgressiveState, UsageEvent, JobEvent, UrlTask, Job):
+        for model in (
+            Candidate,
+            Record,
+            Extraction,
+            ProgressiveState,
+            UsageEvent,
+            JobEvent,
+            WebhookDelivery,
+            UrlTask,
+            Job,
+        ):
             await connection.execute(delete(model))
     await engine.dispose()
 

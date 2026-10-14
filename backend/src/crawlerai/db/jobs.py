@@ -11,7 +11,7 @@ from typing import Any, Final
 from sqlalchemy import ColumnElement, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId, WebhookDelivery
 
 JOB_TRANSITIONS: Final[Mapping[JobStatus, frozenset[JobStatus]]] = {
     "queued": frozenset({"running", "cancelled"}),
@@ -82,8 +82,8 @@ async def _move[S: str](
 
 
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
-    """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at` and records an event of
-    the same kind, which SSE and webhooks report (SPEC-10 §4.2)."""
+    """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at`, records an event of the
+    same kind, which SSE reports, and owes the job's webhook, if it has one (SPEC-10 §4.2)."""
     ending = not JOB_TRANSITIONS[target]
     values: dict[str, Any] = {}
     if target == "running":
@@ -93,6 +93,11 @@ async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus
     await _move(conn, Job, job_id, JOB_TRANSITIONS, target, values)
     if ending:
         await record_event(conn, job_id, target)
+        await conn.execute(
+            insert(WebhookDelivery).from_select(
+                ["job_id"], select(Job.id).where(Job.id == job_id, Job.webhook_url.is_not(None))
+            )
+        )
 
 
 async def start_jobs(conn: AsyncConnection, job_ids: Collection[JobId]) -> None:

@@ -4270,3 +4270,59 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Also store them from browser navigations; keep an old validator when a new 200 omits it.
 - Why: Only the HTTP rung sends validators. API and redirected responses describe another resource. A page not fetched whole must not later be `unchanged` (RFC 9110 §8.8).
 - Reversible: yes
+
+### D-0639 — Webhook delivery is an outbox row the scheduler delivers
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: `transition_job` inserts `webhook_delivery(job_id)` when a job with a `webhook_url` ends. The scheduler's `deliver_webhooks` (5 s, batch 1, `FOR UPDATE SKIP LOCKED`) attempts it: a 2xx is `delivered`; otherwise it retries after 30 s × 4^(n−1) and is `failed` after 3 attempts. `last_error` never contains the URL.
+- Alternatives: Deliver inline from the process that ends the job; keep the attempt state in `job_event` rows.
+- Why: The job's end and the webhook it owes commit together, so none is lost, and delivery never slows a task (§4.2, §4.8).
+- Reversible: yes
+
+### D-0640 — `job.api_key_id` records the submitting key
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: A nullable FK, set by `batch/scrape`. The webhook is signed with that key's `webhook_secret`; a job with no key is never sent unsigned, its delivery is `failed`.
+- Alternatives: The key id inside `job.request` (the frozen caller request); one global secret.
+- Why: §4.2 names a per-key secret, and jobs had no link to a key.
+- Reversible: yes
+
+### D-0641 — `apikey create` prints the webhook secret
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: The CLI prints `webhook_secret` once, with the key.
+- Alternatives: An endpoint that reveals it.
+- Why: A receiver can't check a signature without the secret; only the CLI creates keys (INV-32).
+- Reversible: yes
+
+### D-0642 — Webhook signature encoding
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: `X-CrawlerAI-Signature: sha256=` + lowercase hex HMAC-SHA256 (RFC 2104) of the exact body bytes, keyed with the UTF-8 bytes of the stored hex secret.
+- Alternatives: Key with the hex-decoded bytes.
+- Why: Receivers can use the printed string as-is.
+- Reversible: no — receivers depend on it
+
+### D-0643 — Webhook redirects are not followed
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: A 3xx is a failed attempt. Every attempt passes the SSRF guard and connects only to the checked address.
+- Alternatives: Follow redirects, checking each hop.
+- Why: Re-POSTing a signed body to a target the caller didn't name is not the conservative reading of §4.2.
+- Reversible: yes
+
+### D-0644 — `progress` is computed by the stream, not stored
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: After each batch of stored events, the stream sends `progress` (task `counts` and `outcomes`, as in the job summary) with no `id`.
+- Alternatives: Store a `progress` row on every task finish.
+- Why: That is a count per task, linear in the job's size, which `settle_job` avoids. Resume still works because `progress` carries no id.
+- Reversible: yes
+
+### D-0645 — Task events are read from the task's rows at finish
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: The queue's `_finish` records `task_fetched` (from `url_task.capture_id`), `task_extracted` (the task's last extraction) and `task_abstained` (its records' `field_meta.status = abstained`), for `done` and `failed` tasks only.
+- Alternatives: Each handler records its own events.
+- Why: One place, and handlers need no change.
+- Reversible: yes
+
+### D-0646 — SSE resume is by id, with a known limit across processes
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 6 (#132) · Status: decided
+- Decision: Resume uses `id > Last-Event-ID`, as §4.2 says. An event another process commits late, with a smaller uuid7, can be skipped by a live client that already holds a larger id (D-0103: no cross-process order). The end event is last, because the job row lock serializes it.
+- Alternatives: A commit-ordered sequence column.
+- Why: §4.2 specifies id order; review lists the gap as a possible follow-up.
+- Reversible: yes

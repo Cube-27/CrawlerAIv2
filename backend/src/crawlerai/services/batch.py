@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, Job, JobId, PageKind, Site, UrlTask
+from crawlerai.db.models import ApiKeyId, ExtractionConfig, ExtractionConfigId, Job, JobId, PageKind, Site, UrlTask
 from crawlerai.normalize.url import canonical_url
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
@@ -109,9 +109,15 @@ class BatchRejected(Exception):
 
 
 async def submit_batch(
-    engine: AsyncEngine, connector: SafeConnector, request: BatchScrapeRequest, *, data: EngineData | None
+    engine: AsyncEngine,
+    connector: SafeConnector,
+    request: BatchScrapeRequest,
+    *,
+    data: EngineData | None,
+    api_key_id: ApiKeyId | None = None,
 ) -> BatchSubmitted:
-    """Store `request` as a queued job with its tasks. Raises, storing nothing: `BatchRejected` for a refused target,
+    """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
+    (SPEC-10 §4.2). Raises, storing nothing: `BatchRejected` for a refused target,
     `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
     await _check_targets(connector, request)
     schema = None
@@ -134,6 +140,7 @@ async def submit_batch(
                     request=request.model_dump(mode="json", by_alias=True),
                     schema_id=None if schema is None else schema.id,
                     webhook_url=request.webhook_url,
+                    api_key_id=api_key_id,
                     engine_version=ENGINE_VERSION,
                     pinned=pinned,
                 )

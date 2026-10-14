@@ -249,3 +249,30 @@ def _parse_request_headers(block: bytes) -> HeaderList:
     # `name: value` lines (RFC 9112 §3, §5).
     lines = block.decode("latin-1").split("\r\n")[1:]
     return tuple((name, value.strip()) for name, _, value in (line.partition(":") for line in lines if ":" in line))
+
+
+class RequestFailed(Exception):
+    """A request got no response: the reason never contains the URL (SPEC-02 §4.11)."""
+
+
+async def post(url: str, body: bytes, headers: Mapping[str, str], *, connector: SafeConnector, timeout_s: float) -> int:
+    """POST `body` to `url` and return the response status. The guard checks `url` and the request connects only to
+    the checked address; a redirect is returned as its status, never followed, so the body goes to no other target.
+    The response body is discarded as it arrives. Raises `SsrfRejected`, or `RequestFailed`."""
+    target = await connector.check(url)
+    async with AsyncSession(trust_env=False) as session:
+        options: dict[CurlOpt, object] = {**_pinned(target), CurlOpt.PROTOCOLS_STR: "http,https"}
+        session.curl_options = cast(dict[CurlOpt, str], options)
+        try:
+            response = await session.post(
+                target.url,
+                data=body,
+                headers=dict(headers),
+                allow_redirects=False,
+                timeout=timeout_s,
+                content_callback=len,
+            )
+        except RequestException as e:
+            raise RequestFailed(_CURL_ERRORS.get(e.code, f"network_error: curl {int(e.code)}")) from e
+    status: int = response.status_code
+    return status
