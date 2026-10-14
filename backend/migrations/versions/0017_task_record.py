@@ -31,11 +31,12 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("url_task_id", "record_id", name="pk_task_record"),
     )
-    op.create_index("ix_task_record_record_id", "task_record", ["record_id"])
     op.execute(
         "INSERT INTO task_record (url_task_id, record_id) "
         "SELECT extraction.url_task_id, record.id FROM record JOIN extraction ON extraction.id = record.extraction_id"
     )
+    # After the backfill, so that the index is built once rather than row by row.
+    op.create_index("ix_task_record_record_id", "task_record", ["record_id"])
 
 
 def downgrade() -> None:

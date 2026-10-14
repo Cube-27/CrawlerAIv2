@@ -16,7 +16,7 @@ locked (`Frontier.enqueue`) only for the rest of the task's transaction.
 
 import asyncio
 import logging
-from contextlib import aclosing, suppress
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Final
 
@@ -140,16 +140,17 @@ async def _sitemap_seeds(conn: AsyncConnection, fetching: Fetching, crawl: _Craw
     start = roots(task.canonical_url, () if robots is None else robots.sitemaps)
     seeds: dict[str, None] = {}
     capped = False
-    with suppress(TargetRejected):
-        try:
-            async with asyncio.timeout(SITEMAP_TIMEOUT_S), aclosing(reader.urls(start)) as urls:
-                async for url in urls:
-                    if frontier.admits(url):
-                        seeds[url] = None
-                    if len(seeds) >= frontier.limit:
-                        break
-        except TimeoutError:
-            capped = True
+    try:
+        async with asyncio.timeout(SITEMAP_TIMEOUT_S), aclosing(reader.urls(start)) as urls:
+            async for url in urls:
+                if frontier.admits(url):
+                    seeds[url] = None
+                if len(seeds) >= frontier.limit:
+                    break
+    except TimeoutError:
+        capped = True
+    except TargetRejected:
+        pass  # a refused sitemap ends the reading: it is never fetched (INV-16)
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
     # The task's id and job, never a URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
     stop = f"; stopped at the {SITEMAP_TIMEOUT_S:g} s time cap" if capped else ""
