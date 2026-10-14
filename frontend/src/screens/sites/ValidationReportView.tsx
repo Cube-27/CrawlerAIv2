@@ -1,18 +1,10 @@
 import { Alert, Table, Typography } from "@heroui/react";
 import type { FieldReport, ValidationReport } from "../../api/configs";
+import { confidenceText } from "../../components/ConfidenceCell";
 import { EmptyView } from "../../components/EmptyView";
 import { FieldConfigStatusLabel } from "../../components/ConfigStatusLabel";
 import { StatusLabel } from "../../components/StatusLabel";
-
-/** `count` of `total` pages. */
-function ofPages(count: number, total: number): string {
-  return `${String(count)}/${String(total)}`;
-}
-
-/** A rate as a number with two decimals (DESIGN.md: numbers, never bars); "—" when it was not measured. */
-export function rate(value: number | null | undefined): string {
-  return value == null ? "—" : value.toFixed(2);
-}
+import { ofPages, withNextPage } from "./report";
 
 function FieldOutcome({ report }: Readonly<{ report: FieldReport }>) {
   if (report.status !== null) return <FieldConfigStatusLabel status={report.status} />;
@@ -50,8 +42,8 @@ function FieldReportTable({
                 <Table.Cell>{ofPages(report.valid, report.pages)}</Table.Cell>
                 <Table.Cell>{ofPages(report.reproduced, report.published)}</Table.Cell>
                 <Table.Cell>{ofPages(report.corroborated_on, report.comparable)}</Table.Cell>
-                <Table.Cell>{rate(report.yield)}</Table.Cell>
-                <Table.Cell>{rate(report.validity)}</Table.Cell>
+                <Table.Cell>{confidenceText(report.yield)}</Table.Cell>
+                <Table.Cell>{confidenceText(report.validity)}</Table.Cell>
               </Table.Row>
             )}
           </Table.Body>
@@ -65,9 +57,7 @@ function ListingSection({
   listing,
   heldOut,
 }: Readonly<{ listing: NonNullable<ValidationReport["listing"]>; heldOut: number }>) {
-  // A field name is `[a-z][a-z0-9_]*` (SPEC-04), so "next page" never hides one.
-  const fields =
-    listing.next === null ? listing.fields : { ...listing.fields, "next page": listing.next };
+  const fields = withNextPage(listing.fields, listing.next);
   return (
     <section className="flex flex-col gap-3">
       <Typography.Heading level={3}>Listing rows</Typography.Heading>

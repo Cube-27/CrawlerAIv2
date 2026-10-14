@@ -1,11 +1,13 @@
 import { Table, Typography } from "@heroui/react";
+import { useSchemas } from "../../api/hooks/schemas";
+import { schemaVersionLabel } from "../../api/schemas";
 import type { ConfigDetail, ConfigSummary, FieldConfigStatus } from "../../api/configs";
+import { confidenceText } from "../../components/ConfidenceCell";
 import { ConfigStatusLabel, FieldConfigStatusLabel } from "../../components/ConfigStatusLabel";
 import { LocatorText } from "../../components/LocatorText";
 import { stepText } from "../../components/steps";
 import { configuredFields } from "./correction";
 import { configPath } from "./paths";
-import { rate } from "./ValidationReportView";
 
 const FIELD_STATUSES: readonly FieldConfigStatus[] = [
   "corroborated",
@@ -14,8 +16,18 @@ const FIELD_STATUSES: readonly FieldConfigStatus[] = [
   "suspended",
 ];
 
+/** Names a config's schema version by the schemas the API lists; by its version number until they are read. */
+export function useSchemaLabel(): (config: ConfigSummary) => string {
+  const schemas = useSchemas();
+  const labels = new Map(
+    (schemas.data ?? []).map((schema) => [schema.id, schemaVersionLabel(schema)]),
+  );
+  return (config) =>
+    labels.get(config.schema_id) ?? `schema version ${String(config.schema_version)}`;
+}
+
 /** How many of a config's fields have each status, in one line: "2 corroborated, 1 operator". */
-export function fieldStatusCounts(fieldStatus: ConfigSummary["field_status"]): string {
+function fieldStatusCounts(fieldStatus: ConfigSummary["field_status"]): string {
   const statuses = Object.values(fieldStatus);
   const counts = FIELD_STATUSES.map(
     (status) => [status, statuses.filter((value) => value === status).length] as const,
@@ -103,14 +115,14 @@ export function ConfigFieldsTable({ config }: Readonly<{ config: ConfigDetail }>
                     <ol className="flex flex-col gap-1">
                       {steps.steps.map((step, index) => (
                         // The position is the step's identity: the first valid value wins.
-                        <li key={`${String(index)} ${stepText(step)}`}>
+                        <li key={index}>
                           <LocatorText locator={stepText(step)} />
                         </li>
                       ))}
                     </ol>
                   </Table.Cell>
-                  <Table.Cell>{rate(steps.yield)}</Table.Cell>
-                  <Table.Cell>{rate(steps.validity)}</Table.Cell>
+                  <Table.Cell>{confidenceText(steps.yield)}</Table.Cell>
+                  <Table.Cell>{confidenceText(steps.validity)}</Table.Cell>
                 </Table.Row>
               )}
             </Table.Body>

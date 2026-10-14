@@ -8,6 +8,7 @@ import { Choices } from "../../components/Choices";
 import { FormActions } from "../../components/FormActions";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { StatusLabel } from "../../components/StatusLabel";
+import { ofPages, withNextPage } from "./report";
 
 const FORMATS: readonly (readonly [ExportFormat, string])[] = [
   ["json", "Config IR (JSON)"],
@@ -16,22 +17,18 @@ const FORMATS: readonly (readonly [ExportFormat, string])[] = [
 
 // SPEC-08 §4.12: a `manual` field is one the release executor did not reproduce; it needs hand work after export.
 function ReleaseOutcome({ field }: Readonly<{ field: ReleaseField }>) {
-  return field.manual ? (
-    <StatusLabel text="manual" tone="warning" />
-  ) : (
-    <StatusLabel text="reproduced" tone="success" />
+  return (
+    <StatusLabel
+      text={field.manual ? "manual" : "reproduced"}
+      tone={field.manual ? "warning" : "success"}
+    />
   );
 }
 
 /** The release check of an export: each field's reproduction on the held-out pages, `manual` ones marked. */
-export function ReleaseReportView({ report }: Readonly<{ report: ReleaseReport }>) {
+function ReleaseReportView({ report }: Readonly<{ report: ReleaseReport }>) {
   const { listing } = report;
-  // A field name is `[a-z][a-z0-9_]*` (SPEC-04), so "next page" never hides one.
-  const fields = {
-    ...report.fields,
-    ...listing?.fields,
-    ...(listing?.next == null ? {} : { "next page": listing.next }),
-  };
+  const fields = { ...report.fields, ...withNextPage(listing?.fields ?? {}, listing?.next) };
   const rows = Object.entries(fields).map(([name, field]) => ({ id: name, field }));
   return (
     <div className="flex flex-col gap-3">
@@ -53,9 +50,7 @@ export function ReleaseReportView({ report }: Readonly<{ report: ReleaseReport }
                   <Table.Cell>
                     <ReleaseOutcome field={field} />
                   </Table.Cell>
-                  <Table.Cell>
-                    {field.reproduced}/{field.published}
-                  </Table.Cell>
+                  <Table.Cell>{ofPages(field.reproduced, field.published)}</Table.Cell>
                 </Table.Row>
               )}
             </Table.Body>

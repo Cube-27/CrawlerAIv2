@@ -8,12 +8,11 @@ import { ConfigStatusLabel } from "../../components/ConfigStatusLabel";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
-import { ConfigFieldsTable, ConfigVersionsTable } from "./ConfigTables";
+import { ConfigFieldsTable, ConfigVersionsTable, useSchemaLabel } from "./ConfigTables";
 import { CorrectionForm } from "./CorrectionForm";
 import { ExportPanel } from "./ExportPanel";
 import { LearnButtons, useLearn } from "./LearnAction";
 import { sitePath } from "./paths";
-import { useSchemaLabel } from "./SiteScreen";
 import { ValidationReportView } from "./ValidationReportView";
 
 /** The other versions of this config: the same site, schema version and page kind. */

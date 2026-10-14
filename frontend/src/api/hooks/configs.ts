@@ -37,7 +37,11 @@ export function useCorrectConfig(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: Correction) => unwrap(correctConfig(client, id, body)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CONFIGS }),
+    // The answer is the new version: opening it needs no read. The other versions' statuses may have changed.
+    onSuccess: (saved) => {
+      queryClient.setQueryData([...CONFIGS, "one", saved.id], saved);
+      return queryClient.invalidateQueries({ queryKey: CONFIGS });
+    },
   });
 }
 
