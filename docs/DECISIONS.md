@@ -42,7 +42,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
 | D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
 | D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
-| D-0745 | Exposing task failure and block reasons (and `cancel_requested`) in the jobs API | needs-owner |
 
 ---
 
@@ -5026,11 +5025,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0745 — Exposing task failure and block reasons in the jobs API
-- Date: 2026-10-14 · Spec/PR: UAT fix F17, F16 (#153) · Status: needs-owner
+- Date: 2026-10-14 · Spec/PR: UAT fix F17, F16 (#153) · Status: answered 2026-10-14
 - Decision: Not built. Question: should the API expose `url_task.last_error` and a task-failure event? SPEC-10 defines neither (`PageOutput` has no reason; §4.2's event kinds have no task failure), and the job summary has no `cancel_requested`.
 - Alternatives: (a) `PageOutput.last_error: str | null` on `/results` plus a `task_failed` event `{task_id, url, attempts, last_error}`; (b) a per-task listing endpoint, which also covers records jobs; (c) leave it. Also: `cancel_requested: bool` on the job summary, so the job page can show "cancel requested" while a dead worker's lease runs out.
 - Why: A public API change beyond the spec (CLAUDE.md §4). Recommendation: (a) plus `cancel_requested`; additive fields, and the worker already writes `last_error` redacted (SPEC-01 §4). Blocks the F17 UI (fix/uat-frontend).
 - Reversible: yes
+- Owner answer: option (a) with `cancel_requested` (owner 2026-10-14). Implemented in #157 (D-0760, D-0761); SPEC-10, SPEC-12 and ARCHITECTURE rev 12 updated.
 
 ### D-0746 — Role replies use wire forms inside every provider's structured-output subset
 - Date: 2026-10-14 · Spec/PR: UAT fix F01–F04, F09 (#154) · Status: decided
@@ -5128,4 +5128,18 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The drift margins are not committed; OPEN_QUESTIONS #20 / D-0576 stays open.
 - Alternatives: Exempt and commit `drift_margins.json` in #156.
 - Why: The owner's answer names exactly the two files.
+- Reversible: yes
+
+### D-0760 — `task_failed` is recorded only when a task ends `failed`
+- Date: 2026-10-14 · Spec/PR: D-0745 (#157) · Status: decided
+- Decision: `record_task_events` records `task_failed {task_id, url, attempts, last_error}` when the task's status becomes `failed` (its last attempt, a permanent failure, or an expired lease on its last attempt), after its other task events and before the job's end event. A task that ends `done` with a reason (`blocked`, `robots`) records none; its reason is on its page output's `last_error`.
+- Alternatives: Also record an event for `done` tasks that have a reason.
+- Why: The owner's wording ("fails terminally"); a `done` task's reason is already on its page output.
+- Reversible: yes
+
+### D-0761 — A requested cancel replaces the Cancel button with a label
+- Date: 2026-10-14 · Spec/PR: D-0745 (#157) · Status: decided
+- Decision: While a queued or running job's `cancel_requested` is true, the job page shows a warning-toned "cancel requested" label beside its status, in place of the Cancel button.
+- Alternatives: Keep the button, which cancels again idempotently.
+- Why: UAT F16 expected a visible pending state, and a second cancel has no effect.
 - Reversible: yes

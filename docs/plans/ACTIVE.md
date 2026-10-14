@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- UAT fix PRs done (#152-#155). Source precedence committed (#156, OQ #19 answered (a)). In flight: task failure reasons in the jobs API (D-0745 answered (a)). Next: UAT re-run of the record-dependent features with LLM calls per site, then a data-accuracy plan. Open: drift_margins.json (OQ #20 / D-0576).
+- UAT fix PRs done (#152-#155); source precedence committed (#156, OQ #19 (a)); task failure reasons in the jobs API (#157, D-0745 (a)). Next: UAT re-run of the record-dependent features with LLM calls per site, then a data-accuracy plan. Open: drift_margins.json (OQ #20 / D-0576).
 - Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim enum for `rows`; SPEC-06 lines 115 and 186 still describe role C's reply as `null` per field.
 - Follow-ups from #153: a task still adds to `job.usage` mid-transaction (`record_usage`, role C's usage in `_visit`), which locks the job row until the task commits; recording usage at the task's end would let no later network I/O hold up a cancel. Declare `anyio` as a direct dependency (`services/events.py`, `mcp_server` import it).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
@@ -58,7 +58,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
 - Follow-up (scale, not yet due): `release_expired_leases` handles all expired leases in one transaction; add a per-run batch limit if many workers die at once (#19 review). The `job_event (job_id, id)` index comes with SPEC-10's SSE query.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
-- Blocked: exposing task failure/block reasons in the jobs API (D-0745, needs-owner).
+- Done: task failure and block reasons, `task_failed` events and `cancel_requested` in the jobs API and UI (#157, D-0745 answered (a), D-0760, D-0761). Follow-up from its review: `TruncatedText` makes every event data and Reason cell a tab stop.
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
 
