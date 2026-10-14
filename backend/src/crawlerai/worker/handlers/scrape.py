@@ -21,8 +21,7 @@ from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.rungs import acquire
-from crawlerai.acquire.ssrf import SSRF_REJECTED
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.config_ir.active import config_by_id
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.db.models import CaptureId, ExtractionConfigId, Job, SchemaId, SiteId
@@ -30,7 +29,7 @@ from crawlerai.db.queue import ClaimedTask
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.schemas.registry import get_by_id
 from crawlerai.services.batch import BatchScrapeRequest, JobPins
-from crawlerai.services.scrape import Fetching
+from crawlerai.services.fetching import Fetching, refusal
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
@@ -86,23 +85,24 @@ async def _scrape(
 ) -> TaskResult:
     site = await site_row(conn, urlsplit(task.url).hostname or "")
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
-    fetches: list[FetchResult] = []
+    attempts: list[AttemptRecord] = []
 
     async def robots(url: str) -> FetchResult:
-        fetches.append(await fetching.rungs.http(url, policy))
-        return fetches[-1]
+        result = await fetching.rungs.http(url, policy)
+        attempts.extend(result.attempts)
+        return result
 
     async def page(url: str) -> FetchResult:
-        fetches.append(await acquire(url, policy, site.fetch_method, fetching.rungs))
-        return fetches[-1]
+        result = await acquire(url, policy, site.fetch_method, fetching.rungs)
+        attempts.extend(result.attempts)
+        return result
 
     fetched = await fetch_politely(conn, task, site.id, policy, page, fetching.limiter, fetch_robots=robots)
-    await record_fetch_usage(conn, task.job_id, fetches, policy.proxy_pool)
+    await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
     if not isinstance(fetched, FetchResult):
         return fetched
-    for attempt in fetched.attempts:
-        if (attempt.error or "").startswith(SSRF_REJECTED):
-            return Failed(attempt.error or SSRF_REJECTED, transient=False)
+    if (refused := refusal(fetched)) is not None:
+        return Failed(refused, transient=False)
     capture_id = await new_capture(conn, fetching.store, site.id, fetched)
     return await _settle(conn, task, site.id, fetched, capture_id, records)
 

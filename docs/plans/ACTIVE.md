@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1 complete (2026-10-14). L2: only SPEC-12 PR 6 left, in progress (owner wants no design review: DESIGN.md + HeroUI defaults). L3 in progress: SPEC-10 PR 3 (#130). L4: SPEC-11 PR 1 done.
+- L1 complete (2026-10-14). L2: only SPEC-12 PR 6 left, in progress. L3: SPEC-10 PRs 1-3 and 6 done; next SPEC-10 PR 4. L4 in progress: SPEC-11 PR 2, SPEC-11 PR 3.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
@@ -205,7 +205,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 |---|---|---|---|
 | 1 | Job summary/status/cancel/results endpoints | done (#120) | D-0577–D-0580. Follow-up from review: the INV-27 property's markdown leg compares with the exporter fed stored values; parse the table cells back. |
 | 2 | `batch/scrape` + worker handler registration | done (#128) | D-0628–D-0636. Migration 0013 adds `job.pinned`. Page outputs are made from captures on read (D-0630 supersedes D-0580). Follow-ups: #31's browser retry through `HostLimiter` and `SLOW_DOWN` on every attempt (D-0634). |
-| 3 | Canonicalization + sitemaps + `map` | todo | |
+| 3 | Canonicalization + sitemaps + `map` | done (#130) | D-0649–D-0655. Follow-ups from review: PR 4 decides whether `include` globs admit any host or only subdomains (D-0037) before the frontier fetches what `Scope` admits; an unexpected exception leaves a `map` job `running`, as it does a `scrape` job; `include`/`exclude` lists are unbounded. |
 | 4 | Frontier, rules, `crawl` | todo | |
 | 5 | `extract` with globs and prompt | todo | |
 | 6 | SSE events + webhooks | done (#132) | D-0639–D-0646. Migration 0014 adds `job.api_key_id`, `webhook_delivery` and the `job_event (job_id, id)` and `extraction (url_task_id)` indexes. Follow-ups: `crawl` and `extract` (PRs 4, 5) set `job.api_key_id` from the authenticated key, as `batch/scrape` does, or their webhooks end `failed` unsent; from review, a live stream can skip an event committed out of uuid7 order (D-0646). |

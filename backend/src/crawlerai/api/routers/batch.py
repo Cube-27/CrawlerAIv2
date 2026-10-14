@@ -12,8 +12,9 @@ from crawlerai.db.models import ApiKeyId
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import batch
 from crawlerai.services.batch import BatchRejected, BatchScrapeRequest, BatchSubmitted
+from crawlerai.services.fetching import Fetching
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
-from crawlerai.services.scrape import Fetching, RecordsUnavailable
+from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.services.scrape_steps import SchemaUnusable
 
 router = APIRouter(

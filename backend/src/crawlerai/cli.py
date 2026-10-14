@@ -39,7 +39,7 @@ from crawlerai.eval.store import (
 )
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
-from crawlerai.services.scrape import Fetching
+from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode

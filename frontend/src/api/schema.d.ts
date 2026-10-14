@@ -303,6 +303,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Map Urls
+         * @description The URLs of `url`'s site from its sitemaps and the start page's links, canonical and in scope: the exact host
+         *     of `url`, or the `include` globs, less the `exclude` globs. At most `limit`; `truncated` says more were found, or
+         *     that reading stopped at a cap or the 60 s timeout.
+         */
+        post: operations["map_urls_v1_map_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/records": {
         parameters: {
             query?: never;
@@ -1276,6 +1298,57 @@ export interface components {
             next?: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"]) | null;
             /** Row */
             row: components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"];
+        };
+        /**
+         * MapRequest
+         * @description The body of `POST /v1/map` (§4.4).
+         */
+        MapRequest: {
+            /**
+             * Exclude
+             * @default []
+             */
+            exclude: string[];
+            /**
+             * Include
+             * @default []
+             */
+            include: string[];
+            /**
+             * Limit
+             * @default 5000
+             */
+            limit: number;
+            /** Url */
+            url: string;
+            /**
+             * Use Links
+             * @default true
+             */
+            use_links: boolean;
+            /**
+             * Use Sitemaps
+             * @default true
+             */
+            use_sitemaps: boolean;
+        };
+        /** MapResult */
+        MapResult: {
+            sources: components["schemas"]["MapSources"];
+            /** Truncated */
+            truncated: boolean;
+            /** Urls */
+            urls: string[];
+        };
+        /**
+         * MapSources
+         * @description How many of the returned URLs came from each source; a URL both found counts as a sitemap's.
+         */
+        MapSources: {
+            /** Links */
+            links: number;
+            /** Sitemap */
+            sitemap: number;
         };
         /** NewSchema */
         NewSchema: {
@@ -3060,6 +3133,60 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    map_urls_v1_map_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

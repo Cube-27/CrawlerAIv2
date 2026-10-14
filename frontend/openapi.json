@@ -2290,6 +2290,98 @@
         "title": "ListingSpec",
         "type": "object"
       },
+      "MapRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/map` (\u00a74.4).",
+        "properties": {
+          "exclude": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclude",
+            "type": "array"
+          },
+          "include": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Include",
+            "type": "array"
+          },
+          "limit": {
+            "default": 5000,
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "use_links": {
+            "default": true,
+            "title": "Use Links",
+            "type": "boolean"
+          },
+          "use_sitemaps": {
+            "default": true,
+            "title": "Use Sitemaps",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "MapRequest",
+        "type": "object"
+      },
+      "MapResult": {
+        "properties": {
+          "sources": {
+            "$ref": "#/components/schemas/MapSources"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "urls",
+          "sources",
+          "truncated"
+        ],
+        "title": "MapResult",
+        "type": "object"
+      },
+      "MapSources": {
+        "description": "How many of the returned URLs came from each source; a URL both found counts as a sitemap's.",
+        "properties": {
+          "links": {
+            "title": "Links",
+            "type": "integer"
+          },
+          "sitemap": {
+            "title": "Sitemap",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sitemap",
+          "links"
+        ],
+        "title": "MapSources",
+        "type": "object"
+      },
       "NewSchema": {
         "additionalProperties": false,
         "properties": {
@@ -6051,6 +6143,83 @@
         "summary": "Job Results",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/v1/map": {
+      "post": {
+        "description": "The URLs of `url`'s site from its sitemaps and the start page's links, canonical and in scope: the exact host\nof `url`, or the `include` globs, less the `exclude` globs. At most `limit`; `truncated` says more were found, or\nthat reading stopped at a cap or the 60 s timeout.",
+        "operationId": "map_urls_v1_map_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Map Urls",
+        "tags": [
+          "map"
         ]
       }
     },

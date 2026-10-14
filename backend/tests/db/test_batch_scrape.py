@@ -45,9 +45,10 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services import jobs
 from crawlerai.services.batch import BatchRejected, BatchScrapeRequest, submit_batch
+from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
-from crawlerai.services.scrape import Fetching, RecordsUnavailable
+from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.scrape import scrape_handler

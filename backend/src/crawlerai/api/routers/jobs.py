@@ -11,6 +11,7 @@ from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import conflict, not_found
 from crawlerai.db.models import JobId
 from crawlerai.services import jobs
+from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import (
     ExportPage,
     JobEnded,
@@ -21,7 +22,6 @@ from crawlerai.services.jobs import (
     ResultsQuery,
 )
 from crawlerai.services.records import RecordPage
-from crawlerai.services.scrape import Fetching
 
 router = APIRouter(
     prefix="/v1/jobs",

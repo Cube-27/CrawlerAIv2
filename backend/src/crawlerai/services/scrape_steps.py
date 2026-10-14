@@ -8,6 +8,7 @@ queue, a worker handler returns the result for the worker loop to settle.
 
 import logging
 import math
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Final, Literal, Self, TypedDict
 
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method
-from crawlerai.acquire.types import FetchPolicy, FetchResult, check_robots_override
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
@@ -206,24 +207,25 @@ async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId
 
 
 async def record_fetch_usage(
-    conn: AsyncConnection, job_id: JobId, fetches: list[FetchResult], proxy_pool: str | None
+    conn: AsyncConnection, job_id: JobId, attempts: Iterable[AttemptRecord], proxy_pool: str | None
 ) -> None:
-    for result in fetches:
-        for attempt in result.attempts:
-            resource: UsageResource
-            if attempt.method in _REQUEST_METHODS:
-                resource, quantity = "http_requests", 1
-            else:
-                resource, quantity = "browser_seconds", math.ceil(attempt.duration_ms / 1000)
-            await record_usage(
-                conn,
-                job_id,
-                resource,
-                provider=None,
-                model_or_pool=proxy_pool,
-                quantity=quantity,
-                metadata={"method": attempt.method},
-            )
+    """Count the fetch `attempts` as the job's usage. Attempts, not fetch results, so that a caller keeps no page body
+    only to count it."""
+    for attempt in attempts:
+        resource: UsageResource
+        if attempt.method in _REQUEST_METHODS:
+            resource, quantity = "http_requests", 1
+        else:
+            resource, quantity = "browser_seconds", math.ceil(attempt.duration_ms / 1000)
+        await record_usage(
+            conn,
+            job_id,
+            resource,
+            provider=None,
+            model_or_pool=proxy_pool,
+            quantity=quantity,
+            metadata={"method": attempt.method},
+        )
 
 
 # The error of a reached caller-supplied page that has no record: resolution failed (SPEC-05 §4.14).

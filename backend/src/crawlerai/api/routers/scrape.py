@@ -6,16 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
-from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable
+from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable, target_refused
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import scrape as scrape_service
+from crawlerai.services.fetching import Fetching, TargetRejected
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
 from crawlerai.services.scrape import (
-    Fetching,
     RecordsUnavailable,
-    ScrapeRejected,
     ScrapeRequest,
     ScrapeResult,
     ScrapeTimedOut,
@@ -46,9 +45,8 @@ async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
     margins: DriftMargins | None = request.app.state.drift_margins
     try:
         return await scrape_service.scrape(engine, fetching, body, llm=llm, data=data, margins=margins)
-    except ScrapeRejected as e:
-        # 422: the request names a target the API may not fetch (INV-16).
-        raise ProblemError(422, "ssrf_rejected", "Target refused", e.reason) from e
+    except TargetRejected as e:
+        raise target_refused(e.reason) from e
     except SchemaUnusable as e:
         raise invalid(str(e), [("schema", str(e))]) from e
     except InvalidSchema as e:

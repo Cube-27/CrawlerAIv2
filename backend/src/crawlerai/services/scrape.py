@@ -32,10 +32,8 @@ from sqlalchemy import Row, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter, interval
-from crawlerai.acquire.robots import Robots, site_robots
-from crawlerai.acquire.rungs import Rungs, acquire
-from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
+from crawlerai.acquire.robots import Robots
+from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.active import active_config
 from crawlerai.config_ir.drift import DriftMargins
@@ -52,6 +50,7 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.services.fetching import Fetching, TargetRejected, admitted, check_target, refusal, site_rules
 from crawlerai.services.records import ScrapedRecord
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
@@ -162,25 +161,6 @@ class ScrapeResult(BaseModel):
     usage: Usage
 
 
-@dataclass(frozen=True)
-class Fetching:
-    """What a scrape fetches with: the rungs, the SSRF guard they connect through, the object store captures go to,
-    and the per-host limiter (SPEC-02 §4.6) of this process."""
-
-    rungs: Rungs
-    connector: SafeConnector
-    store: ObjectStore
-    limiter: HostLimiter
-
-
-class ScrapeRejected(Exception):
-    """The SSRF guard refused the target, or a redirect from it (INV-16). `reason` is the guard's, without the URL."""
-
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
-
-
 class ScrapeTimedOut(Exception):
     def __init__(self, timeout_s: float) -> None:
         super().__init__(f"the scrape did not finish within {timeout_s:g} s")
@@ -244,15 +224,12 @@ async def scrape(
     margins: DriftMargins | None = None,
 ) -> ScrapeResult:
     """Run `request` as a scrape job; `records` reads `data`, and an active config's drift `margins`. Raises, before
-    any job is created: `ScrapeRejected` for a target refused outright, `RecordsUnavailable` for `records` without
+    any job is created: `TargetRejected` for a target refused outright, `RecordsUnavailable` for `records` without
     `data`, `SchemaUnusable` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
-    `InvalidSchema` for an inline schema. Raises, failing the job: `ScrapeRejected` for a refused redirect,
+    `InvalidSchema` for an inline schema. Raises, failing the job: `TargetRejected` for a refused redirect,
     `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
     `SchemaUnusable` for a draft of another page kind."""
-    try:
-        await fetching.connector.check(request.url)
-    except SsrfRejected as e:
-        raise ScrapeRejected(str(e)) from e
+    await check_target(fetching.connector, request.url)
     work = _Work(llm, data, margins, await _named_schema(engine, request, data))
     task = await _start(engine, request, work.schema)
     try:
@@ -261,7 +238,7 @@ async def scrape(
     except TimeoutError as e:
         await _fail(engine, task, "timeout")
         raise ScrapeTimedOut(request.timeout_s) from e
-    except ScrapeRejected as e:
+    except TargetRejected as e:
         await _fail(engine, task, e.reason)
         raise
     except SchemaUnusable:
@@ -322,8 +299,8 @@ async def _run(
         config = await _config(conn, site.id, work)
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
-    fetches: list[FetchResult] = []
-    page = recent.result if recent else await _fetch(engine, fetching, request.url, host, policy, site, fetches)
+    attempts: list[AttemptRecord] = []
+    page = recent.result if recent else await _fetch(engine, fetching, request.url, host, policy, site, attempts)
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
@@ -338,7 +315,7 @@ async def _run(
         else:
             outcome = "blocked"
             await complete_task(conn, task, outcome, reason=page)
-        await record_fetch_usage(conn, task.job_id, fetches, policy.proxy_pool)
+        await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
     if outcome == "failed":
         derived = _NOTHING  # §4.8: nothing derived from the page is returned on failure
@@ -446,40 +423,24 @@ async def _fetch(
     host: str,
     policy: FetchPolicy,
     site: SiteRow,
-    fetches: list[FetchResult],
+    attempts: list[AttemptRecord],
 ) -> FetchResult | str:
-    """The page as fetched, or why robots.txt kept it from being fetched (SPEC-02 §4.6). Every fetch made,
-    robots.txt's too, is added to `fetches`."""
-
-    async def fetch_robots(robots_url: str) -> FetchResult:
-        result = await fetching.rungs.http(robots_url, policy)
-        fetches.append(result)
-        return result
-
+    """The page as fetched, or why robots.txt kept it from being fetched (SPEC-02 §4.6). The attempts of every fetch
+    made, robots.txt's too, are added to `attempts`."""
     robots: Robots | None = None
     if policy.respect_robots:
-        async with engine.begin() as conn:
-            robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch_robots)
+        robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
         # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing.
         if robots is None:
             return "robots_unreachable"
         if not robots.allows(url):
             return "robots"
-    await _admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
+    await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
     result = await acquire(url, policy, site.fetch_method, fetching.rungs)
-    fetches.append(result)
-    for attempt in result.attempts:
-        if (attempt.error or "").startswith(SSRF_REJECTED):
-            raise ScrapeRejected(attempt.error or "")
+    attempts.extend(result.attempts)
+    if (refused := refusal(result)) is not None:
+        raise TargetRejected(refused)
     return result
-
-
-async def _admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None) -> None:
-    """Wait until the site's rate admits a request (SPEC-02 §4.6). The caller is waiting anyway, so the scrape waits
-    in place, within its timeout, where a worker would postpone the task."""
-    gap = interval(crawl_delay_ms, None if robots is None else robots.crawl_delay)
-    while wait := limiter.admit(host, gap):
-        await asyncio.sleep(wait.total_seconds())
 
 
 async def _finish(

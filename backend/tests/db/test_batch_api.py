@@ -22,7 +22,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.keys import create_key
 from crawlerai.db.models import ApiKey, Job, UrlTask
-from crawlerai.services.scrape import Fetching
+from crawlerai.services.fetching import Fetching
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
