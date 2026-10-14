@@ -72,10 +72,10 @@ def absolutize(spec: FieldSpec, candidates: Sequence[Candidate], resolver: Resol
         if candidate.normalized == RELATIVE_WITHOUT_BASE
     ]
     preference = resolver.prefer_field(spec, [resolved for resolved, _ in pairs])
-    if not isinstance(preference, Chosen) or not isinstance(preference.chosen.normalized, Ok):
+    if not isinstance(preference, Chosen) or not isinstance(preference.candidate.normalized, Ok):
         return None
-    source = next(original for resolved, original in pairs if resolved is preference.chosen)
-    return Derived(preference.chosen.normalized.value, "absolutize", source)
+    source = next(original for resolved, original in pairs if resolved is preference.candidate)
+    return Derived(preference.candidate.normalized.value, "absolutize", source)
 
 
 def canonical_link(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> Derived | None:

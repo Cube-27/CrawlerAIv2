@@ -229,7 +229,9 @@ class _Run:
         except _Refused as refused:
             self.diagnostics.append(f"config:row: {refused}")
             return []
-        return [node for node in found if isinstance(node, HtmlElement)] if isinstance(found, list) else []
+        if not isinstance(found, list):
+            return []
+        return [node for node in found if isinstance(node, HtmlElement)]
 
 
 def _matches(step: Step, scope: _Scope, run: _Run) -> list[Raw]:

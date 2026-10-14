@@ -242,7 +242,7 @@ def _dumped(value: JsonValue) -> str:
 # `EngineExecutor` diagnostics: `config:row: <message>` for the row selector, `config:<field>:<step>: <message>` for a
 # field's step (a field name has no `:`, `NAME_PATTERN`).
 _ROW_DIAGNOSTIC: Final = "config:row: "
-_STEP_DIAGNOSTIC: Final = re.compile(r"config:([^:]+):([0-9]+: .*)", re.DOTALL)
+_STEP_DIAGNOSTIC: Final = re.compile(r"config:([^:]+):(\d+: .*)", re.ASCII | re.DOTALL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,11 +350,14 @@ class _Learning:
     def _page_blocks(self, ask: _Ask) -> Iterator[str]:
         for n, sample in enumerate(self.sample):
             html, keys = self.pages.html[n], self.pages.keys[n]
-            lines = [f'<sample_page n="{n + 1}">', *_published_lines(sample, ask.page)]
-            lines.extend(_row_lines(sample, ask.rows))
-            lines.append(f"JSON documents (key paths){_note(keys)}:\n{keys.text or '(none)'}")
-            lines.append(f"HTML{_note(html)}:\n{html.text}")
-            lines.append("</sample_page>")
+            lines = [
+                f'<sample_page n="{n + 1}">',
+                *_published_lines(sample, ask.page),
+                *_row_lines(sample, ask.rows),
+                f"JSON documents (key paths){_note(keys)}:\n{keys.text or '(none)'}",
+                f"HTML{_note(html)}:\n{html.text}",
+                "</sample_page>",
+            ]
             yield "\n".join(lines)
 
     def _output_schema(self, ask: _Ask) -> dict[str, JsonValue]:

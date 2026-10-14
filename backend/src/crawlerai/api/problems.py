@@ -2,7 +2,7 @@
 framework's (unknown path, wrong method, request validation, an unexpected exception)."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import Final
 
@@ -102,9 +102,8 @@ async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
         error = not_found(f"no resource at {request.url.path}")
     else:
         error = _status_only(exc.status_code, exc.detail if isinstance(exc.detail, str) else None)
-    return _problem_response(
-        request, replace(error, headers=exc.headers or {})
-    )  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
+    error.headers = exc.headers or {}  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
+    return _problem_response(request, error)
 
 
 async def _on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:

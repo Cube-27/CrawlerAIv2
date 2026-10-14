@@ -127,10 +127,10 @@ def assess(
         value, derived_by = decision.value, decision.derived_by
         decision = Chosen(decision.source, (), ())
     elif isinstance(decision, Chosen):
-        value = _value(decision.chosen)
+        value = _value(decision.candidate)
     else:
         return _unpublished(decision.status, decision.reason, decision.rejected, kept=decision.kept)
-    chosen, rejected = decision.chosen, decision.rejected
+    chosen, rejected = decision.candidate, decision.rejected
     evidence = evidence_of(chosen, decision.agreeing, corroborated=corroborated)
     if evidence is None:
         return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")), kept=decision.kept)

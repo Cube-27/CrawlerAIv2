@@ -41,9 +41,9 @@ from crawlerai.schemas.types import FieldSpec, SchemaDef
 # uppercase letters, underscores or long digit runs. A structural property of the token (SPEC-08 §4.5, D-0031), not a
 # list of names.
 _STABLE_CLASS = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
-_DIGIT_RUN = re.compile(r"[0-9]{3}")
+_DIGIT_RUN = re.compile(r"\d{3}", re.ASCII)
 # RFC 9535 §2.3.3: an index segment.
-_INDEX = re.compile(r"\[[0-9]+\]")
+_INDEX = re.compile(r"\[\d+\]", re.ASCII)
 _STATUS: FieldStatus = "uncorroborated"  # until validation (§4.7) records corroboration
 
 

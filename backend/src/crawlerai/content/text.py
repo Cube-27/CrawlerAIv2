@@ -139,9 +139,16 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
     if not invisible:
         shown.extend(value for name in _SHOWN_ATTRIBUTES if (value := attributes.get(name)))
     children = _children(item.node, item.path, invisible)
-    # HTML Standard, Rendering: `br` is a forced line break.
-    separator = "\n" if tag in _LINE_BOXES or tag == "br" else " " if tag in _CELLS else ""
+    separator = _separator(tag)
     return [_Separate(separator), *children, _Separate(separator)] if separator else children
+
+
+def _separator(tag: str) -> str:
+    """What separates an element's box from its siblings' text."""
+    # HTML Standard, Rendering: `br` is a forced line break.
+    if tag in _LINE_BOXES or tag == "br":
+        return "\n"
+    return " " if tag in _CELLS else ""
 
 
 def xpath_step(tag: str, index: int) -> str:

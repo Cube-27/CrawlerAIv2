@@ -53,7 +53,7 @@ _JSON = "application/json"
 # ECMAScript: an assignment to a property of `window` (the global object, HTML Standard) or a variable declaration
 # with an initializer; `=` not followed by `=` or `>` is assignment, not comparison or an arrow. The match ends where
 # the value starts.
-_ASSIGNMENT = re.compile(r"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+)(?:[^\W\d]|\$)[\w$]*\s*=(?![=>])\s*")
+_ASSIGNMENT = re.compile(r"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+)(?!\d)[\w$]+\s*=(?![=>])\s*")
 _DECODER = json.JSONDecoder()
 # schema.org: a type's IRI is the vocabulary IRI plus its name; either scheme names the same term.
 _SCHEMA_ORG = re.compile(r"^https?://schema\.org/")

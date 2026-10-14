@@ -40,7 +40,7 @@ _HEX_ESCAPE: Final = re.compile(r"\\x[0-9A-Fa-f]{2}")
 _CLASS_DOUBLES: Final = ("&&", "--", "~~", "||")
 # An inline flag group that names `i`, to set or clear it (either way part of the pattern is caseless), and a `\xhh`
 # escape above U+007F. Exported regexes run with PHP `/u` (PCRE2 UTF mode).
-_CASELESS: Final = re.compile(r"\(\?[-ims]*i[-ims]*[:)]")
+_CASELESS: Final = re.compile(r"\(\?[-ms]*i[-ims]*[:)]")
 _NON_ASCII_HEX: Final = re.compile(r"\\x[89A-Fa-f][0-9A-Fa-f]")
 
 

@@ -122,5 +122,5 @@ _DECODER = json.JSONDecoder(parse_constant=_not_json)
 _NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
 # A name segment captures its name in the first group; a wildcard or index segment, `*` or the index, in the second.
 _ALL = "*"
-_SEGMENT = re.compile(r"\['([^'\\]+)'\]|\[(\*|0|[1-9][0-9]*)\]")
-_QUERY_SEGMENTS = re.compile(rf"(?:{_SEGMENT.pattern})*")
+_SEGMENT = re.compile(r"\['([^'\\]+)'\]|\[(\*|0|[1-9]\d*)\]", re.ASCII)
+_QUERY_SEGMENTS = re.compile(rf"(?:{_SEGMENT.pattern})*", re.ASCII)
