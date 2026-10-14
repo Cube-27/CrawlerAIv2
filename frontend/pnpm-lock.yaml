@@ -29,6 +29,9 @@ importers:
       '@heroui/styles':
         specifier: 3.2.6
         version: 3.2.6(tailwindcss@4.3.3)
+      '@internationalized/date':
+        specifier: 3.12.4
+        version: 3.12.4
       '@tanstack/react-query':
         specifier: 5.103.3
         version: 5.103.3(react@19.3.0)

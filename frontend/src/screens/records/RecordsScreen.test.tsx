@@ -81,6 +81,15 @@ async function recordRows() {
   return within(table).getAllByRole("row").slice(1);
 }
 
+// One segment of the changed-since field: month, day, year, hour or minute.
+function changedSince(part: string) {
+  return screen.getByRole("spinbutton", { name: new RegExp(`^${part}, Changed since`) });
+}
+
+function recordQueries(calls: readonly { path: string; query: string }[]) {
+  return calls.filter(({ path }) => path === "/v1/records").map(({ query }) => query);
+}
+
 async function openInspector() {
   const [row] = await recordRows();
   if (row === undefined) throw new Error("no record row");
@@ -160,9 +169,9 @@ describe("records screen: the list", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((cell) => cell.textContent),
-    ).toEqual(["title", "price", "Mode", "Version", "Confidence"]);
+    ).toEqual(["title", "price", "Mode", "Version", "Changed", "Confidence"]);
     const [, second] = await recordRows();
-    expect(second?.textContent).toBe("Red kettle19.90 EURadhoc1—");
+    expect(second?.textContent).toBe("Red kettle19.90 EURadhoc1——");
   });
 
   it("renders a conflict field as — with its reason and status, and no value", async () => {
@@ -214,6 +223,73 @@ describe("records screen: the list", () => {
       `schema_id=${SCHEMA_ID}&cursor=c2`,
       `schema_id=${SCHEMA_ID}`,
     ]);
+  });
+
+  it("names the fields that changed from the version a record supersedes", async () => {
+    stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
+      "GET /v1/records": page([
+        storedRecord({ changed_fields: ["title", "price"] }),
+        storedRecord({ id: SECOND_ID, version: 1, changed_fields: [] }),
+      ]),
+    });
+    await open(RECORDS_PATH);
+
+    const [changed, first] = await recordRows();
+    const changedCells = within(changed ?? document.body).getAllByRole("gridcell");
+    expect(changedCells.at(-2)?.textContent).toBe("title, price");
+    const firstCells = within(first ?? document.body).getAllByRole("gridcell");
+    expect(firstCells.at(-2)?.textContent).toBe("—");
+  });
+
+  it("sends the changed-since time, entered in UTC, as an ISO 8601 instant", async () => {
+    const calls = stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
+      "GET /v1/records": page([storedRecord()]),
+    });
+    await open(RECORDS_PATH);
+    await recordRows();
+
+    await userEvent.type(changedSince("month"), "100120260930");
+    await userEvent.click(screen.getByRole("button", { name: "Show records" }));
+
+    await waitFor(() => {
+      expect(recordQueries(calls)).toEqual([
+        `schema_id=${SCHEMA_ID}`,
+        `schema_id=${SCHEMA_ID}&changed_since=2026-10-01T09%3A30%3A00.000Z`,
+      ]);
+    });
+  });
+
+  it("reads the changed-since time from the address, and clears it", async () => {
+    const calls = stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
+      "GET /v1/records": page([storedRecord()]),
+    });
+    await open(`${RECORDS_PATH}&changed_since=2026-10-01T09:30:00.000Z`);
+    await recordRows();
+
+    const parts = ["month", "day", "year", "hour", "minute"];
+    expect(parts.map((part) => changedSince(part).getAttribute("aria-valuenow"))).toEqual([
+      "10",
+      "1",
+      "2026",
+      "9",
+      "30",
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear changed since" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show records" }));
+
+    await waitFor(() => {
+      expect(recordQueries(calls)).toEqual([
+        `schema_id=${SCHEMA_ID}&changed_since=2026-10-01T09%3A30%3A00.000Z`,
+        `schema_id=${SCHEMA_ID}`,
+      ]);
+    });
   });
 
   it("says when no record matches", async () => {
@@ -279,6 +355,22 @@ describe("records screen: the inspector", () => {
     expect(price.getByText("uncalibrated")).toBeInTheDocument();
     expect(price.getAllByText("conflict")).toHaveLength(2);
     expect(price.getByText("0.41")).toBeInTheDocument();
+  });
+
+  it.each([
+    [storedRecord(), "Changed from version 2: price"],
+    [storedRecord({ version: 1, changed_fields: [] }), "The first version of this record."],
+    [storedRecord({ changed_fields: [] }), "No published value changed from version 2."],
+  ])("says what changed from the version the record supersedes", async (record, text) => {
+    stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
+      "GET /v1/records": page([record]),
+    });
+    await open(RECORDS_PATH);
+
+    const inspector = await openInspector();
+    expect(inspector.getByText(text)).toBeInTheDocument();
   });
 
   it("offers no replay once the record's capture expired", async () => {

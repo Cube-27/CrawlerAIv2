@@ -5,6 +5,7 @@ import { useReplay } from "../../api/hooks/records";
 import type { StoredRecord } from "../../api/records";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { RecordFieldsTable, RecordSummary } from "../../components/RecordFields";
+import { changedFieldsText } from "../../components/RecordTable";
 import { ReplayView } from "./ReplayView";
 
 /** The capture the record came from, and a replay of it with the current engine and config (SPEC-07 §4.6). */
@@ -39,6 +40,16 @@ function ReplaySection({
   );
 }
 
+/** What changed from the version this one supersedes, which is the version before it (SPEC-11 §4.4). */
+function changeText(record: StoredRecord): string {
+  if (record.version === 1) return "The first version of this record.";
+  const previous = String(record.version - 1);
+  const changed = changedFieldsText(record);
+  return changed === null
+    ? `No published value changed from version ${previous}.`
+    : `Changed from version ${previous}: ${changed}`;
+}
+
 /** Every `field_meta` attribute of one record, and its capture with a replay (SPEC-12 §4.3), in a drawer over the
  * table. The record is not editable here; `onClose` closes the drawer. */
 export function RecordInspector({
@@ -64,6 +75,7 @@ export function RecordInspector({
               </div>
             </Drawer.Header>
             <Drawer.Body className="flex flex-col gap-6">
+              <Typography.Paragraph size="sm">{changeText(record)}</Typography.Paragraph>
               <RecordFieldsTable label="Record fields" record={record} fieldTypes={fieldTypes} />
               {/* Captures expire (ARCHITECTURE §15); the record stays, without one to replay. */}
               {record.capture_id === null ? (
