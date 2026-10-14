@@ -175,6 +175,24 @@ export function savedNotice(
   return `Saved as ${status} by ${names.labeler.trim()}.`;
 }
 
+/** RFC 9110 §13.1.1: a write names the stored pass it replaces, so the server refuses it after a newer one. */
+function ifMatch(etag: string | null): { "if-match"?: string } {
+  return etag === null ? {} : { "if-match": etag };
+}
+
+/** Why a write to the page's labels was not stored: a newer pass (D-0538: 409 a page labeled or checked since it was
+ * read, 412 another pass stored since then), or the answer's problem. */
+function refusalOf(
+  response: Response,
+  error: unknown,
+): { kind: "conflict" } | { kind: "problem"; detail: string } {
+  if (response.status === 409 || response.status === 412) return { kind: "conflict" };
+  return {
+    kind: "problem",
+    detail: problemDetail(error) ?? `the server answered ${String(response.status)}.`,
+  };
+}
+
 /** Asking role C for a draft of the page's labels (`POST /v1/eval/pages/{id}/prefill`, SPEC-03 §4.10). The server
  * replaces the stored draft and stores the new one, so the editor starts again from it; a refusal says why. */
 export function usePrefill(pageId: string, etag: string | null) {
@@ -188,21 +206,21 @@ export function usePrefill(pageId: string, etag: string | null) {
     setProblem(null);
     setConflict(false);
     setPrefilling(true);
-    const { data, error, response } = await client.POST("/v1/eval/pages/{page_id}/prefill", {
-      params: { path: { page_id: pageId }, header: etag === null ? {} : { "if-match": etag } },
-    });
-    setPrefilling(false);
-    if (data !== undefined) {
-      toast.success(`Prefilled a draft (${data.prefill_source ?? "no source"}).`);
+    const answer = await client
+      .POST("/v1/eval/pages/{page_id}/prefill", {
+        params: { path: { page_id: pageId }, header: ifMatch(etag) },
+      })
+      .finally(() => {
+        setPrefilling(false);
+      });
+    if (answer.data !== undefined) {
+      toast.success(`Prefilled a draft (${answer.data.prefill_source ?? "no source"}).`);
       await queries.invalidateQueries({ queryKey: EVAL_PAGES });
       return;
     }
-    // D-0538: 409 is a page labeled or checked since it was read; 412 another pass stored since then.
-    if (response.status === 409 || response.status === 412) {
-      setConflict(true);
-      return;
-    }
-    setProblem(problemDetail(error) ?? `the server answered ${String(response.status)}.`);
+    const refusal = refusalOf(answer.response, answer.error);
+    if (refusal.kind === "conflict") setConflict(true);
+    else setProblem(refusal.detail);
   }
 
   return { problem, conflict, prefilling, prefill };
@@ -227,7 +245,7 @@ export function useSave(pageId: string, etag: string | null) {
     }
     setSaving(true);
     const { error, response } = await client.PUT("/v1/eval/pages/{page_id}/labels", {
-      params: { path: { page_id: pageId }, header: etag === null ? {} : { "if-match": etag } },
+      params: { path: { page_id: pageId }, header: ifMatch(etag) },
       body: built.labels,
     });
     setSaving(false);
@@ -237,12 +255,13 @@ export function useSave(pageId: string, etag: string | null) {
       await reload();
       return;
     }
-    if (response.status === 409 || response.status === 412) {
+    const refusal = refusalOf(response, error);
+    if (refusal.kind === "conflict") {
       setConflict(true);
       return;
     }
     setErrors(problemErrors(error));
-    setProblem(problemDetail(error) ?? `the server answered ${String(response.status)}.`);
+    setProblem(refusal.detail);
   }
 
   async function reload(): Promise<void> {
