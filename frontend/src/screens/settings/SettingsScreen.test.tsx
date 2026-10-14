@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { CostReport, LlmUsage } from "../../api/usage";
 import { problem, stubApi } from "../../test/api";
+import { connect } from "../../test/connect";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const REPORT = "GET /v1/usage/llm";
@@ -87,11 +88,9 @@ const empty: CostReport = {
 };
 
 async function openSettings() {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
-  const nav = await screen.findByRole("navigation", { name: "Main" });
-  await userEvent.click(within(nav).getByRole("link", { name: "Settings" }));
+  // Opened by its address: the shell's tests cover the navigation.
+  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/settings"] })} />);
+  await connect();
   await screen.findByRole("heading", { level: 1, name: "Settings" });
 }
 

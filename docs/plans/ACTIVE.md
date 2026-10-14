@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- UAT re-run fixes: records/jobs #158 and LLM layer #159 merged; frontend (fix/uat2-frontend) in flight. Next: data-accuracy plan from the re-run quality backlog. Follow-up: job results paging cost grows with job size; measure on a ~100k-task job before redesigning. Open: drift_margins.json (OQ #20 / D-0576), sites list (D-0656).
+- UAT re-run fixes done (#158, #159, #160). Next: data-accuracy work by failure class from the re-run quality backlog (verify and classify first; preset, gap-rule and C7 questions escalate). Open: drift_margins.json (OQ #20 / D-0576), sites list (D-0656).
 - Follow-ups from #158: job results paging cost grows with job size (the `task_record` IN-subquery builds the job's whole record set per page); measure a results page on a ~100k-task job before redesigning (paging by task id is the likely cheaper fix). A clarifying SPEC-11 §4.2 edit naming `task_record` in place of `url_task.record_id` (D-0762).
 - Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim object for `rows`.
 - Follow-ups from #159: confirm in UAT with one real call that the configured `fast` Anthropic model accepts `output_config.effort` (D-0766); a listing row now claims every row field, so a sparse 200-row listing spends ~14 output tokens per absent field per row: measure before reshaping; Gemini's thinking is not lowered for role C (the setting could move onto the request, mapped per provider).
@@ -60,6 +60,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
 - Follow-up (scale, not yet due): `release_expired_leases` handles all expired leases in one transaction; add a per-run batch limit if many workers die at once (#19 review). The `job_event (job_id, id)` index comes with SPEC-10's SSE query.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
+- Done: adopting a prompt draft asks for a new name; screen tests connect by paste under one test budget (#160, D-0771, D-0772).
 - Done: task failure and block reasons, `task_failed` events and `cancel_requested` in the jobs API and UI (#157, D-0745 answered (a), D-0760, D-0761). Follow-up from its review: `TruncatedText` makes every event data and Reason cell a tab stop.
 - Done: UAT re-run D1, the LLM layer: role C replies bounded by the fields asked, cut replies not retried, failed calls counted on the extraction, refusals logged, hermetic settings tests (#159, F27, F29, F30, F33, D-0765 to D-0770).
 

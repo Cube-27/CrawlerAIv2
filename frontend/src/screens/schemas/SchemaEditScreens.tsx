@@ -65,8 +65,9 @@ function SchemaEditor({
   );
 }
 
-/** A new `user` schema (SPEC-12 §4.3), blank or, with `?from=<id>`, prefilled from that schema: adopting a prompt
- * draft creates a user schema from its document. */
+/** A new `user` schema (SPEC-12 §4.3), blank or, with `?from=<id>`, prefilled from that schema's document: adopting a
+ * prompt draft creates a user schema from it. The name starts empty, since a schema's name is taken by its own
+ * versions and the server refuses it with 409 (UAT F32). */
 export function NewSchemaScreen() {
   const from = useSearchParams()[0].get("from");
   const source = useSchema(from);
@@ -83,7 +84,7 @@ export function NewSchemaScreen() {
     <SchemaEditor
       title="New schema"
       mode="create"
-      initial={initial}
+      initial={initial === null ? null : { ...initial, name: "" }}
       isPending={create.isPending}
       problem={problemOf(create.error)}
       onSave={(form) => {

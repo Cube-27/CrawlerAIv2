@@ -6,9 +6,7 @@ import { routes } from "../../app/router";
 import type { ConfigDetail, ConfigSummary, ValidationReport } from "../../api/configs";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
-
-// The forms type into several fields with user-event, which is slow in jsdom.
-vi.setConfig({ testTimeout: 20_000 });
+import { connect } from "../../test/connect";
 
 const HOST = "shop.example.test";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -127,9 +125,7 @@ const json = (body: unknown) => () => Response.json(body);
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await userEvent.click(screen.getByLabelText(/API key/));
-  await userEvent.paste("ck_first");
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await connect();
   await screen.findByRole("heading", { level: 1, name: heading });
 }
 
