@@ -49,12 +49,11 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      implementor rebases, adds the tracker commit (row `done (#n)`, `## Decisions` copied to DECISIONS.md, with
      `needs-owner` entries also listed in the index) and comments `READY` again.
 
-     Then run `tools/orchestrator/merge_pr.sh <n> <sha7>`. It waits for every check on that commit and
-     merges only if all passed and the commit is still the PR's head. Never run `gh pr merge` yourself after a
-     wait chained with `;`. Then close the PR's herdr panes and run
-     `tools/orchestrator/cleanup_worktree.sh <worktree> <branch>`, gated on the merge, never chained with `;`:
+     Then merge, close the PR's herdr panes and clean up, gated on the merge, never chained with `;`:
      `if tools/orchestrator/merge_pr.sh <n> <sha7>; then <close panes>; tools/orchestrator/cleanup_worktree.sh
-     <worktree> <branch>; fi`. A failed merge (CI, a transient GitHub error) leaves the PR open. Retry the merge.
+     <worktree> <branch>; fi`. `merge_pr.sh` waits for every check on that commit and merges only if all passed and
+     the commit is still the PR's head; never run `gh pr merge` yourself. A failed merge (CI, a transient GitHub
+     error) leaves the PR open: retry the merge.
      `cleanup_worktree.sh` refuses (exit 1) unless the branch's PR is merged, or the branch has no PR and is merged
      into origin/main.
    - **Merge strictly one at a time.** Send `YOUR TURN` to one implementor only, after the previous merge. IDs never

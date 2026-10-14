@@ -9,28 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from scan_repo import IDENTITY
 
 CLEANUP = Path(__file__).resolve().parents[1] / "orchestrator" / "cleanup_worktree.sh"
 BASH = shutil.which("bash")
 GIT = shutil.which("git")
 WT = "spec-01-pr-1"
 BRANCH = "spec-01/pr-1-thing"
-GIT_IDENTITY = {
-    "GIT_AUTHOR_NAME": "t",
-    "GIT_AUTHOR_EMAIL": "t@example.com",
-    "GIT_COMMITTER_NAME": "t",
-    "GIT_COMMITTER_EMAIL": "t@example.com",
-}
-# `gh pr list ... --jq length` prints a count; the fake prints the count for the queried state, or fails the merged
-# query the way a transient GraphQL error does.
+# `gh pr list --state all ... --jq '.[].state'` prints one state per PR; the fake prints the given states, or fails
+# the way a transient GraphQL error does.
 FAKE_GH = """#!/bin/bash
-case "$*" in
-  *"--state merged"*)
-    if [[ -n ${FAKE_GH_FAIL:-} ]]; then echo "GraphQL: Something went wrong" >&2; exit 1; fi
-    echo "$FAKE_GH_MERGED" ;;
-  *"--state all"*) echo "$FAKE_GH_ALL" ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac
+if [[ -n ${FAKE_GH_FAIL:-} ]]; then echo "GraphQL: Something went wrong" >&2; exit 1; fi
+printf '%s' "$FAKE_GH_STATES"
 """
 FAKE_DOCKER = '#!/bin/bash\necho "$*" >> "$FAKE_DOCKER_LOG"\n'
 
@@ -49,7 +39,7 @@ def git(cwd: Path, *args: str) -> str:
     result = subprocess.run(  # noqa: S603
         [str(GIT), *args],
         cwd=cwd,
-        env={**os.environ, **GIT_IDENTITY},
+        env={**os.environ, **IDENTITY},
         capture_output=True,
         text=True,
         check=True,
@@ -88,8 +78,10 @@ def make_repo(tmp_path: Path, *, branch_ahead: bool) -> Repo:
     return Repo(main, worktree, docker_log, env)
 
 
-def run_cleanup(repo: Repo, *, merged: int, total: int, gh_fails: bool = False) -> subprocess.CompletedProcess[str]:
-    env = {**repo.env, "FAKE_GH_MERGED": str(merged), "FAKE_GH_ALL": str(total)}
+def run_cleanup(
+    repo: Repo, *, states: tuple[str, ...] = (), gh_fails: bool = False
+) -> subprocess.CompletedProcess[str]:
+    env = {**repo.env, "FAKE_GH_STATES": "\n".join(states)}
     if gh_fails:
         env["FAKE_GH_FAIL"] = "1"
     return subprocess.run(  # noqa: S603
@@ -128,27 +120,27 @@ def assert_removed(repo: Repo, result: subprocess.CompletedProcess[str]) -> None
 
 def test_merged_pr_removes_worktree_and_branches(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    assert_removed(repo, run_cleanup(repo, merged=1, total=1))
+    assert_removed(repo, run_cleanup(repo, states=("CLOSED", "MERGED")))
 
 
 def test_open_pr_keeps_everything(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    result = run_cleanup(repo, merged=0, total=1)
+    result = run_cleanup(repo, states=("OPEN",))
     assert_kept(repo, result, f"the PR for {BRANCH} is not merged")
 
 
 def test_failed_pr_query_keeps_everything(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    result = run_cleanup(repo, merged=0, total=0, gh_fails=True)
+    result = run_cleanup(repo, gh_fails=True)
     assert_kept(repo, result, f"could not read the PRs of {BRANCH}")
 
 
 def test_no_pr_and_merged_into_main_removes(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=False)
-    assert_removed(repo, run_cleanup(repo, merged=0, total=0))
+    assert_removed(repo, run_cleanup(repo))
 
 
 def test_no_pr_and_not_merged_into_main_keeps_everything(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    result = run_cleanup(repo, merged=0, total=0)
+    result = run_cleanup(repo)
     assert_kept(repo, result, f"{BRANCH} has no PR and is not merged into origin/main")

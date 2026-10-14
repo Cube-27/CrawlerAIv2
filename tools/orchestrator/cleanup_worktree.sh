@@ -20,21 +20,12 @@ refuse() {
   exit 1
 }
 
-# Prints how many PRs with head $branch are in state $1; refuses when gh fails or prints something else.
-pr_count() {
-  local n
-  n=$(gh pr list --head "$branch" --state "$1" --json number --jq length) || refuse "could not read the PRs of $branch"
-  [[ $n =~ ^[0-9]+$ ]] || refuse "could not read the PRs of $branch"
-  echo "$n"
-  return 0
-}
-
 require_merged() {
-  local merged total ref
-  merged=$(pr_count merged) || exit 1
-  if [[ $merged -gt 0 ]]; then return 0; fi
-  total=$(pr_count all) || exit 1
-  if [[ $total -gt 0 ]]; then refuse "the PR for $branch is not merged"; fi
+  local states ref
+  states=$(gh pr list --head "$branch" --state all --json state --jq '.[].state') \
+    || refuse "could not read the PRs of $branch"
+  if [[ $states == *MERGED* ]]; then return 0; fi
+  if [[ -n $states ]]; then refuse "the PR for $branch is not merged"; fi
   git -C "$main" fetch -q origin || refuse "could not fetch origin"
   ref=$branch
   git -C "$main" rev-parse -q --verify "refs/heads/$branch" >/dev/null || ref="origin/$branch"
