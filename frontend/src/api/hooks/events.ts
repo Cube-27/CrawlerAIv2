@@ -25,7 +25,6 @@ export interface JobEvents {
 export function useJobEvents(
   id: string,
   delayMs: (attempt: number) => number = backoffMs,
-  idleMs: number = IDLE_MS,
 ): JobEvents {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -65,12 +64,12 @@ export function useJobEvents(
       },
       signal,
       delayMs,
-      idleMs,
+      idleMs: IDLE_MS,
     });
     return () => {
       controller.abort();
     };
-  }, [client, queryClient, id, delayMs, idleMs]);
+  }, [client, queryClient, id, delayMs]);
 
   return { events, state, problem };
 }
