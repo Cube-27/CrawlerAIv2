@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -64,6 +64,8 @@ async def client(
         yield client
     keys_engine = create_async_engine(database_url)
     async with keys_engine.begin() as conn:
+        # The key's jobs keep their rows until `engine` deletes them; they let go of the key first.
+        await conn.execute(update(Job).where(Job.api_key_id == key.id).values(api_key_id=None))
         await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
     await keys_engine.dispose()
 
@@ -82,6 +84,15 @@ async def test_a_batch_is_accepted_and_queued(client: httpx.AsyncClient, engine:
     assert tasks == ["queued", "queued"]
     status = await client.get(f"/v1/jobs/{job_id}")
     assert (status.json()["kind"], status.json()["counts"]["queued"]) == ("batch_scrape", 2)
+
+
+async def test_a_batch_records_the_key_that_submitted_it(client: httpx.AsyncClient, engine: AsyncEngine) -> None:
+    response = await _post(client, urls=[URL], formats=["markdown"], webhook_url="https://hooks.example.test/done")
+
+    job_id = response.json()["job_id"]
+    async with engine.connect() as conn:
+        label = select(ApiKey.label).join(Job, Job.api_key_id == ApiKey.id).where(Job.id == job_id)
+        assert (await conn.execute(label)).scalar_one() == "batch-api-test"  # its secret signs the webhook
 
 
 async def test_a_private_target_is_refused_with_the_member_that_names_it(
