@@ -32,11 +32,12 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1-L4 complete (2026-10-14). Integration review (owner): R1-R6 fixed (#149); R7 (API recipe rung live) in progress. LLM cost history done (#148). Next: browser UAT on crawler-test sites (owner).
+- L1-L4 complete (2026-10-14). Integration review (owner): R1-R7 fixed (#149, #150); recipe learning in run_learn_job (SPEC-09 §2, §7) next as its own PR. LLM cost history done (#148). Next: browser UAT on crawler-test sites (owner).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
+- Follow-ups from #150 review: a max_age-reused api capture can meet a config with no recipe; config_recipe parses the recipe a second time.
 - Follow-ups from #148: an installed wheel has no backend/data, so pricing is empty and every cost reads unknown (joins the D-0492 packaging item); top jobs rank a job with unknown cost by its priced part.
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
-- Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
+- Follow-up for SPEC-08 PR 8 / SPEC-10 (from #125): pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
 - Follow-ups from #81 (cleanup): `InvalidSchema` should reuse `eval.labels.from_pydantic` (drops pydantic's "Value error, " prefix, indexes as `a[0]`); move `SchemaContent` into `schemas/types.py` as `SchemaDocument`'s base; one shared `database` dependency for `auth`, `health` and routers; map service errors to problems at app level once more routers use services.
 - Before SPEC-05's first real run: settle the GeoNames pin (D-0311, OPEN_QUESTIONS #18); the pinned daily dump stops matching, so `crawlerai data fetch` refuses.
