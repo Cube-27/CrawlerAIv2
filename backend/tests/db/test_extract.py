@@ -282,8 +282,10 @@ async def test_a_prompt_is_drafted_from_the_first_pages_reached_and_returned(
     assert (submitted.schema_.name, submitted.schema_.origin) == (draft_name(prompt), "prompt_draft")
     # The first three URLs are fetched for samples; the two reached are the samples (SPEC-06 §4.5: cleaned text).
     (call,) = provider.calls
-    assert "Blue kettle boils" in call.user and "Red kettle boils" in call.user
-    assert "Green kettle" not in call.user and "<h1>" not in call.user
+    assert "Blue kettle boils" in call.user
+    assert "Red kettle boils" in call.user
+    assert "Green kettle" not in call.user
+    assert "<h1>" not in call.user
     job = await _job(engine, submitted.job_id)
     assert (job.status, job.schema_id, job.pinned is not None) == ("running", submitted.schema_.id, True)
     assert [url for url, _, _ in await _tasks(engine, submitted.job_id)] == urls
@@ -303,7 +305,8 @@ async def test_a_prompt_drafted_before_is_returned_without_a_call(
 
     second = await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
 
-    assert second.schema_ == first.schema_ and second.job_id != first.job_id
+    assert second.schema_ == first.schema_
+    assert second.job_id != first.job_id
 
 
 @pytest.mark.parametrize(
