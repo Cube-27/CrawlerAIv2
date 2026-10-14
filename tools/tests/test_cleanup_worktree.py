@@ -16,11 +16,11 @@ BASH = shutil.which("bash")
 GIT = shutil.which("git")
 WT = "spec-01-pr-1"
 BRANCH = "spec-01/pr-1-thing"
-# `gh pr list --state all ... --jq '.[].state'` prints one state per PR; the fake prints the given states, or fails
-# the way a transient GraphQL error does.
+# `gh pr list --state all ... --jq '.[] | "\(.state) \(.headRefOid)"'` prints one "STATE HEAD_SHA" line per PR;
+# the fake prints the given lines, or fails the way a transient GraphQL error does.
 FAKE_GH = """#!/bin/bash
 if [[ -n ${FAKE_GH_FAIL:-} ]]; then echo "GraphQL: Something went wrong" >&2; exit 1; fi
-printf '%s' "$FAKE_GH_STATES"
+printf '%s' "$FAKE_GH_PRS"
 """
 FAKE_DOCKER = '#!/bin/bash\necho "$*" >> "$FAKE_DOCKER_LOG"\n'
 
@@ -78,10 +78,8 @@ def make_repo(tmp_path: Path, *, branch_ahead: bool) -> Repo:
     return Repo(main, worktree, docker_log, env)
 
 
-def run_cleanup(
-    repo: Repo, *, states: tuple[str, ...] = (), gh_fails: bool = False
-) -> subprocess.CompletedProcess[str]:
-    env = {**repo.env, "FAKE_GH_STATES": "\n".join(states)}
+def run_cleanup(repo: Repo, *, prs: tuple[str, ...] = (), gh_fails: bool = False) -> subprocess.CompletedProcess[str]:
+    env = {**repo.env, "FAKE_GH_PRS": "\n".join(prs)}
     if gh_fails:
         env["FAKE_GH_FAIL"] = "1"
     return subprocess.run(  # noqa: S603
@@ -93,6 +91,29 @@ def run_cleanup(
         timeout=120,
         check=False,
     )
+
+
+def tip(repo: Repo) -> str:
+    return git(repo.worktree, "rev-parse", "HEAD")
+
+
+def commit_local(repo: Repo) -> str:
+    """A commit on the local branch only, not pushed."""
+    git(repo.worktree, "commit", "-q", "--allow-empty", "-m", "local")
+    return tip(repo)
+
+
+def commit_remote(repo: Repo) -> str:
+    """A commit on the remote branch only: pushed, then dropped from the local branch."""
+    git(repo.worktree, "commit", "-q", "--allow-empty", "-m", "remote")
+    pushed = tip(repo)
+    git(repo.worktree, "push", "-q", "origin", BRANCH)
+    git(repo.worktree, "reset", "-q", "--hard", "HEAD~1")
+    return pushed
+
+
+def unmerged(sha: str) -> str:
+    return f"{BRANCH} at {sha} is in no merged PR and not in origin/main"
 
 
 def branch_state(repo: Repo) -> tuple[bool, bool]:
@@ -118,21 +139,35 @@ def assert_removed(repo: Repo, result: subprocess.CompletedProcess[str]) -> None
     assert repo.docker_log.read_text().splitlines()[0].startswith("ps -a")
 
 
-def test_merged_pr_removes_worktree_and_branches(tmp_path: Path) -> None:
+def test_merged_pr_at_the_tip_removes_worktree_and_branches(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    assert_removed(repo, run_cleanup(repo, states=("CLOSED", "MERGED")))
+    prs = (f"CLOSED {'0' * 40}", f"MERGED {tip(repo)}")
+    assert_removed(repo, run_cleanup(repo, prs=prs))
 
 
 def test_open_pr_keeps_everything(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    result = run_cleanup(repo, states=("OPEN",))
-    assert_kept(repo, result, f"the PR for {BRANCH} is not merged")
+    prs = (f"MERGED {tip(repo)}", f"OPEN {tip(repo)}")
+    assert_kept(repo, run_cleanup(repo, prs=prs), f"a PR for {BRANCH} is open")
 
 
 def test_failed_pr_query_keeps_everything(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    result = run_cleanup(repo, gh_fails=True)
-    assert_kept(repo, result, f"could not read the PRs of {BRANCH}")
+    assert_kept(repo, run_cleanup(repo, gh_fails=True), f"could not read the PRs of {BRANCH}")
+
+
+def test_local_commit_after_the_merged_pr_keeps_everything(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, branch_ahead=True)
+    prs = (f"MERGED {tip(repo)}",)
+    newer = commit_local(repo)
+    assert_kept(repo, run_cleanup(repo, prs=prs), unmerged(newer))
+
+
+def test_remote_commit_after_the_merged_pr_keeps_everything(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, branch_ahead=True)
+    prs = (f"MERGED {tip(repo)}",)
+    newer = commit_remote(repo)
+    assert_kept(repo, run_cleanup(repo, prs=prs), unmerged(newer))
 
 
 def test_no_pr_and_merged_into_main_removes(tmp_path: Path) -> None:
@@ -142,5 +177,10 @@ def test_no_pr_and_merged_into_main_removes(tmp_path: Path) -> None:
 
 def test_no_pr_and_not_merged_into_main_keeps_everything(tmp_path: Path) -> None:
     repo = make_repo(tmp_path, branch_ahead=True)
-    result = run_cleanup(repo)
-    assert_kept(repo, result, f"{BRANCH} has no PR and is not merged into origin/main")
+    assert_kept(repo, run_cleanup(repo), unmerged(tip(repo)))
+
+
+def test_no_pr_and_remote_ahead_of_main_keeps_everything(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, branch_ahead=False)
+    newer = commit_remote(repo)
+    assert_kept(repo, run_cleanup(repo), unmerged(newer))
