@@ -120,15 +120,21 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
     presets = {preset.name: preset for preset in load_presets()}
 
     assert sorted(presets) == ["commerce_detail", "commerce_listing", "job_detail", "job_listing"]
-    assert {name: preset.version for name, preset in presets.items()} == dict.fromkeys(presets, 1)
+    # commerce_detail 2: `brand` optional (owner, Appendix A #35).
+    assert {name: preset.version for name, preset in presets.items()} == {
+        "commerce_detail": 2,
+        "commerce_listing": 1,
+        "job_detail": 1,
+        "job_listing": 1,
+    }
     assert _core(presets["commerce_detail"]) == {
         "title": "text",
         "price": "money",
         "availability": "enum",
         "url": "url",
         "image_url": "image_url",
-        "brand": "text",
     }
+    assert presets["commerce_detail"].fields["brand"].type.value == "text"
     assert presets["commerce_detail"].required_groups == [["sku", "gtin"]]
     assert presets["commerce_detail"].fields["availability"].vocab == "schema:ItemAvailability"
     assert {n: s.scheme for n, s in presets["commerce_detail"].fields.items() if s.scheme} == {

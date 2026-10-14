@@ -1,6 +1,6 @@
 {
   "name": "commerce_detail",
-  "version": 1,
+  "version": 2,
   "page_kind": "detail",
   "required_groups": [["sku", "gtin"]],
   "fields": {
@@ -37,7 +37,6 @@
     },
     "brand": {
       "type": "text",
-      "required": true,
       "description": "Brand or manufacturer name of the product",
       "schema_org": "Product.brand.name"
     },

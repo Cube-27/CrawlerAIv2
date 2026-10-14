@@ -337,5 +337,5 @@ sets a value; records storage only serializes).
   types. Region-spelling disagreement becomes `conflict`; measured on dev.
 - **Derived `url` field.** C7 names derived values but the architecture lists none. The canonical-link
   derivation is the only one here; confirm it is wanted.
-- **Required fields in commerce_detail** (brand, image_url) will make `no_match`/incomplete common on real
-  pages; this is measured, not fixed here.
+- **Required fields in commerce_detail** (image_url) will make `no_match`/incomplete common on real pages; this is
+  measured, not fixed here. `brand` is optional from preset version 2 (ARCHITECTURE Appendix A #35).
