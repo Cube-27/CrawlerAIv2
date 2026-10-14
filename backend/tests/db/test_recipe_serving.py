@@ -11,12 +11,13 @@ import json
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
@@ -250,6 +251,35 @@ async def test_a_scrape_asking_for_page_formats_fetches_the_page(
     assert await _drift_window(engine, recipe_config) == {"title": [[True, True]]}
 
 
+async def test_max_age_reuses_an_api_capture_for_a_record_only(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    lamp_schema: SchemaDef,
+    recipe_config: uuid.UUID,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/p/desk-lamp"
+    web.pages[url] = PAGE
+    web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
+    first = await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
+    recent = {"max_age": 3600}
+
+    again = await scrape(engine, fetching, _scrape(url, lamp_schema).model_copy(update=recent), data=engine_data)
+    markdown = await scrape(
+        engine, fetching, _scrape(url, lamp_schema, "markdown").model_copy(update=recent), data=engine_data
+    )
+
+    assert again.capture_id == first.capture_id
+    # The JSON is no page to render: the page is fetched.
+    assert markdown.capture_id not in (None, first.capture_id)
+    assert markdown.fetch is not None
+    assert (markdown.fetch.method, web.page_fetches(), len(web.requested)) == ("http", [url], 1)
+    assert markdown.markdown is not None
+    assert "lights a desk" in markdown.markdown
+
+
 async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is_fetched(
     engine: AsyncEngine,
     fetching: Fetching,
@@ -273,7 +303,22 @@ async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is
     assert result.records[0].fields["title"].value == "Lamp page"
 
 
-async def test_the_endpoint_waits_for_the_site_rate(
+def _admissions(fetching: Fetching) -> list[str]:
+    """The hosts `fetching`'s limiter admits a request to from now on, in order."""
+    admitted: list[str] = []
+    admit = fetching.limiter.admit
+
+    def recording(host: str, interval: timedelta) -> timedelta:
+        wait = admit(host, interval)
+        if not wait:
+            admitted.append(host)
+        return wait
+
+    fetching.limiter.admit = recording  # type: ignore[method-assign]
+    return admitted
+
+
+async def test_an_endpoint_on_the_page_host_takes_the_page_turn_at_the_site_rate(
     engine: AsyncEngine,
     fetching: Fetching,
     web: Web,
@@ -282,25 +327,48 @@ async def test_the_endpoint_waits_for_the_site_rate(
     recipe_config: uuid.UUID,
     engine_data: EngineData,
 ) -> None:
-    # SPEC-02 §4.6: the endpoint's request is one more request to its host, admitted at the host's rate.
+    # SPEC-02 §4.6: a page served by its endpoint alone is one request to the host, so one turn at its rate.
     url = f"{own_origin}/p/desk-lamp"
     web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
-    host = own_origin.removeprefix("https://")
-    limiter = fetching.limiter
-    admitted: list[str] = []
-    admit = limiter.admit
-
-    def recording(name: str, interval: Any) -> Any:
-        wait = admit(name, interval)
-        if not wait:
-            admitted.append(name)
-        return wait
-
-    limiter.admit = recording  # type: ignore[method-assign]
+    admitted = _admissions(fetching)
 
     await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
 
-    assert admitted == [host, host]  # the page's turn, then the endpoint's
+    assert (admitted, len(web.requested)) == ([own_origin.removeprefix("https://")], 1)
+
+
+async def test_an_endpoint_after_the_page_fetched_to_bind_waits_for_a_turn_of_its_own(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    lamp_schema: SchemaDef,
+    recipe_config: uuid.UUID,
+    engine_data: EngineData,
+) -> None:
+    # SPEC-09 §4.4: a binder that reads the page's JSON-LD fetches the page first; the endpoint is a second request.
+    url = f"{own_origin}/p/desk-lamp"
+    product = '<script type="application/ld+json">{"@type": "Product", "sku": "9001"}</script></head>'
+    web.pages[url] = PAGE.replace(b"</head>", product.encode())
+    web.endpoints[f"{own_origin}/api/sku/9001"] = PRODUCT
+    recipe = {
+        **_ir(own_origin, lamp_schema)["api_recipe"],
+        "url": f"{own_origin}/api/sku/{{p1}}",
+        "params_from_url": {"p1": "jsonld:$[0]['sku']"},
+        "requires_page_fetch": True,
+    }
+    async with engine.begin() as conn:
+        ir = {**_ir(own_origin, lamp_schema), "api_recipe": recipe}
+        await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == recipe_config).values(ir=ir))
+    admitted = _admissions(fetching)
+
+    result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
+
+    host = own_origin.removeprefix("https://")
+    assert result.fetch is not None
+    assert (result.fetch.method, web.page_fetches(), admitted) == ("api", [url], [host, host])
+    assert result.records is not None
+    assert result.records[0].fields["title"].value == "Desk Lamp"
 
 
 # The worker's tasks.

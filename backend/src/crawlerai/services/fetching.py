@@ -1,20 +1,30 @@
 """What the services that fetch while their caller waits (`scrape`, `map`) share, and the worker's handlers fetch with:
 the rungs and guard of this process, the SSRF guard's refusals (INV-16), a site's robots.txt rules, and admission at
-its rate (SPEC-02 §4.6).
+its rate (SPEC-02 §4.6); and an active config's API recipe bound to the rungs, its requests sent as politely as a
+page's (SPEC-09 §4.8).
 """
 
 import asyncio
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.api import JsonRequest
+from crawlerai.acquire.outcome import Content, fetch_result
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.config_ir.api_recipe.execute import RecipeRung
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
-from crawlerai.services.scrape_steps import SiteRow
+from crawlerai.services.scrape_steps import SiteRow, site_row
 from crawlerai.storage.base import ObjectStore
 
 
@@ -103,6 +113,90 @@ async def admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None, 
     gap = interval(crawl_delay_ms, None if robots is None else robots.crawl_delay)
     while wait := limiter.admit(host, gap):
         await asyncio.sleep(wait.total_seconds())
+
+
+# The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy
+# does not respect it), or why robots.txt keeps the request from being sent.
+SiteRules = Callable[[str, FetchPolicy], Awaitable[tuple[int | None, Robots | None] | str]]
+
+
+async def endpoint_rules(
+    conn: AsyncConnection, url: str, policy: FetchPolicy, fetch_robots: Fetch
+) -> tuple[int | None, Robots | None] | str:
+    """The `SiteRules` of `url`, read in `conn`: its host's site, created on first use as a page's is, and its
+    robots.txt, fetched with `fetch_robots` when the site's snapshot is stale."""
+    site = await site_row(conn, urlsplit(url).hostname or "")
+    if not policy.respect_robots:
+        return site.crawl_delay_ms, None
+    robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch_robots)
+    if robots is None:
+        return "robots_unreachable"  # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing
+    return (site.crawl_delay_ms, robots) if robots.allows(url) else "robots"
+
+
+def engine_rules(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord]) -> SiteRules:
+    """`endpoint_rules` read in a transaction of their own, robots.txt fetched over `http`, its attempts added to
+    `attempts`: for a service that holds no connection while it fetches."""
+
+    async def rules(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
+        async with engine.begin() as conn:
+            return await endpoint_rules(conn, url, policy, recording(http, policy, attempts))
+
+    return rules
+
+
+@dataclass
+class _Turn:
+    """The host whose turn at its rate (SPEC-02 §4.6) the caller was admitted for, until a request takes it."""
+
+    host: str | None
+
+
+def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: SiteRules) -> RecipeRung | None:
+    """`recipe` bound to this process's rungs (SPEC-09 §4.8), for a page on `page_host` whose robots.txt the caller
+    has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
+    HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
+    robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
+    request robots.txt keeps from being sent leaves the page unserved, and `acquire` fetches it the configured way
+    (§4.10). None without the JSON rung."""
+    json = fetching.rungs.json
+    if json is None:
+        return None
+    turn = _Turn(page_host)
+    http = fetching.rungs.http
+
+    async def page(url: str, policy: FetchPolicy) -> FetchResult:
+        turn.host = None  # the page is the first request: its host's turn is the one the caller took
+        return await http(url, policy)
+
+    async def endpoint(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        allowed = await rules(request.url, policy)
+        if isinstance(allowed, str):
+            return _not_sent(request, policy, allowed)
+        host = urlsplit(request.url).hostname or ""
+        if host == turn.host:
+            turn.host = None
+        else:
+            await admitted(fetching.limiter, host, *allowed)
+        return await json(request, policy)
+
+    return RecipeRung(recipe, endpoint, page, ENGINE_VERSION)
+
+
+def _not_sent(request: JsonRequest, policy: FetchPolicy, reason: str) -> FetchResult:
+    """The recipe's result for a request robots.txt kept from being sent (`reason`), as a page's would be: `blocked`."""
+    return fetch_result(
+        url=request.page_url,
+        method="api",
+        policy=policy,
+        engine_version=ENGINE_VERSION,
+        fetched_at=datetime.now(UTC),
+        started=time.monotonic(),
+        exchange=None,
+        content=Content(body=b""),
+        block_class="blocked",
+        error=reason,
+    )
 
 
 @dataclass(frozen=True)

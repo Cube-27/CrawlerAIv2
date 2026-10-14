@@ -13,7 +13,7 @@ this is how infinite scroll is served (§8.6). `recipe_collector` reads what the
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
@@ -23,16 +23,37 @@ from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import ApiCollector
+from crawlerai.collect.config import Executed
 from crawlerai.config_ir.api_recipe.binding import PageData, page_data, with_query_value
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Pagination
 from crawlerai.config_ir.api_recipe.replay import request_for
 from crawlerai.content.page import ParsedPage
+from crawlerai.db.models import FieldStatus
+from crawlerai.normalize.base import Context
+from crawlerai.schemas.types import SchemaDef
 
 
 def recipe_collector(recipe: ApiRecipe, recipe_id: str) -> ApiCollector:
     """The collector of the captures `recipe` fetches; `recipe_id` names it in candidate locators."""
     rows = None if recipe.pagination is None else recipe.pagination.rows
     return ApiCollector(recipe_id, recipe.map, rows)
+
+
+@dataclass(frozen=True, slots=True)
+class RecipeExecutor:
+    """The `ConfigExecutor` of the captures a config's recipe fetched: the recipe's collector, with the status of the
+    config's fields the recipe maps, which role C is then not asked for (SPEC-08 §4.8)."""
+
+    collector: ApiCollector
+    field_status: Mapping[str, FieldStatus]
+
+    @classmethod
+    def of(cls, recipe: ApiRecipe, recipe_id: str, config_status: Mapping[str, FieldStatus]) -> "RecipeExecutor":
+        status = {name: s for name, s in config_status.items() if name in recipe.map}
+        return cls(recipe_collector(recipe, recipe_id), status)
+
+    def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
+        return self.collector.collect(page, schema, ctx)
 
 
 @dataclass(frozen=True, slots=True)
