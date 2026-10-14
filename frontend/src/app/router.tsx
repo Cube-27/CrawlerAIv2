@@ -4,6 +4,9 @@ import { ConnectScreen } from "../screens/connect/ConnectScreen";
 import { HomeScreen } from "../screens/home/HomeScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
 import { ScrapeScreen } from "../screens/scrape/ScrapeScreen";
+import { ConfigScreen } from "../screens/sites/ConfigScreen";
+import { SiteScreen } from "../screens/sites/SiteScreen";
+import { SitesScreen } from "../screens/sites/SitesScreen";
 import { EditSchemaScreen, NewSchemaScreen } from "../screens/schemas/SchemaEditScreens";
 import { SchemaScreen } from "../screens/schemas/SchemaScreen";
 import { SchemasScreen } from "../screens/schemas/SchemasScreen";
@@ -35,6 +38,9 @@ export const routes: RouteObject[] = [
           { path: "schemas/:id", element: <SchemaScreen /> },
           { path: "schemas/:id/edit", element: <EditSchemaScreen /> },
           { path: "records", element: <RecordsScreen /> },
+          { path: "sites", element: <SitesScreen /> },
+          { path: "sites/:host", element: <SiteScreen /> },
+          { path: "configs/:id", element: <ConfigScreen /> },
         ],
       },
       // SPEC-03 §4.10. The eval routes take no API key (D-0344); the shell lists them when `/healthz` reports

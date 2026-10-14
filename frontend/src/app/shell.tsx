@@ -14,6 +14,7 @@ const SCREENS: NavEntry[] = [
   { href: "/scrape", label: "Scrape" },
   { href: "/schemas", label: "Schemas" },
   { href: "/records", label: "Records" },
+  { href: "/sites", label: "Sites" },
 ];
 
 // With SPEC-03's screen, listed only when the backend serves the eval API (SPEC-12 §4.3).

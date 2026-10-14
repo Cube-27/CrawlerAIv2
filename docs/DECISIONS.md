@@ -40,6 +40,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 |---|---|---|
 | D-0311 | GeoNames has no versioned download URL | needs-owner |
 | D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
+| D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
 
 ---
 
@@ -4388,4 +4389,39 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `Fetching` moves from `services.scrape` to a new `services.fetching`, with `site_rules`, `admitted` and one SSRF refusal path: `TargetRejected` (replacing `ScrapeRejected`), `check_target` and `refusal(result)` (scrape and map raise on it, the `batch_scrape` handler returns `Failed`); the 422 is `api.problems.target_refused`. `site_row`, `DEFAULT_PROJECT` and `record_fetch_usage` stay in `services.scrape_steps` (#128); `record_fetch_usage` takes attempt records, so no caller keeps a page body only to count it.
 - Alternatives: Import `scrape`'s private helpers; a `MapRejected` copy of `ScrapeRejected`.
 - Why: One copy of the INV-16 refusal check and of the waiting fetch's robots and rate steps for every service that fetches (SPEC-10 PR 4/7 reuse them).
+- Reversible: yes
+
+### D-0656 — The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: needs-owner
+- Decision: `/sites` is a host lookup that opens `/sites/{host}` (config versions from `GET /v1/sites/{host}/configs`). SPEC-12 §4.3's sites table (host, fetch method, mode per schema, pages extracted) is not built: ARCHITECTURE §13.1 has no endpoint that lists sites.
+- Alternatives: (a) add `GET /v1/sites` to §13.1 and SPEC-08 (a public API change); (b) amend SPEC-12 §4.3 to the host lookup.
+- Why: Adding an endpoint changes the public API, which is the owner's call (CLAUDE.md §4). Recommendation: (b) now, (a) when operators need the table. Blocks nothing.
+- Reversible: yes
+
+### D-0657 — "Learn now" sends `force: false`; "Learn anyway" re-sends with `force: true` after a refusal
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: decided
+- Decision: The config screen's "Learn now" posts `{schema_id, force: false}`; after a failure the problem is shown and a "Learn anyway" button posts `force: true`.
+- Alternatives: A force switch beside the button; always force; show "Learn anyway" only on a 409 (needs the HTTP status on the shared `Problem` type).
+- Why: The server's 409 says why it refused (an active config, or a run in flight); the operator forces only after reading it.
+- Reversible: yes
+
+### D-0658 — A correction sends only changed fields, `null` for a field whose steps were all removed, and CSS steps without `xpath`
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: decided
+- Decision: `PUT /v1/configs/{id}` carries the steps of each field whose steps changed, `null` for a configured field left with no steps, and the confirmed fields. A CSS step is sent as `{css, post}`; a normalize post op as `{"<field type>": {}}`. Two casts in `frontend/src/components/steps.ts` cover generated input types that differ from what the server accepts (`CssStep-Input.xpath` required; `NormalizeOp-Input` as `{type}`, which `_post_op_kind` refuses).
+- Alternatives: Send every field; a separate remove control.
+- Why: Unchanged fields stay as stored (D-0593 activates only on operated fields); `CssStep`'s validator derives `xpath` from `css`; the post-op discriminator reads the op's one key.
+- Reversible: yes
+
+### D-0659 — The correction form lists every top-level schema field
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: decided
+- Decision: The form shows each field of the config's schema version, configured or not, with the configured ones' steps prefilled.
+- Alternatives: Only the fields the config has.
+- Why: A correction may give steps to a field the config lacks (`config_ir.corrections` accepts any schema field).
+- Reversible: yes
+
+### D-0660 — A config export is saved from a Blob as `<site>-v<version>-<format>.json`, with its release report shown
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: decided
+- Decision: `POST /v1/configs/{id}/export`'s `export` member is saved as a JSON file through a Blob; the release report is shown under the form, `manual` fields marked.
+- Alternatives: Open a link to the endpoint.
+- Why: SPEC-12 §4.1: every request carries the bearer header, so exports are fetched with it and saved as files.
 - Reversible: yes
