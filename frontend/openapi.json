@@ -2130,6 +2130,10 @@
       },
       "JobSummary": {
         "properties": {
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
           "counts": {
             "$ref": "#/components/schemas/TaskCounts"
           },
@@ -2239,7 +2243,8 @@
           "usage",
           "llm_cost_usd",
           "webhook_url",
-          "engine_version"
+          "engine_version",
+          "cancel_requested"
         ],
         "title": "JobSummary",
         "type": "object"
@@ -3344,7 +3349,7 @@
         "type": "object"
       },
       "PageOutput": {
-        "description": "A task of a job without a schema, with the content formats the job asked for (ARCHITECTURE \u00a78.5). The formats\nare members only when the task reached its page and its capture is still kept.",
+        "description": "A task of a job without a schema, with the content formats the job asked for (ARCHITECTURE \u00a78.5). The formats\nare members only when the task reached its page and its capture is still kept. `last_error` is why the task\nfailed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the\nworker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (SPEC-01 \u00a74.8).",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -3384,6 +3389,17 @@
           "html": {
             "title": "Html",
             "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
           },
           "links": {
             "items": {
@@ -3451,6 +3467,7 @@
           "url",
           "status",
           "outcome",
+          "last_error",
           "capture_id",
           "final_url",
           "fetched_at"

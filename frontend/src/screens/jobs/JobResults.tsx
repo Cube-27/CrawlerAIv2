@@ -14,6 +14,7 @@ import { OutcomeLabel } from "../../components/OutcomeLabel";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { RecordTable } from "../../components/RecordTable";
 import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
+import { TruncatedText } from "../../components/TruncatedText";
 import { RecordInspector } from "../records/RecordInspector";
 
 /** The job's records in the columns of their schema, each opening the record inspector. */
@@ -43,7 +44,8 @@ function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>)
   );
 }
 
-/** A job without a schema: each of its pages with its status and outcome. */
+/** A job without a schema: each of its pages with its status, its outcome, and why it failed or ended as it did when
+ * the outcome alone does not say (`last_error`, SPEC-10 §4.2). */
 function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
   return (
     <Table>
@@ -51,11 +53,12 @@ function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
         {/* Fixed column widths: a page of long URLs truncates rather than moving the columns. */}
         <Table.Content aria-label="Pages" className="table-fixed">
           <Table.Header>
-            <Table.Column isRowHeader className="w-1/2">
+            <Table.Column isRowHeader className="w-1/3">
               URL
             </Table.Column>
-            <Table.Column className="w-1/6">Status</Table.Column>
-            <Table.Column className="w-1/6">Outcome</Table.Column>
+            <Table.Column className="w-1/8">Status</Table.Column>
+            <Table.Column className="w-1/8">Outcome</Table.Column>
+            <Table.Column className="w-1/4">Reason</Table.Column>
             <Table.Column className="w-1/6">Fetched</Table.Column>
           </Table.Header>
           <Table.Body items={pages.map((page) => ({ id: page.task_id, page }))}>
@@ -67,6 +70,9 @@ function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
                 </Table.Cell>
                 <Table.Cell>
                   {page.outcome === null ? "—" : <OutcomeLabel outcome={page.outcome} />}
+                </Table.Cell>
+                <Table.Cell>
+                  {page.last_error === null ? "—" : <TruncatedText text={page.last_error} />}
                 </Table.Cell>
                 <Table.Cell className="truncate">{page.fetched_at ?? "—"}</Table.Cell>
               </Table.Row>
