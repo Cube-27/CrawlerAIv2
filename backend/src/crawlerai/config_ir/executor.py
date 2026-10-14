@@ -259,11 +259,16 @@ def _page_only(scope: _Scope) -> None:
         raise _Refused("not relative to a row: regex, jsonld and jsonpath steps read the whole page")
 
 
-def _evaluate(xpath: str, node: HtmlElement) -> object:
+# XPath 1.0 §1: an expression evaluates to a node-set (lxml: a list), a boolean, a number or a string.
+_XPathResult = list[object] | bool | float | str
+
+
+def _evaluate(xpath: str, node: HtmlElement) -> _XPathResult:
     try:
-        return node.xpath(xpath)
+        result: _XPathResult = node.xpath(xpath)  # lxml's stubs type it `Any`
     except etree.XPathError as error:  # lxml compiles at run time (an unbound variable, a wrong argument count)
         raise _Refused(f"invalid_xpath: {error}") from None
+    return result
 
 
 def _xpath_values(xpath: str, node: HtmlElement) -> list[Raw]:
