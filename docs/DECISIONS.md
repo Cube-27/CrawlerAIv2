@@ -42,7 +42,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
 | D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
 | D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
-| D-0718 | Rows keyed by the unsorted query form before #149 | needs-owner |
 
 ---
 
@@ -4835,8 +4834,72 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0718 — Rows keyed by the unsorted query form before #149
-- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: needs-owner
+- Date: 2026-10-14 · Spec/PR: Integration review (#149) · Status: decided (owner, 2026-10-14): (a)
 - Decision: Question: `record.entity_key`, `url_state.canonical_url` and `url_task.canonical_url` written by scrape or batch for URLs with two or more query pairs out of order no longer match new writes, so those pages start a new version chain once. Options: (a) leave them; (b) a backfill migration that recomputes keys and merges chains. Recommendation: (a) (no production data yet). Blocked: nothing.
 - Alternatives: (b) a backfill migration.
 - Why: Rewriting stored data needs the owner (CLAUDE.md §4).
+- Reversible: yes
+- Owner answer: owner, 2026-10-14: option (a), leave the rows keyed by the unsorted query form; no backfill.
+
+### D-0719 — Estimated LLM cost shown for visibility
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided (owner, 2026-10-14)
+- Decision: Show an estimated LLM cost for visibility; it is not billing. ARCHITECTURE §1, §13.1 and §17 amended (rev 11).
+- Alternatives: Tokens and calls only.
+- Why: Owner request (2026-10-14).
+- Reversible: yes
+
+### D-0720 — LLM usage event time comes from the UUIDv7 id
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: `usage_event` has no time column; an event's time and day come from its UUIDv7 id (RFC 9562 §5.7, `core.ids.uuid7_floor`), so a day range is an id range on the primary key.
+- Alternatives: Add `usage_event.created_at` (a SPEC-01 schema change); use `job.created_at` (wrong for long jobs).
+- Why: No schema change other specs rely on.
+- Reversible: yes; a later column changes only the expression
+
+### D-0721 — The client records `tokens_in` on each usage row of a call
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: Each of a call's usage rows carries the call's input tokens in its metadata, so output tokens are priced at the call's prompt-length tier. Older rows of a tiered model without it are unpriced.
+- Alternatives: Pair the input and output rows by metadata (fragile on retries).
+- Why: SPEC-06 §4.8.
+- Reversible: yes
+
+### D-0722 — Unpriced tokens make a cost null, not partial
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: Any total, day, breakdown row or job that includes tokens without a price has `estimated_usd: null` and reports `unpriced_tokens`. Prices start at their checked date; model ids match exactly (no prefix matching), so a suffixed reply id is unpriced until listed.
+- Alternatives: Partial sums; nearest-model prices.
+- Why: C7.
+- Reversible: yes
+
+### D-0723 — Calls without a job are not in the cost history
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: The labeling pre-fill and an eval replay's live recording call the client with `job_id=None`, write no usage event, and so have no cost history; learning runs, scrape, extract and crawl have a job and are counted. The API and the Settings screen say so. `usage_event.job_id` is unchanged.
+- Alternatives: A nullable `job_id` or a separate table (a schema change other specs rely on; escalation).
+- Why: No spec allows a nullable FK.
+- Reversible: yes
+
+### D-0724 — One price file per provider; source URL only in the manifest
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: Prices live in `backend/data/llm/<provider>-pricing.json`, one manifest entry each; the source URL is in the manifest only, since the C3 scan flags hostnames in data files and the manifest is its exempt data file.
+- Alternatives: One combined file; the URL inside each file.
+- Why: C3, C4.
+- Reversible: yes
+
+### D-0725 — Range presets on the Settings screen
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: The LLM cost section offers last 7, 30, 90 or 365 days through today (UTC) in a Select, not a date-range picker; the API takes any range up to 366 days.
+- Alternatives: HeroUI DateRangePicker.
+- Why: The smallest keyboard-friendly control before UAT.
+- Reversible: yes
+
+### D-0726 — Index `usage_event (job_id, id)`
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: Migration 0016 adds `ix_usage_event_job_id_id`, so the job summary's `llm_cost_usd` (jobs list, job page, events, webhooks) reads a job's events by index, not by a table scan; added with its query per the ACTIVE.md index rule.
+- Alternatives: Counters on `job`; no index.
+- Why: Reviewer and /simplify follow-up.
+- Reversible: yes
+
+### D-0727 — The SQL join is the one price-matching rule
+- Date: 2026-10-14 · Spec/PR: SPEC-06 PR 7, SPEC-10 PR 10, SPEC-12 PR 11 (#148) · Status: decided
+- Decision: `services/llm_costs.py`'s join is the only rule matching a call to its price; the Python copy used only by tests was removed. Price periods compare as UUIDv7 id bounds.
+- Alternatives: Keep a Python lookup beside the SQL.
+- Why: Two copies could drift untested.
 - Reversible: yes
