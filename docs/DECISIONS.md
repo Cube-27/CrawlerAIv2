@@ -5206,3 +5206,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: `monkeypatch.delenv` in each settings test; stop exporting `.env` in the Makefile.
 - Why: `make check` exports the developer's `.env`, and settings a test builds read the environment.
 - Reversible: yes
+
+### D-0771 — Adopting a prompt draft starts with an empty name
+- Date: 2026-10-14 · Spec/PR: UAT re-run F32 (#160) · Status: decided
+- Decision: `/schemas/new?from=<id>` prefills the source schema's document without its name, and the Name field says a name must be one no other schema has.
+- Alternatives: Suffix the draft's name (a guess the user didn't make); save as a new version of the draft (SPEC-12 §4.3 says adoption creates a `user` schema via `POST`).
+- Why: The draft's own name is taken by its versions, so prefilling it made every Save answer 409.
+- Reversible: yes
+
+### D-0772 — One vitest timeout for every frontend test file
+- Date: 2026-10-14 · Spec/PR: UAT re-run F35 (#160) · Status: decided
+- Decision: `test.testTimeout: 20_000` in `frontend/vite.config.ts` replaces six per-file `vi.setConfig` calls; screen tests connect through `src/test/connect.ts`, which pastes the key.
+- Alternatives: Add the override to the one file without it (the next new file forgets it again).
+- Why: Every screen test renders the whole app through its router; the one file without the override was the one that timed out under load.
+- Reversible: yes
