@@ -134,7 +134,7 @@ def _learn(
     routes: Mapping[str, bytes] = BY_SLUG,
     client: ScriptedClient | None = None,
     schema: SchemaDef | None = None,
-) -> tuple[RecipeValidated | None, list[str]]:
+) -> tuple[RecipeValidated, list[str]]:
     sent: list[str] = []
     fetcher = stand_in_api(routes)
 
@@ -239,14 +239,32 @@ def test_a_held_out_page_without_a_response_of_the_endpoint_is_not_validated_on(
     )
 
 
-def test_a_sample_whose_captures_hold_no_endpoint_learns_no_recipe(stand_in_api: StandInApi) -> None:
+# --- why a run has no recipe (D-0583: the report says) ---
+
+
+def test_pages_without_network_responses_say_so(stand_in_api: StandInApi) -> None:
     learned, sent = _learn(stand_in_api, [_by_slug(n, captured=False) for n in range(8)])
 
-    assert (learned, sent) == (None, [])
+    assert learned.recipe is None
+    assert (learned.report.refused or "").startswith("no_network_bodies:")
+    assert sent == []
 
 
-def test_a_listing_learns_no_recipe(stand_in_api: StandInApi) -> None:
-    # A listing's recipe needs pagination, which nothing discovers yet (D-0604).
+def test_responses_that_carry_no_published_value_say_no_endpoint(stand_in_api: StandInApi) -> None:
+    def unrelated(n: int) -> StoredPage:
+        page = _by_slug(n)
+        other = _bundle(page.bundle.manifest.url, page.bundle.body.decode(), [(f"{ENDPOINT}/x{n}", b'{"ok": true}')])
+        return StoredPage(page.held_out, page.sample, other)
+
+    learned, _ = _learn(stand_in_api, [unrelated(n) for n in range(8)])
+
+    assert learned.recipe is None
+    assert (learned.report.refused or "").startswith("no_endpoint:")
+
+
+def test_a_listing_says_its_recipe_needs_pagination(stand_in_api: StandInApi) -> None:
     learned, sent = _learn(stand_in_api, [_by_slug(n) for n in range(8)], schema=_schema("listing"))
 
-    assert (learned, sent) == (None, [])
+    assert learned.recipe is None
+    assert (learned.report.refused or "").startswith("listing:")
+    assert sent == []

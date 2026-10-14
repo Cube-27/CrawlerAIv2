@@ -44,7 +44,7 @@ from crawlerai.config_ir.progressive import (
     lock_state,
 )
 from crawlerai.config_ir.synthesis import synthesize
-from crawlerai.config_ir.validation import Validated, ValidationReport, validate
+from crawlerai.config_ir.validation import Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.jobs import record_event, transition_job
 from crawlerai.db.models import (
@@ -210,35 +210,51 @@ def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[StoredPa
     return ranked[:SAMPLE_PAGES], ranked[SAMPLE_PAGES:]
 
 
+# A validation report reason stays short: it is a table cell in the config view, not a log.
+REASON_CHARS: Final = 200
+
+
 async def _learned(
     client: LLMClient, run: _Run, vocabulary: Vocabulary, max_chars: int, replay: Replay | None
 ) -> Validated:
     """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
     sample, held_out = split(run.schema, run.pages)
-    ir = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars)
+    ir, unlearned = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars)
     held_out_pages = [page.held_out for page in held_out]
     validated = await asyncio.to_thread(validate, ir, run.schema, held_out_pages, vocabulary)
+    validated = with_unlearned(validated, unlearned)
     # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
     if validated.ir is None or replay is None:
         return validated
     recipe = await learn_recipe(client, sample, held_out, run.schema, replay, job_id=run.job_id)
-    return validated if recipe is None else attach(validated, recipe)
+    return attach(validated, recipe)
 
 
 async def _learn(
     client: LLMClient, run: _Run, sample: list[SamplePage], vocabulary: Vocabulary, max_chars: int
-) -> ExtractionConfigIR:
-    """The config induction and synthesis learn from the sample."""
+) -> tuple[ExtractionConfigIR, dict[str, str]]:
+    """The config induction and synthesis learn from the sample, and why each other schema field got no steps: the
+    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics."""
     induction = await asyncio.to_thread(induce, run.schema, sample, vocabulary)
     ir = _induced(run, induction)
     # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
-    targets = [name for name in induction.to_synthesize if name not in induction.mapped]
-    if sample and targets:
+    reasons = {name: reason for name, reason in induction.to_synthesize.items() if name not in induction.mapped}
+    if sample and reasons:
         synthesis = await synthesize(
-            client, ir, run.schema, sample, targets, vocabulary, max_chars=max_chars, job_id=run.job_id
+            client, ir, run.schema, sample, list(reasons), vocabulary, max_chars=max_chars, job_id=run.job_id
         )
         ir = synthesis.ir
-    return ir
+        for name, diagnostics in synthesis.unresolved.items():
+            if name in reasons:
+                reasons[name] += f"; synthesis: {_brief(diagnostics)}"
+    learned = set(ir.fields) | (set(ir.listing.fields) if ir.listing is not None else set())
+    return ir, {name: reason for name, reason in reasons.items() if name not in learned}
+
+
+def _brief(diagnostics: Sequence[str]) -> str:
+    """Synthesis diagnostics, short enough for a report cell: the first two, cut at `REASON_CHARS`."""
+    text = "; ".join(diagnostics[:2]) or "no steps"
+    return text if len(text) <= REASON_CHARS else text[: REASON_CHARS - 1] + "…"
 
 
 def _induced(run: _Run, induction: Induction) -> ExtractionConfigIR:

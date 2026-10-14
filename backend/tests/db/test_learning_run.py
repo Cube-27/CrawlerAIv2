@@ -166,6 +166,10 @@ class RoleA:
 # Role A's reply: `PRICE_STEP` in the wire form (`config_ir.step_wire`).
 PRICE_WIRE = {"selector": "xpath", "expression": PRICE_STEP["xpath"], "when_type": "", "source": "", "post": []}
 PRICE_REPLY = {"fields": {"price": {"steps": [PRICE_WIRE]}}}
+# A reply whose price step matches no element of the sample pages.
+MISSING_PRICE_REPLY = {
+    "fields": {"price": {"steps": [{**PRICE_WIRE, "expression": "normalize-space(//p[@class='absent'])"}]}}
+}
 
 
 @dataclass
@@ -317,6 +321,36 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
             await conn.execute(select(Record.mode).where(Record.extraction_id == stored.extraction_id))
         ).scalar_one()
     assert (extraction.mode, extraction.config_version, extraction.llm_calls, record_mode) == ("config", 1, 0, "config")
+
+
+async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_with_why(site: Site_) -> None:
+    await site.pages(8)
+    await _forced(site)
+
+    # Each reply's price step matches nothing on the sample: the first call and every repair fail.
+    role_a = RoleA(*[MISSING_PRICE_REPLY] * 4)
+    _, learned = await site.learn(role_a)
+
+    assert learned is not None
+    assert learned.config_id is not None
+    async with site.engine.connect() as conn:
+        config = (await conn.execute(select(ExtractionConfig).where(ExtractionConfig.id == learned.config_id))).one()
+    # The config and its statuses hold only what validated; the report says why the price has no steps.
+    assert (sorted(config.ir["fields"]), config.field_status) == (["title"], {"title": "corroborated"})
+    assert config.validation_report["fields"]["price"] == {
+        "pages": 3,
+        "matched": 0,
+        "valid": 0,
+        "published": 0,
+        "reproduced": 0,
+        "comparable": 0,
+        "corroborated_on": 0,
+        "status": None,
+        "yield": 0.0,
+        "validity": None,
+        "dropped": "not_learned: not_induced:text; synthesis: page 1: no_match; page 2: no_match",
+    }
+    assert [r.prompt_kind for r in role_a.requests] == ["a_synth", "a_repair", "a_repair", "a_repair"]
 
 
 def _replay(stand_in_api: StandInApi, products: range, sent: list[str]) -> Replay:

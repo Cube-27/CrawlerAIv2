@@ -5241,3 +5241,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Collapse text-node whitespace on the tree before trafilatura, which merged separate `div` blocks into one paragraph.
 - Why: Per line, list nesting and code survive and blocks stay apart.
 - Reversible: yes
+
+### D-0776 — The validation report lists every schema field, with why an unlearned one has no steps
+- Date: 2026-10-15 · Spec/PR: SPEC-08 §4.6, UAT accuracy R11 (#163) · Status: decided
+- Decision: For each schema field neither induction nor synthesis gave steps, the report has a dropped `FieldReport` (`status: null`, zero counts, `dropped: "not_learned: <reason>"`); the reason is induction's, with synthesis's first two diagnostics of its last attempt appended, 200 characters at most. A listing's row fields go in its listing report. The config and its field statuses are unchanged.
+- Alternatives: A separate `unlearned` key in the report (a new stored shape the UI would need to read); logging the reasons only.
+- Why: The operator sees in the config view why a required field is missing, in the shape the report and UI already have (D-0583).
+- Reversible: yes
+
+### D-0777 — `learn_recipe` always says why a run has no recipe
+- Date: 2026-10-15 · Spec/PR: SPEC-09 §4.7, UAT re-run 5c (#163) · Status: decided
+- Decision: A listing, a sample without network bodies and a sample with no endpoint come back as `refused("<kind>: <reason>")` (`listing`, `no_network_bodies`, `no_endpoint`) instead of `None`.
+- Alternatives: Keep `None` and leave `api_recipe` out of the report.
+- Why: D-0583: the report says why; a forced learn on an API-backed site said nothing.
+- Reversible: yes
