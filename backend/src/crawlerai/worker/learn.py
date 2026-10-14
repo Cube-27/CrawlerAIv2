@@ -15,6 +15,7 @@ from typing import Final
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.config_ir.learning import next_learn_job, run_learn_job
 from crawlerai.llm.client import LLMClient
 from crawlerai.storage.base import ObjectStore
@@ -33,15 +34,18 @@ async def run_learner(
     *,
     vocabulary: Vocabulary,
     max_chars: int,
+    replay: Replay | None,
 ) -> None:
     """Run queued `learn` jobs until `stop` is set; the run in progress finishes first. `max_chars` is role A's HTML
-    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`)."""
+    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays (SPEC-09 §4.6, §4.7)."""
     while not stop.is_set():
         try:
             async with engine.connect() as conn:
                 job_id = await next_learn_job(conn)
             if job_id is not None:
-                await run_learn_job(engine, store, client, job_id, vocabulary=vocabulary, max_chars=max_chars)
+                await run_learn_job(
+                    engine, store, client, job_id, vocabulary=vocabulary, max_chars=max_chars, replay=replay
+                )
                 continue
         except Exception:
             log.exception("learner: polling for learn jobs failed")

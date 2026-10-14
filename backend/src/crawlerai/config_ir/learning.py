@@ -4,15 +4,17 @@ an active config or a failed run.
 A run reads the state's `LEARN_AFTER_PAGES` most recent extracted pages (`held_out.load_pages`, §4.4). The
 `SAMPLE_PAGES` with the most published required values are the learning sample, and the rest are held out. Induction
 proposes selectors without an LLM (§4.5), role A synthesizes the fields it left (§4.6), and the config is validated on
-the held-out pages (§4.7) and activated (§4.8). Every other end is a failed run (`progressive.learning_failed`):
-validation refusing the config, an LLM failure (D-0588), a cancelled job, an error, or an operator's config activated
-while the run was in flight, which a run that started before it does not replace. A job that cannot start, and a run
-still `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
+the held-out pages (§4.7) and activated (§4.8), with the API recipe its pages' browser captures show their values came
+from when one is learned and validated (SPEC-09 §2, `api_recipe.learn`). Every other end is a failed run
+(`progressive.learning_failed`): validation refusing the config, an LLM failure (D-0588), a cancelled job, an error,
+or an operator's config activated while the run was in flight, which a run that started before it does not replace. A
+job that cannot start, and a run still `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`),
+end failed too.
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
-role A is called, because the LLM client commits usage on a connection of its own and must not wait on a write to the
-job's row (D-0346). The job's start and end are recorded as `learning_started` and `learning_finished` events
-(SPEC-10 §4.2).
+role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
+not wait on a write to the job's row (D-0346). The job's start and end are recorded as `learning_started` and
+`learning_finished` events (SPEC-10 §4.2).
 """
 
 import asyncio
@@ -28,6 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.activation import activate
+from crawlerai.config_ir.api_recipe.learn import learn_recipe
+from crawlerai.config_ir.api_recipe.replay import Replay
+from crawlerai.config_ir.api_recipe.validate import attach
 from crawlerai.config_ir.held_out import StoredPage, load_pages
 from crawlerai.config_ir.induction import Induction, SamplePage, induce
 from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, Provenance, SchemaRef
@@ -39,7 +44,7 @@ from crawlerai.config_ir.progressive import (
     lock_state,
 )
 from crawlerai.config_ir.synthesis import synthesize
-from crawlerai.config_ir.validation import HeldOutPage, Validated, ValidationReport, validate
+from crawlerai.config_ir.validation import Validated, ValidationReport, validate
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.jobs import record_event, transition_job
 from crawlerai.db.models import (
@@ -109,9 +114,11 @@ async def run_learn_job(
     *,
     vocabulary: Vocabulary,
     max_chars: int,
+    replay: Replay | None,
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
-    took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`)."""
+    took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
+    learns no API recipe."""
     try:
         async with engine.begin() as conn:
             run = await _start(conn, job_id)
@@ -125,9 +132,7 @@ async def run_learn_job(
         # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
-        run = replace(run, pages=pages)
-        ir, held_out = await _learn(client, run, vocabulary, max_chars)
-        validated = await asyncio.to_thread(validate, ir, run.schema, held_out, vocabulary)
+        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, replay)
     except LLMFailure as e:
         async with engine.begin() as conn:
             return await _fail(conn, run, e.code)
@@ -190,7 +195,7 @@ async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned
     return Learned(None, reason)
 
 
-def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[SamplePage], list[HeldOutPage]]:
+def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[StoredPage], list[StoredPage]]:
     """The learning sample, the `SAMPLE_PAGES` pages with the most published required values (the most recent first
     on a tie), and the held-out pages, the rest (§4.4)."""
     required = {name for name, spec in schema.fields.items() if spec.required}
@@ -200,14 +205,28 @@ def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[SamplePa
         return sum(len(required.intersection(entity)) for entity in entities)
 
     ranked = sorted(pages, key=published, reverse=True)  # stable: `pages` are most recent first
-    return [page.sample for page in ranked[:SAMPLE_PAGES]], [page.held_out for page in ranked[SAMPLE_PAGES:]]
+    return ranked[:SAMPLE_PAGES], ranked[SAMPLE_PAGES:]
+
+
+async def _learned(
+    client: LLMClient, run: _Run, vocabulary: Vocabulary, max_chars: int, replay: Replay | None
+) -> Validated:
+    """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
+    sample, held_out = split(run.schema, run.pages)
+    ir = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars)
+    held_out_pages = [page.held_out for page in held_out]
+    validated = await asyncio.to_thread(validate, ir, run.schema, held_out_pages, vocabulary)
+    # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
+    if validated.ir is None or replay is None:
+        return validated
+    recipe = await learn_recipe(client, sample, held_out, run.schema, replay, job_id=run.job_id)
+    return validated if recipe is None else attach(validated, recipe)
 
 
 async def _learn(
-    client: LLMClient, run: _Run, vocabulary: Vocabulary, max_chars: int
-) -> tuple[ExtractionConfigIR, list[HeldOutPage]]:
-    """The config induction and synthesis learn from the sample, and the held-out pages to validate it on."""
-    sample, held_out = split(run.schema, run.pages)
+    client: LLMClient, run: _Run, sample: list[SamplePage], vocabulary: Vocabulary, max_chars: int
+) -> ExtractionConfigIR:
+    """The config induction and synthesis learn from the sample."""
     induction = await asyncio.to_thread(induce, run.schema, sample, vocabulary)
     ir = _induced(run, induction)
     # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
@@ -217,7 +236,7 @@ async def _learn(
             client, ir, run.schema, sample, targets, vocabulary, max_chars=max_chars, job_id=run.job_id
         )
         ir = synthesis.ir
-    return ir, held_out
+    return ir
 
 
 def _induced(run: _Run, induction: Induction) -> ExtractionConfigIR:

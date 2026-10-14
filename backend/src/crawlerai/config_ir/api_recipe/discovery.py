@@ -72,6 +72,17 @@ def discover(samples: Sequence[DiscoverySample], schema: SchemaDef) -> list[Endp
     return sorted(candidates, key=lambda candidate: -candidate.score)
 
 
+def endpoint_request(bundle: CaptureBundle, endpoint: EndpointCandidate) -> CapturedRequest | None:
+    """The request to `endpoint` a capture holds a readable answer to, the first in capture order; `None` when it holds
+    none. Held-out validation reads the captures that hold one (§4.7)."""
+    key = _key(endpoint.requests[0])
+    for entry, data in zip(bundle.manifest.network_bodies, bundle.network, strict=True):
+        readable = _readable(entry, data)
+        if readable is not None and _key(readable[0]) == key:
+            return readable[0]
+    return None
+
+
 @dataclass(frozen=True)
 class _Reading:
     """A value a body offers a field: the map path that gives it and the raw value."""
