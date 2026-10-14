@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from curl_cffi import CurlECode, CurlOpt
+from curl_cffi import Curl, CurlECode, CurlOpt
 from curl_cffi.curl import CURL_WRITEFUNC_ERROR, CURLINFO_HEADER_OUT
 from curl_cffi.requests import AsyncSession, BrowserTypeLiteral, Response
 from curl_cffi.requests.exceptions import RequestException
@@ -49,6 +49,22 @@ class _Response:
     @property
     def exchange(self) -> Exchange:
         return Exchange(self.url, self.status, self.request_headers, self.response_headers)
+
+
+class _Session(AsyncSession[Response]):
+    """curl_cffi's session, releasing a request's handle from the event loop's multi handle before its callbacks.
+
+    curl_cffi 0.16 frees a handle's callback data first and removes the handle from the multi handle second. For a
+    request still in flight (cancelled by an outer time cap), the removal closes its connection, and curl reports
+    that to the debug callback (`DEBUGFUNCTION`, which records the headers sent), whose data is gone by then: the
+    process dies in native code. Removed first, the handle's events reach live callbacks; curl_cffi's own removal
+    then finds it removed, which `curl_multi_remove_handle` answers with success.
+    """
+
+    def release_curl(self, curl: Curl) -> None:
+        if not self._closed:
+            self.acurl.remove_handle(curl)
+        super().release_curl(curl)
 
 
 class _Failed(Exception):
@@ -111,7 +127,7 @@ async def _follow(
     # One session per fetch keeps cookies set by one hop for the next, and none across fetches. `trust_env=False`
     # stops curl_cffi reading the proxy environment variables; libcurl reads them itself, so each request also sets
     # CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY (below): proxies come only from the pools.
-    async with AsyncSession(impersonate=impersonate, trust_env=False) as session:
+    async with _Session(impersonate=impersonate, trust_env=False) as session:
         response = await _get(session, target, policy, proxy, deadline, headers)
         for hop in range(MAX_REDIRECTS + 1):
             location = redirect_location(response.status, response.response_headers)
