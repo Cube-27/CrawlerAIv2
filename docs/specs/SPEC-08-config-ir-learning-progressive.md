@@ -120,7 +120,10 @@ published value (`equal`). Otherwise the field goes to synthesis.
   `id`, `class`, `data-*`, `itemprop`, `href`, `src`, `content`, `name`, `property`, truncated to
   `CRAWLERAI_LLM_A_MAX_CHARS` (120k) per page around the published values' locations; the published values and
   their `text:` offsets; for `jsonpath` targets, the keys of JSON state blocks (not values).
-- Output schema: `{fields: {<name>: {steps: [Step]}}}` — selectors only, never values (§11).
+- Output schema: `{fields: {<name>: {steps: [Step]}}}` — selectors only, never values (§11). Each step is written
+  in a wire form (`config_ir.step_wire`: `{selector, expression, when_type, source, post: [{op, pattern, repl}]}`,
+  `""` for an absent parameter), which keeps the schema inside every provider's structured-output subset
+  (SPEC-06 §4.2), and is read back into an IR `Step`.
 - Loop: execute on sample pages → diagnostics per field (`no_match`, `multi_match(n)`, `value_mismatch(got,
   want)`, `invalid_xpath`) → repair prompt (`a_repair`) up to 3 times; fields still failing are left without
   steps (the config covers fewer fields; role C fills them in `active` mode, §8.4).
