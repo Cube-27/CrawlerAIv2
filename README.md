@@ -69,6 +69,8 @@ make dev
 
 This copies `.env.example` to `.env` if there is none, starts Postgres in Docker, applies the migrations and runs
 the API on port 8000 (`GET /healthz`). The frontend runs separately: `cd frontend && pnpm install && pnpm dev`.
+To run everything at once (API, worker, scheduler and the frontend on http://localhost:5173, in one terminal; Ctrl+C
+stops all of them), use `make up` instead.
 Every other command, including the checks CI runs, is in [CLAUDE.md §7](CLAUDE.md#7-commands).
 
 ## Repository layout
