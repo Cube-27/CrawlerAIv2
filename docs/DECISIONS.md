@@ -4708,7 +4708,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0700 — The `/jobs` screen opens a job by id; a jobs table needs a `GET /v1/jobs` endpoint
-- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided (owner, 2026-10-14): add GET /v1/jobs; built in SPEC-10 PR 9 and SPEC-12 PR 9
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 7 (#143) · Status: decided (owner, 2026-10-14): add GET /v1/jobs; built in SPEC-10 PR 9 (#146) and SPEC-12 PR 10
 - Decision: `/jobs` has the create dialogs and an "Open job" form by id; a new job opens on its own page. SPEC-12 §4.3's jobs table (kind, status, counts, created) is not built: ARCHITECTURE §13.1 has no endpoint that lists jobs.
 - Alternatives: (a) add `GET /v1/jobs` to §13.1 and SPEC-10 (a public API change); (b) amend SPEC-12 §4.3 to the id lookup.
 - Why: Adding an endpoint changes the public API, which is the owner's call (CLAUDE.md §4). Same shape as D-0656 for sites. Recommendation: (a) when operators need the list; (b) until then. Blocks nothing.
@@ -4754,4 +4754,25 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `tests/db/test_ssrf_endpoints.py` runs the real `SafeConnector` and `fetch_http` against a local server; only the test site's host at the server's port is pinned to it. Redirect hops, sitemap and link locations and subdomains go through the real guard with a stub resolver.
 - Alternatives: Stub rungs that report a refusal, as the per-service tests do.
 - Why: The matrix exercises production's checks on every hop, not a stub's report of them.
+- Reversible: yes
+
+### D-0707 — `GET /v1/jobs` adds no index or migration
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 9 (#146) · Status: decided
+- Decision: The list reads `job` ordered by its primary key, descending, with `kind`/`status` as filters; the page's task counts use `url_task`'s (`job_id`, `canonical_url`) unique index.
+- Alternatives: An index on `job (kind, status, id)` in migration 0016.
+- Why: The primary-key index serves the order and the cursor; jobs are few next to tasks, so the filters cost a short scan. An index can be added with evidence that a filtered list is slow.
+- Reversible: yes
+
+### D-0708 — The jobs list is not scoped to the key's project
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 9 (#146) · Status: decided
+- Decision: `GET /v1/jobs` lists every job, as `GET /v1/jobs/{id}` and `GET /v1/records` read every project's rows today; learning jobs (no key) are listed too.
+- Alternatives: Only the jobs of the calling key's project; only jobs a key submitted.
+- Why: It keeps one access rule across the job routes; scoping them all is a separate change.
+- Reversible: yes
+
+### D-0709 — The SPEC-12 jobs-table row is row 10, not row 9
+- Date: 2026-10-14 · Spec/PR: SPEC-10 PR 9 (#146) · Status: decided
+- Decision: SPEC-12 §8 row 10 "Jobs table on /jobs" (`screens/jobs`, vitest, L3).
+- Alternatives: Row 9 as assigned.
+- Why: SPEC-12 row 9 (labeling nav) already exists and is done (#93).
 - Reversible: yes
