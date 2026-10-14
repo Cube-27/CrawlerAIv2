@@ -14,7 +14,6 @@ import { SchemaScreen } from "../screens/schemas/SchemaScreen";
 import { SchemasScreen } from "../screens/schemas/SchemasScreen";
 import { LabelingList } from "../screens/labeling/LabelingList";
 import { LabelingPage } from "../screens/labeling/LabelingPage";
-import { listLoader, pageLoader } from "../screens/labeling/loaders";
 import { AuthProvider, RequireKey } from "./auth";
 import { Shell } from "./shell";
 
@@ -45,12 +44,12 @@ export const routes: RouteObject[] = [
           { path: "configs/:id", element: <ConfigScreen /> },
           { path: "jobs", element: <JobsScreen /> },
           { path: "jobs/:id", element: <JobScreen /> },
+          // SPEC-03 §4.10: the eval API takes the same API key as everything else. The shell lists these routes
+          // when `/healthz` reports `eval_ui`.
+          { path: "labeling", element: <LabelingList /> },
+          { path: "labeling/:pageId", element: <LabelingPage /> },
         ],
       },
-      // SPEC-03 §4.10. The eval routes take no API key (D-0344); the shell lists them when `/healthz` reports
-      // `eval_ui`.
-      { path: "labeling", loader: listLoader, element: <LabelingList /> },
-      { path: "labeling/:pageId", loader: pageLoader, element: <LabelingPage /> },
     ],
   },
 ];

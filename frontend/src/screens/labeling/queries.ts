@@ -1,9 +1,13 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { sameOriginClient } from "../../api/client";
+import { useQuery } from "@tanstack/react-query";
+import type { ApiClient } from "../../api/client";
 import type { components } from "../../api/schema";
+import { useApiClient } from "../../app/auth";
 
 export type PageSummary = components["schemas"]["PageSummary"];
 export type PageDetail = components["schemas"]["PageDetail"];
+
+/** Every labeling query key starts with this, so a saved pass reads its page and the list again. */
+export const EVAL_PAGES = ["eval", "pages"] as const;
 
 // The eval routes are mounted only with `CRAWLERAI_EVAL_UI=true` (SPEC-03 §4.10). Unmounted, a route is FastAPI's
 // plain 404; a missing page is an RFC 9457 problem.
@@ -13,8 +17,8 @@ function isProblem(response: Response): boolean {
 
 export type ListData = { kind: "pages"; pages: PageSummary[] } | { kind: "off" };
 
-export async function listLoader(): Promise<ListData> {
-  const { data, response } = await sameOriginClient().GET("/v1/eval/pages");
+async function listPages(client: ApiClient): Promise<ListData> {
+  const { data, response } = await client.GET("/v1/eval/pages");
   if (data !== undefined) return { kind: "pages", pages: data };
   if (response.status === 404) return { kind: "off" };
   throw new Error(`listing the eval pages failed: HTTP ${String(response.status)}`);
@@ -25,9 +29,8 @@ export type PageData =
   | { kind: "missing" }
   | { kind: "off" };
 
-export async function pageLoader({ params }: LoaderFunctionArgs): Promise<PageData> {
-  const pageId = params["pageId"] ?? "";
-  const { data, response } = await sameOriginClient().GET("/v1/eval/pages/{page_id}", {
+async function getPage(client: ApiClient, pageId: string): Promise<PageData> {
+  const { data, response } = await client.GET("/v1/eval/pages/{page_id}", {
     params: { path: { page_id: pageId } },
   });
   if (data !== undefined) return { kind: "page", page: data, etag: response.headers.get("ETag") };
@@ -35,4 +38,15 @@ export async function pageLoader({ params }: LoaderFunctionArgs): Promise<PageDa
     return isProblem(response) ? { kind: "missing" } : { kind: "off" };
   }
   throw new Error(`loading eval page ${pageId} failed: HTTP ${String(response.status)}`);
+}
+
+/** The dev eval pages, read with the connected API key (SPEC-03 §4.10: the same auth as everything else). */
+export function useEvalPages() {
+  const client = useApiClient();
+  return useQuery({ queryKey: EVAL_PAGES, queryFn: () => listPages(client) });
+}
+
+export function useEvalPage(pageId: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: [...EVAL_PAGES, pageId], queryFn: () => getPage(client, pageId) });
 }

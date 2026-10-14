@@ -1,7 +1,7 @@
 import { toast } from "@heroui/react";
 import { useRef, useState } from "react";
-import { useRevalidator } from "react-router";
-import { sameOriginClient } from "../../api/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useApiClient } from "../../app/auth";
 import {
   draftFrom,
   newRow,
@@ -12,7 +12,7 @@ import {
   type LabelStatus,
   type Pass,
 } from "./draft";
-import type { PageDetail } from "./loaders";
+import { EVAL_PAGES, type PageDetail } from "./queries";
 import type { Pick } from "./PageView";
 
 /** Where a click on the page goes: a top-level field, or a field of one listing row. */
@@ -133,12 +133,13 @@ export function useNormalize(
   fieldAt: (at: Target) => FieldDraft | undefined,
   setField: (at: Target, field: FieldDraft) => void,
 ) {
+  const client = useApiClient();
   const [normalized, setNormalized] = useState<Record<string, string>>({});
 
   async function normalize(at: Target): Promise<void> {
     const field = fieldAt(at);
     if (field === undefined) return;
-    const { data, error } = await sameOriginClient().POST("/v1/eval/pages/{page_id}/normalize", {
+    const { data, error } = await client.POST("/v1/eval/pages/{page_id}/normalize", {
       params: { path: { page_id: pageId } },
       body: { field: at.name, raw_text: field.rawText },
     });
@@ -176,7 +177,8 @@ export function savedNotice(
 
 /** Saving one pass: the save in flight, and what the last save's answer was when it failed. */
 export function useSave(pageId: string, etag: string | null) {
-  const revalidator = useRevalidator();
+  const client = useApiClient();
+  const queries = useQueryClient();
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -191,7 +193,7 @@ export function useSave(pageId: string, etag: string | null) {
       return;
     }
     setSaving(true);
-    const { error, response } = await sameOriginClient().PUT("/v1/eval/pages/{page_id}/labels", {
+    const { error, response } = await client.PUT("/v1/eval/pages/{page_id}/labels", {
       params: { path: { page_id: pageId }, header: etag === null ? {} : { "if-match": etag } },
       body: built.labels,
     });
@@ -199,7 +201,7 @@ export function useSave(pageId: string, etag: string | null) {
     if (error === undefined) {
       // A toast outlives the editor, which the reload below remounts with the new ETag.
       toast.success(notice);
-      await revalidator.revalidate();
+      await reload();
       return;
     }
     if (response.status === 409 || response.status === 412) {
@@ -211,7 +213,7 @@ export function useSave(pageId: string, etag: string | null) {
   }
 
   async function reload(): Promise<void> {
-    await revalidator.revalidate();
+    await queries.invalidateQueries({ queryKey: EVAL_PAGES });
   }
 
   return { errors, problem, conflict, saving, save, reload };
