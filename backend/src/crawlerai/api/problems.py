@@ -68,7 +68,7 @@ def llm_problem(failure: LLMFailure) -> ProblemError:
     return ProblemError(status, failure.code, title, str(failure))
 
 
-def _problem_response(request: Request, error: ProblemError) -> JSONResponse:
+def problem_response(request: Request, error: ProblemError) -> JSONResponse:
     problem = Problem(
         type=error.type,
         title=error.title,
@@ -94,7 +94,7 @@ def _field(location: Sequence[int | str]) -> str:
 
 
 async def _on_problem(request: Request, exc: ProblemError) -> JSONResponse:
-    return _problem_response(request, exc)
+    return problem_response(request, exc)
 
 
 async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
@@ -103,17 +103,17 @@ async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
     else:
         error = _status_only(exc.status_code, exc.detail if isinstance(exc.detail, str) else None)
     error.headers = exc.headers or {}  # e.g. `Allow` on a 405 (RFC 9110 §15.5.6)
-    return _problem_response(request, error)
+    return problem_response(request, error)
 
 
 async def _on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
     errors = [(_field(error["loc"]), error["msg"]) for error in exc.errors()]
-    return _problem_response(request, invalid("the request is invalid", errors))
+    return problem_response(request, invalid("the request is invalid", errors))
 
 
 async def _on_unexpected(request: Request, exc: Exception) -> JSONResponse:
     # The message is left out: it may carry internals. The server still logs the exception.
-    return _problem_response(request, _status_only(500, "the server failed to answer the request"))
+    return problem_response(request, _status_only(500, "the server failed to answer the request"))
 
 
 def install(app: FastAPI) -> None:

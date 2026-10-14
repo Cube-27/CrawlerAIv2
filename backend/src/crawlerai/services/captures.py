@@ -1,5 +1,5 @@
 """The captures service (SPEC-07 §4.6, §4.7, ARCHITECTURE §13.1): replay a stored capture with the current engine,
-for debugging. Nothing a replay makes is stored.
+for debugging, and read a stored capture's markdown again. Nothing either makes is stored.
 
 A capture carries no schema of its own, so it replays against each schema version its stored records follow, the
 version the records were made with (schemas are immutable per version, §5.2), so a replayed record compares with
@@ -14,6 +14,8 @@ from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.config_ir.active import active_config
+from crawlerai.content.markdown import markdown
+from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
@@ -59,7 +61,7 @@ async def replay(
         configs = [await active_config(conn, capture.site_id, schema, data.vocabulary) for schema in schemas]
     if not schemas:
         raise NotReplayable(f"no record was made from capture {capture_id}, so no schema says what to extract")
-    bundle = await _bundle(store, capture)
+    bundle = await _bundle(store, capture.id, capture.object_key)
     return [
         record
         for schema, config in zip(schemas, configs, strict=True)
@@ -67,11 +69,24 @@ async def replay(
     ]
 
 
-async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
+async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId) -> str:
+    """The capture's markdown, made again from its bundle: a format is a function of the capture alone (ARCHITECTURE
+    §15, INV-26), so it equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it."""
+    async with engine.connect() as conn:
+        object_key = (
+            await conn.execute(select(Capture.object_key).where(Capture.id == capture_id))
+        ).scalar_one_or_none()
+    if object_key is None:
+        raise CaptureNotFound(f"no capture {capture_id}")
+    bundle = await _bundle(store, capture_id, object_key)
+    return await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle)))
+
+
+async def _bundle(store: ObjectStore, capture_id: CaptureId, object_key: str) -> CaptureBundle:
     try:
-        blob = await asyncio.to_thread(store.get, capture.object_key)
+        blob = await asyncio.to_thread(store.get, object_key)
     except ObjectNotFound as e:
-        raise CaptureNotFound(f"capture {capture.id}: its bundle is no longer stored") from e
+        raise CaptureNotFound(f"capture {capture_id}: its bundle is no longer stored") from e
     return await asyncio.to_thread(decode, blob)
 
 

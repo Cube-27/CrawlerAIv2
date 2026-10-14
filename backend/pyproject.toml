@@ -22,6 +22,7 @@ dependencies = [
     "jsonschema>=4.23,<5",
     "lxml>=5,<7",
     "markupsafe>=3,<4",
+    "mcp>=1.20,<2",
     "patchright>=1.63,<2",
     "price-parser>=0.4,<1",
     "protego>=0.4,<1",
