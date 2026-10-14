@@ -250,16 +250,13 @@ async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
     if not JOB_TRANSITIONS[job.status]:
         return  # it ended while its tasks were cancelled
     await conn.execute(update(Job).where(Job.id == job_id).values(cancel_requested=True))
-    if job.kind == "learn":
-        # A learn job has no tasks. A started run ends itself on `cancel_requested` (`learning._finish`); one that
-        # never started ends its state's run here, as a cancelled run does (D-0622).
-        if job.status == "queued":
+    if job.status == "queued":
+        # No task of it was ever claimed: a claim starts its job in the same transaction. A `learn` job that never
+        # started ends its state's run as a cancelled run does (D-0622).
+        if job.kind == "learn":
             await learning_failed(conn, StateKey.from_request(job.request))
-            await transition_job(conn, job_id, "cancelled")
-    elif job.status == "queued":
-        # No task of it was ever claimed: a claim starts its job in the same transaction.
         await transition_job(conn, job_id, "cancelled")
-    else:
+    elif job.kind != "learn":  # a started learn run has no tasks, and ends itself on `cancel_requested`
         await settle_job(conn, job_id)
 
 

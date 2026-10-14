@@ -103,8 +103,10 @@ async def _work() -> None:
             # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
             work = [run_worker(settings, handlers, stop, ending=close_run)]
             if data is not None:  # learning reads the vocabulary from the data files
-                limit = settings.llm_a_max_chars
-                work.append(run_learner(engine, store, llm, stop, vocabulary=data.vocabulary, max_chars=limit))
+                learner = run_learner(
+                    engine, store, llm, stop, vocabulary=data.vocabulary, max_chars=settings.llm_a_max_chars
+                )
+                work.append(learner)
             await asyncio.gather(*work)
     finally:
         await engine.dispose()

@@ -124,3 +124,25 @@ def test_a_trusted_proxy_forwards_each_client_to_its_own_bucket(monkeypatch: pyt
     )
 
     assert [response.status_code for response in responses] == [401, 401, 429]
+
+
+def test_every_api_operation_but_healthz_refuses_a_request_without_a_key() -> None:
+    # SPEC-07 §4.2, SPEC-03 §4.10: every route takes the API key, which also rate-limits it; `/healthz` alone is public
+    # (ARCHITECTURE §18). A router added without the key dependency fails here.
+    app = create_app(eval_ui=True)
+    operations = [
+        (method.upper(), path.replace("{", "").replace("}", ""))
+        for path, item in app.openapi()["paths"].items()
+        for method in item
+        if path != "/healthz"  # public, and it reads the database, which this app has none of
+    ]
+
+    async def statuses() -> dict[tuple[str, str], int]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api.test") as client:
+            return {(method, path): (await client.request(method, path)).status_code for method, path in operations}
+
+    answered = asyncio.run(statuses())
+
+    assert len(answered) > 20
+    assert {operation: status for operation, status in answered.items() if status != 401} == {}

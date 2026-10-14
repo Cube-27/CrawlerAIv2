@@ -9,6 +9,7 @@ gone) is logged, and the learner polls again.
 import asyncio
 import logging
 from contextlib import suppress
+from datetime import timedelta
 from typing import Final
 
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -17,12 +18,11 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.learning import next_learn_job, run_learn_job
 from crawlerai.llm.client import LLMClient
 from crawlerai.storage.base import ObjectStore
-from crawlerai.worker.loop import IDLE_POLL
 
 log = logging.getLogger(__name__)
 
-# How long the learner waits after an error outside a run, so a database that is down is not polled in a tight loop.
-ERROR_POLL: Final = IDLE_POLL * 10
+# Learn jobs are rare: the scheduler starts them once a minute (`trigger_learning`), so the learner polls at half that.
+LEARN_POLL: Final = timedelta(seconds=30)
 
 
 async def run_learner(
@@ -43,9 +43,7 @@ async def run_learner(
             if job_id is not None:
                 await run_learn_job(engine, store, client, job_id, vocabulary=vocabulary, max_chars=max_chars)
                 continue
-            wait = IDLE_POLL
         except Exception:
             log.exception("learner: polling for learn jobs failed")
-            wait = ERROR_POLL
         with suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), wait.total_seconds())
+            await asyncio.wait_for(stop.wait(), LEARN_POLL.total_seconds())

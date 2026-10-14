@@ -67,6 +67,8 @@ LEARNING_FINISHED: Final = "learning_finished"
 # A run makes a few role A calls, each at most `llm.client.TIMEOUT_S["strong"]` per provider, plus a retry; a run still
 # `running` an hour after it started has lost its process.
 LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
+# How many expired runs one scheduler turn ends; a full batch runs again at once (`scheduler.loop`).
+EXPIRE_BATCH: Final = 100
 EXPIRED: Final = "expired"
 
 
@@ -184,9 +186,7 @@ async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned
     # The state may have moved on already (an operator's config, a cancel), and then there is no run to end.
     with suppress(NotLearning):
         await learning_failed(conn, StateKey.from_request(job.request))
-    payload = {"config_id": None, "reason": reason, "report": None}
-    await record_event(conn, job_id, LEARNING_FINISHED, payload)
-    await transition_job(conn, job_id, "failed")
+    await _end(conn, job_id, "failed", config_id=None, reason=reason, report=None)
     return Learned(None, reason)
 
 
@@ -248,7 +248,7 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
     if await _operator_since(conn, run):
         return await _fail(conn, run, "operator_config", validated.report)
     config_id = await activate(conn, run.key, validated)
-    await _end(conn, run, "completed", config_id=config_id, reason=None, report=validated.report)
+    await _end(conn, run.job_id, "completed", config_id=config_id, reason=None, report=validated.report)
     return Learned(config_id)
 
 
@@ -273,13 +273,13 @@ async def _fail(
     status: JobStatus = "failed",
 ) -> Learned:
     await learning_failed(conn, run.key)
-    await _end(conn, run, status, config_id=None, reason=reason, report=report)
+    await _end(conn, run.job_id, status, config_id=None, reason=reason, report=report)
     return Learned(None, reason)
 
 
 async def _end(
     conn: AsyncConnection,
-    run: _Run,
+    job_id: JobId,
     status: JobStatus,
     *,
     config_id: ExtractionConfigId | None,
@@ -291,5 +291,5 @@ async def _end(
         "reason": reason,
         "report": None if report is None else report.model_dump(mode="json"),
     }
-    await record_event(conn, run.job_id, LEARNING_FINISHED, payload)
-    await transition_job(conn, run.job_id, status)
+    await record_event(conn, job_id, LEARNING_FINISHED, payload)
+    await transition_job(conn, job_id, status)
