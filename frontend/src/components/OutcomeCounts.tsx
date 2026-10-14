@@ -24,8 +24,10 @@ export function OutcomeCounts({
   outcomes,
 }: Readonly<{ counts: TaskCounts; outcomes: Outcomes }>) {
   const statuses = STATUSES.map((status) => ({ id: status, count: counts[status] }));
-  const reached = OUTCOMES.filter((outcome) => outcomes[outcome] > 0)
-    .map((outcome) => ({ id: outcome, count: outcomes[outcome] }));
+  const reached = OUTCOMES.filter((outcome) => outcomes[outcome] > 0).map((outcome) => ({
+    id: outcome,
+    count: outcomes[outcome],
+  }));
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Table>
@@ -58,7 +60,9 @@ export function OutcomeCounts({
             <Table.Body
               items={reached}
               renderEmptyState={() => (
-                <Typography.Paragraph color="muted">No task has an outcome yet.</Typography.Paragraph>
+                <Typography.Paragraph color="muted">
+                  No task has an outcome yet.
+                </Typography.Paragraph>
               )}
             >
               {({ id, count }) => (

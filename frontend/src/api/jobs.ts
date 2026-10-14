@@ -34,7 +34,10 @@ export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema
   fetch: Pick<Schemas["FetchOptions"], "method_hint">;
   schema: JobSchemaRef | null;
 };
-export type CrawlRequest = Omit<Schemas["CrawlRequest"], "fetch" | "schema" | "limit" | "max_depth"> & {
+export type CrawlRequest = Omit<
+  Schemas["CrawlRequest"],
+  "fetch" | "schema" | "limit" | "max_depth"
+> & {
   fetch: Pick<Schemas["FetchOptions"], "method_hint">;
   schema: JobSchemaRef | null;
   limit?: number;
@@ -61,7 +64,8 @@ function isPageOutput(item: StoredRecord | PageOutput): item is PageOutput {
 }
 
 function resultsPage(page: RecordPage | ExportPage | PageOutputPage): ResultsPage {
-  if ("content" in page) throw new Error("GET /v1/jobs/{id}/results answered an export to format=json");
+  if ("content" in page)
+    throw new Error("GET /v1/jobs/{id}/results answered an export to format=json");
   const items: (StoredRecord | PageOutput)[] = page.items;
   const { next_cursor } = page;
   const outputs = items.filter(isPageOutput);
@@ -71,7 +75,9 @@ function resultsPage(page: RecordPage | ExportPage | PageOutputPage): ResultsPag
     : { kind: "pages", page: { items: outputs, next_cursor } };
 }
 
-type ResultsQuery = NonNullable<operations["job_results_v1_jobs__job_id__results_get"]["parameters"]["query"]>;
+type ResultsQuery = NonNullable<
+  operations["job_results_v1_jobs__job_id__results_get"]["parameters"]["query"]
+>;
 
 function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
@@ -110,16 +116,24 @@ export async function exportJobPage(
   format: ExportFormat,
   cursor: string | null,
 ): Promise<ApiResult<ExportPage>> {
-  const query: ResultsQuery = { format, limit: EXPORT_LIMIT, ...(cursor === null ? {} : { cursor }) };
+  const query: ResultsQuery = {
+    format,
+    limit: EXPORT_LIMIT,
+    ...(cursor === null ? {} : { cursor }),
+  };
   const result = await apiResult(() => results(client, id, query), "Exporting the job's records");
   if (result.kind === "failed") return result;
   const page = result.value;
-  if (!("content" in page)) throw new Error(`GET /v1/jobs/{id}/results answered format=${format} with JSON`);
+  if (!("content" in page))
+    throw new Error(`GET /v1/jobs/{id}/results answered format=${format} with JSON`);
   return { kind: "done", value: page };
 }
 
 /** Queues a batch scrape; the answer is the new job's id. */
-export async function submitBatch(client: ApiClient, body: BatchRequest): Promise<ApiResult<string>> {
+export async function submitBatch(
+  client: ApiClient,
+  body: BatchRequest,
+): Promise<ApiResult<string>> {
   const result = await apiResult(
     // The server applies the defaults this request leaves out (see `BatchRequest`).
     () => client.POST("/v1/batch/scrape", { body: body as Schemas["BatchScrapeRequest"] }),
@@ -129,7 +143,10 @@ export async function submitBatch(client: ApiClient, body: BatchRequest): Promis
 }
 
 /** Queues a crawl; the answer is the new job's id. */
-export async function submitCrawl(client: ApiClient, body: CrawlRequest): Promise<ApiResult<string>> {
+export async function submitCrawl(
+  client: ApiClient,
+  body: CrawlRequest,
+): Promise<ApiResult<string>> {
   const result = await apiResult(
     // The server applies the defaults this request leaves out (see `CrawlRequest`).
     () => client.POST("/v1/crawl", { body: body as Schemas["CrawlRequest"] }),

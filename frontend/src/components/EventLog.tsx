@@ -1,4 +1,5 @@
 import { Table, Typography } from "@heroui/react";
+import { useId } from "react";
 import type { StreamState } from "../api/events";
 import { useJobEvents } from "../api/hooks/events";
 import { ProblemAlert } from "./ProblemAlert";
@@ -17,11 +18,14 @@ const STATE_TONES: Record<StreamState, StatusTone> = {
  * shown as the server sent it. A dropped stream reconnects after the last event received. */
 export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
   const { events, state, problem } = useJobEvents(jobId);
+  const headingId = useId();
   const rows = events.map((event, index) => ({ key: String(index), ...event }));
   return (
-    <div className="flex flex-col gap-3">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <Typography.Heading level={2}>Events</Typography.Heading>
+        <Typography.Heading level={2} id={headingId}>
+          Events
+        </Typography.Heading>
         <StatusLabel text={state} tone={STATE_TONES[state]} />
       </div>
       {problem === null ? null : <ProblemAlert problem={problem} />}
@@ -52,6 +56,6 @@ export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
           </Table.Content>
         </Table.ScrollContainer>
       </Table>
-    </div>
+    </section>
   );
 }

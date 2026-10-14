@@ -21,7 +21,10 @@ export interface JobEvents {
 
 /** Follows `GET /v1/jobs/{id}/events` while mounted. A `progress` event reads the job's summary again; the end event
  * reads its summary and results again. */
-export function useJobEvents(id: string, delayMs: (attempt: number) => number = backoffMs): JobEvents {
+export function useJobEvents(
+  id: string,
+  delayMs: (attempt: number) => number = backoffMs,
+): JobEvents {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const [events, setEvents] = useState<StreamEvent[]>([]);

@@ -50,7 +50,11 @@ export class EventStreamParser {
   }
 
   private dispatch(): StreamEvent[] {
-    const event = { id: this.lastId, kind: this.kind === "" ? "message" : this.kind, data: this.data };
+    const event = {
+      id: this.lastId,
+      kind: this.kind === "" ? "message" : this.kind,
+      data: this.data,
+    };
     this.kind = "";
     this.data = [];
     return event.data.length === 0 ? [] : [{ ...event, data: event.data.join("\n") }];
@@ -167,13 +171,15 @@ export async function followEvents(options: FollowOptions): Promise<void> {
     lastId = event.id;
     options.onEvent(event);
   };
+  // A call, not the property: the stop comes while a connection is awaited.
+  const stopped = () => options.signal.aborted;
   options.onState("connecting");
-  while (!options.signal.aborted) {
+  while (!stopped()) {
     // A parser per connection, so a line a drop cut off is not joined to the next connection's first; it starts from
     // the last id, which outlives a reconnect (WHATWG HTML §9.2.6).
     const parser = new EventStreamParser(lastId);
     const connection = await connect(parser, lastId, { ...options, onEvent });
-    if (options.signal.aborted) return;
+    if (stopped()) return;
     if (connection.kind !== "dropped") {
       options.onState(connection.kind === "ended" ? "ended" : "failed");
       return;

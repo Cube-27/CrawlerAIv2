@@ -13,7 +13,7 @@ import { Choices } from "../../components/Choices";
 import { FormActions } from "../../components/FormActions";
 import { FormatChoices } from "../../components/FormatChoices";
 import { LimitField } from "../../components/LimitField";
-import type { MethodHint, PageKind } from "../../api/scrape";
+import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
 import { parseJsonObject, type SchemaSource, type ScrapeFormState } from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
@@ -21,17 +21,6 @@ const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["id", "Stored schema"],
   ["inline", "Inline JSON"],
   ["prompt", "From a prompt"],
-];
-
-const PAGE_KINDS: readonly (readonly [PageKind, string])[] = [
-  ["detail", "Detail"],
-  ["listing", "Listing"],
-];
-
-const METHOD_HINTS: readonly (readonly [MethodHint, string])[] = [
-  ["auto", "Auto"],
-  ["http", "HTTP"],
-  ["browser", "Browser"],
 ];
 
 /** The input for the chosen schema source: an id, a SchemaDef as JSON, or a prompt for role S. */
