@@ -2912,11 +2912,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0444 — Dev-fitted files under `backend/data/` and INV-05
-- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: needs-owner
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 7 (#90) · Status: answered 2026-10-14
 - Decision: Question: INV-05 says every file under `backend/data/` comes from a pinned external source listed in `manifest.json`. SPEC-05 puts the dev-fitted `source_precedence.yaml` (§4.7) and `calibration.json` (PR 8) there, and the fit commands rewrite them, which would break a pinned sha256. Options: (a) `data_manifest_check` exempts the two fitted, stamped artifacts and checks their `source_split: dev` stamp instead, with INV-05 reworded to "external data"; (b) a manifest entry per fitted file, whose url names the eval run and whose sha256 the fit commands rewrite; (c) move fitted files out of `backend/data/`. Recommendation: (a). Blocked: committing the initial order (D-0020), which PR 9 needs to run `extract_page`, and PR 8's empty `calibration.json`. Copied to OPEN_QUESTIONS #19.
 - Alternatives: See options.
 - Why: The specs contradict each other (CLAUDE.md §4).
 - Reversible: yes
+- Owner answer: option (a) (owner 2026-10-14; OPEN_QUESTIONS #19). Implemented in #156 (D-0756–D-0758).
 
 ### D-0445 — The adapter collector is built per capture with the adapter and the detected page kind
 - Date: 2026-10-13 · Spec/PR: SPEC-05 PR 11 (#91) · Status: decided
@@ -5099,4 +5100,32 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `tools/orchestrator/start_agent.sh` refuses any other NAME before it reads memory or opens a tab (`ERROR agent name must be lowercase ...`).
 - Alternatives: Reject only uppercase letters; leave it to herdr.
 - Why: herdr agent names are lowercase, and its help documents no other rule; every name the skills use fits this form, and a leading `-` would be read as an option.
+- Reversible: yes
+
+### D-0756 — Dev-fitted files are checked by their `source_split: dev` stamp, not pinned
+- Date: 2026-10-14 · Spec/PR: OQ #19 fix (#156) · Status: decided (owner answer 2026-10-14)
+- Decision: `data_manifest_check` exempts exactly `source_precedence.yaml` and `calibration.json` at the top of `backend/data/` from the pinned-sha256 rule and checks their `source_split: dev` stamp (top-level YAML key, JSON object key); a missing or non-dev stamp, or a manifest entry pinning either file, fails. INV-05 reworded to external data.
+- Alternatives: (b) a manifest entry per fitted file whose sha256 the fit commands rewrite; (c) fitted files outside `backend/data/`.
+- Why: D-0444 option (a), owner answer 2026-10-14.
+- Reversible: yes
+
+### D-0757 — The initial `source_precedence.yaml` is SPEC-05 §4.7's default for all four precedence types
+- Date: 2026-10-14 · Spec/PR: OQ #19 fix (#156) · Status: decided
+- Decision: `[adapter, api, jsonld, microdata, og, config, llm]` for text, long_text, url and image_url, stamped `source_split: dev` only (no `eval_run_id`/`git_sha`: no run fitted it). `fit-precedence` rewrites the whole file.
+- Alternatives: Other orders for long_text, url and image_url.
+- Why: The spec gives one default (`[...]` for url and image_url); `load_precedence` needs an order for all four types.
+- Reversible: yes
+
+### D-0758 — No `calibration.json` until the first dev fit
+- Date: 2026-10-14 · Spec/PR: OQ #19 fix (#156) · Status: decided
+- Decision: SPEC-05 PR 8's empty calibration is not committed.
+- Alternatives: `{"buckets": {}}` with a placeholder eval run id and commit.
+- Why: `Calibration` requires a dev run's `eval_run_id` and `git_sha`; a placeholder would be invented provenance (C7). A missing file already means every bucket is uncalibrated, and the engine version reports `cal.none`.
+- Reversible: yes
+
+### D-0759 — `drift_margins.json` is not covered by the OQ #19 answer
+- Date: 2026-10-14 · Spec/PR: OQ #19 fix (#156) · Status: decided
+- Decision: The drift margins are not committed; OPEN_QUESTIONS #20 / D-0576 stays open.
+- Alternatives: Exempt and commit `drift_margins.json` in #156.
+- Why: The owner's answer names exactly the two files.
 - Reversible: yes

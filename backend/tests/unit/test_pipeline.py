@@ -35,7 +35,7 @@ from crawlerai.resolve.pipeline import (
     RoleC,
     extract_page,
 )
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.preference import PRECEDENCE_FILE, PRECEDENCE_TYPES, load_precedence
 from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
@@ -47,6 +47,9 @@ VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
+# The order committed under `backend/data/` (SPEC-05 §4.7), as the engine loads it when no fit has replaced it.
+COMMITTED_ORDERS = load_precedence(Path(__file__).parents[2] / "data" / PRECEDENCE_FILE)
+COMMITTED = EngineData(vocabulary=VOCABULARY, orders=COMMITTED_ORDERS, calibration=None)
 
 
 def _schema(page_kind: PageKind = "detail", **fields: FieldSpec) -> SchemaDef:
@@ -146,7 +149,8 @@ def test_a_page_missing_a_required_field_is_partial() -> None:
 
 
 def test_without_a_fitted_order_text_fields_decline() -> None:
-    # D-0444: no precedence file, so no source kind ranks; exact-match types still publish on agreement.
+    # D-0486: with no precedence file no source kind ranks; exact-match types still publish on agreement. The repo
+    # commits SPEC-05 §4.7's order (D-0444), which ranks them: see the role C test below.
     data = EngineData(vocabulary=VOCABULARY, orders=UNRANKED, calibration=None)
     result = _extract(_bundle(_html(_product())), data=data)
     assert _statuses(result) == {
@@ -305,6 +309,19 @@ def test_required_fields_left_missing_go_to_role_c_once() -> None:
 def test_role_c_is_not_called_when_every_required_field_publishes() -> None:
     role_c = FakeRoleC()
     result = _extract(_bundle(_html(_product())), role_c=role_c)
+    assert (role_c.requests, result.llm_calls) == ([], ())
+
+
+def test_with_the_committed_order_a_json_ld_complete_page_publishes_without_role_c() -> None:
+    # Text fields rank by the committed order, so JSON-LD carrying every required field leaves no gap for role C.
+    role_c = FakeRoleC()
+    result = _extract(_bundle(_html(_product())), role_c=role_c, data=COMMITTED)
+    assert _statuses(result) == {
+        "title": ("published", None),
+        "price": ("published", None),
+        "sku": ("published", None),
+    }
+    assert result.outcome == "extracted"
     assert (role_c.requests, result.llm_calls) == ([], ())
 
 

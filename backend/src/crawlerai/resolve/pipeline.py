@@ -61,8 +61,8 @@ from crawlerai.storage.capture_bundle import CaptureBundle
 log = logging.getLogger(__name__)
 _FAILED = "extraction failed"
 
-# D-0444: until an order is fitted on dev, no source kind is ranked, so text, long_text, url and image_url fields
-# decline as `unranked` rather than follow an unmeasured order (C7).
+# D-0486: without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
+# decline as `unranked` rather than follow an unmeasured order (C7). The repo commits SPEC-05 §4.7's order (D-0444).
 UNRANKED: Orders = {type_: () for type_ in PRECEDENCE_TYPES}
 # INV-11: a capture whose block class is not `ok` is the page's outcome, with no candidates.
 _NOT_SERVED: Mapping[BlockClass, Outcome] = {

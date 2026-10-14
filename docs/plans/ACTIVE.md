@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- UAT fix PRs done (#152-#154). In flight: fitted-data exemption + default source order (OQ #19 / D-0444 answered (a), owner 2026-10-14), task failure reasons in the jobs API (D-0745 answered (a)). Next: UAT re-run of the record-dependent features with LLM calls per site, then a data-accuracy plan.
+- UAT fix PRs done (#152-#155). Source precedence committed (#156, OQ #19 answered (a)). In flight: task failure reasons in the jobs API (D-0745 answered (a)). Next: UAT re-run of the record-dependent features with LLM calls per site, then a data-accuracy plan. Open: drift_margins.json (OQ #20 / D-0576).
 - Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim enum for `rows`; SPEC-06 lines 115 and 186 still describe role C's reply as `null` per field.
 - Follow-ups from #153: a task still adds to `job.usage` mid-transaction (`record_usage`, role C's usage in `_visit`), which locks the job row until the task commits; recording usage at the task's end would let no later network I/O hold up a cancel. Declare `anyio` as a direct dependency (`services/events.py`, `mcp_server` import it).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
