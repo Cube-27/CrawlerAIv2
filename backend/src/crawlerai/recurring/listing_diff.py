@@ -16,7 +16,7 @@ listing, whose pages were not read. A URL no listing held (one a scrape fetched)
 New URLs are queued by the frontier, which takes every URL a run finds (SPEC-10 §4.5); nothing here adds tasks.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any, Final
 from urllib.parse import urlsplit
 
@@ -50,22 +50,25 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
         return
     host = urlsplit(job.request["url"]).hostname
     site_id = (await conn.execute(select(Site.id).where(Site.host == host))).scalar_one_or_none()
-    listing = await _listing(conn, job_id, host)
-    if site_id is None or not listing:
+    if site_id is None:
+        return
+    listing, tasks = await _listing(conn, job_id, host)
+    if not listing:
         return
     await _seen(conn, site_id, job_id, listing)
-    tasks = (await conn.execute(select(func.count()).where(UrlTask.job_id == job_id))).scalar_one()
     if tasks >= job.request["limit"]:
         return
-    for url in await _missed(conn, site_id, job_id, job.schema_id, job.request):
+    for url in await _missed(conn, site_id, job_id, job):
         await record_event(conn, job_id, URL_GONE, {"url": url})
 
 
-async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> list[str]:
-    """The job's URLs a page-kind rule matched, on `host`, sorted: rows are locked in one order by every run."""
-    query = select(UrlTask.canonical_url).where(UrlTask.job_id == job_id, UrlTask.page_kind.is_not(None))
-    urls = (await conn.execute(query)).scalars()
-    return sorted(url for url in urls if urlsplit(url).hostname == host)
+async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> tuple[list[str], int]:
+    """The job's URLs a page-kind rule matched, on `host`, sorted (rows are locked in one order by every run); and
+    how many tasks the job has."""
+    query = select(UrlTask.canonical_url, UrlTask.page_kind).where(UrlTask.job_id == job_id)
+    tasks = (await conn.execute(query)).all()
+    listed = (url for url, page_kind in tasks if page_kind is not None and urlsplit(url).hostname == host)
+    return sorted(listed), len(tasks)
 
 
 async def _seen(conn: AsyncConnection, site_id: SiteId, job_id: JobId, urls: Sequence[str]) -> None:
@@ -77,20 +80,21 @@ async def _seen(conn: AsyncConnection, site_id: SiteId, job_id: JobId, urls: Seq
     )
 
 
-async def _missed(
-    conn: AsyncConnection, site_id: SiteId, job_id: JobId, schema_id: SchemaId, request: Mapping[str, Any]
-) -> list[str]:
-    """Count a missed run for each URL an earlier run of the crawl last held, and return those now gone, sorted."""
-    earlier = select(Job.id).where(
-        Job.kind == "crawl",
-        Job.schema_id == schema_id,
-        Job.id != job_id,
-        *(Job.request[member] == literal(request[member], JSONB) for member in _SCOPE),
-    )
+async def _missed(conn: AsyncConnection, site_id: SiteId, job_id: JobId, job: _JobRow) -> list[str]:
+    """Count a missed run for each URL an earlier run of the crawl last held, and return those now gone, sorted. The
+    site's rows reach their last job by its key, so earlier jobs of other crawls are never scanned."""
     missing = UrlState.missing_runs + 1
     query = (
         update(UrlState)
-        .where(UrlState.site_id == site_id, UrlState.gone_at.is_(None), UrlState.last_seen_job_id.in_(earlier))
+        .where(
+            UrlState.site_id == site_id,
+            UrlState.gone_at.is_(None),
+            UrlState.last_seen_job_id == Job.id,
+            Job.id != job_id,
+            Job.kind == "crawl",
+            Job.schema_id == job.schema_id,
+            *(Job.request[member] == literal(job.request[member], JSONB) for member in _SCOPE),
+        )
         .values(missing_runs=missing, gone_at=case((missing >= GONE_AFTER_RUNS, func.now())))
         .returning(UrlState.canonical_url, UrlState.gone_at)
     )

@@ -51,7 +51,8 @@ async def _row(conn: AsyncConnection, task_id: UrlTaskId) -> Any:
 
 async def _job_state(conn: AsyncConnection, job_id: JobId) -> tuple[str, list[str]]:
     status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
-    events = (await conn.execute(select(JobEvent.kind).where(JobEvent.job_id == job_id))).scalars().all()
+    query = select(JobEvent.kind).where(JobEvent.job_id == job_id).order_by(JobEvent.id)
+    events = (await conn.execute(query)).scalars().all()
     return status, list(events)
 
 
@@ -172,11 +173,6 @@ class Ending:
         await record_event(conn, job_id, "ending")
 
 
-async def _events(conn: AsyncConnection, job_id: JobId) -> list[str]:
-    query = select(JobEvent.kind).where(JobEvent.job_id == job_id).order_by(JobEvent.id)
-    return list((await conn.execute(query)).scalars())
-
-
 async def test_the_ending_hook_runs_once_in_the_ending_transaction_before_the_end_event(conn: AsyncConnection) -> None:
     job_id = await _job(conn)
     await _tasks(conn, job_id, 2)
@@ -190,7 +186,7 @@ async def test_the_ending_hook_runs_once_in_the_ending_transaction_before_the_en
 
     # The job is still running when the hook runs; what it records comes before the end event.
     assert ending.calls == [(job_id, "completed", "running")]
-    assert await _events(conn, job_id) == ["ending", "completed"]
+    assert await _job_state(conn, job_id) == ("completed", ["ending", "completed"])
 
 
 async def test_a_job_ended_by_an_expired_lease_runs_the_ending_hook(conn: AsyncConnection) -> None:
@@ -202,7 +198,7 @@ async def test_a_job_ended_by_an_expired_lease_runs_the_ending_hook(conn: AsyncC
     await release_expired_leases(conn, ending=ending)
 
     assert ending.calls == [(job_id, "failed", "running")]
-    assert await _events(conn, job_id) == ["ending", "failed"]
+    assert await _job_state(conn, job_id) == ("failed", ["ending", "failed"])
 
 
 async def test_a_transient_failure_requeues_with_exponential_backoff(conn: AsyncConnection) -> None:

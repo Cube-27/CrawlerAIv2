@@ -169,7 +169,8 @@ def test_the_scheduler_entries_and_their_intervals() -> None:
     ]
     # A job its last expired lease ends is diffed too (SPEC-11 §4.5).
     release = entries[0].run
-    assert isinstance(release, partial) and release.keywords == {"ending": close_run}
+    assert isinstance(release, partial)
+    assert release.keywords == {"ending": close_run}
 
 
 def test_data_fetch_reports_each_fetched_entry(
