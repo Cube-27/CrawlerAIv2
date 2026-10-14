@@ -13,6 +13,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 
 from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.content.context import page_context
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import PageKind
@@ -31,7 +32,7 @@ async def prefill(
     no valid reply: a pre-fill without values is not a draft worth storing."""
     page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
     text = page.cleaned_text.text
-    ctx = page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
+    ctx = with_stated_currencies(page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at), page)
     rows: tuple[str, ...] = ()
     if page_kind == "detail":
         filled = await c_extract.extract_detail(

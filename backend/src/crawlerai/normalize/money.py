@@ -283,6 +283,12 @@ def _index(key: Callable[[str], str]) -> dict[str, frozenset[str]]:
     return {key: frozenset(ids) for key, ids in groups.items()}
 
 
+def is_currency_code(code: str) -> bool:
+    """Whether `code` is an ISO 4217 alphabetic code as written: three uppercase letters that ISO 4217 lists (through
+    CLDR). A lowercase `usd` is not one: guessing the case is guessing (C7)."""
+    return code in _currencies()
+
+
 @cache
 def _currencies() -> frozenset[str]:
     return frozenset(list_currencies())

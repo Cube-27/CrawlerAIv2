@@ -2,8 +2,9 @@
 language and URLs, and when it was fetched.
 
 Only evidence the page or the request states is read (C7): `<html lang>`, `og:locale`, the `hreflang` of alternate
-links, the document base URL and the final URL. `page_currencies` and `cctld_territory` are left empty, so a value
-that needs them declines rather than guesses.
+links, the document base URL and the final URL. `cctld_territory` is left empty, so a value that needs it declines
+rather than guesses. `page_currencies` comes from the page's structured data, which `collect.currencies` reads (this
+module sits below the collectors).
 """
 
 from datetime import datetime
