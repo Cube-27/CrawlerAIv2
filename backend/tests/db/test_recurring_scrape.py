@@ -113,11 +113,12 @@ def fetching(origin: Origin, tmp_path: Path) -> Fetching:
 
 
 @pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> None:
+async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
     """The origin's site with a short interval, so a job of its pages runs without waiting a second per page."""
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        await conn.execute(insert(Site).values(project_id=project, host=own_origin[8:], crawl_delay_ms=1))
+        values = {"project_id": project, "host": own_origin[8:], "crawl_delay_ms": 1}
+        return (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
 
 
 @pytest.fixture
@@ -221,12 +222,13 @@ async def test_a_page_whose_text_changed_is_extracted_again(
 
 async def _counted(engine: AsyncEngine, site_id: SiteId) -> tuple[dict[str, Any], int]:
     """The site's config's drift window and the pages its progressive state counted."""
+    query = (
+        select(ExtractionConfig.drift_window, ProgressiveState.pages_extracted)
+        .join(ProgressiveState, ProgressiveState.site_id == ExtractionConfig.site_id)
+        .where(ExtractionConfig.site_id == site_id)
+    )
     async with engine.connect() as conn:
-        window: dict[str, Any] = (
-            await conn.execute(select(ExtractionConfig.drift_window).where(ExtractionConfig.site_id == site_id))
-        ).scalar_one()
-        query = select(ProgressiveState.pages_extracted).where(ProgressiveState.site_id == site_id)
-        return window, (await conn.execute(query)).scalar_one()
+        return (await conn.execute(query)).tuples().one()
 
 
 @pytest.mark.parametrize("etags", [False, True], ids=["fingerprint", "304"])
@@ -238,25 +240,26 @@ async def test_unchanged_pages_join_no_drift_window_and_count_no_extracted_page(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
     heading_config: Callable[[SiteId, SchemaDef, int], dict[str, Any]],
+    site: SiteId,
     etags: bool,
 ) -> None:
     origin.etags = etags
     urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red")]
     origin.pages = {urls[0]: _page("Blue kettle"), urls[1]: _page("Red kettle")}
     async with engine.begin() as conn:
-        site_id = (await conn.execute(select(Site.id).where(Site.host == own_origin[8:]))).scalar_one()
-        await conn.execute(insert(ExtractionConfig).values(heading_config(site_id, kettle_schema, 1)))
+        await conn.execute(insert(ExtractionConfig).values(heading_config(site, kettle_schema, 1)))
+    records = _records(kettle_schema)
     try:
-        await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
-        first = await _counted(engine, site_id)
-        again = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
-        unchanged = await _counted(engine, site_id)
+        await _run_job(engine, fetching, engine_data, urls, records)
+        first = await _counted(engine, site)
+        again = await _run_job(engine, fetching, engine_data, urls, records)
+        unchanged = await _counted(engine, site)
         origin.pages[urls[1]] = _page("Red teapot", OTHER_PROSE)
-        await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
-        changed = await _counted(engine, site_id)
+        await _run_job(engine, fetching, engine_data, urls, records)
+        changed = await _counted(engine, site)
     finally:
         async with engine.begin() as conn:
-            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site))
 
     assert first == ({"title": [[True, True]] * 2}, 2)
     assert unchanged == first

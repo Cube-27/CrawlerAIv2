@@ -133,11 +133,12 @@ def fetching(web: Web, tmp_path: Path) -> Fetching:
 
 
 @pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> None:
+async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
     """The origin's site with a short interval, so a batch of its pages runs without waiting a second per page."""
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        await conn.execute(insert(Site).values(project_id=project, host=own_origin[8:], crawl_delay_ms=1))
+        values = {"project_id": project, "host": own_origin[8:], "crawl_delay_ms": 1}
+        return (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
 
 
 @pytest.fixture
@@ -374,7 +375,6 @@ async def test_a_job_runs_with_the_schema_version_and_engine_data_pinned_at_subm
     )
 
 
-@pytest.mark.usefixtures("site")
 async def test_a_job_runs_with_the_site_config_active_when_it_was_submitted(
     engine: AsyncEngine,
     fetching: Fetching,
@@ -383,19 +383,19 @@ async def test_a_job_runs_with_the_site_config_active_when_it_was_submitted(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
     heading_config: Callable[[SiteId, SchemaDef, int], dict[str, Any]],
+    site: SiteId,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, _page("Blue kettle"))
     async with engine.begin() as conn:
-        site_id = (await conn.execute(select(Site.id).where(Site.host == own_origin[8:]))).scalar_one()
-        row = heading_config(site_id, kettle_schema, 1)
+        row = heading_config(site, kettle_schema, 1)
         first = (await conn.execute(insert(ExtractionConfig).values(row).returning(ExtractionConfig.id))).scalar_one()
     try:
         pinned = await submit_batch(engine, fetching.connector, _records([url], kettle_schema), data=engine_data)
         # Then the config is suspended and a new version activates.
         async with engine.begin() as conn:
             await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == first).values(status="suspended"))
-            await conn.execute(insert(ExtractionConfig).values(heading_config(site_id, kettle_schema, 2)))
+            await conn.execute(insert(ExtractionConfig).values(heading_config(site, kettle_schema, 2)))
         later = await submit_batch(engine, fetching.connector, _records([url], kettle_schema), data=engine_data)
 
         await _run(engine, fetching, engine_data, pinned.job_id, later.job_id)
@@ -415,7 +415,7 @@ async def test_a_job_runs_with_the_site_config_active_when_it_was_submitted(
         assert window == {}
     finally:
         async with engine.begin() as conn:
-            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site))
 
 
 # INV-31: one task's failure never fails another.
