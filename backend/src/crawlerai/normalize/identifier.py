@@ -53,6 +53,12 @@ def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
     return result
 
 
+def has_check_digit(spec: FieldSpec) -> bool:
+    """Whether the field's scheme validates a value by its check digit (GS1 for gtin, ISO 2108 for isbn), so that an
+    arbitrary string declines; an opaque scheme accepts any short string."""
+    return spec.scheme in ("gtin", "isbn")
+
+
 def _gtin(s: str) -> str | Invalid:
     # GS1 General Specifications §7.9: a GTIN is numeric, its digits 0 to 9 (ASCII; `str.isdigit` admits other Nd).
     if not (s.isascii() and s.isdigit()):

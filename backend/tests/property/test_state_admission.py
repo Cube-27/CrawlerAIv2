@@ -1,7 +1,8 @@
 """The admission rule for embedded JSON state and network bodies (SPEC-05 §4.5, ARCHITECTURE §8.1), for any document,
 page text and set of other candidates: a value is admitted exactly when it equals another source kind's candidate of
-the field (then owned by that candidate's entity, not independent) or, for a field with no such candidate, when it is
-visible (then owned by the page, independent)."""
+the field (then owned by that candidate's entity, not independent) or, for a field with no such candidate whose type
+has a checkable syntax, when it is visible (then owned by the page, independent). The field here is text, which has
+none, so its visible values are never admitted on their own."""
 
 import json
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import equal, normalize
+from crawlerai.normalize.dispatch import checkable, equal, normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url="https://example.test/", page_url=None)
@@ -70,6 +71,7 @@ def _check(admitted: tuple[Candidate, ...], kind: str, others: list[Candidate], 
         assert isinstance(candidate.normalized, Ok)
         if candidate.independent:
             assert (candidate.entity_id, anchors) == ("page", [])
+            assert checkable(candidate.raw, NAME)
             assert page.visible_values.visible(candidate.raw)
         else:
             assert any(
@@ -81,7 +83,8 @@ def _check(admitted: tuple[Candidate, ...], kind: str, others: list[Candidate], 
 
 
 def _expected_count(document: object, kind: str, others: list[Candidate], page: ParsedPage) -> int:
-    """How many candidates the rule admits from `document`'s strings: one per equal owner, or one when visible."""
+    """How many candidates the rule admits from `document`'s strings: one per equal owner, or one when checkable and
+    visible."""
     anchors = [o for o in others if o.source_kind != kind]
     count = 0
     for raw in _strings(document):
@@ -95,7 +98,7 @@ def _expected_count(document: object, kind: str, others: list[Candidate], page: 
             }
             count += len(equals)
         else:
-            count += page.visible_values.visible(raw)
+            count += checkable(raw, NAME) and page.visible_values.visible(raw)
     return count
 
 

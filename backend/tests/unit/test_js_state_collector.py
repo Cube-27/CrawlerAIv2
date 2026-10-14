@@ -1,6 +1,6 @@
 """The embedded JSON state collector (SPEC-05 §4.5, ARCHITECTURE §8.1): JSON in inline scripts, admitted only by
 equality to another source kind's candidate (not independent, owned by that candidate's entity) or, for a field with no
-such candidate, by visibility in the page text (independent, owned by the page)."""
+such candidate whose type has a checkable syntax, by visibility in the page text (independent, owned by the page)."""
 
 import json
 from datetime import UTC, datetime
@@ -105,18 +105,33 @@ def test_a_value_equal_to_another_kinds_candidate_is_owned_by_its_entity_and_not
     )
 
 
-def test_a_visible_value_of_a_field_without_candidates_is_owned_by_the_page_and_independent() -> None:
-    result = _collect(_state({"items": [{"label": "Synthetic Widget"}]}, body="Synthetic Widget"))
+def test_a_visible_value_of_a_checkable_field_without_candidates_is_owned_by_the_page_and_independent() -> None:
+    result = _collect(_state({"items": [{"cost": "€19.99"}]}, body="Now €19.99"))
 
     assert result.candidates == (
         _candidate(
-            "title",
-            "Synthetic Widget",
-            Ok("Synthetic Widget"),
-            locator=f"js_state:{SCRIPT}:$['items'][0]['label']",
+            "price",
+            "€19.99",
+            EUR_19_99,
+            locator=f"js_state:{SCRIPT}:$['items'][0]['cost']",
             independent=True,
         ),
     )
+
+
+def test_a_visible_value_of_a_text_field_without_candidates_is_not_admitted() -> None:
+    # Any visible string normalizes as text, so visibility alone does not say the leaf is the title.
+    assert _collect(_state({"items": [{"label": "Synthetic Widget"}]}, body="Synthetic Widget")).candidates == ()
+
+
+def test_a_text_field_admits_by_equality() -> None:
+    jsonld_title = _candidate(
+        "title", "Synthetic Widget", Ok("Synthetic Widget"), source_kind="jsonld", locator=PRODUCT, independent=True
+    ).model_copy(update={"entity_id": PRODUCT})
+
+    result = _collect(_state({"name": "Synthetic  Widget"}), jsonld_title)
+
+    assert [(c.field, c.entity_id, c.independent) for c in result.candidates] == [("title", PRODUCT, False)]
 
 
 def test_a_value_neither_equal_nor_visible_is_not_admitted() -> None:
@@ -161,51 +176,52 @@ def test_booleans_null_and_unnormalizable_values_are_not_candidates() -> None:
     assert result.candidates == ()
 
 
+# The script-reading tests probe with a visible price: a price is admitted by visibility alone (§8.1).
 @pytest.mark.parametrize(
     "script",
     [
-        'window.__S = {"name": "Synthetic Widget"};',
-        'var s={"name": "Synthetic Widget"}',
-        'let s = {"name": "Synthetic Widget"}; init(s);',
-        'if (x) { go(); }\nconst s =\n {"name": "Synthetic Widget"}\n;',
+        'window.__S = {"cost": "€5.00"};',
+        'var s={"cost": "€5.00"}',
+        'let s = {"cost": "€5.00"}; init(s);',
+        'if (x) { go(); }\nconst s =\n {"cost": "€5.00"}\n;',
     ],
 )
 def test_the_json_after_the_first_assignment_is_the_state(script: str) -> None:
-    result = _collect(_page(script, body="Synthetic Widget"))
+    result = _collect(_page(script, body="€5.00"))
 
-    assert [(c.field, c.locator) for c in result.candidates] == [("title", f"js_state:{SCRIPT}:$['name']")]
+    assert [(c.field, c.locator) for c in result.candidates] == [("price", f"js_state:{SCRIPT}:$['cost']")]
 
 
 @pytest.mark.parametrize(
     "script",
     [
-        'if (a == {"name": "Synthetic Widget"}) {}',
-        'var f = x => ({"name": "Synthetic Widget"});',
-        'var n = "Synthetic Widget";',  # a scalar initializer is a script variable, not state
-        'go({"name": "Synthetic Widget"});',
-        'window.s = JSON.parse(\'{"name": "Synthetic Widget"}\');',
+        'if (a == {"cost": "€5.00"}) {}',
+        'var f = x => ({"cost": "€5.00"});',
+        'var n = "€5.00";',  # a scalar initializer is a script variable, not state
+        'go({"cost": "€5.00"});',
+        'window.s = JSON.parse(\'{"cost": "€5.00"}\');',
     ],
 )
 def test_script_code_that_is_not_an_assignment_of_json_is_not_state(script: str) -> None:
-    result = _collect(_page(script, body="Synthetic Widget"))
+    result = _collect(_page(script, body="€5.00"))
 
     assert result == Admitted(candidates=())
 
 
 def test_only_the_first_assignment_of_a_script_is_read() -> None:
-    script = 'window.a = {"x": 1}; window.b = {"name": "Synthetic Widget"};'
+    script = 'window.a = {"x": 1}; window.b = {"cost": "€5.00"};'
 
-    assert _collect(_page(script, body="Synthetic Widget")).candidates == ()
+    assert _collect(_page(script, body="€5.00")).candidates == ()
 
 
 def test_an_application_json_script_is_a_document() -> None:
-    page = _page('{"name": "Synthetic Widget"}', body="Synthetic Widget", script_type="application/json")
+    page = _page('{"cost": "€5.00"}', body="€5.00", script_type="application/json")
 
-    assert [c.locator for c in _collect(page).candidates] == [f"js_state:{SCRIPT}:$['name']"]
+    assert [c.locator for c in _collect(page).candidates] == [f"js_state:{SCRIPT}:$['cost']"]
 
 
 def test_an_invalid_application_json_script_is_skipped_with_a_diagnostic() -> None:
-    page = _page('{"name": NaN}', body="Synthetic Widget", script_type="application/json")
+    page = _page('{"name": NaN}', body="€5.00", script_type="application/json")
 
     result = _collect(page)
 
@@ -214,15 +230,15 @@ def test_an_invalid_application_json_script_is_skipped_with_a_diagnostic() -> No
 
 
 def test_json_ld_blocks_are_not_state() -> None:
-    page = _page('{"name": "Synthetic Widget"}', body="Synthetic Widget", script_type="application/ld+json")
+    page = _page('{"cost": "€5.00"}', body="€5.00", script_type="application/ld+json")
 
     assert _collect(page) == Admitted(candidates=())
 
 
 def test_each_script_is_addressed_by_its_own_xpath() -> None:
     page = ParsedPage(
-        "<html><head><script>var a = 1;</script></head><body><p>Synthetic Widget</p>"
-        '<script>window.s = {"name": "Synthetic Widget"}</script></body></html>'
+        "<html><head><script>var a = 1;</script></head><body><p>€5.00</p>"
+        '<script>window.s = {"cost": "€5.00"}</script></body></html>'
     )
 
-    assert [c.locator for c in _collect(page).candidates] == ["js_state:/html[1]/body[1]/script[1]:$['name']"]
+    assert [c.locator for c in _collect(page).candidates] == ["js_state:/html[1]/body[1]/script[1]:$['cost']"]

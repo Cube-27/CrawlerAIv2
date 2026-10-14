@@ -67,6 +67,11 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
     return isinstance(left, Ok) and left == canonical(b, None)
 
 
+def is_absolute(raw: Raw) -> bool:
+    """Whether `raw` is an absolute http(s) URL (RFC 3986 §4.3) that canonicalizes with no base to resolve against."""
+    return isinstance(raw, str) and isinstance(canonical(raw, None), Ok)
+
+
 def canonical_url(raw: str, base: str | None) -> str | None:
     """`raw` as a canonical absolute http(s) URL, or `None` when it is not one: `canonical` for callers outside a field
     (the content formats), which drop what declines."""
