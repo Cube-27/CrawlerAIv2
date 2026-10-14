@@ -434,6 +434,31 @@ async def test_a_prompt_draft_is_the_schema_of_the_records(
     assert stored.schema_id == result.schema_.id
 
 
+async def test_one_page_is_one_entity_whatever_the_order_of_its_query_pairs(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # SPEC-10 §4.1: a scrape keys its task by the canonical form a crawl and an extract use (query pairs sorted), so the
+    # entity key (SPEC-05 §4.10) of a page does not depend on the job kind that fetched it.
+    urls = [f"{own_origin}/p?id=5&color=red", f"{own_origin}/p?color=red&id=5"]
+    for url in urls:
+        web.pages[url] = (200, _product_page(url), "ok")
+
+    results = [
+        await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data) for url in urls
+    ]
+
+    async with engine.connect() as conn:
+        jobs = [result.job_id for result in results]
+        canonical = set((await conn.execute(select(UrlTask.canonical_url).where(UrlTask.job_id.in_(jobs)))).scalars())
+        keys = set((await conn.execute(select(Record.entity_key).where(Record.job_id.in_(jobs)))).scalars())
+    assert (canonical, len(keys)) == ({f"{own_origin}/p?color=red&id=5"}, 1)
+
+
 async def test_a_prompt_draft_of_another_page_kind_fails_the_job(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str, engine_data: EngineData
 ) -> None:

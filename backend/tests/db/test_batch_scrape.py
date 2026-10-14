@@ -206,6 +206,21 @@ async def test_a_submitted_batch_is_a_queued_job_with_one_task_per_canonical_url
     assert (job.schema_id, job.pinned, job.request["formats"]) == (None, None, ["markdown"])
 
 
+async def test_a_batch_keys_its_tasks_by_the_url_with_its_query_pairs_sorted(
+    engine: AsyncEngine, fetching: Fetching, own_origin: str
+) -> None:
+    # SPEC-10 §4.1: every job kind keys a page by one canonical form, so its records form one entity whatever job
+    # fetched it. Two orders of the same pairs are one page.
+    urls = [f"{own_origin}/p?id=5&color=red", f"{own_origin}/p?color=red&id=5"]
+
+    submitted = await submit_batch(engine, fetching.connector, _batch(urls, "markdown"), data=None)
+
+    async with engine.connect() as conn:
+        query = select(UrlTask.canonical_url).where(UrlTask.job_id == submitted.job_id)
+        canonical = (await conn.execute(query)).scalars().all()
+    assert canonical == [f"{own_origin}/p?color=red&id=5"]
+
+
 @pytest.mark.parametrize(
     ("member", "url"),
     [("urls", f"https://{PRIVATE_HOST}/x"), ("webhook_url", f"https://{PRIVATE_HOST}/hook")],
