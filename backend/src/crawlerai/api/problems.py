@@ -44,6 +44,11 @@ def records_unavailable(detail: str) -> ProblemError:
     return ProblemError(503, "records_unavailable", "Records unavailable", detail)
 
 
+def target_refused(reason: str) -> ProblemError:
+    """422: the request names a target the API may not fetch (INV-16); `reason` is the SSRF guard's."""
+    return ProblemError(422, "ssrf_rejected", "Target refused", reason)
+
+
 def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError:
     return ProblemError(422, "validation", "Invalid request", detail, errors)
 

@@ -22,7 +22,7 @@ from crawlerai.api.routers import eval as eval_router
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import ApiSettings, Settings
 from crawlerai.llm.providers.from_settings import client_from_settings
-from crawlerai.services.scrape import Fetching
+from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 

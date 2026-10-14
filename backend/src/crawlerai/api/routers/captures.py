@@ -10,7 +10,7 @@ from crawlerai.db.models import CaptureId
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import captures
 from crawlerai.services.captures import CaptureNotFound, NotReplayable
-from crawlerai.services.scrape import Fetching
+from crawlerai.services.fetching import Fetching
 
 router = APIRouter(
     prefix="/v1/captures",

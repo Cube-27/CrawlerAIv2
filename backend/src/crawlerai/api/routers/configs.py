@@ -26,7 +26,7 @@ from crawlerai.services.configs import (
     LearnRequest,
     SiteNotFound,
 )
-from crawlerai.services.scrape import Fetching
+from crawlerai.services.fetching import Fetching
 
 router = APIRouter(
     prefix="/v1",

@@ -41,8 +41,9 @@ from crawlerai.resolve import pipeline
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from crawlerai.services.fetching import Fetching
 from crawlerai.services.schemas import SchemaConflict
-from crawlerai.services.scrape import Fetching, RecordsUnavailable, ScrapeRequest, scrape
+from crawlerai.services.scrape import RecordsUnavailable, ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import SchemaUnusable
 from crawlerai.storage.fs import FsStore
 

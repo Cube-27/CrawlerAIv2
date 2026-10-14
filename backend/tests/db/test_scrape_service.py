@@ -37,7 +37,8 @@ from crawlerai.llm.client import (
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.services import scrape_steps
-from crawlerai.services.scrape import Fetching, ScrapeRejected, ScrapeRequest, ScrapeTimedOut, scrape
+from crawlerai.services.fetching import Fetching, TargetRejected
+from crawlerai.services.scrape import ScrapeRequest, ScrapeTimedOut, scrape
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, decode
 from crawlerai.storage.fs import FsStore
@@ -346,7 +347,7 @@ async def test_a_private_target_is_rejected_before_any_job_or_fetch(
         jobs_before = (await conn.execute(select(func.count()).select_from(Job))).scalar_one()
     scrape_request = request(url, "markdown")
 
-    with pytest.raises(ScrapeRejected) as rejected:
+    with pytest.raises(TargetRejected) as rejected:
         await scrape(engine, fetching, scrape_request)
 
     assert rejected.value.reason == "ssrf_rejected: private_address"
@@ -362,7 +363,7 @@ async def test_a_redirect_to_a_private_target_is_rejected_and_fails_the_job(
     web.pages[url] = (302, b"", "error", "ssrf_rejected: private_address")
     scrape_request = request(url, "markdown")
 
-    with pytest.raises(ScrapeRejected) as rejected:
+    with pytest.raises(TargetRejected) as rejected:
         await scrape(engine, fetching, scrape_request)
 
     assert rejected.value.reason == "ssrf_rejected: private_address"
