@@ -9,6 +9,7 @@ queue, a worker handler returns the result for the worker loop to settle.
 import logging
 import math
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final, Literal, Self, TypedDict
 
@@ -45,9 +46,10 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.db.usage import record_usage
 from crawlerai.llm.roles.s_schema import normalize_prompt
+from crawlerai.normalize.url import canonical_url
 from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.task import ActiveConfig, StoredRecord, store_extraction
+from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
 from crawlerai.schemas.types import SchemaDef
@@ -98,6 +100,13 @@ def load_drift_margins() -> DriftMargins | None:
 
 class Input(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+def absolute_http_url(url: str) -> str:
+    """`url`, for a request model's validator: `ValueError` unless it is an absolute http(s) URL."""
+    if canonical_url(url, None) is None:
+        raise ValueError("not an absolute http or https URL")
+    return url
 
 
 class SchemaById(Input):
@@ -243,11 +252,13 @@ async def store_page_record(
     schema: SchemaDef,
     config: ActiveConfig | None,
     margins: DriftMargins | None,
-) -> StoredRecord | None:
-    """Store the extraction of a caller-supplied detail page and return its record. The page keeps its record,
-    complete or not (`partial`, ARCHITECTURE §10), unless resolution failed (None, SPEC-05 §4.14); a page with a
-    record counts toward its progressive state. A page `config` ran on joins the config's drift window (SPEC-08
-    §4.9). Its outcome is `record_outcome`."""
+    caller_supplied: bool = True,
+) -> Stored:
+    """Store the extraction of a detail page and what it keeps: a caller-supplied page keeps its record, complete or
+    not (`partial`, ARCHITECTURE §10), and a crawl-discovered one only a complete record (else `no_match`, §23); none
+    when resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied page without a
+    record. A page with a record counts toward its progressive state. A page `config` ran on joins the config's drift
+    window (SPEC-08 §4.9)."""
     stored = await store_extraction(
         conn,
         task,
@@ -255,17 +266,17 @@ async def store_page_record(
         capture_id=capture_id,
         site_id=site_id,
         schema=schema,
-        caller_supplied=True,
+        caller_supplied=caller_supplied,
         write_records=store_records,
         config=config,
     )
     if config is not None:
         await record_page(conn, config, extraction, margins=margins, job_id=task.job_id)
-    if not stored.records:
-        return None
-    await _count_page(conn, site_id, schema)
-    # Records of a detail page only: requests refuse listing records (`check_records`).
-    return stored.records[0]
+    if stored.records:
+        await _count_page(conn, site_id, schema)
+    elif caller_supplied:
+        return replace(stored, outcome="failed")
+    return stored
 
 
 def record_outcome(record: StoredRecord) -> Literal["extracted", "partial"]:

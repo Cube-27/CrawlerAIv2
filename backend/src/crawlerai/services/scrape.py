@@ -473,12 +473,14 @@ async def _finish(
         config=derived.config,
         margins=margins,
     )
-    if stored is None:
+    if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
         return "failed", None
-    outcome = record_outcome(stored)
+    # Records of a detail page only: requests refuse listing records (`check_records`).
+    kept = stored.records[0]
+    outcome = record_outcome(kept)
     await complete_task(conn, task, outcome, capture_id=capture_id)
-    record = ScrapedRecord.of(stored.id, stored.draft, mode=extraction.mode, confidence=extraction.record_confidence)
+    record = ScrapedRecord.of(kept.id, kept.draft, mode=extraction.mode, confidence=extraction.record_confidence)
     return outcome, [record]
 
 

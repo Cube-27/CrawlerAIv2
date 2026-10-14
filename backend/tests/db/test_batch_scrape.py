@@ -44,8 +44,8 @@ from crawlerai.resolve.pipeline import UNRANKED, EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services import jobs
-from crawlerai.services.batch import BatchRejected, BatchScrapeRequest, submit_batch
-from crawlerai.services.fetching import Fetching
+from crawlerai.services.batch import BatchScrapeRequest, submit_batch
+from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
 from crawlerai.services.scrape import RecordsUnavailable
@@ -213,7 +213,7 @@ async def test_a_refused_target_queues_nothing(
     urls = [f"{own_origin}/a", url] if member == "urls" else [f"{own_origin}/a"]
     batch = _batch(urls, "markdown", **({"webhook_url": url} if member == "webhook_url" else {}))
 
-    with pytest.raises(BatchRejected) as rejected:
+    with pytest.raises(TargetsRejected) as rejected:
         await submit_batch(engine, fetching.connector, batch, data=None)
 
     assert rejected.value.member == ("urls[1]" if member == "urls" else "webhook_url")

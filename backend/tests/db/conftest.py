@@ -16,19 +16,27 @@ import os
 import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
+from ipaddress import ip_address
 from pathlib import Path
 
+import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.api.app import create_app
+from crawlerai.api.keys import create_key
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
+    ApiKey,
     Candidate,
     Capture,
     Extraction,
@@ -47,7 +55,9 @@ from crawlerai.db.models import (
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.services.fetching import Fetching
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
+from crawlerai.storage.fs import FsStore
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
@@ -203,3 +213,48 @@ def engine_data() -> EngineData:
     return EngineData(
         vocabulary=Vocabulary.read(VOCABULARY), orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None
     )
+
+
+PRIVATE_HOST = "intranet.example.test"
+
+
+async def resolve(host: str) -> list[IPAddress]:
+    """A stub resolver: `PRIVATE_HOST` has a private address, every other host a public one."""
+    return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
+
+
+@pytest.fixture
+async def submit_client(
+    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> AsyncIterator[httpx.AsyncClient]:
+    """The app against the test database, for the endpoints that submit jobs: without the engine's data files, its
+    fetching a stub that resolves `PRIVATE_HOST` to a private address and fetches nothing (submitting fetches
+    nothing). `engine` deletes the jobs afterwards; the key is deleted here."""
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
+    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
+
+    async def never(url: str, policy: FetchPolicy) -> FetchResult:
+        raise AssertionError("submitting a job fetches nothing")
+
+    async with engine.begin() as conn:
+        key = await create_key(conn, "submit-api-test")
+    app = create_app(eval_ui=False)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://api.test",
+            headers={"authorization": f"Bearer {key.key}"},
+        ) as client,
+    ):
+        store = FsStore(tmp_path / "objects")
+        app.state.fetching = Fetching(Rungs(http=never, browser=never), SafeConnector(resolve), store, HostLimiter())
+        app.state.engine_data = None
+        yield client
+    keys_engine = create_async_engine(database_url)
+    async with keys_engine.begin() as conn:
+        # The key's jobs keep their rows until `engine` deletes them; they let go of the key first.
+        await conn.execute(update(Job).where(Job.api_key_id == key.id).values(api_key_id=None))
+        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
+    await keys_engine.dispose()

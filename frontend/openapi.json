@@ -807,6 +807,129 @@
         "title": "Correction",
         "type": "object"
       },
+      "CrawlRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, and a `schema.prompt` is not taken. `include` and `exclude`\nglobs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is\ncalled when the job ends (\u00a74.2).",
+        "properties": {
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclude",
+            "type": "array"
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions",
+            "default": {
+              "method_hint": "auto",
+              "respect_robots": true
+            }
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "markdown",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Include",
+            "type": "array"
+          },
+          "limit": {
+            "default": 500,
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "max_depth": {
+            "default": 3,
+            "minimum": 0.0,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "page_kind_rules": {
+            "items": {
+              "$ref": "#/components/schemas/PageKindRule"
+            },
+            "title": "Page Kind Rules",
+            "type": "array"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "url",
+          "formats"
+        ],
+        "title": "CrawlRequest",
+        "type": "object"
+      },
+      "CrawlSubmitted": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "CrawlSubmitted",
+        "type": "object"
+      },
       "CssStep-Input": {
         "additionalProperties": false,
         "description": "A CSS selector, kept for readability, and its XPath 1.0 translation, which is what executors run.",
@@ -2661,6 +2784,30 @@
           "text"
         ],
         "title": "PageDetail",
+        "type": "object"
+      },
+      "PageKindRule": {
+        "additionalProperties": false,
+        "description": "A crawl's rule (\u00a74.5): a URL `pattern` matches is extracted as a `page_kind` page.",
+        "properties": {
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern",
+          "page_kind"
+        ],
+        "title": "PageKindRule",
         "type": "object"
       },
       "PageMetadata": {
@@ -5083,6 +5230,113 @@
         "summary": "Export Config",
         "tags": [
           "configs"
+        ]
+      }
+    },
+    "/v1/crawl": {
+      "post": {
+        "description": "Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,\n`max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern\nmatches is extracted; with rules, any other page is fetched for its links only. A target the API may not fetch, in\n`url` or `webhook_url`, is a 422 and nothing is queued.",
+        "operationId": "crawl_site_v1_crawl_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Crawl Site",
+        "tags": [
+          "crawl"
         ]
       }
     },

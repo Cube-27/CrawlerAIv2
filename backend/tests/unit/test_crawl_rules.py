@@ -3,7 +3,7 @@ says otherwise, `include` globs over the canonical URL, and `exclude`, which win
 
 import pytest
 
-from crawlerai.crawl.rules import Scope
+from crawlerai.crawl.rules import PageKindRule, Scope, page_kind_for
 
 HOST = "shop.example.test"
 
@@ -47,3 +47,24 @@ def test_a_glob_character_class_matches_one_character() -> None:
 
     assert scope.admits("https://shop.example.test/p/7")
     assert not scope.admits("https://shop.example.test/p/77")
+
+
+# Page-kind rules (SPEC-10 §4.5, ARCHITECTURE §13.2).
+
+
+def test_the_first_rule_whose_pattern_matches_gives_the_page_kind() -> None:
+    rules = (
+        PageKindRule(pattern="https://shop.example.test/p/sale/*", page_kind="listing"),
+        PageKindRule(pattern="https://shop.example.test/p/*", page_kind="detail"),
+    )
+
+    assert page_kind_for("https://shop.example.test/p/sale/1", rules) == "listing"
+    assert page_kind_for("https://shop.example.test/p/2", rules) == "detail"
+
+
+def test_a_url_no_rule_matches_has_no_page_kind() -> None:
+    rules = (PageKindRule(pattern="https://shop.example.test/p/*", page_kind="detail"),)
+
+    assert page_kind_for("https://shop.example.test/c/1", rules) is None
+    assert page_kind_for("https://shop.example.test/P/1", rules) is None
+    assert page_kind_for("https://shop.example.test/p/1", ()) is None

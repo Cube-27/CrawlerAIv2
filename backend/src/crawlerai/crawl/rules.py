@@ -1,10 +1,30 @@
-"""URL rules of discovery requests (SPEC-10 §4.1, §4.4): include and exclude globs, `fnmatch`-style over the
-canonical URL. Patterns come from requests; this module names no host (INV-03).
+"""URL rules of discovery requests (SPEC-10 §4.1, §4.4, §4.5): include and exclude globs, and a crawl's page-kind
+rules, `fnmatch`-style over the canonical URL. Patterns come from requests; this module names no host (INV-03).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from urllib.parse import urlsplit
+
+from pydantic import BaseModel, ConfigDict
+
+from crawlerai.db.models import PageKind
+
+
+class PageKindRule(BaseModel):
+    """A crawl's rule (§4.5): a URL `pattern` matches is extracted as a `page_kind` page."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str
+    page_kind: PageKind
+
+
+def page_kind_for(url: str, rules: Sequence[PageKindRule]) -> PageKind | None:
+    """The page kind of the first of `rules` whose pattern matches `url`, in canonical form; `None` when none does:
+    the URL is then crawled for its links only (ARCHITECTURE §13.2)."""
+    return next((rule.page_kind for rule in rules if fnmatchcase(url, rule.pattern)), None)
 
 
 @dataclass(frozen=True)
