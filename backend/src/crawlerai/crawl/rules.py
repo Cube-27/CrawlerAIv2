@@ -63,11 +63,10 @@ def is_glob(url: str) -> bool:
     return "*" in url
 
 
-class UrlGlob(BaseModel):
+@dataclass(frozen=True)
+class UrlGlob:
     """A glob of `extract` (§4.6) on its origin: `origin` is its scheme and authority in canonical form
     (`https://host/`), and `pattern` the glob with that origin, to match canonical URLs as a map's `include` does."""
-
-    model_config = ConfigDict(frozen=True)
 
     origin: str
     pattern: str

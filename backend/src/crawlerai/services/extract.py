@@ -27,7 +27,6 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import AttemptRecord, FetchResult
@@ -35,12 +34,12 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.rules import UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
-from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, UrlTask
+from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.batch import MAX_URLS, JobPins, active_configs, insert_job
+from crawlerai.services.batch import MAX_URLS, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetching import Fetching, check_targets
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable, polite_fetch
@@ -82,9 +81,10 @@ class ExtractRequest(Input):
     @classmethod
     def _urls_and_globs(cls, urls: list[str]) -> list[str]:
         for index, url in enumerate(urls):
-            if is_glob(url) and url_glob(url) is None:
-                raise ValueError(f"urls[{index}] is not a glob on one http or https host")
-            if not is_glob(url) and canonicalize(url) is None:
+            if is_glob(url):
+                if url_glob(url) is None:
+                    raise ValueError(f"urls[{index}] is not a glob on one http or https host")
+            elif canonicalize(url) is None:
                 raise ValueError(f"urls[{index}] is not an absolute http or https URL")
         return urls
 
@@ -98,14 +98,16 @@ class ExtractRequest(Input):
         check_records(["records"], self.schema_, self.page_kind)
         return self
 
+    def globs(self) -> list[UrlGlob | None]:
+        """Per URL of `urls`, its glob on its origin; None for a URL that is not a glob."""
+        return [url_glob(url) if is_glob(url) else None for url in self.urls]
+
     def targets(self) -> list[tuple[str, str]]:
         """What the SSRF guard checks of `urls`, by member: each URL, and each glob's origin."""
-        return [(f"urls[{index}]", _target(url)) for index, url in enumerate(self.urls)]
-
-
-def _target(url: str) -> str:
-    glob = url_glob(url) if is_glob(url) else None
-    return url if glob is None else glob.origin
+        return [
+            (f"urls[{index}]", url if glob is None else glob.origin)
+            for index, (url, glob) in enumerate(zip(self.urls, self.globs(), strict=True))
+        ]
 
 
 class ExtractSubmitted(BaseModel):
@@ -158,18 +160,23 @@ async def submit_extract(
         return await _drafted(engine, fetching, llm, request, prompt, urls, data, api_key_id, draft_timeout_s)
     async with engine.begin() as conn:
         job_id = await _insert_job(conn, request, schema, data, urls, api_key_id)
-        await _insert_tasks(conn, job_id, request.page_kind, urls)
+        await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))
     return ExtractSubmitted(job_id=job_id, schema_=schema)
 
 
 async def _task_urls(engine: AsyncEngine, fetching: Fetching, request: ExtractRequest) -> dict[str, str]:
     """The job's task URLs by canonical form, in order: the given URLs, then each glob's, at most `limit`. The globs
     of one origin are expanded by one map, and the origins' maps run at once (politeness is per host)."""
-    globs = [glob for url in request.urls if is_glob(url) and (glob := url_glob(url)) is not None]
-    origins = list(dict.fromkeys(glob.origin for glob in globs))
-    expanded = await asyncio.gather(*(_expand(engine, fetching, request, origin, globs) for origin in origins))
+    globs = request.globs()
+    patterns: dict[str, list[str]] = {}
+    for glob in filter(None, globs):
+        patterns.setdefault(glob.origin, []).append(glob.pattern)
+    expanded = await asyncio.gather(
+        *(_expand(engine, fetching, origin, include, request.limit) for origin, include in patterns.items())
+    )
     urls: dict[str, str] = {}
-    given = ((url, canonicalize(url) or url) for url in request.urls if not is_glob(url))
+    # The request's validator refuses a URL that is not a glob and has no canonical form.
+    given = ((url, canonicalize(url) or url) for url, glob in zip(request.urls, globs, strict=True) if glob is None)
     for url, canonical in itertools.chain(given, *expanded):
         if len(urls) == request.limit:
             break
@@ -178,12 +185,11 @@ async def _task_urls(engine: AsyncEngine, fetching: Fetching, request: ExtractRe
 
 
 async def _expand(
-    engine: AsyncEngine, fetching: Fetching, request: ExtractRequest, origin: str, globs: list[UrlGlob]
+    engine: AsyncEngine, fetching: Fetching, origin: str, include: list[str], limit: int
 ) -> list[tuple[str, str]]:
-    """The URLs that a map of `origin` finds and its globs match; a map's URLs are canonical (§4.4), so each is its own
-    canonical form."""
-    include = [glob.pattern for glob in globs if glob.origin == origin]
-    found = await map_urls(engine, fetching, MapRequest(url=origin, include=include, limit=request.limit))
+    """The URLs that a map of `origin` finds and its globs, `include`, match; a map's URLs are canonical (§4.4), so
+    each is its own canonical form."""
+    found = await map_urls(engine, fetching, MapRequest(url=origin, include=include, limit=limit))
     return [(url, url) for url in found.urls]
 
 
@@ -205,14 +211,6 @@ async def _insert_job(
         webhook_url=request.webhook_url,
         api_key_id=api_key_id,
     )
-
-
-async def _insert_tasks(conn: AsyncConnection, job_id: JobId, page_kind: PageKind, urls: dict[str, str]) -> None:
-    rows = [
-        {"job_id": job_id, "url": url, "canonical_url": canonical, "page_kind": page_kind}
-        for canonical, url in urls.items()
-    ]
-    await conn.execute(pg_insert(UrlTask).values(rows))
 
 
 async def _drafted(
@@ -243,11 +241,9 @@ async def _drafted(
             raise DraftTimedOut(timeout_s) from e
         raise
     async with engine.begin() as conn:
-        pins = JobPins(engine_data=data.pin(), configs=await active_configs(conn, list(urls.values()), drafted))
-        await conn.execute(
-            update(Job).where(Job.id == job_id).values(schema_id=drafted.id, pinned=pins.model_dump(mode="json"))
-        )
-        await _insert_tasks(conn, job_id, request.page_kind, urls)
+        pinned = await job_pins(conn, data, list(urls.values()), drafted)
+        await conn.execute(update(Job).where(Job.id == job_id).values(schema_id=drafted.id, pinned=pinned))
+        await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))
     return ExtractSubmitted(job_id=job_id, schema_=drafted)
 
 
@@ -274,6 +270,11 @@ async def _samples(
     if not samples:
         raise NoSamplePage("none of the pages to draft the schema from was reached")
     return samples
+
+
+def _pairs(urls: dict[str, str]) -> list[tuple[str, str]]:
+    """(URL, canonical URL) pairs of the task URLs, kept by canonical form."""
+    return [(url, canonical) for canonical, url in urls.items()]
 
 
 def _cleaned_text(page: FetchResult) -> str:
