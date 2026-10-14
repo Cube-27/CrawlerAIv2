@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -103,13 +104,26 @@ def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(mon
     async def run(settings: Settings, handlers: Mapping[str, object], stop: asyncio.Event, *, ending: object) -> None:
         calls.append((settings.database_url.get_secret_value(), sorted(handlers), stop.is_set(), ending))
 
+    learners: list[tuple[object, int, bool]] = []
+
+    async def learn(*args: object, vocabulary: object, max_chars: int) -> None:
+        stop = args[3]
+        assert isinstance(stop, asyncio.Event)
+        learners.append((vocabulary, max_chars, stop.is_set()))
+
+    vocabulary = object()
     monkeypatch.setattr(cli, "run_worker", run)
+    monkeypatch.setattr(cli, "run_learner", learn)
+    monkeypatch.setattr(cli, "load_engine_data", lambda: SimpleNamespace(vocabulary=vocabulary))
+    monkeypatch.setenv("CRAWLERAI_LLM_A_MAX_CHARS", "5000")
 
     main(["worker"])
 
     # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
     url = "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai"
     assert calls == [(url, ["batch_scrape", "crawl", "extract"], False, close_run)]
+    # Learn jobs have no tasks: the worker's learner runs them beside the task loop (D-0624).
+    assert learners == [(vocabulary, 5000, False)]
 
 
 def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_and_the_http_rung(
@@ -166,6 +180,7 @@ def test_the_scheduler_entries_and_their_intervals() -> None:
         ("expire_candidates", timedelta(hours=1), 1000),
         ("recheck_fetch_method", timedelta(hours=1), 1),
         ("trigger_learning", timedelta(minutes=1), 100),
+        ("expire_learn_runs", timedelta(minutes=5), 100),
         ("deliver_webhooks", timedelta(seconds=5), 1),
     ]
     # A job its last expired lease ends is diffed too (SPEC-11 §4.5).

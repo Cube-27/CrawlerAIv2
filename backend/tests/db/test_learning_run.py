@@ -8,21 +8,30 @@ comes from JSON-LD, the price only from the page text, which a scripted role C r
 scripted client; no provider is called.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.collect.base import Candidate
 from crawlerai.config_ir.active import active_config
-from crawlerai.config_ir.learning import LEARNING_FINISHED, Learned, next_learn_job, run_learn_job
+from crawlerai.config_ir.learning import (
+    LEARN_RUN_TIMEOUT,
+    LEARNING_FINISHED,
+    Learned,
+    expire_learn_runs,
+    next_learn_job,
+    run_learn_job,
+)
 from crawlerai.config_ir.progressive import StateKey, operator_activated, request_learning, trigger_learning
 from crawlerai.db.models import (
     Extraction,
@@ -45,7 +54,9 @@ from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, Listing
 from crawlerai.resolve.task import Stored, extract_task
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.services.jobs import cancel_job
 from crawlerai.storage.fs import FsStore
+from crawlerai.worker.learn import run_learner
 
 pytestmark = pytest.mark.anyio
 
@@ -375,3 +386,107 @@ async def test_a_job_another_process_started_is_not_run_again(site: Site_) -> No
     )
 
     assert learned is None
+
+
+async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: Site_) -> None:
+    await site.pages(8)
+    async with site.engine.begin() as conn:
+        assert await trigger_learning(conn, batch=10) == 1
+    stop = asyncio.Event()
+    learner = asyncio.create_task(
+        run_learner(site.engine, site.store, RoleA(PRICE_REPLY), stop, vocabulary=site.data.vocabulary, max_chars=1000)
+    )
+
+    async with asyncio.timeout(30):
+        while (await site.state()).mode == "learning":
+            await asyncio.sleep(0.05)
+    stop.set()
+    await learner
+
+    assert (await site.state()).mode == "active"
+
+
+async def test_cancelling_a_queued_learn_job_ends_its_run(site: Site_) -> None:
+    await site.pages(3)
+    await _forced(site)
+    async with site.engine.begin() as conn:
+        job_id = await next_learn_job(conn)
+        assert job_id is not None
+        await cancel_job(conn, job_id)
+
+    state = await site.state()
+    assert (state.mode, state.learning_started_at, state.retry_at_pages) == ("cold", None, 11)
+    async with site.engine.begin() as conn:
+        assert await request_learning(conn, site.key, force=True) is not None
+
+
+async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site: Site_) -> None:
+    await site.pages(3)
+    await _forced(site)
+    async with site.engine.begin() as conn:
+        # A request naming a schema version the state does not have: `_start` cannot read its state.
+        request = Job.request.op("||")(func.jsonb_build_object("schema_version", 99))
+        await conn.execute(update(Job).where(Job.kind == "learn").values(request=request))
+
+    job_id, learned = await site.learn(RoleA())
+
+    assert learned == Learned(None, "error")
+    async with site.engine.begin() as conn:
+        status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
+        assert (status, await next_learn_job(conn)) == ("failed", None)
+
+
+async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: Site_) -> None:
+    await site.pages(3)
+    await _forced(site)
+    async with site.engine.begin() as conn:
+        job_id = await next_learn_job(conn)
+        assert job_id is not None
+        started = func.now() - LEARN_RUN_TIMEOUT - timedelta(minutes=1)
+        await conn.execute(update(Job).where(Job.id == job_id).values(status="running", started_at=started))
+        recent = await request_learning(conn, StateKey(site.site_id, site.schema.id, 1, "listing"), force=True)
+        await conn.execute(update(Job).where(Job.id == recent).values(status="running", started_at=func.now()))
+
+    async with site.engine.begin() as conn:
+        assert await expire_learn_runs(conn, batch=10) == 1
+
+    state = await site.state()
+    assert (state.mode, state.learning_started_at) == ("cold", None)
+    assert await site.finished(job_id) == ("failed", {"config_id": None, "reason": "expired", "report": None})
+    async with site.engine.connect() as conn:
+        assert (await conn.execute(select(Job.status).where(Job.id == recent))).scalar_one() == "running"
+
+
+async def test_a_run_that_ends_after_it_expired_writes_nothing(site: Site_) -> None:
+    await site.pages(8)
+    await _forced(site)
+
+    async def expire() -> None:
+        # The scheduler gives the run up while role A is being asked, as if its process had died.
+        async with site.engine.begin() as conn:
+            await conn.execute(update(Job).where(Job.kind == "learn").values(started_at=func.now() - timedelta(days=1)))
+            assert await expire_learn_runs(conn, batch=10) == 1
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY, before=expire))
+
+    assert learned == Learned(None, "expired")
+    state = await site.state()
+    assert (state.mode, state.active_config_id) == ("cold", None)
+    assert (await site.finished(job_id))[0] == "failed"
+
+
+async def test_cancelling_a_running_learn_job_ends_it_through_its_run(site: Site_) -> None:
+    await site.pages(8)
+    await _forced(site)
+
+    async def cancel() -> None:
+        async with site.engine.begin() as conn:
+            job_id = (await conn.execute(select(Job.id).where(Job.kind == "learn"))).scalar_one()
+            assert (await cancel_job(conn, job_id)).status == "running"
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY, before=cancel))
+
+    assert learned == Learned(None, "cancelled")
+    state = await site.state()
+    assert (state.mode, state.learning_started_at, state.active_config_id) == ("cold", None, None)
+    assert (await site.finished(job_id))[0] == "cancelled"
