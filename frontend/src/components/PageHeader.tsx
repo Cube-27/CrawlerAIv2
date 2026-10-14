@@ -14,7 +14,9 @@ export function PageHeader({
         <Typography.Heading level={1}>{title}</Typography.Heading>
         {children}
       </div>
-      {actions === undefined ? null : <div className="flex items-center gap-2">{actions}</div>}
+      {actions === undefined ? null : (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }
