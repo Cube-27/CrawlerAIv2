@@ -12,11 +12,13 @@ export type StoredRecord = Schemas["StoredRecord"];
 /** One page of records, newest first; `next_cursor` is null on the last page. */
 export type RecordPage = Schemas["RecordPage"];
 
-/** The filters `GET /v1/records` takes; an empty one is left out. */
+/** The filters `GET /v1/records` takes; an empty one is left out. `changed_since` is an ISO 8601 instant: only the
+ * new entities and new versions stored from then on, the change feed (SPEC-11 §4.4). */
 export interface RecordFilters {
   schema_id: string;
   job_id: string;
   site: string;
+  changed_since: string;
 }
 
 /** A record a replay made: not stored (§13.1), so it has no id. */

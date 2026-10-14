@@ -39,6 +39,15 @@ function ReplaySection({
   );
 }
 
+/** What changed from the version this one supersedes, which is the version before it (SPEC-11 §4.4). */
+function changeText({ version, changed_fields: changed }: StoredRecord): string {
+  if (version === 1) return "The first version of this record.";
+  const previous = String(version - 1);
+  return changed.length === 0
+    ? `No published value changed from version ${previous}.`
+    : `Changed from version ${previous}: ${changed.join(", ")}`;
+}
+
 /** Every `field_meta` attribute of one record, and its capture with a replay (SPEC-12 §4.3), in a drawer over the
  * table. The record is not editable here; `onClose` closes the drawer. */
 export function RecordInspector({
@@ -64,6 +73,7 @@ export function RecordInspector({
               </div>
             </Drawer.Header>
             <Drawer.Body className="flex flex-col gap-6">
+              <Typography.Paragraph size="sm">{changeText(record)}</Typography.Paragraph>
               <RecordFieldsTable label="Record fields" record={record} fieldTypes={fieldTypes} />
               {/* Captures expire (ARCHITECTURE §15); the record stays, without one to replay. */}
               {record.capture_id === null ? (

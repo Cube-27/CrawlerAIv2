@@ -5,6 +5,12 @@ import type { StoredRecord } from "../api/records";
 import { confidenceText } from "./ConfidenceCell";
 import { FieldValue } from "./FieldValue";
 
+/** The fields whose published value differs from the version the record supersedes; "—" when none, as for a first
+ * version (SPEC-11 §4.4). */
+function changedFieldsText(record: StoredRecord): string {
+  return record.changed_fields.length === 0 ? "—" : record.changed_fields.join(", ");
+}
+
 interface Column {
   id: string;
   name: string;
@@ -14,6 +20,7 @@ interface Column {
 const RECORD_COLUMNS: Column[] = [
   { id: "mode", name: "Mode", render: (record) => record.mode },
   { id: "version", name: "Version", render: (record) => record.version },
+  { id: "changed", name: "Changed", render: (record) => changedFieldsText(record) },
   { id: "confidence", name: "Confidence", render: (record) => confidenceText(record.confidence) },
 ];
 
@@ -36,8 +43,8 @@ function columnsOf(fieldTypes: FieldTypes): Column[] {
   ];
 }
 
-/** Records of one schema: a column per field of the schema (`fieldTypes`, in its order), then mode, version and
- * confidence. A row opens by click or by Enter (`onOpen`). */
+/** Records of one schema: a column per field of the schema (`fieldTypes`, in its order), then mode, version, the
+ * fields changed from the previous version, and confidence. A row opens by click or by Enter (`onOpen`). */
 export function RecordTable({
   label,
   records,

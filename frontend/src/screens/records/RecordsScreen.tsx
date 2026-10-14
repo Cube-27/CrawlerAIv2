@@ -20,6 +20,7 @@ function filtersOf(params: URLSearchParams): RecordFilters {
     schema_id: params.get("schema_id") ?? "",
     job_id: params.get("job_id") ?? "",
     site: params.get("site") ?? "",
+    changed_since: params.get("changed_since") ?? "",
   };
 }
 
@@ -77,7 +78,8 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
   );
 }
 
-/** Stored records by schema, job and site (SPEC-12 §4.3): a column per schema field, and an inspector per record. */
+/** Stored records by schema, job, site and change time (SPEC-12 §4.3): a column per schema field, the fields each
+ * record changed, and an inspector per record. */
 export function RecordsScreen() {
   const [params, setParams] = useSearchParams();
   const filters = filtersOf(params);

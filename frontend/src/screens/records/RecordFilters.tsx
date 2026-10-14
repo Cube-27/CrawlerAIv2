@@ -1,4 +1,6 @@
-import { Button, Description, Form, Input, Label, TextField } from "@heroui/react";
+import { Xmark } from "@gravity-ui/icons";
+import { Button, DateField, Description, Form, Input, Label, TextField } from "@heroui/react";
+import { parseAbsolute, toZoned, today, type ZonedDateTime } from "@internationalized/date";
 import { useState } from "react";
 import { problemOf } from "../../api/hooks/query";
 import { useSchemas } from "../../api/hooks/schemas";
@@ -52,6 +54,59 @@ function OptionalText({
   );
 }
 
+// The time is entered and shown in UTC, so the instant sent is the one on screen whatever the viewer's zone.
+const ZONE = "UTC";
+
+// An instant from the address that is not ISO 8601 with an offset shows an empty field; the filter is still sent,
+// and the API's problem says what is wrong with it.
+function zonedOf(instant: string): ZonedDateTime | null {
+  if (instant === "") return null;
+  try {
+    return parseAbsolute(instant, ZONE);
+  } catch {
+    return null;
+  }
+}
+
+/** The start of the change feed: records stored from this instant on (SPEC-11 §4.4), as ISO 8601; "" for none. */
+function ChangedSinceField({
+  value,
+  onChange,
+}: Readonly<{ value: string; onChange: (instant: string) => void }>) {
+  return (
+    <DateField
+      value={zonedOf(value)}
+      onChange={(next) => {
+        onChange(next === null ? "" : next.toAbsoluteString());
+      }}
+      granularity="minute"
+      hourCycle={24}
+      placeholderValue={toZoned(today(ZONE), ZONE)}
+    >
+      <Label>Changed since</Label>
+      <DateField.Group>
+        <DateField.Input>{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+        {value === "" ? null : (
+          <DateField.Suffix>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label="Clear changed since"
+              onPress={() => {
+                onChange("");
+              }}
+            >
+              <Xmark aria-hidden="true" />
+            </Button>
+          </DateField.Suffix>
+        )}
+      </DateField.Group>
+      <Description>Only new records and new versions stored from this time on, in UTC.</Description>
+    </DateField>
+  );
+}
+
 /** The `GET /v1/records` filters (SPEC-07 §4.6). The schema is required; the others narrow the list when given. */
 export function RecordFiltersForm({
   filters,
@@ -82,6 +137,7 @@ export function RecordFiltersForm({
         value={draft.site}
         onChange={set("site")}
       />
+      <ChangedSinceField value={draft.changed_since} onChange={set("changed_since")} />
       <FormActions>
         <Button type="submit">Show records</Button>
       </FormActions>
