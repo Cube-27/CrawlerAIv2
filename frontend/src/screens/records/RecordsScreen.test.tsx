@@ -357,28 +357,19 @@ describe("records screen: the inspector", () => {
     expect(price.getByText("0.41")).toBeInTheDocument();
   });
 
-  it("names the fields that changed from the version the record supersedes", async () => {
+  it.each([
+    [storedRecord(), "Changed from version 2: price"],
+    [storedRecord({ version: 1, changed_fields: [] }), "The first version of this record."],
+  ])("says what changed from the version the record supersedes", async (record, text) => {
     stubApi({
       "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
-      "GET /v1/records": page([storedRecord()]),
+      "GET /v1/records": page([record]),
     });
     await open(RECORDS_PATH);
 
     const inspector = await openInspector();
-    expect(inspector.getByText("Changed from version 2: price")).toBeInTheDocument();
-  });
-
-  it("says a record's first version has nothing to change from", async () => {
-    stubApi({
-      "GET /v1/schemas": schemaList,
-      [`GET /v1/schemas/${SCHEMA_ID}`]: schemaReply,
-      "GET /v1/records": page([storedRecord({ version: 1, changed_fields: [] })]),
-    });
-    await open(RECORDS_PATH);
-
-    const inspector = await openInspector();
-    expect(inspector.getByText("The first version of this record.")).toBeInTheDocument();
+    expect(inspector.getByText(text)).toBeInTheDocument();
   });
 
   it("offers no replay once the record's capture expired", async () => {

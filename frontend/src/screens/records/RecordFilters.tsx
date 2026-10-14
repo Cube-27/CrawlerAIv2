@@ -1,7 +1,7 @@
 import { Xmark } from "@gravity-ui/icons";
 import { Button, DateField, Description, Form, Input, Label, TextField } from "@heroui/react";
 import { parseAbsolute, toZoned, today, type ZonedDateTime } from "@internationalized/date";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { problemOf } from "../../api/hooks/query";
 import { useSchemas } from "../../api/hooks/schemas";
 import type { RecordFilters } from "../../api/records";
@@ -60,7 +60,6 @@ const ZONE = "UTC";
 // An instant from the address that is not ISO 8601 with an offset shows an empty field; the filter is still sent,
 // and the API's problem says what is wrong with it.
 function zonedOf(instant: string): ZonedDateTime | null {
-  if (instant === "") return null;
   try {
     return parseAbsolute(instant, ZONE);
   } catch {
@@ -73,15 +72,18 @@ function ChangedSinceField({
   value,
   onChange,
 }: Readonly<{ value: string; onChange: (instant: string) => void }>) {
+  // The field compares its value by identity: a new one each render would reset a date half typed in.
+  const zoned = useMemo(() => zonedOf(value), [value]);
+  const [placeholder] = useState(() => toZoned(today(ZONE), ZONE));
   return (
     <DateField
-      value={zonedOf(value)}
+      value={zoned}
       onChange={(next) => {
         onChange(next === null ? "" : next.toAbsoluteString());
       }}
       granularity="minute"
       hourCycle={24}
-      placeholderValue={toZoned(today(ZONE), ZONE)}
+      placeholderValue={placeholder}
     >
       <Label>Changed since</Label>
       <DateField.Group>

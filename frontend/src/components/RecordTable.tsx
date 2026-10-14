@@ -5,10 +5,10 @@ import type { StoredRecord } from "../api/records";
 import { confidenceText } from "./ConfidenceCell";
 import { FieldValue } from "./FieldValue";
 
-/** The fields whose published value differs from the version the record supersedes; "—" when none, as for a first
- * version (SPEC-11 §4.4). */
-function changedFieldsText(record: StoredRecord): string {
-  return record.changed_fields.length === 0 ? "—" : record.changed_fields.join(", ");
+/** The fields whose published value differs from the version the record supersedes, or null when none, as for a
+ * first version (SPEC-11 §4.4). */
+export function changedFieldsText({ changed_fields: changed }: StoredRecord): string | null {
+  return changed.length === 0 ? null : changed.join(", ");
 }
 
 interface Column {
@@ -20,7 +20,7 @@ interface Column {
 const RECORD_COLUMNS: Column[] = [
   { id: "mode", name: "Mode", render: (record) => record.mode },
   { id: "version", name: "Version", render: (record) => record.version },
-  { id: "changed", name: "Changed", render: (record) => changedFieldsText(record) },
+  { id: "changed", name: "Changed", render: (record) => changedFieldsText(record) ?? "—" },
   { id: "confidence", name: "Confidence", render: (record) => confidenceText(record.confidence) },
 ];
 
