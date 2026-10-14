@@ -50,6 +50,9 @@ function DocumentInputs({ form, mode, onChange }: Readonly<FormProps>) {
         >
           <Label>Name</Label>
           <Input autoComplete="off" />
+          <Description>
+            A name no other schema has: a new version keeps its schema's name.
+          </Description>
           <FieldError />
         </TextField>
       ) : null}

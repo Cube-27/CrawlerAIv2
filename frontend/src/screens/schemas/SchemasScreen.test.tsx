@@ -1,13 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
-
-// The forms type into several fields with user-event, which is slow in jsdom.
-vi.setConfig({ testTimeout: 20_000 });
+import { connect } from "../../test/connect";
 
 const V1_ID = "0192a000-0000-7000-8000-000000000101";
 const V2_ID = "0192a000-0000-7000-8000-000000000102";
@@ -54,8 +52,7 @@ const one = (schema: SchemaDef) => () => Response.json(schema);
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
-  await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await connect();
   await screen.findByRole("heading", { level: 1, name: heading });
 }
 
@@ -226,9 +223,10 @@ describe("schemas screen: adopting a prompt draft", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Adopt as user schema" }));
     await screen.findByRole("heading", { level: 1, name: "New schema" });
+    // The draft's own name is taken by its versions (UAT F32): the form starts without one.
     const name = await screen.findByRole("textbox", { name: "Name" });
-    expect(name).toHaveValue("draft_9f2c");
-    await userEvent.clear(name);
+    expect(name).toHaveValue("");
+    expect(name).toHaveAccessibleDescription(/A name no other schema has/);
     await userEvent.type(name, "headlines");
     await save();
 
@@ -239,6 +237,17 @@ describe("schemas screen: adopting a prompt draft", () => {
       required_groups: [],
       fields: { headline: { type: "text", required: false, scope: "row" } },
     });
+  });
+
+  it("asks for a name before it sends the adopted draft", async () => {
+    const calls = stubApi({ [`GET /v1/schemas/${DRAFT_ID}`]: one(draft) });
+    await open(`/schemas/new?from=${DRAFT_ID}`, "New schema");
+
+    await screen.findByRole("group", { name: "Field 1" });
+    await save();
+
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeInvalid();
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
   });
 });
 
@@ -367,7 +376,7 @@ describe("schemas screen: creating and editing", () => {
     });
     await open(`/schemas/new?from=${DRAFT_ID}`, "New schema");
 
-    await screen.findByDisplayValue("draft_9f2c");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Name" }), "headlines");
     await save();
 
     const alert = await screen.findByRole("alert");
