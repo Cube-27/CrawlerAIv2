@@ -15,6 +15,7 @@ import {
   type ExtractRequest,
   type ExportFormat,
   type ExportPage,
+  type JobFilters,
   type MapRequest,
 } from "../jobs";
 import { unwrap } from "./query";
@@ -31,12 +32,12 @@ export function jobResultsKey(id: string) {
   return [...JOBS, "results", id] as const;
 }
 
-/** The jobs at `cursor`. */
-export function useJobs(cursor: string | null) {
+/** The page of the jobs that pass `filters` at `cursor`. */
+export function useJobs(page: { filters: JobFilters; cursor: string | null; limit: number }) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...JOBS, "list", cursor],
-    queryFn: () => unwrap(listJobs(client, cursor)),
+    queryKey: [...JOBS, "list", page],
+    queryFn: () => unwrap(listJobs(client, page)),
   });
 }
 
@@ -46,11 +47,11 @@ export function useJob(id: string) {
 }
 
 /** The job's results at `cursor`. */
-export function useJobResults(id: string, cursor: string | null) {
+export function useJobResults(id: string, page: { cursor: string | null; limit: number }) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...jobResultsKey(id), cursor],
-    queryFn: () => unwrap(listJobResults(client, id, cursor)),
+    queryKey: [...jobResultsKey(id), page],
+    queryFn: () => unwrap(listJobResults(client, id, page)),
   });
 }
 

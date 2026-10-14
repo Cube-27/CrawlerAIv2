@@ -15,7 +15,8 @@ const STATE_TONES: Record<StreamState, StatusTone> = {
 };
 
 /** A job's run events as they are stored (`GET /v1/jobs/{id}/events`), live until the job ends. Each event's data is
- * shown as the server sent it. A dropped stream reconnects after the last event received. */
+ * shown as the server sent it. A dropped stream, or one silent past two heartbeats, reconnects after the last event
+ * received. */
 export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
   const { events, state, problem } = useJobEvents(jobId);
   const headingId = useId();

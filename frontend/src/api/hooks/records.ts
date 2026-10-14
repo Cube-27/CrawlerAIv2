@@ -5,12 +5,12 @@ import { unwrap } from "./query";
 
 /** `GET /v1/records` and `POST /v1/captures/{id}/replay` as TanStack Query hooks. */
 
-/** The page of records at `cursor`. */
-export function useRecords(filters: RecordFilters, cursor: string | null) {
+/** The page of records that pass `filters` at `cursor`. */
+export function useRecords(page: { filters: RecordFilters; cursor: string | null; limit: number }) {
   const client = useApiClient();
   return useQuery({
-    queryKey: ["records", filters, cursor],
-    queryFn: () => unwrap(listRecords(client, filters, cursor)),
+    queryKey: ["records", page],
+    queryFn: () => unwrap(listRecords(client, page)),
   });
 }
 

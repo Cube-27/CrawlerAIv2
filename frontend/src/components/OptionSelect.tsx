@@ -1,6 +1,11 @@
 import { FieldError, Label, ListBox, Select } from "@heroui/react";
 import type { Key } from "react";
 
+/** The guard `accepts` takes for `options`: a key of its own, not one it inherits (such as `toString`). */
+export function isOptionOf<K extends string>(options: Readonly<Record<K, string>>) {
+  return (key: unknown): key is K => typeof key === "string" && Object.hasOwn(options, key);
+}
+
 /** A labelled HeroUI Select over a `Record` of option labels. */
 export function OptionSelect<K extends string>({
   label,

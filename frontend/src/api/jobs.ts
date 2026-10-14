@@ -93,12 +93,24 @@ function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
 }
 
-/** The jobs at `cursor` (the first page when null), newest first, at the server's page size. */
-export function listJobs(client: ApiClient, cursor: string | null): Promise<ApiResult<JobPage>> {
-  return apiResult(
-    () => client.GET("/v1/jobs", { params: { query: cursor === null ? {} : { cursor } } }),
-    "Listing the jobs",
-  );
+/** Which jobs a list shows: one kind and one status, or every one when null (SPEC-10 §4.2). */
+export interface JobFilters {
+  kind: JobKind | null;
+  status: JobStatus | null;
+}
+
+/** One page of the jobs that pass `filters`, newest first: the first when `cursor` is null, `limit` jobs at most. */
+export function listJobs(
+  client: ApiClient,
+  { filters, cursor, limit }: { filters: JobFilters; cursor: string | null; limit: number },
+): Promise<ApiResult<JobPage>> {
+  const query = {
+    ...(filters.kind === null ? {} : { kind: filters.kind }),
+    ...(filters.status === null ? {} : { status: filters.status }),
+    ...(cursor === null ? {} : { cursor }),
+    limit,
+  };
+  return apiResult(() => client.GET("/v1/jobs", { params: { query } }), "Listing the jobs");
 }
 
 export function getJob(client: ApiClient, id: string): Promise<ApiResult<JobSummary>> {
@@ -116,13 +128,13 @@ export function cancelJob(client: ApiClient, id: string): Promise<ApiResult<JobS
   );
 }
 
-/** The job's results at `cursor` (the first page when null), at the server's page size. */
+/** The job's results at `cursor` (the first page when null), `limit` at most. */
 export async function listJobResults(
   client: ApiClient,
   id: string,
-  cursor: string | null,
+  { cursor, limit }: { cursor: string | null; limit: number },
 ): Promise<ApiResult<ResultsPage>> {
-  const query: ResultsQuery = cursor === null ? {} : { cursor };
+  const query: ResultsQuery = { ...(cursor === null ? {} : { cursor }), limit };
   const result = await apiResult(() => results(client, id, query), "Listing the job's results");
   return result.kind === "done" ? { kind: "done", value: resultsPage(result.value) } : result;
 }

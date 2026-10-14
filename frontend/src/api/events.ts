@@ -81,8 +81,11 @@ export interface FollowOptions {
   /** The problem a refused connection answered with; the stream is not reopened. */
   onProblem: (problem: Problem) => void;
   signal: AbortSignal;
-  /** How long to wait before a reconnect, after `attempt` reconnects in a row that received no event. */
+  /** How long to wait before a reconnect, after `attempt` reconnects in a row that received nothing. */
   delayMs: (attempt: number) => number;
+  /** How long a connection may go without a byte before it counts as dropped: a server that went away without
+   * closing the connection sends nothing more, not even its heartbeat. */
+  idleMs: number;
 }
 
 /** What one connection came to: the stream's end event was read, it dropped (reconnect), or it was refused. */
@@ -111,7 +114,23 @@ function refusal({ response, error }: Opened): Problem {
   return failed(response, error, "Opening the event stream").problem;
 }
 
-/** Reads one connection's events until it closes, the end event arrives, or the stream is stopped. */
+/** The reader's next chunk, or `idle` when none arrives within `ms`. */
+function readWithin(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  ms: number,
+): Promise<ReadableStreamReadResult<Uint8Array> | "idle"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const idle = new Promise<"idle">((resolve) => {
+    timer = setTimeout(() => {
+      resolve("idle");
+    }, ms);
+  });
+  return Promise.race([reader.read(), idle]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+/** Reads one connection's events until it closes, goes idle, the end event arrives, or the stream is stopped. */
 async function readEvents(
   body: ReadableStream<Uint8Array>,
   parser: EventStreamParser,
@@ -121,10 +140,17 @@ async function readEvents(
   const decoder = new TextDecoder();
   let received = false;
   for (;;) {
-    const { done, value } = await reader.read();
+    const read = await readWithin(reader, options.idleMs);
+    if (read === "idle") {
+      // The connection is released before the reconnect; a stalled body may never settle the cancel.
+      void reader.cancel().catch(() => undefined);
+      return { kind: "dropped", received };
+    }
+    const { done, value } = read;
     if (done || options.signal.aborted) return { kind: "dropped", received };
+    // Any bytes, a heartbeat too, show the server was reached: the backoff starts again.
+    received = true;
     for (const event of parser.push(decoder.decode(value, { stream: true }))) {
-      received = true;
       options.onEvent(event);
       if (options.isEnd(event)) {
         await reader.cancel();
@@ -193,6 +219,10 @@ export async function followEvents(options: FollowOptions): Promise<void> {
     failures += 1;
   }
 }
+
+/** SPEC-10 §4.2: the server sends a heartbeat after 15 s without an event. Two missed heartbeats, with a margin for
+ * a slow network, mean the server is gone. */
+export const IDLE_MS = 35_000;
 
 /** The reconnect backoff: 1 s, doubling to at most 30 s. */
 export function backoffMs(attempt: number): number {

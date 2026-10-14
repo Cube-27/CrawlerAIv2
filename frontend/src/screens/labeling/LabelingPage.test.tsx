@@ -327,6 +327,93 @@ describe("labeler pass", () => {
     expect(puts(calls)).toEqual([]);
   });
 
+  it("prefills a draft with the page's ETag after confirmation, and shows the stored draft", async () => {
+    const prefilled: Labels = {
+      ...labeled,
+      status: "draft",
+      labeler: null,
+      prefill_source: "llm:model-a",
+      fields: {
+        title: { value: "Blue mug", absent: false, locator: "text:0:8", distractors: [] },
+      },
+    };
+    const calls = stubApi({
+      [`GET /v1/eval/pages/${PAGE_ID}`]: [
+        pageReply(detailPage()),
+        pageReply(detailPage({ status: "draft", labels: prefilled }), '"etag-2"'),
+      ],
+      [`POST /v1/eval/pages/${PAGE_ID}/prefill`]: [
+        json(prefilled, { headers: { ETag: '"etag-2"' } }),
+      ],
+    });
+    await renderAt(`/labeling/${PAGE_ID}`);
+    await field("title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Prefill from the LLM" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Prefill" }));
+
+    expect(await screen.findByText("Prefilled a draft (llm:model-a).")).toBeInTheDocument();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([
+      {
+        method: "POST",
+        path: `/v1/eval/pages/${PAGE_ID}/prefill`,
+        ifMatch: ETAG,
+        authorization: `Bearer ${API_KEY}`,
+        body: null,
+      },
+    ]);
+    const title = await field("title");
+    await waitFor(() => {
+      expect(title.getByRole("textbox", { name: "Value (JSON)" })).toHaveValue('"Blue mug"');
+    });
+  });
+
+  it("shows why a prefill failed and keeps the form", async () => {
+    stubApi({
+      [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
+      [`POST /v1/eval/pages/${PAGE_ID}/prefill`]: [problem(503, "llm_unavailable")],
+    });
+    await renderAt(`/labeling/${PAGE_ID}`);
+    await field("title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Prefill from the LLM" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Prefill" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("llm_unavailable");
+    expect(screen.getByRole("textbox", { name: "Labeler name" })).toBeInTheDocument();
+  });
+
+  it("says a prefill failed when the API can't be reached, and lets it be asked again", async () => {
+    stubApi({
+      [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
+      [`POST /v1/eval/pages/${PAGE_ID}/prefill`]: [
+        () => {
+          throw new TypeError("network down");
+        },
+      ],
+    });
+    await renderAt(`/labeling/${PAGE_ID}`);
+    await field("title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Prefill from the LLM" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Prefill" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not prefilled");
+    expect(screen.getByRole("button", { name: "Prefill from the LLM" })).toBeEnabled();
+  });
+
+  it("offers no prefill for a labeled page, which the server keeps (D-0538)", async () => {
+    stubApi({
+      [`GET /v1/eval/pages/${PAGE_ID}`]: [
+        pageReply(detailPage({ status: "labeled", labeler: "ana", labels: labeled })),
+      ],
+    });
+    await renderAt(`/labeling/${PAGE_ID}`);
+    await field("title");
+
+    expect(screen.queryByRole("button", { name: "Prefill from the LLM" })).not.toBeInTheDocument();
+  });
+
   it("offers a reload when another pass was stored since the page was read", async () => {
     stubApi({
       [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],

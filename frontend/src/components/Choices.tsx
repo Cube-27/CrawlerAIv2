@@ -1,4 +1,4 @@
-import { FieldError, Label, Radio, RadioGroup } from "@heroui/react";
+import { Description, FieldError, Label, Radio, RadioGroup } from "@heroui/react";
 
 /** The option of `options` whose value is `value`: RadioGroup reports a plain string. */
 function pick<T extends string>(
@@ -8,13 +8,16 @@ function pick<T extends string>(
   return options.find(([option]) => option === value)?.[0] ?? null;
 }
 
-/** One choice among `options` as a HeroUI RadioGroup; `name` is the request member a server error names. */
+/** One choice among `options` as a HeroUI RadioGroup; `name` is the request member a server error names. The
+ * options in `disabled` can't be chosen, and `description` says why. */
 export function Choices<T extends string>({
   label,
   options,
   value,
   isRequired = false,
   name,
+  disabled = [],
+  description,
   onChange,
 }: Readonly<{
   label: string;
@@ -22,6 +25,8 @@ export function Choices<T extends string>({
   value: T | null;
   isRequired?: boolean;
   name?: string;
+  disabled?: readonly T[];
+  description?: string;
   onChange: (value: T) => void;
 }>) {
   return (
@@ -37,7 +42,7 @@ export function Choices<T extends string>({
     >
       <Label>{label}</Label>
       {options.map(([option, text]) => (
-        <Radio key={option} value={option}>
+        <Radio key={option} value={option} isDisabled={disabled.includes(option)}>
           <Radio.Content>
             <Radio.Control>
               <Radio.Indicator />
@@ -46,6 +51,7 @@ export function Choices<T extends string>({
           </Radio.Content>
         </Radio>
       ))}
+      {description === undefined ? null : <Description>{description}</Description>}
       <FieldError />
     </RadioGroup>
   );

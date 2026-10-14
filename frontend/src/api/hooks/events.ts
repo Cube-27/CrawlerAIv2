@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useApiClient } from "../../app/auth";
-import { backoffMs, followEvents, type StreamEvent, type StreamState } from "../events";
+import { backoffMs, followEvents, IDLE_MS, type StreamEvent, type StreamState } from "../events";
 import { openJobEvents, type JobStatus } from "../jobs";
 import type { Problem } from "../problem";
 import { jobKey, jobResultsKey } from "./jobs";
@@ -20,7 +20,8 @@ export interface JobEvents {
 }
 
 /** Follows `GET /v1/jobs/{id}/events` while mounted. A `progress` event reads the job's summary again; the end event
- * reads its summary and results again. */
+ * reads its summary and results again. A reconnect reads the summary again too: the stream resumes after the last
+ * event, but `progress` is not stored, so the counts come only from the summary. */
 export function useJobEvents(
   id: string,
   delayMs: (attempt: number) => number = backoffMs,
@@ -44,18 +45,25 @@ export function useJobEvents(
       setEvents((previous) => [...previous, event]);
       if (ended) void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
     };
+    let previous: StreamState = "connecting";
     void followEvents({
       open: (lastEventId, abort) => openJobEvents(client, id, lastEventId, abort),
       isEnd: (event) => ENDS.has(event.kind),
       onEvent,
       onState: (next) => {
-        if (!signal.aborted) setState(next);
+        if (signal.aborted) return;
+        if (previous === "reconnecting" && next === "live") {
+          void queryClient.invalidateQueries({ queryKey: jobKey(id) }, { cancelRefetch: false });
+        }
+        previous = next;
+        setState(next);
       },
       onProblem: (next) => {
         if (!signal.aborted) setProblem(next);
       },
       signal,
       delayMs,
+      idleMs: IDLE_MS,
     });
     return () => {
       controller.abort();

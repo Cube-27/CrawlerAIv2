@@ -10,10 +10,12 @@ import {
   TextField,
 } from "@heroui/react";
 import { Choices } from "../../components/Choices";
+import { SchemaSelect } from "../../components/SchemaSelect";
 import { FormActions } from "../../components/FormActions";
 import { FormatChoices } from "../../components/FormatChoices";
 import { LimitField } from "../../components/LimitField";
-import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
+import { PageKindChoices, withFormats } from "../../components/PageKindChoices";
+import { METHOD_HINTS } from "../../components/requestOptions";
 import { parseJsonObject, type SchemaSource, type ScrapeFormState } from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
@@ -23,7 +25,7 @@ const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["prompt", "From a prompt"],
 ];
 
-/** The input for the chosen schema source: an id, a SchemaDef as JSON, or a prompt for role S. */
+/** The input for the chosen schema source: a stored schema, a SchemaDef as JSON, or a prompt for role S. */
 function SchemaInput({
   form,
   onChange,
@@ -33,17 +35,13 @@ function SchemaInput({
       return null;
     case "id":
       return (
-        <TextField
-          isRequired
+        <SchemaSelect
+          label="Stored schema"
           value={form.schemaId}
           onChange={(schemaId) => {
             onChange({ ...form, schemaId });
           }}
-        >
-          <Label>Schema ID</Label>
-          <Input autoComplete="off" />
-          <FieldError />
-        </TextField>
+        />
       );
     case "inline":
       return (
@@ -173,7 +171,7 @@ export function ScrapeForm({
       <FormatChoices
         value={form.formats}
         onChange={(formats) => {
-          onChange({ ...form, formats });
+          onChange(withFormats(form, formats));
         }}
       />
       <Fieldset>
@@ -187,12 +185,9 @@ export function ScrapeForm({
           }}
         />
         <SchemaInput form={form} onChange={onChange} />
-        {/* SPEC-07 §4.4: `page_kind` is required when the formats include records. */}
-        <Choices
-          label="Page kind"
-          options={PAGE_KINDS}
+        <PageKindChoices
           value={form.pageKind}
-          isRequired={form.formats.includes("records")}
+          formats={form.formats}
           onChange={(pageKind) => {
             onChange({ ...form, pageKind });
           }}

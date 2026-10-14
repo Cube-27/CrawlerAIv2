@@ -175,6 +175,65 @@ export function savedNotice(
   return `Saved as ${status} by ${names.labeler.trim()}.`;
 }
 
+/** What a write that got no answer (a network failure) says. */
+const UNREACHABLE = "the API could not be reached.";
+
+/** RFC 9110 §13.1.1: a write names the stored pass it replaces, so the server refuses it after a newer one. */
+function ifMatch(etag: string | null): { "if-match"?: string } {
+  return etag === null ? {} : { "if-match": etag };
+}
+
+/** Why a write to the page's labels was not stored: a newer pass (D-0538: 409 a page labeled or checked since it was
+ * read, 412 another pass stored since then), or the answer's problem. */
+function refusalOf(
+  response: Response,
+  error: unknown,
+): { kind: "conflict" } | { kind: "problem"; detail: string } {
+  if (response.status === 409 || response.status === 412) return { kind: "conflict" };
+  return {
+    kind: "problem",
+    detail: problemDetail(error) ?? `the server answered ${String(response.status)}.`,
+  };
+}
+
+/** Asking role C for a draft of the page's labels (`POST /v1/eval/pages/{id}/prefill`, SPEC-03 §4.10). The server
+ * replaces the stored draft and stores the new one, so the editor starts again from it; a refusal says why. */
+export function usePrefill(pageId: string, etag: string | null) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  const [problem, setProblem] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
+
+  async function prefill(): Promise<void> {
+    setProblem(null);
+    setConflict(false);
+    setPrefilling(true);
+    const answer = await client
+      .POST("/v1/eval/pages/{page_id}/prefill", {
+        params: { path: { page_id: pageId }, header: ifMatch(etag) },
+      })
+      .catch(() => null)
+      .finally(() => {
+        setPrefilling(false);
+      });
+    if (answer === null) {
+      setProblem(UNREACHABLE);
+      return;
+    }
+    if (answer.data !== undefined) {
+      toast.success(`Prefilled a draft (${answer.data.prefill_source ?? "no source"}).`);
+      await queries.invalidateQueries({ queryKey: EVAL_PAGES });
+      return;
+    }
+    const refusal = refusalOf(answer.response, answer.error);
+    if (refusal.kind === "conflict") setConflict(true);
+    else setProblem(refusal.detail);
+  }
+
+  return { problem, conflict, prefilling, prefill };
+}
+
 /** Saving one pass: the save in flight, and what the last save's answer was when it failed. */
 export function useSave(pageId: string, etag: string | null) {
   const client = useApiClient();
@@ -193,23 +252,33 @@ export function useSave(pageId: string, etag: string | null) {
       return;
     }
     setSaving(true);
-    const { error, response } = await client.PUT("/v1/eval/pages/{page_id}/labels", {
-      params: { path: { page_id: pageId }, header: etag === null ? {} : { "if-match": etag } },
-      body: built.labels,
-    });
-    setSaving(false);
+    const answer = await client
+      .PUT("/v1/eval/pages/{page_id}/labels", {
+        params: { path: { page_id: pageId }, header: ifMatch(etag) },
+        body: built.labels,
+      })
+      .catch(() => null)
+      .finally(() => {
+        setSaving(false);
+      });
+    if (answer === null) {
+      setProblem(UNREACHABLE);
+      return;
+    }
+    const { error, response } = answer;
     if (error === undefined) {
       // A toast outlives the editor, which the reload below remounts with the new ETag.
       toast.success(notice);
       await reload();
       return;
     }
-    if (response.status === 409 || response.status === 412) {
+    const refusal = refusalOf(response, error);
+    if (refusal.kind === "conflict") {
       setConflict(true);
       return;
     }
     setErrors(problemErrors(error));
-    setProblem(problemDetail(error) ?? `the server answered ${String(response.status)}.`);
+    setProblem(refusal.detail);
   }
 
   async function reload(): Promise<void> {

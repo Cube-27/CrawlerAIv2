@@ -127,9 +127,17 @@ const json = (body: unknown) => () => Response.json(body);
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
+  await userEvent.click(screen.getByLabelText(/API key/));
+  await userEvent.paste("ck_first");
   await userEvent.click(screen.getByRole("button", { name: "Connect" }));
   await screen.findByRole("heading", { level: 1, name: heading });
+}
+
+/** Replaces a field's text as a paste does: one input event, not one per character, so each step of a long form
+ * test re-renders the form once. */
+async function replaceText(field: HTMLElement, text: string) {
+  await userEvent.clear(field);
+  await userEvent.paste(text);
 }
 
 async function openTab(name: string) {
@@ -189,6 +197,38 @@ describe("sites screen", () => {
     expect(await screen.findByText("No configs yet")).toBeInTheDocument();
   });
 
+  it("starts learning a site that has no config yet, for the schema chosen", async () => {
+    const calls = stubApi({
+      [`GET /v1/sites/${HOST}/configs`]: json({ items: [] }),
+      "GET /v1/schemas": json({ items: [schema] }),
+      [`POST /v1/sites/${HOST}/learn`]: () => Response.json({ job_id: JOB_ID }, { status: 202 }),
+    });
+    await open(`/sites/${HOST}`, HOST);
+    await screen.findByText("No configs yet");
+
+    await userEvent.click(screen.getByRole("button", { name: /Schema/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "item_detail version 2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Learn now" }));
+
+    expect(await screen.findByText(`Learning started as job ${JOB_ID}.`)).toBeInTheDocument();
+    expect(calls.filter((call) => call.method === "POST")).toMatchObject([
+      { path: `/v1/sites/${HOST}/learn`, body: { schema_id: SCHEMA_ID, force: false } },
+    ]);
+  });
+
+  it("asks for a schema before it starts learning a site", async () => {
+    const calls = stubApi({
+      [`GET /v1/sites/${HOST}/configs`]: json({ items: [] }),
+      "GET /v1/schemas": json({ items: [schema] }),
+    });
+    await open(`/sites/${HOST}`, HOST);
+    await screen.findByText("No configs yet");
+
+    await userEvent.click(screen.getByRole("button", { name: "Learn now" }));
+
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
   it("shows the problem for a site the API doesn't know", async () => {
     stubApi({
       [`GET /v1/sites/${HOST}/configs`]: () =>
@@ -228,23 +268,15 @@ describe("config screen: reading a version", () => {
 });
 
 describe("config screen: correction", () => {
-  it("sends the changed steps and confirmations, then shows the new version, its report and the version list", async () => {
-    let versions = [v1, v2];
-    const calls = configApi({
-      [`GET /v1/sites/${HOST}/configs`]: () => Response.json({ items: versions }),
-      [`PUT /v1/configs/${V2_ID}`]: () => {
-        versions = [v1, { ...v2, status: "suspended" }, corrected];
-        return Response.json(corrected);
-      },
-    });
+  it("sends the changed steps and confirmations, then shows the new version and its report", async () => {
+    const calls = configApi({ [`PUT /v1/configs/${V2_ID}`]: json(corrected) });
     await open(`/configs/${V2_ID}`, HOST);
     const form = await openTab("Correct");
 
     // title: a different XPath. price: confirmed as it is. sku: a first step, with a post operation.
     const title = form.getByRole("group", { name: "title" });
     const xpath = within(title).getByRole("textbox", { name: "XPath" });
-    await userEvent.clear(xpath);
-    await userEvent.type(xpath, "//main//h1");
+    await replaceText(xpath, "//main//h1");
     await userEvent.click(
       within(form.getByRole("group", { name: "price" })).getByRole("checkbox", {
         name: "Confirm the steps of price",
@@ -252,7 +284,7 @@ describe("config screen: correction", () => {
     );
     const sku = form.getByRole("group", { name: "sku" });
     await userEvent.click(within(sku).getByRole("button", { name: "Add step" }));
-    await userEvent.type(within(sku).getByRole("textbox", { name: "XPath" }), "//span[[@itemprop]");
+    await replaceText(within(sku).getByRole("textbox", { name: "XPath" }), "//span[@itemprop]");
     await userEvent.click(within(sku).getByRole("button", { name: "Add operation" }));
     await userEvent.click(form.getByRole("button", { name: "Submit correction" }));
 
@@ -273,6 +305,27 @@ describe("config screen: correction", () => {
       `/configs/${V3_ID}`,
     );
     expect(within(result).getByRole("grid", { name: "Field validation" })).toBeInTheDocument();
+  });
+
+  it("lists the new version beside the others after a correction", async () => {
+    let versions = [v1, v2];
+    configApi({
+      [`GET /v1/sites/${HOST}/configs`]: () => Response.json({ items: versions }),
+      [`PUT /v1/configs/${V2_ID}`]: () => {
+        versions = [v1, { ...v2, status: "suspended" }, corrected];
+        return Response.json(corrected);
+      },
+    });
+    await open(`/configs/${V2_ID}`, HOST);
+    const form = await openTab("Correct");
+
+    await userEvent.click(
+      within(form.getByRole("group", { name: "price" })).getByRole("checkbox", {
+        name: "Confirm the steps of price",
+      }),
+    );
+    await userEvent.click(form.getByRole("button", { name: "Submit correction" }));
+    await screen.findByRole("region", { name: "Correction result" });
 
     const list = await openTab("Versions");
     expect(rowsOf(list.getByRole("grid", { name: "Versions" }))).toEqual([
@@ -290,8 +343,7 @@ describe("config screen: correction", () => {
     const path = within(form.getByRole("group", { name: "price" })).getByRole("textbox", {
       name: "JSON-LD path",
     });
-    await userEvent.clear(path);
-    await userEvent.type(path, "$.offers.lowPrice");
+    await replaceText(path, "$.offers.lowPrice");
     await userEvent.click(form.getByRole("button", { name: "Submit correction" }));
 
     await screen.findByRole("region", { name: "Correction result" });
