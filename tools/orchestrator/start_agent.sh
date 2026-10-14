@@ -29,7 +29,10 @@ fi
 
 # Each agent gets its own tab, labelled with its name, so the owner sees one agent at full size per tab. Splitting
 # the orchestrator's pane stacked agents into rows one or two lines high.
-pane=$(herdr tab create --workspace "$workspace" --cwd "$path" --label "$name" --no-focus 2>/dev/null \
+# Prompt suggestions are off in agent panes: Enter submits the grey suggested prompt, and a submitted suggestion is
+# the likely source of the merge instruction #100 acted on, which the owner never typed. The tab's shell gets the
+# variable and the claude it starts inherits it (Claude Code 2.1.238+; it overrides promptSuggestionEnabled).
+pane=$(herdr tab create --workspace "$workspace" --cwd "$path" --label "$name" --no-focus   --env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false 2>/dev/null \
   | python -c "import json,sys;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])")
 [[ -n $pane ]] || err "tab create failed"
 close_and_fail() {
