@@ -74,12 +74,13 @@ export function SiteLearnForm({ site }: Readonly<{ site: string }>) {
     >
       <Fieldset>
         <Fieldset.Legend>Learn a config</Fieldset.Legend>
-        {problem === null ? null : <ProblemAlert problem={problem} />}
         <SchemaSelect value={schemaId} onChange={setSchemaId} />
       </Fieldset>
       <FormActions>
         <LearnButtons {...learning} submits />
       </FormActions>
+      {/* Under the buttons: a refusal moves nothing above them. */}
+      {problem === null ? null : <ProblemAlert problem={problem} />}
     </Form>
   );
 }

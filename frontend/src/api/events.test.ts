@@ -140,6 +140,30 @@ describe("followEvents", () => {
     expect(run.states).toEqual(["connecting", "live", "reconnecting", "live", "ended"]);
   });
 
+  it("counts a connection that sent heartbeats before it went idle as live, so the backoff starts again", async () => {
+    const attempts: number[] = [];
+    const answers = [
+      () => answered(stalledStreamOf(": ping\n\n")),
+      () => answered(stalledStreamOf(": ping\n\n")),
+      () => answered(streamOf("id: 1\nevent: completed\ndata: {}\n\n")),
+    ];
+    await followEvents({
+      open: () => Promise.resolve((answers.shift() ?? answers[0] ?? (() => answered("")))()),
+      isEnd: (event) => event.kind === "completed",
+      onEvent: () => undefined,
+      onState: () => undefined,
+      onProblem: () => undefined,
+      signal: new AbortController().signal,
+      delayMs: (attempt) => {
+        attempts.push(attempt);
+        return 0;
+      },
+      idleMs: 20,
+    });
+
+    expect(attempts).toEqual([0, 0]);
+  });
+
   it("keeps a connection whose heartbeats arrive within the idle limit", async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({

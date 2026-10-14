@@ -444,13 +444,13 @@ function PageEditor({
           {pass === "labeler" ? (
             <LabelerActions
               clearsCheck={page.status === "checked"}
-              disabled={saver.saving || labeler.trim() === ""}
+              disabled={saver.saving || prefiller.prefilling || labeler.trim() === ""}
               onSave={save}
             />
           ) : (
             <CheckerActions
               blocked={checkerBlocked}
-              disabled={saver.saving || checkerBlocked !== null}
+              disabled={saver.saving || prefiller.prefilling || checkerBlocked !== null}
               onSave={save}
             />
           )}

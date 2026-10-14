@@ -1,5 +1,5 @@
 import { Table } from "@heroui/react";
-import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { useJobs } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import type { JobFilters, JobKind, JobStatus, JobSummary } from "../../api/jobs";
@@ -27,6 +27,19 @@ const STATUS_OPTIONS: Readonly<Record<JobStatus | typeof ANY, string>> = {
 
 const isKindOption = isOptionOf(KIND_OPTIONS);
 const isStatusOption = isOptionOf(STATUS_OPTIONS);
+const isKind = isOptionOf(KIND_LABELS);
+const isStatus = isOptionOf(JOB_STATUS_TEXT);
+
+// The filters live in the address, as the records screen's do: going back to the list keeps them.
+function filtersOf(params: URLSearchParams): JobFilters {
+  const kind = params.get("kind");
+  const status = params.get("status");
+  return { kind: isKind(kind) ? kind : null, status: isStatus(status) ? status : null };
+}
+
+function paramsOf({ kind, status }: JobFilters): Record<string, string> {
+  return { ...(kind === null ? {} : { kind }), ...(status === null ? {} : { status }) };
+}
 
 function JobFilterFields({
   filters,
@@ -126,10 +139,16 @@ function JobPages({ filters }: Readonly<{ filters: JobFilters }>) {
 
 /** The jobs, newest first (`GET /v1/jobs`), filtered by kind and status, a page at a time; a row opens its job. */
 export function JobTable() {
-  const [filters, setFilters] = useState<JobFilters>({ kind: null, status: null });
+  const [params, setParams] = useSearchParams();
+  const filters = filtersOf(params);
   return (
     <div className="flex flex-col gap-3">
-      <JobFilterFields filters={filters} onChange={setFilters} />
+      <JobFilterFields
+        filters={filters}
+        onChange={(next) => {
+          setParams(paramsOf(next), { replace: true });
+        }}
+      />
       {/* Keyed by the filters: other filters page from their own first page. */}
       <JobPages key={`${String(filters.kind)}/${String(filters.status)}`} filters={filters} />
     </div>

@@ -33,7 +33,7 @@ export function SiteScreen() {
           schemaLabel={schemaLabel}
         />
       ) : null}
-      <SiteLearnForm site={host} />
+      {configs.isSuccess ? <SiteLearnForm site={host} /> : null}
     </section>
   );
 }

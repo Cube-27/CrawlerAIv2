@@ -466,7 +466,9 @@ describe("Jobs screen", () => {
       use_links: true,
     });
   });
+});
 
+describe("Jobs table", () => {
   it("lists the jobs with their kind, status, task counts and creation time", async () => {
     jobApi({
       "GET /v1/jobs": jobPage([
@@ -576,6 +578,15 @@ describe("Jobs screen", () => {
     });
     expect(screen.getByText("Page 1")).toBeInTheDocument();
     expect(listQueries(calls).at(-1)).toBe("kind=crawl&status=failed&limit=20");
+  });
+
+  it("reads the filters from the address, so going back to the list keeps them", async () => {
+    const calls = jobApi({ "GET /v1/jobs": jobPage([job({ status: "failed" })]) });
+    await open("/jobs?status=failed", "Jobs");
+    await findJobsGrid();
+
+    expect(listQueries(calls)).toEqual(["status=failed&limit=20"]);
+    expect(screen.getByRole("button", { name: /Status/ })).toHaveTextContent("failed");
   });
 
   it("says when no job matches the filters", async () => {

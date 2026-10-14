@@ -81,7 +81,7 @@ export interface FollowOptions {
   /** The problem a refused connection answered with; the stream is not reopened. */
   onProblem: (problem: Problem) => void;
   signal: AbortSignal;
-  /** How long to wait before a reconnect, after `attempt` reconnects in a row that received no event. */
+  /** How long to wait before a reconnect, after `attempt` reconnects in a row that received nothing. */
   delayMs: (attempt: number) => number;
   /** How long a connection may go without a byte before it counts as dropped: a server that went away without
    * closing the connection sends nothing more, not even its heartbeat. */
@@ -148,8 +148,9 @@ async function readEvents(
     }
     const { done, value } = read;
     if (done || options.signal.aborted) return { kind: "dropped", received };
+    // Any bytes, a heartbeat too, show the server was reached: the backoff starts again.
+    received = true;
     for (const event of parser.push(decoder.decode(value, { stream: true }))) {
-      received = true;
       options.onEvent(event);
       if (options.isEnd(event)) {
         await reader.cancel();

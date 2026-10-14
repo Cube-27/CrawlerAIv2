@@ -175,6 +175,9 @@ export function savedNotice(
   return `Saved as ${status} by ${names.labeler.trim()}.`;
 }
 
+/** What a write that got no answer (a network failure) says. */
+const UNREACHABLE = "the API could not be reached.";
+
 /** RFC 9110 §13.1.1: a write names the stored pass it replaces, so the server refuses it after a newer one. */
 function ifMatch(etag: string | null): { "if-match"?: string } {
   return etag === null ? {} : { "if-match": etag };
@@ -210,9 +213,14 @@ export function usePrefill(pageId: string, etag: string | null) {
       .POST("/v1/eval/pages/{page_id}/prefill", {
         params: { path: { page_id: pageId }, header: ifMatch(etag) },
       })
+      .catch(() => null)
       .finally(() => {
         setPrefilling(false);
       });
+    if (answer === null) {
+      setProblem(UNREACHABLE);
+      return;
+    }
     if (answer.data !== undefined) {
       toast.success(`Prefilled a draft (${answer.data.prefill_source ?? "no source"}).`);
       await queries.invalidateQueries({ queryKey: EVAL_PAGES });
@@ -244,11 +252,20 @@ export function useSave(pageId: string, etag: string | null) {
       return;
     }
     setSaving(true);
-    const { error, response } = await client.PUT("/v1/eval/pages/{page_id}/labels", {
-      params: { path: { page_id: pageId }, header: ifMatch(etag) },
-      body: built.labels,
-    });
-    setSaving(false);
+    const answer = await client
+      .PUT("/v1/eval/pages/{page_id}/labels", {
+        params: { path: { page_id: pageId }, header: ifMatch(etag) },
+        body: built.labels,
+      })
+      .catch(() => null)
+      .finally(() => {
+        setSaving(false);
+      });
+    if (answer === null) {
+      setProblem(UNREACHABLE);
+      return;
+    }
+    const { error, response } = answer;
     if (error === undefined) {
       // A toast outlives the editor, which the reload below remounts with the new ETag.
       toast.success(notice);

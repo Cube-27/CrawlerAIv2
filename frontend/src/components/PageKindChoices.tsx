@@ -18,7 +18,7 @@ export function withFormats<
 }
 
 /** The request's `page_kind`. SPEC-07 §4.4: it is required when the formats include records, and then a page kind
- * whose records the server refuses can't be chosen. */
+ * whose records the server refuses can't be chosen. The reason is always shown, so ticking records moves nothing. */
 export function PageKindChoices({
   value,
   formats,
@@ -38,12 +38,8 @@ export function PageKindChoices({
       options={PAGE_KINDS}
       value={value}
       isRequired={records}
-      {...(records
-        ? {
-            disabled: NO_RECORDS_PAGE_KINDS,
-            description: "Records of listing pages are not available yet.",
-          }
-        : {})}
+      disabled={records ? NO_RECORDS_PAGE_KINDS : []}
+      description="Records of listing pages are not available yet."
       onChange={onChange}
     />
   );

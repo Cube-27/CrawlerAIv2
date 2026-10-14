@@ -383,6 +383,25 @@ describe("labeler pass", () => {
     expect(screen.getByRole("textbox", { name: "Labeler name" })).toBeInTheDocument();
   });
 
+  it("says a prefill failed when the API can't be reached, and lets it be asked again", async () => {
+    stubApi({
+      [`GET /v1/eval/pages/${PAGE_ID}`]: [pageReply(detailPage())],
+      [`POST /v1/eval/pages/${PAGE_ID}/prefill`]: [
+        () => {
+          throw new TypeError("network down");
+        },
+      ],
+    });
+    await renderAt(`/labeling/${PAGE_ID}`);
+    await field("title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Prefill from the LLM" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Prefill" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not prefilled");
+    expect(screen.getByRole("button", { name: "Prefill from the LLM" })).toBeEnabled();
+  });
+
   it("offers no prefill for a labeled page, which the server keeps (D-0538)", async () => {
     stubApi({
       [`GET /v1/eval/pages/${PAGE_ID}`]: [
