@@ -69,8 +69,12 @@ describe("app shell", () => {
       "GET /v1/eval/pages/page-1": () => problem(404, { title: "Not Found" }),
     });
     renderApp("/labeling/page-1");
+    // The labeling routes need a key (SPEC-03 §4.10): /connect first, then back.
+    await userEvent.type(screen.getByLabelText(/API key/), "ck_first");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    // The labeling route renders once its loader has answered.
+    // The labeling route renders once its page has answered.
+    await screen.findByText("No dev eval page has this id.");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     const labeling = await within(nav).findByRole("link", { name: "Labeling" });
     expect(labeling).toHaveAttribute("aria-current", "page");
