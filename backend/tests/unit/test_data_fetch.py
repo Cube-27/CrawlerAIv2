@@ -4,6 +4,7 @@ pinned sha256 and written under the data directory; nothing else is written."""
 import hashlib
 import json
 from collections.abc import Callable
+from http.client import IncompleteRead
 from pathlib import Path
 
 import pytest
@@ -97,17 +98,22 @@ def test_a_refused_entry_does_not_stop_the_entries_after_it(tmp_path: Path) -> N
     assert [line.split(":")[0] for line in report.refused] == ["changed.txt", "http.txt"]
 
 
-def test_a_failed_download_is_refused_and_the_next_entry_fetched(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [(OSError("connection refused"), "connection refused"), (IncompleteRead(b"geo"), "IncompleteRead(3 bytes read)")],
+    ids=["network", "cut_short"],
+)
+def test_a_failed_download_is_refused_and_the_next_entry_fetched(tmp_path: Path, error: Exception, reason: str) -> None:
     directory = _data_dir(tmp_path, _entry("down.txt"), _entry("ok.txt"))
 
     def download(url: str) -> bytes:
         if url.endswith("down.txt"):
-            raise OSError("connection refused")
+            raise error
         return CONTENT
 
     report = fetch_data(directory, download)
 
-    assert report == DataReport(written=["fetched ok.txt"], refused=["down.txt: download failed: connection refused"])
+    assert report == DataReport(written=["fetched ok.txt"], refused=[f"down.txt: download failed: {reason}"])
 
 
 def test_a_stale_file_is_replaced(tmp_path: Path) -> None:

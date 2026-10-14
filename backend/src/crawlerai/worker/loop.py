@@ -146,12 +146,11 @@ async def _execute(
         return
     match await handler(task, conn):
         case Finished(outcome, reason, capture_id):
+            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
             # The task's id and job, never its URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
             log.info("url_task %s: %s task of job %s: %s", task.id, job.kind, task.job_id, outcome)
-            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
         case Failed(error, transient, after, exhausted, capture_id):
             text = _error_text(error, redact_urls=redact_urls)
-            log.warning("url_task %s: %s task of job %s: failed: %s", task.id, job.kind, task.job_id, text)
             await fail_task(
                 conn,
                 task,
@@ -162,6 +161,7 @@ async def _execute(
                 capture_id=capture_id,
                 ending=ending,
             )
+            log.warning("url_task %s: %s task of job %s: failed: %s", task.id, job.kind, task.job_id, text)
         case Postpone(after):
             await release_task(conn, task, after=after)
         case unreachable:

@@ -12,6 +12,7 @@ import tempfile
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from http.client import HTTPException
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -72,11 +73,15 @@ def _fetch_entry(root: Path, path: str, url: str, sha256: str, download: Callabl
         return f"present {path}"
     try:
         content = download(url)
-    except OSError as e:  # urllib's URLError and socket timeouts are OSErrors
+    # urllib's URLError and socket timeouts are OSErrors; a body cut short is http.client's IncompleteRead.
+    except (OSError, HTTPException) as e:
         raise _Refused(f"download failed: {e}") from e
     if (got := _sha256(content)) != sha256:
         raise _Refused(f"sha256 {got} does not match the manifest; the source changed, so the entry needs re-pinning")
-    _write_atomically(target, content)
+    try:
+        _write_atomically(target, content)
+    except OSError as e:
+        raise _Refused(f"write failed: {e}") from e
     return f"fetched {path}"
 
 
