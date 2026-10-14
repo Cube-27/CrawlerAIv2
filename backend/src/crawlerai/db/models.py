@@ -321,6 +321,8 @@ class UrlState(Base):
     last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     missing_runs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The crawl whose listing last held the URL (SPEC-11 §4.5); NULL while no listing has.
+    last_seen_job_id: Mapped[JobId | None] = mapped_column(ForeignKey("job.id", ondelete="SET NULL"))
 
 
 class Job(Base):
