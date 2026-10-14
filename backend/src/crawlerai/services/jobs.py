@@ -1,5 +1,6 @@
-"""The jobs service (SPEC-10 §4.2, ARCHITECTURE §13.1): a job's summary, its cancel, and its results a page at a time.
-`GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results` and the MCP status tools answer with these.
+"""The jobs service (SPEC-10 §4.2, ARCHITECTURE §13.1): the jobs a page at a time, a job's summary, its cancel, and
+its results a page at a time. `GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results` and the MCP
+status tools answer with these.
 
 The results of a job with a schema are its records. Those of a job without one are its page outputs: each task's
 content formats, made from its capture when they are read. A format is a function of the capture alone (ARCHITECTURE
@@ -8,11 +9,12 @@ content formats, made from its capture when they are read. A format is a functio
 
 import asyncio
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Row, func, select, update
+from sqlalchemy import Row, RowMapping, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.exporters.records import RecordFormat, export_records
@@ -100,6 +102,26 @@ class JobSummary(BaseModel):
     engine_version: str
 
 
+class JobPage(BaseModel):
+    """One page of jobs, newest first; `next_cursor` is the `cursor` of the page after it, None on the last."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[JobSummary]
+    next_cursor: JobId | None
+
+
+class JobListQuery(BaseModel):
+    """The jobs to list: all of them, or those of a kind, of a status, or both."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: JobKind | None = None
+    status: JobStatus | None = None
+    cursor: JobId | None = None
+    limit: int = Field(default=50, ge=1, le=MAX_PAGE)
+
+
 class ExportPage(BaseModel):
     """One page of a job's records in an export format (SPEC-08 §4.11); `next_cursor` as in `RecordPage`."""
 
@@ -163,18 +185,43 @@ async def get_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
     job = (await conn.execute(select(*_JOB_COLUMNS).where(Job.id == job_id))).mappings().one_or_none()
     if job is None:
         raise JobNotFound(f"no job {job_id}")
-    rows = await conn.execute(
-        select(UrlTask.status, UrlTask.outcome, func.count())
-        .where(UrlTask.job_id == job_id)
-        .group_by(UrlTask.status, UrlTask.outcome)
-    )
-    statuses: dict[str, int] = dict.fromkeys(get_args(TaskStatus), 0)
-    outcomes: dict[str, int] = dict.fromkeys(get_args(TaskOutcome), 0)
-    for status, outcome, n in rows.all():
-        statuses[status] += n
-        if outcome is not None:
-            outcomes[outcome] += n
-    return JobSummary(**job, counts=TaskCounts(**statuses), outcomes=OutcomeCounts(**outcomes))
+    [summary] = await _summaries(conn, [job])
+    return summary
+
+
+async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:
+    """The page of jobs after `query.cursor` (the first page without one) of its kind and status. Jobs are ordered by
+    id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
+    statement = select(*_JOB_COLUMNS).order_by(Job.id.desc()).limit(query.limit + 1)
+    if query.kind is not None:
+        statement = statement.where(Job.kind == query.kind)
+    if query.status is not None:
+        statement = statement.where(Job.status == query.status)
+    if query.cursor is not None:
+        statement = statement.where(Job.id < query.cursor)
+    rows = (await conn.execute(statement)).mappings().all()
+    items = await _summaries(conn, rows[: query.limit])
+    return JobPage(items=items, next_cursor=items[-1].id if len(rows) > query.limit else None)
+
+
+async def _summaries(conn: AsyncConnection, jobs: Sequence[RowMapping]) -> list[JobSummary]:
+    """The summaries of `jobs` (rows of `_JOB_COLUMNS`), in their order, with their tasks counted in one query."""
+    statuses = {job["id"]: dict.fromkeys(get_args(TaskStatus), 0) for job in jobs}
+    outcomes = {job["id"]: dict.fromkeys(get_args(TaskOutcome), 0) for job in jobs}
+    if jobs:
+        rows = await conn.execute(
+            select(UrlTask.job_id, UrlTask.status, UrlTask.outcome, func.count())
+            .where(UrlTask.job_id.in_(list(statuses)))
+            .group_by(UrlTask.job_id, UrlTask.status, UrlTask.outcome)
+        )
+        for job_id, status, outcome, n in rows.all():
+            statuses[job_id][status] += n
+            if outcome is not None:
+                outcomes[job_id][outcome] += n
+    return [
+        JobSummary(**job, counts=TaskCounts(**statuses[job["id"]]), outcomes=OutcomeCounts(**outcomes[job["id"]]))
+        for job in jobs
+    ]
 
 
 async def cancel_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:

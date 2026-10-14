@@ -1,5 +1,5 @@
 """Jobs (SPEC-10 §4.2): a job's summary, its cancel and its results, through the jobs service and then over HTTP
-(`GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`).
+(`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`).
 
 Jobs, tasks and records are written directly, as the queue and the page tasks would leave them, and committed,
 since the app reads them through its own connections. Hosts are RFC 2606 names.
@@ -41,7 +41,16 @@ from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import jobs
-from crawlerai.services.jobs import ExportPage, JobEnded, JobNotFound, NotExportable, PageOutputPage, ResultsQuery
+from crawlerai.services.jobs import (
+    ExportPage,
+    JobEnded,
+    JobListQuery,
+    JobNotFound,
+    JobPage,
+    NotExportable,
+    PageOutputPage,
+    ResultsQuery,
+)
 from crawlerai.services.keys import create_key
 from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
@@ -156,6 +165,11 @@ async def _summary(engine: AsyncEngine, job_id: JobId) -> jobs.JobSummary:
         return await jobs.get_job(conn, job_id)
 
 
+async def _list(engine: AsyncEngine, **query: Any) -> JobPage:
+    async with engine.connect() as conn:
+        return await jobs.list_jobs(conn, JobListQuery(**query))
+
+
 async def _cancel(engine: AsyncEngine, job_id: JobId) -> jobs.JobSummary:
     async with engine.begin() as conn:
         return await jobs.cancel_job(conn, job_id)
@@ -220,6 +234,59 @@ async def test_an_unknown_job_is_not_found(world: World) -> None:
         await _cancel(world.engine, unknown)
     with pytest.raises(JobNotFound):
         await _results(world.engine, unknown)
+
+
+# The list.
+
+
+async def test_the_list_pages_through_every_job_newest_first(world: World) -> None:
+    made = [await world.job() for _ in range(3)]
+
+    first = await _list(world.engine, limit=2)
+    second = await _list(world.engine, limit=2, cursor=first.next_cursor)
+
+    assert [job.id for job in first.items + second.items] == made[::-1]
+    assert first.next_cursor == made[1]
+    assert second.next_cursor is None
+
+
+async def test_each_listed_job_has_the_summary_of_its_own(world: World) -> None:
+    busy = await world.job(status="running", usage={"llm_calls": 2})
+    await world.tasks(busy, [("queued", None), ("done", "extracted"), ("done", "links_only"), ("failed", "failed")])
+    idle = await world.job()
+
+    page = await _list(world.engine)
+
+    assert page.items == [await _summary(world.engine, idle), await _summary(world.engine, busy)]
+    assert page.items[1].counts.model_dump() == {"queued": 1, "claimed": 0, "done": 2, "failed": 1, "cancelled": 0}
+
+
+async def test_the_list_keeps_the_jobs_of_the_kind_and_status_asked_for(world: World) -> None:
+    crawl_done = await world.job(kind="crawl", status="completed")
+    crawl_queued = await world.job(kind="crawl")
+    batch_done = await world.job(status="completed")
+
+    crawls = await _list(world.engine, kind="crawl")
+    completed = await _list(world.engine, status="completed")
+    both = await _list(world.engine, kind="crawl", status="completed")
+    none = await _list(world.engine, kind="map")
+
+    assert [job.id for job in crawls.items] == [crawl_queued, crawl_done]
+    assert [job.id for job in completed.items] == [batch_done, crawl_done]
+    assert [job.id for job in both.items] == [crawl_done]
+    assert none == JobPage(items=[], next_cursor=None)
+
+
+async def test_a_filtered_list_pages_within_its_filter(world: World) -> None:
+    older = await world.job(kind="crawl")
+    await world.job()
+    newer = await world.job(kind="crawl")
+
+    first = await _list(world.engine, kind="crawl", limit=1)
+    second = await _list(world.engine, kind="crawl", limit=1, cursor=first.next_cursor)
+
+    assert ([job.id for job in first.items], first.next_cursor) == ([newer], newer)
+    assert ([job.id for job in second.items], second.next_cursor) == ([older], None)
 
 
 # Cancel.
@@ -398,6 +465,21 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
     )
 
 
+async def test_the_jobs_are_listed_a_page_at_a_time(client: httpx.AsyncClient, world: World) -> None:
+    older = await world.job(kind="crawl", status="completed")
+    newer = await world.job(kind="crawl", status="completed")
+    await world.job()
+
+    first = await client.get("/v1/jobs", params={"kind": "crawl", "status": "completed", "limit": 1})
+    cursor = first.json()["next_cursor"]
+    second = await client.get("/v1/jobs", params={"kind": "crawl", "status": "completed", "cursor": cursor})
+
+    assert first.status_code == 200, first.text
+    assert [job["id"] for job in first.json()["items"]] == [str(newer)]
+    assert cursor == str(newer)
+    assert second.json() == {"items": [(await client.get(f"/v1/jobs/{older}")).json()], "next_cursor": None}
+
+
 async def test_delete_cancels_the_job(client: httpx.AsyncClient, world: World) -> None:
     job_id = await world.job()
 
@@ -419,6 +501,10 @@ async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
         "export without schema": await client.get(f"/v1/jobs/{ended}/results", params={"format": "csv_records"}),
         "unknown format": await client.get(f"/v1/jobs/{ended}/results", params={"format": "xml"}),
         "bad id": await client.get("/v1/jobs/not-an-id"),
+        "list unknown kind": await client.get("/v1/jobs", params={"kind": "search"}),
+        "list unknown status": await client.get("/v1/jobs", params={"status": "paused"}),
+        "list bad cursor": await client.get("/v1/jobs", params={"cursor": "not-an-id"}),
+        "list over the page limit": await client.get("/v1/jobs", params={"limit": 201}),
     }
 
     statuses = {name: (r.status_code, r.json()["type"]) for name, r in responses.items()}
@@ -430,6 +516,10 @@ async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
         "export without schema": (409, "conflict"),
         "unknown format": (422, "validation"),
         "bad id": (422, "validation"),
+        "list unknown kind": (422, "validation"),
+        "list unknown status": (422, "validation"),
+        "list bad cursor": (422, "validation"),
+        "list over the page limit": (422, "validation"),
     }
 
 
@@ -455,10 +545,11 @@ async def test_jobs_need_a_key(client: httpx.AsyncClient, world: World) -> None:
     del client.headers["authorization"]
 
     responses = [
+        await client.get("/v1/jobs"),
         await client.get(f"/v1/jobs/{job_id}"),
         await client.delete(f"/v1/jobs/{job_id}"),
         await client.get(f"/v1/jobs/{job_id}/results"),
     ]
 
-    assert [r.status_code for r in responses] == [401, 401, 401]
+    assert [r.status_code for r in responses] == [401, 401, 401, 401]
     assert (await _summary(world.engine, job_id)).status == "queued"
