@@ -32,9 +32,10 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1-L4 complete (2026-10-14). Integration review (owner): R1-R7 fixed (#149, #150); recipe learning in run_learn_job (SPEC-09 §2, §7) next as its own PR. LLM cost history done (#148). Next: browser UAT on crawler-test sites (owner).
+- L1-L4 complete (2026-10-14). Integration review (owner): R1-R7 fixed (#149, #150), recipe learning wired (#151). LLM cost history done (#148). Next: browser UAT on crawler-test sites (owner).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
 - Follow-ups from #150 review: a max_age-reused api capture can meet a config with no recipe; config_recipe parses the recipe a second time.
+- Follow-up from #151 review (optional): report non-LLM errors in recipe learning as a refused recipe rather than failing the run.
 - Follow-ups from #148: an installed wheel has no backend/data, so pricing is empty and every cost reads unknown (joins the D-0492 packaging item); top jobs rank a job with unknown cost by its priced part.
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-up for SPEC-08 PR 8 / SPEC-10 (from #125): pagination/rows discovery is open (D-0604).

@@ -46,7 +46,7 @@ from crawlerai.db.models import (
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
-from crawlerai.storage.capture_bundle import decode
+from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
 # §6: the pages learning reads are those whose outcome is `extracted` or `partial`.
 EXTRACTED: Final = ("extracted", "partial")
@@ -124,10 +124,12 @@ def published_of(
 
 @dataclass(frozen=True, slots=True)
 class StoredPage:
-    """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`)."""
+    """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`), and its capture, whose
+    network bodies API discovery reads (SPEC-09 §4.3)."""
 
     held_out: HeldOutPage
     sample: SamplePage
+    bundle: CaptureBundle
 
 
 async def load_held_out(
@@ -171,7 +173,7 @@ async def _pages(
     for (capture_id, _, extraction_id), parsed in zip(extractions, loaded, strict=True):
         if parsed is None:
             continue
-        page, ctx = parsed
+        bundle, page, ctx = parsed
         stored = records[extraction_id]
         facts, rows = facts_of(schema, [record.data for record in stored], candidates[extraction_id])
         published, published_rows = published_of(schema, stored)
@@ -179,6 +181,7 @@ async def _pages(
             StoredPage(
                 HeldOutPage(capture_id, page, ctx, facts, rows),
                 SamplePage(page, ctx, published, published_rows),
+                bundle,
             )
         )
     return pages
@@ -257,7 +260,7 @@ async def _candidates(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dic
     return found
 
 
-async def _parsed(store: ObjectStore, object_key: str) -> tuple[ParsedPage, Context] | None:
+async def _parsed(store: ObjectStore, object_key: str) -> tuple[CaptureBundle, ParsedPage, Context] | None:
     try:
         blob = await asyncio.to_thread(store.get, object_key)
     except ObjectNotFound:
@@ -266,7 +269,7 @@ async def _parsed(store: ObjectStore, object_key: str) -> tuple[ParsedPage, Cont
     return await asyncio.to_thread(_read, blob)
 
 
-def _read(blob: bytes) -> tuple[ParsedPage, Context]:
+def _read(blob: bytes) -> tuple[CaptureBundle, ParsedPage, Context]:
     bundle = decode(blob)
     page = ParsedPage.of(bundle)
-    return page, page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
+    return bundle, page, page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)

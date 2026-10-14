@@ -41,7 +41,7 @@ from crawlerai.llm.providers.from_settings import client_from_settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
-from crawlerai.services.fetching import Fetching
+from crawlerai.services.fetching import Fetching, learning_replay
 from crawlerai.services.keys import create_key, revoke_key
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
@@ -106,7 +106,13 @@ async def _work() -> None:
             work = [run_worker(settings, handlers, stop, ending=close_run)]
             if data is not None:  # learning reads the vocabulary from the data files
                 learner = run_learner(
-                    engine, store, llm, stop, vocabulary=data.vocabulary, max_chars=settings.llm_a_max_chars
+                    engine,
+                    store,
+                    llm,
+                    stop,
+                    vocabulary=data.vocabulary,
+                    max_chars=settings.llm_a_max_chars,
+                    replay=learning_replay(engine, fetching),
                 )
                 work.append(learner)
             await asyncio.gather(*work)

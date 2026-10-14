@@ -1,7 +1,7 @@
 """What the services that fetch while their caller waits (`scrape`, `map`) share, and the worker's handlers fetch with:
 the rungs and guard of this process, the SSRF guard's refusals (INV-16), a site's robots.txt rules, and admission at
 its rate (SPEC-02 §4.6); and an active config's API recipe bound to the rungs, its requests sent as politely as a
-page's (SPEC-09 §4.8).
+page's (SPEC-09 §4.8), as a learning run's recipe replays are (§4.6, §4.7).
 """
 
 import asyncio
@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
@@ -19,6 +19,7 @@ from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.execute import RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
 from crawlerai.services.scrape_steps import SiteRow, site_row
@@ -161,20 +162,56 @@ def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: Si
         turn = None  # the page is the first request: its host's turn is the one the caller took
         return await http(url, policy)
 
-    async def endpoint(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+    def take_turn(host: str) -> bool:
         nonlocal turn
-        allowed = await rules(request.url, policy)
-        if isinstance(allowed, str):
-            # As a page robots.txt keeps from being fetched: `blocked`.
-            return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", allowed)
-        host = urlsplit(request.url).hostname or ""
-        if host == turn:
+        taken = host == turn
+        if taken:
             turn = None
-        else:
-            await admitted(fetching.limiter, host, *allowed)
-        return await json(request, policy)
+        return taken
+
+    async def endpoint(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        return await _polite_json(fetching.limiter, json, rules, request, policy, take_turn)
 
     return RecipeRung(recipe, endpoint, page, ENGINE_VERSION)
+
+
+def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replay | None:
+    """A learning run's recipe replays (SPEC-09 §4.6, §4.7) over this process's JSON rung, as politely as a served
+    recipe's request: only where the endpoint host's robots.txt allows it, at that host's rate (D-0731). A `learn` job
+    names no fetch policy, so replays go with the default one, which respects robots.txt. None without the JSON
+    rung."""
+    json = fetching.rungs.json
+    if json is None:
+        return None
+    policy = FetchPolicy()
+
+    async def replay(request: JsonRequest) -> FetchResult:
+        # Nobody reads the attempts of a replay's robots.txt fetch: the run records only the replay's outcome. A list
+        # per replay, since the learner's replay lives as long as the worker.
+        rules = engine_rules(engine, fetching.rungs.http, [])
+        return await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
+
+    return replay
+
+
+async def _polite_json(
+    limiter: HostLimiter,
+    json: JsonFetcher,
+    rules: SiteRules,
+    request: JsonRequest,
+    policy: FetchPolicy,
+    take_turn: Callable[[str], bool],
+) -> FetchResult:
+    """`request` sent where its host's robots.txt allows it, at that host's rate unless `take_turn` says the caller's
+    admitted turn there goes to it; else a `blocked` result that sent nothing."""
+    allowed = await rules(request.url, policy)
+    if isinstance(allowed, str):
+        # As a page robots.txt keeps from being fetched: `blocked`.
+        return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", allowed)
+    host = urlsplit(request.url).hostname or ""
+    if not take_turn(host):
+        await admitted(limiter, host, *allowed)
+    return await json(request, policy)
 
 
 @dataclass(frozen=True)

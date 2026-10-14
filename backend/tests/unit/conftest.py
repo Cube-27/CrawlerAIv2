@@ -1,35 +1,13 @@
-"""Fixtures shared by unit tests: for the platform adapter tests (SPEC-02 §4.9) a stand-in API, a JSONPath selector
-and the presets' schema.org projections."""
+"""Fixtures shared by unit tests: for the platform adapter tests (SPEC-02 §4.9) a JSONPath selector and the presets'
+schema.org projections."""
 
 import re
-from collections.abc import Callable, Mapping
-from functools import partial
-from ipaddress import ip_address
+from collections.abc import Callable
 from typing import Any
 
-import httpx
 import pytest
 
-from crawlerai.acquire.api import JsonFetcher, fetch_json
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.schemas.registry import load_presets
-
-
-def _stand_in_api(routes: Mapping[str, bytes]) -> JsonFetcher:
-    """`fetch_json` against a stand-in API serving `routes` (endpoint URL -> body; 404 for any other), resolving
-    every host to a public address."""
-    by_path = {httpx.URL(endpoint).raw_path.decode(): body for endpoint, body in routes.items()}
-
-    async def resolve(_host: str) -> list[IPAddress]:
-        return [ip_address("93.184.215.14")]
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        body = by_path.get(request.url.raw_path.decode())
-        return httpx.Response(404, json={}) if body is None else httpx.Response(200, content=body)
-
-    return partial(
-        fetch_json, engine_version="test", connector=SafeConnector(resolve), transport=httpx.MockTransport(handler)
-    )
 
 
 def _select(path: str, document: Any) -> list[Any]:
@@ -41,11 +19,6 @@ def _select(path: str, document: Any) -> list[Any]:
         else:
             nodes = [item for node in nodes for item in node]
     return nodes
-
-
-@pytest.fixture
-def stand_in_api() -> Callable[[Mapping[str, bytes]], JsonFetcher]:
-    return _stand_in_api
 
 
 @pytest.fixture
