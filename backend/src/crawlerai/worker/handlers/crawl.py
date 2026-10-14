@@ -86,9 +86,11 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     if isinstance(page, (Failed, Postpone)):  # the task runs again: what it adds, it adds then
         return page
     result, found = (page, ()) if isinstance(page, Finished) else await _visit(conn, crawl, page)
+    # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
+    # task commits: a cancel, which locks that row, never waits for the reading (up to `SITEMAP_TIMEOUT_S`).
+    seeds = await _sitemap_seeds(conn, fetching, crawl) if task.canonical_url == crawl.request.start else []
     if isinstance(page, FetchedPage):
         await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
-    seeds = await _sitemap_seeds(conn, fetching, crawl) if task.canonical_url == crawl.request.start else []
     await crawl.frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
     await crawl.frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
     return result
