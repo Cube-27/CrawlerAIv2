@@ -32,8 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1, L2 and L4 complete (2026-10-14). L3: SPEC-10 PRs 1-8 and SPEC-12 PR 7 done; in progress SPEC-10 PR 9 (GET /v1/jobs, D-0700); next SPEC-12 PR 9 (jobs table).
-- Owner (D-0700, 2026-10-14): add GET /v1/jobs (ARCHITECTURE §13.1 and SPEC-10 amended in SPEC-10 PR 9), then the SPEC-12 §4.3 jobs table in SPEC-12 PR 9.
+- L1, L2 and L4 complete (2026-10-14). L3: SPEC-10 PRs 1-9 and SPEC-12 PR 7 done; next SPEC-12 PR 10 (jobs table, D-0700). After that: whole-codebase integration review (owner, 2026-10-14).
+- Owner (D-0700, 2026-10-14): GET /v1/jobs added (#146); SPEC-12 PR 10 adds the §4.3 jobs table.
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
@@ -213,6 +213,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 6 | SSE events + webhooks | done (#132) | D-0639–D-0646. Migration 0014 adds `job.api_key_id`, `webhook_delivery` and the `job_event (job_id, id)` and `extraction (url_task_id)` indexes. Follow-ups: `crawl` and `extract` (PRs 4, 5) set `job.api_key_id` from the authenticated key, as `batch/scrape` does, or their webhooks end `failed` unsent; from review, a live stream can skip an event committed out of uuid7 order (D-0646). |
 | 7 | MCP server (stdio + HTTP) | done (#144) | D-0696–D-0699. `api/keys.py` moved to `services/keys.py`; runtime setup in `services/runtime.py`; `api` layered over `mcp_server`. Follow-ups: unexpected exception text reaches MCP clients (from review); each later markdown page rebuilds the capture's markdown; the worker still builds its fetching by hand beside `fetching_from_settings`. |
 | 8 | Endpoint-level SSRF matrix | done (#145) | D-0705–D-0706. Tests only, plus the worker's up-front guard check of a page task's URL. Follow-up from review: run the same matrix over the MCP tools (#144). |
+| 9 | `GET /v1/jobs` list | done (#146) | D-0707–D-0709. ARCHITECTURE rev 10 (D-0700). No migration. Follow-ups: one shared keyset-page helper for `list_records`, page outputs and `list_jobs`; a covering `url_task (job_id, status, outcome)` index or counters on `job` if listing large crawls is measured slow. |
 
 ## [SPEC-11 — Recurring crawls: conditional GET, fingerprints, record versions, listing diff](../specs/SPEC-11-recurring-crawls.md)
 
@@ -237,4 +238,5 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | Jobs screens + EventLog (SSE) + exports | done (#143) | |
 | 8 | Change feed in Records | done (#141) | |
 | 9 | Labeling nav integration + shared shell polish | done (#93) | |
+| 10 | Jobs table on /jobs | todo | D-0700. Uses `GET /v1/jobs` (#146). |
 

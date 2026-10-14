@@ -144,6 +144,7 @@ shows status/evidence/confidence/calibrated/locator). The UI never changes serve
 | 7 | Jobs screens + EventLog (SSE) + exports | `screens/jobs`, `EventLog` | vitest | Reconnect tested. | L3 |
 | 8 | Change feed in Records | `screens/records` | vitest | `changed_fields` shown. | L4 |
 | 9 | Labeling nav integration + shared shell polish | `app/shell` | vitest | Nav gated by `eval_ui`. | L1 |
+| 10 | Jobs table on /jobs | `screens/jobs` | vitest | Table of kind, status, counts, created from `GET /v1/jobs`, paged. | L3 |
 
 ## 9. Open issues
 

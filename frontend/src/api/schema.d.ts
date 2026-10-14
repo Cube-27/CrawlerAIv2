@@ -279,6 +279,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description The jobs, newest first, each with the summary `GET /v1/jobs/{id}` answers; only those of `kind` and `status`
+         *     when given. Pass a page's `next_cursor` as `cursor` for the page after it.
+         */
+        get: operations["list_jobs_v1_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -1250,6 +1271,16 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * JobPage
+         * @description One page of jobs, newest first; `next_cursor` is the `cursor` of the page after it, None on the last.
+         */
+        JobPage: {
+            /** Items */
+            items: components["schemas"]["JobSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** JobSummary */
         JobSummary: {
@@ -3211,6 +3242,71 @@ export interface operations {
             };
             /** @description Gateway Timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_jobs_v1_jobs_get: {
+        parameters: {
+            query?: {
+                kind?: ("scrape" | "batch_scrape" | "map" | "crawl" | "extract" | "learn") | null;
+                status?: ("queued" | "running" | "completed" | "failed" | "cancelled") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

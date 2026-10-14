@@ -1,5 +1,5 @@
-"""`GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (SPEC-10 §4.2): a job's summary, its cancel, and its
-records or page outputs a page at a time."""
+"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (SPEC-10 §4.2): the jobs a page at a
+time, a job's summary, its cancel, and its records or page outputs a page at a time."""
 
 from typing import Annotated
 
@@ -15,7 +15,9 @@ from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import (
     ExportPage,
     JobEnded,
+    JobListQuery,
     JobNotFound,
+    JobPage,
     JobSummary,
     NotExportable,
     PageOutputPage,
@@ -29,6 +31,15 @@ router = APIRouter(
     dependencies=[Depends(require_api_key)],
     responses={401: PROBLEM_RESPONSE, 404: PROBLEM_RESPONSE, 422: PROBLEM_RESPONSE, 429: PROBLEM_RESPONSE},
 )
+
+
+@router.get("")
+async def list_jobs(query: Annotated[JobListQuery, Query()], request: Request) -> JobPage:
+    """The jobs, newest first, each with the summary `GET /v1/jobs/{id}` answers; only those of `kind` and `status`
+    when given. Pass a page's `next_cursor` as `cursor` for the page after it."""
+    engine: AsyncEngine = request.app.state.database
+    async with engine.connect() as conn:
+        return await jobs.list_jobs(conn, query)
 
 
 @router.get("/{job_id}")
