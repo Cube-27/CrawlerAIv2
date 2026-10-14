@@ -324,3 +324,12 @@ def test_every_schema_field_learning_left_out_is_reported_with_why() -> None:
 def test_nothing_left_out_leaves_the_report_as_validated() -> None:
     validated = _validate(_ir({"title": TITLE}), [_titled(n) for n in range(3)])
     assert with_unlearned(validated, {}) is validated
+
+
+def test_a_listing_row_field_left_out_is_reported_with_the_listing_fields() -> None:
+    validated = _validate_listing([_listing(["A", "B", "C"]) for _ in range(3)])
+
+    reported = with_unlearned(validated, {"brand": "no_common_pattern"}).report.model_dump(mode="json")
+
+    assert reported["listing"]["fields"]["brand"]["dropped"] == "not_learned: no_common_pattern"
+    assert "brand" not in reported["fields"]

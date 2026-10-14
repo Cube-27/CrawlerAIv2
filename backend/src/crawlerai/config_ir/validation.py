@@ -157,7 +157,8 @@ def validate(
 
 def with_unlearned(validated: Validated, reasons: Mapping[str, str]) -> Validated:
     """`validated` with a dropped `FieldReport` for each schema field learning gave no steps, saying why in `dropped`
-    (`not_learned: <reason>`), so the report covers every field the schema asks for. The config is unchanged."""
+    (`not_learned: <reason>`), so the report covers every field the schema asks for: a listing's row fields in its
+    listing report, where its learned row fields are. The config is unchanged."""
     report = validated.report
     listed = set(report.fields) | (set(report.listing.fields) if report.listing is not None else set())
     pages = len(report.held_out)
@@ -180,6 +181,9 @@ def with_unlearned(validated: Validated, reasons: Mapping[str, str]) -> Validate
     }
     if not unlearned:
         return validated
+    if report.listing is not None:
+        listing = report.listing.model_copy(update={"fields": {**report.listing.fields, **unlearned}})
+        return Validated(validated.ir, report.model_copy(update={"listing": listing}))
     return Validated(validated.ir, report.model_copy(update={"fields": {**report.fields, **unlearned}}))
 
 
