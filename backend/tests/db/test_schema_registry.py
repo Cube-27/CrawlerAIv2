@@ -192,7 +192,9 @@ def test_the_sync_command_inserts_the_presets(
     finally:
         asyncio.run(_delete_presets(database_url))
 
-    assert first.splitlines() == [f"inserted preset {n} version 1" for n in PRESETS] + ["4 preset version(s) inserted"]
+    assert first.splitlines() == [f"inserted preset {p.name} version {p.version}" for p in load_presets()] + [
+        "4 preset version(s) inserted"
+    ]
     assert second == "0 preset version(s) inserted\n"
 
 
