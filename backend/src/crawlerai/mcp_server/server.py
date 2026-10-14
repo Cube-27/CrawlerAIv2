@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolResult, ToolAnnotations
 
@@ -52,10 +53,6 @@ class Caller:
 Bind = Callable[[AnyContext], Awaitable[Caller]]
 
 
-class ToolInputError(ValueError):
-    """`scrape` was given neither a request nor a cursor, or both."""
-
-
 class _Tools:
     def __init__(self, bind: Bind) -> None:
         self._bind = bind
@@ -68,7 +65,7 @@ class _Tools:
             return await _scrape(runtime, request)
         if cursor is not None and request is None:
             return await _markdown_page(runtime, MarkdownCursor.decode(cursor))
-        raise ToolInputError("give either `request` or the `cursor` of a scrape's markdown")
+        raise ToolError("give either `request` or the `cursor` of a scrape's markdown")
 
     async def map(self, ctx: AnyContext, request: MapRequest) -> CallToolResult:
         runtime = (await self._bind(ctx)).runtime
@@ -87,9 +84,6 @@ class _Tools:
         )
         return tool_result(submitted.model_dump(mode="json"))
 
-    async def crawl_status(self, ctx: AnyContext, job_id: JobId, cursor: str | None = None) -> CallToolResult:
-        return await self._status(ctx, job_id, cursor)
-
     async def extract(self, ctx: AnyContext, request: ExtractRequest) -> CallToolResult:
         caller = await self._bind(ctx)
         runtime = caller.runtime
@@ -102,9 +96,6 @@ class _Tools:
             api_key_id=caller.api_key_id,
         )
         return tool_result(submitted.model_dump(mode="json"))
-
-    async def extract_status(self, ctx: AnyContext, job_id: JobId, cursor: str | None = None) -> CallToolResult:
-        return await self._status(ctx, job_id, cursor)
 
     async def list_schemas(
         self, ctx: AnyContext, name: Name | None = None, status: SchemaStatus | None = None
@@ -134,7 +125,7 @@ class _Tools:
             exported = await configs.export(conn, runtime.fetching.store, config_id, ExportRequest(format=format))
         return tool_result(exported.model_dump(mode="json"))
 
-    async def _status(self, ctx: AnyContext, job_id: JobId, cursor: str | None) -> CallToolResult:
+    async def status(self, ctx: AnyContext, job_id: JobId, cursor: str | None = None) -> CallToolResult:
         """The job's summary and a page of its results: records, or page outputs for a job without a schema."""
         runtime = (await self._bind(ctx)).runtime
         query = ResultsQuery.model_validate({"cursor": cursor, "limit": _STATUS_RESULTS})
@@ -155,7 +146,7 @@ async def _scrape(runtime: Runtime, request: ScrapeRequest) -> CallToolResult:
         data=runtime.engine_data,
         margins=runtime.drift_margins,
     )
-    structured = result.model_dump(mode="json")
+    structured = result.model_dump(mode="json", exclude={"markdown"})
     if result.markdown is not None and result.capture_id is not None:
         structured["markdown"], structured["next_cursor"] = markdown_page(result.capture_id, result.markdown, 0)
     return tool_result(structured, result.records)
@@ -184,19 +175,25 @@ _EXTRACT = """Queue a job that extracts a record of `page_kind` from each of `ur
 URL with a `*` is a glob, expanded through a map of its host. Returns the `job_id` and the schema, a prompt's draft
 included. Follow it with `extract_status`."""
 _TOOLS: Final = {
-    "scrape": (_SCRAPE, _FETCHES),
-    "map": (_MAP, _FETCHES),
-    "crawl_start": (_CRAWL_START, _FETCHES),
-    "crawl_status": (_STATUS, _READ_ONLY),
-    "extract": (_EXTRACT, _FETCHES),
-    "extract_status": (_STATUS, _READ_ONLY),
-    "list_schemas": ("Every version of every schema; only those of `name` and in `status` when given.", _READ_ONLY),
-    "create_schema": ("Create a `user` schema at version 1, as `POST /v1/schemas` does.", _WRITES),
+    "scrape": ("scrape", _SCRAPE, _FETCHES),
+    "map": ("map", _MAP, _FETCHES),
+    "crawl_start": ("crawl_start", _CRAWL_START, _FETCHES),
+    "crawl_status": ("status", _STATUS, _READ_ONLY),
+    "extract": ("extract", _EXTRACT, _FETCHES),
+    "extract_status": ("status", _STATUS, _READ_ONLY),
+    "list_schemas": (
+        "list_schemas",
+        "Every version of every schema; only those of `name` and in `status` when given.",
+        _READ_ONLY,
+    ),
+    "create_schema": ("create_schema", "Create a `user` schema at version 1, as `POST /v1/schemas` does.", _WRITES),
     "get_site_config": (
+        "get_site_config",
         "Every version of the site's extraction configs, with status, field status and validation report.",
         _READ_ONLY,
     ),
     "export_config": (
+        "export_config",
         "A config as `json` (the IR as stored) or a `platform_draft`, with the release check on the pages it was "
         "validated on.",
         _READ_ONLY,
@@ -216,6 +213,6 @@ def build_server(bind: Bind) -> FastMCP:
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
     tools = _Tools(bind)
-    for name, (description, annotations) in _TOOLS.items():
-        server.add_tool(getattr(tools, name), name=name, description=description, annotations=annotations)
+    for name, (method, description, annotations) in _TOOLS.items():
+        server.add_tool(getattr(tools, method), name=name, description=description, annotations=annotations)
     return server

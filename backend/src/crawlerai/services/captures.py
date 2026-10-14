@@ -11,7 +11,7 @@ gets no role C.
 import asyncio
 
 from sqlalchemy import Row, select
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.config_ir.active import active_config
 from crawlerai.content.markdown import markdown
@@ -45,9 +45,7 @@ async def replay(
     resolves nothing (blocked, an error) adds none; an incomplete one adds its record with `complete=false`, as for
     any caller-supplied URL (§10)."""
     async with engine.connect() as conn:
-        capture = (await conn.execute(select(*_COLUMNS).where(Capture.id == capture_id))).one_or_none()
-        if capture is None:
-            raise CaptureNotFound(f"no capture {capture_id}")
+        capture = await _capture(conn, capture_id)
         schema_ids = (
             await conn.execute(
                 select(Record.schema_id)
@@ -61,7 +59,7 @@ async def replay(
         configs = [await active_config(conn, capture.site_id, schema, data.vocabulary) for schema in schemas]
     if not schemas:
         raise NotReplayable(f"no record was made from capture {capture_id}, so no schema says what to extract")
-    bundle = await _bundle(store, capture.id, capture.object_key)
+    bundle = await _bundle(store, capture)
     return [
         record
         for schema, config in zip(schemas, configs, strict=True)
@@ -73,20 +71,23 @@ async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: Captu
     """The capture's markdown, made again from its bundle: a format is a function of the capture alone (ARCHITECTURE
     §15, INV-26), so it equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it."""
     async with engine.connect() as conn:
-        object_key = (
-            await conn.execute(select(Capture.object_key).where(Capture.id == capture_id))
-        ).scalar_one_or_none()
-    if object_key is None:
-        raise CaptureNotFound(f"no capture {capture_id}")
-    bundle = await _bundle(store, capture_id, object_key)
+        capture = await _capture(conn, capture_id)
+    bundle = await _bundle(store, capture)
     return await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle)))
 
 
-async def _bundle(store: ObjectStore, capture_id: CaptureId, object_key: str) -> CaptureBundle:
+async def _capture(conn: AsyncConnection, capture_id: CaptureId) -> _Capture:
+    capture = (await conn.execute(select(*_COLUMNS).where(Capture.id == capture_id))).one_or_none()
+    if capture is None:
+        raise CaptureNotFound(f"no capture {capture_id}")
+    return capture
+
+
+async def _bundle(store: ObjectStore, capture: _Capture) -> CaptureBundle:
     try:
-        blob = await asyncio.to_thread(store.get, object_key)
+        blob = await asyncio.to_thread(store.get, capture.object_key)
     except ObjectNotFound as e:
-        raise CaptureNotFound(f"capture {capture_id}: its bundle is no longer stored") from e
+        raise CaptureNotFound(f"capture {capture.id}: its bundle is no longer stored") from e
     return await asyncio.to_thread(decode, blob)
 
 

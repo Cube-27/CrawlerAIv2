@@ -38,7 +38,13 @@ class _Authenticated:
 async def _bind(ctx: AnyContext) -> Caller:
     request = cast(Request, ctx.request_context.request)  # the HTTP transport's request
     state = request.app.state
-    runtime = Runtime(state.database, state.fetching, state.llm, state.engine_data, state.drift_margins)
+    runtime = Runtime(
+        database=state.database,
+        fetching=state.fetching,
+        llm=state.llm,
+        engine_data=state.engine_data,
+        drift_margins=state.drift_margins,
+    )
     return Caller(runtime, request.state.api_key_id)
 
 
