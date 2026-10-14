@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import logging
 import signal
 import sys
 import uuid
@@ -373,11 +374,22 @@ def _run_openapi(_parser: argparse.ArgumentParser, _args: argparse.Namespace) ->
     _print_openapi()
 
 
+def _log_to_stderr() -> None:
+    """Send the package's INFO and above to stderr, for the long-running commands: the API's are uvicorn's to set up."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger = logging.getLogger("crawlerai")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def _run_worker(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    _log_to_stderr()
     asyncio.run(_work())
 
 
 def _run_scheduler(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    _log_to_stderr()
     asyncio.run(_schedule())
 
 

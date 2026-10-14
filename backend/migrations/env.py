@@ -18,7 +18,8 @@ from crawlerai.db.models import Base
 from crawlerai.db.private_models import PrivateBase
 
 if context.config.config_file_name is not None:
-    fileConfig(context.config.config_file_name)
+    # Migrations also run inside a process that logs (the test session): its loggers stay enabled.
+    fileConfig(context.config.config_file_name, disable_existing_loggers=False)
 
 PRIVATE = context.config.config_ini_section == "private"
 target_metadata: MetaData = PrivateBase.metadata if PRIVATE else Base.metadata

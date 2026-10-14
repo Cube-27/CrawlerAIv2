@@ -91,6 +91,7 @@ async def run_scheduler(settings: Settings, entries: Sequence[Periodic], stop: a
     engine = create_async_engine(settings.database_url.get_secret_value())
     clock = asyncio.get_running_loop().time
     due = [clock()] * len(entries)
+    log.info("scheduler: started; entries %s", ", ".join(entry.name for entry in entries))
     try:
         while not stop.is_set():
             for index, entry in enumerate(entries):
@@ -113,5 +114,6 @@ async def _run(engine: AsyncEngine, entry: Periodic) -> object:
     except Exception:
         log.exception("scheduler: %s failed; it runs again in %s", entry.name, entry.interval)
         return None
-    log.debug("scheduler: %s: %s", entry.name, result)
+    # Most runs find nothing to do, and entries run every few seconds: only work done is logged at INFO.
+    log.log(logging.INFO if result else logging.DEBUG, "scheduler: %s: %s", entry.name, result)
     return result
