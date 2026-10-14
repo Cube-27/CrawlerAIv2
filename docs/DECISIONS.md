@@ -4776,3 +4776,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Row 9 as assigned.
 - Why: SPEC-12 row 9 (labeling nav) already exists and is done (#93).
 - Reversible: yes
+
+### D-0710 — The jobs table's Tasks column is one line: the total, then each status some task has
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 10 (#147) · Status: decided
+- Decision: The `/jobs` table's Tasks column reads "N tasks: a queued, b done, …", the total and then each `url_task.status` some task has, in SPEC-01 §4.2 order; the per-outcome counts stay on the job page.
+- Alternatives: One column per task status; done/total only.
+- Why: Five count columns crowd the table at phone width, and done/total hides failures.
+- Reversible: yes

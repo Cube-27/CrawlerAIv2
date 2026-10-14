@@ -6,11 +6,12 @@ import { PageHeader } from "../../components/PageHeader";
 import { BatchDialog } from "./BatchDialog";
 import { CrawlDialog } from "./CrawlDialog";
 import { ExtractDialog } from "./ExtractDialog";
+import { JobTable } from "./JobTable";
 import { MapDialog } from "./MapDialog";
 import { jobPath } from "./paths";
 
-/** Starts batch scrapes, crawls, extracts and maps, and opens a job by id. The API reads jobs one at a time
- * (`GET /v1/jobs/{id}`) and has no list of jobs, so a job is opened by its id; a new job opens on its own. */
+/** Starts batch scrapes, crawls, extracts and maps, lists the jobs (SPEC-12 §4.3), and opens a job by its id. A new
+ * job opens on its own page. */
 export function JobsScreen() {
   const navigate = useNavigate();
   const [id, setId] = useState("");
@@ -27,6 +28,7 @@ export function JobsScreen() {
           </>
         }
       />
+      <JobTable />
       <Form
         className="flex flex-col gap-4"
         onSubmit={(event) => {

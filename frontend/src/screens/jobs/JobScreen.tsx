@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useParams } from "react-router";
 import { useCancelJob, useJob } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
-import type { JobKind, JobStatus, JobSummary } from "../../api/jobs";
+import type { JobStatus, JobSummary } from "../../api/jobs";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EventLog } from "../../components/EventLog";
 import { JobStatusLabel } from "../../components/JobStatusLabel";
@@ -14,15 +14,7 @@ import { ProblemAlert } from "../../components/ProblemAlert";
 import { UsageSummary } from "../../components/UsageSummary";
 import { ExportActions } from "./ExportActions";
 import { JobResults } from "./JobResults";
-
-const KIND_LABELS: Readonly<Record<JobKind, string>> = {
-  scrape: "Scrape",
-  batch_scrape: "Batch scrape",
-  map: "Map",
-  crawl: "Crawl",
-  extract: "Extract",
-  learn: "Learn",
-};
+import { KIND_LABELS } from "./kinds";
 
 // SPEC-10 §4.2: a completed or failed job can't be cancelled (409); a cancelled one is already.
 const CANCELLABLE: ReadonlySet<JobStatus> = new Set<JobStatus>(["queued", "running"]);

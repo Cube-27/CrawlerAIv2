@@ -13,6 +13,7 @@ type Schemas = components["schemas"];
 export type JobSchemaRef = Exclude<SchemaRef, { prompt: string }>;
 
 export type JobSummary = Schemas["JobSummary"];
+export type JobPage = Schemas["JobPage"];
 export type JobKind = JobSummary["kind"];
 export type JobStatus = JobSummary["status"];
 export type TaskCounts = Schemas["TaskCounts"];
@@ -90,6 +91,14 @@ type ResultsQuery = NonNullable<
 
 function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
+}
+
+/** The jobs at `cursor` (the first page when null), newest first, at the server's page size. */
+export function listJobs(client: ApiClient, cursor: string | null): Promise<ApiResult<JobPage>> {
+  return apiResult(
+    () => client.GET("/v1/jobs", { params: { query: cursor === null ? {} : { cursor } } }),
+    "Listing the jobs",
+  );
 }
 
 export function getJob(client: ApiClient, id: string): Promise<ApiResult<JobSummary>> {

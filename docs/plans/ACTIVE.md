@@ -32,8 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1, L2 and L4 complete (2026-10-14). L3: SPEC-10 PRs 1-9 and SPEC-12 PR 7 done; next SPEC-12 PR 10 (jobs table, D-0700). After that: whole-codebase integration review (owner, 2026-10-14).
-- Owner (D-0700, 2026-10-14): GET /v1/jobs added (#146); SPEC-12 PR 10 adds the §4.3 jobs table.
+- L1-L4 complete (2026-10-14), including D-0700's GET /v1/jobs (#146) and jobs table (#147). Next: whole-codebase integration review (owner, 2026-10-14), then separate frontend and backend testing.
 - Follow-up for SPEC-10 (from #144 review): wrap the MCP tools so the text of an unexpected exception is not sent to clients, as REST's `_on_unexpected` does.
 - Follow-ups for SPEC-08 PR 8 / SPEC-10 (from #125): pass `acquire(..., recipe=RecipeRung(...))` and run `recipe_collector(recipe, str(config_id))` on `api` captures no adapter detects, beside `EngineExecutor`; check robots.txt for the endpoint and admit it through `HostLimiter`; on a recipe failure after an `ok` HTML page fetch, the fallback fetches that page again; `pages`' stop check counts any `rows` node while the collector keeps objects only. Pagination/rows discovery is open (D-0604).
 - Follow-up for `/v1/schemas` (from #81 review, D-0395): retiring the latest version freezes the name (POST says it exists; PUT says retired or not latest). Decide between un-retiring, reusing the name, or PUT on a retired latest.
@@ -238,5 +237,5 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 7 | Jobs screens + EventLog (SSE) + exports | done (#143) | |
 | 8 | Change feed in Records | done (#141) | |
 | 9 | Labeling nav integration + shared shell polish | done (#93) | |
-| 10 | Jobs table on /jobs | todo | D-0700. Uses `GET /v1/jobs` (#146). |
+| 10 | Jobs table on /jobs | done (#147) | D-0700. Uses `GET /v1/jobs` (#146). |
 

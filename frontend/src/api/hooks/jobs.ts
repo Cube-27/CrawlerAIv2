@@ -4,6 +4,7 @@ import {
   cancelJob,
   exportJobPage,
   getJob,
+  listJobs,
   listJobResults,
   mapUrls,
   submitBatch,
@@ -28,6 +29,15 @@ export function jobKey(id: string) {
 
 export function jobResultsKey(id: string) {
   return [...JOBS, "results", id] as const;
+}
+
+/** The jobs at `cursor`. */
+export function useJobs(cursor: string | null) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...JOBS, "list", cursor],
+    queryFn: () => unwrap(listJobs(client, cursor)),
+  });
 }
 
 export function useJob(id: string) {

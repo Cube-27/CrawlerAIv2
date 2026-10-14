@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
-import type { JobSummary, PageOutputPage } from "../../api/jobs";
+import type { JobPage, JobSummary, PageOutputPage } from "../../api/jobs";
 import type { RecordPage } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi, type Call } from "../../test/api";
@@ -16,6 +16,7 @@ const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
 const RECORD_ID = "0192a000-0000-7000-8000-000000000301";
 const TASK_ID = "0192a000-0000-7000-8000-000000000401";
+const SECOND_JOB_ID = "0192a000-0000-7000-8000-000000000902";
 const JOB = `/v1/jobs/${JOB_ID}`;
 
 function job(overrides: Partial<JobSummary> = {}): JobSummary {
@@ -106,8 +107,14 @@ const ENDED = () =>
     ["2", "completed", {}],
   );
 
+/** A `GET /v1/jobs` answer. */
+function jobPage(items: JobSummary[], next_cursor: string | null = null) {
+  return () => Response.json({ items, next_cursor } satisfies JobPage);
+}
+
 function jobApi(extra: Record<string, (call: Call) => Response> = {}) {
   return stubApi({
+    "GET /v1/jobs": jobPage([]),
     [`GET ${JOB}`]: () => Response.json(job()),
     [`GET ${JOB}/events`]: ENDED,
     [`GET ${JOB}/results`]: () => Response.json(records),
@@ -402,6 +409,79 @@ describe("Jobs screen", () => {
       use_sitemaps: true,
       use_links: true,
     });
+  });
+
+  it("lists the jobs with their kind, status, task counts and creation time", async () => {
+    jobApi({
+      "GET /v1/jobs": jobPage([
+        job(),
+        job({
+          id: SECOND_JOB_ID,
+          kind: "crawl",
+          status: "failed",
+          counts: { queued: 0, claimed: 0, done: 0, failed: 3, cancelled: 1 },
+          created_at: "2026-10-13T08:00:00Z",
+        }),
+      ]),
+    });
+    await open("/jobs", "Jobs");
+
+    const table = await screen.findByRole("grid", { name: "Jobs" });
+    expect(rowsOf(table)).toEqual([
+      "Batch scrape" + "running" + "3 tasks: 1 queued, 2 done" + "2026-10-14T09:00:00Z",
+      "Crawl" + "failed" + "4 tasks: 3 failed, 1 cancelled" + "2026-10-13T08:00:00Z",
+    ]);
+  });
+
+  it("opens a job from its row", async () => {
+    jobApi({ "GET /v1/jobs": jobPage([job()]) });
+    await open("/jobs", "Jobs");
+
+    const table = await screen.findByRole("grid", { name: "Jobs" });
+    await userEvent.click(within(table).getByText("Batch scrape"));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Batch scrape job" }),
+    ).toBeInTheDocument();
+  });
+
+  it("pages forward with the cursor the API returned, and back to the first page", async () => {
+    const calls = jobApi({
+      "GET /v1/jobs": (call) =>
+        call.query === "cursor=c2"
+          ? jobPage([job({ id: SECOND_JOB_ID, kind: "map" })])()
+          : jobPage([job()], "c2")(),
+    });
+    await open("/jobs", "Jobs");
+    await screen.findByRole("grid", { name: "Jobs" });
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("Map")).toBeInTheDocument();
+    expect(screen.getByText("Page 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await screen.findByText("Page 1")).toBeInTheDocument();
+    expect(calls.filter(({ path }) => path === "/v1/jobs").map(({ query }) => query)).toEqual([
+      "",
+      "cursor=c2",
+      "",
+    ]);
+  });
+
+  it("says when there are no jobs yet", async () => {
+    jobApi();
+    await open("/jobs", "Jobs");
+
+    expect(await screen.findByText("No jobs yet")).toBeInTheDocument();
+  });
+
+  it("shows the problem of a refused list", async () => {
+    jobApi({ "GET /v1/jobs": () => problem(503, { title: "Database unavailable" }) });
+    await open("/jobs", "Jobs");
+
+    expect(await screen.findByText("Database unavailable")).toBeInTheDocument();
   });
 
   it("opens a job by its id", async () => {
