@@ -42,6 +42,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
 | D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
 | D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
+| D-0745 | Exposing task failure and block reasons (and `cancel_requested`) in the jobs API | needs-owner |
 
 ---
 
@@ -4993,4 +4994,39 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: Binding and replay read the page URL from `manifest.url`.
 - Alternatives: `final_url`.
 - Why: Serving binds from the URL being acquired (SPEC-09 §4.8).
+- Reversible: yes
+
+### D-0741 — The worker, scheduler and API keep the Proactor event loop on Windows
+- Date: 2026-10-14 · Spec/PR: UAT fix F06 (#153) · Status: decided
+- Decision: No `WindowsSelectorEventLoopPolicy`; asyncio's default loop stays.
+- Alternatives: The selector loop policy for every process.
+- Why: The UAT crash was a use-after-free in curl_cffi's handle release (D-0742), not the loop. On Windows only the Proactor loop runs subprocesses, which the browser rung (Patchright) needs; curl_cffi's selector thread on Proactor is supported upstream.
+- Reversible: yes
+
+### D-0742 — `acquire/http.py` removes a request's curl handle before curl_cffi frees its callbacks
+- Date: 2026-10-14 · Spec/PR: UAT fix F06 (#153) · Status: decided
+- Decision: `_Session.release_curl` removes the handle from the multi handle first; `curl-cffi` is pinned `>=0.16,<0.17` because the workaround uses the session's internals.
+- Alternatives: Drop `DEBUGFUNCTION` (loses the sent request headers, SPEC-02 §4.7); never cancel a fetch (outer time caps would not hold).
+- Why: curl_cffi 0.16.3 (the latest release) frees the debug callback's data before removing an in-flight handle, whose connection close then calls it: a native crash on any cancelled fetch, such as the crawl's sitemap time cap.
+- Reversible: yes
+
+### D-0743 — Every lock of a job's row is FOR NO KEY UPDATE
+- Date: 2026-10-14 · Spec/PR: UAT fix F16 (#153) · Status: decided
+- Decision: `cancel_job`, `settle_job`, `Frontier.enqueue` and a learn run's `_abandon` lock the job row FOR NO KEY UPDATE; a crawl reads sitemaps before it writes its job's row.
+- Alternatives: Commit each task in several transactions; keep FOR UPDATE.
+- Why: FOR UPDATE waits on the FOR KEY SHARE that a running task's inserts referring to the job hold until it commits, so a cancel waited for a whole sitemap read; FOR NO KEY UPDATE still serializes every writer of the row (PostgreSQL row-level locks).
+- Reversible: yes
+
+### D-0744 — `crawlerai data fetch` tries every entry and reports the refused ones together
+- Date: 2026-10-14 · Spec/PR: UAT fix F11 (#153) · Status: decided
+- Decision: `fetch_data` returns `DataReport(written, refused)`; a refused entry (path outside the data directory, non-https URL, failed or cut-short download, hash mismatch, failed write) never stops the others, and the CLI exits 2 if any was refused.
+- Alternatives: Stop at the first refusal (before).
+- Why: One re-pinned source (D-0311) kept unrelated data, such as the schema.org vocabulary, from being fetched.
+- Reversible: yes
+
+### D-0745 — Exposing task failure and block reasons in the jobs API
+- Date: 2026-10-14 · Spec/PR: UAT fix F17, F16 (#153) · Status: needs-owner
+- Decision: Not built. Question: should the API expose `url_task.last_error` and a task-failure event? SPEC-10 defines neither (`PageOutput` has no reason; §4.2's event kinds have no task failure), and the job summary has no `cancel_requested`.
+- Alternatives: (a) `PageOutput.last_error: str | null` on `/results` plus a `task_failed` event `{task_id, url, attempts, last_error}`; (b) a per-task listing endpoint, which also covers records jobs; (c) leave it. Also: `cancel_requested: bool` on the job summary, so the job page can show "cancel requested" while a dead worker's lease runs out.
+- Why: A public API change beyond the spec (CLAUDE.md §4). Recommendation: (a) plus `cancel_requested`; additive fields, and the worker already writes `last_error` redacted (SPEC-01 §4). Blocks the F17 UI (fix/uat-frontend).
 - Reversible: yes

@@ -32,7 +32,8 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- L1-L4 complete (2026-10-14). Integration review (owner): R1-R7 fixed (#149, #150), recipe learning wired (#151). LLM cost history done (#148). Next: browser UAT on crawler-test sites (owner).
+- UAT fix PRs (from the 2026-10-14 UAT): runtime #153 merged; LLM layer (fix/uat-llm) and frontend (fix/uat-frontend) in flight. Next: UAT re-run of the record-dependent features, then a data-accuracy plan. Blocked: exposing task failure/block reasons in the jobs API (D-0745, needs-owner).
+- Follow-ups from #153: a task still adds to `job.usage` mid-transaction (`record_usage`, role C's usage in `_visit`), which locks the job row until the task commits; recording usage at the task's end would let no later network I/O hold up a cancel. Declare `anyio` as a direct dependency (`services/events.py`, `mcp_server` import it).
 - Follow-ups from #149 review: a learn job whose request cannot be parsed is re-picked by the learner; shutdown waits for a running learn run. SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7).
 - Follow-ups from #150 review: a max_age-reused api capture can meet a config with no recipe; config_recipe parses the recipe a second time.
 - Follow-up from #151 review (optional): report non-LLM errors in recipe learning as a refused recipe rather than failing the run.
@@ -56,7 +57,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Follow-up (when their queries land): indexes on `record.job_id` (SPEC-10, SPEC-07), `extraction.url_task_id`, and `capture (site_id, fetched_at)` (SPEC-08 §4.4), each added with its query.
 - Follow-up (scale, not yet due): `release_expired_leases` handles all expired leases in one transaction; add a per-run batch limit if many workers die at once (#19 review). The `job_event (job_id, id)` index comes with SPEC-10's SSE query.
 - Done: the C3 scan now reads schema-defined `table.column` strings as columns (#15, D-0111). Optional tightening from its review: take schema sources only from non-exempt paths, and add a `--staged` test.
-- Blocked: none.
+- Blocked: exposing task failure/block reasons in the jobs API (D-0745, needs-owner).
 
 ## [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md)
 
