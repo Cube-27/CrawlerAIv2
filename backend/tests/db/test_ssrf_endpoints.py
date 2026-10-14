@@ -214,9 +214,9 @@ async def run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, job
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     handlers: dict[JobKind, TaskHandler] = {
-        "batch_scrape": scrape_handler(fetching, data, None),
-        "crawl": crawl_handler(fetching, data, None),
-        "extract": scrape_handler(fetching, data, None),
+        "batch_scrape": scrape_handler(fetching, data, None, llm=None),
+        "crawl": crawl_handler(fetching, data, None, llm=None),
+        "extract": scrape_handler(fetching, data, None, llm=None),
     }
     stop = asyncio.Event()
     loop = asyncio.create_task(run_worker(settings, handlers, stop))

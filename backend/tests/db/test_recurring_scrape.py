@@ -144,7 +144,9 @@ async def _run_job(
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    loop = asyncio.create_task(run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None)}, stop))
+    loop = asyncio.create_task(
+        run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None, llm=None)}, stop)
+    )
     async with asyncio.timeout(60):
         while not await _ended(engine, job_id):
             await asyncio.sleep(0.1)

@@ -21,6 +21,7 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
     Capture,
@@ -204,6 +205,34 @@ async def test_a_page_without_a_required_field_is_partial_and_keeps_its_record(
     assert price.reason is not None
     task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("done", "partial")
+
+
+async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # SPEC-07 §4.4 step 3: `records` extracts with role C when required fields are missing (SPEC-06).
+    url = f"{own_origin}/kettles/blue"
+    body = _product_page(url, offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    web.pages[url] = (200, body, "ok")
+    text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
+    start = text.index("19.90 EUR")
+    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
+    llm = MeteredClient([FakeProvider([reply])], engine)
+
+    result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), llm=llm, data=engine_data)
+
+    assert result.outcome == "extracted"
+    assert result.records is not None
+    price_field = result.records[0].fields["price"]
+    assert (price_field.value, price_field.source_kind) == ({"amount": "19.90", "currency": "EUR"}, "llm")
+    assert result.usage.llm_calls == 1
 
 
 async def test_each_extracted_or_partial_page_counts_toward_progressive_state(
