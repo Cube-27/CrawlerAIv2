@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from crawlerai.acquire.rungs import Rung
 from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks
+from crawlerai.config_ir.learning import expire_learn_runs
 from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import release_expired_leases
@@ -68,6 +69,12 @@ def periodic(store: ObjectStore, fetch: Rung, post: Poster) -> tuple[Periodic, .
             "trigger_learning",
             timedelta(minutes=1),
             partial(trigger_learning, batch=TRIGGER_BATCH),
+            batch=TRIGGER_BATCH,
+        ),
+        Periodic(
+            "expire_learn_runs",
+            timedelta(minutes=5),
+            partial(expire_learn_runs, batch=TRIGGER_BATCH),
             batch=TRIGGER_BATCH,
         ),
         Periodic(

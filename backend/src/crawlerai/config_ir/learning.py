@@ -6,7 +6,8 @@ A run reads the state's `LEARN_AFTER_PAGES` most recent extracted pages (`held_o
 proposes selectors without an LLM (§4.5), role A synthesizes the fields it left (§4.6), and the config is validated on
 the held-out pages (§4.7) and activated (§4.8). Every other end is a failed run (`progressive.learning_failed`):
 validation refusing the config, an LLM failure (D-0588), a cancelled job, an error, or an operator's config activated
-while the run was in flight, which a run that started before it does not replace.
+while the run was in flight, which a run that started before it does not replace. A job that cannot start, and a run
+still `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A is called, because the LLM client commits usage on a connection of its own and must not wait on a write to the
@@ -17,11 +18,12 @@ job's row (D-0346). The job's start and end are recorded as `learning_started` a
 import asyncio
 import logging
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -29,7 +31,13 @@ from crawlerai.config_ir.activation import activate
 from crawlerai.config_ir.held_out import StoredPage, load_pages
 from crawlerai.config_ir.induction import Induction, SamplePage, induce
 from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, Provenance, SchemaRef
-from crawlerai.config_ir.progressive import LEARN_AFTER_PAGES, StateKey, learning_failed, lock_state
+from crawlerai.config_ir.progressive import (
+    LEARN_AFTER_PAGES,
+    NotLearning,
+    StateKey,
+    learning_failed,
+    lock_state,
+)
 from crawlerai.config_ir.synthesis import synthesize
 from crawlerai.config_ir.validation import HeldOutPage, Validated, ValidationReport, validate
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -56,6 +64,10 @@ log = logging.getLogger(__name__)
 SAMPLE_PAGES: Final = 5
 LEARNING_STARTED: Final = "learning_started"
 LEARNING_FINISHED: Final = "learning_finished"
+# A run makes a few role A calls, each at most `llm.client.TIMEOUT_S["strong"]` per provider, plus a retry; a run still
+# `running` an hour after it started has lost its process.
+LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
+EXPIRED: Final = "expired"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,8 +110,13 @@ async def run_learn_job(
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`)."""
-    async with engine.begin() as conn:
-        run = await _start(conn, job_id)
+    try:
+        async with engine.begin() as conn:
+            run = await _start(conn, job_id)
+    except Exception:  # D-0624: a job that cannot start ends failed, or every poll would pick it again
+        log.exception("learn job %s could not start", job_id)
+        async with engine.begin() as conn:
+            return await _abandon(conn, job_id, "error")
     if not isinstance(run, _Run):
         return run
     try:
@@ -142,6 +159,35 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
     serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
     await record_event(conn, job_id, LEARNING_STARTED)
     return _Run(job_id, key, schema, site.host, site.fetch_method, serving)
+
+
+async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
+    """End up to `batch` runs that started more than `LEARN_RUN_TIMEOUT` ago as failed runs, and return how many: their
+    process died, and the state would otherwise stay `learning` (D-0624)."""
+    stale = (
+        select(Job.id)
+        .where(Job.kind == "learn", Job.status == "running", Job.started_at < func.now() - LEARN_RUN_TIMEOUT)
+        .limit(batch)
+        .with_for_update(skip_locked=True)
+    )
+    job_ids = (await conn.execute(stale)).scalars().all()
+    for job_id in job_ids:
+        await _abandon(conn, job_id, EXPIRED)
+    return len(job_ids)
+
+
+async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
+    """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`."""
+    job = (await conn.execute(select(Job.status, Job.request).where(Job.id == job_id).with_for_update())).one()
+    if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
+        await transition_job(conn, job_id, "running")
+    # The state may have moved on already (an operator's config, a cancel), and then there is no run to end.
+    with suppress(NotLearning):
+        await learning_failed(conn, StateKey.from_request(job.request))
+    payload = {"config_id": None, "reason": reason, "report": None}
+    await record_event(conn, job_id, LEARNING_FINISHED, payload)
+    await transition_job(conn, job_id, "failed")
+    return Learned(None, reason)
 
 
 def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[SamplePage], list[HeldOutPage]]:
@@ -192,8 +238,10 @@ def _induced(run: _Run, induction: Induction) -> ExtractionConfigIR:
 
 async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Learned:
     await lock_state(conn, run.key)
-    cancelled = (await conn.execute(select(Job.cancel_requested).where(Job.id == run.job_id))).scalar_one()
-    if cancelled:
+    job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == run.job_id))).one()
+    if job.status != "running":  # `expire_learn_runs` gave the run up and ended it
+        return Learned(None, EXPIRED)
+    if job.cancel_requested:
         return await _fail(conn, run, "cancelled", validated.report, status="cancelled")
     if validated.ir is None:
         return await _fail(conn, run, validated.report.refused or "refused", validated.report)
