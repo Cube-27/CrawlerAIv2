@@ -40,6 +40,7 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.llm.client import BudgetExhausted, LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.normalize.base import Ok
+from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, ListingGapReply, ListingGapRequest
 from crawlerai.resolve.task import Stored, extract_task
 from crawlerai.schemas import registry
@@ -160,6 +161,7 @@ class Site_:
                 role_c=role_c,
                 config=config,
                 caller_supplied=True,
+                write_records=store_records,
             )
             assert stored.outcome != "failed"
             await complete_task(conn, task, stored.outcome, capture_id=capture_id)

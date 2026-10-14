@@ -98,14 +98,14 @@ def test_changed_fields_are_the_fields_whose_published_json_value_differs_in_sch
 
 
 def test_a_changed_price_is_the_one_changed_field() -> None:
-    previous = {"title": "Synthetic kettle", "price": {"amount": "19.90", "currency": "EUR"}}
-    current = {"title": "Synthetic kettle", "price": {"amount": "17.50", "currency": "EUR"}}
+    previous: dict[str, JsonValue] = {"title": "Synthetic kettle", "price": {"amount": "19.90", "currency": "EUR"}}
+    current: dict[str, JsonValue] = {"title": "Synthetic kettle", "price": {"amount": "17.50", "currency": "EUR"}}
 
     assert changed_fields(previous, current, SCHEMA) == ["price"]
 
 
 def test_a_field_that_stops_publishing_or_starts_publishing_is_changed() -> None:
-    previous = {"title": "Synthetic kettle", "sku": "A-1"}
-    current = {"title": "Synthetic kettle", "colour": "red"}
+    previous: dict[str, JsonValue] = {"title": "Synthetic kettle", "sku": "A-1"}
+    current: dict[str, JsonValue] = {"title": "Synthetic kettle", "colour": "red"}
 
     assert changed_fields(previous, current, SCHEMA) == ["sku", "colour"]

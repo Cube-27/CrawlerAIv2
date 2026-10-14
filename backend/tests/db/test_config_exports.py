@@ -34,6 +34,7 @@ from crawlerai.db.models import (
     SiteId,
 )
 from crawlerai.db.queue import insert_claimed
+from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
@@ -84,6 +85,7 @@ class World:
                 role_c=None,
                 config=None,
                 caller_supplied=True,
+                write_records=store_records,
             )
         return capture_id
 

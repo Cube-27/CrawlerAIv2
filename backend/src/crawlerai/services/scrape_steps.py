@@ -45,6 +45,7 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.db.usage import record_usage
 from crawlerai.llm.roles.s_schema import normalize_prompt
+from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import ActiveConfig, StoredRecord, store_extraction
 from crawlerai.resolve.types import ExtractionResult
@@ -255,6 +256,7 @@ async def store_page_record(
         site_id=site_id,
         schema=schema,
         caller_supplied=True,
+        write_records=store_records,
         config=config,
     )
     if config is not None:
