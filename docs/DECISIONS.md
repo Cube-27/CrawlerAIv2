@@ -4559,3 +4559,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Pin at first fetch per host; conditional GET for crawl pages that lead nowhere.
 - Why: INV-28 pins at submit, when the subdomains are not known. Recurring crawls are SPEC-11 PR 4's to decide.
 - Reversible: yes
+
+### D-0679 — Unchanged pages are kept out of drift windows and `pages_extracted` by control flow
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 5 (#139) · Status: decided
+- Decision: An `unchanged` task, by 304 or by content fingerprint, ends before extraction. It has no `ExtractionResult` to record, so it never reaches `store_page_record`, the only caller of the drift window (`record_page`) and the progressive count (`_count_page`). No outcome check is added to those hooks. A test pins this on both unchanged paths.
+- Alternatives: An explicit `unchanged` guard in the drift and count hooks.
+- Why: `ExtractionResult.outcome` cannot be `unchanged` (`resolve.types.Outcome`), so such a guard could never fire; it would be a speculative check.
+- Reversible: yes
