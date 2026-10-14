@@ -1,8 +1,8 @@
 #!/bin/bash
 # cleanup_worktree.sh WORKTREE BRANCH — after a merge: remove the worktree's throwaway Postgres containers,
 # the worktree (retrying while a closing pane still holds it), and the remote and local branch.
-# It first checks that the work is merged, and removes nothing unless the branch's PR is MERGED, or the branch has
-# no PR and is an ancestor of origin/main. Deleting the remote branch of an open PR makes GitHub close that PR
+# It first checks that the work is merged, and removes nothing unless no PR of the branch is OPEN and each tip of
+# the branch (local and remote) is the head of a MERGED PR or an ancestor of origin/main. Deleting the remote branch of an open PR makes GitHub close that PR
 # (#128: a failed merge chained with `;`). On refusal, or when GitHub can't be read, it exits 1 with an ERROR on
 # stderr and keeps the worktree, the branches and the containers.
 # Removes only containers named crawlerai-* (with their anonymous volumes): never another project's containers.
@@ -20,17 +20,23 @@ refuse() {
   exit 1
 }
 
+# Every tip of the branch, local and remote, must be the head of a MERGED PR or already in origin/main: a branch name
+# reused after a merge, or a commit pushed after it, is unmerged work. An OPEN PR refuses outright, since deleting
+# its remote branch closes it.
 require_merged() {
-  local states ref
-  states=$(gh pr list --head "$branch" --state all --json state --jq '.[].state') \
+  local prs tip ref found=0
+  prs=$(gh pr list --head "$branch" --state all --json state,headRefOid --jq '.[] | "\(.state) \(.headRefOid)"') \
     || refuse "could not read the PRs of $branch"
-  if [[ $states == *MERGED* ]]; then return 0; fi
-  if [[ -n $states ]]; then refuse "the PR for $branch is not merged"; fi
-  git -C "$main" fetch -q origin || refuse "could not fetch origin"
-  ref=$branch
-  git -C "$main" rev-parse -q --verify "refs/heads/$branch" >/dev/null || ref="origin/$branch"
-  git -C "$main" merge-base --is-ancestor "$ref" origin/main 2>/dev/null \
-    || refuse "$branch has no PR and is not merged into origin/main"
+  if grep -q '^OPEN ' <<< "$prs"; then refuse "a PR for $branch is open"; fi
+  git -C "$main" fetch -q --prune origin || refuse "could not fetch origin"
+  for ref in "refs/heads/$branch" "refs/remotes/origin/$branch"; do
+    tip=$(git -C "$main" rev-parse -q --verify "$ref^{commit}") || continue
+    found=1
+    grep -qx "MERGED $tip" <<< "$prs" && continue
+    git -C "$main" merge-base --is-ancestor "$tip" origin/main 2>/dev/null \
+      || refuse "$branch at $tip is in no merged PR and not in origin/main"
+  done
+  if [[ $found -eq 0 ]] && ! grep -q '^MERGED ' <<< "$prs"; then refuse "no branch $branch and no merged PR for it"; fi
   return 0
 }
 

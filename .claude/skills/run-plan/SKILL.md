@@ -54,8 +54,8 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      <worktree> <branch>; fi`. `merge_pr.sh` waits for every check on that commit and merges only if all passed and
      the commit is still the PR's head; never run `gh pr merge` yourself. A failed merge (CI, a transient GitHub
      error) leaves the PR open: retry the merge.
-     `cleanup_worktree.sh` refuses (exit 1) unless the branch's PR is merged, or the branch has no PR and is merged
-     into origin/main.
+     `cleanup_worktree.sh` refuses (exit 1) while a PR of the branch is open, or while a tip of the branch (local
+     or remote) is neither the head of a merged PR nor in origin/main.
    - **Merge strictly one at a time.** Send `YOUR TURN` to one implementor only, after the previous merge. IDs never
      clash, and every merge is tested against the real `main`.
    - `ESCALATE`: follow §2.
