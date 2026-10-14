@@ -155,6 +155,34 @@ def validate(
     return Validated(ExtractionConfigIR.model_validate(validated.model_dump(by_alias=True)), report)
 
 
+def with_unlearned(validated: Validated, reasons: Mapping[str, str]) -> Validated:
+    """`validated` with a dropped `FieldReport` for each schema field learning gave no steps, saying why in `dropped`
+    (`not_learned: <reason>`), so the report covers every field the schema asks for. The config is unchanged."""
+    report = validated.report
+    listed = set(report.fields) | (set(report.listing.fields) if report.listing is not None else set())
+    pages = len(report.held_out)
+    unlearned = {
+        name: FieldReport(
+            pages=pages,
+            matched=0,
+            valid=0,
+            published=0,
+            reproduced=0,
+            comparable=0,
+            corroborated_on=0,
+            status=None,
+            yield_=0,
+            validity=None,
+            dropped=f"not_learned: {reason}",
+        )
+        for name, reason in reasons.items()
+        if name not in listed
+    }
+    if not unlearned:
+        return validated
+    return Validated(validated.ir, report.model_copy(update={"fields": {**report.fields, **unlearned}}))
+
+
 def corroboration(comparable: int, agreeing: int) -> FieldStatus:
     """§8.3 step 4: `corroborated` with at least `MIN_COMPARABLE` comparable pages, all agreeing while there are fewer
     than `EVERY_PAGE_BELOW`, and at least `CORROBORATION_SHARE` of them from then on."""

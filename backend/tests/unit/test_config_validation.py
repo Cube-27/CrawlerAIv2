@@ -11,7 +11,14 @@ import pytest
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.model import ExtractionConfigIR, XPathStep
-from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, corroboration, validate
+from crawlerai.config_ir.validation import (
+    Facts,
+    HeldOutPage,
+    Validated,
+    corroboration,
+    validate,
+    with_unlearned,
+)
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, SchemaId
@@ -285,3 +292,35 @@ def test_the_validated_config_is_a_valid_ir_document() -> None:
     document = result.ir.model_dump(mode="json", by_alias=True)
     assert ExtractionConfigIR.model_validate(document) == result.ir
     assert document["fields"]["title"]["steps"] == [XPathStep.model_validate(TITLE).model_dump(mode="json")]
+
+
+# --- fields learning gave no steps ---
+
+
+def test_every_schema_field_learning_left_out_is_reported_with_why() -> None:
+    # The operator sees why a field is missing from the config, not only the fields that reached validation.
+    schema = _schema(title=TEXT, price=FieldSpec(type=FieldType.MONEY, description="d"))
+    validated = _validate(_ir({"title": TITLE}), [_titled(n) for n in range(3)], schema)
+
+    reported = with_unlearned(validated, {"price": "not_published_on_every_page", "title": "ignored"})
+
+    assert reported.ir == validated.ir
+    assert _report(reported, "title") == _report(validated, "title")
+    assert _report(reported, "price") == {
+        "pages": 3,
+        "matched": 0,
+        "valid": 0,
+        "published": 0,
+        "reproduced": 0,
+        "comparable": 0,
+        "corroborated_on": 0,
+        "status": None,
+        "yield": 0.0,
+        "validity": None,
+        "dropped": "not_learned: not_published_on_every_page",
+    }
+
+
+def test_nothing_left_out_leaves_the_report_as_validated() -> None:
+    validated = _validate(_ir({"title": TITLE}), [_titled(n) for n in range(3)])
+    assert with_unlearned(validated, {}) is validated
