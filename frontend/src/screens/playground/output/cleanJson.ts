@@ -1,13 +1,19 @@
 import type { JsonValuesItem } from "../../../api/jobs";
 import type { ScrapeRecord, ScrapeResponse } from "../../../api/scrape";
 
+/** Code-unit order of two strings, the order Python's `sorted` gives the server. */
+function codeUnitOrder(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 /** A clean record (SPEC-14 §4.4): each field's published value, or null, picked from the record the server sent. A
  * field's `value` is its published value or null (SPEC-07 §4.4), so nothing is decided here. Names are in name order
  * (D-0816), as `json_values` has them; schema names are ASCII (`NAME_PATTERN`), so code-unit order is that order. */
 function cleanRecord(record: ScrapeRecord): JsonValuesItem["records"][number] {
   return Object.fromEntries(
     Object.keys(record.fields)
-      .sort()
+      .sort(codeUnitOrder)
       .map((name) => [name, record.fields[name]?.value ?? null]),
   );
 }

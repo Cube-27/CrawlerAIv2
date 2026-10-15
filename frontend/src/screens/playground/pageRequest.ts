@@ -5,7 +5,7 @@ import type { PageFormat } from "./FormatSelect";
 
 /** The page kinds whose records the server refuses, for a scrape and a batch scrape alike: SPEC-07 §4.4 and D-0502
  * leave listing records out (`check_records`). */
-const NO_RECORDS_PAGE_KINDS: readonly PageKind[] = ["listing"];
+const NO_RECORDS_PAGE_KINDS: ReadonlySet<PageKind> = new Set(["listing"]);
 
 /** The non-blank lines of `text`, trimmed: a list entered one entry per line. */
 export function lines(text: string): string[] {
@@ -64,7 +64,7 @@ export function asksForNothing(form: FormatForm): boolean {
 export function requestPageKind(form: PageKindForm): PageKind | null {
   if (form.schemaId === "") return form.options.pageKind;
   const kind = form.schemaPageKind;
-  return kind === null || NO_RECORDS_PAGE_KINDS.includes(kind) ? null : kind;
+  return kind === null || NO_RECORDS_PAGE_KINDS.has(kind) ? null : kind;
 }
 
 export const NO_ERRORS: Readonly<Record<string, string>> = {};

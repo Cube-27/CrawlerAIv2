@@ -10,8 +10,9 @@ export interface JsonToken {
 }
 
 // RFC 8259 §7 strings, §6 numbers and §3 literals, in JSON.stringify's output: a string is read whole before anything
-// inside it could match, and a string followed by `:` is a member name (§4).
-const TOKEN = /("(?:[^"\\]|\\.)*")(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/g;
+// inside it could match, and a string followed by `:` is a member name (§4; JSON.stringify writes the `:` right
+// after it). Outside strings, a run of number characters is a number (§6) and a run of lowercase letters a literal.
+const TOKEN = /("(?:[^"\\]|\\.)*")(:)?|-?\d[\d.eE+-]*|[a-z]+/g;
 
 function kindOf(match: RegExpExecArray): JsonTokenKind {
   if (match[1] !== undefined) return match[2] === undefined ? "string" : "key";
