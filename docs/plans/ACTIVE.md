@@ -28,8 +28,8 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 
 ## Current focus
 
-- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1–9 merged (6–8 in #198);
-  next PR 10 (Get code). PR 11 (additional fields) is blocked on D-0810.
+- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): rows 1–10 done; row 11 (additional
+  fields) is blocked on D-0810.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0311 (GeoNames pin), D-0355 (derived `url` provenance), D-0576 (`drift_margins.json`), D-0656
@@ -59,7 +59,6 @@ Full rows are in git history.
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
 - Packaging: a wheel built from an sdist (`uv build`'s default) has no `.git` and no fetched files, so it reports `unknown` and lacks fetched data unless `CRAWLERAI_GIT_SHA` is set and the data fetched first; the image's fetch re-runs on every `src/` change (copy only `core/data.py` before it) and keeps the data twice (D-0880) [#200].
-- Playground: the recent-runs table and the Jobs table could share one row component; the mode tests could share their API-stub fixtures [#198].
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
@@ -68,10 +67,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Indexes, measure first: `url_task (job_id, status, outcome)` if large-crawl listing is slow [#19, #146]; `job (started_at) WHERE status = 'running'` for `fail_stalled_jobs` and `expire_learn_runs`, which share one shape and could share one reaper [#195].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
-- `TruncatedText` makes every event data and Reason cell a tab stop [#157].
 - Resolve: zero-touch ignores a required row-mapped field (no preset has one) [#176]. Optional: `Final` on `_SET_NULL` [#177]. A listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
 - Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64]. The HTTP rung's cookies (libcurl's engine, built without libpsl) are not checked against the public-suffix list, and a `Domain=` equal to a setting host that is itself a public suffix is kept as a domain cookie, not host-only (RFC 6265 §5.3 step 5) (D-0884) [#200].
-- Smaller items from done-spec tables (unverified; check before building): theme tracks live OS changes and SPEC-00 §4.3's HeroUI licence/version [#4].
 - More of the same, SPEC-05/08/10: CSV formula injection in downloads, blocked on D-0879 [#115]; the INV-27 markdown leg parses table cells back [#120]; two concurrent first uses of a new inline schema name give a 409 [#105].
 - Recurring crawls: a test that `changed_since` waits on `RECORD_FEED_LOCK` (hold the shared lock in an open transaction) [#199].
 - Workflow tooling: ruff/Oxlint rules for more of ENGINEERING's analyser patterns; if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
@@ -98,5 +95,5 @@ Rows 1–6 and 8–12 done (#28, #27, #30, #33, #29, #32, #35, #42, #34, #39, #4
 | 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | done (#198) | D-0855, D-0856, D-0858–D-0860. |
 | 8 | Batch from results | done (#198) | D-0861. |
 | 9 | `json_values` results format (backend) | done (#190) | D-0813–D-0816. |
-| 10 | Get code drawer | todo | Needs 7. Owner's reference shared 2026-10-15. |
+| 10 | Get code drawer | done (#201) | D-0890–D-0894. |
 | 11 | Additional fields (chips) | blocked (D-0810) | |
