@@ -57,6 +57,9 @@ BACKOFF_BASE: Final = timedelta(seconds=30)
 LAST_ERROR_BYTES: Final = 2048
 # How many stalled jobs one scheduler turn ends (`fail_stalled_jobs`); a full batch runs again at once.
 STALLED_BATCH: Final = 100
+# How many expired leases one scheduler turn releases (`release_expired_leases`), each turn one transaction; a full
+# batch runs again at once.
+LEASE_BATCH: Final = 100
 # The kinds of job a process runs while its caller waits, with no task for a while or ever: a `map`, an `extract`
 # drafting its prompt's schema.
 _RUN_INLINE: Final[tuple[JobKind, ...]] = ("map", "extract")
@@ -211,9 +214,9 @@ async def release_task(conn: AsyncConnection, task: ClaimedTask, *, after: timed
     await _move(conn, task, "queued", attempts=UrlTask.attempts - 1, next_attempt_at=func.now() + after)
 
 
-async def release_expired_leases(conn: AsyncConnection, *, ending: JobEnding | None = None) -> int:
-    """Requeue, after the usual backoff, or fail on the last attempt, every claimed task whose lease has run out
-    (§4.3), and return how many there were. Tasks a worker is finishing right now are skipped; the next run sees them.
+async def release_expired_leases(conn: AsyncConnection, *, batch: int, ending: JobEnding | None = None) -> int:
+    """Requeue, after the usual backoff, or fail on the last attempt, up to `batch` claimed tasks whose lease has run
+    out (§4.3), and return how many. Tasks a worker is finishing right now are skipped; the next run sees them.
     `ending` runs for each job this ends.
     """
     expired = (
@@ -221,6 +224,7 @@ async def release_expired_leases(conn: AsyncConnection, *, ending: JobEnding | N
         .where(UrlTask.status == "claimed", UrlTask.lease_until < func.now())
         # Job by job, so that two schedulers lock job rows in the same order.
         .order_by(UrlTask.job_id, UrlTask.id)
+        .limit(batch)
         .with_for_update(skip_locked=True)
     )
     tasks = await _claimed(conn, expired)

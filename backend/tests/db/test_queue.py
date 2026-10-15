@@ -198,7 +198,7 @@ async def test_an_expired_lease_on_the_last_attempt_fails_the_task_and_ends_the_
     await _expire(conn, await _claim_one(conn))
     ending = Ending()
 
-    assert await release_expired_leases(conn, ending=ending) == 1
+    assert await release_expired_leases(conn, batch=10, ending=ending) == 1
 
     row = await _row(conn, task_id)
     assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 3, "lease expired")
@@ -397,7 +397,7 @@ async def test_an_expired_lease_is_requeued_with_backoff_and_the_old_claim_is_fe
     expiring, live = await claim_tasks(conn, "w1", 2)
     stale = await _expire(conn, expiring)
 
-    released = await release_expired_leases(conn)
+    released = await release_expired_leases(conn, batch=10)
 
     assert released == 1
     row = await _row(conn, expired_id)
@@ -414,6 +414,19 @@ async def test_an_expired_lease_is_requeued_with_backoff_and_the_old_claim_is_fe
         await complete_task(conn, stale, "extracted")
     await complete_task(conn, live, "extracted")
     assert await _job_state(conn, job_id) == ("running", [])
+
+
+async def test_expired_leases_are_released_a_batch_per_run(conn: AsyncConnection) -> None:
+    job_id = await _job(conn)
+    task_ids = await _tasks(conn, job_id, 3)
+    for task in await claim_tasks(conn, "w1", 3):
+        await _expire(conn, task)
+
+    assert await release_expired_leases(conn, batch=2) == 2
+    statuses = [(await _row(conn, task_id)).status for task_id in task_ids]
+    assert sorted(statuses) == ["claimed", "queued", "queued"]
+    assert await release_expired_leases(conn, batch=2) == 1
+    assert {(await _row(conn, task_id)).status for task_id in task_ids} == {"queued"}
 
 
 async def test_a_job_left_running_without_tasks_for_a_lease_fails(conn: AsyncConnection) -> None:

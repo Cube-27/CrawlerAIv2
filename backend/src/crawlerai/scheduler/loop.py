@@ -24,7 +24,7 @@ from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks
 from crawlerai.config_ir.learning import EXPIRE_BATCH, expire_learn_runs
 from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
-from crawlerai.db.queue import STALLED_BATCH, fail_stalled_jobs, release_expired_leases
+from crawlerai.db.queue import LEASE_BATCH, STALLED_BATCH, fail_stalled_jobs, release_expired_leases
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.recheck import RECHECK_BATCH, recheck_fetch_method
 from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
@@ -46,7 +46,12 @@ def periodic(store: ObjectStore, fetch: Rung, post: Poster) -> tuple[Periodic, .
     `fetch` is the HTTP rung, for the fetch-method re-check (SPEC-02 §4.4); `post` sends webhooks (SPEC-10 §4.2)."""
     return (
         # A job its last expired lease ends is diffed as the worker would have (SPEC-11 §4.5).
-        Periodic("release_expired_leases", timedelta(minutes=1), partial(release_expired_leases, ending=close_run)),
+        Periodic(
+            "release_expired_leases",
+            timedelta(minutes=1),
+            partial(release_expired_leases, batch=LEASE_BATCH, ending=close_run),
+            batch=LEASE_BATCH,
+        ),
         Periodic(
             "fail_stalled_jobs",
             timedelta(minutes=1),
