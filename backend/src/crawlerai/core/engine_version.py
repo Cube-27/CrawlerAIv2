@@ -64,4 +64,11 @@ def engine_version(backend: Path | None) -> str:
     return f"{sha}+cal.{calibration}"
 
 
-ENGINE_VERSION: Final = engine_version(engine_dir(Path(__file__)))
+ENGINE_DIR: Final = engine_dir(Path(__file__))
+ENGINE_VERSION: Final = engine_version(ENGINE_DIR)
+
+
+def engine_data_dir() -> Path | None:
+    """The engine directory's `data/`: its calibration, precedence, vocabularies and fetched files; `None` without
+    an engine directory."""
+    return None if ENGINE_DIR is None else data_dir(ENGINE_DIR)

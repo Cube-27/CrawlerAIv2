@@ -66,12 +66,7 @@ def _stated_member(text: str, members: frozenset[str], ctx: Context) -> Normaliz
     name members of this enumeration and nothing else (the structural property the match rests on)."""
     words = vocab.tokens(text)
     found = [vocab.find_codes(v, words, ctx) for v in vocab.type_vocabularies_within(members)]
-    codes = frozenset().union(*(c for c in found if c is not None))
-    if not codes:
-        return Invalid("not_a_member")
-    if len(codes) > 1:
-        return Ambiguous("several_members", tuple(sorted(codes)))
-    return Ok(next(iter(codes)))
+    return _one_code(frozenset().union(*(c for c in found if c is not None)), "not_a_member")
 
 
 def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
@@ -88,8 +83,13 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
     codes = vocab.find_codes(by_language, words, ctx)
     if codes is None:
         return Invalid("no_vocabulary_for_language")
+    return _one_code(codes, "no_match")
+
+
+def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
+    """The one code found; two or more are `Ambiguous`, none is `Invalid(none)`."""
     if not codes:
-        return Invalid("no_match")
+        return Invalid(none)
     if len(codes) > 1:
         return Ambiguous("several_members", tuple(sorted(codes)))
     return Ok(next(iter(codes)))

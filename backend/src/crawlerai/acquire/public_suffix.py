@@ -2,18 +2,20 @@
 unless that suffix is the setting host itself, so no site sets a cookie for every site under a shared suffix.
 
 The suffixes come from the Public Suffix List (`backend/data/publicsuffix/`, pinned in `backend/data/manifest.json`,
-fetched by `crawlerai data fetch`; C4), matched by the list's own "Formal Algorithm". Without the file the cookie policy is the standard library's, as before the list was used.
+fetched by `crawlerai data fetch`; C4), matched by the list's own "Formal Algorithm". Without the file the list is
+empty, and only the list's implicit `*` rule (a single label) applies.
 """
 
 import logging
 from dataclasses import dataclass
 from functools import cache
-from http.cookiejar import Cookie, CookieJar, DefaultCookiePolicy
+from http.cookiejar import Cookie, DefaultCookiePolicy
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlsplit
 from urllib.request import Request
 
-from crawlerai.core.engine_version import data_dir, engine_dir
+from crawlerai.core.engine_version import engine_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ class PublicSuffixes:
 
 def _ascii(name: str) -> str:
     """A domain as the cookie header carries it: IDNA A-labels (RFC 5890 §2.3.2.1), lowercase."""
-    return name.encode("idna").decode("ascii").lower() if not name.isascii() else name.lower()
+    return name.lower() if name.isascii() else name.encode("idna").decode("ascii").lower()
 
 
 class SuffixCookiePolicy(DefaultCookiePolicy):
@@ -72,26 +74,22 @@ class SuffixCookiePolicy(DefaultCookiePolicy):
         self._suffixes = suffixes
 
     def set_ok_domain(self, cookie: Cookie, request: Request) -> bool:
-        if cookie.domain_specified:
-            domain = cookie.domain.lstrip(".").lower()
-            if self._suffixes.is_public_suffix(domain) and domain != (request.host or "").partition(":")[0].lower():
-                return False
+        domain = cookie.domain.lstrip(".").lower()
+        if (
+            cookie.domain_specified
+            and self._suffixes.is_public_suffix(domain)
+            and domain != urlsplit(request.get_full_url()).hostname
+        ):
+            return False
         return super().set_ok_domain(cookie, request)
 
 
-def cookie_jar(suffixes: PublicSuffixes | None) -> CookieJar:
-    """A jar for one fetch: domain cookies are checked against `suffixes` when there is a list."""
-    if suffixes is None:
-        return CookieJar(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain))
-    return CookieJar(SuffixCookiePolicy(suffixes))
-
-
 @cache
-def default_suffixes() -> PublicSuffixes | None:
-    """The list in the engine directory's `data/`, read once; None when it has not been fetched."""
-    engine = engine_dir(Path(__file__))
-    path = None if engine is None else data_dir(engine) / SUFFIX_FILE
+def default_suffixes() -> PublicSuffixes:
+    """The list in the engine directory's `data/`, read once; empty when it has not been fetched."""
+    data = engine_data_dir()
+    path = None if data is None else data / SUFFIX_FILE
     if path is None or not path.is_file():
-        log.warning("no public suffix list: Domain= cookies are checked by the standard library's policy only")
-        return None
+        log.warning("no public suffix list: only single-label Domain= cookies are refused")
+        return PublicSuffixes.parse("")
     return PublicSuffixes.parse(path.read_text(encoding="utf-8"))

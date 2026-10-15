@@ -131,10 +131,11 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         return Invalid("surrogate")
     if not raw.strip():
         return Invalid("empty")
-    text, periods = _strip_periods(raw, vocab.context_languages(ctx))
+    languages = vocab.context_languages(ctx)
+    text, periods = _strip_periods(raw, languages)
     if len(periods) > 1:
         return Invalid("period_mismatch")
-    bounds = _split_bounds(text, _separator(vocab.context_languages(ctx)))
+    bounds = _split_bounds(text, _separator(languages))
     if bounds is None:
         return Invalid("not_a_range")
     texts = _bound_texts(*bounds)
@@ -181,8 +182,12 @@ def _separator(languages: frozenset[str]) -> re.Pattern[str]:
     word whole and in any case, with the white space around them."""
     entries = vocab.entries_for(vocab.type_vocabulary(_SEPARATOR_VOCABULARY) or {}, languages)
     words = sorted({phrase for e in entries for phrase in e.phrases})
-    written = [r"\b" + r"\s+".join(map(re.escape, w.split(" "))) + r"\b" for w in words]
-    return re.compile(rf"\s*(?:{'|'.join([_DASHES, *written])})\s*", re.IGNORECASE)
+    return re.compile(rf"\s*(?:{'|'.join([_DASHES, *map(_whole_words, words)])})\s*", re.IGNORECASE)
+
+
+def _whole_words(phrase: str) -> str:
+    """A vocabulary phrase (token form) as a pattern: its words whole, with any white space between them."""
+    return r"\b" + r"\s+".join(map(re.escape, phrase.split(" "))) + r"\b"
 
 
 def _strip_periods(raw: str, languages: frozenset[str]) -> tuple[str, set[str]]:
@@ -211,9 +216,8 @@ def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[st
     alternatives: list[str] = []
     codes: dict[str, str] = {}
     for i, (phrase, code) in enumerate(sorted(phrases.items())):
-        words = phrase.split(" ")
-        written = r"\s+".join(map(re.escape, words))
-        alternatives.append(rf"(?P<p{i}>\b{written}\b|/\s*{re.escape(words[-1])}\b)")
+        last = phrase.rsplit(" ", 1)[-1]
+        alternatives.append(rf"(?P<p{i}>{_whole_words(phrase)}|/\s*{re.escape(last)}\b)")
         codes[f"p{i}"] = code
     return re.compile("|".join(alternatives), re.IGNORECASE), codes
 

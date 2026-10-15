@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.base import Candidate
-from crawlerai.core.engine_version import data_dir, engine_dir
+from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
@@ -86,10 +86,10 @@ class Vocabulary:
 @cache
 def default_vocabulary() -> Vocabulary:
     """The vocabulary from the engine directory's `data/`, read once."""
-    engine = engine_dir(Path(__file__))
-    if engine is None:
+    data = engine_data_dir()
+    if data is None:
         raise VocabularyMissing("no engine directory: the schema.org vocabulary is read from its data/")
-    return Vocabulary.read(data_dir(engine) / VOCABULARY_FILE)
+    return Vocabulary.read(data / VOCABULARY_FILE)
 
 
 def _class_name(node: Mapping[str, JsonValue]) -> str | None:

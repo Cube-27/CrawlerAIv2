@@ -102,9 +102,13 @@ async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
     return problem_response(request, error)
 
 
+def _within_body(location: tuple[int | str, ...]) -> tuple[int | str, ...]:
+    """A body error's location within the body; any other keeps where it is (`query.status`)."""
+    return location[1:] if location[:1] == ("body",) else location
+
+
 async def _on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
-    # A body error's path is within the body; any other names where it is (`query.status`).
-    errors = [field_error(e, e["loc"][1:] if e["loc"][:1] == ("body",) else e["loc"]) for e in exc.errors()]
+    errors = [field_error(e | {"loc": _within_body(e["loc"])}) for e in exc.errors()]
     return problem_response(request, invalid("the request is invalid", errors))
 
 

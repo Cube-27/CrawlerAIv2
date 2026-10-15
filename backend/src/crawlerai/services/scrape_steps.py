@@ -10,7 +10,6 @@ import logging
 import math
 from collections.abc import Iterable
 from dataclasses import replace
-from pathlib import Path
 from typing import Any, Final, Literal, Self, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -30,7 +29,7 @@ from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import PageMetadata, metadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.core.engine_version import data_dir, engine_dir
+from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import (
     CaptureId,
@@ -82,12 +81,12 @@ def load_engine_data() -> EngineData | None:
     """The engine's data files from the engine directory's `data/`, for `records` and replays; None where they are
     not there (no engine directory, or a tree without `crawlerai data fetch`): `records` and replays are then
     unavailable, and the other formats work."""
-    engine = engine_dir(Path(__file__))
-    if engine is None:
+    data = engine_data_dir()
+    if data is None:
         log.warning("no engine directory: records and replays are unavailable")
         return None
     try:
-        return EngineData.load(data_dir(engine))
+        return EngineData.load(data)
     except VocabularyMissing as e:
         log.warning("records and replays are unavailable: %s", e)
         return None
@@ -95,8 +94,8 @@ def load_engine_data() -> EngineData | None:
 
 def load_drift_margins() -> DriftMargins | None:
     """The dev-fitted drift margins (SPEC-08 §4.9); None when none are fitted, and then no field is suspended."""
-    engine = engine_dir(Path(__file__))
-    return None if engine is None else load_margins(data_dir(engine) / MARGINS_FILE)
+    data = engine_data_dir()
+    return None if data is None else load_margins(data / MARGINS_FILE)
 
 
 class Input(BaseModel):

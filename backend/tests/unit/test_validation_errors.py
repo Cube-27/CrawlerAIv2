@@ -1,7 +1,6 @@
 """Every validation error the engine reports reads the same way: a dotted path with list indexes in brackets, and
 our own validators' message without pydantic's "Value error, " prefix."""
 
-import pytest
 from pydantic import BaseModel, ValidationError, field_validator
 
 from crawlerai.core.validation import error_path, field_error
@@ -36,15 +35,6 @@ def test_an_own_validator_reports_its_message_alone_at_an_indexed_path() -> None
 
 def test_a_pydantic_error_keeps_its_message() -> None:
     assert _errors({"rows": [{"name": 3}]}) == [("rows[0].name", "Input should be a valid string")]
-
-
-def test_an_explicit_location_replaces_the_error_s_own() -> None:
-    raw = {"rows": [{"name": " "}]}
-    with pytest.raises(ValidationError) as caught:
-        _Table.model_validate(raw)
-    [error] = caught.value.errors()
-
-    assert field_error(error, ("query", "rows")) == ("query.rows", "the name is blank")
 
 
 def test_the_whole_document_has_the_empty_path() -> None:

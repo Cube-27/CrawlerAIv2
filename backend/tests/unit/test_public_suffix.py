@@ -38,7 +38,7 @@ def test_a_domain_is_a_public_suffix_by_the_list_s_rules(domain: str, public: bo
     assert SUFFIXES.is_public_suffix(domain) is public
 
 
-def _fetch_with(suffixes: PublicSuffixes | None, set_cookie: str, monkeypatch: pytest.MonkeyPatch) -> str | None:
+def _fetch_with(suffixes: PublicSuffixes, set_cookie: str, monkeypatch: pytest.MonkeyPatch) -> str | None:
     """The Cookie header the second hop of a fetch from `api.shared.test` to `cdn.shared.test` carries."""
     monkeypatch.setattr(api, "default_suffixes", lambda: suffixes)
     seen: list[httpx.Request] = []
@@ -66,14 +66,16 @@ def test_a_cookie_for_a_registrable_domain_is_kept(monkeypatch: pytest.MonkeyPat
     assert _fetch_with(suffixes, "keep=1; Domain=shared.test", monkeypatch) == "keep=1"
 
 
-def test_without_the_list_the_standard_policy_decides(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert _fetch_with(None, "keep=1; Domain=shared.test", monkeypatch) == "keep=1"
+def test_without_the_list_a_registrable_domain_keeps_its_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _fetch_with(PublicSuffixes.parse(""), "keep=1; Domain=shared.test", monkeypatch) == "keep=1"
 
 
-def test_a_missing_list_file_is_no_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(public_suffix, "engine_dir", lambda _module: None)
+def test_a_missing_list_file_is_an_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(public_suffix, "engine_data_dir", lambda: None)
     public_suffix.default_suffixes.cache_clear()
     try:
-        assert public_suffix.default_suffixes() is None
+        suffixes = public_suffix.default_suffixes()
     finally:
         public_suffix.default_suffixes.cache_clear()
+
+    assert (suffixes.is_public_suffix("shared.test"), suffixes.is_public_suffix("test")) == (False, True)

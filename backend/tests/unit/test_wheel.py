@@ -1,6 +1,7 @@
 """The wheel carries `VERSION` and the manifest's data files, and an installed copy finds them (D-0492)."""
 
 import hashlib
+import importlib.util
 import json
 import shutil
 import zipfile
@@ -9,10 +10,18 @@ from pathlib import Path
 import pytest
 from hatchling.builders.wheel import WheelBuilder
 
-from crawlerai.core.engine_version import engine_dir, engine_version
+from crawlerai.config_ir.drift import MARGINS_FILE
+from crawlerai.core import engine_version as engine_version_module
+from crawlerai.core.engine_version import CALIBRATION_FILE, PACKAGED_ENGINE_DIR, engine_dir, engine_version
+from crawlerai.resolve.preference import PRECEDENCE_FILE
 
 BACKEND = Path(__file__).resolve().parents[2]
 SHA = "0123456789abcdef0123456789abcdef01234567"
+_HOOK = importlib.util.spec_from_file_location("hatch_build", BACKEND / "hatch_build.py")
+assert _HOOK is not None
+assert _HOOK.loader is not None
+hatch_build = importlib.util.module_from_spec(_HOOK)
+_HOOK.loader.exec_module(hatch_build)
 CALIBRATION = b'{"source_split": "dev", "buckets": []}'
 
 
@@ -81,3 +90,10 @@ def test_a_build_given_something_other_than_a_sha_fails(tmp_path: Path, monkeypa
 
     with pytest.raises(ValueError, match="not a git SHA"):
         _build(root, out)
+
+
+def test_the_build_hook_names_what_the_engine_reads() -> None:
+    # The hook runs in the build environment, without the package, so it keeps its own copies of these names.
+    assert f"crawlerai/{PACKAGED_ENGINE_DIR}" == hatch_build.PACKAGED
+    assert hatch_build._GIT_SHA.pattern == engine_version_module._GIT_SHA.pattern
+    assert set(hatch_build._DEV_FITTED) == {PRECEDENCE_FILE, CALIBRATION_FILE, MARGINS_FILE}
