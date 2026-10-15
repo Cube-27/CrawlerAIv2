@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from hatchling.builders.sdist import SdistBuilder
 from hatchling.builders.wheel import WheelBuilder
 
 from crawlerai.config_ir.drift import MARGINS_FILE
@@ -81,6 +82,40 @@ def test_an_installed_wheel_reports_its_build_and_calibration(tmp_path: Path, mo
 
     assert engine == site_packages / "crawlerai" / "_engine"
     assert engine_version(engine) == f"{SHA}+cal.{hashlib.sha256(CALIBRATION).hexdigest()[:12]}"
+
+
+def test_a_wheel_built_from_the_sdist_carries_the_version_and_the_data_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CRAWLERAI_GIT_SHA", SHA)
+    root = _project(tmp_path / "project")
+    [sdist] = SdistBuilder(str(root)).build(directory=str(tmp_path / "sdist"), versions=["standard"])
+    shutil.unpack_archive(sdist, tmp_path / "unpacked", filter="data")
+    [unpacked] = (tmp_path / "unpacked").iterdir()
+    # The unpacked sdist is no checkout, and nothing names the commit: the sdist's VERSION does.
+    monkeypatch.delenv("CRAWLERAI_GIT_SHA")
+
+    with _build(unpacked, tmp_path / "dist") as wheel:
+        packaged = sorted(name for name in wheel.namelist() if name.startswith("crawlerai/_engine/"))
+        version = wheel.read("crawlerai/_engine/VERSION")
+
+    assert packaged == [
+        "crawlerai/_engine/VERSION",
+        "crawlerai/_engine/data/calibration.json",
+        "crawlerai/_engine/data/drift_margins.json",
+        "crawlerai/_engine/data/listed/words.txt",
+        "crawlerai/_engine/data/manifest.json",
+    ]
+    assert version == f"{SHA}\n".encode()
+
+
+def test_a_wheel_build_with_no_commit_to_name_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CRAWLERAI_GIT_SHA", raising=False)
+    root = _project(tmp_path / "project")  # no checkout, no VERSION
+    out = tmp_path / "dist"
+
+    with pytest.raises(RuntimeError, match="CRAWLERAI_GIT_SHA"):
+        _build(root, out)
 
 
 def test_a_build_given_something_other_than_a_sha_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

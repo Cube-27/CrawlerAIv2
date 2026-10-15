@@ -1,9 +1,13 @@
-"""Wheel build hook: writes `VERSION` and puts it, with the data files the manifest lists, inside the package.
+"""Build hook: writes `VERSION` and puts it, with the data files the manifest lists, inside the wheel's package.
 
 An installed wheel has no backend source tree, so `crawlerai.core.engine_version.engine_dir` reads `VERSION` and
 `data/` from `crawlerai/_engine/` instead (SPEC-01 §4.7). Only the files `data/manifest.json` lists, its dev-fitted
 files and the manifest itself go in (C4, INV-05); a fetched file that `crawlerai data fetch` has not downloaded is left
 out, and the engine then reports it missing. An editable install runs from the source tree and gets nothing.
+
+An sdist carries `VERSION` and the same data files at their own paths, so a wheel built from it (`uv build`'s default)
+gets them although the unpacked sdist is no checkout and holds none of the ignored files. A build with no commit to
+name fails rather than report `unknown`.
 """
 
 import json
@@ -25,9 +29,12 @@ _DEV_FITTED = ("source_precedence.yaml", "calibration.json", "drift_margins.json
 
 
 def git_sha(root: Path) -> str | None:
-    """The commit being built: `CRAWLERAI_GIT_SHA` (a build without a checkout, such as the image), else `git
-    rev-parse HEAD` in `root`; None when neither gives one."""
+    """The commit being built: `CRAWLERAI_GIT_SHA` (a build without a checkout, such as the image), else the `VERSION`
+    of an unpacked sdist (it has `PKG-INFO`), else `git rev-parse HEAD` in `root`; None when none gives one. In a
+    checkout, `VERSION` is an earlier build's output, so git names the commit."""
     sha = os.environ.get(SHA_VARIABLE, "").strip()
+    if not sha and (root / "PKG-INFO").is_file() and (root / "VERSION").is_file():
+        sha = (root / "VERSION").read_text(encoding="ascii").strip()
     if not sha:
         try:
             done = subprocess.run(  # noqa: S603 - fixed arguments, no shell
@@ -56,14 +63,16 @@ def data_files(data: Path) -> list[str]:
 
 class EngineFilesHook(BuildHookInterface):  # type: ignore[type-arg]
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
-        if self.target_name != "wheel" or version == "editable":
+        if self.target_name not in ("wheel", "sdist") or version == "editable":
             return
         root = Path(self.root)
-        include = build_data["force_include"]
         sha = git_sha(root)
-        # Without a commit to name, the wheel has no VERSION and its engine version says `unknown`.
-        if sha is not None:
-            (root / "VERSION").write_text(f"{sha}\n", encoding="ascii", newline="\n")
-            include[str(root / "VERSION")] = f"{PACKAGED}/VERSION"
+        if sha is None:
+            raise RuntimeError(f"no commit to name in VERSION: set {SHA_VARIABLE}, or build from a git checkout")
+        (root / "VERSION").write_text(f"{sha}\n", encoding="ascii", newline="\n")
+        # The wheel holds them in the package; the sdist at their own paths, for the wheel built from it.
+        target = f"{PACKAGED}/" if self.target_name == "wheel" else ""
+        include = build_data["force_include"]
+        include[str(root / "VERSION")] = f"{target}VERSION"
         for path in data_files(root / "data"):
-            include[str(root / "data" / path)] = f"{PACKAGED}/data/{path}"
+            include[str(root / "data" / path)] = f"{target}data/{path}"
