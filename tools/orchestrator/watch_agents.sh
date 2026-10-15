@@ -1,5 +1,5 @@
 #!/bin/bash
-# One watcher for every herdr agent: exits (printing why) as soon as any named agent is not working
+# One watcher for every herdr agent of this project (lib.sh project_agents): exits (printing why) as soon as any named agent is not working
 # (SETTLED <name> <status>, including one already idle at start; `unknown` counts as working, since herdr reports
 # it briefly for agents mid-turn), disappears (GONE <name>), or free memory
 # falls below MIN_FREE_MB (LOWMEM), or a new comment starting READY, BLOCKED or ESCALATE appears on an open PR
@@ -11,11 +11,12 @@ MIN_FREE_MB=${MIN_FREE_MB:-1500}
 INTERVAL=${INTERVAL:-30}
 IGNORE=${IGNORE:-}
 
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+main=$(main_checkout)
+
 snapshot() {
-  # Windows Python prints CRLF; strip \r so statuses compare equal.
-  herdr agent list 2>/dev/null | python -c "import json,sys
-for a in json.load(sys.stdin)['result']['agents']:
-    if a.get('name'): print(a['name'], a['agent_status'])" 2>/dev/null | tr -d '\r' | sort
+  # Only this project's agents: herdr lists every project's (project_agents strips Windows Python's \r).
+  herdr agent list 2>/dev/null | project_agents "$main" 2>/dev/null | sort
   return 0
 }
 free_mb() {
