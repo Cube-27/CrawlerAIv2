@@ -82,7 +82,9 @@ alternative  := Type ('.' property)+ ('+' property)?       // as today
   precedence (text, url, image) then decides as today (§10). No alternative outranks another: an order would be a
   precedence rule nobody fitted (C7). Example: `"Product.sku|Offer.sku"` (schema.org defines `sku` on both).
 - `parse_paths(path) -> tuple[MappedPath, ...]` replaces `parse_path` for every consumer: `collect/adapter`,
-  `collect/og` (a field ends in `.name` when any alternative does), `resolve/derive`, `resolve/intent` (primary
+  `collect/og` (a field's role is the property its alternatives name on their root type, when every two-step
+  alternative names the same one; otherwise none; the `.name` text-stands-in rule stays in
+  `schema_org_map.select`), `resolve/derive`, `resolve/intent` (primary
   types are the roots of every alternative), `resolve/preference` (an Offer field is one whose every alternative
   starts at `Offer` or a subtype), `resolve/records`.
 - Every alternative is checked against the pinned schema.org vocabulary as today.
@@ -148,8 +150,10 @@ Offer of the group. Rows are matched by key, never by position.
 
 - A row's **key values** are the `Ok` normalized values of its key sub-fields' candidates in its scope, screened
   for INV-13 (URL parameters) as usual.
-- A `url` key value equal (url equality, SPEC-04 §4.5) to the request, final or canonical URL, or to one of the
-  target's own URLs, is not a key value: it names the page or the group, not one variant. The baseline shows
+- A `url` key value equal (url equality, SPEC-04 §4.5) to the request, final or canonical URL, or to the target's
+  own `url`, IRI or `mainEntityOfPage`, is not a key value: it names the page or the group, not one variant. The
+  target's Offers' `url` values are not excluded (`Entity.urls` includes them, SPEC-05 §4.2): in the
+  one-Offer-per-variant shape each Offer's url is its row's key. The baseline shows
   variants that repeat the group URL (5 pages).
 - Rows **link** when they share a value of some key sub-field. Linked rows form a cluster (connected
   components; the order of comparison does not matter).
@@ -207,11 +211,12 @@ depend on whether the schema has a `variants` field.
   holds inside the selected holder.
 - **Without one**: unchanged. Every Offer of the target and of its variants joins the atomic-offer rule, so the
   fields publish only when all agree, else `conflict` (`offers_disagree`).
-- **Variant fill** for non-Offer values (sku, gtin): a top-level field for which the target itself has no owned
-  candidate takes the selected variant's candidates. With no selected variant, it takes the variants' candidates
-  only when every variant has one and all agree. A value the target states itself is never replaced, so a group's
-  own `name` stays the title. This refines D-0785: a variant's sku is published as the page's sku only when the
-  URLs select that variant, or when all variants agree.
+- **Variant fill** applies to the identifier fields only: a top-level `sku` or `gtin` field (type `identifier`)
+  for which the target itself has no owned candidate takes the selected variant's candidates. With no selected
+  variant, it takes the variants' candidates only when every variant has one and all agree. No other top-level
+  field is filled (`name`, `brand`, `image_url`, `url` stay the target's own), and a value the target states itself
+  is never replaced. This refines D-0785: a variant's sku is published as the page's sku only when the URLs select
+  that variant, or when all variants agree.
 - **Default variant.** The page URL with no variant named selects nothing. Choosing the first or the cheapest
   variant would be a guess (C7).
 
@@ -333,7 +338,9 @@ platform.
   gives the same clusters. Two rows with different keys never merge. A disagreeing sub-field in a cluster is
   `conflict` and never a value.
 - **Unit**: each §4.3 shape (hasVariant with Offers; one Offer per variant; AggregateOffer with offers; an
-  AggregateOffer alone gives no row); variants repeating the group URL (not a key value; no selection); a selected
+  AggregateOffer alone gives no row); one Offer per variant whose Offers carry only a url (each Offer is a row);
+  a ProductGroup with both direct Offers and `hasVariant` rows (matched by key); variants repeating the group URL
+  (not a key value; no selection); a selected
   variant by request URL; canonical-only match of all variants (no selection); variant fill does not replace the
   group's own value; `_gaps` never asks role C for a row-mapped field; learning reports `not_learned: row_field`.
 - **Replay** (SPEC-03): dev captures before and after each PR. PR 1 must give identical records for presets v1/v2.
@@ -359,7 +366,7 @@ Each PR writes its tests first. A PR that changes extraction includes the C10 ev
 |---|---|---|---|---|
 | 1 | Path alternatives and row-mapped `list<object>` grammar; sub-field candidates | `schemas/types` (`\|` pattern, `key`, row rules), `collect/schema_org_map` (`parse_paths`, sub-field candidates), consumers listed in §4.1, SPEC-04 §4.2 text, `make api-client` | property, unit; replay: identical records for existing presets | The grammar validates; JSON-LD and microdata emit equal sub-field candidates for generated variant sets. No extraction change. |
 | 2 | Row resolution, record shape, preset v3 | `resolve/rows` (new), `resolve/preference` (reuse per cluster), `resolve/evidence` (`list.` buckets), `resolve/types` + `records` (`items`, `dropped`), API DTO + api-client, `_gaps` and learning skip, preset `commerce_detail` v3, SPEC-05/06/07/08 text | property, unit, replay; C10 section (dev: rows published per page; top-level fields unchanged) | INV-33–INV-35 tests pass; v3 publishes `variants` on every §4.3 shape. |
-| 3 | Selected variant and variant fill | `resolve/intent` (`select_variant`), `resolve/preference` (anchor, `other_variant`), `resolve/ownership` (fill), SPEC-05 §4.6/§4.8 text | unit, property, replay; C10 section (dev: price/availability coverage and conflicts before/after; hidden non-regression on required types) | INV-36 test passes; no top-level value changes on pages without a naming URL. |
+| 3 | Selected variant and variant fill | `resolve/intent` (`select_variant`), `resolve/preference` (anchor, `other_variant`), `resolve/ownership` (fill), SPEC-05 §4.6/§4.8 text | unit, property, replay; C10 section (dev: price/availability coverage and conflicts before/after; hidden non-regression on required types) | INV-36 test passes; on pages without a naming URL the only top-level changes are `sku`/`gtin` fills where every variant agrees. |
 | 4 | Row labels and scoring | `eval/labels` (`label_version` 2), `eval/metrics` (row matching, `list.<type>` cells, row precision/recall, WP from `distractor_keys`), aggregate suppression of the new cells, pre-fill skip, SPEC-03 §4.3/§4.6 text | unit on synthetic labels | Metrics computed; suppression holds (INV-25). |
 
 PR 2 depends on PR 1. PR 3 depends only on step A (#168) and can run beside PR 2. PR 4 depends on PR 2.

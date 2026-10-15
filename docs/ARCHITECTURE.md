@@ -500,7 +500,7 @@ An aggregate `lowPrice` is never the current price.
 **Variant matrix (Appendix A #37, SPEC-13).** The single offer fields mean the selected or default variant. A
 variant is selected when the request, final or canonical URL names exactly one of the target's variants or
 Offers by its own URL (the intent test of §8.2 rule 3, never a query value, rule 4). Its Offer then gives price
-and availability, and its values fill top-level fields the target leaves empty. With none selected, the rule
+and availability, and its identifiers fill a top-level `sku` or `gtin` the target leaves empty. With none selected, the rule
 above stands. A row-mapped list resolves one row per variant: rows reached from the target, matched across
 sources by key, each sub-field resolved by these stages inside its row, with price and availability from one
 Offer of the row and evidence per sub-field. Only structured collectors give rows; learning and role C do not.
