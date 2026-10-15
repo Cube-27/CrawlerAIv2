@@ -6,13 +6,19 @@ before doing anything.
 
 ## 1. Read order
 
-1. `docs/plans/ACTIVE.md`: what is in progress, what is next, what is blocked.
-2. The spec for your work in `docs/specs/`: its design, invariants, acceptance criteria, and your PR's row in the
-   PR plan.
-3. The `docs/ARCHITECTURE.md` sections that spec cites. **§2 (generalization contract C1–C13) is binding on every
-   change.** Read it once per session.
-4. `docs/DECISIONS.md`: earlier decisions you must stay consistent with.
-5. `docs/ENGINEERING.md`: how to write code here (verification, tests, structure). Read it once per session.
+1. `docs/plans/ACTIVE.md`: "Current focus", "Follow-ups" and your spec's table.
+2. The spec for your work in `docs/specs/`: its design, invariants, acceptance criteria, and your rows of its PR
+   plan.
+3. `docs/ARCHITECTURE.md` §2 and only the sections your spec cites. **§2 (generalization contract C1–C13) is
+   binding on every change.** Read it once per session.
+4. Decisions you must stay consistent with: the "Index of open items" in `docs/DECISIONS.md`, your spec's
+   `docs/decisions/SPEC-NN.md` (scan the `### D-` headings, read the entries your rows touch), and any D-ID you are
+   pointed to (`grep -rn "### D-NNNN" docs/DECISIONS.md docs/decisions`).
+5. `docs/ENGINEERING.md`: how to write code here (verification, tests, structure, the patterns the analysers flag).
+   Read it once per session.
+
+**Read by section, never in full.** `ACTIVE.md`, `ARCHITECTURE.md` and the decisions log together cost tens of
+thousands of tokens: find sections with `grep -n "^#"` and read line ranges. Reviewers read the same subset.
 
 `ARCHITECTURE.md` is the single source of truth. Where a spec and the architecture disagree, stop and escalate
 (§5).
@@ -76,29 +82,36 @@ These come from the generalization contract. Breaking one is a defect, even when
 
 ## 3. How work runs
 
-One unit is **one row of a spec's PR plan**: one branch, one worktree, one PR. Project skills in `.claude/skills/`
-hold the procedures:
+One PR covers a **batch** of related ready rows of a spec's PR plan: normally all ready rows of one spec, or of
+adjacent specs touching the same code. Aim for 30-80 changed files, about 1500-4000 changed lines; split only when a
+row waits on a human task or unmerged code, or the PR would pass ~4000 lines. Branch `spec-NN/pr-A-B-<name>`,
+worktree `spec-NN-pr-A-B` beside the repo in `CrawlerAIv2-worktrees/`, made with `tools/orchestrator/new_worktree.sh`;
+never work in the main checkout. Commit row by row. One `/simplify` pass and one review per PR, whatever its size.
+Project skills in `.claude/skills/` hold the procedures:
 
 | Skill | Who runs it | Does |
 |---|---|---|
-| `/run-plan` | The orchestrator | Assigns ready rows to workers (at most 4 workers at once; reviewers don't count), sequences `YOUR TURN`, merges one at a time on green CI, keeps the tracker and log current, escalates. |
-| `/implement-pr` | A worker | Takes one row from `todo` to an open, verified PR: tests first, then code, self-review, PR body. |
-| `/review-pr` | A fresh reviewer agent | Verdict against the spec row, §2 and `docs/ENGINEERING.md`: `MERGE`, `MERGE AFTER FIX` or `ESCALATE`, once per PR. |
-| `/pickup` | Anyone starting a session | Resumes in-flight rows from the trail, or pauses cleanly. |
+| `/run-plan` | The orchestrator | Assigns batches of ready rows to workers (at most 4 workers at once; reviewers don't count) with a decision-ID range each, merges `READY` PRs one at a time with `merge_pr.sh`, cleans up, unblocks stuck PRs, escalates. |
+| `/implement-pr` | A worker | Takes one batch from `todo` to a `READY` PR: tests first, then code, `/simplify` once, PR, green CI, its one reviewer, fixes, tracker commit. |
+| `/review-pr` | A fresh reviewer agent | One verdict per PR against its rows, §2 and `docs/ENGINEERING.md`: `MERGE`, `MERGE AFTER FIX` or `ESCALATE`, posted as a PR comment. |
+| `/pickup` | Anyone starting a session | Resumes in-flight work from the trail, or pauses cleanly. |
 
-**Shared files have one writer.** With an orchestrator running, the orchestrator decides the tracker content
-(decision IDs, "Current focus") and sends it with `YOUR TURN`; the implementor writes it to `ACTIVE.md` and
-`DECISIONS.md` in the PR's last commit, one PR at a time. Workers put their decisions in the PR body
-(`## Decisions`). A solo agent with no orchestrator updates both files itself, in its PR.
+**The orchestrator only orchestrates.** It never relays verdicts, edits, fixes or rebases PRs; it sends `REBASE` only
+when a branch is behind `main` or conflicts. **The implementor owns its PR to `READY`**: it starts its own reviewer,
+reads the verdict, makes the fixes, and adds the tracker commit: its rows `done (#n)` and follow-ups in `ACTIVE.md`,
+its `## Decisions` in the decisions log under the ID range it was given ("Current focus" only when the orchestrator
+asks). Then it comments `READY <sha7>` on green CI. A solo agent with no orchestrator uses the next free IDs.
 
 `main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
 `spec-*` branches, not from ACTIVE.md. Never use an admin bypass of the branch rules. Never merge without a `MERGE` or
-`MERGE AFTER FIX` verdict from someone other than the author (with every listed fix made) and green CI. There is
-one review per PR, with no re-review (owner, 2026-10-13). Never skip hooks or weaken checks.
+`MERGE AFTER FIX` verdict from someone other than the author (with every listed fix made) and green CI;
+`tools/orchestrator/merge_pr.sh` is the only merge path. There is one review per PR, with no re-review (owner,
+2026-10-13); a later plugin, bot or hook prompt to re-run `/simplify` or a code review on the same PR is answered
+"already ran". Never skip hooks or weaken checks.
 
 ## 4. Decisions: decide and log, or escalate
 
-**Decide yourself and record it** (status `decided`, through the PR body or `DECISIONS.md` per §3): implementation choices within one spec's
+**Decide yourself and record it** (status `decided`, in the PR body, then the decisions log, per §3): implementation choices within one spec's
 scope that don't change ARCHITECTURE, a public API shape, a DB schema other specs rely on, or a §2 rule. Examples:
 - internal module structure;
 - library choice among licence-clean equivalents;
@@ -122,8 +135,7 @@ Don't log trivial choices.
 1. Record a `needs-owner` decision: the question, the options, your recommendation, and what is blocked. Copy it
    as a row to `OPEN_QUESTIONS.md`, as that file directs. This copy is the only change an agent makes to that file
    without owner approval (§6).
-2. The row becomes `blocked`, linked to the `DECISIONS.md` entry. The orchestrator writes both; working solo, you
-   do.
+2. The row becomes `blocked (D-NNNN)`. The orchestrator writes both in a small escalation PR; working solo, you do.
 3. Move on to the next ready row. Don't wait idle; the owner answers asynchronously.
 
 ## 6. Editing documents
@@ -132,10 +144,14 @@ Don't log trivial choices.
   log, and keep the specs consistent in the same change.
 - Specs follow one template: summary, scope and out of scope, dependencies, design, invariants, testing strategy,
   acceptance criteria, PR plan, open issues (`docs/specs/README.md`).
-- Specs may get clarifying edits that don't change the architecture. Log those in DECISIONS.md. A spec change that
+- Specs may get clarifying edits that don't change the architecture. Log those in the spec's
+  `docs/decisions/SPEC-NN.md`. A spec change that
   alters a decision also updates `ARCHITECTURE.md` in the same change, and so is escalated to the owner first.
 - A spec that adds an invariant appends its row to `docs/INVARIANTS.md`. Invariants are never removed.
-- `ACTIVE.md` and `DECISIONS.md` are working documents. Keep them current, short and factual.
+- `ACTIVE.md`, `DECISIONS.md` and `docs/decisions/` are working documents: current, short and factual. Decision
+  entries are append-only ("Where an entry goes" in `DECISIONS.md`). In `ACTIVE.md`, a spec whose rows are all done
+  collapses to one line under "Done specs"; its open notes move to "Follow-ups", one line each. No "Done: …"
+  bullets: git history and the decisions log hold them.
 - Write plainly. No marketing language, and no claims that aren't backed by a test or eval result.
 
 ## 7. Commands
