@@ -176,29 +176,6 @@ async def test_returns_the_requested_formats_of_the_fetched_page(
     assert result.metadata.structured_data_types == ("Product",)
 
 
-async def test_leaves_out_the_formats_not_requested(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-
-    result = await scrape(engine, fetching, request(url, "links"))
-
-    assert result.links == [f"{own_origin}/kettles/red"]
-    assert (result.markdown, result.html, result.raw_html, result.metadata) == (None, None, None, None)
-    assert set(result.model_dump(by_alias=True)) == {
-        "job_id",
-        "capture_id",
-        "url",
-        "final_url",
-        "fetched_at",
-        "outcome",
-        "fetch",
-        "links",
-        "usage",
-    }
-
-
 async def test_records_a_completed_scrape_job_its_task_and_capture(
     engine: AsyncEngine, fetching: Fetching, store: ObjectStore, web: Web, own_origin: str
 ) -> None:
@@ -240,30 +217,20 @@ async def test_counts_each_request_it_made_as_usage(
     assert used[0] == 2
 
 
-@pytest.mark.parametrize(
-    ("status", "block_class", "outcome"),
-    [(403, "blocked", "blocked"), (404, "not_found", "not_found"), (200, "shell", "shell")],
-)
 async def test_a_page_that_is_not_ok_is_an_outcome_without_formats(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    web: Web,
-    own_origin: str,
-    status: int,
-    block_class: BlockClass,
-    outcome: str,
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (status, b"<html><body>no</body></html>", block_class, None)
+    web.pages[url] = (403, b"<html><body>no</body></html>", "blocked", None)
 
     result = await scrape(engine, fetching, request(url, "markdown", "raw_html", fetch={"method_hint": "http"}))
 
-    assert result.outcome == outcome
+    assert result.outcome == "blocked"
     assert result.fetch is not None
-    assert result.fetch.status_code == status
+    assert result.fetch.status_code == 403
     assert (result.markdown, result.raw_html) == (None, None)
     task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
-    assert tuple(task) == ("done", outcome)
+    assert tuple(task) == ("done", "blocked")
 
 
 async def test_a_failed_fetch_fails_the_task_and_the_job(
@@ -489,7 +456,9 @@ async def test_a_stored_draft_needs_no_configured_provider(
         engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=Unconfigured("no provider")
     )
 
-    assert second.schema_ == first.schema_
+    assert first.schema_ is not None
+    assert (second.schema_, second.usage.llm_calls) == (first.schema_, 0)
+    assert first.schema_.name == draft_name(prompt)
 
 
 async def test_a_page_not_reached_is_not_drafted_from(

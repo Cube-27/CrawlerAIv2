@@ -90,6 +90,9 @@ async def test_a_replay_robots_txt_allows_is_sent_at_the_endpoint_host_rate(
     result = await replay(JsonRequest(endpoint, "https://shop.example.test/p/item-a"))
 
     assert (result.block_class, web.requested, admitted) == ("ok", [endpoint], [api_host])
+    # Without a JSON rung there is nothing to replay with.
+    no_json = Fetching(Rungs(http=web.http, browser=web.browser), fetching.connector, fetching.store, HostLimiter())
+    assert learning_replay(engine, no_json) is None
 
 
 async def test_a_replay_robots_txt_disallows_is_not_sent(
@@ -102,13 +105,3 @@ async def test_a_replay_robots_txt_disallows_is_not_sent(
     result = await replay(JsonRequest(f"https://{api_host}/v1/products/item-a", "https://shop.example.test/p/item-a"))
 
     assert (result.block_class, result.attempts[-1].error, web.requested) == ("blocked", "robots", [])
-
-
-async def test_without_a_json_rung_there_is_no_replay(
-    engine: AsyncEngine, fetch_result: Callable[..., FetchResult], tmp_path: Path
-) -> None:
-    web = Web(fetch_result, b"")
-    rungs = Rungs(http=web.http, browser=web.browser)
-    fetching = Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-    assert learning_replay(engine, fetching) is None

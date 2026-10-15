@@ -218,8 +218,7 @@ async def test_scrape_of_a_private_target_is_an_error_result(session: ClientSess
         "scrape", {"request": {"url": f"https://{PRIVATE_HOST}/", "formats": ["markdown"]}}
     )
 
-    assert result.isError
-    assert "private_address" in _texts(result)[0]
+    assert (result.isError, _texts(result)) == (True, ["Error executing tool scrape: ssrf_rejected: private_address"])
 
 
 async def test_map_answers_the_start_pages_links(
@@ -230,6 +229,16 @@ async def test_map_answers_the_start_pages_links(
     result = await _call(session, "map", request={"url": f"{own_origin}/", "use_sitemaps": False})
 
     assert result == {"urls": [f"{own_origin}/kettles/red"], "sources": {"sitemap": 0, "links": 1}, "truncated": False}
+
+
+async def test_a_created_schema_is_listed(session: ClientSession, schema_name: str) -> None:
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE}}
+
+    created = await _call(session, "create_schema", schema=document)
+    listed = await _call(session, "list_schemas", name=schema_name)
+
+    assert (created["name"], created["version"], created["origin"]) == (schema_name, 1, "user")
+    assert listed["items"] == [created]
 
 
 async def test_a_started_crawl_is_the_callers_and_its_status_has_the_summary_and_results(
@@ -266,16 +275,6 @@ async def test_an_extract_job_is_the_callers_and_its_status_has_no_records_yet(
     assert (status.structuredContent or {})["job"]["kind"] == "extract"
     assert (status.structuredContent or {})["results"] == {"items": [], "next_cursor": None}
     assert _texts(status)[1] == "No records."
-
-
-async def test_a_created_schema_is_listed(session: ClientSession, schema_name: str) -> None:
-    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE}}
-
-    created = await _call(session, "create_schema", schema=document)
-    listed = await _call(session, "list_schemas", name=schema_name)
-
-    assert (created["name"], created["version"], created["origin"]) == (schema_name, 1, "user")
-    assert listed["items"] == [created]
 
 
 @pytest.fixture

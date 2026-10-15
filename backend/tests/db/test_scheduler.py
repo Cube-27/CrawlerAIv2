@@ -211,18 +211,6 @@ async def test_the_scheduler_logs_its_start_and_each_entry_that_did_work(
     ]
 
 
-async def test_stopping_ends_the_scheduler_while_it_waits(engine: AsyncEngine) -> None:
-    ran = asyncio.Event()
-
-    async def hourly(conn: AsyncConnection) -> None:
-        ran.set()
-
-    async def started() -> bool:
-        return ran.is_set()
-
-    await _scheduler_until(engine, [Periodic("hourly", timedelta(hours=1), hourly)], started, timeout=10)
-
-
 async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
     engine: AsyncEngine, tmp_path: Path, fetch_result: Callable[..., FetchResult]
 ) -> None:

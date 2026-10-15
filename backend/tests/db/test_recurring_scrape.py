@@ -370,10 +370,9 @@ async def test_validators_are_sent_only_where_a_record_of_the_schema_version_sta
 
     assert (other.tasks, other.extractions) == ({url: ("extracted", True)}, 1)
     assert same.tasks == {url: ("unchanged", False)}
-    first, by_other, by_same = origin.sent
-    assert (first, by_other) == (None, None)
-    assert by_same is not None
-    assert by_same.etag is not None
+    # The ETag the page answered with on the first run, sent back as is (RFC 9110 §13.1.2).
+    etag = f'"{sha256_hex(_page("Blue kettle"))[:16]}"'
+    assert origin.sent == [None, None, Validators(etag=etag, last_modified=None)]
 
 
 async def test_a_job_without_records_neither_reads_nor_writes_url_state(

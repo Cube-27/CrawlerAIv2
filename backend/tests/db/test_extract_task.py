@@ -197,8 +197,11 @@ async def test_a_complete_page_stores_its_extraction_candidates_and_record(setup
 async def test_a_rejected_candidate_keeps_its_reason(setup: _Setup) -> None:
     other = _product("Widget Two", "https://shop.example.test/p/2", offers=False)
     stored = await setup.run(_page(_product("Widget One", PAGE_URL), other))
-    assert ("title", "jsonld", "ok", False, "not_owned") in await setup.candidates(stored)
-    assert ("title", "jsonld", "ok", True, None) in await setup.candidates(stored)
+    assert sorted(await setup.candidates(stored)) == [
+        ("price", "jsonld", "ok", True, None),
+        ("title", "jsonld", "ok", False, "not_owned"),
+        ("title", "jsonld", "ok", True, None),
+    ]
 
 
 async def test_an_incomplete_caller_supplied_page_keeps_its_record(setup: _Setup) -> None:
@@ -232,12 +235,6 @@ async def test_the_extraction_keeps_the_collectors_diagnostics(setup: _Setup, mo
     diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
     assert diagnostics == ["OpenGraphCollector: RuntimeError: collector bug"]
     assert stored.outcome == "extracted"
-
-
-async def test_an_extraction_without_diagnostics_stores_an_empty_list(setup: _Setup) -> None:
-    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
-    diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
-    assert diagnostics == []
 
 
 LISTING = SchemaDocument(
@@ -282,7 +279,9 @@ async def test_a_crawled_listing_keeps_only_its_complete_rows(setup: _Setup) -> 
     rows = [_product("Widget 1", "https://shop.example.test/p/1"), nameless]
     stored = await setup.run(_page(_item_list(*rows)), document=LISTING, caller_supplied=False)
 
-    assert (stored.outcome, len(stored.records)) == ("partial", 1)
+    assert stored.outcome == "partial"
+    kept = await setup.conn.execute(select(Record.entity_key).where(Record.extraction_id == stored.extraction_id))
+    assert kept.scalars().all() == [entity_key(setup.site_id, "https://shop.example.test/p/1")]
 
 
 async def test_a_rows_candidate_keeps_the_reason_its_own_row_gave(setup: _Setup) -> None:

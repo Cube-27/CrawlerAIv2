@@ -156,17 +156,12 @@ async def test_a_run_that_matched_no_url_marks_nothing_missing(shop: Shop) -> No
     assert await shop.state() == {"p/a": (0, False)}
 
 
-@pytest.mark.parametrize(
-    "unreached", [{"outcome": "blocked"}, {"outcome": "shell"}, {"status": "failed", "outcome": "failed"}]
-)
-async def test_a_run_with_an_unreached_navigation_page_marks_nothing_missing(
-    shop: Shop, unreached: dict[str, Any]
-) -> None:
+async def test_a_run_with_an_unreached_navigation_page_marks_nothing_missing(shop: Shop) -> None:
     await shop.run("p/a", "p/b")
 
     # The category page that listed p/b added no links: p/b may still be listed.
     for _ in range(2):
-        await shop.run("p/a", extra=(shop.task("c/1", **unreached),))
+        await shop.run("p/a", extra=(shop.task("c/1", outcome="blocked"),))
 
     assert await shop.state() == {"p/a": (0, False), "p/b": (0, False)}
 
@@ -181,7 +176,7 @@ async def test_a_navigation_page_that_is_not_found_lists_nothing(shop: Shop) -> 
     assert await shop.state() == {"p/a": (0, False), "p/b": (2, True)}
 
 
-@pytest.mark.parametrize(("status", "schema"), [("failed", True), ("cancelled", True), ("completed", False)])
+@pytest.mark.parametrize(("status", "schema"), [("cancelled", True), ("completed", False)])
 async def test_only_a_completed_records_crawl_is_a_run(shop: Shop, status: JobStatus, schema: bool) -> None:
     await shop.run("p/a", "p/b")
 

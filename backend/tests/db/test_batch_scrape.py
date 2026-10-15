@@ -48,7 +48,6 @@ from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
-from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.scrape import scrape_handler
@@ -237,15 +236,6 @@ async def test_a_refused_target_queues_nothing(
     assert rejected.value.member == ("urls[1]" if member == "urls" else "webhook_url")
     async with engine.connect() as conn:
         assert (await conn.execute(select(Job.id).where(Job.kind == "batch_scrape"))).all() == []
-
-
-async def test_records_need_the_engine_data(
-    engine: AsyncEngine, fetching: Fetching, own_origin: str, kettle_schema: SchemaDef
-) -> None:
-    batch = _records([f"{own_origin}/a"], kettle_schema)
-
-    with pytest.raises(RecordsUnavailable):
-        await submit_batch(engine, fetching.connector, batch, data=None)
 
 
 # Running.

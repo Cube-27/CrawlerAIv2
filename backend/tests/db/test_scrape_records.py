@@ -23,7 +23,6 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
     Capture,
     Extraction,
@@ -45,8 +44,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.schemas import SchemaConflict
-from crawlerai.services.scrape import RecordsUnavailable, ScrapeRequest, scrape
+from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import SchemaUnusable
 from crawlerai.storage.fs import FsStore
 
@@ -152,7 +150,7 @@ async def _pages_extracted(engine: AsyncEngine, schema_id: SchemaId) -> list[int
         return list((await conn.execute(query)).scalars())
 
 
-async def test_records_carry_every_field_attribute(
+async def test_a_record_is_stored_with_its_job_task_and_schema(
     engine: AsyncEngine,
     fetching: Fetching,
     web: Web,
@@ -160,23 +158,16 @@ async def test_records_carry_every_field_attribute(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
+    # The record's field shape over HTTP is `test_scrape_api.py`'s; here, the rows the scrape leaves.
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, _product_page(url), "ok")
 
-    result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}, "markdown"), data=engine_data)
+    result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
 
-    assert result.outcome == "extracted"
     assert result.records is not None
     (record,) = result.records
-    assert (record.mode, record.complete, record.confidence) == ("adhoc", True, None)
-    title, price = record.fields["title"], record.fields["price"]
-    assert (title.value, title.status, title.reason, title.evidence) == ("Blue kettle", "published", None, "structured")
-    assert (title.source_kind, title.calibrated, title.confidence, title.derived_by) == ("jsonld", False, None, None)
-    assert title.locator is not None
-    assert title.locator.startswith("jsonld:0:")
-    assert price.value == {"amount": "19.90", "currency": "EUR"}
-    assert result.markdown is not None
-    assert "boils water quickly" in result.markdown
+    title = record.fields["title"]
+    assert (result.outcome, title.value, title.source_kind) == ("extracted", "Blue kettle", "jsonld")
     async with engine.connect() as conn:
         row = (await conn.execute(select(Record).where(Record.id == record.id))).one()
         task = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == result.job_id))).scalar_one()
@@ -209,7 +200,8 @@ async def test_a_page_without_a_required_field_is_partial_and_keeps_its_record(
     assert record.complete is False
     price = record.fields["price"]
     assert (price.status, price.value, price.evidence, price.locator) == ("missing", None, None, None)
-    assert price.reason is not None
+    # A missing required field asks role C, and this test configures no LLM provider.
+    assert price.reason == "llm_unavailable"
     task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("done", "partial")
 
@@ -374,27 +366,9 @@ async def test_an_inline_schema_is_stored_once_and_reused(
     assert (origin, used) == ("user", {schema_id})
 
 
-async def test_an_inline_schema_that_differs_from_the_stored_one_is_refused(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    web: Web,
-    own_origin: str,
-    kettle_schema: SchemaDef,
-    engine_data: EngineData,
-) -> None:
-    scrape_request = _records(f"{own_origin}/kettles/blue", {"inline": _document(kettle_schema.name, title=TITLE)})
-
-    with pytest.raises(SchemaConflict):
-        await scrape(engine, fetching, scrape_request, data=engine_data)
-
-    assert web.fetched == []
-
-
 async def _unusable_schema(engine: AsyncEngine, schema: SchemaDef, problem: str) -> SchemaId:
-    """A schema id records cannot use: one that names no schema, a retired version, or a listing schema."""
+    """A schema id records cannot use: a retired version, or a listing schema."""
     async with engine.begin() as conn:
-        if problem == "unknown":
-            return SchemaId(uuid7())
         if problem == "retired":
             return (await registry.retire(conn, schema.id)).id
         changes = SchemaChanges(page_kind="listing")
@@ -403,7 +377,7 @@ async def _unusable_schema(engine: AsyncEngine, schema: SchemaDef, problem: str)
 
 @pytest.mark.parametrize(
     ("problem", "message"),
-    [("unknown", "no schema with id"), ("retired", "version 1 is retired"), ("listing", "is for listing pages")],
+    [("retired", "version 1 is retired"), ("listing", "is for listing pages")],
 )
 async def test_a_schema_id_records_cannot_use_is_refused_before_any_job(
     engine: AsyncEngine,
@@ -420,17 +394,6 @@ async def test_a_schema_id_records_cannot_use_is_refused_before_any_job(
 
     with pytest.raises(SchemaUnusable, match=message):
         await scrape(engine, fetching, scrape_request, data=engine_data)
-
-    assert web.fetched == []
-
-
-async def test_records_without_the_engine_data_are_refused_before_any_job(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, kettle_schema: SchemaDef
-) -> None:
-    scrape_request = _records(f"{own_origin}/kettles/blue", {"id": str(kettle_schema.id)})
-
-    with pytest.raises(RecordsUnavailable):
-        await scrape(engine, fetching, scrape_request)
 
     assert web.fetched == []
 

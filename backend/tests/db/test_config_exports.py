@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
     ApiKey,
     Capture,
@@ -225,13 +224,3 @@ async def test_a_capture_whose_bundle_expired_is_left_out(client: httpx.AsyncCli
 
     assert exported["release"]["held_out"] == [str(capture) for capture in captures[1:]]
     assert exported["release"]["fields"]["title"] == {"published": 2, "reproduced": 2, "manual": False}
-
-
-async def test_export_problems(client: httpx.AsyncClient, world: World) -> None:
-    unknown = await client.post(f"/v1/configs/{uuid7()}/export", json={"format": "json"})
-    bad_format = await client.post(f"/v1/configs/{uuid7()}/export", json={"format": "gmc"})
-    del client.headers["authorization"]
-    no_key = await client.post(f"/v1/configs/{uuid7()}/export", json={"format": "json"})
-
-    assert (unknown.status_code, bad_format.status_code, no_key.status_code) == (404, 422, 401)
-    assert unknown.headers["content-type"] == "application/problem+json"

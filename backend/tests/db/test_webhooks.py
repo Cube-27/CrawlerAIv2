@@ -109,16 +109,15 @@ async def test_the_webhook_posts_the_jobs_summary_signed_with_the_keys_secret(
 
 async def test_a_delivered_webhook_is_not_sent_again(engine: AsyncEngine, key: CreatedKey) -> None:
     await _ended(engine, key.id)
-    await _deliver(engine, Receiver([200]))
 
-    assert await _deliver(engine, Receiver([])) == 0
+    assert (await _deliver(engine, Receiver([200])), await _deliver(engine, Receiver([]))) == (1, 0)
 
 
 async def test_a_refused_webhook_is_retried_after_30_s_then_2_min_then_given_up(
     engine: AsyncEngine, key: CreatedKey
 ) -> None:
     job_id = await _ended(engine, key.id)
-    post = Receiver([500, 503, 404])
+    post = Receiver([500, 302, 404])
 
     await _deliver(engine, post)
     status, attempts, error, wait = await _delivery(engine, job_id)
@@ -129,21 +128,13 @@ async def test_a_refused_webhook_is_retried_after_30_s_then_2_min_then_given_up(
     await _make_due(engine, job_id)
     await _deliver(engine, post)
     status, attempts, error, wait = await _delivery(engine, job_id)
-    assert (status, attempts, error) == ("pending", 2, "status 503")
+    assert (status, attempts, error) == ("pending", 2, "status 302")
     assert timedelta(seconds=115) < wait <= timedelta(minutes=2)
 
     await _make_due(engine, job_id)
     await _deliver(engine, post)
     assert (await _delivery(engine, job_id))[:3] == ("failed", 3, "status 404")
     assert await _deliver(engine, Receiver([])) == 0
-
-
-async def test_a_redirect_is_a_failed_attempt(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _ended(engine, key.id)
-
-    await _deliver(engine, Receiver([302]))
-
-    assert (await _delivery(engine, job_id))[:3] == ("pending", 1, "status 302")
 
 
 async def test_a_network_failure_is_a_failed_attempt(engine: AsyncEngine, key: CreatedKey) -> None:

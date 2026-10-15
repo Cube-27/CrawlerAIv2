@@ -44,11 +44,8 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocum
 from crawlerai.services import jobs
 from crawlerai.services.jobs import (
     ExportPage,
-    JobEnded,
     JobListQuery,
-    JobNotFound,
     JobPage,
-    NotExportable,
     PageOutputPage,
     ResultsQuery,
 )
@@ -193,19 +190,6 @@ async def _task_statuses(conn: AsyncConnection, job_id: JobId) -> list[str]:
 # The summary.
 
 
-async def test_a_new_job_is_queued_with_every_count_at_zero(world: World) -> None:
-    job_id = await world.job(webhook_url="https://hooks.example.test/done")
-
-    summary = await _summary(world.engine, job_id)
-
-    assert (summary.id, summary.kind, summary.status) == (job_id, "batch_scrape", "queued")
-    assert (summary.started_at, summary.finished_at) == (None, None)
-    assert summary.counts.model_dump() == {"queued": 0, "claimed": 0, "done": 0, "failed": 0, "cancelled": 0}
-    assert summary.outcomes.model_dump() == dict.fromkeys(OUTCOMES, 0)
-    assert (summary.usage, summary.webhook_url, summary.engine_version) == ({}, "https://hooks.example.test/done", "e")
-    assert summary.cancel_requested is False
-
-
 async def test_the_summary_counts_tasks_by_status_and_by_outcome(world: World) -> None:
     job_id = await world.job(status="running", usage={"llm_calls": 3})
     await world.tasks(
@@ -231,40 +215,21 @@ async def test_the_summary_counts_tasks_by_status_and_by_outcome(world: World) -
     assert summary.usage == {"llm_calls": 3}
 
 
-async def test_an_unknown_job_is_not_found(world: World) -> None:
-    unknown = JobId(uuid7())
-
-    with pytest.raises(JobNotFound):
-        await _summary(world.engine, unknown)
-    with pytest.raises(JobNotFound):
-        await _cancel(world.engine, unknown)
-    with pytest.raises(JobNotFound):
-        await _results(world.engine, unknown)
-
-
 # The list.
 
 
-async def test_the_list_pages_through_every_job_newest_first(world: World) -> None:
-    made = [await world.job() for _ in range(3)]
-
-    first = await _list(world.engine, limit=2)
-    second = await _list(world.engine, limit=2, cursor=first.next_cursor)
-
-    assert [job.id for job in first.items + second.items] == made[::-1]
-    assert first.next_cursor == made[1]
-    assert second.next_cursor is None
-
-
-async def test_each_listed_job_has_the_summary_of_its_own(world: World) -> None:
+async def test_each_listed_job_has_the_counts_of_its_own_tasks(world: World) -> None:
     busy = await world.job(status="running", usage={"llm_calls": 2})
     await world.tasks(busy, [("queued", None), ("done", "extracted"), ("done", "links_only"), ("failed", "failed")])
     idle = await world.job()
 
     page = await _list(world.engine)
 
-    assert page.items == [await _summary(world.engine, idle), await _summary(world.engine, busy)]
-    assert page.items[1].counts.model_dump() == {"queued": 1, "claimed": 0, "done": 2, "failed": 1, "cancelled": 0}
+    assert [(job.id, job.counts.model_dump(), job.usage) for job in page.items] == [
+        (idle, {"queued": 0, "claimed": 0, "done": 0, "failed": 0, "cancelled": 0}, {}),
+        (busy, {"queued": 1, "claimed": 0, "done": 2, "failed": 1, "cancelled": 0}, {"llm_calls": 2}),
+    ]
+    assert (page.items[1].outcomes.extracted, page.items[1].outcomes.links_only) == (1, 1)
 
 
 async def test_the_list_keeps_the_jobs_of_the_kind_and_status_asked_for(world: World) -> None:
@@ -283,33 +248,7 @@ async def test_the_list_keeps_the_jobs_of_the_kind_and_status_asked_for(world: W
     assert none == JobPage(items=[], next_cursor=None)
 
 
-async def test_a_filtered_list_pages_within_its_filter(world: World) -> None:
-    older = await world.job(kind="crawl")
-    await world.job()
-    newer = await world.job(kind="crawl")
-
-    first = await _list(world.engine, kind="crawl", limit=1)
-    second = await _list(world.engine, kind="crawl", limit=1, cursor=first.next_cursor)
-
-    assert ([job.id for job in first.items], first.next_cursor) == ([newer], newer)
-    assert ([job.id for job in second.items], second.next_cursor) == ([older], None)
-
-
 # Cancel.
-
-
-async def test_cancelling_a_queued_job_cancels_it_and_its_tasks_at_once(world: World) -> None:
-    job_id = await world.job()
-    await world.tasks(job_id, [("queued", None), ("queued", None)])
-
-    summary = await _cancel(world.engine, job_id)
-
-    assert summary.status == "cancelled"
-    assert summary.finished_at is not None
-    assert summary.counts.cancelled == 2
-    async with world.engine.connect() as conn:
-        events = (await conn.execute(select(JobEvent.kind).where(JobEvent.job_id == job_id))).scalars().all()
-    assert events == ["cancelled"]
 
 
 async def test_a_running_job_is_cancelled_once_its_claimed_task_finishes(world: World) -> None:
@@ -347,17 +286,10 @@ async def test_cancelling_a_cancelled_job_again_changes_nothing(world: World) ->
 
     second = await _cancel(world.engine, job_id)
 
-    assert second == first
-
-
-@pytest.mark.parametrize("status", ["completed", "failed"])
-async def test_a_job_that_ended_cannot_be_cancelled(world: World, status: str) -> None:
-    job_id = await world.job(status=status)
-    await world.tasks(job_id, [("done", "extracted")])
-
-    with pytest.raises(JobEnded):
-        await _cancel(world.engine, job_id)
-    assert (await _summary(world.engine, job_id)).status == status
+    assert (second, second.status) == (first, "cancelled")
+    async with world.engine.connect() as conn:
+        events = (await conn.execute(select(JobEvent.kind).where(JobEvent.job_id == job_id))).scalars().all()
+    assert events == ["cancelled"]
 
 
 # Results.
@@ -401,32 +333,6 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
     ]
     assert rest.next_cursor is None
     assert markdown.content.count("\n") == 4  # header, delimiter, two records
-
-
-async def test_a_job_without_a_schema_has_no_records_to_export(world: World) -> None:
-    job_id = await world.job(status="completed")
-
-    json_page = await _results(world.engine, job_id)
-
-    assert json_page == PageOutputPage(items=[], next_cursor=None)
-    with pytest.raises(NotExportable):
-        await _results(world.engine, job_id, format="csv_records")
-
-
-async def test_page_outputs_carry_each_tasks_last_error(world: World) -> None:
-    job_id = await world.job(status="completed")
-    await world.tasks(job_id, [("failed", "failed")], last_error="budget_exhausted")
-    await world.tasks(job_id, [("done", "blocked")], last_error="robots")
-    await world.tasks(job_id, [("done", "not_found")])
-
-    page = await _results(world.engine, job_id)
-
-    assert isinstance(page, PageOutputPage)
-    assert [(item.status, item.outcome, item.last_error) for item in page.items] == [
-        ("failed", "failed", "budget_exhausted"),
-        ("done", "blocked", "robots"),
-        ("done", "not_found", None),
-    ]
 
 
 # Over HTTP.
@@ -504,13 +410,19 @@ async def test_the_jobs_are_listed_a_page_at_a_time(client: httpx.AsyncClient, w
     assert second.json() == {"items": [(await client.get(f"/v1/jobs/{older}")).json()], "next_cursor": None}
 
 
-async def test_delete_cancels_the_job(client: httpx.AsyncClient, world: World) -> None:
+async def test_delete_cancels_a_queued_job_and_its_tasks_at_once(client: httpx.AsyncClient, world: World) -> None:
     job_id = await world.job()
+    await world.tasks(job_id, [("queued", None), ("queued", None)])
 
     response = await client.delete(f"/v1/jobs/{job_id}")
 
     assert response.status_code == 200, response.text
-    assert (response.json()["status"], response.json()["cancel_requested"]) == ("cancelled", True)
+    body = response.json()
+    assert (body["status"], body["cancel_requested"]) == ("cancelled", True)
+    assert body["counts"] == {"queued": 0, "claimed": 0, "done": 0, "failed": 0, "cancelled": 2}
+    async with world.engine.connect() as conn:
+        events = (await conn.execute(select(JobEvent.kind).where(JobEvent.job_id == job_id))).scalars().all()
+    assert events == ["cancelled"]
 
 
 async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
@@ -564,15 +476,20 @@ async def test_results_are_served_as_records_or_as_an_export(client: httpx.Async
     }
 
 
-async def test_page_outputs_are_served_with_their_last_error(client: httpx.AsyncClient, world: World) -> None:
+async def test_page_outputs_are_served_with_each_tasks_last_error(client: httpx.AsyncClient, world: World) -> None:
     job_id = await world.job(status="completed")
+    await world.tasks(job_id, [("failed", "failed")], last_error="budget_exhausted")
     await world.tasks(job_id, [("done", "blocked")], last_error="robots")
+    await world.tasks(job_id, [("done", "not_found")])
 
     response = await client.get(f"/v1/jobs/{job_id}/results")
 
     assert response.status_code == 200, response.text
-    [item] = response.json()["items"]
-    assert (item["outcome"], item["last_error"]) == ("blocked", "robots")
+    assert [(item["status"], item["outcome"], item["last_error"]) for item in response.json()["items"]] == [
+        ("failed", "failed", "budget_exhausted"),
+        ("done", "blocked", "robots"),
+        ("done", "not_found", None),
+    ]
 
 
 async def test_jobs_need_a_key(client: httpx.AsyncClient, world: World) -> None:

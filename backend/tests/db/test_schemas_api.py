@@ -119,7 +119,10 @@ async def test_a_taken_name_conflicts(client: httpx.AsyncClient) -> None:
     response = await client.post("/v1/schemas", json=EVENT)
 
     assert response.status_code == 409
-    assert response.json()["type"] == "conflict"
+    assert (response.json()["type"], response.json()["detail"]) == (
+        "conflict",
+        "schema event_detail exists; edit its latest version instead",
+    )
 
 
 async def test_a_broken_document_rule_is_a_validation_problem(client: httpx.AsyncClient) -> None:

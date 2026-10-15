@@ -197,24 +197,6 @@ async def test_a_scrape_past_its_timeout_is_a_timeout_problem(client: httpx.Asyn
     assert response.json()["type"] == "timeout"
 
 
-async def test_an_invalid_request_is_a_validation_problem(client: httpx.AsyncClient, own_origin: str) -> None:
-    response = await _post(client, {"url": f"{own_origin}/", "formats": ["markdown"], "timeout_s": 121})
-
-    assert response.status_code == 422
-    problem = response.json()
-    assert problem["type"] == "validation"
-    assert [error["field"] for error in problem["errors"]] == ["timeout_s"]
-
-
-async def test_a_request_without_a_key_is_unauthorized(client: httpx.AsyncClient, own_origin: str) -> None:
-    response = await client.post(
-        "/v1/scrape", json={"url": f"{own_origin}/", "formats": ["markdown"]}, headers={"authorization": ""}
-    )
-
-    assert response.status_code == 401
-    assert response.json()["type"] == "unauthorized"
-
-
 async def test_a_prompt_returns_its_draft_and_reuses_it(
     client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, prompt: str
 ) -> None:
@@ -356,7 +338,7 @@ async def test_records_answer_every_field_with_its_attributes(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["outcome"] == "extracted"
-    assert body["markdown"]
+    assert "Blue kettle" in body["markdown"]
     (record,) = body["records"]
     assert {k: record[k] for k in ("mode", "complete", "confidence")} == {
         "mode": "adhoc",

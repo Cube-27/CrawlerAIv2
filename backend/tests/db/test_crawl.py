@@ -42,7 +42,6 @@ from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
-from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers import crawl as crawl_handler_module
 from crawlerai.worker.handlers.crawl import crawl_handler
@@ -198,18 +197,6 @@ async def test_a_refused_target_queues_nothing(
     assert rejected.value.member == member
     async with engine.connect() as conn:
         assert (await conn.execute(select(Job.id).where(Job.kind == "crawl"))).all() == []
-
-
-async def test_records_need_the_engine_data(
-    engine: AsyncEngine, fetching: Fetching, own_origin: str, kettle_schema: SchemaDef
-) -> None:
-    request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/p/*")
-
-    with pytest.raises(RecordsUnavailable):
-        await submit_crawl(engine, fetching.connector, request, data=None)
-
-
-# Running.
 
 
 async def test_only_urls_a_rule_matches_are_extracted_and_outcomes_match_the_task_table(

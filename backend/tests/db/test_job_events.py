@@ -194,27 +194,19 @@ async def test_a_retried_task_reports_its_last_extraction(conn: AsyncConnection)
 # The webhook a job's end owes.
 
 
-@pytest.mark.parametrize("end", ["completed", "failed", "cancelled"])
-async def test_a_job_with_a_webhook_url_owes_a_pending_webhook_when_it_ends(
-    conn: AsyncConnection, end: JobStatus
-) -> None:
-    job_id = await _job(conn, webhook_url="https://hooks.example.test/done")
+async def test_a_job_owes_a_pending_webhook_when_it_ends_only_if_it_has_a_webhook_url(conn: AsyncConnection) -> None:
+    hooked = await _job(conn, webhook_url="https://hooks.example.test/done")
+    plain = await _job(conn)
 
-    await transition_job(conn, job_id, end)
+    for job_id in (hooked, plain):
+        await transition_job(conn, job_id, "failed")
 
     rows = await conn.execute(
-        select(WebhookDelivery.status, WebhookDelivery.attempts).where(WebhookDelivery.job_id == job_id)
+        select(WebhookDelivery.job_id, WebhookDelivery.status, WebhookDelivery.attempts).where(
+            WebhookDelivery.job_id.in_([hooked, plain])
+        )
     )
-    assert rows.all() == [("pending", 0)]
-
-
-async def test_a_job_without_a_webhook_url_owes_none(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-
-    await transition_job(conn, job_id, "completed")
-
-    rows = await conn.execute(select(WebhookDelivery.job_id).where(WebhookDelivery.job_id == job_id))
-    assert rows.all() == []
+    assert rows.all() == [(hooked, "pending", 0)]
 
 
 async def test_cancelling_a_queued_job_with_a_webhook_url_owes_its_webhook(engine: AsyncEngine) -> None:
@@ -271,31 +263,6 @@ PROGRESS = {
         "failed": 0,
     },
 }
-
-
-async def test_the_stream_sends_the_stored_events_in_order_then_progress_then_the_end(engine: AsyncEngine) -> None:
-    job_id, ids = await _stored(engine, ["task_fetched", "task_extracted", "completed"], status="completed")
-
-    sent = await _drain(events.stream(engine, job_id, None, poll_s=0.01))
-
-    assert sent == [
-        (ids[0], "task_fetched", {"n": 12}),
-        (ids[1], "task_extracted", {"n": 14}),
-        (None, "progress", PROGRESS),
-        (ids[2], "completed", {"n": 9}),
-    ]
-
-
-async def test_the_stream_resumes_after_the_last_event_id(engine: AsyncEngine) -> None:
-    job_id, ids = await _stored(engine, ["task_fetched", "task_extracted", "completed"], status="completed")
-
-    sent = await _drain(events.stream(engine, job_id, _id(ids[0]), poll_s=0.01))
-
-    assert [(event_id, kind) for event_id, kind, _ in sent] == [
-        (ids[1], "task_extracted"),
-        (None, "progress"),
-        (ids[2], "completed"),
-    ]
 
 
 async def test_a_stream_resumed_after_the_end_closes_at_once(engine: AsyncEngine) -> None:
@@ -399,13 +366,17 @@ async def test_last_event_id_resumes_the_stream(client: httpx.AsyncClient, engin
 
     response = await client.get(f"/v1/jobs/{job_id}/events", headers={"Last-Event-ID": ids[1]})
 
-    assert [event.get("id") for event in _sse(response.text)] == [None, ids[2]]
+    assert [(event["event"], event.get("id")) for event in _sse(response.text)] == [
+        ("progress", None),
+        ("completed", ids[2]),
+    ]
 
 
 async def test_the_events_of_an_unknown_job_are_404(client: httpx.AsyncClient) -> None:
     response = await client.get("/v1/jobs/018f0000-0000-7000-8000-000000000000/events")
 
     assert (response.status_code, response.headers["content-type"]) == (404, "application/problem+json")
+    assert response.json()["type"] == "not_found"
 
 
 async def test_a_last_event_id_that_is_not_an_event_id_is_422(client: httpx.AsyncClient, engine: AsyncEngine) -> None:
@@ -414,6 +385,11 @@ async def test_a_last_event_id_that_is_not_an_event_id_is_422(client: httpx.Asyn
     response = await client.get(f"/v1/jobs/{job_id}/events", headers={"Last-Event-ID": "seven"})
 
     assert response.status_code == 422
+    problem = response.json()
+    assert (problem["type"], [error["field"] for error in problem["errors"]]) == (
+        "validation",
+        ["header.last-event-id"],
+    )
 
 
 async def test_an_idle_stream_sends_heartbeats_until_the_job_ends(

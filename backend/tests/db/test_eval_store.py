@@ -142,6 +142,9 @@ async def test_a_capture_round_trips_and_its_bundle_lands_only_in_the_stores_own
     expected_key = {"dev": f"eval/dev/{capture_id}.bundle.zst", "hidden": f"hidden/{capture_id}.bundle.zst"}
     assert _files(case.root) == [expected_key[case.store.split]]
     assert _files(case.other_root) == []
+    unknown = CaptureId(uuid7())
+    with pytest.raises(EvalNotFound):
+        await case.store.get_bundle(unknown)
 
 
 async def test_putting_a_capture_twice_converges(case: Case) -> None:
@@ -155,12 +158,6 @@ async def test_putting_a_capture_twice_converges(case: Case) -> None:
     assert (await case.store.get_page(page_id)).capture_id == first
     assert await case.store.get_bundle(first) == bundle
     assert len(_files(case.root)) == 1
-
-
-async def test_an_unknown_capture_is_not_found(case: Case) -> None:
-    unknown = CaptureId(uuid7())
-    with pytest.raises(EvalNotFound):
-        await case.store.get_bundle(unknown)
 
 
 async def test_a_page_round_trips(case: Case) -> None:
@@ -178,9 +175,6 @@ async def test_a_page_round_trips(case: Case) -> None:
 
     assert page_id == page.id
     assert await case.store.get_page(page_id) == page
-
-
-async def test_an_unknown_page_is_not_found(case: Case) -> None:
     unknown = EvalPageId(uuid7())
     with pytest.raises(EvalNotFound):
         await case.store.get_page(unknown)
@@ -261,6 +255,10 @@ async def test_a_pass_over_labels_that_changed_since_they_were_read_is_refused(c
 
     page = await case.store.get_page(page_id)
     assert (page.labels, page.checker) == ({"status": "labeled", "notes": "v2"}, None)
+    # A page that is not there is not found, not a conflict.
+    unknown = EvalPageId(uuid7())
+    with pytest.raises(EvalNotFound):
+        await case.store.put_labels(unknown, {}, "ana", "labeler", expected={})
 
 
 async def test_the_labeler_cannot_check_their_own_labels(case: Case) -> None:
@@ -275,13 +273,6 @@ async def test_the_labeler_cannot_check_their_own_labels(case: Case) -> None:
 
     page = await case.store.get_page(page_id)
     assert (page.labels, page.checker) == ({"status": "labeled"}, None)
-
-
-async def test_labels_of_an_unknown_page_are_refused(case: Case) -> None:
-    page_id = EvalPageId(uuid7())
-
-    with pytest.raises(EvalNotFound):
-        await case.store.put_labels(page_id, {}, "ana", "labeler", expected={})
 
 
 async def test_the_latest_run_is_the_newest_optionally_of_one_commit(case: Case) -> None:
