@@ -5556,3 +5556,27 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: declaration order (SPEC-14 §4.4 "schema order"); the registry's stored key order.
 - Why: `schema_def.fields` is JSONB, which keeps no declaration order (it orders keys by length, then bytes), so "schema order" is not recoverable from the registry; name order is stable and matches the other exports.
 - Reversible: yes; keeping declaration order needs it stored.
+
+### D-0817 — The mode switch and the sidebar list a mode once its PR builds it
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, §4.8, PR 2 (#191) · Status: decided
+- Context: §4.2 names five modes; after PR 2 only Scrape exists, and Batch, Crawl, Map and Extract still run from the Jobs dialogs until PRs 4, 6 and 7.
+- Decision: `screens/playground/modes.ts` is the one list of modes the mode switch and the sidebar show; it holds the built modes (Scrape now).
+- Alternatives: all five tabs, disabled or with placeholder routes.
+- Why: No tab opens a page that does nothing.
+- Reversible: yes
+
+### D-0818 — Scrape's Schema is a stored schema or none; a schema asks for records with its page kind
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, PR 2 (#191) · Status: decided
+- Context: §4.2 gives the toolbar a `SchemaSelect` or "None" and no schema-source row for Scrape; SPEC-07 §4.4 makes `records` need a schema and a matching `page_kind`, and refuses listing records.
+- Decision: Format lists the page formats only. Picking a stored schema adds `records` and copies the schema's page kind, unless it is one whose records the server refuses; a schema with no page kind keeps the request unsent and opens the options. Inline and prompt schemas leave Scrape mode; Extract keeps a schema source (§4.2).
+- Alternatives: keep Records in Format and the schema-source choice.
+- Why: Follows the §4.2 toolbar and sends no request the server must refuse.
+- Reversible: yes
+
+### D-0819 — The URL bar's `https://` prefix applies to text typed without a scheme
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, PR 2 (#191) · Status: decided
+- Context: §4.2 shows an `https://` prefix in the URL field.
+- Decision: Text without an RFC 3986 §3.1 scheme is sent with `https://`; a URL with a scheme is sent as typed.
+- Alternatives: a decorative prefix only.
+- Why: What the bar shows is what is sent.
+- Reversible: yes
