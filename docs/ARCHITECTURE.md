@@ -380,8 +380,11 @@ capture (blocked/shell → stop)
 2. **Shells are not observations.** Blocked, challenge and empty-shell pages end with zero records.
 3. **Ownership comes from structure.** A candidate belongs to the entity whose JSON object or DOM subtree contains
    it. When a page carries several primary-type entities, entities nested in `ItemList` or schema.org relation
-   properties are excluded. Of the rest, the target is the one matching the request, final or canonical URL. If
-   none matches uniquely, every field is `conflict` (`intent_ambiguous`), never a guess.
+   properties are excluded, and so are a primary entity's variants (schema.org `hasVariant`: members of a
+   `ProductGroup`). Of the rest, the target is the one matching the request, final or canonical URL. If none
+   matches uniquely, every field is `conflict` (`intent_ambiguous`), never a guess. An Offer of one of the
+   target's variants is the target's, like its own Offers (atomic offers, §10); the variant's other values stay
+   the variant's (Appendix A #36).
 4. **URL parameter values are never published** unless they are visible on the page.
 
 ### 8.3 Learning a site config
@@ -484,8 +487,8 @@ Three structural stages, then a simple preference rule. A learned ranker is a ca
 | **Intent** | `select_target(request_url, final_url, canonical_url, entities) → entity \| ambiguous`. Ambiguous means `conflict`. |
 | **Preference** | **Exact-match types** (money, identifier, enum, date, range, location): if the valid, owned candidates agree after normalization, publish; if they disagree, the field is `conflict` and nothing is published. **Text, url and image:** a per-type source-precedence order in `source_precedence.yaml`, fitted on dev only and measured on hidden. |
 
-**Atomic offers.** Price, currency and availability come from one `Offer`. With several Offers and no variant
-handling (§22), the field is `conflict` unless they all agree. An aggregate `lowPrice` is never the current price.
+**Atomic offers.** Price, currency and availability come from one `Offer`. With several Offers, the target's own
+and its variants' (§8.2 rule 3), and no variant handling (§22), the field is `conflict` unless they all agree. An aggregate `lowPrice` is never the current price.
 
 **Confidence from evidence buckets.** Each published field carries an `evidence` value:
 - `adapter`: adapter or API recipe;
@@ -913,6 +916,7 @@ implementation go in `DECISIONS.md`, not here.
 | 33 | Complexity and file length (2026-10-13) | Cognitive complexity of at most 15 per function is a hard check in CI and `make check`, for backend, tools and frontend code. 800 lines per file is a soft limit: CI warns, never fails, and a file past it is split by meaning, not to meet the number. Coverage gates and ratchets stay forbidden (C11). |
 | 34 | Embedded-state admission (2026-10-14) | A visible `js_state` or `xhr` value with no other candidate to equal is admitted only for field types with a checkable syntax (§8.1); opaque types such as text and sku admit by equality only. Accuracy Q2, option (a). |
 | 35 | `brand` optional (2026-10-14) | "Brand is not that important": preset `commerce_detail` version 2 makes `brand` optional (§5.3). A page without a brand is complete, and the gap rule no longer asks role C for it. |
+| 36 | Variants are members (2026-10-15) | A primary entity's `hasVariant` variants are members of it, not candidates for the target, and their Offers are the target's under the atomic-offer rule (§8.2 rule 3, §10). Step A of the variants proposal; variant-matrix handling itself (§22) is admitted separately and specified in SPEC-13. |
 
 ---
 
@@ -994,3 +998,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 12 | 2026-10-14 | **Task failure reasons** (owner approval, D-0745 option a). §13.1: a job's summary carries `cancel_requested`; a page output carries its task's `last_error`. §17: a `task_failed` run event, with the task's reason, when a task fails for good. All additive. SPEC-10 and SPEC-12 updated. MCP tools unchanged (§13.3). |
 | 13 | 2026-10-15 | **Embedded-state admission** (owner approval, accuracy Q2 option a; Appendix A #34). §8.1: a visible `js_state` or `xhr` value is admitted on its own only for field types with a checkable syntax; opaque types admit by equality only. SPEC-05 §4.5 updated. |
 | 14 | 2026-10-15 | **`brand` optional** (owner approval, accuracy Q1; Appendix A #35). §5.3: `commerce_detail` version 2 lists `brand` as shown-when-present. SPEC-04 §4.2 updated. |
+| 15 | 2026-10-15 | **Variants are members** (owner approval, variants proposal step A; Appendix A #36). §8.2 rule 3: `hasVariant` variants are excluded from target candidates and their Offers are owned by the target; §10 atomic offers count them. SPEC-05 §4.6 and §4.8 updated. |

@@ -1,9 +1,9 @@
 """Intent (SPEC-05 §4.6, ARCHITECTURE §8.2 rule 3, §10): the one entity a detail page is about, or `intent_ambiguous`.
 
-The candidates are the entities of the schema's primary types, without those inside a list or inside another
-primary entity's relation properties. One candidate is the target. Of several, the one whose URLs name the
-request, final or canonical URL is; if none or several do, the page is ambiguous and nothing is guessed. A page
-with no entity of a primary type at all is about itself, the `page` entity.
+The candidates are the entities of the schema's primary types, without those inside a list, inside another
+primary entity's relation properties, or a primary entity's variants. One candidate is the target. Of several, the
+one whose URLs name the request, final or canonical URL is; if none or several do, the page is ambiguous and nothing
+is guessed. A page with no entity of a primary type at all is about itself, the `page` entity.
 """
 
 from dataclasses import dataclass
@@ -12,13 +12,16 @@ from typing import Literal
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary, parse_path
 from crawlerai.normalize.dispatch import equal
-from crawlerai.resolve.ownership import OFFER, EntityGraph
+from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # schema.org: an ItemList (with its ListItems) lists things, so a thing in it is one of many, not the page's own.
 LISTS = ("ItemList", "ListItem")
 # schema.org relation properties of a Product: a thing that is the value of one is another thing than its holder.
 _RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
+# A primary entity's variants are members of it (`VARIANT`, schema.org `hasVariant`), not other things the page is
+# about: they often repeat the group's URL, which would leave the page ambiguous.
+_NOT_THE_SUBJECT = _RELATIONS | {VARIANT}
 _URL = FieldSpec(type=FieldType.URL)
 
 
@@ -73,12 +76,13 @@ def _names_any(entity: Entity, page_urls: list[str]) -> bool:
 
 
 def _excluded(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:
-    """Whether the entity is inside a list, or inside a relation property of a primary entity (§4.6 step 1)."""
+    """Whether the entity is inside a list, or inside a relation property of a primary entity or one of its
+    variants (§4.6 step 1)."""
     child = entity
     for ancestor in graph.ancestors(entity):
         if any(graph.is_a(ancestor, t) for t in LISTS):
             return True
-        if child.via in _RELATIONS and is_primary(graph, ancestor, primary):
+        if child.via in _NOT_THE_SUBJECT and is_primary(graph, ancestor, primary):
             return True
         child = ancestor
     return False

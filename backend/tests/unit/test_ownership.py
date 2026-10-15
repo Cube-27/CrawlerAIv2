@@ -20,9 +20,17 @@ BRAND = Entity(id="jsonld:0:$['brand']", kind="Brand", urls=(), parent=PRODUCT.i
 RELATED = Entity(id="jsonld:0:$['isRelatedTo']", kind="Product", urls=(), parent=PRODUCT.id, via="isRelatedTo")
 RELATED_OFFER = Entity(id="jsonld:0:$['isRelatedTo']['offers']", kind="Offer", urls=(), parent=RELATED.id)
 OTHER = Entity(id="jsonld:1:$", kind="Product", urls=(), parent=None)
+GROUP = Entity(id="jsonld:2:$", kind="ProductGroup", urls=(), parent=None)
+VARIANT = Entity(id="jsonld:2:$['hasVariant'][0]", kind="Product", urls=(), parent=GROUP.id, via="hasVariant")
+VARIANT_OFFER = Entity(
+    id="jsonld:2:$['hasVariant'][0]['offers']", kind="Offer", urls=(), parent=VARIANT.id, via="offers"
+)
+VARIANT_BRAND = Entity(id="jsonld:2:$['hasVariant'][0]['brand']", kind="Brand", urls=(), parent=VARIANT.id)
+GROUP_OFFER = Entity(id="jsonld:2:$['offers']", kind="Offer", urls=(), parent=GROUP.id, via="offers")
 OG_PAGE = Entity(id=PAGE, kind=PAGE, urls=("https://shop.example.test/p/1",), parent=None)
 
 ENTITIES = (PRODUCT, OFFER, AGGREGATE, INNER_OFFER, BRAND, RELATED, RELATED_OFFER, OTHER)
+GROUP_ENTITIES = (GROUP, VARIANT, VARIANT_OFFER, VARIANT_BRAND, GROUP_OFFER)
 
 
 def _candidate(entity: Entity | str) -> Candidate:
@@ -78,6 +86,29 @@ def test_ancestors_run_from_the_parent_to_the_root() -> None:
 def test_owned_by_the_target(owner: Entity | str, owned: bool) -> None:
     graph = EntityGraph.of(ENTITIES, VOCABULARY)
     assert graph.owned_by(_candidate(owner), PRODUCT) is owned
+
+
+@pytest.mark.parametrize(
+    ("owner", "owned"),
+    [
+        (GROUP, True),  # the group's own value
+        (GROUP_OFFER, True),  # an Offer of the group
+        (VARIANT_OFFER, True),  # an Offer of a variant: schema.org `hasVariant` makes the variant a member
+        (VARIANT, False),  # the variant's own values (its sku, its name) are the variant's, not the group's
+        (VARIANT_BRAND, False),  # another thing a variant names
+    ],
+)
+def test_owned_by_a_product_group(owner: Entity, owned: bool) -> None:
+    graph = EntityGraph.of(GROUP_ENTITIES, VOCABULARY)
+    assert graph.owned_by(_candidate(owner), GROUP) is owned
+
+
+def test_a_variants_offer_is_not_owned_by_a_product_that_holds_it_another_way() -> None:
+    # Only `hasVariant` makes a nested product a member; under any other property its Offer stays its own.
+    nested = RELATED.model_copy(update={"via": "isAccessoryOrSparePartFor"})
+    nested_offer = RELATED_OFFER.model_copy(update={"via": "offers"})
+    graph = EntityGraph.of((PRODUCT, nested, nested_offer), VOCABULARY)
+    assert not graph.owned_by(_candidate(nested_offer), PRODUCT)
 
 
 def test_when_the_page_is_the_target_only_page_values_are_owned() -> None:

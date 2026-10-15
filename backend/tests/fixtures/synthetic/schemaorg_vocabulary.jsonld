@@ -11,6 +11,7 @@
     { "@id": "schema:WebPage", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:CreativeWork" } },
     { "@id": "schema:Product", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Thing" } },
     { "@id": "schema:IndividualProduct", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Product" } },
+    { "@id": "schema:ProductGroup", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Product" } },
     {
       "@id": "schema:ProductModel",
       "@type": "rdfs:Class",

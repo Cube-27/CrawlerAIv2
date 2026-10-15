@@ -167,10 +167,14 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
 
 - A candidate's owner is its entity; entities form a tree (JSON nesting / DOM nesting). `page`-owned candidates
   (og, meta, text) are owned by the page root.
+- The target owns its own candidates, the page's, and those of an Offer whose parent is the target or one of the
+  target's `hasVariant` variants. A variant's other values (its sku, its name) are the variant's and not owned.
 - `select_target(request_url, final_url, canonical_url, entities) -> Entity | Ambiguous`:
   1. Candidates: entities of the schema's primary type (the type named by the schema's required fields'
      `schema_org` roots; e.g. `Product`, `JobPosting`) excluding entities nested inside `ItemList`/`ListItem`
-     or inside another primary-type entity's `isRelatedTo`/`isSimilarTo` (schema.org relations — standard).
+     or inside another primary-type entity's `isRelatedTo`/`isSimilarTo` (schema.org relations — standard), and
+     a primary-type entity's variants (schema.org `hasVariant`: members of a `ProductGroup`, which often repeat
+     the group's URL).
   2. If exactly one candidate → target.
   3. Else those whose `urls` contain any of `{request_url, final_url, canonical_url}` canonicalized; exactly one →
      target; several or none → `Ambiguous`.
@@ -199,8 +203,8 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
 ### 4.8 Rules from §8.2 and §10
 
 - **Atomic offers** (INV-15): `price`, `availability` (and `currency` within money) must come from the same
-  `Offer` entity. When several Offers exist (no variant handling in core), the field is `conflict` unless all
-  Offers agree; `AggregateOffer.lowPrice/highPrice` are never published as price (they feed `range` fields only).
+  `Offer` entity. When several Offers exist, the target's own and its variants' (§4.6), and there is no variant
+  handling in core, the field is `conflict` unless all Offers agree; `AggregateOffer.lowPrice/highPrice` are never published as price (they feed `range` fields only).
 - **URL parameters** (INV-13): a candidate whose raw value equals a query-parameter value of the request URL is
   rejected (`url_param`) unless `visible(raw)`.
 - **Derived values** (C7, INV-07): the only derivations in core: `url` (detail) ← `<link rel=canonical>` else

@@ -100,6 +100,23 @@ def test_related_products_are_not_candidates() -> None:
     assert _select(main, related, similar, nested_deeper) == main
 
 
+def test_the_variants_of_a_product_group_are_its_members_not_candidates() -> None:
+    # schema.org `hasVariant`: a member of the group. Variants that repeat the group's URL do not compete with it.
+    group = _entity("jsonld:0:$", "ProductGroup", PAGE_URL)
+    variants = [
+        _entity(f"jsonld:0:$['hasVariant'][{i}]", "Product", PAGE_URL, parent=group.id, via="hasVariant")
+        for i in range(2)
+    ]
+    assert _select(group, *variants) == group
+
+
+def test_a_variant_under_an_entity_that_is_not_primary_stays_a_candidate() -> None:
+    # Only a primary entity's members are excluded, as with the relation properties.
+    holder = _entity("jsonld:0:$", "Organization")
+    variant = _entity("jsonld:0:$['hasVariant']", "Product", PAGE_URL, parent=holder.id, via="hasVariant")
+    assert _select(holder, variant) == variant
+
+
 def test_products_in_a_list_are_not_candidates() -> None:
     main = _entity("jsonld:0:$", "Product")
     listing = _entity("jsonld:1:$", "ItemList")
@@ -183,6 +200,14 @@ def test_a_product_page_with_recommendations_targets_its_product() -> None:
             "itemListElement": [{"@type": "ListItem", "item": {"@type": "Product", "url": PAGE_URL}}],
         },
     )
+    assert isinstance(target, Entity)
+    assert target.id == "jsonld:0:$"
+
+
+def test_a_product_group_page_targets_its_group_when_the_variants_repeat_its_url() -> None:
+    variant = {"@type": "Product", "url": PAGE_URL, "offers": {"@type": "Offer", "price": "5", "priceCurrency": "EUR"}}
+    group = {"@context": "https://schema.org", "@type": "ProductGroup", "url": PAGE_URL, "hasVariant": [variant] * 3}
+    target = _jsonld_target(group)
     assert isinstance(target, Entity)
     assert target.id == "jsonld:0:$"
 

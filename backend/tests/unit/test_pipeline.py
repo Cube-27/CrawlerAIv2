@@ -178,6 +178,34 @@ def test_the_product_the_page_url_names_is_the_target() -> None:
     assert result.entity["title"].value == "Widget One"
 
 
+def _group(*prices: str) -> dict[str, Any]:
+    # A ProductGroup whose offers sit only under its variants, each variant repeating the group's URL.
+    variants = [
+        {
+            "@type": "Product",
+            "url": PAGE_URL,
+            "sku": f"W-1-{i}",
+            "offers": {"@type": "Offer", "price": price, "priceCurrency": "EUR"},
+        }
+        for i, price in enumerate(prices)
+    ]
+    return {"@type": "ProductGroup", "name": "Widget One", "url": PAGE_URL, "hasVariant": variants}
+
+
+def test_a_product_group_whose_variant_offers_agree_publishes_their_price() -> None:
+    result = _extract(_bundle(_html(_group("19.90", "19.90", "19.90"))))
+    assert result.entity is not None
+    assert (result.entity["title"].value, result.entity["price"].value) == ("Widget One", PRICE)
+    # Each variant's sku is the variant's, not the group's (§4.6): the group states none.
+    assert _statuses(result)["sku"] == ("missing", "not_owned")
+
+
+def test_a_product_group_whose_variant_offers_disagree_declines_the_price() -> None:
+    result = _extract(_bundle(_html(_group("19.90", "24.90"))))
+    assert _statuses(result)["price"] == ("conflict", "offers_disagree")
+    assert _statuses(result)["title"] == ("published", None)
+
+
 def test_page_level_and_embedded_state_values_join_the_candidates() -> None:
     head = '<meta property="og:title" content="Widget One">'
     body = '<script>window.state = {"item": {"code": "W-1"}}</script>'
