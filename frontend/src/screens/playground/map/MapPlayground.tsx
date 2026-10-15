@@ -2,7 +2,6 @@ import { Button } from "@heroui/react";
 import { useMapUrls } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { EmptyView } from "../../../components/EmptyView";
-import { OptionsToggle } from "../OptionsPanel";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { NO_ERRORS, optionsChanged } from "../pageRequest";
 import { PlaygroundLayout } from "../PlaygroundLayout";
@@ -63,27 +62,21 @@ export function MapPlayground() {
           }}
         />
       }
-      optionsToggle={
-        <OptionsToggle
-          isOpen={optionsOpen}
-          changed={optionsChanged(form.options, DEFAULT_MAP_OPTIONS)}
-          onChange={setOptionsOpen}
-        />
-      }
+      optionsOpen={optionsOpen}
+      onOptionsOpen={setOptionsOpen}
+      optionsChanged={optionsChanged(form.options, DEFAULT_MAP_OPTIONS)}
       action={
         <Button type="submit" isPending={map.isPending}>
           Map
         </Button>
       }
       options={
-        optionsOpen ? (
-          <MapOptions
-            options={form.options}
-            onChange={(options) => {
-              setForm({ ...form, options });
-            }}
-          />
-        ) : null
+        <MapOptions
+          options={form.options}
+          onChange={(options) => {
+            setForm({ ...form, options });
+          }}
+        />
       }
     >
       {state === null ? <RecentRuns kind="map" /> : <OutputArea state={state} />}

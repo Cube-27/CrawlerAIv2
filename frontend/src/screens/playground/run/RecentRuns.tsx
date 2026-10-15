@@ -7,18 +7,15 @@ import { LoadingView } from "../../../components/LoadingView";
 import { ProblemAlert } from "../../../components/ProblemAlert";
 import { Timestamp } from "../../../components/Timestamp";
 import { runPath } from "../modes";
-import { text, texts } from "./storedRequest";
 
 /** How many runs the list shows (SPEC-14 §4.6). */
 const RECENT = 10;
 
-/** What a run was started on: its start URL, its one URL, or how many URLs it had. */
-function target(job: JobSummary): string {
-  const url = text(job.request, "url");
-  if (url !== "") return url;
-  const urls = texts(job.request, "urls");
-  if (urls.length === 1) return urls[0] ?? "";
-  return `${String(urls.length)} URLs`;
+/** What a run was started on: its start URL, or how many URLs it had. */
+function target({ start_url, url_count }: JobSummary): string {
+  if (start_url !== null) return start_url;
+  const count = url_count ?? 0;
+  return `${String(count)} ${count === 1 ? "URL" : "URLs"}`;
 }
 
 /** The row's link: the run in its mode. */

@@ -2,12 +2,9 @@ import { Button } from "@heroui/react";
 import { useSubmitExtract } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { SchemaSelect } from "../../../components/SchemaSelect";
-import { OptionsToggle } from "../OptionsPanel";
-import { OutputArea } from "../OutputArea";
-import { optionsChanged } from "../pageRequest";
+import { optionsChanged, withSchema } from "../pageRequest";
 import { PlaygroundLayout } from "../PlaygroundLayout";
-import { JobRunOutput } from "../run/JobRun";
-import { RecentRuns } from "../run/RecentRuns";
+import { JobModeOutput } from "../run/JobRun";
 import { useShownJob } from "../run/useShownJob";
 import { requestUrl, UrlInput } from "../UrlInput";
 import { usePageForm } from "../usePageForm";
@@ -39,12 +36,6 @@ export function ExtractPlayground() {
     submit.mutate(request, { onSuccess: show });
   };
 
-  let output = <RecentRuns kind="extract" />;
-  if (submit.isPending)
-    output = <OutputArea state={{ kind: "pending", label: "Starting the extract" }} />;
-  else if (problem !== null) output = <OutputArea state={{ kind: "failed", problem }} />;
-  else if (jobId !== null) output = <JobRunOutput key={jobId} jobId={jobId} withMetadata={false} />;
-
   return (
     <PlaygroundLayout
       mode="extract"
@@ -59,13 +50,9 @@ export function ExtractPlayground() {
           }}
         />
       }
-      optionsToggle={
-        <OptionsToggle
-          isOpen={optionsOpen}
-          changed={optionsChanged(form.options, DEFAULT_EXTRACT_OPTIONS)}
-          onChange={setOptionsOpen}
-        />
-      }
+      optionsOpen={optionsOpen}
+      onOptionsOpen={setOptionsOpen}
+      optionsChanged={optionsChanged(form.options, DEFAULT_EXTRACT_OPTIONS)}
       tools={
         <SchemaSelect
           value={form.schemaId}
@@ -73,7 +60,7 @@ export function ExtractPlayground() {
           hideLabel
           isDisabled={form.options.schemaSource !== "id"}
           onChange={(schemaId, schema) => {
-            setForm({ ...form, schemaId, schemaPageKind: schema?.page_kind ?? null });
+            setForm(withSchema(form, schemaId, schema?.page_kind ?? null));
           }}
         />
       }
@@ -83,18 +70,22 @@ export function ExtractPlayground() {
         </Button>
       }
       options={
-        optionsOpen ? (
-          <ExtractOptions
-            options={form.options}
-            schemaPageKind={form.schemaPageKind}
-            onChange={(options) => {
-              setForm({ ...form, options });
-            }}
-          />
-        ) : null
+        <ExtractOptions
+          options={form.options}
+          schemaPageKind={form.schemaPageKind}
+          onChange={(options) => {
+            setForm({ ...form, options });
+          }}
+        />
       }
     >
-      {output}
+      <JobModeOutput
+        kind="extract"
+        starting={submit.isPending ? "Starting the extract" : null}
+        problem={problem}
+        jobId={jobId}
+        withMetadata={false}
+      />
     </PlaygroundLayout>
   );
 }

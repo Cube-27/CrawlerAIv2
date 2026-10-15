@@ -1,7 +1,13 @@
 import type { MethodHint, PageKind, ScrapeRequest } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
-import { canSend, requestFormats, requestPageKind } from "../pageRequest";
+import {
+  canSend,
+  llmBudget,
+  optionalNumber,
+  requestFormats,
+  requestPageKind,
+} from "../pageRequest";
 import {
   count,
   llmCalls,
@@ -63,9 +69,9 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
     schema: form.schemaId === "" ? null : { id: form.schemaId },
     page_kind: requestPageKind(form),
     fetch: { method_hint: options.methodHint },
-    ...(Number.isNaN(options.maxAge) ? {} : { max_age: options.maxAge }),
-    ...(Number.isNaN(options.timeoutS) ? {} : { timeout_s: options.timeoutS }),
-    ...(Number.isNaN(options.llmCalls) ? {} : { budget: { llm_calls: options.llmCalls } }),
+    ...optionalNumber("max_age", options.maxAge),
+    ...optionalNumber("timeout_s", options.timeoutS),
+    ...llmBudget(options.llmCalls),
   };
 }
 

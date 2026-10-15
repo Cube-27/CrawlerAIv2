@@ -49,7 +49,7 @@ export function LinksTable({
               onSelect(
                 selectOnPage(
                   selected,
-                  rows.map(({ url }) => url),
+                  rows.map(({ url }) => ({ key: url, url })),
                   selection,
                 ),
               );

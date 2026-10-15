@@ -67,6 +67,7 @@ function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
       }),
     "POST /v1/batch/scrape": () => Response.json({ job_id: JOB_ID }),
     [`GET ${JOB}`]: () => Response.json(job()),
+    [`GET ${JOB}/request`]: () => Response.json({ urls: [FIRST.url], formats: ["markdown"] }),
     [`GET ${JOB}/events`]: QUIET,
     [`GET ${JOB}/results`]: () => valuesPage([FIRST, SECOND, THIRD]),
     ...replies,
@@ -416,7 +417,7 @@ describe("batch playground: runs", () => {
       "GET /v1/jobs": () =>
         Response.json({
           items: [
-            job({ status: "completed", request: { urls: ["https://shop.test/a"] } }),
+            job({ status: "completed", start_url: "https://shop.test/a", url_count: null }),
             job({ id: OLDER, started_at: null }),
           ],
           next_cursor: null,
@@ -436,21 +437,18 @@ describe("batch playground: runs", () => {
 
   it("shows a run's request read-only, and edit and re-run starts a new job, keeping the old one", async () => {
     const calls = batchApi({
-      [`GET ${JOB}`]: () =>
-        Response.json(
-          job({
-            request: {
-              urls: ["https://shop.test/a", "https://shop.test/b"],
-              formats: ["links", "metadata"],
-              schema: null,
-              page_kind: "listing",
-              fetch: { method_hint: "browser", respect_robots: true },
-              webhook_url: null,
-            },
-          }),
-        ),
+      [`GET ${JOB}/request`]: () =>
+        Response.json({
+          urls: ["https://shop.test/a", "https://shop.test/b"],
+          formats: ["links", "metadata"],
+          schema: null,
+          page_kind: "listing",
+          fetch: { method_hint: "browser", respect_robots: true },
+          webhook_url: null,
+        }),
       "POST /v1/batch/scrape": () => Response.json({ job_id: OLDER }),
       [`GET /v1/jobs/${OLDER}`]: () => Response.json(job({ id: OLDER })),
+      [`GET /v1/jobs/${OLDER}/request`]: () => Response.json({ urls: ["https://shop.test/a"] }),
       [`GET /v1/jobs/${OLDER}/events`]: QUIET,
       [`GET /v1/jobs/${OLDER}/results`]: () => valuesPage([]),
     });

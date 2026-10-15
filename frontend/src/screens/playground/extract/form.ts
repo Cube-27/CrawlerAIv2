@@ -2,7 +2,13 @@ import type { ExtractRequest } from "../../../api/jobs";
 import { parseJsonObject } from "../../../api/json";
 import type { MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
-import { NO_ERRORS, schemaPageKindErrors, webhook } from "../pageRequest";
+import {
+  llmBudget,
+  NO_ERRORS,
+  optionalNumber,
+  schemaPageKindErrors,
+  webhook,
+} from "../pageRequest";
 import {
   count,
   llmCalls,
@@ -113,15 +119,15 @@ export function extractErrors(form: ExtractFormState): Readonly<Record<string, s
 export function buildExtract(form: ExtractFormState): ExtractRequest | null {
   const schema = extractSchema(form);
   const kind = extractPageKind(form);
-  if (extractErrors(form) !== NO_ERRORS || schema === null || kind === null) return null;
+  if (schema === null || kind === null || schemaPageKindErrors(kind) !== null) return null;
   const { options } = form;
   return {
     urls: [form.url, ...options.urls],
     schema,
     page_kind: kind,
     fetch: { method_hint: options.methodHint },
-    ...(Number.isNaN(options.limit) ? {} : { limit: options.limit }),
-    ...(Number.isNaN(options.llmCalls) ? {} : { budget: { llm_calls: options.llmCalls } }),
+    ...optionalNumber("limit", options.limit),
+    ...llmBudget(options.llmCalls),
     ...webhook(options.webhookUrl),
   };
 }
@@ -131,7 +137,6 @@ export function extractForm(request: StoredRequest): ExtractFormState {
   const [url = "", ...urls] = texts(request, "urls");
   const schema = member(request, "schema");
   const id = schemaId(request);
-  const inline = member(schema, "inline");
   let schemaSource: SchemaSource = "id";
   if ("inline" in schema) schemaSource = "inline";
   else if ("prompt" in schema) schemaSource = "prompt";
@@ -143,7 +148,8 @@ export function extractForm(request: StoredRequest): ExtractFormState {
     options: {
       urls,
       schemaSource,
-      inlineSchema: schemaSource === "inline" ? JSON.stringify(inline, null, 2) : "",
+      inlineSchema:
+        schemaSource === "inline" ? JSON.stringify(member(schema, "inline"), null, 2) : "",
       prompt: text(schema, "prompt"),
       pageKind: schemaSource === "id" ? null : kind,
       limit: count(request, "limit"),

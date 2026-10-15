@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { MapResult } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
-import { jobSummary } from "../../../test/jobs";
 import { fill, openOptions, openPlayground, posted } from "../../../test/playground";
 
 // `fetch` answers `POST /v1/map` with the shape SPEC-10 §4.4 defines.
@@ -86,15 +85,8 @@ describe("map playground", () => {
   it("shows a map run's request read-only, and says its URLs are not kept", async () => {
     const id = "0192a000-0000-7000-8000-0000000000m1";
     stubApi({
-      [`GET /v1/jobs/${id}`]: () =>
-        Response.json(
-          jobSummary({
-            id,
-            kind: "map",
-            status: "completed",
-            request: { url: "https://shop.test/", use_links: false, limit: 50 },
-          }),
-        ),
+      [`GET /v1/jobs/${id}/request`]: () =>
+        Response.json({ url: "https://shop.test/", use_links: false, limit: 50 }),
     });
     await openPlayground(`/map?job=${id}`);
 

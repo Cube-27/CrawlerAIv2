@@ -35,8 +35,8 @@ export function member(request: StoredRequest, key: string): StoredRequest {
   return isJsonObject(value) ? value : {};
 }
 
-export function pageKind(request: StoredRequest, key = "page_kind"): PageKind | null {
-  return PAGE_KINDS.find(([kind]) => kind === request[key])?.[0] ?? null;
+export function pageKind(request: StoredRequest): PageKind | null {
+  return PAGE_KINDS.find(([kind]) => kind === request["page_kind"])?.[0] ?? null;
 }
 
 /** `fetch.method_hint`, else FetchPolicy's own default (SPEC-02 §4.2). */

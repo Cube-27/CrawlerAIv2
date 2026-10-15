@@ -21,6 +21,21 @@ export function webhook(url: string): { webhook_url?: string } {
   return trimmed === "" ? {} : { webhook_url: trimmed };
 }
 
+/** An optional number member: left out while its field is empty (NaN), so the server's default applies. */
+export function optionalNumber<K extends string>(
+  key: K,
+  value: number,
+): Partial<Record<K, number>> {
+  const member: Partial<Record<K, number>> = {};
+  if (!Number.isNaN(value)) member[key] = value;
+  return member;
+}
+
+/** The optional `budget.llm_calls` member (SPEC-06 §4.8), left out while empty. */
+export function llmBudget(llmCalls: number): { budget?: { llm_calls: number } } {
+  return Number.isNaN(llmCalls) ? {} : { budget: { llm_calls: llmCalls } };
+}
+
 /** What the toolbar's Format and Schema hold, and the Metadata in JSON view option, in every mode that takes them
  * (Scrape, Batch, Crawl; SPEC-14 §4.2). `schemaId` is a stored schema's id, or "" for none; `schemaPageKind` is that
  * schema's page kind. */
@@ -37,7 +52,7 @@ export interface PageKindForm extends FormatForm {
 }
 
 /** `form` with the stored schema `schemaId`, for `schemaPageKind` pages. */
-export function withSchema<F extends FormatForm>(
+export function withSchema<F extends Pick<FormatForm, "schemaId" | "schemaPageKind">>(
   form: F,
   schemaId: string,
   schemaPageKind: SchemaPageKind | null,

@@ -1,51 +1,11 @@
-import { Button, Description, Input, Label, ListBox, Select, TextField } from "@heroui/react";
+import { Button, Description, Input, Label, TextField } from "@heroui/react";
 import { Plus, TrashBin } from "@gravity-ui/icons";
-import type { Key } from "react";
 import type { PageKind } from "../../../api/scrape";
-import { PAGE_KINDS } from "../../../components/requestOptions";
+import { isOptionOf, OptionSelect } from "../../../components/OptionSelect";
+import { PAGE_KIND_LABELS } from "../../../components/requestOptions";
 import type { RuleRow } from "./form";
 
-function PageKindPicker({
-  label,
-  value,
-  fixed,
-  onChange,
-}: Readonly<{
-  label: string;
-  value: PageKind;
-  fixed: PageKind | null;
-  onChange: (pageKind: PageKind) => void;
-}>) {
-  return (
-    <Select
-      aria-label={label}
-      className="w-36"
-      value={fixed ?? value}
-      disabledKeys={
-        fixed === null ? [] : PAGE_KINDS.map(([kind]) => kind).filter((kind) => kind !== fixed)
-      }
-      onChange={(key: Key | null) => {
-        const chosen = PAGE_KINDS.find(([kind]) => kind === key);
-        if (chosen !== undefined) onChange(chosen[0]);
-      }}
-    >
-      <Select.Trigger>
-        <Select.Value />
-        <Select.Indicator />
-      </Select.Trigger>
-      <Select.Popover>
-        <ListBox>
-          {PAGE_KINDS.map(([kind, text]) => (
-            <ListBox.Item key={kind} id={kind} textValue={text}>
-              {text}
-              <ListBox.ItemIndicator />
-            </ListBox.Item>
-          ))}
-        </ListBox>
-      </Select.Popover>
-    </Select>
-  );
-}
+const isPageKind = isOptionOf(PAGE_KIND_LABELS);
 
 /** A crawl's `page_kind_rules` (SPEC-10 §4.5) as rows of a URL glob and a page kind, across the panel's width.
  * Without rules every page in scope is extracted; with rules, a page no glob matches is read for its links only. With
@@ -87,10 +47,13 @@ export function RuleRows({
                 placeholder="https://example.com/items/*"
               />
             </TextField>
-            <PageKindPicker
+            <OptionSelect
               label={`Page kind ${n}`}
-              value={rule.pageKind}
-              fixed={fixed}
+              hideLabel
+              options={PAGE_KIND_LABELS}
+              value={fixed ?? rule.pageKind}
+              isDisabled={fixed !== null}
+              accepts={isPageKind}
               onChange={(pageKind) => {
                 replace(rule.key, { ...rule, pageKind });
               }}

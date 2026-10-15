@@ -45,20 +45,13 @@ const MAP: Mode = { id: "map", label: "Map", href: "/map", kind: "map", icon: Br
 
 const CRAWL: Mode = { id: "crawl", label: "Crawl", href: "/crawl", kind: "crawl", icon: GraphNode };
 
-/** The modes in the sidebar's order (SPEC-14 §4.8). */
-export const MODES: readonly Mode[] = [SCRAPE, BATCH, CRAWL, MAP, EXTRACT];
-
-/** The modes under the mode switch's captions (SPEC-14 §4.2). */
+/** The modes under the mode switch's captions (SPEC-14 §4.2); the sidebar lists them in this order too (D-0834). */
 export const MODE_GROUPS: readonly ModeGroup[] = [
   { caption: "Pages", modes: [SCRAPE, BATCH, EXTRACT] },
   { caption: "Sites", modes: [MAP, CRAWL] },
 ];
 
-export function modeOf(id: ModeId): Mode {
-  const mode = MODES.find((entry) => entry.id === id);
-  if (mode === undefined) throw new Error(`no mode ${id}`);
-  return mode;
-}
+export const MODES: readonly Mode[] = MODE_GROUPS.flatMap((group) => group.modes);
 
 /** Where a job of `kind` opens (SPEC-14 §4.8): its mode's route with `?job=`; null for a kind no mode runs (`learn`),
  * which keeps its job page. */

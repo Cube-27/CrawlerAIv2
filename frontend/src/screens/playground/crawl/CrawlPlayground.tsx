@@ -1,13 +1,10 @@
 import { Button } from "@heroui/react";
 import { useSubmitCrawl } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
-import { OptionsToggle } from "../OptionsPanel";
-import { OutputArea } from "../OutputArea";
 import { optionsChanged } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
-import { JobRunOutput } from "../run/JobRun";
-import { RecentRuns } from "../run/RecentRuns";
+import { JobModeOutput } from "../run/JobRun";
 import { useShownJob } from "../run/useShownJob";
 import { requestUrl, UrlInput } from "../UrlInput";
 import { usePageForm } from "../usePageForm";
@@ -33,20 +30,6 @@ export function CrawlPlayground() {
     submit.mutate(request, { onSuccess: show });
   };
 
-  let output = <RecentRuns kind="crawl" />;
-  if (submit.isPending)
-    output = <OutputArea state={{ kind: "pending", label: "Starting the crawl" }} />;
-  else if (problem !== null) output = <OutputArea state={{ kind: "failed", problem }} />;
-  else if (jobId !== null)
-    output = (
-      <JobRunOutput
-        key={jobId}
-        jobId={jobId}
-        withMetadata={form.options.metadataInJson}
-        selectable
-      />
-    );
-
   return (
     <PlaygroundLayout
       mode="crawl"
@@ -61,13 +44,9 @@ export function CrawlPlayground() {
           }}
         />
       }
-      optionsToggle={
-        <OptionsToggle
-          isOpen={optionsOpen}
-          changed={optionsChanged(form.options, DEFAULT_CRAWL_OPTIONS)}
-          onChange={setOptionsOpen}
-        />
-      }
+      optionsOpen={optionsOpen}
+      onOptionsOpen={setOptionsOpen}
+      optionsChanged={optionsChanged(form.options, DEFAULT_CRAWL_OPTIONS)}
       tools={<PageTools form={form} formatsUnused={form.schemaId !== ""} onChange={setForm} />}
       action={
         <Button type="submit" isPending={submit.isPending}>
@@ -75,19 +54,23 @@ export function CrawlPlayground() {
         </Button>
       }
       options={
-        optionsOpen ? (
-          <CrawlOptions
-            options={form.options}
-            schemaPageKind={form.schemaId === "" ? null : form.schemaPageKind}
-            rulesError={validationErrors["page_kind_rules"]}
-            onChange={(options) => {
-              setForm({ ...form, options });
-            }}
-          />
-        ) : null
+        <CrawlOptions
+          options={form.options}
+          schemaPageKind={form.schemaId === "" ? null : form.schemaPageKind}
+          rulesError={validationErrors["page_kind_rules"]}
+          onChange={(options) => {
+            setForm({ ...form, options });
+          }}
+        />
       }
     >
-      {output}
+      <JobModeOutput
+        kind="crawl"
+        starting={submit.isPending ? "Starting the crawl" : null}
+        problem={problem}
+        jobId={jobId}
+        withMetadata={form.options.metadataInJson}
+      />
     </PlaygroundLayout>
   );
 }

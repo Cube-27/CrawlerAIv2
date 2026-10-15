@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import { useNavigate } from "react-router";
 
 /** A table's selection as React Aria reports it: every row, or the keys of the selected ones. */
-type Selection = Parameters<
+export type Selection = Parameters<
   NonNullable<ComponentProps<typeof Table.Content>["onSelectionChange"]>
 >[0];
 
@@ -33,16 +33,18 @@ export function useScrapeAsBatch(): (urls: readonly string[]) => void {
   };
 }
 
-/** The URLs selected after the table's selection on one page changes to `selection`: the page's URLs, `pageUrls`,
- * leave and the ones selected there join, so selections on other pages are kept. */
+/** The URLs selected after the table's selection on one page changes to `selection` (React Aria's: every row, or
+ * the keys of the selected ones). `rows` are the page's rows, by key and URL: their URLs leave and the selected ones
+ * join, so selections on other pages are kept. */
 export function selectOnPage(
   selected: ReadonlySet<string>,
-  pageUrls: readonly string[],
+  rows: readonly { key: string | number; url: string }[],
   selection: Selection,
 ): Set<string> {
-  const kept = [...selected].filter((url) => !pageUrls.includes(url));
-  const chosen = selection === "all" ? pageUrls : pageUrls.filter((url) => selection.has(url));
-  return new Set([...kept, ...chosen]);
+  const onPage = new Set(rows.map(({ url }) => url));
+  const kept = [...selected].filter((url) => !onPage.has(url));
+  const chosen = rows.filter(({ key }) => selection === "all" || selection.has(key));
+  return new Set([...kept, ...chosen.map(({ url }) => url)]);
 }
 
 /** The table's row checkbox (React Aria's `selection` slot), in a row's first cell or, for the whole page, its

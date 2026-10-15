@@ -2,13 +2,10 @@ import { Button } from "@heroui/react";
 import { useLocation } from "react-router";
 import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
-import { OptionsToggle } from "../OptionsPanel";
-import { OutputArea } from "../OutputArea";
 import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
-import { JobRunOutput } from "../run/JobRun";
-import { RecentRuns } from "../run/RecentRuns";
+import { JobModeOutput } from "../run/JobRun";
 import { batchUrls } from "../run/scrapeAsBatch";
 import { useShownJob } from "../run/useShownJob";
 import { usePageForm } from "../usePageForm";
@@ -37,13 +34,6 @@ export function BatchPlayground() {
     submit.mutate(request, { onSuccess: show });
   };
 
-  let output = <RecentRuns kind="batch_scrape" />;
-  if (submit.isPending)
-    output = <OutputArea state={{ kind: "pending", label: "Starting the batch" }} />;
-  else if (problem !== null) output = <OutputArea state={{ kind: "failed", problem }} />;
-  else if (jobId !== null)
-    output = <JobRunOutput key={jobId} jobId={jobId} withMetadata={form.options.metadataInJson} />;
-
   return (
     <PlaygroundLayout
       mode="batch"
@@ -58,13 +48,9 @@ export function BatchPlayground() {
           }}
         />
       }
-      optionsToggle={
-        <OptionsToggle
-          isOpen={optionsOpen}
-          changed={optionsChanged(form.options, DEFAULT_BATCH_OPTIONS)}
-          onChange={setOptionsOpen}
-        />
-      }
+      optionsOpen={optionsOpen}
+      onOptionsOpen={setOptionsOpen}
+      optionsChanged={optionsChanged(form.options, DEFAULT_BATCH_OPTIONS)}
       tools={<PageTools form={form} onChange={setForm} />}
       action={
         <Button type="submit" isPending={submit.isPending}>
@@ -72,19 +58,23 @@ export function BatchPlayground() {
         </Button>
       }
       options={
-        optionsOpen ? (
-          <BatchOptions
-            options={form.options}
-            hasSchema={form.schemaId !== ""}
-            schemaPageKind={requestPageKind(form)}
-            onChange={(options) => {
-              setForm({ ...form, options });
-            }}
-          />
-        ) : null
+        <BatchOptions
+          options={form.options}
+          hasSchema={form.schemaId !== ""}
+          schemaPageKind={requestPageKind(form)}
+          onChange={(options) => {
+            setForm({ ...form, options });
+          }}
+        />
       }
     >
-      {output}
+      <JobModeOutput
+        kind="batch_scrape"
+        starting={submit.isPending ? "Starting the batch" : null}
+        problem={problem}
+        jobId={jobId}
+        withMetadata={form.options.metadataInJson}
+      />
     </PlaygroundLayout>
   );
 }

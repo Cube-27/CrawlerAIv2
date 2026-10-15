@@ -1,5 +1,5 @@
 import { Button, Link, Table, Typography } from "@heroui/react";
-import { useState, type Key } from "react";
+import { useState } from "react";
 import { useJobValues } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { JsonValuesItem } from "../../../api/jobs";
@@ -7,7 +7,7 @@ import { useCursorPages } from "../../../components/cursors";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
 import { PAGE_SIZE, PagedTable } from "../../../components/PagedTable";
 import { ItemDrawer } from "./ItemDrawer";
-import { ScrapeAsBatchBar, SelectionCheckbox, selectOnPage } from "./scrapeAsBatch";
+import { ScrapeAsBatchBar, SelectionCheckbox, selectOnPage, type Selection } from "./scrapeAsBatch";
 
 /** A page of the job and its place in the job (from 1): tasks keep their order (oldest first), so the place is the
  * row's identity. */
@@ -32,13 +32,14 @@ function selectionProps(rows: readonly Row[], { selected, onSelect }: UrlSelecti
   return {
     selectionMode: "multiple" as const,
     selectedKeys: new Set(rows.filter(({ item }) => selected.has(item.url)).map(({ id }) => id)),
-    onSelectionChange: (selection: "all" | Set<Key>) => {
-      const urls = rows.map(({ item }) => item.url);
-      const chosen =
-        selection === "all"
-          ? selection
-          : new Set(rows.filter(({ id }) => selection.has(id)).map(({ item }) => item.url));
-      onSelect(selectOnPage(selected, urls, chosen));
+    onSelectionChange: (selection: Selection) => {
+      onSelect(
+        selectOnPage(
+          selected,
+          rows.map(({ id, item }) => ({ key: id, url: item.url })),
+          selection,
+        ),
+      );
     },
   };
 }

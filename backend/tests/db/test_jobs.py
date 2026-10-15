@@ -513,7 +513,8 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         "webhook_url",
         "engine_version",
         "cancel_requested",
-        "request",
+        "start_url",
+        "url_count",
     }
     assert (body["id"], body["status"], body["counts"]["queued"], body["outcomes"]["partial"]) == (
         str(job_id),
@@ -521,7 +522,22 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         1,
         1,
     )
-    assert body["request"] == {"urls": ["https://shop.test/a"], "formats": ["markdown"]}
+    assert (body["start_url"], body["url_count"]) == (None, 1)
+
+
+async def test_a_jobs_stored_request_is_served_and_its_start_url_summarized(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    stored = {"url": "https://shop.test/", "formats": ["markdown"], "limit": 500}
+    job_id = await world.job(kind="crawl", request=stored)
+
+    request = await client.get(f"/v1/jobs/{job_id}/request")
+    summary = await client.get(f"/v1/jobs/{job_id}")
+    missing = await client.get(f"/v1/jobs/{uuid7()}/request")
+
+    assert (request.status_code, request.json()) == (200, stored)
+    assert (summary.json()["start_url"], summary.json()["url_count"]) == ("https://shop.test/", None)
+    assert missing.status_code == 404
 
 
 async def test_the_jobs_are_listed_a_page_at_a_time(client: httpx.AsyncClient, world: World) -> None:

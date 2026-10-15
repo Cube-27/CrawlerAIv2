@@ -117,9 +117,10 @@ class JobSummary(BaseModel):
     engine_version: str
     # The cancel was asked for (SPEC-01 §4.3); a running job stays running until its claimed tasks end.
     cancel_requested: bool
-    # The request the job was submitted with, as stored (`job.request`): the playground shows it again to edit and
-    # re-run (SPEC-14 §4.8).
-    request: dict[str, Any]
+    # What it was started on (SPEC-14 §4.6): the request's `url` (scrape, crawl, map), or how many `urls` it had
+    # (batch, extract); null when the request has no such member. The whole request is `job_request`.
+    start_url: str | None
+    url_count: int | None
 
 
 class JobPage(BaseModel):
@@ -232,7 +233,8 @@ _JOB_COLUMNS = (
     Job.webhook_url,
     Job.engine_version,
     Job.cancel_requested,
-    Job.request,
+    Job.request["url"].astext.label("start_url"),
+    func.jsonb_array_length(Job.request["urls"]).label("url_count"),
 )
 
 
@@ -242,6 +244,15 @@ async def get_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
         raise JobNotFound(f"no job {job_id}")
     [summary] = await _summaries(conn, [job])
     return summary
+
+
+async def job_request(conn: AsyncConnection, job_id: JobId) -> dict[str, Any]:
+    """The request the job was submitted with, as stored (`job.request`): the playground shows it again to edit and
+    re-run (SPEC-14 §4.8)."""
+    request = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one_or_none()
+    if request is None:
+        raise JobNotFound(f"no job {job_id}")
+    return request
 
 
 async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:

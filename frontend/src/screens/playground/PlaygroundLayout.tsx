@@ -5,11 +5,12 @@ import { PageHeader } from "../../components/PageHeader";
 import { CommandBar } from "./CommandBar";
 import type { ModeId } from "./modes";
 import { ModeSwitch } from "./ModeSwitch";
+import { OptionsToggle } from "./OptionsPanel";
 import { ReadOnlyContext } from "./readOnly";
 
-/** Every mode's page (SPEC-14 §4.2), top to bottom: the mode switch, the command bar (`input`, `optionsToggle`,
- * `tools`, `action`) in a form whose errors are `validationErrors`, the inline options panel when open (`options`),
- * then the output (`children`). With `onEdit`, the page shows a run's request read-only, and the action is "Edit and
+/** Every mode's page (SPEC-14 §4.2), top to bottom: the mode switch, the command bar (`input`, the Options toggle,
+ * `tools`, `action`) in a form whose errors are `validationErrors`, the inline options panel (`options`) while
+ * `optionsOpen`, then the output (`children`). The toggle shows a dot when `optionsChanged`. With `onEdit`, the page shows a run's request read-only, and the action is "Edit and
  * re-run", which calls it (SPEC-14 §4.8). */
 export function PlaygroundLayout({
   mode,
@@ -17,7 +18,9 @@ export function PlaygroundLayout({
   onSubmit,
   onEdit,
   input,
-  optionsToggle,
+  optionsOpen,
+  onOptionsOpen,
+  optionsChanged,
   tools = null,
   action,
   options,
@@ -28,7 +31,9 @@ export function PlaygroundLayout({
   onSubmit: () => void;
   onEdit: (() => void) | null;
   input: ReactNode;
-  optionsToggle: ReactNode;
+  optionsOpen: boolean;
+  onOptionsOpen: (isOpen: boolean) => void;
+  optionsChanged: boolean;
   tools?: ReactNode;
   action: ReactNode;
   options: ReactNode;
@@ -50,7 +55,13 @@ export function PlaygroundLayout({
         >
           <CommandBar
             input={input}
-            optionsToggle={optionsToggle}
+            optionsToggle={
+              <OptionsToggle
+                isOpen={optionsOpen}
+                changed={optionsChanged}
+                onChange={onOptionsOpen}
+              />
+            }
             tools={tools}
             action={
               onEdit === null ? (
@@ -63,7 +74,7 @@ export function PlaygroundLayout({
               )
             }
           />
-          {options}
+          {optionsOpen ? options : null}
         </Form>
       </ReadOnlyContext>
       {children}

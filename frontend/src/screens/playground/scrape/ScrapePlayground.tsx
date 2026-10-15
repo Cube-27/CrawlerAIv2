@@ -1,7 +1,6 @@
 import { Button } from "@heroui/react";
 import { useRef, useState, type ReactNode } from "react";
 import { useApiClient } from "../../../app/auth";
-import { OptionsToggle } from "../OptionsPanel";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { ScrapeOutput } from "../output/ScrapeOutput";
 import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
@@ -82,13 +81,9 @@ export function ScrapePlayground() {
           }}
         />
       }
-      optionsToggle={
-        <OptionsToggle
-          isOpen={optionsOpen}
-          changed={optionsChanged(form.options, DEFAULT_OPTIONS)}
-          onChange={setOptionsOpen}
-        />
-      }
+      optionsOpen={optionsOpen}
+      onOptionsOpen={setOptionsOpen}
+      optionsChanged={optionsChanged(form.options, DEFAULT_OPTIONS)}
       tools={<PageTools form={form} onChange={setForm} />}
       action={
         <Button type="submit" isPending={state.kind === "pending"}>
@@ -96,16 +91,14 @@ export function ScrapePlayground() {
         </Button>
       }
       options={
-        optionsOpen ? (
-          <ScrapeOptions
-            options={form.options}
-            hasSchema={form.schemaId !== ""}
-            schemaPageKind={requestPageKind(form)}
-            onChange={(options) => {
-              setForm({ ...form, options });
-            }}
-          />
-        ) : null
+        <ScrapeOptions
+          options={form.options}
+          hasSchema={form.schemaId !== ""}
+          schemaPageKind={requestPageKind(form)}
+          onChange={(options) => {
+            setForm({ ...form, options });
+          }}
+        />
       }
     >
       {output}

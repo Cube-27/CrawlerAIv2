@@ -33,7 +33,8 @@ function extractApi(request: Record<string, unknown> = {}): Call[] {
         ],
       }),
     "POST /v1/extract": () => Response.json({ job_id: JOB_ID }, { status: 202 }),
-    [`GET ${JOB}`]: () => Response.json(jobSummary({ id: JOB_ID, kind: "extract", request })),
+    [`GET ${JOB}`]: () => Response.json(jobSummary({ id: JOB_ID, kind: "extract" })),
+    [`GET ${JOB}/request`]: () => Response.json(request),
     [`GET ${JOB}/events`]: QUIET,
     [`GET ${JOB}/results`]: () =>
       Response.json({

@@ -48,6 +48,8 @@ function crawlApi(): Call[] {
       }),
     "POST /v1/crawl": () => Response.json({ job_id: JOB_ID }, { status: 202 }),
     [`GET ${JOB}`]: () => Response.json(jobSummary({ id: JOB_ID, kind: "crawl" })),
+    [`GET ${JOB}/request`]: () =>
+      Response.json({ url: "https://shop.test/", formats: ["markdown"] }),
     [`GET ${JOB}/events`]: QUIET,
     [`GET ${JOB}/results`]: () =>
       Response.json({

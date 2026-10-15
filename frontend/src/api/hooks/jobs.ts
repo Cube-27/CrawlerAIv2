@@ -5,6 +5,7 @@ import {
   exportJobPage,
   exportJobValues,
   getJob,
+  getJobRequest,
   listJobs,
   listJobResults,
   listJobValues,
@@ -50,6 +51,17 @@ export function useJob(id: string | null) {
     queryKey: jobKey(id ?? ""),
     queryFn: () => unwrap(getJob(client, id ?? "")),
     enabled: id !== null,
+  });
+}
+
+/** The job's stored request; nothing is read while `id` is null. It never changes, so it is read once. */
+export function useJobRequest(id: string | null) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...JOBS, "request", id],
+    queryFn: () => unwrap(getJobRequest(client, id ?? "")),
+    enabled: id !== null,
+    staleTime: Infinity,
   });
 }
 

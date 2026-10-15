@@ -51,9 +51,9 @@ describe("app shell", () => {
     ).toEqual([
       "Scrape",
       "Batch",
-      "Crawl",
-      "Map",
       "Extract",
+      "Map",
+      "Crawl",
       "Jobs",
       "Records",
       "Schemas",

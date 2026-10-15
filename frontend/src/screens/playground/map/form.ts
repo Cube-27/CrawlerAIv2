@@ -1,4 +1,5 @@
 import type { MapRequest } from "../../../api/jobs";
+import { optionalNumber } from "../pageRequest";
 import { count, flag, text, texts, type StoredRequest } from "../run/storedRequest";
 
 /** Map's options panel (SPEC-14 §4.2): each is a `MapRequest` member. An empty limit (NaN) is left out. */
@@ -34,7 +35,7 @@ export function buildMap(form: MapFormState): MapRequest {
     exclude: [...options.exclude],
     use_sitemaps: options.useSitemaps,
     use_links: options.useLinks,
-    ...(Number.isNaN(options.limit) ? {} : { limit: options.limit }),
+    ...optionalNumber("limit", options.limit),
   };
 }
 

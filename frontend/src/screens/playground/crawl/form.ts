@@ -7,6 +7,7 @@ import {
   asksForNothing,
   NO_ERRORS,
   NO_FORMAT,
+  optionalNumber,
   requestFormats,
   schemaPageKindErrors,
   webhook,
@@ -116,8 +117,8 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     include: [...options.include],
     exclude: [...options.exclude],
     fetch: { method_hint: options.methodHint },
-    ...(Number.isNaN(options.maxDepth) ? {} : { max_depth: options.maxDepth }),
-    ...(Number.isNaN(options.limit) ? {} : { limit: options.limit }),
+    ...optionalNumber("max_depth", options.maxDepth),
+    ...optionalNumber("limit", options.limit),
     ...webhook(options.webhookUrl),
   };
 }
