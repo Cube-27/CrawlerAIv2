@@ -46,6 +46,9 @@ crawlerai = "crawlerai.cli:main"
 requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
+# Writes VERSION and puts it and the manifest's data files in the wheel (hatch_build.py).
+[tool.hatch.build.hooks.custom]
+
 [tool.ruff]
 line-length = 120
 
@@ -91,6 +94,8 @@ markers = [
 dev = [
     "boto3-stubs[s3]>=1.35,<2",
     "complexipy>=8,<9",
+    # The wheel-build test runs the build hook in-process (tests/unit/test_wheel.py).
+    "hatchling>=1.27,<2",
     "hypothesis>=6,<7",
     "import-linter>=2,<3",
     "moto[s3]>=5,<6",
