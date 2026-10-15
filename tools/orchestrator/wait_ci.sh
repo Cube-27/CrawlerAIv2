@@ -5,9 +5,9 @@
 # failed check, a moved head or TIMEOUT_MIN (default 45). Right after a push GitHub may still report the old head,
 # so a different head is an error once it is neither SHA7 nor the head seen first, or after 3 minutes.
 # GitHub starts no pull_request workflow on a PR that conflicts with its base (#109 waited 30 minutes for checks that
-# never came), so a conflicting PR is an error at once, and so is a head whose `backend` check (the ci workflow's
-# first job) has not appeared after WAIT_CI_NO_RUN_S seconds (default 300). WAIT_CI_POLL_S (default 15) is the poll
-# interval.
+# never came), so a conflicting PR is an error at once, and so is a head whose `backend` check (reported even when
+# the `changes` job skips it) has not appeared after WAIT_CI_NO_RUN_S seconds (default 300). WAIT_CI_POLL_S (default
+# 15) is the poll interval.
 pr=$1; sha=$2; deadline=$(( $(date +%s) + ${3:-45} * 60 )); lag_end=$(( $(date +%s) + 180 )); first=""
 poll=${WAIT_CI_POLL_S:-15}; no_run_s=${WAIT_CI_NO_RUN_S:-300}; no_run_end=$(( $(date +%s) + no_run_s ))
 err() { echo "ERROR $*" >&2; exit 1; }

@@ -26,14 +26,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # `shell: bash` runs with `-o pipefail`, so a failed `git diff` fails this job rather than feeding the tool an
+      # empty list that skips every gated job. `--no-renames` lists a moved file under its old path too, so moving a
+      # file out of a job's inputs still runs that job.
       - id: filter
+        shell: bash
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "$EVENT" = "pull_request" ]; then
-            git diff --name-only "$BASE...$HEAD" | python3 tools/ci_changes.py >> "$GITHUB_OUTPUT"
+            git diff --no-renames --name-only "$BASE...$HEAD" | python3 tools/ci_changes.py >> "$GITHUB_OUTPUT"
           else
             python3 tools/ci_changes.py --all >> "$GITHUB_OUTPUT"
           fi
