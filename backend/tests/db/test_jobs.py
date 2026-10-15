@@ -492,7 +492,7 @@ async def client(
 
 
 async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(status="running")
+    job_id = await world.job(status="running", request={"urls": ["https://shop.test/a"], "formats": ["markdown"]})
     await world.tasks(job_id, [("done", "partial"), ("queued", None)])
 
     response = await client.get(f"/v1/jobs/{job_id}")
@@ -513,6 +513,7 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         "webhook_url",
         "engine_version",
         "cancel_requested",
+        "request",
     }
     assert (body["id"], body["status"], body["counts"]["queued"], body["outcomes"]["partial"]) == (
         str(job_id),
@@ -520,6 +521,7 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         1,
         1,
     )
+    assert body["request"] == {"urls": ["https://shop.test/a"], "formats": ["markdown"]}
 
 
 async def test_the_jobs_are_listed_a_page_at_a_time(client: httpx.AsyncClient, world: World) -> None:

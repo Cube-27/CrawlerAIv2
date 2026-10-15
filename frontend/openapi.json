@@ -2264,6 +2264,11 @@
           "outcomes": {
             "$ref": "#/components/schemas/OutcomeCounts"
           },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -2319,7 +2324,8 @@
           "llm_cost_usd",
           "webhook_url",
           "engine_version",
-          "cancel_requested"
+          "cancel_requested",
+          "request"
         ],
         "title": "JobSummary",
         "type": "object"

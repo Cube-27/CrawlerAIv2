@@ -1437,6 +1437,10 @@ export interface components {
             /** Llm Cost Usd */
             llm_cost_usd: number | null;
             outcomes: components["schemas"]["OutcomeCounts"];
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
             /** Started At */
             started_at: string | null;
             /**

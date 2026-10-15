@@ -13,7 +13,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Literal, NamedTuple, get_args
+from typing import Any, Literal, NamedTuple, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from sqlalchemy import RowMapping, func, select, update
@@ -117,6 +117,9 @@ class JobSummary(BaseModel):
     engine_version: str
     # The cancel was asked for (SPEC-01 §4.3); a running job stays running until its claimed tasks end.
     cancel_requested: bool
+    # The request the job was submitted with, as stored (`job.request`): the playground shows it again to edit and
+    # re-run (SPEC-14 §4.8).
+    request: dict[str, Any]
 
 
 class JobPage(BaseModel):
@@ -229,6 +232,7 @@ _JOB_COLUMNS = (
     Job.webhook_url,
     Job.engine_version,
     Job.cancel_requested,
+    Job.request,
 )
 
 
