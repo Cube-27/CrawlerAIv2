@@ -240,17 +240,20 @@ def test_schema_org_spellings(markup: str) -> None:
     ],
 )
 def test_markup_outside_schema_org_gives_no_entities(markup: str) -> None:
-    result = _collect(markup)
-    assert (result.entities, result.candidates) == ((), ())
+    result = _collect(
+        markup + '<div itemscope itemtype="https://schema.org/Product"><b itemprop="name">Widget 10</b></div>'
+    )
+    assert [e.kind for e in result.entities] == ["Product"]
+    assert [c.raw for c in result.candidates] == ["Widget 10"]
 
 
 def test_an_untyped_nested_item_s_names_are_not_schema_org() -> None:
     result = _collect(
         '<div itemscope itemtype="https://schema.org/Product">'
-        '<div itemprop="brand" itemscope><span itemprop="name">Acme 7</span></div></div>'
+        '<div itemprop="brand" itemscope><span itemprop="name">Acme 7</span></div><b itemprop="name">Widget 9</b></div>'
     )
     assert [e.kind for e in result.entities] == ["Product"]
-    assert result.candidates == ()
+    assert _fields(result) == [("title", f"microdata:{BODY}/div[1]", "Widget 9")]
 
 
 def test_rdfa_lite_nests_resources() -> None:
@@ -322,10 +325,6 @@ def test_subtypes_come_first_and_match_their_supertype_s_paths() -> None:
     )
     assert [e.kind for e in result.entities] == ["IndividualProduct"]
     assert [c.field for c in result.candidates] == ["title"]
-
-
-def test_a_page_without_markup_gives_nothing() -> None:
-    assert _collect("<p>Widget 9</p>") == CollectResult(entities=(), candidates=())
 
 
 def test_deep_nesting_is_walked_without_the_call_stack() -> None:

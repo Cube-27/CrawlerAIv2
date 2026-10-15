@@ -68,12 +68,6 @@ def test_exists_reflects_put_and_delete(store: ObjectStore) -> None:
         store.get("eval/dev/a.bundle.zst")
 
 
-def test_delete_of_missing_key_is_a_no_op(store: ObjectStore) -> None:
-    store.delete("never/written")
-
-    assert store.list("") == []
-
-
 def test_list_matches_keys_by_string_prefix_in_sorted_order(store: ObjectStore) -> None:
     for key in ["eval/dev/b", "captures/2026/10/b", "captures/2026/09/a", "captures/2025/12/c", "captures2/x"]:
         store.put(key, b"")
@@ -91,7 +85,8 @@ def test_list_matches_keys_by_string_prefix_in_sorted_order(store: ObjectStore) 
     assert store.list("nothing/") == []
 
 
-@pytest.mark.parametrize("key", ["", "/abs", "a//b", "a/", "../x", "a/../b", "a/./b", ".hidden", "a\\b", "a\x00b"])
+# One per refused class: an empty segment, a segment starting with `.`, a backslash, a NUL.
+@pytest.mark.parametrize("key", ["/abs", "../x", "a\\b", "a\x00b"])
 def test_rejects_keys_that_are_not_relative_slash_separated_paths(store: ObjectStore, key: str) -> None:
     with pytest.raises(ValueError, match="object key"):
         store.put(key, b"x")

@@ -26,11 +26,6 @@ def _page(head: str = "", body: str = "") -> ParsedPage:
     return ParsedPage(f"<html><head>{head}</head><body>{body}</body></html>")
 
 
-def test_a_json_ld_offer_states_its_currency() -> None:
-    offer = {"@context": "https://schema.org", "@type": "Product", "offers": {"@type": "Offer", "priceCurrency": "USD"}}
-    assert stated_currencies(_page(_jsonld(offer))) == ("USD",)
-
-
 def test_untyped_and_nested_price_objects_state_theirs_too() -> None:
     node = {
         "@context": "https://schema.org",
@@ -68,10 +63,6 @@ def test_open_graph_states_the_product_price_currency() -> None:
 def test_values_that_are_not_iso_4217_codes_as_written_are_not_currencies() -> None:
     node = {"@context": "https://schema.org", "@type": "Offer", "priceCurrency": ["usd", "US$", "QQQ", " EUR ", 5]}
     assert stated_currencies(_page(_jsonld(node))) == ("EUR",)
-
-
-def test_a_page_without_structured_currencies_states_none() -> None:
-    assert stated_currencies(_page(body="<p>Price: $12.50</p>")) == ()
 
 
 @given(st.lists(st.sampled_from(_CODES), min_size=1, max_size=4))

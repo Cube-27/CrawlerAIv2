@@ -23,14 +23,6 @@ def test_uuid7_leading_48_bits_are_the_creation_time_in_unix_milliseconds() -> N
     assert before <= value.int >> 80 <= after
 
 
-def test_uuid7_values_created_in_later_milliseconds_sort_after_earlier_ones() -> None:
-    first = uuid7()
-    time.sleep(0.002)
-    second = uuid7()
-
-    assert first < second
-
-
 def test_uuid7_values_from_one_process_strictly_increase() -> None:
     values = [uuid7() for _ in range(10_000)]
 

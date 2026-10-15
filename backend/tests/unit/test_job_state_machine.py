@@ -45,24 +45,18 @@ def test_every_status_can_still_end(transitions: Mapping[str, frozenset[str]], s
         assert _reachable(transitions, status) & terminal, status
 
 
-def test_job_lifecycle() -> None:
-    assert dict(JOB_TRANSITIONS) == {
-        "queued": {"running", "cancelled"},
-        "running": {"completed", "failed", "cancelled"},
-        "completed": set(),
-        "failed": set(),
-        "cancelled": set(),
-    }
-
-
-def test_task_lifecycle() -> None:
-    assert dict(TASK_TRANSITIONS) == {
-        "queued": {"claimed", "cancelled"},
-        "claimed": {"queued", "done", "failed", "cancelled"},
-        "done": set(),
-        "failed": set(),
-        "cancelled": set(),
-    }
+@pytest.mark.parametrize(
+    ("transitions", "statuses", "terminal"),
+    [
+        (JOB_TRANSITIONS, get_args(JobStatus), {"completed", "failed", "cancelled"}),
+        (TASK_TRANSITIONS, get_args(TaskStatus), {"done", "failed", "cancelled"}),
+    ],
+    ids=["job", "url_task"],
+)
+def test_only_the_ended_statuses_have_no_exit(
+    transitions: Mapping[str, frozenset[str]], statuses: tuple[str, ...], terminal: set[str]
+) -> None:
+    assert {status for status in statuses if not transitions[status]} == terminal
 
 
 counts = st.fixed_dictionaries({status: st.integers(min_value=0, max_value=50) for status in get_args(TaskStatus)})

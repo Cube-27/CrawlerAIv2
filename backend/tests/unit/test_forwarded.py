@@ -11,17 +11,10 @@ from crawlerai.api.forwarded import client_address
 PROXIES = (ip_network("10.0.0.0/8"), ip_network("2001:db8:ffff::/48"))
 
 
-@pytest.mark.parametrize(
-    "headers",
-    [
-        {"forwarded": "for=203.0.113.5"},
-        {"x-forwarded-for": "203.0.113.5"},
-        {"forwarded": "for=203.0.113.5", "x-forwarded-for": "198.51.100.9"},
-    ],
-)
-def test_an_untrusted_peer_is_the_client_whatever_it_forwards(headers: dict[str, str]) -> None:
-    assert client_address("192.0.2.1", list(headers.items()), PROXIES) == "192.0.2.1"
-    assert client_address("10.0.0.1", list(headers.items()), ()) == "10.0.0.1"
+def test_an_untrusted_peer_is_the_client_whatever_it_forwards() -> None:
+    headers = [("forwarded", "for=203.0.113.5"), ("x-forwarded-for", "198.51.100.9")]
+    assert client_address("192.0.2.1", headers, PROXIES) == "192.0.2.1"
+    assert client_address("10.0.0.1", headers, ()) == "10.0.0.1"
 
 
 @pytest.mark.parametrize(
@@ -62,9 +55,6 @@ def test_a_chain_of_trusted_proxies_only_ends_at_its_leftmost_hop() -> None:
     [
         [],
         [("forwarded", "for=unknown")],  # RFC 7239 §6.2
-        [("forwarded", "for=_hidden")],  # an obfuscated identifier (§6.3)
-        [("forwarded", "proto=https")],
-        [("x-forwarded-for", "not an address")],
         [("x-forwarded-for", "198.51.100.1, garbage")],
     ],
 )

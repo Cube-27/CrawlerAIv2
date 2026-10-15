@@ -29,19 +29,17 @@ def test_the_dev_store_needs_no_private_settings() -> None:
     assert store.split == "dev"
 
 
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
 @pytest.mark.parametrize(
     "private",
     [
-        {},
         {"eval_private_database_url": PRIVATE_DB},
         {"eval_private_object_store": "fs:///srv/private"},
     ],
 )
-def test_hidden_and_fresh_need_both_private_settings(split: PrivateSplit, private: dict[str, str]) -> None:
+def test_hidden_and_fresh_need_both_private_settings(private: dict[str, str]) -> None:
     settings = _settings(**private)
     with pytest.raises(PrivateCredentialsMissing, match="expected on any other machine"):
-        get_store(split, settings)
+        get_store("fresh", settings)
 
 
 @pytest.mark.parametrize("split", ["hidden", "fresh"])

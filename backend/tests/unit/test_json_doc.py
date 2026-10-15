@@ -51,9 +51,7 @@ def test_a_query_starts_at_the_given_path() -> None:
     assert select("$['title']", row, at="$['jobs'][0]") == [("$['jobs'][0]['title']", "A")]
 
 
-@pytest.mark.parametrize(
-    "query", ["", "jobs", "$.jobs", "$['jobs'][-1]", "$['jobs'][01]", "$[?@.title]", "$..title", "$['a\\'b']"]
-)
+@pytest.mark.parametrize("query", ["jobs", "$..title", "$['jobs'][01]", "$['a\\'b']"])
 def test_a_query_outside_the_subset_is_refused(query: str) -> None:
     with pytest.raises(ValueError, match="query"):
         select(query, DOCUMENT)

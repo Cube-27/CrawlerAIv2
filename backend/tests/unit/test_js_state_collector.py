@@ -121,7 +121,9 @@ def test_a_visible_value_of_a_checkable_field_without_candidates_is_owned_by_the
 
 def test_a_visible_value_of_a_text_field_without_candidates_is_not_admitted() -> None:
     # Any visible string normalizes as text, so visibility alone does not say the leaf is the title.
-    assert _collect(_state({"items": [{"label": "Synthetic Widget"}]}, body="Synthetic Widget")).candidates == ()
+    page = _state({"label": "Synthetic Widget", "cost": "€5.00"}, body="Synthetic Widget €5.00")
+
+    assert [(c.field, c.locator) for c in _collect(page).candidates] == [("price", f"js_state:{SCRIPT}:$['cost']")]
 
 
 def test_a_text_field_admits_by_equality() -> None:
@@ -135,14 +137,16 @@ def test_a_text_field_admits_by_equality() -> None:
 
 
 def test_a_value_neither_equal_nor_visible_is_not_admitted() -> None:
-    result = _collect(_state({"a": "Hidden Name", "b": "€5.00"}, body="Other text"))
+    result = _collect(_state({"a": "Hidden Name", "b": "€5.00", "c": "€7.00"}, body="Other text €7.00"))
 
-    assert result == Admitted(candidates=())
+    assert [c.locator for c in result.candidates] == [f"js_state:{SCRIPT}:$['c']"]
 
 
 def test_a_field_with_candidates_admits_by_equality_only() -> None:
-    # Visible and a valid price, but the field has a JSON-LD price it does not equal.
-    assert _prices(_state({"was": "€24.99"}, body="€24.99"), JSONLD_PRICE) == []
+    # `was` is visible and a valid price, but the field has a JSON-LD price it does not equal.
+    page = _state({"was": "€24.99", "cost": "€19.99"}, body="€24.99")
+
+    assert _prices(page, JSONLD_PRICE) == [("jsonld:0:$['offers']", False)]
 
 
 def test_a_value_both_equal_and_visible_is_not_independent() -> None:
@@ -151,8 +155,10 @@ def test_a_value_both_equal_and_visible_is_not_independent() -> None:
 
 def test_a_candidate_that_did_not_normalize_still_makes_the_field_admit_by_equality_only() -> None:
     invalid = JSONLD_PRICE.model_copy(update={"normalized": Invalid("no_currency")})
+    page = _state({"cost": "€19.99"}, body="€19.99")
 
-    assert _prices(_state({"cost": "€19.99"}, body="€19.99"), invalid) == []
+    assert _prices(page) == [("page", True)]
+    assert _prices(page, invalid) == []
 
 
 def test_candidates_of_the_same_source_kind_are_not_anchors() -> None:
@@ -171,9 +177,9 @@ def test_a_value_equal_to_candidates_of_two_entities_is_admitted_once_for_each()
 
 
 def test_booleans_null_and_unnormalizable_values_are_not_candidates() -> None:
-    result = _collect(_state({"a": True, "b": None, "c": 7, "d": ""}, body="true null 7"))
+    result = _collect(_state({"a": True, "b": None, "c": 7, "d": "", "e": "€5.00"}, body="true null 7 €5.00"))
 
-    assert result.candidates == ()
+    assert [c.locator for c in result.candidates] == [f"js_state:{SCRIPT}:$['e']"]
 
 
 # The script-reading tests probe with a visible price: a price is admitted by visibility alone (§8.1).
@@ -195,23 +201,24 @@ def test_the_json_after_the_first_assignment_is_the_state(script: str) -> None:
 @pytest.mark.parametrize(
     "script",
     [
-        'if (a == {"cost": "€5.00"}) {}',
-        'var f = x => ({"cost": "€5.00"});',
+        'go({"was": "€5.00"});',  # no assignment
+        'var f = x => ({"was": "€5.00"});',  # an initializer that is not JSON
         'var n = "€5.00";',  # a scalar initializer is a script variable, not state
-        'go({"cost": "€5.00"});',
-        'window.s = JSON.parse(\'{"cost": "€5.00"}\');',
     ],
 )
 def test_script_code_that_is_not_an_assignment_of_json_is_not_state(script: str) -> None:
-    result = _collect(_page(script, body="€5.00"))
+    page = ParsedPage(
+        f'<html><head><script>{script}</script><script>var s = {{"cost": "€5.00"}}</script></head>'
+        "<body>€5.00</body></html>"
+    )
 
-    assert result == Admitted(candidates=())
+    assert [c.locator for c in _collect(page).candidates] == ["js_state:/html[1]/head[1]/script[2]:$['cost']"]
 
 
 def test_only_the_first_assignment_of_a_script_is_read() -> None:
-    script = 'window.a = {"x": 1}; window.b = {"cost": "€5.00"};'
+    script = 'window.a = {"cost": "€5.00"}; window.b = {"was": "€5.00"};'
 
-    assert _collect(_page(script, body="€5.00")).candidates == ()
+    assert [c.locator for c in _collect(_page(script, body="€5.00")).candidates] == [f"js_state:{SCRIPT}:$['cost']"]
 
 
 def test_an_application_json_script_is_a_document() -> None:
@@ -230,9 +237,12 @@ def test_an_invalid_application_json_script_is_skipped_with_a_diagnostic() -> No
 
 
 def test_json_ld_blocks_are_not_state() -> None:
-    page = _page('{"cost": "€5.00"}', body="€5.00", script_type="application/ld+json")
+    page = ParsedPage(
+        '<html><head><script type="application/ld+json">{"was": "€5.00"}</script>'
+        '<script type="application/json">{"cost": "€5.00"}</script></head><body>€5.00</body></html>'
+    )
 
-    assert _collect(page) == Admitted(candidates=())
+    assert [c.locator for c in _collect(page).candidates] == ["js_state:/html[1]/head[1]/script[2]:$['cost']"]
 
 
 def test_each_script_is_addressed_by_its_own_xpath() -> None:

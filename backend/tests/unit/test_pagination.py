@@ -40,8 +40,11 @@ def test_a_base_element_sets_the_reference_base() -> None:
 
 
 def test_rel_prev_and_non_http_references_are_not_candidates() -> None:
-    head = '<link rel="prev" href="/c?page=1"><link rel="next" href="mailto:a@example.test">'
-    assert _next("", f"{BASE}/c?page=2", head) == ()
+    head = (
+        '<link rel="prev" href="/c?page=1"><link rel="next" href="mailto:a@example.test">'
+        '<link rel="next" href="/c?page=3">'
+    )
+    assert _next("", f"{BASE}/c?page=2", head) == (f"{BASE}/c?page=3",)
 
 
 # --- structural numbered links ---
@@ -72,13 +75,16 @@ def test_links_differing_in_more_than_one_place_are_not_numbered_pages() -> None
         "http://shop.example.test/c?page=3",  # another scheme
         "/c?page=three",  # not an integer
         "/c?page=4",  # not current + 1
+        "/c?page=3&sort=asc",  # the one numbered page
     )
-    assert _next(body, f"{BASE}/c?page=2&sort=asc") == ()
+    assert _next(body, f"{BASE}/c?page=2&sort=asc") == (f"{BASE}/c?page=3&sort=asc",)
 
 
 def test_a_page_url_without_the_integer_has_no_structural_candidate() -> None:
     # Which number the first page would carry is not stated, so it is not guessed (C7).
-    assert _next(_links("/c?page=1", "/c?page=2"), f"{BASE}/c") == ()
+    links = _links("/c?page=1", "/c?page=2")
+    assert _next(links, f"{BASE}/c") == ()
+    assert _next(links, f"{BASE}/c?page=1") == (f"{BASE}/c?page=2",)
 
 
 _NAMES = st.text(string.ascii_lowercase, min_size=1, max_size=8)

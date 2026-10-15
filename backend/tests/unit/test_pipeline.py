@@ -161,16 +161,6 @@ def test_without_a_fitted_order_text_fields_decline() -> None:
     assert result.outcome == "partial"
 
 
-def test_two_products_the_urls_do_not_settle_conflict_on_every_field() -> None:
-    page = _html(
-        _product("Widget Two", "https://shop.example.test/p/2"),
-        _product("Widget Three", "https://shop.example.test/p/3"),
-    )
-    result = _extract(_bundle(page))
-    assert set(_statuses(result).values()) == {("conflict", "intent_ambiguous")}
-    assert result.outcome == "partial"
-
-
 def test_the_product_the_page_url_names_is_the_target() -> None:
     page = _html(_product("Widget Two", "https://shop.example.test/p/2"), _product("Widget One", PAGE_URL))
     result = _extract(_bundle(page))
@@ -334,12 +324,6 @@ def test_required_fields_left_missing_go_to_role_c_once() -> None:
     assert result.outcome == "extracted"
 
 
-def test_role_c_is_not_called_when_every_required_field_publishes() -> None:
-    role_c = FakeRoleC()
-    result = _extract(_bundle(_html(_product())), role_c=role_c)
-    assert (role_c.requests, result.llm_calls) == ([], ())
-
-
 def test_with_the_committed_order_a_json_ld_complete_page_publishes_without_role_c() -> None:
     # Text fields rank by the committed order, so JSON-LD carrying every required field leaves no gap for role C.
     role_c = FakeRoleC()
@@ -387,8 +371,9 @@ def test_role_c_is_not_called_for_conflicts() -> None:
         _product("Widget Two", "https://shop.example.test/p/2"),
         _product("Widget Three", "https://shop.example.test/p/3"),
     )
-    _extract(_bundle(page), role_c=role_c)
-    assert role_c.requests == []
+    result = _extract(_bundle(page), role_c=role_c)
+    assert _statuses(result) == dict.fromkeys(("title", "price", "sku"), ("conflict", "intent_ambiguous"))
+    assert (result.outcome, role_c.requests, result.llm_calls) == ("partial", [], ())
 
 
 def test_missing_optional_fields_ride_along_with_a_required_gap() -> None:
@@ -403,6 +388,7 @@ def test_missing_optional_fields_alone_do_not_call_role_c() -> None:
     role_c = FakeRoleC()
     node = {key: value for key, value in _product().items() if key != "sku"}
     result = _extract(_bundle(_html(node)), role_c=role_c)
+    assert _statuses(result)["sku"] == ("missing", "no_candidates")
     assert (role_c.requests, result.llm_calls) == ([], ())
 
 
@@ -463,8 +449,8 @@ def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url() -> No
 def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> None:
     data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=[]))
     result = _extract(_bundle('{"title": "Engineer"}', method="api", url=JOB_URL), JOB, data=data)
-    assert not any(c.source_kind == "adapter" for c in result.candidates)
-    assert any(d.startswith("adapter: no active adapter") for d in result.diagnostics)
+    assert (result.candidates, _statuses(result)) == ((), {"title": ("missing", "no_candidates")})
+    assert result.diagnostics == ("adapter: no active adapter detects the page URL of this api capture",)
 
 
 # --- cold listings (§4.7 "Listings", §8.6) ---
@@ -572,7 +558,8 @@ def test_the_next_pages_come_with_the_listing() -> None:
 def test_role_c_is_not_asked_for_a_listing_whose_structured_data_gives_rows() -> None:
     # ARCHITECTURE §8.6: rows come from structured data or from role C; a row's own gaps stay missing (D-0516).
     role_c = FakeRoleC()
-    _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
+    result = _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
+    assert _row_values(result) == [{"url": "https://shop.example.test/p/1"}]
     assert (role_c.requests, role_c.listing_requests) == ([], [])
 
 
@@ -649,7 +636,11 @@ def test_a_listing_role_c_failure_leaves_the_asked_page_fields_missing_with_its_
 def test_a_listing_schema_without_row_fields_does_not_call_role_c() -> None:
     role_c = FakeRoleC()
     schema = _schema("listing", page_title=LISTING.fields["page_title"])
-    _listing(_html(), schema, role_c=role_c)
+    result = _listing(_html(), schema, role_c=role_c)
+    assert result.entity is not None
+    assert {name: (o.status, o.reason) for name, o in result.entity.items()} == {
+        "page_title": ("missing", "no_candidates")
+    }
     assert role_c.listing_requests == []
 
 

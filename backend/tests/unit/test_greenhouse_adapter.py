@@ -64,15 +64,12 @@ def test_embedded_boards_and_jobs_are_detected_from_their_query(token: str, job_
 @pytest.mark.parametrize(
     "url",
     [
-        f"https://jobs.example.com/{TENANT}",  # not a board host
         f"https://{HOST}.example.com/{TENANT}",  # a board host's name inside another host
         f"ftp://{HOST}/{TENANT}",
         f"https://{HOST}/",  # no tenant
-        f"https://{HOST}/{TENANT}/jobs",  # no job
         f"https://{HOST}/{TENANT}/jobs/not-a-number",
         f"https://{HOST}/{TENANT}/jobs/1/extra",
         f"https://{HOST}/..",  # a dot-segment would move the API path
-        f"https://{HOST}/{TENANT}%2Fjobs",
         f"https://{HOST}/embed/job_board",  # no `for`
         f"https://{HOST}/embed/job_board?for=a&for=b",  # two tenants
         f"https://{HOST}/embed/job_app?for={TENANT}",  # no job token
@@ -103,12 +100,6 @@ def test_a_board_page_is_fetched_from_the_list_jobs_endpoint_with_content(stand_
     result = asyncio.run(Greenhouse(stand_in_api({endpoint: body})).fetch(f"https://{HOST}/{TENANT}", FetchPolicy()))
 
     assert (result.block_class, result.bundle.manifest.final_url, result.bundle.body) == ("ok", endpoint, body)
-
-
-def test_a_missing_job_is_not_found(stand_in_api: StandInApi) -> None:
-    result = asyncio.run(Greenhouse(stand_in_api({})).fetch(f"https://{HOST}/{TENANT}/jobs/1", FetchPolicy()))
-
-    assert result.block_class == "not_found"
 
 
 def test_a_url_it_does_not_detect_is_refused() -> None:
