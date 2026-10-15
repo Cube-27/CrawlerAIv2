@@ -58,7 +58,11 @@ def test_a_calibrated_bucket_below_tau_never_publishes(
     calibration = Calibration(eval_run_id=EvalRunId(uuid.uuid4()), git_sha="a", buckets=buckets)
 
     outcome = assess(
-        FieldType.IDENTIFIER, Chosen(chosen, tuple(agreeing), ()), calibration, tau=tau, corroborated=False
+        FieldType.IDENTIFIER,
+        Chosen(chosen, tuple(agreeing), (), (chosen, *agreeing)),
+        calibration,
+        tau=tau,
+        corroborated=False,
     )
 
     if outcome.status == "published":

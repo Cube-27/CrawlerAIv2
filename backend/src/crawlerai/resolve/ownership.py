@@ -71,10 +71,7 @@ class EntityGraph:
         """The target's variant holders (SPEC-13 §4.6): its `hasVariant` members and the Offers directly under it,
         an AggregateOffer excepted."""
         return tuple(
-            e
-            for e in self.entities.values()
-            if e.parent == target.id
-            and (e.via == VARIANT or (self.is_a(e, OFFER) and not self.is_a(e, AGGREGATE_OFFER)))
+            e for e in self.entities.values() if e.parent == target.id and (e.via == VARIANT or self._single_offer(e))
         )
 
     def variants(self, target: Entity) -> tuple[Entity, ...]:

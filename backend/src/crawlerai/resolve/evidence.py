@@ -128,7 +128,8 @@ def assess(
             # D-0355: a page-URL derivation has no candidate, source kind or bucket, which INV-22 requires.
             return _unpublished("missing", "no_provenance", ())
         value, derived_by = decision.value, decision.derived_by
-        decision = Chosen(decision.source, (), ())
+        # The source is another field's candidate: none of this field's passed screening.
+        decision = Chosen(decision.source, (), (), kept=())
     elif isinstance(decision, Chosen):
         value = _value(decision.candidate)
     else:

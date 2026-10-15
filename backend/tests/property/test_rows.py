@@ -14,14 +14,17 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
+from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
+from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.rows import linked
 from crawlerai.resolve.types import FieldOutcome
 from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -144,3 +147,51 @@ def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Vari
         assert price.value == {"amount": variant.price, "currency": "EUR"}
     else:
         assert (price.status, price.value) == ("conflict", None)
+
+
+_KEY_SUBS = {
+    "sku": FieldSpec(type=FieldType.TEXT),
+    "url": FieldSpec(type=FieldType.URL),
+    "place": FieldSpec(type=FieldType.LOCATION),
+}
+_KEY_VALUES: dict[str, list[JsonValue]] = {
+    "sku": ["W-1", " W-1", "W-2", "W-3"],
+    "url": ["https://example.test/v/1", "HTTPS://example.test/v/1#a", "https://example.test/v/2"],
+    # Location equality is not transitive: a place without a region equals both places with one.
+    "place": [
+        {"locality": "Springfield", "region": None, "country": "DE", "remote_flag": False},
+        {"locality": "Springfield", "region": "BY", "country": "DE", "remote_flag": False},
+        {"locality": "Springfield", "region": "BE", "country": "DE", "remote_flag": False},
+    ],
+}
+ROW_KEYS = st.lists(
+    st.fixed_dictionaries(
+        {},
+        optional={
+            sub: st.lists(st.sampled_from(values), min_size=1, max_size=2) for sub, values in _KEY_VALUES.items()
+        },
+    ),
+    max_size=8,
+)
+
+
+@given(ROW_KEYS)
+def test_rows_link_as_comparing_every_pair_would(row_keys: list[dict[str, list[JsonValue]]]) -> None:
+    rows = [Entity(id=f"row:{i}", kind="Product", urls=(), parent=None) for i in range(len(row_keys))]
+    keys = {row.id: k for row, k in zip(rows, row_keys, strict=True)}
+
+    assert [[row.id for row in group] for group in linked(_KEY_SUBS, rows, keys)] == _pairwise(rows, keys)
+
+
+def _pairwise(rows: list[Entity], keys: dict[str, dict[str, list[JsonValue]]]) -> list[list[str]]:
+    """The components found by comparing every pair of rows (SPEC-13 §4.4), in collector order by first row."""
+    groups: list[set[str]] = []
+    for row in rows:
+        joined = [g for g in groups if any(_share(keys[row.id], keys[other]) for other in g)]
+        groups = [g for g in groups if g not in joined] + [set().union({row.id}, *joined)]
+    order = [row.id for row in rows]
+    return sorted(([r for r in order if r in g] for g in groups), key=lambda g: order.index(g[0]))
+
+
+def _share(a: dict[str, list[JsonValue]], b: dict[str, list[JsonValue]]) -> bool:
+    return any(equal(x, y, _KEY_SUBS[sub]) for sub in a.keys() & b.keys() for x in a[sub] for y in b[sub])

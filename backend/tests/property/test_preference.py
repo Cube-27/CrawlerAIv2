@@ -143,12 +143,7 @@ _PREFERENCES = st.one_of(
         st.sampled_from(["no_candidates", "disagree"]),
         st.just(()),
     ),
-    st.builds(
-        Chosen,
-        st.just(_candidate("url", PAGE_URL, PRODUCT.id, "jsonld", 0)),
-        st.just(()),
-        st.just(()),
-    ),
+    st.just(_candidate("url", PAGE_URL, PRODUCT.id, "jsonld", 0)).map(lambda c: Chosen(c, (), (), (c,))),
 )
 _CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)
 

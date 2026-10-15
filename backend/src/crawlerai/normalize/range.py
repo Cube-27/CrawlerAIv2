@@ -15,14 +15,24 @@ Declines (§9): the currency unresolved, or the period unresolved on a monetary 
 """
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 
 from pydantic import JsonValue
 
 from crawlerai.normalize import vocab
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import (
+    Ambiguous,
+    Context,
+    Invalid,
+    NormalizeResult,
+    Ok,
+    Raw,
+    frozen,
+    has_surrogate,
+    raw_key,
+)
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 MoneyRules = Callable[[Raw, Context], NormalizeResult]
@@ -254,12 +264,11 @@ def _value(lo: Decimal, hi: Decimal, *, currency: str | None, unit: str | None, 
     return {"min": format(lo, "f"), "max": format(hi, "f"), "currency": currency, "unit": unit, "period": period}
 
 
-def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: every part equal, the bounds as Decimals without rounding (`50000` equals `50000.00`)."""
-    if a == b:
-        return True
-    left, right = _range_value(a), _range_value(b)
-    return left is not None and left == right
+def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    """Equality as a key (SPEC-04 §4.5): every part equal, the bounds as Decimals without rounding (`50000` equals
+    `50000.00`)."""
+    parts = _range_value(value)
+    return raw_key(value) if parts is None else ("range", *parts[:2], *(frozen(p) for p in parts[2:]))
 
 
 def _range_value(value: JsonValue) -> tuple[Decimal, Decimal, JsonValue, JsonValue, JsonValue] | None:

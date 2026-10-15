@@ -3,6 +3,8 @@ read from the shared `ParsedPage`."""
 
 import re
 
+import pytest
+import trafilatura
 from lxml import etree
 
 from crawlerai.content.html import cleaned_html, is_javascript_url
@@ -223,3 +225,24 @@ def test_structured_data_types_skip_context_term_definitions_and_value_objects()
     )
 
     assert metadata(page, FINAL_URL).structured_data_types == ("Product",)
+
+
+def test_markdown_keeps_a_list_item_s_continuation_inside_the_item(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CommonMark §5.2: a paragraph indented to an item's content column, after a blank line, is part of that item; its
+    # layout indentation beyond that column is dropped, as it would start a code block (§4.4).
+    extracted = (
+        "Intro.\n\n"
+        "- Steel\n\n  Louder on wooden floors.\n\n"
+        "  1.  Chromed\n\n          Rusts less.\n"
+        "Lazily continued.\n\n      Still the item.\n\n"
+        "Outside the list.\n\n    Not code."
+    )
+    monkeypatch.setattr(trafilatura, "extract", lambda *_, **__: extracted)
+
+    assert markdown(ParsedPage(ARTICLE), FINAL_URL) == (
+        "Intro.\n\n"
+        "- Steel\n\n  Louder on wooden floors.\n\n"
+        "  1.  Chromed\n\n      Rusts less.\n"
+        "Lazily continued.\n\n      Still the item.\n\n"
+        "Outside the list.\n\nNot code."
+    )

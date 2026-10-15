@@ -8,8 +8,8 @@ Link and image targets are resolved against the document base URL (HTML Living S
 the Markdown can be read away from the page. The source's layout whitespace is not content: outside `pre`, HTML
 renders indentation and line breaks as one space (CSS Text Level 3, `white-space: normal`), while in Markdown an
 indent of four spaces starts a code block and a run of blank lines means one (CommonMark §4.4, §4.9). So a line's
-leading whitespace is dropped unless it nests a list item, and blank-line runs become one; fenced code is kept as
-written.
+leading whitespace is dropped unless it nests a list item or continues one, and blank-line runs become one; fenced
+code is kept as written.
 """
 
 import re
@@ -24,8 +24,8 @@ from crawlerai.content.page import ParsedPage
 # CommonMark §4.5: a fenced code block opens and closes with a run of three or more backticks or tildes.
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 # CommonMark §5.2: a list item starts with a bullet (`-`, `+`, `*`) or an ordered marker (digits, then `.` or `)`),
-# then a space; its indentation is what nests it.
-_LIST_ITEM = re.compile(r"^[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]")
+# then whitespace; its indentation is what nests it, and its content starts after that whitespace.
+_LIST_ITEM = re.compile(r"^[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+")
 
 
 def markdown(page: ParsedPage, final_url: str) -> str:
@@ -53,10 +53,11 @@ def _tidy(text: str) -> str:
     """Layout whitespace dropped as the module docstring says; fenced code untouched."""
     lines: list[str] = []
     fence: str | None = None
+    item: int | None = None  # the content column of the list item open above, if any
     for line in text.splitlines():
         opened = _FENCE.match(line)
         if fence is None and opened is None:
-            _add_text_line(lines, line)
+            item = _add_text_line(lines, line, item)
             continue
         lines.append(line)
         if fence is None:
@@ -66,12 +67,25 @@ def _tidy(text: str) -> str:
     return "\n".join(lines).strip("\n")
 
 
-def _add_text_line(lines: list[str], line: str) -> None:
-    # A list item keeps the indentation that nests it; any other line loses its layout indentation, and a blank line
-    # right after another is dropped.
-    kept = line.rstrip() if _LIST_ITEM.match(line) else line.strip()
+def _add_text_line(lines: list[str], line: str, item: int | None) -> int | None:
+    """Adds the line and returns the content column of the list item open after it. A list item keeps the indentation
+    that nests it. A line indented to an open item's content column continues that item (CommonMark §5.2) and is
+    indented to exactly that column, so further layout indentation starts no code block inside it. Any other line
+    loses its layout indentation and, unless it continues the paragraph right above (a lazy continuation line), closes
+    the item. A blank line right after another is dropped."""
+    marker = _LIST_ITEM.match(line)
+    text = line.strip()
+    if marker is not None:
+        kept, item = line.rstrip(), len(marker.group(0))
+    elif text and item is not None and len(line) - len(line.lstrip()) >= item:
+        kept = " " * item + text
+    else:
+        kept = text
+        if text and not (lines and lines[-1]):  # not a lazy continuation
+            item = None
     if kept or (lines and lines[-1]):
         lines.append(kept)
+    return item
 
 
 def _closes(opened: re.Match[str] | None, fence: str) -> bool:

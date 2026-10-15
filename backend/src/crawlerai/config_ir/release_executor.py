@@ -275,9 +275,7 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
     match source:
         case "jsonld" | "js_state":
             for media_type, text in _scripts(root):
-                document = _script_json(source, media_type, text)
-                if document is not None:
-                    yield document
+                yield from _script_json(source, media_type, text)
         case "xhr":
             for body in page.network:
                 try:
@@ -297,47 +295,76 @@ def _scripts(root: etree._Element) -> Iterator[tuple[str, str]]:
             yield media_type, script.text or ""
 
 
-def _script_json(source: JsonSource, media_type: str, text: str) -> Value | None:
-    """A script's JSON for `source`: a JSON-LD block's; for script state, a JSON block's, or the object or array a
-    state assignment (`window.x =`, `var x =`) starts with."""
+def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Value]:
+    """A script's JSON documents for `source`: a JSON-LD block's; for script state, a JSON block's, or the objects and
+    arrays its state assignments (`window.x =`, `var x =`) start with, in order, each searched for after the value
+    before it."""
     if source == "jsonld":
-        return _loads(text) if media_type == _JSONLD else None
-    if media_type == _JSONLD:
-        return None
+        if media_type == _JSONLD:
+            yield from _loads(text)
+        return
     if media_type == _JSON:
-        return _loads(text)
-    found = _ASSIGNMENT.search(text)
-    if found is None:
-        return None
-    try:
-        value, _ = _DECODER.raw_decode(text, found.end())
-    except ValueError:
-        return None
-    return value if isinstance(value, (dict, list)) else None  # a scalar initializer is a script variable
+        yield from _loads(text)
+    if media_type in (_JSONLD, _JSON):
+        return
+    start = 0
+    while (found := _ASSIGNMENT.search(text, start)) is not None:
+        start = found.end()
+        try:
+            value, start = _DECODER.raw_decode(text, start)
+        except ValueError:
+            continue
+        if isinstance(value, (dict, list)):  # a scalar initializer is a script variable
+            yield value
 
 
-def _loads(text: str) -> Value | None:
+def _loads(text: str) -> Iterator[Value]:
     try:
-        return json.loads(text)  # type: ignore[no-any-return]
+        yield json.loads(text)
     except ValueError:
-        return None
+        return
 
 
 def _typed(document: Value, when_type: str | None) -> Iterator[Value]:
-    """Every JSON-LD node object in `document` that has a `@type`, in document order, keeping those of `when_type` (its
-    name, with or without the schema.org IRI) when one is given."""
-    stack: list[Value] = [document]
+    """Every JSON-LD node object in `document` that has a schema.org `@type`, in document order, keeping those of
+    `when_type` when one is given. A type is a schema.org IRI anywhere, or a term where schema.org is the vocabulary in
+    scope (JSON-LD 1.1 §4.1.2)."""
+    for value, in_schema in _scoped(document):
+        types = _type_names(value.get("@type"), in_schema)
+        if types and (when_type is None or when_type in types):
+            yield value
+
+
+def _scoped(document: Value) -> Iterator[tuple[dict[str, Value], bool]]:
+    """Every object of `document` in document order, with whether schema.org is the vocabulary in its scope."""
+    stack: list[tuple[Value, bool]] = [(document, False)]
     while stack:
-        value = stack.pop()
+        value, in_schema = stack.pop()
         if isinstance(value, list):
-            stack.extend(reversed(value))
+            stack.extend((item, in_schema) for item in reversed(value))
         elif isinstance(value, dict):
-            types = _type_names(value.get("@type"))
-            if types and (when_type is None or when_type in types):
-                yield value
-            stack.extend(child for key, child in reversed(value.items()) if key != "@context")
+            if "@context" in value:
+                in_schema = _schema_org_after(value["@context"], in_schema)
+            yield value, in_schema
+            stack.extend((child, in_schema) for key, child in reversed(value.items()) if key != "@context")
 
 
-def _type_names(declared: Value) -> set[str]:
+def _schema_org_after(context: Value, in_schema: bool) -> bool:
+    """Whether schema.org is the vocabulary after `context` (JSON-LD 1.1 §4.1): a context is processed item by item; a
+    string names a remote context (only schema.org's is known, unfetched); an object sets `@vocab` or keeps the one in
+    scope; `null` resets it."""
+    for item in context if isinstance(context, list) else [context]:
+        if isinstance(item, str):
+            in_schema = _SCHEMA_ORG.fullmatch(item.rstrip("/") + "/") is not None
+        elif isinstance(item, dict) and "@vocab" in item:
+            vocab = item["@vocab"]
+            in_schema = isinstance(vocab, str) and _SCHEMA_ORG.fullmatch(vocab) is not None
+        elif not isinstance(item, dict):
+            in_schema = False
+    return in_schema
+
+
+def _type_names(declared: Value, in_schema: bool) -> set[str]:
     items = declared if isinstance(declared, list) else [declared]
-    return {_SCHEMA_ORG.sub("", item) for item in items if isinstance(item, str)}
+    names = {_SCHEMA_ORG.sub("", item) for item in items if isinstance(item, str) and _SCHEMA_ORG.match(item)}
+    return names | {item for item in items if in_schema and isinstance(item, str) and ":" not in item}

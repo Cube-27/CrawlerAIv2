@@ -284,6 +284,18 @@ def test_an_element_with_both_syntaxes_is_one_item() -> None:
     assert [c.raw for c in result.candidates] == ["A", "B"]
 
 
+def test_an_itemprop_under_an_rdfa_only_item_belongs_to_its_microdata_item() -> None:
+    # HTML Standard, "Associating names with items": an `itemprop` is a property of the nearest `itemscope` element;
+    # `typeof` is RDFa, so the RDFa item between them takes the RDFa `property` only.
+    result = _collect(
+        '<div itemscope itemtype="https://schema.org/Product">'
+        '<div vocab="https://schema.org/" typeof="Brand"><b itemprop="name">A</b><i property="name">B</i></div></div>'
+    )
+
+    assert [e.id for e in result.entities] == [f"microdata:{BODY}/div[1]", f"microdata:{BODY}/div[1]/div[1]"]
+    assert _fields(result) == [("title", f"microdata:{BODY}/div[1]", "A")]
+
+
 def test_entity_urls_are_canonical_and_name_pages() -> None:
     result = _collect(
         '<div itemscope itemtype="https://schema.org/Product" itemid="HTTPS://Shop.Example.test/p/2">'

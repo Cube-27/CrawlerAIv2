@@ -4,6 +4,8 @@ first value that passes the post ops and the field's rule; it needs nothing of t
 import json
 from typing import Any
 
+import pytest
+
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.release_executor import FieldRule, Released, ReleasePage, Value, release_run
 
@@ -99,12 +101,35 @@ def test_a_jsonld_step_reads_typed_nodes_by_type_name_without_subtypes() -> None
         {"@type": ["http://schema.org/Product"], "name": "by-iri"},
         {"name": "untyped"},
     ]
-    html = f'<html><head><script type="application/ld+json">{json.dumps({"@graph": graph})}</script></head></html>'
+    block = {"@context": "https://schema.org", "@graph": graph}
+    html = f'<html><head><script type="application/ld+json">{json.dumps(block)}</script></head></html>'
     multi = {"title": FieldRule(many=True, accepts=lambda value, type_: True)}
     typed = _run({"title": [{"jsonld": "$['name']", "when_type": "Product"}]}, html, multi)
     assert typed.fields == {"title": ["by-iri"]}
     any_type = _run({"title": [{"jsonld": "$['name']"}]}, html, multi)
     assert any_type.fields == {"title": ["sub", "by-iri"]}
+
+
+@pytest.mark.parametrize(
+    ("context", "names"),
+    [
+        (None, ["by-iri"]),  # no vocabulary in scope: a term is no schema.org type
+        ("https://vocab.example.test/", ["by-iri"]),
+        ("http://schema.org/", ["term", "by-iri"]),
+        ({"@vocab": "https://schema.org/"}, ["term", "by-iri"]),
+        (["https://schema.org", {"name": "https://vocab.example.test/name"}], ["term", "by-iri"]),
+        (["https://schema.org", None], ["by-iri"]),  # JSON-LD 1.1 §4.1: `null` resets the context
+    ],
+)
+def test_a_jsonld_type_term_is_schema_org_only_where_its_context_says_so(context: Value, names: list[str]) -> None:
+    graph = [{"@type": "Product", "name": "term"}, {"@type": "https://schema.org/Product", "name": "by-iri"}]
+    block = {"@graph": graph} if context is None else {"@context": context, "@graph": graph}
+    html = f'<html><head><script type="application/ld+json">{json.dumps(block)}</script></head></html>'
+    multi = {"title": FieldRule(many=True, accepts=lambda value, type_: True)}
+
+    result = _run({"title": [{"jsonld": "$['name']", "when_type": "Product"}]}, html, multi)
+
+    assert result.fields == {"title": names}
 
 
 def test_jsonpath_reads_the_documents_of_its_source() -> None:
@@ -121,6 +146,7 @@ def test_jsonpath_reads_the_documents_of_its_source() -> None:
 
     assert value("$['name']", "jsonld") == "from-ld"
     assert value("$['p']['name']", "js_state") == "from-state"
+    assert value("$['q']", "js_state") == "from-assignment"  # after a scalar one
     assert value("$['name']", "js_state") is None
     assert value("$['r']", "xhr") == "from-xhr"
 

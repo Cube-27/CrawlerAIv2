@@ -22,7 +22,7 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.records import FieldMeta
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -47,7 +47,9 @@ def _group(*variants: dict[str, Any], **values: Any) -> dict[str, Any]:
     return {"@type": "ProductGroup", "name": "Synthetic Widget", "url": PAGE_URL, "hasVariant": list(variants)} | values
 
 
-def _variants(*nodes: dict[str, Any], body: str = "", data: EngineData = DATA) -> FieldOutcome:
+def _variants(
+    *nodes: dict[str, Any], body: str = "", data: EngineData = DATA, schema: SchemaDef = SCHEMA
+) -> FieldOutcome:
     blocks = "".join(
         f'<script type="application/ld+json">{json.dumps({"@context": "https://schema.org", **n})}</script>'
         for n in nodes
@@ -69,7 +71,7 @@ def _variants(*nodes: dict[str, Any], body: str = "", data: EngineData = DATA) -
         engine_version="0+cal.0",
     )
     result = asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=data)
+        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), schema, None, None, data=data)
     )
     assert result.entity is not None
     return result.entity["variants"]
@@ -183,6 +185,31 @@ def test_one_offer_s_url_that_repeats_the_target_url_stays_its_key() -> None:
     product["offers"] = [_offer("10.00", url=product_url), _offer("12.00", url=f"{product_url}?v=12")]
 
     assert [row["url"] for row in _rows(_variants(product))] == [product_url, f"{product_url}?v=12"]
+
+
+def test_a_text_key_equal_to_the_target_url_does_not_make_it_a_group_url() -> None:
+    # §4.4 screens url key values only: a text key sub-field that happens to hold the URL is no second carrier of it,
+    # so the one Offer whose url repeats the target's keeps it as its key.
+    variants = SCHEMA.fields["variants"]
+    assert variants.item is not None
+    assert variants.item.fields is not None
+    code = FieldSpec(type=FieldType.TEXT, description="A code of this variant", schema_org="Offer.productID")
+    item = variants.item.model_copy(update={"fields": {**variants.item.fields, "code": code}})
+    keyed = variants.model_copy(update={"item": item, "key": ["code", "url"]})
+    schema = SCHEMA.model_copy(update={"fields": {**SCHEMA.fields, "variants": keyed}})
+    product_url = "https://shop.example.test/g/1"
+    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": product_url}
+    product["offers"] = [
+        _offer("10.00", url=product_url),
+        _offer("12.00", url=f"{product_url}?v=12", productID=product_url),
+    ]
+
+    rows = _rows(_variants(product, schema=schema))
+
+    assert [(row.get("url"), row.get("code")) for row in rows] == [
+        (product_url, None),
+        (f"{product_url}?v=12", product_url),
+    ]
 
 
 def test_an_aggregate_offer_repeating_the_target_url_leaves_it_no_key() -> None:

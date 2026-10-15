@@ -123,7 +123,7 @@ def test_a_published_field_is_not_filled() -> None:
         locator="jsonld:0:$['url']",
         independent=True,
     )
-    preference = Chosen(chosen, (), ())
+    preference = Chosen(chosen, (), (), (chosen,))
 
     assert _fill(URL, preference) == preference
 

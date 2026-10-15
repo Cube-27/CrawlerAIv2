@@ -14,7 +14,7 @@ an amount the locales read differently, is `Ambiguous`.
 
 import re
 import unicodedata
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Mapping
 from decimal import Decimal
 from functools import cache
 
@@ -24,7 +24,7 @@ from babel.numbers import NumberFormatError, get_decimal_symbol, get_group_symbo
 from price_parser import Price
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
@@ -345,12 +345,11 @@ def _number_conventions() -> frozenset[str]:
     return frozenset(seen.values())
 
 
-def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: the amounts equal as Decimals, without rounding (`19.9` equals `19.90`), and the same currency."""
-    if a == b:
-        return True
-    left, right = _money_value(a), _money_value(b)
-    return left is not None and left == right
+def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    """Equality as a key (SPEC-04 §4.5): the amounts equal as Decimals, without rounding (`19.9` equals `19.90`), and
+    the same currency."""
+    money = _money_value(value)
+    return raw_key(value) if money is None else ("money", money)
 
 
 def _money_value(value: JsonValue) -> tuple[Decimal, str] | None:

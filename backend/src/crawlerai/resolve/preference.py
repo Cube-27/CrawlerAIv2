@@ -56,7 +56,7 @@ class Chosen:
     candidate: Candidate
     agreeing: tuple[Candidate, ...]
     rejected: tuple[Rejection, ...]
-    kept: tuple[Candidate, ...] = ()
+    kept: tuple[Candidate, ...]
 
 
 @dataclass(frozen=True, slots=True)
