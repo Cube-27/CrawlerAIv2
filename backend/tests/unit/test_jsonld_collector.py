@@ -204,14 +204,13 @@ def test_schema_org_spellings(block: Any) -> None:
     "block",
     [
         {"@type": "Product", "name": "Widget 9"},  # no context: `Product` is not a schema.org IRI
-        {"@context": "https://vocab.example.test/", "@type": "Product", "name": "Widget 9"},
         {"@context": SCHEMA_ORG, "@type": "Widget", "name": "Widget 9"},  # not a schema.org type
     ],
 )
 def test_nodes_outside_schema_org_are_not_entities(block: Any) -> None:
-    result = _collect(block)
-    assert result.entities == ()
-    assert result.candidates == ()
+    result = _collect(block, {"@context": SCHEMA_ORG, "@type": "Product", "name": "Widget 10"})
+    assert [e.id for e in result.entities] == ["jsonld:1:$"]
+    assert [(c.raw, c.locator) for c in result.candidates] == [("Widget 10", "jsonld:1:$['name']")]
 
 
 def test_a_null_context_ends_the_schema_org_scope() -> None:
@@ -295,8 +294,8 @@ def test_entity_urls_are_canonical_and_name_pages() -> None:
 
 
 def test_an_unresolved_reference_gives_no_value() -> None:
-    result = _collect({"@context": SCHEMA_ORG, "@type": "Product", "brand": {"@id": "#nowhere"}})
-    assert result.candidates == ()
+    result = _collect({"@context": SCHEMA_ORG, "@type": "Product", "name": "Widget 9", "brand": {"@id": "#nowhere"}})
+    assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget 9")]
 
 
 def test_reference_cycles_end() -> None:

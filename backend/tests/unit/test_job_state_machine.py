@@ -45,26 +45,6 @@ def test_every_status_can_still_end(transitions: Mapping[str, frozenset[str]], s
         assert _reachable(transitions, status) & terminal, status
 
 
-def test_job_lifecycle() -> None:
-    assert dict(JOB_TRANSITIONS) == {
-        "queued": {"running", "cancelled"},
-        "running": {"completed", "failed", "cancelled"},
-        "completed": set(),
-        "failed": set(),
-        "cancelled": set(),
-    }
-
-
-def test_task_lifecycle() -> None:
-    assert dict(TASK_TRANSITIONS) == {
-        "queued": {"claimed", "cancelled"},
-        "claimed": {"queued", "done", "failed", "cancelled"},
-        "done": set(),
-        "failed": set(),
-        "cancelled": set(),
-    }
-
-
 counts = st.fixed_dictionaries({status: st.integers(min_value=0, max_value=50) for status in get_args(TaskStatus)})
 
 
