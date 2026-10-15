@@ -89,6 +89,15 @@ def type_vocabulary(name: str) -> Mapping[str, Entries] | None:
     return _TYPE.get(name)
 
 
+def type_vocabularies_within(members: frozenset[str]) -> list[Mapping[str, Entries]]:
+    """The type vocabularies whose every code, in every language, is one of `members`."""
+    return [
+        by_language
+        for by_language in _TYPE.values()
+        if all(set(entries.phrases.values()) <= members for entries in by_language.values())
+    ]
+
+
 def find_codes(by_language: Mapping[str, Entries], words: Tokens, ctx: Context) -> frozenset[str] | None:
     """The codes of a type vocabulary whose phrases `words` hold, or `None` when it has no entries for the page.
 
