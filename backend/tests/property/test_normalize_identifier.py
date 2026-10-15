@@ -1,6 +1,6 @@
 """The identifier normalizer (SPEC-04 §4.4, ARCHITECTURE §9): GS1 check digits for GTIN-8/12/13/14, ISO 2108
 checksums for ISBN-10/13, opaque `mpn`/`sku`/`custom` values, and declines on failed checksums and empty input
-(INV-06, tested for every type in `test_normalize_dispatch.py`)."""
+(INV-06)."""
 
 from datetime import UTC, datetime
 
@@ -54,6 +54,11 @@ def _perturb(value: str, at: int, delta: int) -> str:
     old = value[at]
     new = str(delta) if old == "X" else str((int(old) + delta) % 10)
     return value[:at] + new + value[at + 1 :]
+
+
+@given(st.sampled_from(SCHEMES), _whitespace)
+def test_empty_or_whitespace_input_is_invalid(scheme: IdentifierScheme, raw: str) -> None:
+    assert identifier.normalize(raw, _spec(scheme), CTX) == Invalid("empty")
 
 
 @given(_gtins, st.integers(min_value=0), st.integers(min_value=1, max_value=9))

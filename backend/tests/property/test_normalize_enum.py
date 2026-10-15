@@ -1,6 +1,6 @@
 """The enum normalizer and the vocabulary framework (SPEC-04 §4.4, ARCHITECTURE §9): schema.org members by IRI or
 name, language-tagged type vocabularies by token sequence (never substring order), and declines on no match, two
-members, and empty input (INV-06, tested for every type in `test_normalize_dispatch.py`)."""
+members, and empty input (INV-06)."""
 
 import re
 from datetime import UTC, datetime
@@ -110,6 +110,12 @@ def test_two_members_in_one_input_are_ambiguous(a: str, b: str, middle: str) -> 
 @given(_members, _filler)
 def test_a_member_repeated_is_one_member(member: str, middle: str) -> None:
     assert enum.normalize(f"{_phrase(member)} {middle} {_phrase(member)}", TYPE, CTX) == Ok(member)
+
+
+@given(_whitespace)
+def test_empty_input_is_invalid(raw: str) -> None:
+    assert enum.normalize(raw, TYPE, CTX) == Invalid("empty")
+    assert enum.normalize(raw, SCHEMA, CTX) == Invalid("empty")
 
 
 def test_a_type_value_that_is_not_a_string_is_invalid() -> None:
