@@ -58,20 +58,17 @@ Full rows are in git history.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
-- Packaging: a wheel built from an sdist (`uv build`'s default) has no `.git` and no fetched files, so it reports `unknown` and lacks fetched data unless `CRAWLERAI_GIT_SHA` is set and the data fetched first; the image's fetch re-runs on every `src/` change (copy only `core/data.py` before it) and keeps the data twice (D-0880) [#200].
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
 - `/v1/schemas`: retiring the latest version freezes the name; decide un-retire, reuse or PUT on a retired latest (D-0395) [#81].
-- Page fetching: the worker's in-place wait for a fetch's further request has no bound; past `LEASE` (a robots `Crawl-delay` of 10 min or more) the claim is lost and the first request sent again: skip the retry past a bound tied to `LEASE` [#197]. A `Retry-After` on an attempt whose outcome was not kept is not read; the queue's backoff applies [#197].
 - Indexes, measure first: `url_task (job_id, status, outcome)` if large-crawl listing is slow [#19, #146]; `job (started_at) WHERE status = 'running'` for `fail_stalled_jobs` and `expire_learn_runs`, which share one shape and could share one reaper [#195].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
-- Resolve: zero-touch ignores a required row-mapped field (no preset has one) [#176]. Optional: `Final` on `_SET_NULL` [#177]. A listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
-- Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64]. The HTTP rung's cookies (libcurl's engine, built without libpsl) are not checked against the public-suffix list, and a `Domain=` equal to a setting host that is itself a public suffix is kept as a domain cookie, not host-only (RFC 6265 §5.3 step 5) (D-0884) [#200].
-- More of the same, SPEC-05/08/10: CSV formula injection in downloads, blocked on D-0879 [#115]; the INV-27 markdown leg parses table cells back [#120]; two concurrent first uses of a new inline schema name give a 409 [#105].
-- Recurring crawls: a test that `changed_since` waits on `RECORD_FEED_LOCK` (hold the shared lock in an open transaction) [#199].
-- Workflow tooling: ruff/Oxlint rules for more of ENGINEERING's analyser patterns; if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
+- Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
+- Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64].
+- More of the same, SPEC-05/08/10: CSV formula injection in downloads, blocked on D-0879 [#115].
+- Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32]. The project license (`AGPL-3.0-only` in `backend/pyproject.toml`) is the owner's call [#175].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)

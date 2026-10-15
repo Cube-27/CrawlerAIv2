@@ -359,3 +359,25 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Commit the list (its host names trip the C3 scan); the standard library's heuristic only.
 - Why: C4 data for a standard rule; curl_cffi keeps cookies in libcurl, built here without libpsl.
 - Reversible: yes
+
+### D-0900 — A further request past the wait bound is skipped, not requeued
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Context: The worker waits in place for a fetch's further request (#197); past `LEASE` the claim lapses and another worker sends the first request again.
+- Decision: `HostLimiter.wait` refuses a turn more than `WAIT_MAX = LEASE / 2` away, recording nothing; the browser retry or the page after a failed recipe is then not sent, and the fetch keeps the outcome it has.
+- Alternatives: Postpone the task (re-sends the first request, and with a `Crawl-delay` that long every run postpones again); a bound from `task.lease_until` (mixes the database clock with the worker's).
+- Why: The claim never lapses and the site sees no extra request.
+- Reversible: yes
+
+### D-0901 — Retry-After is read per attempt, not stored
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Decision: Each `AttemptRecord` carries `retry_after`, the pause its response's `Retry-After` asks for from the fetch's start (an HTTP-date is measured from `fetched_at`, so the pause is never shorter than asked), excluded from serialization; the politeness step reads it from whichever attempt was answered 429/503.
+- Alternatives: Store the header on the attempt.
+- Why: The stored attempt shape is unchanged, and only the politeness step reads it.
+- Reversible: yes
+
+### D-0902 — The HTTP rung's cookies are kept by one per-fetch jar (closes the D-0884 follow-up)
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Decision: `acquire/cookies.FetchCookies` serves the HTTP and JSON rungs with the public-suffix policy; the curl_cffi session discards libcurl's parsed cookies, and each request sends only the jar's `Cookie` header. A `Domain` equal to a setting host that is itself a public suffix is kept host-only (RFC 6265 §5.3 step 5); a `Domain` that is no IDNA name drops its cookie.
+- Alternatives: libcurl with libpsl (not in the curl-impersonate wheels); filtering curl's cookie list afterwards.
+- Why: One policy (§5.3 steps 5 and 6) for both rungs.
+- Reversible: yes

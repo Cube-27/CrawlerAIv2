@@ -63,8 +63,9 @@ class AttemptRecord(_Frozen):
     block_class: BlockClass
     duration_ms: int
     error: str | None = None
-    # The pause its response's `Retry-After` asked for (RFC 9110 §10.2.3), from when the fetch began. Read by the
-    # politeness step whichever attempt's outcome is kept; not stored, as the response's other headers are not.
+    # The pause its response's `Retry-After` asked for (RFC 9110 §10.2.3), from when the fetch began: an HTTP-date is
+    # measured from `fetched_at`, so the pause is never shorter than asked. Read by the politeness step whichever
+    # attempt's outcome is kept; not stored, as the response's other headers are not.
     retry_after: timedelta | None = Field(default=None, exclude=True)
 
 
