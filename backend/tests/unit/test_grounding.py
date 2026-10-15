@@ -25,6 +25,11 @@ def test_negative_offsets_are_not_read_as_counting_from_the_end() -> None:
     assert align(SpanClaim(value="EUR", start=-3, end=29), _TEXT) == GroundedSpan("EUR", 12, 15)
 
 
+def test_a_negative_end_is_not_read_as_counting_from_the_end() -> None:
+    # `text[0:-2]` is the value, but -2 is no offset into the text: the value is searched for.
+    assert align(SpanClaim(value="12.50", start=0, end=-2), "12.50 x") == GroundedSpan("12.50", 0, 5)
+
+
 def test_an_end_past_the_text_is_not_clamped_to_it() -> None:
     # `text[16:99]` is "Was 12.50 EUR" by slice clamping; the stated end is no offset into the text.
     assert align(SpanClaim(value="Was 12.50 EUR", start=16, end=99), _TEXT) == GroundedSpan("Was 12.50 EUR", 16, 29)
