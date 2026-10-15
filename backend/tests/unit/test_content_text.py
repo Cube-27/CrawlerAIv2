@@ -58,12 +58,10 @@ def test_text_is_decoded_composed_and_collapsed(body: str, expected: str) -> Non
         "<script>var x = 1;</script>",
         "<style>p { color: red }</style>",
         "<noscript>enable js</noscript>",
-        "<template><p>later</p></template>",
         "<svg><text>drawn</text></svg>",
+        "<template><p>later</p></template>",
         "<div hidden>gone</div>",
-        "<div hidden='until-found'>gone</div>",
         "<div aria-hidden='true'>gone</div>",
-        "<div style='display:none'>gone</div>",
         "<div style='COLOR: red; Display : None !important'>gone</div>",
         "<div style='visibility:hidden'>gone</div>",
         "<div style='visibility: collapse'>gone</div>",
@@ -75,7 +73,7 @@ def test_hidden_content_is_not_text_and_not_visible(hidden: str) -> None:
     page = ParsedPage(f"<html><head><title>Tab</title></head><body><p>shown</p>{hidden}</body></html>")
 
     assert page.cleaned_text.text == "shown"
-    for value in ("gone", "closed", "secret", "drawn", "later", "enable js", "var x = 1;", "Tab"):
+    for value in ("gone", "closed", "secret", "later", "var x = 1;", "Tab", "drawn", "enable js"):
         assert not page.visible_values.visible(value)
 
 

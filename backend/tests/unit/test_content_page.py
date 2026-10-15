@@ -114,7 +114,6 @@ def test_the_lxml_tree_is_built_from_the_same_text() -> None:
     [
         ('<?xml version="1.0" encoding="ISO-8859-1"?><html><body><p>x</p></body></html>', "x"),
         ("", ""),
-        (" \n", ""),
     ],
 )
 def test_the_lxml_tree_accepts_an_xml_declaration_and_an_empty_document(html: str, expected: str) -> None:

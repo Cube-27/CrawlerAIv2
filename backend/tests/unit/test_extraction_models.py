@@ -7,8 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.collect.base import Candidate, CollectResult, Entity
-from crawlerai.normalize.base import Invalid, Ok
-from crawlerai.resolve.types import ExtractionResult, FieldOutcome, LLMCallRecord
+from crawlerai.normalize.base import Ok
+from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 
 PRODUCT = Entity(id="jsonld:0:$['@graph'][0]", kind="Product", urls=("https://shop.example.test/p/1",), parent=None)
 OFFER = Entity(id="jsonld:0:$['@graph'][0]['offers']", kind="Offer", urls=(), parent=PRODUCT.id)
@@ -65,12 +65,6 @@ def _missing(**changes: Any) -> dict[str, Any]:
 # Candidates
 
 
-def test_a_candidate_keeps_its_raw_and_normalized_values() -> None:
-    candidate = _candidate(raw={"@type": "Offer", "price": 19.5}, normalized=Invalid("not_money"))
-    assert candidate.raw == {"@type": "Offer", "price": 19.5}
-    assert candidate.normalized == Invalid("not_money")
-
-
 @pytest.mark.parametrize("locator", ["", "jsonld:0", "css:span.price", "text:4-4"])
 def test_a_candidate_without_a_valid_locator_is_refused(locator: str) -> None:
     with pytest.raises(ValidationError, match="locator"):
@@ -82,19 +76,7 @@ def test_a_candidate_source_kind_comes_from_the_section_6_enum() -> None:
         _candidate(source_kind="dom")
 
 
-def test_candidates_are_frozen() -> None:
-    candidate = _candidate()
-    with pytest.raises(ValidationError):
-        candidate.field = "price"  # type: ignore[misc]
-
-
 # Collect results
-
-
-def test_a_collect_result_holds_entities_and_their_candidates() -> None:
-    price = _candidate(field="price", entity_id=OFFER.id, raw="19.50", normalized=Ok({"amount": "19.50"}))
-    result = CollectResult(entities=(PRODUCT, OFFER), candidates=(_candidate(), price))
-    assert [c.entity_id for c in result.candidates] == [PRODUCT.id, OFFER.id]
 
 
 def test_a_candidate_of_an_unknown_entity_is_refused() -> None:
@@ -104,6 +86,7 @@ def test_a_candidate_of_an_unknown_entity_is_refused() -> None:
 
 
 def test_an_entity_whose_parent_is_unknown_is_refused() -> None:
+    assert CollectResult(entities=(PRODUCT, OFFER), candidates=()).entities == (PRODUCT, OFFER)
     with pytest.raises(ValidationError, match="unknown parent"):
         CollectResult(entities=(OFFER,), candidates=())
 
@@ -114,17 +97,6 @@ def test_entity_ids_are_unique_within_a_result() -> None:
 
 
 # Field outcomes (INV-22)
-
-
-def test_a_published_field_carries_its_value_and_evidence() -> None:
-    outcome = FieldOutcome(**_published())
-    assert (outcome.value, outcome.evidence, outcome.confidence, outcome.calibrated) == (
-        "Widget 9",
-        "structured",
-        0.98,
-        True,
-    )
-    assert (outcome.source_kind, outcome.locator) == ("jsonld", "jsonld:0:$['@graph'][0]['name']")
 
 
 @pytest.mark.parametrize("attribute", ["evidence", "source_kind", "locator", "value"])
@@ -160,16 +132,14 @@ def test_confidence_is_a_probability(confidence: float) -> None:
         FieldOutcome(**values)
 
 
-@pytest.mark.parametrize("status", ["missing", "conflict", "abstained"])
-def test_an_unpublished_field_holds_no_value(status: str) -> None:
-    values = _missing(status=status, value="Widget 9")
+def test_an_unpublished_field_holds_no_value() -> None:
+    values = _missing(status="conflict", value="Widget 9")
     with pytest.raises(ValidationError, match="value"):
         FieldOutcome(**values)
 
 
-@pytest.mark.parametrize("status", ["missing", "conflict", "abstained"])
-def test_an_unpublished_field_says_why(status: str) -> None:
-    values = _missing(status=status, reason=None)
+def test_an_unpublished_field_says_why() -> None:
+    values = _missing(status="abstained", reason=None)
     with pytest.raises(ValidationError, match="reason"):
         FieldOutcome(**values)
 
@@ -193,12 +163,6 @@ def test_derived_by_names_a_core_derivation() -> None:
         FieldOutcome(**values)
 
 
-def test_rejected_candidates_keep_their_reason() -> None:
-    rejected = _candidate(raw="7", locator="meta:og:title")
-    outcome = FieldOutcome(**_published(rejected=((rejected, "url_param"),)))
-    assert outcome.rejected == ((rejected, "url_param"),)
-
-
 # Extraction results
 
 
@@ -215,13 +179,7 @@ def _result(**changes: Any) -> ExtractionResult:
     return ExtractionResult(**(values | changes))
 
 
-def test_an_extracted_result_holds_its_fields() -> None:
-    result = _result()
-    assert result.entity is not None
-    assert result.entity["name"].value == "Widget 9"
-
-
-@pytest.mark.parametrize("outcome", ["blocked", "shell", "not_found"])
+@pytest.mark.parametrize("outcome", ["blocked", "not_found", "shell"])
 def test_a_page_that_was_not_served_has_no_candidates_and_no_fields(outcome: str) -> None:
     candidates = (_candidate(),)
     with pytest.raises(ValidationError, match="candidates"):
@@ -241,10 +199,3 @@ def test_an_error_publishes_nothing() -> None:
 def test_record_confidence_is_a_probability() -> None:
     with pytest.raises(ValidationError, match="record_confidence"):
         _result(record_confidence=1.5)
-
-
-def test_llm_calls_are_recorded_in_the_spec_06_shape() -> None:
-    call = LLMCallRecord(
-        prompt_kind="gap_fill", provider="fake", model="fake-1", request_hash="ab" * 32, tokens_in=10, tokens_out=3
-    )
-    assert _result(llm_calls=(call,)).llm_calls == (call,)

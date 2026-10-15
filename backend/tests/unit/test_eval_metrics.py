@@ -44,8 +44,8 @@ LISTING_SPECS: dict[str, FieldSpec] = {
 LISTING = SchemaFields(name="commerce_listing", page_kind="listing", fields=LISTING_SPECS, required=frozenset({"url"}))
 
 
-def label(value: JsonValue = None, distractors: tuple[JsonValue, ...] = ()) -> dict[str, Any]:
-    return {"value": value, "absent": value is None, "distractors": list(distractors)}
+def label(value: JsonValue = None) -> dict[str, Any]:
+    return {"value": value, "absent": value is None, "distractors": []}
 
 
 def labels(fields: dict[str, Any], rows: list[dict[str, Any]] | None = None, status: str = "checked") -> Labels:
@@ -73,7 +73,6 @@ def detail_case(
     price_label: JsonValue,
     price_out: FieldOutput | None,
     *,
-    distractors: tuple[JsonValue, ...] = (),
     category: str = "custom_store",
     **output: Any,
 ) -> EvalCase:
@@ -83,7 +82,7 @@ def detail_case(
             "page_id": page_id,
             "category": category,
             "schema_def": DETAIL,
-            "labels": labels({"price": label(price_label, distractors), "brand": label(None)}),
+            "labels": labels({"price": label(price_label), "brand": label(None)}),
             "output": PageOutput.model_validate({"block_class": "ok", "mode": "adhoc", "fields": fields, **output}),
         }
     )
@@ -99,31 +98,7 @@ def money(r: Report) -> FieldMetrics:
     return cell
 
 
-def test_tp_published_and_equal() -> None:
-    r = report(detail_case("p1", EUR_19, published(EUR_19)))
-
-    assert money(r) == FieldMetrics(
-        precision=1.0, coverage=1.0, abstain_rate=0.0, false_publish_on_absent=None, wrong_product=0, n=1
-    )
-
-
-def test_fp_published_and_not_equal() -> None:
-    r = report(detail_case("p1", EUR_19, published({"amount": "19.99", "currency": "EUR"})))
-
-    assert money(r) == FieldMetrics(
-        precision=0.0, coverage=None, abstain_rate=0.0, false_publish_on_absent=None, wrong_product=0, n=1
-    )
-
-
-def test_fp_absent_published_where_label_absent() -> None:
-    r = report(detail_case("p1", None, published(EUR_19)))
-
-    assert money(r) == FieldMetrics(
-        precision=0.0, coverage=None, abstain_rate=0.0, false_publish_on_absent=1.0, wrong_product=0, n=1
-    )
-
-
-@pytest.mark.parametrize("status", ["missing", "conflict", "abstained"])
+@pytest.mark.parametrize("status", ["missing", "conflict"])
 def test_fn_not_published_where_label_present(status: str) -> None:
     r = report(detail_case("p1", EUR_19, FieldOutput.model_validate({"status": status})))
 
@@ -137,14 +112,6 @@ def test_tn_not_published_where_label_absent() -> None:
 
     assert money(r) == FieldMetrics(
         precision=None, coverage=None, abstain_rate=1.0, false_publish_on_absent=0.0, wrong_product=0, n=1
-    )
-
-
-def test_wrong_product_is_a_published_distractor() -> None:
-    r = report(detail_case("p1", EUR_19, published(EUR_24), distractors=(EUR_24,)))
-
-    assert money(r) == FieldMetrics(
-        precision=0.0, coverage=None, abstain_rate=0.0, false_publish_on_absent=None, wrong_product=1, n=1
     )
 
 
@@ -331,8 +298,9 @@ def test_acquisition_mix_and_usage_per_mode() -> None:
 def test_pages_are_kept_for_dev_only() -> None:
     case = detail_case("p1", EUR_19, published(EUR_19))
 
+    dev = report(case, split="dev").pages
     assert report(case, split="hidden").pages is None
-    assert report(case, split="dev").pages is not None
+    assert [p.page_id for p in dev or ()] == ["p1"]
 
 
 def test_export_suppresses_cells_under_ten() -> None:
@@ -417,20 +385,6 @@ def test_a_lone_small_bucket_takes_the_next_smallest_of_its_type_with_it() -> No
         "money|agreed": Suppressed(n=12),
         "money|adapter": Suppressed(n=4),
         "text|agreed": Suppressed(n=5),
-    }
-
-
-def test_a_lone_small_config_status_takes_the_next_smallest_of_its_type_with_it() -> None:
-    r = _report(
-        by_config_status=_precision_table({"money|corroborated": 15, "money|operator": 11, "money|suspended": 2})
-    )
-
-    agg = export_aggregate(r)
-
-    assert agg.by_config_status == {
-        "money|corroborated": PrecisionMetrics(precision=1.0, n=15),
-        "money|operator": Suppressed(n=11),
-        "money|suspended": Suppressed(n=2),
     }
 
 

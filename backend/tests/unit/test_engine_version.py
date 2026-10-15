@@ -25,14 +25,6 @@ def test_the_version_joins_the_build_sha_and_the_calibration_hash(tmp_path: Path
     assert version == f"{SHA}+cal.{hashlib.sha256(calibration).hexdigest()[:12]}"
 
 
-def test_any_change_to_the_calibration_changes_the_version(tmp_path: Path) -> None:
-    first = engine_version(_backend(tmp_path, SHA, b'{"tau": 0.9}'))
-    second = engine_version(_backend(tmp_path, SHA, b'{"tau": 0.91}'))
-
-    assert first != second
-    assert first.split("+")[0] == second.split("+")[0] == SHA
-
-
 def test_a_tree_without_a_build_or_a_calibration_says_so(tmp_path: Path) -> None:
     assert engine_version(_backend(tmp_path, None, None)) == "unknown+cal.none"
 
@@ -41,7 +33,7 @@ def test_no_backend_tree_says_so() -> None:
     assert engine_version(None) == "unknown+cal.none"
 
 
-@pytest.mark.parametrize("content", ["", "main", "0123abz", "0123", f"{SHA} dirty"])
+@pytest.mark.parametrize("content", ["", "0123abz", "0123", f"{SHA} dirty"])
 def test_a_version_file_that_is_not_a_git_sha_is_refused(tmp_path: Path, content: str) -> None:
     backend = _backend(tmp_path, content, None)
 

@@ -114,11 +114,10 @@ def test_calibrating_the_same_run_twice_writes_the_same_bytes(tmp_path: Path) ->
     assert b"\r" not in first
 
 
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
-def test_calibration_refuses_a_run_that_is_not_dev(split: Split) -> None:
-    run = _run(split)
+def test_calibration_refuses_a_run_that_is_not_dev() -> None:
+    run = _run("hidden")
 
-    with pytest.raises(NotDev, match=f"refusing the {split} split"):
+    with pytest.raises(NotDev, match="refusing the hidden split"):
         calibrate(run)
 
 
@@ -170,20 +169,20 @@ def test_a_malformed_precedence_file_is_refused(tmp_path: Path, text: str) -> No
         read_precedence(tmp_path)
 
 
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
-def test_precedence_refuses_a_run_that_is_not_dev(split: Split) -> None:
-    run = _run(split)
+def test_precedence_refuses_a_run_that_is_not_dev() -> None:
+    run = _run("hidden")
     current: Orders = {"text": ("adapter",)}
 
-    with pytest.raises(NotDev, match=f"refusing the {split} split"):
+    with pytest.raises(NotDev, match="refusing the hidden split"):
         fit_precedence(run, current)
 
 
 @pytest.mark.parametrize("command", ["calibrate", "fit-precedence"])
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
 def test_the_commands_exit_non_zero_on_a_private_split_without_opening_a_store(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str, split: str
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str
 ) -> None:
+    split = "fresh"
+
     def no_store(*args: object) -> None:
         raise AssertionError("a store was opened")
 

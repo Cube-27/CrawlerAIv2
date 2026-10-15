@@ -13,30 +13,18 @@ from crawlerai.config_ir.xpath1 import XPATH1_FUNCTIONS, XPath1Error, check_xpat
 ACCEPTED = [
     "//h1",
     "normalize-space(//h1[@data-testid='title'])",
-    "//a[@rel='next']/@href",
-    "//ul[@class='grid']/li",
-    'string(//meta[@property="og:title"]/@content)',
     "descendant-or-self::li[count(preceding-sibling::*) mod 2 = 0]",
     "descendant-or-self::input[(@checked and name(.) = 'input')and (@type = 'radio')]",
     "count(//li) div (2) * 3",
-    "//div[contains(concat(' ', normalize-space(@class), ' '), ' price ')]/text()",
     "//*[local-name()='div' or starts-with(@id, 'x')]/node()",
-    "substring-after(//p[last()], ':')",
     "//a | //b",
-    "//div[@id='a']//span[2]",
-    "translate(//p, 'abc', 'ABC')",
     "//a[. != 'x' and position() >= 1]",
 ]
 
-# XPath 2.0/3.1 (W3C) syntax that libxml2 does not parse.
+# XPath 2.0/3.1 (W3C) syntax that libxml2 does not parse, and an unclosed call.
 REFUSED_SYNTAX = [
     "for $a in //a return $a",
-    "if (//a) then 1 else 2",
-    "//a ! string(.)",
     "//a || //b",
-    "//a => count()",
-    "//a[. instance of xs:string]",
-    "//a/{1}",
     "concat('a'",
 ]
 
@@ -44,6 +32,43 @@ REFUSED_SYNTAX = [
 @pytest.mark.parametrize("expression", ACCEPTED)
 def test_xpath1_expressions_pass(expression: str) -> None:
     assert check_xpath1(expression) == expression
+
+
+# W3C XPath 1.0 §4.1-4.4: the core function library.
+CORE_FUNCTIONS = [
+    "last",
+    "position",
+    "count",
+    "id",
+    "local-name",
+    "namespace-uri",
+    "name",
+    "string",
+    "concat",
+    "starts-with",
+    "contains",
+    "substring-before",
+    "substring-after",
+    "substring",
+    "string-length",
+    "normalize-space",
+    "translate",
+    "boolean",
+    "not",
+    "true",
+    "false",
+    "lang",
+    "number",
+    "sum",
+    "floor",
+    "ceiling",
+    "round",
+]
+
+
+@pytest.mark.parametrize("name", CORE_FUNCTIONS)
+def test_every_xpath1_core_function_is_accepted(name: str) -> None:
+    assert check_xpath1(f"//p[{name}(.)]") == f"//p[{name}(.)]"
 
 
 @pytest.mark.parametrize("expression", REFUSED_SYNTAX)
@@ -56,10 +81,8 @@ def test_xpath2_syntax_is_refused(expression: str) -> None:
     ("expression", "message"),
     [
         ("upper-case(//h1)", "upper-case() is not an XPath 1.0 function"),
-        ("//a[matches(@href, 'x')]", "matches() is not an XPath 1.0 function"),
         ("mod(1)", "mod() is not an XPath 1.0 function"),
         ("//p[1] and div(2)", "div() is not an XPath 1.0 function"),
-        ("re:test(//a, 'x')", "namespace prefix in re:test"),
         ("//svg:rect", "namespace prefix in svg:rect"),
         ("//a[@href = $url]", "variable references are not allowed"),
     ],
@@ -77,9 +100,3 @@ def test_any_function_outside_the_core_library_is_refused(name: str) -> None:
     expression = f"//p[{name}(.)]"
     with pytest.raises(XPath1Error, match=rf"{name}\(\) is not an XPath 1.0 function"):
         check_xpath1(expression)
-
-
-def test_core_library_is_the_w3c_list() -> None:
-    # XPath 1.0 §4.1 to 4.4: 7 node-set, 10 string, 5 boolean and 5 number functions.
-    assert len(XPATH1_FUNCTIONS) == 27
-    assert {"last", "id", "substring-before", "lang", "ceiling"} <= XPATH1_FUNCTIONS

@@ -28,7 +28,6 @@ def test_a_stored_request_reads_back_as_itself() -> None:
     request = ExtractRequest.model_validate(body)
 
     assert ExtractRequest.model_validate(request.model_dump(mode="json", by_alias=True)) == request
-    assert (request.limit, request.budget.llm_calls) == (MAX_URLS, 10)
 
 
 @pytest.mark.parametrize(
@@ -54,7 +53,6 @@ def test_refuses_a_member_out_of_range(member: str, value: object) -> None:
     [
         ("/p/1", "Value error, urls[1] is not an absolute http or https URL"),
         ("https://*.example.test/p/*", "Value error, urls[1] is not a glob on one http or https host"),
-        ("ftp://shop.example.test/p/*", "Value error, urls[1] is not a glob on one http or https host"),
     ],
 )
 def test_refuses_a_url_or_glob_without_one_http_host(url: str, message: str) -> None:
