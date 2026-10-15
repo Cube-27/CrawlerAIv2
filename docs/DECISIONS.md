@@ -5441,3 +5441,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Filter after induction.
 - Why: No step is ever tried for a row field.
 - Reversible: yes
+
+### D-0802 — A URL the target and an Offer both carry
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.4 (#173) · Status: decided
+- Context: §4.4 excludes the target's own URL as a key value and keeps its Offers' URLs; `Entity.urls` merges both, so a URL both carry could be either.
+- Decision: Such a URL is a row key value only when exactly one row carries it; repeated by several rows, it names the group and is no key (clarifying edit to SPEC-13 §4.4).
+- Alternatives: Keep it as a key (joins every row into one `row_key_conflict`); split `Entity.urls` by origin in the collectors.
+- Why: One row's URL identifies that variant; a URL many rows repeat identifies the group (C7).
+- Reversible: yes
