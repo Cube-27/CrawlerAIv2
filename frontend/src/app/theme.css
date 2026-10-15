@@ -30,6 +30,9 @@
   --height-playground-output: 36rem;
   /* A JSON view's box: long output scrolls inside it (SPEC-14 §4.3). */
   --height-json-view: 32rem;
+  /* Get code's code block (SPEC-14 §4.7): each language's code, or the note in its place, scrolls inside this box, so
+   * switching tabs moves nothing. */
+  --height-code-view: 28rem;
   /* The live activity feed's box: new lines scroll inside it (SPEC-14 §4.5). */
   --height-activity-feed: 40rem;
 }
@@ -211,6 +214,17 @@
   }
   .json-literal {
     color: var(--json-literal);
+  }
+
+  /* Get code's code block (SPEC-14 §4.7): a JSON view's box, with line numbers drawn here so copied text has none. */
+  .code-view {
+    @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-3 font-mono text-[0.8125rem] leading-5;
+    counter-reset: code-line;
+  }
+  .code-line::before {
+    @apply me-4 inline-block w-6 text-end text-muted select-none;
+    counter-increment: code-line;
+    content: counter(code-line);
   }
 
   /* A headline number (DESIGN.md, Headline numbers): large, tabular, so tiles line up. */
