@@ -407,7 +407,7 @@ async def test_only_the_latest_version_is_corrected(client: httpx.AsyncClient, w
     [
         ({"fields": {"price": {"steps": [H1]}}}, "fields.price"),
         ({"confirm": []}, ""),
-        ({"fields": {"title": {"steps": [{"xpath": "upper-case(//h1)"}]}}}, "fields.title.steps.0.xpath.xpath"),
+        ({"fields": {"title": {"steps": [{"xpath": "upper-case(//h1)"}]}}}, "fields.title.steps[0].xpath.xpath"),
         ({"fields": {"title": {"steps": [H1]}}, "status": "active"}, "status"),
     ],
 )
