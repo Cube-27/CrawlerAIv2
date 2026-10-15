@@ -10,6 +10,7 @@ import { problem, sse, stubApi, type Call } from "../../test/api";
 import { catchDownloads } from "../../test/downloads";
 import { jobSummary } from "../../test/jobs";
 import { stubTextLayout } from "../../test/layout";
+import { quietEvents, valuesPage } from "../../test/runs";
 import { recordField } from "../../test/records";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
@@ -177,8 +178,7 @@ describe("Job screen", () => {
         return sse(["1", "task_fetched", { url: "https://shop.example.test/item/1" }]);
       },
       // The second connection opens and stays quiet: the job ended while the stream was away.
-      () =>
-        new Response(new ReadableStream(), { headers: { "content-type": "text/event-stream" } }),
+      quietEvents,
     ];
     jobApi({
       [`GET ${JOB}`]: () => Response.json(job({ status })),
@@ -369,8 +369,7 @@ describe("Jobs screen", () => {
   it("redirects a run's job page to its run in its mode", async () => {
     jobApi({
       [`GET ${JOB}`]: () => Response.json(job({ kind: "batch_scrape" })),
-      [`GET ${JOB}/results`]: () =>
-        Response.json({ format: "json_values", items: [], next_cursor: null }),
+      [`GET ${JOB}/results`]: () => valuesPage([]),
       "GET /v1/schemas": () => Response.json({ items: [] }),
     });
     await open(`/jobs/${JOB_ID}`, "Playground");

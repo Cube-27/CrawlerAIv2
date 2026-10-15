@@ -39,22 +39,26 @@ export function pythonLiteral(value: unknown, depth = 0): string {
   if (Array.isArray(value))
     return pythonItems(
       value.map((entry) => pythonLiteral(entry, depth + 1)),
-      "[]",
+      ["[", "]"],
       depth,
     );
   if (typeof value === "object") {
     const members = Object.entries(value).map(
       ([key, entry]) => `${JSON.stringify(key)}: ${pythonLiteral(entry, depth + 1)}`,
     );
-    return pythonItems(members, "{}", depth);
+    return pythonItems(members, ["{", "}"], depth);
   }
   return JSON.stringify(value);
 }
 
-/** `items` between `brackets`, one per line at `depth + 1`, each followed by a comma (PEP 8's trailing comma). */
-function pythonItems(items: readonly string[], brackets: string, depth: number): string {
-  const [open = "", close = ""] = brackets;
-  if (items.length === 0) return brackets;
+/** `items` between `open` and `close`, one per line at `depth + 1`, each followed by a comma (PEP 8's trailing
+ * comma). */
+function pythonItems(
+  items: readonly string[],
+  [open, close]: readonly [string, string],
+  depth: number,
+): string {
+  if (items.length === 0) return open + close;
   const inner = INDENT.repeat(depth + 1);
   return `${open}\n${items.map((item) => `${inner}${item},\n`).join("")}${INDENT.repeat(depth)}${close}`;
 }

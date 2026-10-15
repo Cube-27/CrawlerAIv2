@@ -1,6 +1,6 @@
 import { Button, Drawer, Tabs, Typography } from "@heroui/react";
 import { Code, Copy } from "@gravity-ui/icons";
-import { useState, type Key } from "react";
+import { useMemo, useState, type Key } from "react";
 import { copyText } from "../../../app/clipboard";
 import type { ModeId } from "../modes";
 import { ENDPOINTS, type Endpoint } from "./endpoints";
@@ -19,13 +19,15 @@ function isLanguage(key: Key): key is Language {
   return LANGUAGES.some((language) => language.id === key);
 }
 
+const NO_REQUEST = { note: "Complete the request above to see its code." };
+
 /** The code of `request` in `language`, or why there is none: the form can't be sent yet, or no MCP tool takes it. */
 function snippet(
   language: Language,
   endpoint: Endpoint,
   request: object | null,
 ): { code: string } | { note: string } {
-  if (request === null) return { note: "Complete the request above to see its code." };
+  if (request === null) return NO_REQUEST;
   const origin = window.location.origin;
   if (language === "curl") return { code: curlSnippet(origin, endpoint, request) };
   if (language === "python") return { code: pythonSnippet(origin, endpoint, request) };
@@ -141,7 +143,11 @@ function EndpointSummary({ endpoint }: Readonly<{ endpoint: Endpoint }>) {
 
 function CodeTabs({ endpoint, request }: Readonly<{ endpoint: Endpoint; request: object | null }>) {
   const [language, setLanguage] = useState<Language>("curl");
-  const current = snippet(language, endpoint, request);
+  const snippets = useMemo(
+    () => new Map(LANGUAGES.map(({ id }) => [id, snippet(id, endpoint, request)])),
+    [endpoint, request],
+  );
+  const current = snippets.get(language);
   return (
     <Tabs
       selectedKey={language}
@@ -163,9 +169,9 @@ function CodeTabs({ endpoint, request }: Readonly<{ endpoint: Endpoint; request:
         <Button
           size="sm"
           variant="secondary"
-          isDisabled={!("code" in current)}
+          isDisabled={current === undefined || !("code" in current)}
           onPress={() => {
-            if ("code" in current) copyText(current.code, "the code");
+            if (current !== undefined && "code" in current) copyText(current.code, "the code");
           }}
         >
           <Copy aria-hidden="true" />
@@ -174,7 +180,7 @@ function CodeTabs({ endpoint, request }: Readonly<{ endpoint: Endpoint; request:
       </div>
       {LANGUAGES.map(({ id, label }) => (
         <Tabs.Panel key={id} id={id}>
-          <CodeBlock label={`${label} code`} content={snippet(id, endpoint, request)} />
+          <CodeBlock label={`${label} code`} content={snippets.get(id) ?? NO_REQUEST} />
         </Tabs.Panel>
       ))}
     </Tabs>

@@ -14,28 +14,35 @@ export interface AgentPrompt {
   text: string;
 }
 
-const FILES: Readonly<Record<ModeId, string>> = { scrape, batch, crawl, map, extract };
+/** Each row's title, by its prompt's name prefix (`call-scrape`, `integrate-scrape`). */
+const TITLES: Readonly<Record<string, string>> = {
+  call: "Use it with coding agents",
+  integrate: "Build on top of it",
+};
 
-/** The two rows in order, one per level-1 heading of a mode's file (CommonMark §4.2 ATX headings). */
-const TITLES = ["Use it with coding agents", "Build on top of it"] as const;
-
-const HEADING = /^# (.+)$/m;
-
-/** The sections of `text`, each a level-1 heading and the lines up to the next one. */
-function sections(text: string): { name: string; text: string }[] {
-  return text
-    .split(/^(?=# )/m)
-    .map((section) => {
-      const name = HEADING.exec(section)?.[1] ?? "";
-      return { name, text: section.replace(HEADING, "").trim() };
-    })
-    .filter((section) => section.name !== "");
+/** A mode's file: two sections, each a level-1 heading naming the prompt (CommonMark §4.2 ATX headings) and its text.
+ * Splitting at the headings with a capture group yields the text before the first one, then name and text in turn. */
+function parse(file: string): AgentPrompt[] {
+  const [, ...parts] = file.split(/^# (.+)$/m);
+  const prompts: AgentPrompt[] = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const name = parts[i] ?? "";
+    const prefix = name.slice(0, name.indexOf("-"));
+    prompts.push({ title: TITLES[prefix] ?? name, name, text: (parts[i + 1] ?? "").trim() });
+  }
+  return prompts;
 }
 
-/** The prompts of `mode`, from its Markdown file under `prompts/`. */
-export function agentPrompts(mode: ModeId): AgentPrompt[] {
-  return sections(FILES[mode]).map((section, i) => ({
-    title: TITLES[i] ?? section.name,
-    ...section,
-  }));
+/** Every mode's prompts, parsed once from its Markdown file under `prompts/`. */
+const PROMPTS: Readonly<Record<ModeId, readonly AgentPrompt[]>> = {
+  scrape: parse(scrape),
+  batch: parse(batch),
+  crawl: parse(crawl),
+  map: parse(map),
+  extract: parse(extract),
+};
+
+/** The prompts of `mode`. */
+export function agentPrompts(mode: ModeId): readonly AgentPrompt[] {
+  return PROMPTS[mode];
 }

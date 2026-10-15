@@ -199,8 +199,9 @@
     @apply rounded-xl border border-border;
   }
 
-  /* A JSON view (SPEC-14 §4.3): monospaced, pretty-printed text in an outlined box that scrolls. */
-  .json-view {
+  /* A JSON view (SPEC-14 §4.3) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */
+  .json-view,
+  .code-view {
     @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-3 font-mono text-[0.8125rem] leading-5;
   }
   .json-key {
@@ -216,9 +217,8 @@
     color: var(--json-literal);
   }
 
-  /* Get code's code block (SPEC-14 §4.7): a JSON view's box, with line numbers drawn here so copied text has none. */
+  /* Get code's line numbers, drawn here so copied text has none. */
   .code-view {
-    @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-3 font-mono text-[0.8125rem] leading-5;
     counter-reset: code-line;
   }
   .code-line::before {
