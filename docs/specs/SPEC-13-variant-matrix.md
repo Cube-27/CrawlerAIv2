@@ -153,7 +153,9 @@ Offer of the group. Rows are matched by key, never by position.
 - A `url` key value equal (url equality, SPEC-04 §4.5) to the request, final or canonical URL, or to the target's
   own `url`, IRI or `mainEntityOfPage`, is not a key value: it names the page or the group, not one variant. The
   target's Offers' `url` values are not excluded (`Entity.urls` includes them, SPEC-05 §4.2): in the
-  one-Offer-per-variant shape each Offer's url is its row's key. The baseline shows
+  one-Offer-per-variant shape each Offer's url is its row's key. A url that both the target and one of its Offers
+  carry is that row's key only when no other row carries it; repeated by several rows, it names the group and is
+  not a key value. The baseline shows
   variants that repeat the group URL (5 pages).
 - Rows **link** when they share a value of some key sub-field. Linked rows form a cluster (connected
   components; the order of comparison does not matter).

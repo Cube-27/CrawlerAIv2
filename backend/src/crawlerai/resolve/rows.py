@@ -199,7 +199,7 @@ def _key_values(
     """Each row's key values by key sub-field (§4.4): `Ok` values that pass screening (INV-13), without a URL that
     names the page or the target rather than one variant."""
     screen = Resolver(row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda _: True)
-    excluded = _not_keys(row_field)
+    excluded, shared = _not_keys(row_field)
     values: dict[str, dict[str, list[JsonValue]]] = {}
     for sub in row_field.key:
         url = row_field.sub_fields[sub].type is FieldType.URL
@@ -209,7 +209,7 @@ def _key_values(
             row = row_of(candidate)
             if value is not None and row is not None:
                 values.setdefault(row, {}).setdefault(sub, []).append(value)
-    return values
+    return _without_group_urls(values, shared)
 
 
 def _key_value(candidate: Candidate, excluded: frozenset[str]) -> JsonValue:
@@ -218,14 +218,35 @@ def _key_value(candidate: Candidate, excluded: frozenset[str]) -> JsonValue:
     return None if isinstance(value, str) and value in excluded else value
 
 
-def _not_keys(row_field: RowField) -> frozenset[str]:
-    """URLs that name the page or the target, not one variant (§4.4): the page URLs and the target's own URLs. The
-    target's Offers' URLs (which `Entity.urls` includes) stay keys: in the one-Offer-per-variant shape each is its
-    row's key."""
+def _not_keys(row_field: RowField) -> tuple[frozenset[str], frozenset[str]]:
+    """URLs that name the page or the target, not one variant (§4.4): the page URLs and the target's own URLs; and
+    the target's URLs that one of its Offers repeats. `Entity.urls` includes the Offers' URLs, so a URL both declare
+    is either the target's or an Offer's: `_without_group_urls` decides by how many rows carry it."""
     graph, target = row_field.graph, row_field.target
     offers = {u for e in graph.entities.values() if e.parent == target.id and graph.is_a(e, OFFER) for u in e.urls}
     own = [u for u in target.urls if u not in offers]
-    return frozenset((*row_field.page_urls, *own))
+    return frozenset((*row_field.page_urls, *own)), frozenset(u for u in target.urls if u in offers)
+
+
+def _without_group_urls(values: dict[str, dict[str, list[JsonValue]]], shared: frozenset[str]) -> dict[str, _Keys]:
+    """Drops a URL the target and its Offers both carry when more than one row carries it (§4.4): one row's URL is
+    that variant's key (the one-Offer-per-variant shape); a URL many rows repeat names the group, and as a key it
+    would join every row into one variant."""
+    carriers: dict[str, set[str]] = {}
+    for row, keys in values.items():
+        for url in _urls_in(keys, shared):
+            carriers.setdefault(url, set()).add(row)
+    group = frozenset(url for url, rows in carriers.items() if len(rows) > 1)
+    return {row: _without(keys, group) for row, keys in values.items()} if group else values
+
+
+def _urls_in(keys: _Keys, urls: frozenset[str]) -> set[str]:
+    return {v for vs in keys.values() for v in vs if isinstance(v, str) and v in urls}
+
+
+def _without(keys: _Keys, urls: frozenset[str]) -> _Keys:
+    kept = {sub: [v for v in vs if not (isinstance(v, str) and v in urls)] for sub, vs in keys.items()}
+    return {sub: vs for sub, vs in kept.items() if vs}
 
 
 def _linked(
