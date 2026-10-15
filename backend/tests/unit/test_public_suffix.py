@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from crawlerai.acquire import api, public_suffix
+from crawlerai.acquire import cookies, public_suffix
 from crawlerai.acquire.public_suffix import PublicSuffixes
 from crawlerai.acquire.types import FetchPolicy
 from tests.unit.test_api_fetch import fetch, json_reply
@@ -38,20 +38,27 @@ def test_a_domain_is_a_public_suffix_by_the_list_s_rules(domain: str, public: bo
     assert SUFFIXES.is_public_suffix(domain) is public
 
 
-def _fetch_with(suffixes: PublicSuffixes, set_cookie: str, monkeypatch: pytest.MonkeyPatch) -> str | None:
-    """The Cookie header the second hop of a fetch from `api.shared.test` to `cdn.shared.test` carries."""
-    monkeypatch.setattr(api, "default_suffixes", lambda: suffixes)
+def _fetch_with(
+    suffixes: PublicSuffixes,
+    set_cookie: str,
+    monkeypatch: pytest.MonkeyPatch,
+    start: str = "https://api.shared.test/v1/all",
+    location: str = "https://cdn.shared.test/v1/all",
+) -> str | None:
+    """The Cookie header the second hop of a fetch carries: from `start`, which sets `set_cookie`, to `location`."""
+    monkeypatch.setattr(cookies, "default_suffixes", lambda: suffixes)
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         if len(seen) == 1:
-            headers = [("Location", "https://cdn.shared.test/v1/all"), ("Set-Cookie", set_cookie)]
-            return httpx.Response(302, headers=headers)
+            # As the bytes arrive: a Domain may hold any octets.
+            return httpx.Response(302, headers=[(b"Location", location.encode()), (b"Set-Cookie", set_cookie.encode())])
         return json_reply()(request)
 
-    hosts = dict.fromkeys(("api.shared.test", "cdn.shared.test"), "93.184.215.14")
-    fetch(handler, FetchPolicy(), dns=hosts, url="https://api.shared.test/v1/all")
+    hosts = dict.fromkeys(("shared.test", "api.shared.test", "cdn.shared.test"), "93.184.215.14")
+    result = fetch(handler, FetchPolicy(), dns=hosts, url=start)
+    assert result.block_class == "ok"
     cookie: str | None = seen[1].headers.get("Cookie")
     return cookie
 
@@ -64,6 +71,27 @@ def test_a_cookie_for_a_registrable_domain_is_kept(monkeypatch: pytest.MonkeyPat
     suffixes = PublicSuffixes.parse("test\n")
 
     assert _fetch_with(suffixes, "keep=1; Domain=shared.test", monkeypatch) == "keep=1"
+
+
+@pytest.mark.parametrize(
+    ("location", "sent"),
+    [("https://shared.test/v1/next", "own=1"), ("https://cdn.shared.test/v1/all", None)],
+    ids=["same_host", "host_under_it"],
+)
+def test_a_cookie_for_the_setting_host_that_is_a_public_suffix_is_host_only(
+    location: str, sent: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # RFC 6265 §5.3 step 5: the Domain equals the setting host, so the cookie is kept for that host alone.
+    start = "https://shared.test/v1/all"
+
+    assert _fetch_with(SUFFIXES, "own=1; Domain=shared.test", monkeypatch, start, location) == sent
+
+
+def test_a_domain_that_is_no_idna_name_ignores_its_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An IDNA label holds at most 63 octets (RFC 5890 §2.3.2.1), so this Domain names no host.
+    too_long = "é" * 64
+
+    assert _fetch_with(SUFFIXES, f"x=1; Domain={too_long}.shared.test", monkeypatch) is None
 
 
 def test_without_the_list_a_registrable_domain_keeps_its_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
