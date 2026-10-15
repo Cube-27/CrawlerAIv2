@@ -114,6 +114,18 @@ def test_an_aggregate_offer_is_no_variant_holder() -> None:
     assert select_variant(VARIANT_URLS[0], VARIANT_URLS[0], None, graph, graph.entities["jsonld:0:$"]) is None
 
 
+def test_a_selected_variant_s_aggregate_offer_gives_no_offer_field() -> None:
+    # SPEC-13 §4.3: an AggregateOffer summarizes several offers and is no offer of one item, so it is none of the
+    # selected variant's Offers (§4.6).
+    aggregate = {"@type": "AggregateOffer", "price": "9.00", "lowPrice": "9.00", "priceCurrency": "EUR"}
+    selected = {"@type": "Product", "name": "Synthetic Widget", "url": VARIANT_URLS[0], "offers": aggregate}
+
+    result = _resolve(_group(selected, _variant(VARIANT_URLS[1], "12.00")), VARIANT_URLS[0])
+
+    assert isinstance(result["price"], Unpublished)
+    assert {reason for _, reason in result["price"].rejected} == {"other_variant"}
+
+
 def test_the_selected_variant_fills_an_identifier_the_group_does_not_state() -> None:
     result = _resolve(TWO_PRICES, VARIANT_URLS[0])
 

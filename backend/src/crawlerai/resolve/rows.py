@@ -223,7 +223,8 @@ def _not_keys(row_field: RowField) -> tuple[frozenset[str], frozenset[str]]:
     the target's URLs that one of its Offers repeats. `Entity.urls` includes the Offers' URLs, so a URL both declare
     is either the target's or an Offer's: `_without_group_urls` decides by how many rows carry it."""
     graph, target = row_field.graph, row_field.target
-    offers = {u for e in graph.entities.values() if e.parent == target.id and graph.is_a(e, OFFER) for u in e.urls}
+    # An AggregateOffer is no offer of one item (§4.3): a URL it repeats is not one row's.
+    offers = {u for e in graph.holders(target) if graph.is_a(e, OFFER) for u in e.urls}
     own = [u for u in target.urls if u not in offers]
     return frozenset((*row_field.page_urls, *own)), frozenset(u for u in target.urls if u in offers)
 
