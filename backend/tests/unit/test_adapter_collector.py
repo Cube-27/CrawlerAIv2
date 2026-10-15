@@ -240,3 +240,69 @@ def test_a_map_over_several_types_is_skipped_with_a_diagnostic() -> None:
 
     assert (result.entities, result.candidates) == ((), ())
     assert result.diagnostics == ("adapter:stand-in: maps fields of several types ['JobPosting', 'Organization']",)
+
+
+class _NestedList:
+    """An adapter whose map reaches a list field's items through a wildcard of their own: a job's office names."""
+
+    name = "stand-in"
+    _MAPS: Mapping[PageKind, Mapping[str, str]] = {
+        "detail": {"title": "$['title']", "offices": "$['offices'][*]['name']", "url": "$['url']"},
+        "listing": {
+            "title": "$['jobs'][*]['title']",
+            "offices": "$['jobs'][*]['offices'][*]['name']",
+            "url": "$['jobs'][*]['url']",
+        },
+    }
+
+    def detect(self, url: str) -> None:
+        return None
+
+    async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
+        raise AssertionError("collecting fetches nothing")
+
+    def map(self, schema_org: Mapping[str, str], page_kind: PageKind) -> dict[str, str]:
+        return {field: self._MAPS[page_kind][field] for field in schema_org}
+
+
+_OFFICES = FieldSpec.model_validate(
+    {
+        "type": "list",
+        "description": "d",
+        "item": {"type": "text"},
+        "scope": "row",
+        "schema_org": "JobPosting.jobLocation",
+    }
+)
+
+
+def _job(n: int) -> dict[str, JsonValue]:
+    return {
+        "title": f"Role {n}",
+        "url": f"https://jobs.example.test/{n}",
+        "offices": [{"name": "North"}, {"name": "South"}],
+    }
+
+
+def test_a_list_field_mapped_through_its_own_wildcard_is_one_candidate_of_its_entity() -> None:
+    schema = _schema("detail", title=_text("JobPosting.title"), offices=_OFFICES)
+
+    result = _collect(_NestedList(), "detail", json.dumps(_job(1)), schema)
+
+    assert [e.id for e in result.entities] == ["adapter:stand-in:$"]
+    assert _values(result)[("adapter:stand-in:$", "offices")] == (
+        ["North", "South"],
+        "adapter:stand-in:$['offices'][*]['name']",
+    )
+
+
+def test_each_listing_row_holds_its_own_list_field_items() -> None:
+    schema = _schema("listing", title=_text("JobPosting.title"), offices=_OFFICES)
+
+    result = _collect(_NestedList(), "listing", json.dumps({"jobs": [_job(1), _job(2)]}), schema)
+
+    rows = [f"adapter:stand-in:$['jobs'][{i}]" for i in (0, 1)]
+    assert [e.id for e in result.entities] == rows
+    assert [(c.entity_id, c.field, c.raw) for c in result.candidates if c.field == "offices"] == [
+        (row, "offices", ["North", "South"]) for row in rows
+    ]
