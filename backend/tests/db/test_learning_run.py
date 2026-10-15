@@ -26,7 +26,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.base import Candidate
-from crawlerai.config_ir.active import active_config, config_recipe
+from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
 from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.config_ir.learning import (
@@ -245,6 +245,10 @@ class LearnSite:
         )
         return job_id, learned
 
+    async def recipe(self, config_id: ExtractionConfigId) -> ApiRecipe | None:
+        async with self.engine.connect() as conn:
+            return recipe_of(await config_by_id(conn, config_id, self.data.vocabulary))
+
     async def state(self) -> Any:
         async with self.engine.connect() as conn:
             return (await conn.execute(select(ProgressiveState).where(*self.key.where()))).one()
@@ -375,8 +379,7 @@ async def test_a_site_whose_values_come_from_an_api_is_learned_with_a_validated_
 
     assert learned is not None
     assert learned.config_id is not None
-    async with site.engine.connect() as conn:
-        recipe = await config_recipe(conn, learned.config_id)
+    recipe = await site.recipe(learned.config_id)
     status, payload = await site.finished(job_id)
     held_out = payload["report"]["api_recipe"]["held_out"]
     assert recipe == ApiRecipe(
@@ -403,8 +406,7 @@ async def test_a_recipe_that_does_not_validate_leaves_the_config_without_one(
 
     assert learned is not None
     assert learned.config_id is not None
-    async with site.engine.connect() as conn:
-        assert await config_recipe(conn, learned.config_id) is None
+    assert await site.recipe(learned.config_id) is None
     status, payload = await site.finished(job_id)
     assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "not_reproduced: price, title")
 
@@ -546,8 +548,7 @@ async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: LearnSite, st
     state = await site.state()
     assert state.mode == "active"
     # The learner's runs replay recipes: the config it activated has one.
-    async with site.engine.connect() as conn:
-        assert await config_recipe(conn, state.active_config_id) is not None
+    assert await site.recipe(state.active_config_id) is not None
     assert len(sent) == 8
 
 

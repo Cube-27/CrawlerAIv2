@@ -44,11 +44,9 @@ async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, voc
     return _bound(config_id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
 
 
-async def config_recipe(conn: AsyncConnection, config_id: ExtractionConfigId) -> ApiRecipe | None:
-    """The API recipe of config `config_id`, which serves its pages (SPEC-09 §4.8); None when it has none."""
-    query = select(ExtractionConfig.ir["api_recipe"]).where(ExtractionConfig.id == config_id)
-    recipe: object = (await conn.execute(query)).scalar_one()
-    return None if recipe is None else ApiRecipe.model_validate(recipe)
+def recipe_of(config: ActiveConfig) -> ApiRecipe | None:
+    """The API recipe of `config`, which serves its pages (SPEC-09 §4.8), as `_bound` parsed it; None without one."""
+    return config.api.recipe if isinstance(config.api, RecipeExecutor) else None
 
 
 def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, vocabulary: Vocabulary) -> ActiveConfig:

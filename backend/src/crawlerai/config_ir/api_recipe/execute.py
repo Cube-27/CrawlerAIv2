@@ -44,13 +44,14 @@ class RecipeExecutor:
     """The `ConfigExecutor` of the captures a config's recipe fetched: the recipe's collector, with the status of the
     config's fields the recipe maps, which role C is then not asked for (SPEC-08 §4.8)."""
 
+    recipe: ApiRecipe
     collector: ApiCollector
     field_status: Mapping[str, FieldStatus]
 
     @classmethod
     def of(cls, recipe: ApiRecipe, recipe_id: str, config_status: Mapping[str, FieldStatus]) -> "RecipeExecutor":
         status = {name: s for name, s in config_status.items() if name in recipe.map}
-        return cls(recipe_collector(recipe, recipe_id), status)
+        return cls(recipe, recipe_collector(recipe, recipe_id), status)
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         return self.collector.collect(page, schema, ctx)

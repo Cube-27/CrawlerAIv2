@@ -281,6 +281,34 @@ async def test_max_age_reuses_an_api_capture_for_a_record_only(
     assert "lights a desk" in markdown.markdown
 
 
+async def test_max_age_reuses_no_api_capture_once_the_config_has_no_recipe(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    lamp_schema: SchemaDef,
+    recipe_config: uuid.UUID,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/p/desk-lamp"
+    web.pages[url] = PAGE
+    web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
+    first = await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
+    async with engine.begin() as conn:  # an operator's correction drops the recipe within `max_age`
+        stripped = ExtractionConfig.ir.op("-")("api_recipe")
+        await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == recipe_config).values(ir=stripped))
+
+    again = await scrape(
+        engine, fetching, _scrape(url, lamp_schema).model_copy(update={"max_age": 3600}), data=engine_data
+    )
+
+    # The JSON is read only by a recipe: the page is fetched, and its page steps run on the page itself.
+    assert again.capture_id not in (None, first.capture_id)
+    assert again.fetch is not None
+    assert (again.fetch.method, web.page_fetches()) == ("http", [url])
+    assert await _drift_window(engine, recipe_config) == {"title": [[True, True]]}
+
+
 async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is_fetched(
     engine: AsyncEngine,
     fetching: Fetching,
