@@ -31,6 +31,7 @@ from crawlerai.content.metadata import PageMetadata, metadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import backend_dir, data_dir
+from crawlerai.core.errors import Refusal
 from crawlerai.db.models import (
     CaptureId,
     FetchMethod,
@@ -158,7 +159,7 @@ def check_records(
         raise ValueError(f"the inline schema is for {schema.inline.page_kind} pages, not {page_kind}")
 
 
-class SchemaUnusable(Exception):
+class SchemaUnusable(Refusal):
     """The request's `schema` is one `records` cannot use: no such id, a retired version, or another page kind."""
 
 

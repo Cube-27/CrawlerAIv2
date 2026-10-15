@@ -41,6 +41,7 @@ from crawlerai.db.models import (
     FinishedOutcome,
     Job,
     JobId,
+    JobKind,
     JobStatus,
     PageKind,
     TaskOutcome,
@@ -56,6 +57,9 @@ BACKOFF_BASE: Final = timedelta(seconds=30)
 LAST_ERROR_BYTES: Final = 2048
 # How many stalled jobs one scheduler turn ends (`fail_stalled_jobs`); a full batch runs again at once.
 STALLED_BATCH: Final = 100
+# The kinds of job a process runs while its caller waits, with no task for a while or ever: a `map`, an `extract`
+# drafting its prompt's schema.
+_RUN_INLINE: Final[tuple[JobKind, ...]] = ("map", "extract")
 
 # Runs as a job ends (`settle_job`): the job, and the status it is about to end in.
 JobEnding = Callable[[AsyncConnection, JobId, JobStatus], Awaitable[None]]
@@ -226,14 +230,14 @@ async def release_expired_leases(conn: AsyncConnection, *, ending: JobEnding | N
 
 
 async def fail_stalled_jobs(conn: AsyncConnection, *, batch: int) -> int:
-    """End `failed` up to `batch` jobs `running` with no task for longer than `LEASE`, and return how many. A process
-    runs such a job while its caller waits, within the request's time cap (a `map`'s, a draft's), far under a lease;
-    `learn` jobs run without tasks too, and end by their own expiry (`expire_learn_runs`)."""
+    """End `failed` up to `batch` jobs of `_RUN_INLINE` kinds `running` with no task for longer than `LEASE`, and
+    return how many. A process runs such a job while its caller waits, within the request's time cap (a `map`'s, a
+    draft's), far under a lease."""
     stalled = (
         select(Job.id)
         .where(
             Job.status == "running",
-            Job.kind != "learn",
+            Job.kind.in_(_RUN_INLINE),
             Job.started_at < func.now() - LEASE,
             ~select(UrlTask.id).where(UrlTask.job_id == Job.id).exists(),
         )

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.errors import Refusal
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
@@ -125,15 +126,15 @@ class ExtractSubmitted(BaseModel):
     schema_: SchemaDef = Field(alias="schema")
 
 
-class NothingToExtract(Exception):
+class NothingToExtract(Refusal):
     """The request's globs matched no URL, and it gives no other."""
 
 
-class NoSamplePage(Exception):
+class NoSamplePage(Refusal):
     """None of the pages a prompt is drafted from was reached (SPEC-06 §4.5: role S drafts from fetched pages)."""
 
 
-class DraftTimedOut(Exception):
+class DraftTimedOut(Refusal):
     def __init__(self, timeout_s: float) -> None:
         super().__init__(f"the draft did not finish within {timeout_s:g} s")
 

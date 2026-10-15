@@ -32,7 +32,7 @@ from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.canonical import canonicalize
-from crawlerai.crawl.rules import MAX_PATTERNS, Scope
+from crawlerai.crawl.rules import Patterns, Scope
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
@@ -52,8 +52,8 @@ class MapRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     url: str
-    include: list[str] = Field(default=[], max_length=MAX_PATTERNS)
-    exclude: list[str] = Field(default=[], max_length=MAX_PATTERNS)
+    include: Patterns = []
+    exclude: Patterns = []
     limit: int = Field(default=MAX_LIMIT, ge=1, le=MAX_LIMIT)
     use_sitemaps: bool = True
     use_links: bool = True

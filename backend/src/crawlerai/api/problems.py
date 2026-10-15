@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from crawlerai.api.dto import FieldErrorOut, Problem
+from crawlerai.core.errors import UNEXPECTED
 from crawlerai.llm.client import BudgetExhausted, LLMFailure, OutputInvalid, ProviderUnavailable
 
 PROBLEM_JSON = "application/problem+json"  # RFC 9457 §3
@@ -113,7 +114,7 @@ async def _on_validation(request: Request, exc: RequestValidationError) -> JSONR
 
 async def _on_unexpected(request: Request, exc: Exception) -> JSONResponse:
     # The message is left out: it may carry internals. The server still logs the exception.
-    return problem_response(request, _status_only(500, "the server failed to answer the request"))
+    return problem_response(request, _status_only(500, UNEXPECTED))
 
 
 def install(app: FastAPI) -> None:

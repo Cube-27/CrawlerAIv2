@@ -274,12 +274,14 @@ TARGETS: Sequence[tuple[str, str]] = [
 @dataclass(frozen=True)
 class Member:
     """Where a request names a target: `body` builds the request around it, `field` is the member a refusal names
-    (`None` where the endpoint has one target, which its problem does not name)."""
+    (`None` where the endpoint has one target, which its problem does not name). `tool` is the MCP tool that takes
+    the same `request` (SPEC-10 §4.7), if one does."""
 
     path: str
     field: str | None
     body: Callable[[str, str, str], dict[str, Any]]  # (target, a public URL of the site, a schema id) -> body
     glob: bool = False
+    tool: str | None = None
 
     def __str__(self) -> str:
         return f"{self.path}:{self.field or 'url'}{':glob' if self.glob else ''}"
@@ -294,8 +296,8 @@ def _glob(target: str) -> str:
 
 
 MEMBERS: Sequence[Member] = [
-    Member("/v1/scrape", None, lambda target, _, __: {"url": target, "formats": ["markdown"]}),
-    Member("/v1/map", None, lambda target, _, __: {"url": target}),
+    Member("/v1/scrape", None, lambda target, _, __: {"url": target, "formats": ["markdown"]}, tool="scrape"),
+    Member("/v1/map", None, lambda target, _, __: {"url": target}, tool="map"),
     Member(
         "/v1/batch/scrape", "urls[1]", lambda target, public, _: {"urls": [public, target], "formats": ["markdown"]}
     ),
@@ -304,23 +306,35 @@ MEMBERS: Sequence[Member] = [
         "webhook_url",
         lambda target, public, _: {"urls": [public], "formats": ["markdown"], "webhook_url": target},
     ),
-    Member("/v1/crawl", "url", lambda target, _, __: {"url": target, "formats": ["markdown"]}),
+    Member("/v1/crawl", "url", lambda target, _, __: {"url": target, "formats": ["markdown"]}, tool="crawl_start"),
     Member(
         "/v1/crawl",
         "webhook_url",
         lambda target, public, _: {"url": public, "formats": ["markdown"], "webhook_url": target},
+        tool="crawl_start",
     ),
-    Member("/v1/extract", "urls[1]", lambda target, public, schema: _extract([public, target], schema)),
+    Member("/v1/extract", "urls[1]", lambda target, public, schema: _extract([public, target], schema), tool="extract"),
     Member(
-        "/v1/extract", "urls[1]", lambda target, public, schema: _extract([public, _glob(target)], schema), glob=True
+        "/v1/extract",
+        "urls[1]",
+        lambda target, public, schema: _extract([public, _glob(target)], schema),
+        glob=True,
+        tool="extract",
     ),
-    Member("/v1/extract", "webhook_url", lambda target, public, schema: _extract([public], schema, webhook_url=target)),
+    Member(
+        "/v1/extract",
+        "webhook_url",
+        lambda target, public, schema: _extract([public], schema, webhook_url=target),
+        tool="extract",
+    ),
 ]
+# The members the MCP tools that fetch take.
+TOOL_MEMBERS: Sequence[Member] = [member for member in MEMBERS if member.tool is not None]
 
 
-def _named() -> list[Any]:
+def _named(members: Sequence[Member]) -> list[Any]:
     cases = []
-    for member, (authority, reason) in itertools.product(MEMBERS, TARGETS):
+    for member, (authority, reason) in itertools.product(members, TARGETS):
         target = f"http://{authority}"
         # A glob's `[` is a pattern character, so a glob on an IPv6 literal (RFC 3986 §3.2.2) is no glob on one host:
         # it is invalid before the guard sees it (`test_a_glob_on_an_ipv6_literal_is_invalid`).
@@ -329,7 +343,7 @@ def _named() -> list[Any]:
     return cases
 
 
-@pytest.mark.parametrize(("member", "target", "reason"), _named())
+@pytest.mark.parametrize(("member", "target", "reason"), _named(MEMBERS))
 async def test_a_named_target_is_refused_before_anything_is_stored(
     client: httpx.AsyncClient, engine: AsyncEngine, site: str, schema_id: str, member: Member, target: str, reason: str
 ) -> None:
@@ -350,36 +364,6 @@ async def test_a_named_target_is_refused_before_anything_is_stored(
     assert await job_count(engine) == jobs
 
 
-@dataclass(frozen=True)
-class Tool:
-    """Where an MCP tool's request names a target (SPEC-10 §4.7): `request` builds the tool's `request` around it,
-    `field` is the member a refusal names (`None` where the tool has one target)."""
-
-    name: str
-    field: str | None
-    request: Callable[[str, str, str], dict[str, Any]]  # (target, a public URL of the site, a schema id) -> request
-    glob: bool = False
-
-    def __str__(self) -> str:
-        return f"{self.name}:{self.field or 'url'}{':glob' if self.glob else ''}"
-
-
-# The tools that fetch, each target as its REST endpoint takes it (`MEMBERS`).
-TOOLS: Sequence[Tool] = [
-    Tool("scrape", None, lambda target, _, __: {"url": target, "formats": ["markdown"]}),
-    Tool("map", None, lambda target, _, __: {"url": target}),
-    Tool("crawl_start", "url", lambda target, _, __: {"url": target, "formats": ["markdown"]}),
-    Tool(
-        "crawl_start",
-        "webhook_url",
-        lambda target, public, _: {"url": public, "formats": ["markdown"], "webhook_url": target},
-    ),
-    Tool("extract", "urls[1]", lambda target, public, schema: _extract([public, target], schema)),
-    Tool("extract", "urls[1]", lambda target, public, schema: _extract([public, _glob(target)], schema), glob=True),
-    Tool("extract", "webhook_url", lambda target, public, schema: _extract([public], schema, webhook_url=target)),
-]
-
-
 @pytest.fixture
 async def mcp(client: httpx.AsyncClient) -> AsyncIterator[ClientSession]:
     """The SDK's MCP client, connected to `/mcp` through `client`."""
@@ -391,26 +375,18 @@ async def mcp(client: httpx.AsyncClient) -> AsyncIterator[ClientSession]:
         yield session
 
 
-def _named_to_tools() -> list[Any]:
-    cases = []
-    for tool, (authority, reason) in itertools.product(TOOLS, TARGETS):
-        target = f"http://{authority}"
-        if not (tool.glob and "[" in target):  # as in `_named`
-            cases.append(pytest.param(tool, target, reason, id=f"{tool}-{target}"))
-    return cases
-
-
-@pytest.mark.parametrize(("tool", "target", "reason"), _named_to_tools())
+@pytest.mark.parametrize(("member", "target", "reason"), _named(TOOL_MEMBERS))
 async def test_a_target_named_to_an_mcp_tool_is_refused_before_anything_is_stored(
-    mcp: ClientSession, engine: AsyncEngine, site: str, schema_id: str, tool: Tool, target: str, reason: str
+    mcp: ClientSession, engine: AsyncEngine, site: str, schema_id: str, member: Member, target: str, reason: str
 ) -> None:
     jobs = await job_count(engine)
+    tool = str(member.tool)
 
-    result = await mcp.call_tool(tool.name, {"request": tool.request(target, f"{site}/p/1", schema_id)})
+    result = await mcp.call_tool(tool, {"request": member.body(target, f"{site}/p/1", schema_id)})
 
-    refusal = f"ssrf_rejected: {reason}" if tool.field is None else f"{tool.field}: ssrf_rejected: {reason}"
+    refusal = f"ssrf_rejected: {reason}" if member.field is None else f"{member.field}: ssrf_rejected: {reason}"
     texts = [block.text for block in result.content if isinstance(block, TextContent)]
-    assert (result.isError, texts) == (True, [f"Error executing tool {tool.name}: {refusal}"])
+    assert (result.isError, texts) == (True, [f"Error executing tool {tool}: {refusal}"])
     assert await job_count(engine) == jobs
 
 

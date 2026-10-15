@@ -14,12 +14,13 @@ from sqlalchemy import Row, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.errors import Refusal
 from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.db.models import SchemaId, SchemaOrigin, SchemaStatus
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 
 
-class SchemaNotFound(Exception):
+class SchemaNotFound(Refusal):
     pass
 
 

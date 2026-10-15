@@ -24,6 +24,7 @@ from crawlerai.config_ir.progressive import StateKey, learning_failed
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
+from crawlerai.core.errors import Refusal
 from crawlerai.db.jobs import JOB_TRANSITIONS, transition_job
 from crawlerai.db.models import (
     Capture,
@@ -57,7 +58,7 @@ ResultFormat = Literal["json", "json_values", RecordFormat]
 _EXTRACTED: frozenset[TaskOutcome | None] = frozenset({"extracted", "partial"})
 
 
-class JobNotFound(LookupError):
+class JobNotFound(Refusal, LookupError):
     pass
 
 

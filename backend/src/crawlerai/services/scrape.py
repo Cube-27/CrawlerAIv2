@@ -44,6 +44,7 @@ from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.errors import Refusal
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
@@ -175,12 +176,12 @@ class ScrapeResult(BaseModel):
     usage: Usage
 
 
-class ScrapeTimedOut(Exception):
+class ScrapeTimedOut(Refusal):
     def __init__(self, timeout_s: float) -> None:
         super().__init__(f"the scrape did not finish within {timeout_s:g} s")
 
 
-class RecordsUnavailable(Exception):
+class RecordsUnavailable(Refusal):
     """`records` was asked of a process without the engine's data files (`EngineData`, D-0492)."""
 
 

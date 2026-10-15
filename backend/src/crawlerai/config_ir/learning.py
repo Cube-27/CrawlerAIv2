@@ -76,7 +76,7 @@ LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
 # How many expired runs one scheduler turn ends; a full batch runs again at once (`scheduler.loop`).
 EXPIRE_BATCH: Final = 100
 EXPIRED: Final = "expired"
-# The reason of a run cancelled because its worker stops (`worker.learn.run_learner`).
+# The reason of a run cancelled because its worker stops (`run_learner`).
 SHUTDOWN: Final = "shutdown"
 
 

@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.frontier import Frontier
-from crawlerai.crawl.rules import MAX_PATTERNS, PageKindRule, Scope
+from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.db.models import ApiKeyId, JobId, UrlTask
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.batch import insert_job, records_schema
@@ -46,8 +46,8 @@ class CrawlRequest(Input):
     called when the job ends (§4.2)."""
 
     url: str
-    include: list[str] = Field(default_factory=list, max_length=MAX_PATTERNS)
-    exclude: list[str] = Field(default_factory=list, max_length=MAX_PATTERNS)
+    include: Patterns = Field(default_factory=list)
+    exclude: Patterns = Field(default_factory=list)
     max_depth: int = Field(default=3, ge=0)
     limit: int = Field(default=500, ge=1, le=MAX_LIMIT)
     formats: list[PageFormat] = Field(min_length=1)

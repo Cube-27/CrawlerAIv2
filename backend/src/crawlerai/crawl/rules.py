@@ -6,10 +6,10 @@ module names no host (INV-03).
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-from typing import Final
+from typing import Annotated, Final
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import PageKind
@@ -20,6 +20,8 @@ _PATTERN_CHARACTERS: Final = frozenset("*?[")
 # on the event loop: about 0.8 µs a match, so the two lists over a map's 50k sitemap URLs (`sitemaps.MAX_URLS`) take
 # at most about 1.6 s.
 MAX_PATTERNS: Final = 20
+# An `include` or `exclude` list of a request.
+Patterns = Annotated[list[str], Field(max_length=MAX_PATTERNS)]
 
 
 class PageKindRule(BaseModel):

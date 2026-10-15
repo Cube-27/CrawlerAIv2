@@ -21,6 +21,7 @@ from crawlerai.config_ir.api_recipe.execute import RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
 from crawlerai.services.scrape_steps import SiteRow, site_row
 from crawlerai.storage.base import ObjectStore
@@ -37,7 +38,7 @@ class Fetching:
     limiter: HostLimiter
 
 
-class TargetRejected(Exception):
+class TargetRejected(Refusal):
     """The SSRF guard refused the target, or a redirect from it (INV-16). `reason` is the guard's, without the URL."""
 
     def __init__(self, reason: str) -> None:
@@ -45,7 +46,7 @@ class TargetRejected(Exception):
         self.reason = reason
 
 
-class TargetsRejected(Exception):
+class TargetsRejected(Refusal):
     """The SSRF guard refused a target a request names (INV-16): `member` names it (`urls[3]`, `webhook_url`), `reason`
     is the guard's, without the URL."""
 
