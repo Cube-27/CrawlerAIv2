@@ -126,11 +126,13 @@ export function ResultsTable({
 }: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
   const values = useJobValues(jobId, { cursor, limit: PAGE_SIZE, withMetadata });
-  const [open, setOpen] = useState<Row | null>(null);
+  // The open drawer's row, by its place: its item is read from the page shown, so a refresh updates it.
+  const [openId, setOpenId] = useState<number | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const data = values.data;
   const first = (page - 1) * PAGE_SIZE + 1;
   const rows = (data?.items ?? []).map((item, offset) => ({ id: first + offset, item }));
+  const open = rows.find(({ id }) => id === openId);
   return (
     <>
       {selectable ? <ScrapeAsBatchBar selected={selected} /> : null}
@@ -144,15 +146,17 @@ export function ResultsTable({
         <PagesTable
           rows={rows}
           selection={selectable ? { selected, onSelect: setSelected } : null}
-          onOpen={setOpen}
+          onOpen={({ id }) => {
+            setOpenId(id);
+          }}
         />
       </PagedTable>
-      {open === null ? null : (
+      {open === undefined ? null : (
         <ItemDrawer
           item={open.item}
           position={open.id}
           onClose={() => {
-            setOpen(null);
+            setOpenId(null);
           }}
         />
       )}

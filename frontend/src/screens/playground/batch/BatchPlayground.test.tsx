@@ -238,6 +238,43 @@ describe("batch playground: the run", () => {
     ).toEqual(FIRST);
   });
 
+  it("updates an open drawer when the table reads its page again", async () => {
+    let push: (text: string) => void = () => undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (text) => {
+          controller.enqueue(new TextEncoder().encode(text));
+        };
+      },
+    });
+    const done: JsonValuesItem = {
+      ...THIRD,
+      outcome: "extracted",
+      records: [{ title: "Red mug" }],
+    };
+    let reads = 0;
+    batchApi({
+      [`GET ${JOB}/events`]: () =>
+        new Response(stream, { headers: { "content-type": "text/event-stream" } }),
+      [`GET ${JOB}/results`]: () => {
+        reads += 1;
+        return valuesPage([FIRST, SECOND, reads === 1 ? THIRD : done]);
+      },
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 3" }));
+    const drawer = await screen.findByRole("dialog");
+
+    push(`id: 1\nevent: task_extracted\ndata: ${JSON.stringify({ url: THIRD.url })}\n\n`);
+
+    await waitFor(() => {
+      expect(
+        JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
+      ).toEqual(done);
+    });
+  });
+
   it("reads the page shown again as tasks end, at most once a second", async () => {
     let push: (text: string) => void = () => undefined;
     const stream = new ReadableStream<Uint8Array>({
