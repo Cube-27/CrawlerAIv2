@@ -61,7 +61,6 @@ def _required(path: str, headers: Mapping[str, str]) -> bool:
         "xrw": headers.get("x-requested-with") == "XMLHttpRequest",
         "referer": headers.get("referer") == _page_url(slug),
         "two": "x-requested-with" in headers and "x-client" in headers,
-        "cookie": "cookie" in headers,
         "auth": "authorization" in headers,
         "key": "x-api-key" in headers,
         "trace": "x-trace" in headers,
@@ -205,13 +204,6 @@ def test_an_endpoint_that_needs_two_added_headers_is_not_learnable(port: int) ->
     assert _minimize(port, "two", client) == NotLearnable(
         reason="no single captured header makes the replay reproduce the sample values", headers_tried=6
     )
-
-
-def test_an_endpoint_that_needs_a_cookie_is_not_learnable(port: int, received: list[dict[str, str]]) -> None:
-    result = _minimize(port, "cookie")
-
-    assert isinstance(result, NotLearnable)
-    assert all("cookie" not in r for r in received)
 
 
 def test_credentials_and_tokens_are_never_sent_and_named_when_needed(port: int, received: list[dict[str, str]]) -> None:

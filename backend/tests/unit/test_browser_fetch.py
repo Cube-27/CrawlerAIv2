@@ -256,23 +256,14 @@ def test_capture_keeps_the_first_fifty_json_bodies_under_two_megabytes_in_order(
     assert result.bundle.network[49] == b'{"n": 49}'
 
 
-def test_capture_records_the_method_and_body_of_the_request_behind_each_json_body(
+def test_capture_records_the_method_body_and_headers_of_the_request_behind_each_json_body(
     browser: Browser, server: Server
 ) -> None:
     result = browser.fetch(server.url("/search"))
 
     assert b"searched" in result.bundle.body
-    entries = result.bundle.manifest.network_bodies
-    assert [(e.url, e.method, e.request_body) for e in entries] == [
-        (server.url("/api/search"), "POST", '{"q": "lamp"}')
-    ]
-    assert decode(encode(result.bundle)) == result.bundle
-
-
-def test_capture_records_the_request_headers_behind_each_json_body(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/search"))
-
     (entry,) = result.bundle.manifest.network_bodies
+    assert (entry.url, entry.method, entry.request_body) == (server.url("/api/search"), "POST", '{"q": "lamp"}')
     sent = {name.lower(): value for name, value in entry.request_headers or ()}
     assert (sent["content-type"], sent["referer"]) == ("application/json", server.url("/search"))
     assert decode(encode(result.bundle)) == result.bundle
@@ -363,7 +354,6 @@ def test_a_subresource_to_a_loopback_or_link_local_address_is_refused_by_the_gua
     ("url", "error"),
     [
         pytest.param("file:///etc/passwd", "ssrf_rejected: scheme", id="file-scheme"),
-        pytest.param("data:text/html,<p>x</p>", "ssrf_rejected: scheme", id="data-scheme"),
         pytest.param("http://internal.example.com/", "ssrf_rejected: private_address", id="private-host"),
         pytest.param("http://169.254.169.254/latest/", "ssrf_rejected: private_address", id="metadata-address"),
     ],

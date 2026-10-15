@@ -77,11 +77,12 @@ def test_a_detail_page_values_are_api_candidates_of_the_page() -> None:
 
 
 def test_a_value_absent_or_not_one_scalar_gives_no_candidate() -> None:
-    document = {"data": {"name": ["A", "B"], "price": 3}}  # no currency: the joined money entry reads nothing
+    collector = ApiCollector("cfg1", DETAIL_MAP)
+    not_scalar = {"data": {"name": ["A", "B"], "price": 3, "currency": "EUR"}}
+    no_currency = {"data": {"name": "Lamp", "price": 3}}  # the joined money entry reads nothing
 
-    executed = _collect(document, DETAIL, ApiCollector("cfg1", DETAIL_MAP))
-
-    assert executed.candidates == ()
+    assert [c.field for c in _collect(not_scalar, DETAIL, collector).candidates] == ["price"]
+    assert [c.field for c in _collect(no_currency, DETAIL, collector).candidates] == ["title"]
 
 
 def test_a_body_that_is_not_json_is_a_diagnostic() -> None:
@@ -119,11 +120,12 @@ def test_a_listing_reads_row_fields_relative_to_each_row_and_page_fields_at_the_
 
 
 def test_an_empty_rows_selection_gives_no_rows() -> None:
-    collector = ApiCollector("cfg1", {"title": "$['name']"}, rows="$['items'][*]")
+    collector = ApiCollector("cfg1", {"title": "$['name']", "category": "$['category']"}, rows="$['items'][*]")
 
-    executed = _collect({"items": []}, LISTING, collector)
+    executed = _collect({"category": "Lamps", "items": []}, LISTING, collector)
 
-    assert (executed.rows, executed.candidates) == ((), ())
+    assert executed.rows == ()
+    assert _values(executed) == [("category", PAGE, "api:cfg1:$['category']", "Lamps")]
 
 
 _SCALARS = st.one_of(st.text(max_size=20), st.integers(), st.floats(allow_nan=False, allow_infinity=False))

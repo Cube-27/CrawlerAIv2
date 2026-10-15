@@ -195,7 +195,7 @@ def test_a_page_whose_url_does_not_bind_fails_without_a_request(stand_in_api: St
     assert result == RecipeValidated(
         None, _report(held_out, "not_reproduced: title, price", title=(3, 2), price=(3, 2))
     )
-    assert len(sent) == 2
+    assert sent == [f"{ENDPOINT}/desk-lamp", f"{ENDPOINT}/oak-chair"]
 
 
 def test_fewer_than_three_held_out_pages_reject_the_recipe_without_a_replay(stand_in_api: StandInApi) -> None:

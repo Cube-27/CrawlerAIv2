@@ -130,6 +130,7 @@ def test_an_endpoint_that_carries_no_required_value_on_one_sample_page_is_not_a_
     other = Body(f"{API}/products/table-3", {"data": {"name": "Something else", "price": 1, "currency": "EUR"}})
     table = _sample("table-3", _values("Pine Table", "80.0"), [other])
 
+    assert [c.requests[0].url for c in discover([LAMP, CHAIR], SCHEMA)] == [f"{API}/products/lamp-1"]
     assert discover([LAMP, CHAIR, table], SCHEMA) == []
 
 
@@ -228,9 +229,15 @@ def test_bodies_without_a_recorded_method_or_a_success_status_are_not_read() -> 
 
 
 def test_bodies_that_are_not_json_are_skipped() -> None:
-    lamp = _sample("lamp-1", _values("Desk Lamp", "19.5"), [Body(f"{API}/products/lamp-1", b"not json")])
+    broken = Body(f"{API}/products/lamp-1", b"not json")
+    lamp = _sample("lamp-1", _values("Desk Lamp", "19.5"), [broken, _product("lamp-1", "Desk Lamp", "19.5")])
 
-    assert discover([lamp, CHAIR], SCHEMA) == []
+    (found,) = discover([lamp, CHAIR], SCHEMA)
+
+    assert found.requests == (
+        CapturedRequest("GET", f"{API}/products/lamp-1"),
+        CapturedRequest("GET", f"{API}/products/chair-2"),
+    )
 
 
 def test_a_candidate_request_carries_the_headers_the_browser_sent() -> None:

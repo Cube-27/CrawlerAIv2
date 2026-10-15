@@ -141,17 +141,15 @@ def conditional(sent: dict[str, str]) -> dict[str, str]:
 # --- the HTTP rung -----------------------------------------------------------------------------------------------
 
 
-def test_a_fetch_without_validators_sends_no_conditional_headers(page: Page) -> None:
-    result = fetch(page)
-
-    assert result.bundle.manifest.status_code == 200
-    assert conditional(page.sent[0]) == {}
-
-
 def test_the_validators_are_sent_as_if_none_match_and_if_modified_since(page: Page) -> None:
+    plain = fetch(page)
     result = fetch(page, VALIDATORS)
 
-    assert conditional(page.sent[0]) == {"if-none-match": ETAG, "if-modified-since": LAST_MODIFIED}
+    assert [conditional(sent) for sent in page.sent] == [
+        {},
+        {"if-none-match": ETAG, "if-modified-since": LAST_MODIFIED},
+    ]
+    assert plain.bundle.manifest.status_code == 200
     assert (result.bundle.manifest.status_code, result.block_class, result.bundle.body) == (304, "ok", b"")
 
 
@@ -183,7 +181,8 @@ def test_a_second_fetch_of_an_unchanged_page_is_unchanged_and_has_no_bundle(page
     assert isinstance(second, Unchanged)
     assert [attempt.status for attempt in second.attempts] == [304]
     assert not hasattr(second, "bundle")
-    assert len(page.sent) == 2
+    sent_validators = {"if-none-match": ETAG, "if-modified-since": LAST_MODIFIED}
+    assert [conditional(sent) for sent in page.sent] == [{}, sent_validators]
 
 
 def test_a_changed_page_is_fetched_with_its_new_validators(page: Page) -> None:
@@ -213,13 +212,6 @@ def test_a_failed_304_is_not_unchanged() -> None:
         return failed
 
     assert asyncio.run(fetch_unless_unchanged(answer, VALIDATORS, has_record=True)) is failed
-
-
-def test_without_validators_a_page_is_never_unchanged(page: Page) -> None:
-    result = unless_unchanged(page, None)
-
-    assert isinstance(result, FetchResult)
-    assert conditional(page.sent[0]) == {}
 
 
 # --- through rung selection --------------------------------------------------------------------------------------

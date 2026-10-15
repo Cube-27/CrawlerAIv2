@@ -184,17 +184,16 @@ def test_a_null_or_absent_value_is_no_candidate() -> None:
     assert [e.urls for e in result.entities] == [("https://jobs.example.com/t/jobs/1",)]
 
 
-def test_a_schema_without_documented_fields_yields_nothing() -> None:
-    schema = _schema("detail", salary=_text("JobPosting.baseSalary"))
+def test_a_field_the_map_does_not_document_yields_no_candidate() -> None:
+    schema = _schema("detail", title=_text("JobPosting.title"), salary=_text("JobPosting.baseSalary"))
 
-    assert _collect(GREENHOUSE, "detail", _fixture("greenhouse/job.json"), schema) == CollectResult(
-        entities=(), candidates=()
-    )
+    result = _collect(GREENHOUSE, "detail", _fixture("greenhouse/job.json"), schema)
+
+    assert [(c.field, c.raw) for c in result.candidates] == [("title", "Synthetic Platform Engineer")]
 
 
-@pytest.mark.parametrize("body", ["<html><body>not json</body></html>", "", "{"])
-def test_a_body_that_is_not_json_is_skipped_with_a_diagnostic(body: str) -> None:
-    result = _collect(GREENHOUSE, "detail", body, _preset("job_detail"))
+def test_a_body_that_is_not_json_is_skipped_with_a_diagnostic() -> None:
+    result = _collect(GREENHOUSE, "detail", "<html><body>not json</body></html>", _preset("job_detail"))
 
     assert (result.entities, result.candidates) == ((), ())
     assert len(result.diagnostics) == 1

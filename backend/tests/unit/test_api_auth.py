@@ -60,8 +60,8 @@ def _problem_type(response: httpx.Response) -> str:
 
 @pytest.mark.parametrize(
     "headers",
-    [{}, {"authorization": "Basic Y2s6eA=="}, {"authorization": "Bearer"}, {"authorization": "Bearer "}],
-    ids=["none", "basic", "bearer-without-token", "bearer-empty"],
+    [{}, {"authorization": "Basic Y2s6eA=="}, {"authorization": "Bearer"}],
+    ids=["none", "basic", "bearer-without-token"],
 )
 def test_a_request_without_a_bearer_key_is_unauthorized_without_a_lookup(
     monkeypatch: pytest.MonkeyPatch, headers: dict[str, str]

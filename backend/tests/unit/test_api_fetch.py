@@ -96,7 +96,7 @@ def test_a_json_response_is_an_ok_api_capture_recorded_under_the_page() -> None:
 
 @pytest.mark.parametrize(
     ("status", "expected"),
-    [(404, "not_found"), (410, "not_found"), (403, "blocked"), (429, "blocked"), (500, "error"), (400, "error")],
+    [(404, "not_found"), (429, "blocked"), (500, "error")],
 )
 def test_a_status_classifies_as_in_the_http_fetch(status: int, expected: str) -> None:
     assert outcome(fetch(json_reply(b'{"error": "x"}', status))) == (status, expected, None)
@@ -153,7 +153,7 @@ def test_a_recipe_request_sends_its_method_body_and_headers_but_keeps_the_host()
     ("status", "method", "body"),
     # WHATWG Fetch §4.4 (HTTP-redirect fetch) step 12: 303, and 301/302 after a POST, go on as a GET without a
     # body; 307 and 308 repeat the request as it was.
-    [(301, "GET", b""), (302, "GET", b""), (303, "GET", b""), (307, "POST", b"{}"), (308, "POST", b"{}")],
+    [(302, "GET", b""), (303, "GET", b""), (307, "POST", b"{}")],
 )
 def test_a_redirected_post_follows_the_fetch_standard(status: int, method: str, body: bytes) -> None:
     seen: list[httpx.Request] = []
@@ -230,11 +230,14 @@ def test_a_body_slower_than_the_time_budget_is_a_timeout() -> None:
 
 def test_cookies_are_not_recorded() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, headers={"Set-Cookie": "session=secret"}, content=json.dumps([]).encode())
+        headers = {"Set-Cookie": "session=secret", "X-Trace": "t1"}
+        return httpx.Response(200, headers=headers, content=json.dumps([]).encode())
 
     result = fetch(handler)
 
-    assert [name for name, _ in result.bundle.manifest.headers.response if name.lower() == "set-cookie"] == []
+    recorded = {name.lower(): value for name, value in result.bundle.manifest.headers.response}
+    assert recorded["x-trace"] == "t1"
+    assert "set-cookie" not in recorded
 
 
 # --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------

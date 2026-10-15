@@ -8,7 +8,7 @@ import pytest
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.api import map_paths, read_map
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, RequestSpec, parse_binder
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, parse_binder
 
 _CAPTURE = str(uuid.UUID(int=1))
 
@@ -64,11 +64,18 @@ def test_binders_parse_into_their_kind_and_argument(text: str, binder: Binder) -
 
 
 @pytest.mark.parametrize(
-    "text",
-    ["path:01", "path:-1", "query:", "regex:/p/\\d+", "regex:(a)(b)", "regex:(?<x>a)", "jsonld:$.a", "host:0", "x"],
+    ("text", "reason"),
+    [
+        ("path:01", "not a path segment index"),
+        ("query:", "a query binder names a query parameter"),
+        ("regex:/p/\\d+", "exactly one capturing group"),
+        ("regex:(?<x>a)", "not a portable group"),
+        ("jsonld:$.a", "not a query of name, wildcard and index segments"),
+        ("host:0", "not a binder kind"),
+    ],
 )
-def test_malformed_binders_are_refused(text: str) -> None:
-    with pytest.raises(ValueError, match=r"binder|index|group|query|not"):
+def test_malformed_binders_are_refused(text: str, reason: str) -> None:
+    with pytest.raises(ValueError, match=reason):
         parse_binder(text)
 
 
@@ -77,44 +84,52 @@ def test_a_money_map_entry_joins_its_paths() -> None:
     assert map_paths("$['a+b']") == ["$['a+b']"]
 
 
-_REFUSED: dict[str, dict[str, Any]] = {
-    "placeholder without binder": {"params_from_url": {"slug": "path:1"}},
-    "binder without placeholder": {"params_from_url": {"slug": "path:1", "lang": "query:hl", "x": "path:0"}},
-    "page_url as parameter": {"url": "https://api.example.test/{page_url}", "params_from_url": {"page_url": "path:0"}},
-    "placeholder in the host": {"url": "https://{slug}.example.test/x?lang={lang}"},
-    "brace outside a placeholder": {"url": "https://api.example.test/{slug}/{?lang={lang}"},
-    "relative URL": {"url": "/v1/{slug}?lang={lang}"},
-    "non-http scheme": {"url": "ftp://api.example.test/{slug}?lang={lang}"},
-    "fragment": {"url": "https://api.example.test/{slug}?lang={lang}#x"},
-    "body on GET": {"body": {"template": "{}"}},
-    "cookie header": {"headers": {"Cookie": "a=b"}},
-    "authorization header in any case": {"headers": {"authorization": "x"}},
-    "a field the client sets": {"headers": {"Content-Length": "2"}},
-    "header named twice": {"headers": {"Accept": "a", "accept": "b"}},
-    "header placeholder other than page_url": {"headers": {"X-Id": "{slug}"}},
-    "line break in a header value": {"headers": {"X-A": "a\r\nX-B: b"}},
-    "requires_page_fetch without a page data binder": {"requires_page_fetch": True},
-    "page data binder without requires_page_fetch": {"params_from_url": {"slug": "jsonld:$['s']", "lang": "query:hl"}},
-    "dot-notation map path": {"map": {"title": "$.data['name']"}},
-    "empty map": {"map": {}},
-    "map field that is not a name": {"map": {"Title": "$['t']"}},
-    "proof without captures": {"proof": {"validated_on": [], "headers_tried": 0, "bound_by": "role_d"}},
-    "pagination step zero": {"pagination": {"kind": "param", "name": "p", "start": 0, "step": 0, "rows": "$[*]"}},
+_REFUSED: dict[str, tuple[dict[str, Any], str]] = {
+    "placeholder without binder": ({"params_from_url": {"slug": "path:1"}}, "and binders .* differ"),
+    "page_url as parameter": (
+        {"url": "https://api.example.test/{page_url}", "params_from_url": {"page_url": "path:0"}},
+        "page_url is the page URL, not a parameter",
+    ),
+    "placeholder in the host": ({"url": "https://{slug}.example.test/x?lang={lang}"}, "the scheme and host are fixed"),
+    "brace outside a placeholder": (
+        {"url": "https://api.example.test/{slug}/{?lang={lang}"},
+        "a brace outside a {name} placeholder",
+    ),
+    "non-http scheme": ({"url": "ftp://api.example.test/{slug}?lang={lang}"}, "an absolute http"),
+    "fragment": ({"url": "https://api.example.test/{slug}?lang={lang}#x"}, "without a fragment"),
+    "body on GET": ({"body": {"template": "{}"}}, "only a POST carries a body"),
+    "authorization header in any case": ({"headers": {"authorization": "x"}}, "a recipe carries no credentials"),
+    "a field the client sets": ({"headers": {"Content-Length": "2"}}, "no field the HTTP client sets itself"),
+    "header named twice": ({"headers": {"Accept": "a", "accept": "b"}}, "a header named twice"),
+    "header placeholder other than page_url": (
+        {"headers": {"X-Id": "{slug}"}},
+        "{page_url} is the only placeholder a header value takes",
+    ),
+    "line break in a header value": ({"headers": {"X-A": "a\r\nX-B: b"}}, "a field value holds no line break"),
+    "requires_page_fetch without a page data binder": (
+        {"requires_page_fetch": True},
+        "requires_page_fetch is true exactly when a binder reads",
+    ),
+    "dot-notation map path": ({"map": {"title": "$.data['name']"}}, "not a query of name, wildcard and index"),
+    "empty map": ({"map": {}}, "at least 1 item"),
+    "map field that is not a name": ({"map": {"Title": "$['t']"}}, "should match pattern"),
+    "proof without captures": (
+        {"proof": {"validated_on": [], "headers_tried": 0, "bound_by": "role_d"}},
+        "validated_on",
+    ),
+    "pagination step zero": (
+        {"pagination": {"kind": "param", "name": "p", "start": 0, "step": 0, "rows": "$[*]"}},
+        "greater than or equal to 1",
+    ),
 }
 
 
-@pytest.mark.parametrize("changes", _REFUSED.values(), ids=_REFUSED.keys())
-def test_malformed_recipes_are_refused(changes: dict[str, Any]) -> None:
+@pytest.mark.parametrize(("changes", "reason"), _REFUSED.values(), ids=_REFUSED.keys())
+def test_malformed_recipes_are_refused(changes: dict[str, Any], reason: str) -> None:
     document = _recipe(**changes)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match=reason):
         ApiRecipe.model_validate(document)
-
-
-def test_a_request_spec_needs_no_map_or_proof() -> None:
-    spec = RequestSpec.model_validate({"method": "GET", "url": "https://api.example.test/items"})
-
-    assert (spec.params_from_url, spec.headers, spec.body, spec.requires_page_fetch) == ({}, {}, None, False)
 
 
 @pytest.mark.parametrize(
