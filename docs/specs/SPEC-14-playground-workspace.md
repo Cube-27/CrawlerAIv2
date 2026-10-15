@@ -56,9 +56,9 @@ stay HeroUI defaults with this app's theme (DESIGN.md).
 8. **Batch from results.** In a Map or Crawl result, the user selects URLs and chooses "Scrape as batch", which
    opens Batch mode with those URLs.
 9. **Clean JSON export.**
-   - A `json_values` results format: one object per page with `url` and the schema's published fields only, plus
-     `metadata` when the job asked for it.
-   - The download and the on-screen JSON are this shape.
+   - A `json_values` results format: one item per page (task) with its `url`, `outcome` and clean records (the
+     schema's published fields only), plus `metadata` when the job asked for it (§4.4).
+   - The batch and crawl table, the JSON drawer and the download all read this one shape.
 10. **Get code** (second to last; the owner shared the reference). A right-side drawer for the current request
     (§4.7).
 11. **Additional fields** (last; discussed with the owner before it is built, D-0810). Field names typed as chips
@@ -83,9 +83,12 @@ Out of scope:
 
 ### 4.1 Access (§18 rev 17)
 
-- `vite.config.ts`'s proxy for `/v1` and `/healthz` sets the `Authorization` header from `CRAWLERAI_UI_API_KEY`,
-  read from the environment (`.env`, documented in `.env.example`). The key never reaches the browser bundle: the
-  proxy adds it server-side.
+- `vite.config.ts`'s proxy for `/v1` and `/healthz` sets the `Authorization` header from `CRAWLERAI_UI_API_KEY`.
+  Vite does not read the repo-root `.env` by itself, so the config reads it with `loadEnv(mode, <repo root>, "")`
+  (documented in `.env.example`). The key never reaches the browser bundle: the proxy adds it server-side, and the
+  variable has no `VITE_` prefix, so Vite never exposes it to client code.
+- The dev server binds `server.host: "127.0.0.1"` explicitly, so the localhost-only claim below does not rest on a
+  default.
 - When the variable is unset, the proxy forwards requests unchanged and the API answers 401.
 - The app has no key state. On a 401 the content area shows an `EmptyView`: "The API rejected the request. Set
   `CRAWLERAI_UI_API_KEY` in `.env` to a key from `crawlerai apikey create`, then restart `pnpm dev`." The 401 has the
@@ -101,7 +104,7 @@ Out of scope:
 Top to bottom, in the content column (max 1280px), centred:
 
 1. **Mode switch.** HeroUI `Tabs` (secondary variant) with Scrape, Batch, Crawl, Map, Extract, grouped under small
-   captions ("Extract": Scrape, Batch, Extract; "Discover": Map, Crawl). Each tab is a link to its route, so the
+   captions ("Pages": Scrape, Batch, Extract; "Sites": Map, Crawl). Each tab is a link to its route, so the
    mode is in the URL and back/forward work.
 2. **Command bar.** One bordered surface (a HeroUI `Card`):
    - Row 1, Scrape/Crawl/Map/Extract: a URL `TextField` with an `https://` prefix.
@@ -110,7 +113,8 @@ Top to bottom, in the content column (max 1280px), centred:
      and duplicates are dropped by exact string.
    - Row 2 (toolbar):
      - left: an Options toggle button (icon), which shows a dot when any setting differs from its default; Format
-       (a `Select` with checkboxes, Scrape/Batch/Crawl only); Schema (`SchemaSelect`, or "None");
+       (a `Select` with checkboxes, Scrape/Batch/Crawl only); Schema (`SchemaSelect`, or "None"; Scrape, Batch,
+       Crawl and Extract only, as `MapRequest` has no `schema`);
      - right: Get code (PR 10), then the primary button: "Scrape", "Start batch", "Start crawl", "Map", "Extract".
 
    The primary button is at the top in every mode (owner).
@@ -121,13 +125,15 @@ Top to bottom, in the content column (max 1280px), centred:
 
    | Mode | Main rows | Advanced |
    |---|---|---|
-   | Scrape | Page kind; Metadata in JSON | Fetch method; max age; LLM budget |
-   | Batch | Page kind; Metadata in JSON; webhook URL | Fetch method; LLM budget |
+   | Scrape | Page kind; Metadata in JSON | Fetch method; max age; timeout; LLM budget |
+   | Batch | Page kind; Metadata in JSON; webhook URL | Fetch method |
    | Crawl | Include and Exclude globs (tag lists with Add); page-kind rules (rows of glob and page kind); Metadata in JSON | Max depth; page limit; fetch method; webhook URL |
-   | Map | Include and Exclude globs; Use sitemap | Page limit |
-   | Extract | URLs or globs (tag list); schema source (stored, inline JSON, prompt) | Fetch method; webhook URL |
+   | Map | Include and Exclude globs; use sitemaps; use links | Page limit |
+   | Extract | URLs or globs (tag list); schema source (stored, inline JSON, prompt) | Page limit; fetch method; LLM budget; webhook URL |
 
-   The rows mirror the request DTOs in `schema.d.ts`. A row exists only for a request member, and none is invented.
+   The rows mirror the request DTOs in `schema.d.ts`: apart from Metadata in JSON, a row exists only for a request
+   member, and none is invented. Metadata in JSON is a view option. When it is on, the request's `formats` gains
+   `metadata`, and the export asks for `include=metadata`.
 4. **Output area.** It appears after the first run and keeps its footprint across states: a loading or error state
    fills the same box (CLAUDE.md, global UI rule).
 
@@ -135,15 +141,16 @@ Top to bottom, in the content column (max 1280px), centred:
 
 - **Single page (Scrape).** `Tabs`: JSON (default), Table (the record's fields via `FieldValue`/`RecordTable`, so
   status and confidence stay visible there, INV-22), one tab per requested page format, Usage. The JSON tab shows
-  the page's clean JSON (§4.4) in a `JsonView`.
+  the page's clean JSON (§4.4) in a `JsonView`. When any published field is `calibrated=false`, one "uncalibrated"
+  badge sits above the view (DESIGN.md, Showing extraction results).
 - **`JsonView`.** A `<pre>` of the value pretty-printed with two-space indent. Keys, strings, numbers, booleans and
   null are coloured with theme tokens defined in `theme.css` (DESIGN.md, Theming). A Copy button and a Download
   (`.json`) button sit at its top right. Long output scrolls inside a fixed-height box.
-- **Batch and Crawl.** No inline JSON (owner). A `PagedTable` of pages, newest first:
-  - Columns: URL (truncated, a link), Outcome (`OutcomeLabel`), fields found (`published/total`), confidence (lowest
-    published, `ConfidenceCell`), JSON.
-  - The JSON column's button opens a HeroUI `Drawer` from the right with that page's clean JSON in a `JsonView`.
-  - While the job runs, the table refreshes as events arrive. The first page re-fetches on `task_extracted` and
+- **Batch and Crawl.** No inline JSON (owner). A `PagedTable` over `results?format=json_values` (§4.4), one row per
+  page, in task order:
+  - Columns: URL (truncated, a link), Outcome (`OutcomeLabel`), records (count of `records`), JSON.
+  - The JSON column's button opens a HeroUI `Drawer` from the right with that page's item in a `JsonView`.
+  - While the job runs, the table refreshes as events arrive. The current page re-fetches on `task_extracted` and
     `task_failed`, at most once a second.
   - Above the table: `OutcomeCounts`, elapsed time, Cancel, and export buttons for JSON and CSV.
 - **Map.** A `PagedTable` of links with row selection, and the "Scrape as batch" action (PR 8).
@@ -151,15 +158,29 @@ Top to bottom, in the content column (max 1280px), centred:
 
 ### 4.4 Clean JSON (`json_values` results format)
 
-- **On screen.** One page's JSON is `{"url": <page URL>, <field>: <value>, …}` with the schema's fields in schema
-  order: a published value, or `null` for a field that did not publish. Field status, confidence and evidence are
-  never in it (they stay in the Table and the record inspector). With "Metadata in JSON" on and the metadata format
-  requested, the object gains `"metadata": {…}`, the page's metadata format as the API returned it. Without a
-  schema, the object is `{"url", "metadata"?}` plus each requested text format under its format name.
-- **Export.** `GET /v1/jobs/{id}/results?format=json_values` returns a JSON array of these objects, built by the record
-  exporter module (SPEC-08 §4.11; C8: one module for record export shapes). `include=metadata` adds `metadata`.
-  `json_records` and `csv_records` stay unchanged for existing callers.
-- **Single scrape.** The UI saves the object it shows; there is no job to export.
+- **Item.** One item per page (task) of a job:
+
+  ```
+  {"url": <task URL>, "outcome": <task outcome>, "records": [<clean record>, …], "metadata": {…}}
+  ```
+
+  - A **clean record** is an object of the schema's fields in schema order: the published value, or `null` for a
+    field that did not publish. Field status, confidence and evidence are never in it; they stay in the Table and the
+    record inspector.
+  - `records` is always an array, so every item has one shape: one entry for a detail page, one per row record for a
+    listing page, and empty when the task has no record (failed, blocked, `links_only`, or a job without a schema).
+  - `metadata` is present only with `include=metadata`: the page's metadata format from its capture.
+- **Export.** `GET /v1/jobs/{id}/results?format=json_values[&include=metadata]` returns these items, oldest task
+  first, paged with the task id as cursor. It works for jobs with and without a schema (today a schemaless job answers
+  409 to every export).
+  - `services/jobs.py` joins each task to its last extraction's records and its capture's metadata.
+  - The record exporter module turns records into clean records (SPEC-08 §4.11; C8: one module for record export
+    shapes).
+  - `json_records` and `csv_records` stay unchanged for existing callers.
+- **Download.** The JSON download of a job is the items of every page, saved as one array. The drawer shows one item,
+  so the download equals the drawers' items in order.
+- **Single scrape.** A scrape keeps a job (`ScrapeResult.job_id`). The JSON tab shows the same item shape from the
+  scrape response (`url`, `outcome`, each record's `data`, `metadata`), and Download saves it.
 - The UI shapes nothing itself beyond picking members out of the server's response (§3).
 
 ### 4.5 Live activity
@@ -174,8 +195,8 @@ Top to bottom, in the content column (max 1280px), centred:
   | `task_fetched` (method `http`) | Fetched over HTTP. |
   | `task_fetched` (method `browser`) | Fetched with a browser. |
   | `task_fetched` (`block_class` set) | Blocked: {block_class}. |
-  | `task_extracted` | Extracted {published} of {total} fields ({mode}). / Used {n} LLM call(s). |
-  | `task_abstained` | Left out {fields}: not found on the page. |
+  | `task_extracted` | Extracted: {outcome} ({mode}). / Used {llm_calls} LLM call(s). |
+  | `task_abstained` | Did not publish {fields}. |
   | `task_failed` | Failed after {attempts} attempts: {last_error}. |
   | `drift_suspended` | Paused this site's config: its output changed. |
   | `learning_started` / `learning_finished` | Learning this site's config… / Learned this site's config. |
@@ -189,8 +210,8 @@ Top to bottom, in the content column (max 1280px), centred:
 
 Under the command bar, before any run on this page, the playground lists the last 10 jobs of its mode (`GET
 /v1/jobs` filtered by kind): start URL or URL count, status (`JobStatusLabel`), started (`Timestamp`). A row opens that
-run on the page (`?job=`). Scrape keeps no job, so its list is empty and the section is not shown. The section keeps
-its footprint while loading.
+run on the page (`?job=`). Scrape lists its runs like the other modes (a scrape keeps a job). The section keeps its
+footprint while loading.
 
 ### 4.7 Get code
 
@@ -219,7 +240,18 @@ bottom:
   - Data: Jobs (history), Records, Schemas, Sites.
   - Labeling, when `eval_ui` is on.
   - Settings stays at the foot.
-- `/` is Scrape. `/jobs/:id` redirects to `/<mode>?job=<id>`. A job row on Jobs links there.
+- `/` is Scrape. A job's kind maps to its mode's route:
+
+  | Job kind | Route |
+  |---|---|
+  | `scrape` | `/` |
+  | `batch_scrape` | `/batch` |
+  | `crawl` | `/crawl` |
+  | `map` | `/map` |
+  | `extract` | `/extract` |
+
+  `/jobs/:id` redirects to `<route>?job=<id>`, and a job row on Jobs links there. A `learn` job has no mode, so it
+  keeps today's job page.
 - Loading a playground URL with `?job=` shows that job's output, and its request in the bar and options, read-only.
   "Edit and re-run" makes them editable and starts a new job; the old one is kept.
 
@@ -233,15 +265,19 @@ bottom:
 
 ## 5. Invariants
 
-No new invariant. INV-03 (no hostnames in frontend source or tests) and INV-22 (every rendered field shows its
-status, evidence, confidence, calibrated and locator) still hold. INV-22 is met by the Table and inspector; the clean
-JSON is an export shape, as `json_records` is.
+No new invariant. These still hold:
+- INV-03: no hostnames in frontend source or tests.
+- INV-22: "Every candidate carries a locator; every published field carries `evidence`, `confidence`, `calibrated`,
+  `source_kind` and `locator`."
+
+The records keep all of that; the Table and the inspector show it (SPEC-12 §4.2). The clean JSON is an export shape
+that leaves `field_meta` out, as `json_records` does.
 
 ## 6. Testing strategy
 
 - Vitest + Testing Library + MSW, as SPEC-12.
 - Proxy: a test that the dev proxy config sets `Authorization` from `CRAWLERAI_UI_API_KEY` and leaves it unset when
-  the variable is missing.
+  the variable is missing, and that the dev server binds 127.0.0.1.
 - Playground:
   - each mode's request body equals the DTO built from its bar and options (literal expected bodies);
   - mode tabs are links;
@@ -249,15 +285,20 @@ JSON is an export shape, as `json_records` is.
   - CSV upload: header and no-header files, quoted fields (RFC 4180) and duplicates.
 - Output:
   - the JSON tab is the default;
-  - the clean-JSON member order and `null` for unpublished fields;
-  - metadata is present only with the option on;
-  - the drawer shows a row's JSON.
+  - a clean record's member order and `null` for unpublished fields;
+  - Metadata in JSON adds `metadata` to `formats` and `include=metadata` to the export;
+  - the drawer shows a row's item;
+  - the uncalibrated badge shows exactly when a published field has `calibrated=false`.
 - Activity: every event kind in SPEC-10 §4.2 maps to a line (a table-driven test over the kinds); an unknown kind
   renders its name.
 - Get code: for each mode, the cURL body parsed back as JSON equals the request the primary action sends; quoting
   survives values with quotes and newlines.
-- Backend (PR 9): an exporter property test (every object has `url` plus exactly the schema's fields, in schema order;
-  no `_status_` key) and an endpoint test for `format=json_values` with and without `include=metadata`.
+- Backend (PR 9):
+  - an exporter property test: every clean record has exactly the schema's fields, in schema order, and no `_status_`
+    key;
+  - endpoint tests for `format=json_values`: one item per task in task order; `records` empty for failed, blocked and
+    schemaless tasks; several records for a listing page; `metadata` only with `include=metadata`; a schemaless job
+    answers 200; cursor paging.
 
 ## 7. Acceptance criteria
 
@@ -267,7 +308,7 @@ JSON is an export shape, as `json_records` is.
   activity, without leaving the page.
 - A CSV of URLs fills the batch list.
 - Selecting map results and choosing "Scrape as batch" opens Batch mode with those URLs.
-- The JSON download of a job equals the objects its drawer shows.
+- The JSON download of a job equals its drawers' items, in task order.
 - Paging, tabs, options and the drawer move nothing around them (global UI rule).
 
 ## 8. PR plan
@@ -275,18 +316,18 @@ JSON is an export shape, as `json_records` is.
 | # | Title | Scope | Checks | Done when | Layer |
 |---|---|---|---|---|---|
 | 1 | Server-side key; drop Connect | `vite.config.ts`, `.env.example`, `app/auth`, `app/router`, `screens/connect` | vitest | No key prompt; 401 shows the setup notice. | L1 |
-| 2 | Playground shell + Scrape mode + options panel | `screens/playground`, `app/shell`, `app/router`, `theme.css` | vitest | `/` is the Scrape playground; options inline with Advanced; Overview removed. | L1 |
-| 3 | Single-page output with JSON default | `components/JsonView`, `screens/playground/output` | vitest | JSON tab default, Copy and Download; Table and format tabs. | L1 |
-| 4 | Batch mode + running results table + JSON drawer + CSV upload | `screens/playground/batch` | vitest | A batch runs on the page; the table fills as the run goes; the drawer shows JSON. | L3 |
-| 5 | Live activity feed | `components/ActivityFeed`, `activityText.ts` | vitest | Every event kind has a line; grouped per URL. | L3 |
+| 2 | Playground shell + Scrape mode + options panel | `screens/playground`, `app/shell`, `app/router`, `theme.css`, `docs/DESIGN.md` (options panel) | vitest | `/` is the Scrape playground; options inline with Advanced; Overview removed. | L1 |
+| 3 | Single-page output with JSON default | `components/JsonView`, `screens/playground/output`, `docs/DESIGN.md` (JSON view) | vitest | JSON tab default, Copy and Download; Table and format tabs. | L1 |
+| 4 | Batch mode + running results table + JSON drawer + CSV upload + JSON/CSV export buttons | `screens/playground/batch`, `docs/DESIGN.md` (side drawer) | vitest | A batch runs on the page; the table fills from `json_values` as the run goes; the drawer shows the item; the download equals the drawers. Needs PRs 3 and 9. | L3 |
+| 5 | Live activity feed | `components/ActivityFeed`, `activityText.ts`, `docs/DESIGN.md` (activity feed) | vitest | Every event kind has a line; grouped per URL. | L3 |
 | 6 | Crawl and Map modes inline | `screens/playground/crawl`, `map` | vitest | Crawl and Map run from the playground; the dialogs are gone. | L3 |
 | 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | `screens/playground/extract`, `screens/jobs` | vitest | No create dialogs remain; a job opens in its mode; each mode lists its recent runs. | L3 |
 | 8 | Batch from results | `screens/playground/map`, `crawl` | vitest | Selected URLs open Batch mode filled. | L3 |
-| 9 | `json_values` results format + clean-JSON export (with backend) | `config_ir/exporters/records.py`, `api/routers/jobs.py`, `frontend` export buttons, `make api-client` | pytest, vitest | Download equals the drawer's objects; `include=metadata`. | L3 |
+| 9 | `json_values` results format (backend) | `services/jobs.py`, `config_ir/exporters/records.py`, `api/routers/jobs.py`, `make api-client` | pytest | One item per task for jobs with and without a schema; `include=metadata`; task-id cursor. | L3 |
 | 10 | Get code drawer | `screens/playground/getCode`, `prompts/` | vitest | cURL, Python and MCP for the current request match the body the primary action sends; agent prompts copy. | L1 |
 | 11 | Additional fields (chips) | to be specified | — | Blocked on D-0810: the owner discusses it first. | — |
 
-PR 9 can run in parallel with PRs 3–8. The UI uses `json_records` until PR 9 lands, then switches.
+PR 9 is backend only and can start now, beside PRs 1–3. PR 4 needs it.
 
 ## 9. Open issues
 

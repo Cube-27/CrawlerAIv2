@@ -597,8 +597,9 @@ translate it, so what we export is what we run.
   hint. This is a draft for an external crawler platform, revised once a sample of its config format exists
   (OPEN_QUESTIONS #1).
 - `json_records`, `csv_records`, `markdown`.
-- `json_values`: one object per page with its `url` and the schema's published fields only (null when not
-  published), plus page `metadata` on request; no status columns (SPEC-14).
+- `json_values`: one item per task, `{url, outcome, records, metadata?}`, where each record holds the schema's
+  published fields only (null when not published), with page `metadata` on request; no status columns; jobs with and
+  without a schema (SPEC-14).
 
 ### 12.3 Release check
 
@@ -621,7 +622,7 @@ matches the engine. Correctness is measured in §16, per field status.
 | `POST /v1/crawl` | Async. Start URL, include/exclude globs, depth, limit, `formats`, optional `schema` with page-kind rules per URL pattern. |
 | `POST /v1/extract` | Async. URLs (globs expanded through `map`) plus `schema` or `prompt` → records, in progressive mode. Returns the drafted schema when a prompt was used. |
 | `GET /v1/jobs` | Jobs, newest first, each with its status summary; optional `kind` and `status` filters; cursor-paginated. |
-| `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status (with whether a cancel was requested), cancel, paginated results (a page output with its task's failure or block reason), server-sent events for progress (from stored run events). A webhook on completion. |
+| `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status (with whether a cancel was requested), cancel, paginated results (a page output with its task's failure or block reason; or clean `json_values` items, §12.2), server-sent events for progress (from stored run events). A webhook on completion. |
 | `/v1/schemas` | Create, read, update, delete. |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
 | `/v1/records`, `/v1/captures/{id}/replay` | Records with `field_meta`; replay a capture with the current engine. |

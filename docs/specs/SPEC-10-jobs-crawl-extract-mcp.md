@@ -70,8 +70,8 @@ Out of scope:
   the range, newest first, paginated as `/v1/jobs`. The job summary carries `llm_cost_usd` over all its calls.
   Added with owner approval (ARCHITECTURE rev 11); no MCP tool (§13.3).
 - `DELETE /v1/jobs/{id}` → `cancel_requested` (SPEC-01); status becomes `cancelled` when no task is running.
-- `GET /v1/jobs/{id}/results?cursor&limit&format=json|json_records|csv_records|markdown` → paginated records (SPEC-07
-  field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`. A page
+- `GET /v1/jobs/{id}/results?cursor&limit&format=json|json_records|csv_records|markdown|json_values` → paginated records (SPEC-07
+  field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`; `json_values` items per SPEC-14 §4.4. A page
   output carries its task's `last_error: str | null`: why it failed, or why it ended with its outcome when the
   outcome alone does not say (a `blocked` task's `robots`), as the worker recorded it (SPEC-01 §4.8). Added with
   owner approval (ARCHITECTURE rev 12, D-0745).
