@@ -1,15 +1,13 @@
-import { Button, FieldError, Form, InputGroup, TextField } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { useMemo, useRef, useState } from "react";
 import { fieldErrors } from "../../../api/problem";
 import { useApiClient } from "../../../app/auth";
-import { LoadingView } from "../../../components/LoadingView";
-import { PageHeader } from "../../../components/PageHeader";
-import { ProblemAlert } from "../../../components/ProblemAlert";
 import { SchemaSelect } from "../../../components/SchemaSelect";
-import { CommandBar } from "../CommandBar";
 import { FormatSelect } from "../FormatSelect";
-import { ModeSwitch } from "../ModeSwitch";
 import { OptionsToggle } from "../OptionsPanel";
+import { OutputArea, type OutputState } from "../OutputArea";
+import { PlaygroundLayout } from "../PlaygroundLayout";
+import { requestUrl, UrlInput } from "../UrlInput";
 import {
   asksForNothing,
   buildRequest,
@@ -40,36 +38,13 @@ function clientErrorsOf(form: ScrapeFormState): Readonly<Record<string, string>>
   return form.schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : NO_LISTING_RECORDS;
 }
 
-/** RFC 3986 §3: a URL with an authority starts with its scheme and `://`. The bar shows `https://`, so text typed
- * without one gets it; `host:port` (RFC 3986 §3.2) has no `//`, so it is a host, not a scheme. */
-const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
-
-function requestUrl(text: string): string {
-  const url = text.trim();
-  return url === "" || HAS_SCHEME.test(url) ? url : `https://${url}`;
-}
-
-function UrlInput({
-  form,
-  onChange,
-}: Readonly<{ form: ScrapeFormState; onChange: (form: ScrapeFormState) => void }>) {
-  return (
-    <TextField
-      aria-label="URL"
-      isRequired
-      name="url"
-      value={form.url}
-      onChange={(url) => {
-        onChange({ ...form, url });
-      }}
-    >
-      <InputGroup fullWidth>
-        <InputGroup.Prefix>https://</InputGroup.Prefix>
-        <InputGroup.Input autoComplete="off" inputMode="url" placeholder="example.com" />
-      </InputGroup>
-      <FieldError />
-    </TextField>
-  );
+function outputState(state: Exclude<ScrapeState, { kind: "idle" }>): OutputState {
+  if (state.kind === "pending") return { kind: "pending", label: "Scraping" };
+  if (state.kind === "failed") return state;
+  return {
+    kind: "done",
+    content: <ScrapeResult response={state.response} fieldTypes={state.fieldTypes} />,
+  };
 }
 
 /** The Scrape playground at `/` (SPEC-14 §4.2): the mode switch, the command bar with `POST /v1/scrape`'s URL, format
@@ -106,49 +81,48 @@ export function ScrapePlayground() {
   };
 
   return (
-    <section className="flex flex-col gap-6">
-      <PageHeader title="Playground" />
-      <ModeSwitch current="scrape" />
-      <Form
-        className="flex flex-col gap-4"
-        validationErrors={validationErrors}
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <CommandBar
-          input={<UrlInput form={form} onChange={setForm} />}
-          tools={
-            <>
-              <OptionsToggle
-                isOpen={optionsOpen}
-                changed={optionsChanged(form.options)}
-                onChange={setOptionsOpen}
-              />
-              <FormatSelect
-                value={form.formats}
-                onChange={(formats) => {
-                  setForm({ ...form, formats });
-                }}
-              />
-              <SchemaSelect
-                value={form.schemaId}
-                noneLabel="No schema"
-                hideLabel
-                onChange={(schemaId, schema) => {
-                  setForm(withSchema(form, schemaId, schema?.page_kind ?? null));
-                }}
-              />
-            </>
-          }
-          action={
-            <Button type="submit" isPending={state.kind === "pending"}>
-              Scrape
-            </Button>
-          }
+    <PlaygroundLayout
+      mode="scrape"
+      validationErrors={validationErrors}
+      onSubmit={submit}
+      input={
+        <UrlInput
+          value={form.url}
+          onChange={(url) => {
+            setForm({ ...form, url });
+          }}
         />
-        {optionsOpen ? (
+      }
+      tools={
+        <>
+          <OptionsToggle
+            isOpen={optionsOpen}
+            changed={optionsChanged(form.options)}
+            onChange={setOptionsOpen}
+          />
+          <FormatSelect
+            value={form.formats}
+            onChange={(formats) => {
+              setForm({ ...form, formats });
+            }}
+          />
+          <SchemaSelect
+            value={form.schemaId}
+            noneLabel="No schema"
+            hideLabel
+            onChange={(schemaId, schema) => {
+              setForm(withSchema(form, schemaId, schema?.page_kind ?? null));
+            }}
+          />
+        </>
+      }
+      action={
+        <Button type="submit" isPending={state.kind === "pending"}>
+          Scrape
+        </Button>
+      }
+      options={
+        optionsOpen ? (
           <ScrapeOptions
             options={form.options}
             hasSchema={form.schemaId !== ""}
@@ -157,13 +131,10 @@ export function ScrapePlayground() {
               setForm({ ...form, options });
             }}
           />
-        ) : null}
-      </Form>
-      {state.kind === "failed" ? <ProblemAlert problem={state.problem} /> : null}
-      {state.kind === "pending" ? <LoadingView label="Scraping" /> : null}
-      {state.kind === "done" ? (
-        <ScrapeResult response={state.response} fieldTypes={state.fieldTypes} />
-      ) : null}
-    </section>
+        ) : null
+      }
+    >
+      {state.kind === "idle" ? null : <OutputArea state={outputState(state)} />}
+    </PlaygroundLayout>
   );
 }

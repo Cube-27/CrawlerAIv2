@@ -201,7 +201,7 @@ export function OptionsPanel({
     <section
       id="playground-options"
       aria-label="Options"
-      className="flex flex-col gap-4 rounded-xl border border-border p-4"
+      className="options-panel flex flex-col gap-4 p-4"
     >
       <div className={GRID}>{children}</div>
       <Disclosure>

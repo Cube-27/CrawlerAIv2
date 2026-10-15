@@ -257,15 +257,17 @@ describe("scrape playground: the request", () => {
     });
   });
 
-  it("sends the formats, limits and fetch method that were set, and leaves empty limits to the server", async () => {
+  it("sends the formats, page kind, limits and fetch method that were set, and leaves empty limits to the server", async () => {
     const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
     await openScrape();
     await typeUrl();
     await toggleFormats("Markdown", "Links");
     const options = await openOptions();
+    await pick(/Page kind/, "Listing");
     await userEvent.click(options.getByRole("button", { name: "Advanced" }));
     await pick(/Fetch method/, "Browser");
     await userEvent.type(options.getByRole("textbox", { name: "Max age (seconds)" }), "3600");
+    await userEvent.type(options.getByRole("textbox", { name: "Timeout (seconds)" }), "90");
     await userEvent.type(options.getByRole("textbox", { name: "LLM call budget" }), "0");
 
     await submit();
@@ -275,9 +277,10 @@ describe("scrape playground: the request", () => {
       url: "https://store.test/a",
       formats: ["links"],
       schema: null,
-      page_kind: null,
+      page_kind: "listing",
       fetch: { method_hint: "browser" },
       max_age: 3600,
+      timeout_s: 90,
       budget: { llm_calls: 0 },
     });
   });
@@ -650,5 +653,32 @@ describe("scrape playground: formats and problems", () => {
     await submit();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("The scrape failed (HTTP 502).");
+  });
+});
+
+describe("scrape playground: the output area", () => {
+  it("keeps one output box from the first run on, through pending, failed and done", async () => {
+    const replies: ((response: Response) => void)[] = [];
+    stubScrape({
+      "POST /v1/scrape": () =>
+        new Promise<Response>((resolve) => {
+          replies.push(resolve);
+        }),
+    });
+    await openScrape();
+    expect(screen.queryByRole("region", { name: "Output" })).not.toBeInTheDocument();
+    await typeUrl();
+
+    await submit();
+    const output = screen.getByRole("region", { name: "Output" });
+    expect(within(output).getByLabelText("Scraping")).toBeInTheDocument();
+    replies[0]?.(problem(404, { type: "not_found", title: "Not found" }));
+    expect(await within(output).findByRole("alert")).toHaveTextContent("Not found");
+    await submit();
+    replies[1]?.(Response.json(scrapeResponse()));
+
+    expect(await within(output).findByText("extracted")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Output" })).toBe(output);
+    expect(output).toHaveClass("min-h-playground-output");
   });
 });
