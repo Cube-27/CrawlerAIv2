@@ -20,6 +20,7 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import CallToolResult, TextContent
+from pydantic import TypeAdapter
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -347,6 +348,37 @@ async def test_a_revoked_key_stops_the_stdio_server_at_its_next_call(
     assert not before.isError
     assert after.isError
     assert _texts(after) == ["Error executing tool list_schemas: CRAWLERAI_API_KEY is unknown or revoked"]
+
+
+async def test_a_status_cursor_that_is_not_one_is_refused_with_why(session: ClientSession, own_origin: str) -> None:
+    started = await _call(session, "crawl_start", request={"url": f"{own_origin}/", "formats": ["markdown"]})
+
+    result = await session.call_tool("crawl_status", {"job_id": started["job_id"], "cursor": "not-an-id"})
+
+    assert (result.isError, _texts(result)) == (
+        True,
+        ["Error executing tool crawl_status: not a results cursor: 'not-an-id'"],
+    )
+
+
+async def test_a_services_invalid_data_reaches_the_client_as_an_unexpected_error(
+    key: CreatedKey, engine: AsyncEngine, fetching: Fetching, engine_data: EngineData, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def parsing_a_stored_row(*args: object, **kwargs: object) -> None:
+        TypeAdapter(int).validate_python("stored row 'secret'")
+
+    monkeypatch.setattr(schemas, "list_all", parsing_a_stored_row)
+    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, drift_margins=None)
+    server = build_server(key_bind(runtime, key.key))
+
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("list_schemas", {})
+
+    # The client's own input is refused before the tool runs; this one is the server's, as REST answers it.
+    assert (result.isError, _texts(result)) == (
+        True,
+        ["Error executing tool list_schemas: the server failed to answer the request"],
+    )
 
 
 async def test_an_unexpected_error_reaches_the_client_without_its_text(
