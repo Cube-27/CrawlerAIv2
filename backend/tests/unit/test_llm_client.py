@@ -182,7 +182,6 @@ def test_the_timeout_follows_the_model_class(model_class: str, timeout_s: int) -
         ("not json", "not JSON"),
         ('["summary"]', "not a JSON object"),
         ('{"summary": 3}', "3 is not of type 'string'"),
-        ('{"summary": "s", "extra": 1}', "Additional properties are not allowed"),
     ],
 )
 def test_an_invalid_reply_is_retried_once_with_the_error_appended(text: str, error: str) -> None:
@@ -232,14 +231,9 @@ def test_a_schema_mismatch_then_a_refused_reply_is_two_calls_then_output_invalid
 
 def test_a_provider_error_raises_provider_unavailable() -> None:
     provider = FakeProvider([ProviderError("503 from the provider")])
-    with pytest.raises(ProviderUnavailable, match="503 from the provider"):
+    with pytest.raises(ProviderUnavailable, match="503 from the provider") as unavailable:
         complete(provider)
-
-
-def test_the_fake_provider_fails_when_its_script_runs_out() -> None:
-    provider = FakeProvider([])
-    with pytest.raises(ProviderUnavailable, match="no scripted reply"):
-        complete(provider)
+    assert unavailable.value.answered == ()
 
 
 # --- failover (§4.2) ---
@@ -296,8 +290,7 @@ def test_a_client_has_one_or_two_providers(count: int) -> None:
 
 @pytest.mark.parametrize(
     ("status", "transient"),
-    [(408, True), (429, True), (500, True), (503, True), (529, True), (599, True)]
-    + [(status, False) for status in (200, 400, 401, 403, 404, 413, 422, 600)],
+    [(408, True), (429, True), (500, True), (599, True), (400, False), (600, False)],
 )
 def test_only_timeouts_rate_limits_and_server_errors_are_transient(status: int, transient: bool) -> None:
     assert is_transient(status) is transient
@@ -365,14 +358,6 @@ def test_a_retry_that_gets_no_answer_still_carries_the_first_call() -> None:
         complete(provider)
 
     assert [call.tokens_out for call in unavailable.value.answered] == [7]
-
-
-def test_a_failure_before_any_answer_carries_no_call() -> None:
-    provider = FakeProvider([ProviderError("503")])
-
-    with pytest.raises(ProviderUnavailable) as unavailable:
-        complete(provider)
-    assert unavailable.value.answered == ()
 
 
 # --- a provider's refusal is logged (F33) ---

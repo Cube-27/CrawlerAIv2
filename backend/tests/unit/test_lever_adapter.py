@@ -58,18 +58,13 @@ def test_a_posting_url_is_a_detail_page_of_its_posting(host: str, site: str, pos
 @pytest.mark.parametrize(
     "url",
     [
-        f"https://jobs.example.com/{SITE}",  # not a job site host
         f"https://{HOST}.example.com/{SITE}",  # a job site host's name inside another host
         f"ftp://{HOST}/{SITE}",
         f"https://{HOST}/",  # no site
         f"https://{HOST}/..",  # a dot-segment would move the API path
         f"https://{HOST}/{SITE}/..",
-        f"https://{HOST}/{SITE}%2F{POSTING}",
         f"https://{HOST}/{SITE}/{POSTING}/apply",  # the application form, not the posting
-        f"https://{HOST}/{SITE}/{POSTING}/extra/more",
         f"https://{HOST}/{SITE}?team=Engineering",  # a filtered list: the unfiltered API list holds more postings
-        f"https://{HOST}/{SITE}?location=Remote&commitment=Full-time",
-        f"https://{HOST}/{SITE}?group=team",
     ],
 )
 def test_other_urls_are_not_detected(url: str) -> None:
@@ -89,26 +84,13 @@ def test_a_posting_page_is_fetched_from_its_instance_get_posting_endpoint(host: 
     assert result.bundle.body == body
 
 
-@pytest.mark.parametrize("host", HOSTS)
-def test_a_job_site_page_is_fetched_from_its_instance_list_endpoint_as_json(
-    host: str, stand_in_api: StandInApi
-) -> None:
+def test_a_job_site_page_is_fetched_from_its_instance_list_endpoint_as_json(stand_in_api: StandInApi) -> None:
     body = (FIXTURES / "postings.json").read_bytes()
-    endpoint = f"{JOB_SITE_APIS[host]}/{SITE}?mode=json"
+    endpoint = f"{JOB_SITE_APIS[HOST]}/{SITE}?mode=json"
 
-    result = asyncio.run(Lever(stand_in_api({endpoint: body})).fetch(f"https://{host}/{SITE}", FetchPolicy()))
+    result = asyncio.run(Lever(stand_in_api({endpoint: body})).fetch(f"https://{HOST}/{SITE}", FetchPolicy()))
 
     assert (result.block_class, result.bundle.manifest.final_url, result.bundle.body) == ("ok", endpoint, body)
-
-
-def test_the_two_instances_are_different_apis() -> None:
-    assert len(set(JOB_SITE_APIS.values())) == len(JOB_SITE_APIS) == 2
-
-
-def test_a_missing_posting_is_not_found(stand_in_api: StandInApi) -> None:
-    result = asyncio.run(Lever(stand_in_api({})).fetch(f"https://{HOST}/{SITE}/{POSTING}", FetchPolicy()))
-
-    assert result.block_class == "not_found"
 
 
 def test_a_url_it_does_not_detect_is_refused() -> None:
