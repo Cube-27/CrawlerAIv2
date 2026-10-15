@@ -532,3 +532,31 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Own the variants' values too (a variant sku would be published as the group's, the error the Shopify baseline saw as F7); treat `isVariantOf` from a top-level variant the same way (not in the baseline shapes; left for SPEC-13).
 - Why: Owner approval of the variants proposal step A; schema.org `hasVariant` "indicates a Product that is a member of this ProductGroup".
 - Reversible: yes
+
+### D-0851 — js_state reads every JSON assignment of a script
+- Date: 2026-10-15 · Spec/PR: SPEC-05 §4.5 (#196) · Status: decided; supersedes D-0421's "first assignment"
+- Decision: Every `window.<ident> =` / `var|let|const <ident> =` whose value is an object or array is a state document, in script order; each search starts after the value just parsed. A script's documents share its address (`js_state:<script_xpath>:<path>`). The release executor reads state the same way (INV-20).
+- Alternatives: The first assignment whose value is an object or array; an assignment index in the locator (changes the §4.3 format).
+- Why: State is often not the first assignment (`var n = 1; window.X = {...}`); induction does not read js_state locators.
+- Reversible: yes
+
+### D-0852 — A microdata `itemprop` belongs to its nearest `itemscope` element
+- Date: 2026-10-15 · Spec/PR: SPEC-05 §4.5 (#196) · Status: decided
+- Decision: `itemprop` names and `itemref` lookups use the nearest `itemscope` element (HTML Standard, "Associating names with items"); an RDFa `property` keeps the nearest item of either syntax.
+- Alternatives: RDFa strictly by `typeof` too (RDFa Core): moves existing RDFa values in mixed markup, unmeasured.
+- Why: Microdata knows no `typeof`; the conservative reading changes only what was dropped.
+- Reversible: yes
+
+### D-0853 — A listing row another collector already gave is left out
+- Date: 2026-10-15 · Spec/PR: SPEC-05 §4.7 (#196) · Status: decided
+- Decision: Rows stay in collector order; a row is dropped when an earlier row of a different collector shares a canonical URL with it, page URLs excluded. Rows of one collector are never dropped here.
+- Alternatives: Merge both entities into one row (needs multi-entity ownership; a follow-up); dedupe records by row URL only (needs the url field to publish, D-0444).
+- Why: schema.org `url` and `@id` name the item; one record per item without touching ownership.
+- Reversible: yes
+
+### D-0854 — An adapter list field mapped through its own wildcard is one candidate of the map's entity
+- Date: 2026-10-15 · Spec/PR: SPEC-05 §4.5 (#196) · Status: decided
+- Decision: The list field's entity is the longest entity query of the map's other fields and its `url` query that starts its query; the values its rest selects are one list candidate, located by that rest with its wildcards (RFC 9535 §2.5.1.2).
+- Alternatives: Split at the second-to-last wildcard (wrong for a list field without an item wildcard); one candidate per item (the old behaviour).
+- Why: The entity is the posting, not each item of its list.
+- Reversible: yes

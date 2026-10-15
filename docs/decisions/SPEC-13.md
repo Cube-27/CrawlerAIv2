@@ -177,3 +177,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Treat an AggregateOffer under a variant as that variant's offer.
 - Why: One rule for AggregateOffers across holders, offers and row keys (C7: decline rather than guess).
 - Reversible: yes
+
+### D-0850 — Field types with a transitive equality define it as a hashable key
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.4, SPEC-04 §4.5 (#196) · Status: decided
+- Decision: Each type module except location has `key(value, spec)`; `dispatch.equal` compares keys, and `dispatch.equality_key` is None for location and for a list or object that holds one. Row linking (`rows.linked`) buckets key values in one pass and compares only unkeyed values pairwise.
+- Alternatives: Keep a per-type `equal` next to `key` (two definitions that can drift); keep row linking pairwise.
+- Why: Linking becomes linear with the same result (a property test against the pairwise reference), and each type keeps one equality (C8).
+- Reversible: yes
