@@ -84,6 +84,16 @@
       "sha256": "5f5c4d872194a07e3fabadeff153965b36cdcc2f91f0c70c1e91dcad9d45125e",
       "license": "Limits transcribed from the provider's public API documentation (facts; no license stated)",
       "justification": "The JSON Schema subset Gemini GenerationConfig.responseJsonSchema accepts: every role's output schema is checked against it (SPEC-06 §4.2)."
+    },
+    {
+      "path": "publicsuffix/public_suffix_list.dat",
+      "url": "https://raw.githubusercontent.com/publicsuffix/list/3929462652695bad04f0a27afb600974014a3c8b/public_suffix_list.dat",
+      "version": "publicsuffix/list commit 3929462652695bad04f0a27afb600974014a3c8b (2026-10-07)",
+      "retrieved": "2026-10-16",
+      "sha256": "2919eb9803c91a3f73a507cc6fedc934de005543c22c4016f72e3343de5dd6e7",
+      "license": "MPL-2.0 (Public Suffix List); attribution in NOTICE",
+      "justification": "Public suffixes: a cookie whose Domain is one is ignored (RFC 6265 §5.3 step 5; acquire/public_suffix.py).",
+      "fetched": true
     }
   ]
 }

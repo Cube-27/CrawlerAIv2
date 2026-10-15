@@ -50,3 +50,11 @@ Used as a vocabulary file only.
 Licensed under the Creative Commons Attribution-ShareAlike 3.0 License
 (https://creativecommons.org/licenses/by-sa/3.0/).
 ------------------------------------------------------------------------
+Public Suffix List — https://publicsuffix.org/
+File: public_suffix_list.dat
+Used in: backend/src/crawlerai/acquire/public_suffix.py (cookie domains)
+
+Licensed under the Mozilla Public License 2.0
+(https://mozilla.org/MPL/2.0/). Fetched unmodified by `crawlerai data fetch`;
+its source is https://github.com/publicsuffix/list.
+------------------------------------------------------------------------
