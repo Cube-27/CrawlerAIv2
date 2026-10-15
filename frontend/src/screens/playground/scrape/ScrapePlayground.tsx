@@ -1,5 +1,5 @@
 import { Button, FieldError, Form, InputGroup, TextField } from "@heroui/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { fieldErrors } from "../../../api/problem";
 import { useApiClient } from "../../../app/auth";
 import { LoadingView } from "../../../components/LoadingView";
@@ -76,6 +76,8 @@ export function ScrapePlayground() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
   const [clientErrors, setClientErrors] = useState<Readonly<Record<string, string>>>(NO_ERRORS);
+  // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
+  const latest = useRef(0);
   const validationErrors = useMemo(
     () => ({
       ...(state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS),
@@ -96,8 +98,11 @@ export function ScrapePlayground() {
       return;
     }
     setClientErrors(NO_ERRORS);
+    const run = ++latest.current;
     setState({ kind: "pending" });
-    void runScrape(client, request).then(setState);
+    void runScrape(client, request).then((result) => {
+      if (run === latest.current) setState(result);
+    });
   };
 
   return (

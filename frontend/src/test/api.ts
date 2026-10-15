@@ -19,9 +19,11 @@ export function healthReply(evalUi = false): Response {
 
 const HEALTH = "GET /healthz";
 
-/** Stubs `fetch` with one reply per `METHOD /path`; records every request. The shell asks `GET /healthz` on every
- * screen: unless `replies` names it, it gets `healthReply()` and is not recorded. */
-export function stubApi(replies: Record<string, (call: Call) => Response>): Call[] {
+/** Stubs `fetch` with one reply per `METHOD /path`, which may arrive later; records every request. The shell asks
+ * `GET /healthz` on every screen: unless `replies` names it, it gets `healthReply()` and is not recorded. */
+export function stubApi(
+  replies: Record<string, (call: Call) => Response | Promise<Response>>,
+): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", async (request: Request) => {
     const url = new URL(request.url);

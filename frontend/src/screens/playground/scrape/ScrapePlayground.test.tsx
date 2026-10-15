@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
@@ -306,6 +306,30 @@ describe("scrape playground: the request", () => {
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
     expect(selectTrigger(/Format/).closest("[data-invalid]")).not.toBeNull();
     expect(screen.getByText("Choose a format, Metadata in JSON or a schema.")).toBeInTheDocument();
+  });
+
+  it("shows the latest scrape's reply when an earlier one returns after it", async () => {
+    const replies: ((response: Response) => void)[] = [];
+    stubScrape({
+      "POST /v1/scrape": () =>
+        new Promise<Response>((resolve) => {
+          replies.push(resolve);
+        }),
+    });
+    await openScrape();
+    await typeUrl();
+    await submit();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "x{Enter}");
+    await waitFor(() => {
+      expect(replies).toHaveLength(2);
+    });
+
+    replies[1]?.(Response.json(scrapeResponse()));
+    await screen.findByText("extracted");
+    replies[0]?.(problem(404, { type: "not_found", title: "Not found" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText("extracted")).toBeInTheDocument();
   });
 
   it("sends a URL typed without a scheme with the https:// the bar shows", async () => {
