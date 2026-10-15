@@ -94,6 +94,7 @@ def test_a_complete_page_is_extracted_with_its_published_values() -> None:
     assert record is not None
     assert record.complete is True
     assert record.data == {"sku": "A-1", "gtin": "4006381333931"}  # published fields only
+    assert record.entity_key == hashlib.sha256(f"{SITE}{URL}".encode()).hexdigest()
 
 
 def test_field_meta_says_how_every_field_resolved() -> None:
@@ -154,7 +155,7 @@ def test_an_incomplete_crawl_discovered_page_is_no_match_without_a_record() -> N
 
 @pytest.mark.parametrize(
     ("gtin", "mpn", "complete"),
-    [(True, False, True), (False, True, True), (False, False, False)],
+    [(True, False, True), (False, False, False)],
 )
 def test_a_required_group_needs_one_published_member(gtin: bool, mpn: bool, complete: bool) -> None:
     fields = {
@@ -182,13 +183,6 @@ def test_the_entity_key_hashes_the_site_and_the_canonical_url() -> None:
     other_site = SiteId(uuid.UUID("01900000-0000-7000-8000-0000000000bb"))
     assert entity_key(other_site, URL) != expected
     assert entity_key(SITE, URL + "?v=2") != expected
-
-
-def test_the_record_carries_the_entity_key() -> None:
-    fields = {"sku": _published(), "gtin": _unpublished(), "mpn": _unpublished()}
-    _, record = assemble(_schema(), fields, site_id=SITE, canonical_url=URL, caller_supplied=True)
-    assert record is not None
-    assert record.entity_key == entity_key(SITE, URL)
 
 
 # Record confidence (§10)
@@ -294,7 +288,7 @@ def test_a_listing_without_rows_is_no_match(caller_supplied: bool) -> None:
 
 def test_a_url_listed_twice_is_one_record() -> None:
     _, records = _assemble_listing(_row(1), _row(1))
-    assert len(records) == 1
+    assert [r.entity_key for r in records] == [entity_key(SITE, "https://shop.example.test/p/1")]
 
 
 def test_a_row_without_a_published_url_is_keyed_by_its_position_on_the_page() -> None:

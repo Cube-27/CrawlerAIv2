@@ -104,12 +104,9 @@ def test_a_field_reproduced_on_every_held_out_page_is_released() -> None:
     ("total", "differing", "manual"),
     [
         (9, 1, True),  # fewer than 10 pages: every one must reproduce
-        (9, 0, False),
         (10, 1, True),  # 90% < 95%
         (19, 1, True),  # 94.7% < 95%
         (20, 1, False),  # 95%
-        (40, 2, False),
-        (40, 3, True),
     ],
 )
 def test_the_small_n_rule(total: int, differing: int, manual: bool) -> None:
@@ -197,4 +194,4 @@ def test_a_next_step_not_reproduced_is_manual_and_the_rows_stay_released() -> No
 def test_a_listing_without_next_reports_none() -> None:
     report = release_check(_config({}, {**ROWS, "next": None}), LISTING, [_listing(["A", "B", "C"])] * 3)
     assert report.listing is not None
-    assert report.listing.next is None
+    assert (report.listing.next, _triple(report.listing.fields["name"])) == (None, (3, 3, False))

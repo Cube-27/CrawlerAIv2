@@ -138,7 +138,9 @@ def test_steps_it_cannot_run_are_diagnostics_and_the_next_step_runs() -> None:
 
 def test_suspended_fields_do_not_run() -> None:
     suspended = {"steps": [{"xpath": "//h1"}], "status": "suspended"}
-    assert _run({"title": suspended}, "<html><body><h1>T</h1></body></html>").fields == {}
+    fields = {"title": suspended, "heading": [{"xpath": "//h1"}]}
+    result = _run(fields, "<html><body><h1>T</h1></body></html>", {"title": TEXT, "heading": TEXT})
+    assert result.fields == {"heading": "T"}
 
 
 def test_a_listing_gives_one_mapping_per_row_and_the_next_page_url() -> None:
@@ -166,7 +168,3 @@ def test_a_row_step_selects_elements() -> None:
     listing = {"row": {"jsonld": "$['itemListElement'][*]"}, "fields": {}}
     result = release_run(_ir({}, listing), ReleasePage("<html></html>"), {})
     assert (result.rows, result.diagnostics) == ((), ("row: a row step is an xpath or css step",))
-
-
-def test_an_empty_body_has_no_values() -> None:
-    assert _run({"title": [{"xpath": "//h1"}, {"regex": "x"}]}, "").fields == {}

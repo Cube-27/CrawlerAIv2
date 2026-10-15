@@ -44,20 +44,12 @@ def _csv_rows(text: str) -> list[list[str]]:
 def test_csv_has_one_column_per_field_then_one_status_column_per_field_in_name_order() -> None:
     text = export_records("csv_records", SCHEMA, [_record(title="Lamp")])
 
-    assert _csv_rows(text) == [
-        ["price", "title", "_status_price", "_status_title"],
-        ["", "Lamp", "missing", "published"],
-    ]
+    # Rows end with CRLF, as RFC 4180 §2 says.
+    assert text == "price,title,_status_price,_status_title\r\n,Lamp,missing,published\r\n"
 
 
 def test_csv_header_is_written_for_an_empty_page() -> None:
     assert export_records("csv_records", SCHEMA, []) == "price,title,_status_price,_status_title\r\n"
-
-
-def test_csv_rows_end_with_crlf_as_rfc_4180_says() -> None:
-    text = export_records("csv_records", SCHEMA, [_record(title="Lamp", price="9")])
-
-    assert text == "price,title,_status_price,_status_title\r\n9,Lamp,published,published\r\n"
 
 
 def test_csv_json_encodes_nested_and_non_string_values() -> None:
