@@ -4,6 +4,10 @@ Layer: L1–L4 (each screen lands with the API it uses). Architecture refs: §1 
 §13.1 (endpoints), §5.4 (schema editing), §18 (UI auth), C5 (config correction through the API), §22 (what the
 UI must not become), `docs/DESIGN.md` (SPEC-00).
 
+> **Revised by SPEC-14 (ARCHITECTURE rev 17, Appendix A #38).** The Connect screen and key context, the job create
+> dialogs, the Overview screen and the Scrape screen's layout are replaced by SPEC-14's playground and server-side
+> key. The rest of this spec stands.
+
 ## 1. Summary
 
 The web UI is a thin client over the REST API: it submits requests, shows jobs, records with `field_meta`,

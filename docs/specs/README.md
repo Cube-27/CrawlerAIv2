@@ -29,6 +29,7 @@ marked "Owner to confirm" are agent decisions pending owner confirmation; they a
 | 11 | [Recurring crawls](SPEC-11-recurring-crawls.md) | §14, §6 (`url_state`, `record`) | 01, 02, 05, 08, 10 | L4 |
 | 12 | [Frontend application screens](SPEC-12-frontend-application.md) | §1, §3, §13.1, §5.4, §18, C5 | 00, 03, 07, 08, 10, 11 | L1–L4 |
 | 13 | [Variant matrix: per-variant rows from structured data](SPEC-13-variant-matrix.md) | §5.1–§5.3, §8.2 r3, §10, §16, §22 (admitted, Appendix A #37) | 03, 04, 05, 06, 07, 08 | admitted candidate |
+| 14 | [Playground workspace: one screen per run, clean JSON, server-side key](SPEC-14-playground-workspace.md) | §1, §3, §12.2, §13.1, §18 (rev 17), Appendix A #38 | 07, 08, 10, 12 | L1–L3 |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.
