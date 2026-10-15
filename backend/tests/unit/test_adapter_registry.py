@@ -75,9 +75,10 @@ def test_an_active_adapter_answers_for_the_urls_it_detects() -> None:
 
 
 def test_an_inactive_adapter_never_answers() -> None:
-    registry = Registry([StubAdapter("board", "board.example.test")], active=())
+    board = StubAdapter("board", "board.example.test")
 
-    assert registry.detect(BOARD) is None
+    assert Registry([board], active=()).detect(BOARD) is None
+    assert Registry([board], active={"board"}).detect(BOARD) is board
 
 
 def test_an_unknown_active_name_is_refused() -> None:
