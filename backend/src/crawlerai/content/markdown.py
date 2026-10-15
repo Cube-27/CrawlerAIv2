@@ -53,11 +53,11 @@ def _tidy(text: str) -> str:
     """Layout whitespace dropped as the module docstring says; fenced code untouched."""
     lines: list[str] = []
     fence: str | None = None
-    item: int | None = None  # the content column of the list item open above, if any
+    items: list[int] = []  # the content columns of the list items open above, outermost first
     for line in text.splitlines():
         opened = _FENCE.match(line)
         if fence is None and opened is None:
-            item = _add_text_line(lines, line, item)
+            _add_text_line(lines, line, items)
             continue
         lines.append(line)
         if fence is None:
@@ -67,25 +67,42 @@ def _tidy(text: str) -> str:
     return "\n".join(lines).strip("\n")
 
 
-def _add_text_line(lines: list[str], line: str, item: int | None) -> int | None:
-    """Adds the line and returns the content column of the list item open after it. A list item keeps the indentation
-    that nests it. A line indented to an open item's content column continues that item (CommonMark §5.2) and is
-    indented to exactly that column, so further layout indentation starts no code block inside it. Any other line
+def _add_text_line(lines: list[str], line: str, items: list[int]) -> None:
+    """Adds the line, and updates `items` to the list items open after it. A list item keeps the indentation that
+    nests it, in the open items whose content columns it reaches, and closes the deeper ones. Any other line indented
+    to an open item's content column continues the deepest such item (CommonMark §5.2), closing the deeper ones, and
+    is indented to exactly that column, so further layout indentation starts no code block inside it. Any other line
     loses its layout indentation and, unless it continues the paragraph right above (a lazy continuation line), closes
-    the item. A blank line right after another is dropped."""
+    every item. A blank line right after another is dropped."""
     marker = _LIST_ITEM.match(line)
     text = line.strip()
+    indent = len(line) - len(line.lstrip())
     if marker is not None:
-        kept, item = line.rstrip(), len(marker.group(0))
-    elif text and item is not None and len(line) - len(line.lstrip()) >= item:
-        kept = " " * item + text
+        del items[_reached(items, indent) :]
+        items.append(_content_column(marker))
+        kept = line.rstrip()
+    elif text and items and indent >= items[0]:
+        del items[_reached(items, indent) :]
+        kept = " " * items[-1] + text
     else:
         kept = text
         if text and not (lines and lines[-1]):  # not a lazy continuation
-            item = None
+            items.clear()
     if kept or (lines and lines[-1]):
         lines.append(kept)
-    return item
+
+
+def _reached(items: list[int], indent: int) -> int:
+    """How many of the open items, outermost first, a line indented by `indent` stays in: those whose content column
+    it reaches."""
+    return next((depth for depth, column in enumerate(items) if column > indent), len(items))
+
+
+def _content_column(marker: re.Match[str]) -> int:
+    # CommonMark §5.2: the content starts after the marker's spaces; after five or more, the first is the separator and
+    # the rest start an indented code block, so the content column is the marker's end plus one.
+    spaces = len(marker.group(0)) - len(marker.group(0).rstrip())
+    return len(marker.group(0)) - spaces + 1 if spaces >= 5 else len(marker.group(0))
 
 
 def _closes(opened: re.Match[str] | None, fence: str) -> bool:
