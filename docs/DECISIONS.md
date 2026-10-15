@@ -5489,3 +5489,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: A global `security` entry with `/healthz` exempted by hand.
 - Why: The requirement is stated per operation, from the dependency that enforces it, with no behaviour change.
 - Reversible: yes
+
+### D-0808 — An AggregateOffer is none of a variant holder's Offers
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.3, §4.4, §4.6 (#176) · Status: decided
+- Context: §4.3 says an AggregateOffer summarizes several offers and is no offer of one item; §4.6's holders already left it out, but `offers_of` and the row key exclusion did not (CodeAnt comments on #171, #173).
+- Decision: `offers_of` and `_not_keys` leave AggregateOffers out: a selected variant's AggregateOffer price does not publish as its price, and an AggregateOffer repeating the target URL does not make it a row key.
+- Alternatives: Treat an AggregateOffer under a variant as that variant's offer.
+- Why: One rule for AggregateOffers across holders, offers and row keys (C7: decline rather than guess).
+- Reversible: yes
