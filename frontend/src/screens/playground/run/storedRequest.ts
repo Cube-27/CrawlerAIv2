@@ -4,7 +4,7 @@ import { orderedFormats } from "../../../components/formats";
 import { METHOD_HINTS, PAGE_KINDS } from "../../../components/requestOptions";
 import type { PageFormat } from "../FormatSelect";
 
-/** Members picked out of a job's stored request (`JobSummary.request`, the request as the server validated it), to
+/** Members picked out of a job's stored request (`GET /v1/jobs/{id}/request`, the request as the server validated it), to
  * show it again in a mode's bar and options (SPEC-14 §4.8). The UI reads only what its forms hold; a member that is
  * missing or not of its type reads as the form's empty value. */
 export type StoredRequest = Readonly<Record<string, unknown>>;

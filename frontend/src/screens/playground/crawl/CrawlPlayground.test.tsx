@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { JsonValuesItem, JsonValuesPage } from "../../../api/jobs";
@@ -30,7 +30,7 @@ const ITEM: JsonValuesItem = {
 const QUIET = () =>
   new Response(new ReadableStream(), { headers: { "content-type": "text/event-stream" } });
 
-function crawlApi(): Call[] {
+function crawlApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
   return stubApi({
     "GET /v1/schemas": () =>
       Response.json({
@@ -57,6 +57,7 @@ function crawlApi(): Call[] {
         items: [ITEM],
         next_cursor: null,
       } satisfies JsonValuesPage),
+    ...replies,
   });
 }
 
@@ -181,5 +182,30 @@ describe("crawl playground", () => {
     await userEvent.click(screen.getByRole("button", { name: "Scrape as batch" }));
 
     expect(await screen.findByRole("textbox", { name: "URLs" })).toHaveValue(ITEM.url);
+  });
+
+  it("keeps a read-only run's globs: Delete on a focused tag removes nothing", async () => {
+    crawlApi({
+      [`GET ${JOB}/request`]: () =>
+        Response.json({
+          url: "https://shop.test/",
+          formats: ["markdown"],
+          include: ["https://shop.test/a/*"],
+        }),
+    });
+    await openPlayground(`/crawl?job=${JOB_ID}`);
+    const options = await openOptions();
+    const tags = await options.findByRole("grid", { name: "Include" });
+    const tag = within(tags).getByRole("row");
+
+    // A key event, as a browser sends it to the focused tag; user-event sends none inside a disabled fieldset.
+    act(() => {
+      tag.focus();
+    });
+    fireEvent.keyDown(tag, { key: "Delete" });
+
+    expect(options.getByRole("grid", { name: "Include" })).toHaveTextContent(
+      "https://shop.test/a/*",
+    );
   });
 });

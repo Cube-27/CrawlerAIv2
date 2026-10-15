@@ -270,6 +270,8 @@ export function TagListRow({
   onChange: (values: string[]) => void;
 }>) {
   const [draft, setDraft] = useState("");
+  // A tag's remove is a keyboard action too (Delete, Backspace), which a disabled fieldset does not block.
+  const readOnly = use(ReadOnlyContext);
   const add = () => {
     const entry = draft.trim();
     if (entry === "") return;
@@ -307,9 +309,13 @@ export function TagListRow({
         <TagGroup
           aria-label={label}
           size="sm"
-          onRemove={(keys) => {
-            onChange(values.filter((value) => !keys.has(value)));
-          }}
+          {...(readOnly
+            ? {}
+            : {
+                onRemove: (keys: Set<Key>) => {
+                  onChange(values.filter((value) => !keys.has(value)));
+                },
+              })}
         >
           <TagGroup.List>
             {values.map((value) => (
