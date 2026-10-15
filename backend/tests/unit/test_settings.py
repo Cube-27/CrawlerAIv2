@@ -58,6 +58,15 @@ def test_optional_settings_set_empty_take_their_unset_values(env: pytest.MonkeyP
     empty = Settings()
 
     assert empty == unset
+    # Documented defaults: SPEC-06 §4.2 (provider order), SPEC-07 §4.2 (20 req/s, burst 40; no trusted proxies,
+    # RFC 7239 §8.1), SPEC-03 §4.10 (labeling API off).
+    assert (empty.llm_providers, empty.api_rate_per_s, empty.api_rate_burst, empty.trusted_proxies, empty.eval_ui) == (
+        ("anthropic", "gemini"),
+        20,
+        40,
+        (),
+        False,
+    )
     assert (empty.eval_private_database_url, empty.eval_private_object_store) == (None, None)
 
 

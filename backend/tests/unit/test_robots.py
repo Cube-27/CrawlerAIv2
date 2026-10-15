@@ -41,8 +41,10 @@ def test_the_star_group_governs_the_fetcher(url: str, allowed: bool) -> None:
 @pytest.mark.parametrize(
     ("rules", "path", "allowed"),
     [
-        # RFC 9309 §2.2.2 (longest match, `allow` on a tie) is the property below; here, RFC 9309 §2.2.3: `*`
-        # matches any sequence of characters, `$` ends the pattern.
+        # RFC 9309 §2.2.2: on a tie between equally long rules, `allow` wins (the general longest match is the
+        # property below).
+        (["Disallow: /p", "Allow: /p"], "/p", True),
+        # RFC 9309 §2.2.3: `*` matches any sequence of characters, `$` ends the pattern.
         (["Disallow: /*.pdf"], "/docs/a.pdf?x=1", False),
         (["Disallow: /*.pdf$"], "/docs/a.pdf?x=1", True),
         (["Disallow: /*.pdf$"], "/docs/a.pdf", False),

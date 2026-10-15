@@ -17,6 +17,23 @@ def _errors(body: dict[str, Any]) -> list[tuple[str, ...]]:
     return [tuple(str(part) for part in error["loc"]) for error in invalid.value.errors()]
 
 
+# SPEC-07 §4.4: the documented request defaults (a promise to API callers).
+def test_takes_the_documented_defaults() -> None:
+    request = ScrapeRequest.model_validate({"url": URL, "formats": ["markdown"]})
+
+    assert request.model_dump(mode="json", by_alias=True) == {
+        "url": URL,
+        "formats": ["markdown"],
+        "schema": None,
+        "page_kind": None,
+        "max_age": 0,
+        "fetch": {"method_hint": "auto", "respect_robots": True, "robots_override_reason": None, "proxy_pool": None},
+        "locale": None,
+        "timeout_s": 60.0,
+        "budget": {"llm_calls": 10},
+    }
+
+
 @pytest.mark.parametrize("url", ["/kettles/blue", "ftp://shop.example.test/a"])
 def test_refuses_a_url_that_is_not_absolute_http(url: str) -> None:
     assert _errors({"url": url, "formats": ["markdown"]}) == [("url",)]

@@ -108,6 +108,54 @@ def test_unknown_keys_are_rejected() -> None:
     assert "optional" in _rejection(_document({"f": _text(optional=True)}))
 
 
+def _core(document: SchemaDocument) -> dict[str, str]:
+    return {name: spec.type.value for name, spec in document.fields.items() if spec.required}
+
+
+def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
+    presets = {preset.name: preset for preset in load_presets()}
+
+    assert sorted(presets) == ["commerce_detail", "commerce_listing", "job_detail", "job_listing"]
+    # commerce_detail 2: `brand` optional (owner, Appendix A #35); 3: the optional row-mapped `variants` (SPEC-13 §4.7).
+    assert {name: preset.version for name, preset in presets.items()} == {
+        "commerce_detail": 3,
+        "commerce_listing": 1,
+        "job_detail": 1,
+        "job_listing": 1,
+    }
+    assert _core(presets["commerce_detail"]) == {
+        "title": "text",
+        "price": "money",
+        "availability": "enum",
+        "url": "url",
+        "image_url": "image_url",
+    }
+    assert presets["commerce_detail"].fields["brand"].type.value == "text"
+    assert presets["commerce_detail"].required_groups == [["sku", "gtin"]]
+    assert presets["commerce_detail"].fields["availability"].vocab == "schema:ItemAvailability"
+    variants = presets["commerce_detail"].fields["variants"]
+    assert (variants.row_mapped, variants.required, variants.key) == (True, False, ["gtin", "sku", "url"])
+    assert {n: s.scheme for n, s in presets["commerce_detail"].fields.items() if s.scheme} == {
+        "sku": "sku",
+        "gtin": "gtin",
+    }
+    assert _core(presets["job_detail"]) == {
+        "title": "text",
+        "company": "text",
+        "locations": "list",
+        "description": "long_text",
+        "apply_url": "url",
+        "date_posted": "date",
+    }
+    assert presets["job_detail"].fields["locations"].item.type is FieldType.LOCATION  # type: ignore[union-attr]
+    assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.url"  # D-0015
+    for listing, optional in (("commerce_listing", "price"), ("job_listing", "location")):
+        fields = presets[listing].fields
+        assert _core(presets[listing]) == {"title": "text", "url": "url"}
+        assert sorted(fields) == sorted(["title", "url", optional, "next_page_url"])
+        assert {n for n, s in fields.items() if s.scope == "page"} == {"next_page_url"}
+
+
 def test_every_preset_field_maps_to_schema_org_except_page_navigation() -> None:
     unmapped = {
         (preset.name, name) for preset in load_presets() for name, spec in preset.fields.items() if not spec.schema_org
