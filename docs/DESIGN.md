@@ -48,7 +48,7 @@ screen or component.
 ## Light and dark
 
 - The theme is the `data-theme` attribute (`light` or `dark`) on `<html>`; HeroUI v3 keys dark mode on it.
-- A viewer who never chose follows `prefers-color-scheme`. An explicit choice is persisted per viewer in
+- A viewer who never chose follows `prefers-color-scheme`, and keeps following it live as the OS setting changes. An explicit choice is persisted per viewer in
   `localStorage` (`crawlerai.theme`), and only an explicit choice is written (DECISIONS D-0054).
 - Every `localStorage` access is wrapped in try/catch: storage can be missing or throw, and the page must render
   correctly without it.
