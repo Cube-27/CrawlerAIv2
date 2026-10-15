@@ -28,8 +28,8 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 
 ## Current focus
 
-- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1, 2 and 9 merged; next PRs 3–8
-  and 10 in order, as batches. PR 11 (additional fields) is blocked on D-0810.
+- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1–5 and 9 merged (3–5 in #194);
+  next PR 6, then 7, 8 and 10, as batches. PR 11 (additional fields) is blocked on D-0810.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0311 (GeoNames pin), D-0355 (derived `url` provenance), D-0576 (`drift_margins.json`), D-0656
@@ -59,6 +59,7 @@ Full rows are in git history.
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
 - Packaging: an installed wheel has no `backend/data`, `VERSION` or `calibration.json` (`ENGINE_VERSION = unknown+cal.none`, empty pricing); one PR decides where `EngineData.load` gets its directory and makes the build write `VERSION` (D-0492) [#100, #148].
+- Playground: the batch JSON drawer shows a snapshot of its row and does not follow table refreshes; `screens/jobs/form.ts` imports from `playground/pageRequest` until rows 6–7 remove it [#194].
 - Clarifying spec edits: SPEC-11 §4.2 names `task_record`, not `url_task.record_id` (D-0762), §5's INV-10/INV-11 citations, §4.4's `url_state.record_fingerprint` wording [#136, #158]; SPEC-05 §4.3 "expanded graph" (locators address each JSON-LD block as written) [#78]; SPEC-08 §4.11 `platform_draft` shape (D-0606) [#124].
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - A task adds to `job.usage` mid-transaction, locking the job row until the task commits; record usage at the task's end [#153].
@@ -99,9 +100,9 @@ Rows 1–6 and 8–12 done (#28, #27, #30, #33, #29, #32, #35, #42, #34, #39, #4
 |---|---|---|---|
 | 1 | Server-side key; drop Connect | done (#189) | D-0811, D-0812. |
 | 2 | Playground shell + Scrape mode + options panel | done (#191) | D-0817–D-0819. |
-| 3 | Single-page output with JSON default | todo | Needs 2. |
-| 4 | Batch mode + running results table + JSON drawer + CSV upload + export buttons | todo | Needs 3 and 9. |
-| 5 | Live activity feed | todo | Needs 4. |
+| 3 | Single-page output with JSON default | done (#194) | D-0825–D-0827. |
+| 4 | Batch mode + running results table + JSON drawer + CSV upload + export buttons | done (#194) | D-0828–D-0831, D-0833, D-0834. |
+| 5 | Live activity feed | done (#194) | D-0832. |
 | 6 | Crawl and Map modes inline | todo | Needs 5. |
 | 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | todo | Needs 6. |
 | 8 | Batch from results | todo | Needs 6. |

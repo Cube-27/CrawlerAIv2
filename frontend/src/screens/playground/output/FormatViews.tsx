@@ -1,7 +1,5 @@
-import { Label, Link, Table, TextArea, TextField } from "@heroui/react";
-import { adoptSchemaPath } from "../../schemas/paths";
+import { Label, Table, TextArea, TextField } from "@heroui/react";
 import type { FetchAttempt, PageMetadata, ScrapeResponse } from "../../../api/scrape";
-import type { SchemaDef } from "../../../api/schemas";
 
 /** A text format (markdown, html, raw_html) in a read-only text area, to read, scroll and copy as sent. */
 export function TextFormat({ label, text }: Readonly<{ label: string; text: string }>) {
@@ -137,26 +135,5 @@ export function UsageTable({ usage }: Readonly<{ usage: ScrapeResponse["usage"] 
         ["HTTP requests", String(usage.http_requests)],
       ]}
     />
-  );
-}
-
-/** The schema role S drafted from the prompt (SPEC-07 §4.4 step 5): what it is, and its fields as JSON. */
-export function DraftSchemaView({ schema }: Readonly<{ schema: SchemaDef }>) {
-  return (
-    <div className="flex flex-col gap-4">
-      <NameValueTable
-        label="Draft schema"
-        rows={[
-          ["Name", schema.name],
-          ["Version", String(schema.version)],
-          ["Origin", schema.origin],
-          ["ID", schema.id],
-        ]}
-      />
-      <TextFormat label="Fields" text={JSON.stringify(schema.fields, null, 2)} />
-      <div>
-        <Link href={adoptSchemaPath(schema.id)}>Edit as schema</Link>
-      </div>
-    </div>
   );
 }

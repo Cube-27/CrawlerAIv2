@@ -3,6 +3,7 @@ import { ApiQueryProvider } from "../api/hooks/query";
 import { JobScreen } from "../screens/jobs/JobScreen";
 import { JobsScreen } from "../screens/jobs/JobsScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
+import { BatchPlayground } from "../screens/playground/batch/BatchPlayground";
 import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
         children: [
           // The playground: `/` is its Scrape mode (SPEC-14 §4.8).
           { index: true, element: <ScrapePlayground /> },
+          { path: "batch", element: <BatchPlayground /> },
           { path: "schemas", element: <SchemasScreen /> },
           { path: "schemas/new", element: <NewSchemaScreen /> },
           { path: "schemas/:id", element: <SchemaScreen /> },

@@ -16,3 +16,18 @@ export function saveText(filename: string, text: string, type: string): void {
 export function saveJson(filename: string, value: unknown): void {
   saveText(filename, JSON.stringify(value, null, 2), "application/json");
 }
+
+/** Saves each page of a job's export (each a whole document) as its own file: `job-<id>.<extension>`, or
+ * `job-<id>-<n>.<extension>` when there are several. Returns the file names. */
+export function saveExportPages(
+  jobId: string,
+  { extension, type }: { extension: string; type: string },
+  pages: readonly { content: string }[],
+): string[] {
+  return pages.map((page, index) => {
+    const part = pages.length === 1 ? "" : `-${String(index + 1)}`;
+    const filename = `job-${jobId}${part}.${extension}`;
+    saveText(filename, page.content, type);
+    return filename;
+  });
+}

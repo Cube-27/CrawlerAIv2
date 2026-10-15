@@ -1,103 +1,52 @@
-import { Button, FieldError, Form, InputGroup, TextField } from "@heroui/react";
-import { useMemo, useRef, useState } from "react";
-import { fieldErrors } from "../../../api/problem";
+import { Button } from "@heroui/react";
+import { useRef, useState } from "react";
 import { useApiClient } from "../../../app/auth";
-import { LoadingView } from "../../../components/LoadingView";
-import { PageHeader } from "../../../components/PageHeader";
-import { ProblemAlert } from "../../../components/ProblemAlert";
-import { SchemaSelect } from "../../../components/SchemaSelect";
-import { CommandBar } from "../CommandBar";
-import { FormatSelect } from "../FormatSelect";
-import { ModeSwitch } from "../ModeSwitch";
-import { OptionsToggle } from "../OptionsPanel";
-import {
-  asksForNothing,
-  buildRequest,
-  requestPageKind,
-  INITIAL_FORM,
-  optionsChanged,
-  withSchema,
-  type ScrapeFormState,
-} from "./form";
+import { OutputArea, type OutputState } from "../OutputArea";
+import { PlaygroundLayout } from "../PlaygroundLayout";
+import { ScrapeOutput } from "../output/ScrapeOutput";
+import { requestUrl, UrlInput } from "../UrlInput";
+import { requestPageKind } from "../pageRequest";
+import { PageTools } from "../PageTools";
+import { usePageForm } from "../usePageForm";
+import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM } from "./form";
 import { runScrape, type ScrapeRun } from "./run";
 import { ScrapeOptions } from "./ScrapeOptions";
-import { ScrapeResult } from "./ScrapeResult";
 
 type ScrapeState = { kind: "idle" } | { kind: "pending" } | ScrapeRun;
 
-const NO_ERRORS: Readonly<Record<string, string>> = {};
-
-const NO_FORMAT = { formats: "Choose a format, Metadata in JSON or a schema." };
-const NO_SCHEMA_PAGE_KIND = { page_kind: "The schema names no page kind, which its records need." };
-const NO_LISTING_RECORDS = { page_kind: "Records of listing pages are not available yet." };
-
-/** Why `form` can't be sent, by field: it asks for no format, or its schema's records are for no page kind it can ask
- * for (its page kind is none, or one the server refuses records of). Derived from the current form, so a change
- * anywhere that fixes it clears it; each answer is one constant, so the errors change only when the reason does. */
-function clientErrorsOf(form: ScrapeFormState): Readonly<Record<string, string>> {
-  if (asksForNothing(form)) return NO_FORMAT;
-  if (form.schemaId === "" || requestPageKind(form) !== null) return NO_ERRORS;
-  return form.schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : NO_LISTING_RECORDS;
-}
-
-/** RFC 3986 §3: a URL with an authority starts with its scheme and `://`. The bar shows `https://`, so text typed
- * without one gets it; `host:port` (RFC 3986 §3.2) has no `//`, so it is a host, not a scheme. */
-const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
-
-function requestUrl(text: string): string {
-  const url = text.trim();
-  return url === "" || HAS_SCHEME.test(url) ? url : `https://${url}`;
-}
-
-function UrlInput({
-  form,
-  onChange,
-}: Readonly<{ form: ScrapeFormState; onChange: (form: ScrapeFormState) => void }>) {
-  return (
-    <TextField
-      aria-label="URL"
-      isRequired
-      name="url"
-      value={form.url}
-      onChange={(url) => {
-        onChange({ ...form, url });
-      }}
-    >
-      <InputGroup fullWidth>
-        <InputGroup.Prefix>https://</InputGroup.Prefix>
-        <InputGroup.Input autoComplete="off" inputMode="url" placeholder="example.com" />
-      </InputGroup>
-      <FieldError />
-    </TextField>
-  );
+function outputState(
+  state: Exclude<ScrapeState, { kind: "idle" }>,
+  withMetadata: boolean,
+): OutputState {
+  if (state.kind === "pending") return { kind: "pending", label: "Scraping" };
+  if (state.kind === "failed") return state;
+  return {
+    kind: "done",
+    content: (
+      <ScrapeOutput
+        response={state.response}
+        fieldTypes={state.fieldTypes}
+        withMetadata={withMetadata}
+      />
+    ),
+  };
 }
 
 /** The Scrape playground at `/` (SPEC-14 §4.2): the mode switch, the command bar with `POST /v1/scrape`'s URL, format
  * and schema, the inline options panel, then what the scrape returned. */
 export function ScrapePlayground() {
   const client = useApiClient();
-  const [form, setForm] = useState<ScrapeFormState>(INITIAL_FORM);
-  const [optionsOpen, setOptionsOpen] = useState(false);
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
-  const [refused, setRefused] = useState(false);
+  const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
+    INITIAL_FORM,
+    state.kind === "failed" ? state.problem : null,
+  );
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
   const latest = useRef(0);
-  const clientErrors = refused ? clientErrorsOf(form) : NO_ERRORS;
-  const validationErrors = useMemo(
-    () => ({
-      ...(state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS),
-      ...clientErrors,
-    }),
-    [state, clientErrors],
-  );
 
   const submit = () => {
-    const request = buildRequest({ ...form, url: requestUrl(form.url) });
-    setRefused(request === null);
-    if (request === null) {
-      if (!asksForNothing(form)) setOptionsOpen(true);
-      return;
-    }
+    const request = check() ? buildRequest({ ...form, url: requestUrl(form.url) }) : null;
+    if (request === null) return;
     const run = ++latest.current;
     setState({ kind: "pending" });
     void runScrape(client, request).then((result) => {
@@ -106,49 +55,34 @@ export function ScrapePlayground() {
   };
 
   return (
-    <section className="flex flex-col gap-6">
-      <PageHeader title="Playground" />
-      <ModeSwitch current="scrape" />
-      <Form
-        className="flex flex-col gap-4"
-        validationErrors={validationErrors}
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <CommandBar
-          input={<UrlInput form={form} onChange={setForm} />}
-          tools={
-            <>
-              <OptionsToggle
-                isOpen={optionsOpen}
-                changed={optionsChanged(form.options)}
-                onChange={setOptionsOpen}
-              />
-              <FormatSelect
-                value={form.formats}
-                onChange={(formats) => {
-                  setForm({ ...form, formats });
-                }}
-              />
-              <SchemaSelect
-                value={form.schemaId}
-                noneLabel="No schema"
-                hideLabel
-                onChange={(schemaId, schema) => {
-                  setForm(withSchema(form, schemaId, schema?.page_kind ?? null));
-                }}
-              />
-            </>
-          }
-          action={
-            <Button type="submit" isPending={state.kind === "pending"}>
-              Scrape
-            </Button>
-          }
+    <PlaygroundLayout
+      mode="scrape"
+      validationErrors={validationErrors}
+      onSubmit={submit}
+      input={
+        <UrlInput
+          value={form.url}
+          onChange={(url) => {
+            setForm({ ...form, url });
+          }}
         />
-        {optionsOpen ? (
+      }
+      tools={
+        <PageTools
+          form={form}
+          defaults={DEFAULT_OPTIONS}
+          optionsOpen={optionsOpen}
+          onOptionsOpen={setOptionsOpen}
+          onChange={setForm}
+        />
+      }
+      action={
+        <Button type="submit" isPending={state.kind === "pending"}>
+          Scrape
+        </Button>
+      }
+      options={
+        optionsOpen ? (
           <ScrapeOptions
             options={form.options}
             hasSchema={form.schemaId !== ""}
@@ -157,13 +91,12 @@ export function ScrapePlayground() {
               setForm({ ...form, options });
             }}
           />
-        ) : null}
-      </Form>
-      {state.kind === "failed" ? <ProblemAlert problem={state.problem} /> : null}
-      {state.kind === "pending" ? <LoadingView label="Scraping" /> : null}
-      {state.kind === "done" ? (
-        <ScrapeResult response={state.response} fieldTypes={state.fieldTypes} />
-      ) : null}
-    </section>
+        ) : null
+      }
+    >
+      {state.kind === "idle" ? null : (
+        <OutputArea state={outputState(state, form.options.metadataInJson)} />
+      )}
+    </PlaygroundLayout>
   );
 }

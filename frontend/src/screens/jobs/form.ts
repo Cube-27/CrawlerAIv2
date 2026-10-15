@@ -1,13 +1,8 @@
-import type {
-  BatchRequest,
-  CrawlRequest,
-  ExtractRequest,
-  JobSchemaRef,
-  MapRequest,
-} from "../../api/jobs";
+import type { CrawlRequest, ExtractRequest, JobSchemaRef, MapRequest } from "../../api/jobs";
 import type { MethodHint, PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
 import { orderedFormats } from "../../components/FormatChoices";
 import { parseJsonObject } from "../../api/json";
+import { lines, webhook } from "../playground/pageRequest";
 
 /** The job forms' state and the requests they send (SPEC-10 §4.3–4.6). The server validates every request; a form
  * checks only what it must hold to be sent. An empty limit (NaN) or text is left out, so the server's default
@@ -30,16 +25,6 @@ export interface RuleRow {
   key: string;
   pattern: string;
   pageKind: PageKind;
-}
-
-export interface BatchFormState {
-  /** One URL per line. */
-  urls: string;
-  formats: readonly ScrapeFormat[];
-  schema: JobSchemaState;
-  pageKind: PageKind | null;
-  methodHint: MethodHint;
-  webhookUrl: string;
 }
 
 export interface CrawlFormState {
@@ -78,16 +63,6 @@ export interface MapFormState {
 
 const NO_SCHEMA: JobSchemaState = { source: "none", id: "", json: "", prompt: "" };
 
-export const INITIAL_BATCH: BatchFormState = {
-  urls: "",
-  formats: ["markdown"],
-  schema: NO_SCHEMA,
-  pageKind: null,
-  // FetchPolicy's own default (SPEC-02 §4.2).
-  methodHint: "auto",
-  webhookUrl: "",
-};
-
 export const INITIAL_CRAWL: CrawlFormState = {
   url: "",
   formats: ["markdown"],
@@ -120,14 +95,6 @@ export const INITIAL_MAP: MapFormState = {
   useSitemaps: true,
   useLinks: true,
 };
-
-/** The non-blank lines of `text`, trimmed: a list entered one entry per line. */
-export function lines(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-}
 
 type SchemaChoice<T> = { kind: "ok"; schema: T } | { kind: "invalid" };
 
@@ -165,26 +132,8 @@ function jobSchema(state: JobSchemaState): SchemaChoice<JobSchemaRef | null> {
   return { kind: "ok", schema };
 }
 
-function webhook(url: string): { webhook_url?: string } {
-  const trimmed = url.trim();
-  return trimmed === "" ? {} : { webhook_url: trimmed };
-}
-
-/** The batch request for `form`, or null when its inline schema is not a JSON object (the form shows why). */
-export function buildBatch(form: BatchFormState): BatchRequest | null {
-  const choice = jobSchema(form.schema);
-  if (choice.kind === "invalid") return null;
-  return {
-    urls: lines(form.urls),
-    formats: orderedFormats(form.formats),
-    schema: choice.schema,
-    page_kind: form.pageKind,
-    fetch: { method_hint: form.methodHint },
-    ...webhook(form.webhookUrl),
-  };
-}
-
-/** The crawl request for `form`, or null as for `buildBatch`. A rule without a pattern is left out. */
+/** The crawl request for `form`, or null when its inline schema is not a JSON object (the form shows why). A rule
+ * without a pattern is left out. */
 export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
   const choice = jobSchema(form.schema);
   if (choice.kind === "invalid") return null;

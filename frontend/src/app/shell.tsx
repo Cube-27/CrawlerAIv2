@@ -5,7 +5,6 @@ import {
   Globe,
   Layers,
   ListUl,
-  Magnifier,
   Moon,
   Sun,
   Tag,
@@ -14,6 +13,7 @@ import {
 import type { ComponentType, SVGProps } from "react";
 import { matchPath, Outlet, useHref, useLocation, useNavigate } from "react-router";
 import { useEvalUi } from "../api/hooks/health";
+import { MODE_GROUPS } from "../screens/playground/modes";
 import { useTheme } from "./theme";
 
 interface NavEntry {
@@ -28,10 +28,11 @@ interface NavGroup {
   entries: NavEntry[];
 }
 
-// SPEC-14 §4.8: one entry per playground mode, then the data screens; Settings come last, at the foot of the sidebar.
+// SPEC-14 §4.8: one entry per playground mode, from the one list of modes, then the data screens; Settings come last,
+// at the foot of the sidebar.
 const PLAYGROUND: NavGroup = {
   title: "Playground",
-  entries: [{ href: "/", label: "Scrape", icon: Magnifier }],
+  entries: MODE_GROUPS.flatMap((group) => group.modes),
 };
 
 const DATA: NavGroup = {

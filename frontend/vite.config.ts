@@ -7,10 +7,26 @@ import { defineConfig, loadEnv, type ProxyOptions } from "vite-plus";
 // variable has no `VITE_` prefix, so it never reaches client code. An empty value counts as unset (.env.example).
 const uiApiKey = loadEnv("development", "..", "")["CRAWLERAI_UI_API_KEY"];
 const target = "http://127.0.0.1:8000";
+
+// W3C Fetch Metadata: a browser marks each request with where it came from (`Sec-Fetch-Site`). The proxy attaches the
+// key, so a request another site's page made (`cross-site`, `same-site`) is refused, not proxied: Vite answers 404.
+// `same-origin` is the app's own, `none` one the user typed; a request with no such header is not from a browser page
+// (curl, scripts) and passes.
+const OWN_SITE: ReadonlySet<string> = new Set(["same-origin", "none"]);
+
+/** The proxy's `bypass`: `false` refuses the request, `undefined` proxies it. Node's request headers, typed here as
+ * this file needs them (the frontend has no Node types). */
+export function refuseCrossSite(req: {
+  headers: Readonly<Record<string, string | string[] | undefined>>;
+}): false | undefined {
+  const site = req.headers["sec-fetch-site"];
+  return site === undefined || (typeof site === "string" && OWN_SITE.has(site)) ? undefined : false;
+}
+
 const backend: ProxyOptions =
   uiApiKey === undefined || uiApiKey === ""
-    ? { target }
-    : { target, headers: { Authorization: `Bearer ${uiApiKey}` } };
+    ? { target, bypass: refuseCrossSite }
+    : { target, bypass: refuseCrossSite, headers: { Authorization: `Bearer ${uiApiKey}` } };
 
 export default defineConfig({
   // `vp migrate` translated the former ESLint sets rule by rule: typescript-eslint strictTypeChecked, react-hooks
@@ -282,9 +298,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   // `pnpm dev` serves the screens and forwards API calls to `make dev`'s backend, so the app calls its own origin:
   // `/v1`, and `/healthz` at the root, which tells the shell whether to list Labeling (SPEC-12 §4.3). Anyone who
-  // reaches the dev server acts with the key, so it listens on loopback only (ARCHITECTURE §18).
+  // reaches the dev server acts with the key, so it listens on loopback only (ARCHITECTURE §18). The app calls its own
+  // origin only, so no other origin may read a response the key was attached to: CORS is off.
   server: {
     host: "127.0.0.1",
+    cors: false,
     proxy: { "/v1": backend, "/healthz": backend },
   },
   test: {

@@ -164,16 +164,17 @@ Top to bottom, in the content column (max 1280px), centred:
   {"url": <task URL>, "outcome": <task outcome>, "records": [<clean record>, …], "metadata": {…}}
   ```
 
-  - A **clean record** is an object of the schema's fields in schema order: the published value, or `null` for a
-    field that did not publish. Field status, confidence and evidence are never in it; they stay in the Table and the
-    record inspector.
+  - A **clean record** is an object of the schema's fields in name order (D-0816; JSONB keeps no declaration order):
+    the published value, or `null` for a field that did not publish. Field status, confidence and evidence are never
+    in it; they stay in the Table and the record inspector.
   - `records` is always an array, so every item has one shape: one entry for a detail page, one per row record for a
     listing page, and empty when the task has no record (failed, blocked, `links_only`, or a job without a schema).
   - `metadata` is present only with `include=metadata`: the page's metadata format from its capture.
 - **Export.** `GET /v1/jobs/{id}/results?format=json_values[&include=metadata]` returns these items, oldest task
   first, paged with the task id as cursor. It works for jobs with and without a schema (today a schemaless job answers
   409 to every export).
-  - `services/jobs.py` joins each task to its last extraction's records and its capture's metadata.
+  - `services/jobs.py` joins each task to the records its `task_record` links name (D-0813) and its capture's
+    metadata.
   - The record exporter module turns records into clean records (SPEC-08 §4.11; C8: one module for record export
     shapes).
   - `json_records` and `csv_records` stay unchanged for existing callers.
@@ -294,7 +295,7 @@ that leaves `field_meta` out, as `json_records` does.
 - Get code: for each mode, the cURL body parsed back as JSON equals the request the primary action sends; quoting
   survives values with quotes and newlines.
 - Backend (PR 9):
-  - an exporter property test: every clean record has exactly the schema's fields, in schema order, and no `_status_`
+  - an exporter property test: every clean record has exactly the schema's fields, in name order, and no `_status_`
     key;
   - endpoint tests for `format=json_values`: one item per task in task order; `records` empty for failed, blocked and
     schemaless tasks; several records for a listing page; `metadata` only with `include=metadata`; a schemaless job

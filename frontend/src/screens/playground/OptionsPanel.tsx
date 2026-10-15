@@ -3,11 +3,13 @@ import {
   Button,
   Disclosure,
   FieldError,
+  Input,
   Label,
   ListBox,
   NumberField,
   Select,
   Switch,
+  TextField,
   ToggleButton,
   Tooltip,
 } from "@heroui/react";
@@ -190,6 +192,31 @@ export function NumberRow({
   );
 }
 
+/** Free text; empty leaves the member out. `name` is the request member a server error names. */
+export function TextRow({
+  label,
+  help,
+  name,
+  value,
+  placeholder,
+  onChange,
+}: Readonly<{
+  label: string;
+  help: string;
+  name: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}>) {
+  return (
+    <TextField className={ROW} name={name} value={value} onChange={onChange}>
+      <RowLabel label={label} help={help} />
+      <Input autoComplete="off" spellCheck={false} placeholder={placeholder} />
+      <FieldError />
+    </TextField>
+  );
+}
+
 const GRID = "grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2";
 
 export function OptionsPanel({
@@ -201,7 +228,7 @@ export function OptionsPanel({
     <section
       id="playground-options"
       aria-label="Options"
-      className="flex flex-col gap-4 rounded-xl border border-border p-4"
+      className="options-panel flex flex-col gap-4 p-4"
     >
       <div className={GRID}>{children}</div>
       <Disclosure>

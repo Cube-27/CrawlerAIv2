@@ -1,10 +1,18 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
-import { routes } from "../../../app/router";
 import type { RecordField, ScrapeResponse } from "../../../api/scrape";
-import { problem, stubApi, type Call } from "../../../test/api";
+import { problem, stubApi } from "../../../test/api";
+import { catchDownloads } from "../../../test/downloads";
+import {
+  openOptions,
+  openPlayground,
+  optionsButton,
+  pick,
+  posted,
+  selectTrigger,
+  toggleFormats,
+} from "../../../test/playground";
 
 // `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
 
@@ -101,57 +109,16 @@ function schemaList(): Response {
 }
 
 async function openScrape() {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
-  await screen.findByRole("heading", { level: 1, name: "Playground" });
+  await openPlayground("/");
 }
 
 async function typeUrl(url = "https://store.test/a") {
   await userEvent.type(screen.getByRole("textbox", { name: "URL" }), url);
 }
 
-/** The trigger of the Select named by `name`; its help icon has the name too. */
-function selectTrigger(name: RegExp): HTMLElement {
-  const trigger = screen
-    .getAllByRole("button", { name })
-    .find((button) => button.getAttribute("aria-haspopup") === "listbox");
-  if (trigger === undefined) throw new Error(`no select named ${String(name)}`);
-  return trigger;
-}
-
-/** Picks `option` in the Select named by `name`. */
-async function pick(name: RegExp, option: string) {
-  await userEvent.click(selectTrigger(name));
-  await userEvent.click(await screen.findByRole("option", { name: option }));
-}
-
 /** Stubs the API with `replies`; the toolbar's schema list is always read. */
 function stubScrape(replies: Parameters<typeof stubApi>[0]) {
   return stubApi({ "GET /v1/schemas": schemaList, ...replies });
-}
-
-/** The body of the one scrape that was posted. */
-function posted(calls: readonly Call[]): unknown {
-  const posts = calls.filter(({ method }) => method === "POST");
-  expect(posts).toHaveLength(1);
-  return posts[0]?.body;
-}
-
-/** Toggles each of `formats` in the toolbar's Format select, then closes it. */
-async function toggleFormats(...formats: string[]) {
-  await userEvent.click(selectTrigger(/Format/));
-  for (const format of formats) {
-    await userEvent.click(await screen.findByRole("option", { name: format }));
-  }
-  await userEvent.keyboard("{Escape}");
-}
-
-function optionsButton(): HTMLElement {
-  return screen.getByRole("button", { name: "Options" });
-}
-
-async function openOptions() {
-  await userEvent.click(optionsButton());
-  return within(screen.getByRole("region", { name: "Options" }));
 }
 
 async function fillRecordsByIdForm() {
@@ -241,7 +208,7 @@ describe("scrape playground: the request", () => {
 
     await submit();
 
-    await screen.findByRole("tab", { name: "Records" });
+    await screen.findByRole("tab", { name: "JSON" });
     expect(calls.find(({ method }) => method === "POST")).toEqual({
       method: "POST",
       path: "/v1/scrape",
@@ -257,15 +224,17 @@ describe("scrape playground: the request", () => {
     });
   });
 
-  it("sends the formats, limits and fetch method that were set, and leaves empty limits to the server", async () => {
+  it("sends the formats, page kind, limits and fetch method that were set, and leaves empty limits to the server", async () => {
     const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
     await openScrape();
     await typeUrl();
     await toggleFormats("Markdown", "Links");
     const options = await openOptions();
+    await pick(/Page kind/, "Listing");
     await userEvent.click(options.getByRole("button", { name: "Advanced" }));
     await pick(/Fetch method/, "Browser");
     await userEvent.type(options.getByRole("textbox", { name: "Max age (seconds)" }), "3600");
+    await userEvent.type(options.getByRole("textbox", { name: "Timeout (seconds)" }), "90");
     await userEvent.type(options.getByRole("textbox", { name: "LLM call budget" }), "0");
 
     await submit();
@@ -275,9 +244,10 @@ describe("scrape playground: the request", () => {
       url: "https://store.test/a",
       formats: ["links"],
       schema: null,
-      page_kind: null,
+      page_kind: "listing",
       fetch: { method_hint: "browser" },
       max_age: 3600,
+      timeout_s: 90,
       budget: { llm_calls: 0 },
     });
   });
@@ -440,7 +410,7 @@ describe("scrape playground: records", () => {
 
     await submit();
 
-    const records = await openTab("Records");
+    const records = await openTab("Table");
     const price = within(records.getByRole("row", { name: /price/ }));
     expect(price.getByText("19.90 EUR")).toBeInTheDocument();
     expect(price.getByText("published")).toBeInTheDocument();
@@ -464,7 +434,7 @@ describe("scrape playground: records", () => {
 
     await submit();
 
-    const records = await openTab("Records");
+    const records = await openTab("Table");
     const brand = within(records.getByRole("row", { name: /brand/ }));
     expect(brand.getByLabelText("No value: disagree")).toHaveTextContent("—");
     expect(brand.getAllByText("conflict").length).toBeGreaterThan(0);
@@ -481,7 +451,7 @@ describe("scrape playground: records", () => {
 
     await submit();
 
-    const records = await openTab("Records");
+    const records = await openTab("Table");
     expect(
       within(records.getByRole("row", { name: /price/ })).getByText(
         '{"amount":"19.90","currency":"EUR"}',
@@ -504,9 +474,148 @@ describe("scrape playground: records", () => {
 
     await submit();
 
-    const records = await openTab("Records");
+    const records = await openTab("Table");
     expect(within(records.getByRole("row", { name: /title/ })).getByText("Blue mug")).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+/** The JSON tab's text, parsed. */
+function shownJson(): unknown {
+  return JSON.parse(screen.getByRole("region", { name: "Page JSON" }).textContent);
+}
+
+describe("scrape playground: JSON output", () => {
+  it("opens on the JSON tab with the page's clean JSON: fields in name order, null where none published", async () => {
+    stubScrape({
+      "POST /v1/scrape": () => Response.json(withRecords),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+
+    expect(await screen.findByRole("tab", { name: "JSON" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(shownJson()).toEqual({
+      url: "https://store.test/items/1",
+      outcome: "extracted",
+      records: [
+        {
+          brand: null,
+          price: { amount: "19.90", currency: "EUR" },
+          tags: ["blue", "mug"],
+          title: "Blue mug",
+        },
+      ],
+    });
+    const record = (shownJson() as { records: object[] }).records[0] ?? {};
+    expect(Object.keys(record)).toEqual(["brand", "price", "tags", "title"]);
+  });
+
+  it("lists the tabs JSON, Table, each page format asked for, then Usage", async () => {
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(scrapeResponse({ markdown: "# Blue mug", links: ["https://store.test/b"] })),
+    });
+    await openScrape();
+    await typeUrl();
+
+    await submit();
+
+    const tabs = within(await screen.findByRole("tablist", { name: "Scrape output" }));
+    expect(tabs.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "JSON",
+      "Table",
+      "Markdown",
+      "Links",
+      "Usage",
+    ]);
+  });
+
+  it("adds the page's metadata to the JSON with Metadata in JSON", async () => {
+    const metadata = {
+      title: "Blue mug",
+      description: null,
+      language: "en",
+      canonical: null,
+      og: {},
+      structured_data_types: [],
+    };
+    stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse({ metadata })) });
+    await openScrape();
+    await typeUrl();
+    const options = await openOptions();
+    await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+
+    await submit();
+
+    await screen.findByRole("tab", { name: "JSON" });
+    expect(shownJson()).toEqual({
+      url: "https://store.test/items/1",
+      outcome: "extracted",
+      records: [],
+      metadata,
+    });
+  });
+
+  it("shows one uncalibrated badge exactly when a published field is uncalibrated", async () => {
+    const calibrated = scrapeResponse({
+      records: [
+        {
+          id: "0192a000-0000-7000-8000-0000000000r2",
+          mode: "config",
+          complete: true,
+          confidence: 0.9,
+          fields: {
+            title: field({ value: "Blue mug" }),
+            // Not published: its calibration says nothing about a shown value.
+            brand: field({ status: "abstained", reason: "low_confidence", calibrated: false }),
+          },
+        },
+      ],
+    });
+    const replies = [withRecords, calibrated];
+    stubScrape({
+      "POST /v1/scrape": () => Response.json(replies.shift()),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+    const json = await openTab("JSON");
+    expect(json.getAllByText("uncalibrated")).toHaveLength(1);
+    await submit();
+
+    await waitFor(() => {
+      expect(shownJson()).toMatchObject({ records: [{ brand: null, title: "Blue mug" }] });
+    });
+    expect(
+      within(screen.getByRole("tabpanel", { name: "JSON" })).queryByText("uncalibrated"),
+    ).toBeNull();
+  });
+
+  it("downloads the JSON as the job's file", async () => {
+    const saved = catchDownloads();
+    stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl();
+    await submit();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Download" }));
+
+    expect(saved.map(({ name }) => name)).toEqual([
+      "job-0192a000-0000-7000-8000-0000000000j1.json",
+    ]);
+    expect(JSON.parse(await (saved[0]?.text ?? Promise.resolve("")))).toEqual({
+      url: "https://store.test/items/1",
+      outcome: "extracted",
+      records: [],
+    });
   });
 });
 
@@ -551,7 +660,7 @@ describe("scrape playground: formats and problems", () => {
     expect(
       within(metadata.getByRole("row", { name: /og:type/ })).getByText("product"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Records" })).not.toBeInTheDocument();
+    expect((await openTab("Table")).getByText("No records")).toBeInTheDocument();
   });
 
   it("shows the outcome, fetch attempts and usage", async () => {
@@ -565,11 +674,10 @@ describe("scrape playground: formats and problems", () => {
 
     expect(await screen.findByText("blocked")).toBeInTheDocument();
     expect(screen.getByText("https://store.test/items/1?ref=final")).toBeInTheDocument();
-    const fetchTab = await openTab("Fetch");
-    const httpAttempt = within(fetchTab.getByRole("row", { name: "http" }));
+    const usage = await openTab("Usage");
+    const httpAttempt = within(usage.getByRole("row", { name: "http" }));
     expect(httpAttempt.getByText("shell")).toBeInTheDocument();
     expect(httpAttempt.getByText("120")).toBeInTheDocument();
-    const usage = await openTab("Usage");
     expect(
       within(usage.getByRole("row", { name: /LLM tokens in/ })).getByText("1200"),
     ).toBeVisible();
@@ -595,8 +703,9 @@ describe("scrape playground: formats and problems", () => {
 
     expect(await screen.findByText("blocked")).toBeInTheDocument();
     expect(screen.queryByText(/^Fetched/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Fetch" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Usage" })).toBeInTheDocument();
+    const usage = await openTab("Usage");
+    expect(usage.queryByRole("grid", { name: "Fetch attempts" })).not.toBeInTheDocument();
+    expect(usage.getByRole("grid", { name: "Usage" })).toBeInTheDocument();
   });
 
   it("shows a problem with its per-field errors, and the retry time on 429", async () => {
@@ -650,5 +759,32 @@ describe("scrape playground: formats and problems", () => {
     await submit();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("The scrape failed (HTTP 502).");
+  });
+});
+
+describe("scrape playground: the output area", () => {
+  it("keeps one output box from the first run on, through pending, failed and done", async () => {
+    const replies: ((response: Response) => void)[] = [];
+    stubScrape({
+      "POST /v1/scrape": () =>
+        new Promise<Response>((resolve) => {
+          replies.push(resolve);
+        }),
+    });
+    await openScrape();
+    expect(screen.queryByRole("region", { name: "Output" })).not.toBeInTheDocument();
+    await typeUrl();
+
+    await submit();
+    const output = screen.getByRole("region", { name: "Output" });
+    expect(within(output).getByLabelText("Scraping")).toBeInTheDocument();
+    replies[0]?.(problem(404, { type: "not_found", title: "Not found" }));
+    expect(await within(output).findByRole("alert")).toHaveTextContent("Not found");
+    await submit();
+    replies[1]?.(Response.json(scrapeResponse()));
+
+    expect(await within(output).findByText("extracted")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Output" })).toBe(output);
+    expect(output).toHaveClass("min-h-playground-output");
   });
 });
