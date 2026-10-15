@@ -282,14 +282,14 @@ def linked(
 def _sharing(values: Sequence[tuple[str, JsonValue]], spec: FieldSpec) -> Iterator[tuple[str, str]]:
     """Pairs of rows whose values of one sub-field are equal, enough to connect every such pair: values meet by their
     equality key in one pass; only a value with no key (its type's equality is not transitive) is compared with the
-    sub-field's other values."""
+    sub-field's earlier values."""
     first: dict[Hashable, str] = {}
-    for row_id, value in values:
+    for i, (row_id, value) in enumerate(values):
         key = equality_key(value, spec)
         if key is not None:
             yield first.setdefault(key, row_id), row_id
             continue
-        yield from ((other_id, row_id) for other_id, other in values if equal(value, other, spec))
+        yield from ((other_id, row_id) for other_id, other in values[:i] if equal(value, other, spec))
 
 
 def _merged_keys(rows: Sequence[Entity], keys: Mapping[str, _Keys]) -> _Keys:

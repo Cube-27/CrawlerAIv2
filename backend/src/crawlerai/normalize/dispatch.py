@@ -36,21 +36,22 @@ def _money(raw: Raw, ctx: Context) -> NormalizeResult:
     return normalize(raw, _MONEY, ctx)
 
 
-# The field-type registry: every §5.1 type with values of its own, with its normalizer, its equality and, when that
-# equality is an equivalence relation, its key.
-_TYPES: dict[FieldType, tuple[Normalizer, Equality, EqualityKey | None]] = {
-    FieldType.TEXT: (text.normalize, text.equal, text.key),
-    FieldType.LONG_TEXT: (text.normalize, text.equal, text.key),
-    FieldType.ENUM: (enum.normalize, enum.equal, enum.key),
-    FieldType.MONEY: (money.normalize, money.equal, money.key),
-    FieldType.LOCATION: (location.normalize, location.equal, None),
-    FieldType.URL: (url.normalize, url.equal, url.key),
-    FieldType.IDENTIFIER: (identifier.normalize, identifier.equal, identifier.key),
-    FieldType.IMAGE_URL: (url.normalize, url.equal, url.key),
-    FieldType.DATE: (date.normalize, date.equal, date.key),
-    FieldType.DATETIME: (date.normalize, date.equal, date.key),
-    FieldType.RANGE: (partial(range_.normalize, money=_money), range_.equal, range_.key),
+# The field-type registry: every §5.1 type with values of its own, with its normalizer and its equality. Equality is a
+# key where it is an equivalence relation (two values are equal when their keys are); location's is not transitive (a
+# place without a region equals two places in different regions), so two places are compared.
+_TYPES: dict[FieldType, tuple[Normalizer, EqualityKey]] = {
+    FieldType.TEXT: (text.normalize, text.key),
+    FieldType.LONG_TEXT: (text.normalize, text.key),
+    FieldType.ENUM: (enum.normalize, enum.key),
+    FieldType.MONEY: (money.normalize, money.key),
+    FieldType.URL: (url.normalize, url.key),
+    FieldType.IDENTIFIER: (identifier.normalize, identifier.key),
+    FieldType.IMAGE_URL: (url.normalize, url.key),
+    FieldType.DATE: (date.normalize, date.key),
+    FieldType.DATETIME: (date.normalize, date.key),
+    FieldType.RANGE: (partial(range_.normalize, money=_money), range_.key),
 }
+_COMPARED: dict[FieldType, tuple[Normalizer, Equality]] = {FieldType.LOCATION: (location.normalize, location.equal)}
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -60,7 +61,7 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         return _list(raw, _item(spec), ctx)
     if spec.type is FieldType.OBJECT:
         return _object(raw, _fields(spec), ctx)
-    registered = _TYPES.get(spec.type)
+    registered = _TYPES.get(spec.type) or _COMPARED.get(spec.type)
     if registered is None:
         return Invalid("unknown_type")
     return registered[0](raw, spec, ctx)
@@ -81,8 +82,10 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
             and a.keys() == b.keys() <= fields.keys()
             and all(equal(a[name], b[name], fields[name]) for name in a)
         )
-    registered = _TYPES.get(spec.type)
-    return registered is not None and registered[1](a, b, spec)
+    if (compared := _COMPARED.get(spec.type)) is not None:
+        return compared[1](a, b, spec)
+    key = equality_key(a, spec)
+    return key is not None and key == equality_key(b, spec)
 
 
 def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
@@ -97,11 +100,10 @@ def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
             return raw_key(value)
         keys = {name: equality_key(v, fields[name]) for name, v in value.items()}
         return None if None in keys.values() else ("object", frozenset(keys.items()))
+    if spec.type in _COMPARED:
+        return None
     registered = _TYPES.get(spec.type)
-    if registered is None:
-        return raw_key(value)
-    key = registered[2]
-    return None if key is None else key(value, spec)
+    return raw_key(value) if registered is None else registered[1](value, spec)
 
 
 def _list_key(items: list[JsonValue], item: FieldSpec) -> Hashable | None:

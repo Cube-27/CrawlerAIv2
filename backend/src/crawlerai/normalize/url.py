@@ -58,17 +58,9 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     return result
 
 
-def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: equal after canonicalization. A relative URL has no canonical form without its base."""
-    if a == b:
-        return True
-    if not (isinstance(a, str) and isinstance(b, str)):
-        return False
-    left = canonical(a, None)
-    return isinstance(left, Ok) and left == canonical(b, None)
-
-
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    """Equality as a key (SPEC-04 §4.5): equal after canonicalization. A relative URL has no canonical form without its
+    base."""
     url = canonical(value, None) if isinstance(value, str) else None
     return ("url", url.value, url.reasons) if isinstance(url, Ok) else raw_key(value)
 

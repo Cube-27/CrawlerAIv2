@@ -76,14 +76,16 @@ class _Reading:
     def result(self, queries: Mapping[str, str], kind: str, url_query: str | None) -> CollectResult:
         rows: dict[str, JsonValue] = {}
         candidates: list[Candidate] = []
-        hints = [q for name, q in queries.items() if self.schema.fields[name].type is not FieldType.LIST]
-        entity_queries = {split_at_last_wildcard(q)[0] for q in [*hints, *([url_query] if url_query else [])]}
+        single = [q for name, q in queries.items() if self.schema.fields[name].type is not FieldType.LIST]
+        entity_queries = {split_at_last_wildcard(q)[0] for q in single + ([url_query] if url_query else [])}
         for name, query in queries.items():
             entity_query = self._entity_query(name, query, entity_queries)
             rest = ROOT + query[len(entity_query) :]
+            # Only a list field's rest can hold a wildcard: the one that selects its items.
+            read = self._list_candidate if split_at_last_wildcard(rest)[0] != ROOT else self._candidates
             for path, data in self._entities(entity_query).items():
                 rows.setdefault(path, data)
-                candidates.extend(self._candidates(name, path, data, rest))
+                candidates.extend(read(name, path, data, rest))
         url_rest = None if url_query is None else split_at_last_wildcard(url_query)[1]
         entities = tuple(
             Entity(id=self._id(path), kind=kind, urls=self._urls(path, data, url_rest), parent=None)
@@ -109,8 +111,6 @@ class _Reading:
 
     def _candidates(self, name: str, path: str, data: JsonValue, query: str) -> list[Candidate]:
         spec = self.schema.fields[name]
-        if spec.type is FieldType.LIST and split_at_last_wildcard(query)[0] != ROOT:
-            return self._list_candidate(name, path, data, query)
         found = (
             candidate(
                 name,

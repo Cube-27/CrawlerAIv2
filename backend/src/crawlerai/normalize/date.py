@@ -315,10 +315,6 @@ def _languages(ctx: Context) -> tuple[str, ...]:
     return tuple(dict.fromkeys(language for language in primary if language in _DATEPARSER_LANGUAGES))
 
 
-def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
-    return a == b
-
-
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    return raw_key(value)  # equality is exact
+    """Equality as a key (SPEC-04 §4.5): exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
+    return raw_key(value)

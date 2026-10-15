@@ -80,8 +80,9 @@ def _add_text_line(lines: list[str], line: str, item: int | None) -> int | None:
     elif text and item is not None and len(line) - len(line.lstrip()) >= item:
         kept = " " * item + text
     else:
-        lazy = bool(lines and lines[-1])
-        kept, item = text, item if lazy or not text else None
+        kept = text
+        if text and not (lines and lines[-1]):  # not a lazy continuation
+            item = None
     if kept or (lines and lines[-1]):
         lines.append(kept)
     return item

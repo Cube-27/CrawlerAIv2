@@ -107,15 +107,8 @@ def _isbn10_check_passes(value: str) -> bool:
     return total % 11 == 0
 
 
-def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: exact, except that GTINs compare in the GS1 14-digit form (D-0287)."""
-    if a == b:
-        return True
-    left, right = _gtin14(a), _gtin14(b)
-    return left is not None and left == right
-
-
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    """Equality as a key (SPEC-04 §4.5): exact, except that GTINs compare in the GS1 14-digit form (D-0287)."""
     gtin = _gtin14(value)
     return raw_key(value) if gtin is None else ("gtin", gtin)
 

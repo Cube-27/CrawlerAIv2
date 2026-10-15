@@ -29,22 +29,24 @@ def listing_rows(
     """The rows (module docstring), in collector order. `target` is intent's answer for the page (§4.6); `page_urls`
     are the request, final and canonical URLs, canonicalized."""
     primaries = [entity for entity in graph.entities.values() if is_primary(graph, entity, primary)]
-    listed = [entity for entity in primaries if _listed(graph, entity, primary)]
-    if listed:
-        return _one_per_item(listed, frozenset(page_urls))
+    rows = [entity for entity in primaries if _listed(graph, entity, primary)]
     top_level = [entity for entity in primaries if entity.parent is None]
-    if isinstance(target, AmbiguousTarget) and len(top_level) >= MIN_TOP_LEVEL_ROWS:
-        return _one_per_item(top_level, frozenset(page_urls))
-    return ()
+    if not rows and isinstance(target, AmbiguousTarget) and len(top_level) >= MIN_TOP_LEVEL_ROWS:
+        rows = top_level
+    return _one_per_item(rows, frozenset(page_urls))
 
 
 def _one_per_item(rows: Sequence[Entity], page_urls: frozenset[str]) -> tuple[Entity, ...]:
     """The rows without those another collector's earlier row shares an item URL with. `Entity.urls` are canonical."""
+    collectors: dict[str, set[str]] = {}  # the collectors of the kept rows, by item URL
     kept: list[Entity] = []
     for row in rows:
-        urls = set(row.urls) - page_urls
-        if not any(_collector(k) != _collector(row) and not urls.isdisjoint(k.urls) for k in kept):
-            kept.append(row)
+        collector, urls = _collector(row), set(row.urls) - page_urls
+        if any(collectors.get(url, {collector}) != {collector} for url in urls):
+            continue
+        kept.append(row)
+        for url in urls:
+            collectors.setdefault(url, set()).add(collector)
     return tuple(kept)
 
 

@@ -74,10 +74,6 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
     return Ok(next(iter(codes)))
 
 
-def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: exact. A normalized value has one form (one code per member)."""
-    return a == b
-
-
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    return raw_key(value)  # equality is exact
+    """Equality as a key (SPEC-04 §4.5): exact. A normalized value has one form (one code per member)."""
+    return raw_key(value)

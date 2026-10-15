@@ -299,9 +299,13 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
     """A script's JSON documents for `source`: a JSON-LD block's; for script state, a JSON block's, or the objects and
     arrays its state assignments (`window.x =`, `var x =`) start with, in order, each searched for after the value
     before it."""
-    if source == "jsonld" or media_type in (_JSONLD, _JSON):
-        if media_type == (_JSONLD if source == "jsonld" else _JSON):
+    if source == "jsonld":
+        if media_type == _JSONLD:
             yield from _loads(text)
+        return
+    if media_type == _JSON:
+        yield from _loads(text)
+    if media_type in (_JSONLD, _JSON):
         return
     start = 0
     while (found := _ASSIGNMENT.search(text, start)) is not None:
