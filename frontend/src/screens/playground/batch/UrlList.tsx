@@ -1,7 +1,8 @@
 import { Button, Description, FieldError, TextArea, TextField, Tooltip } from "@heroui/react";
 import { FileArrowUp } from "@gravity-ui/icons";
 import { useRef } from "react";
-import { appendUrls, csvUrls, lines } from "./urls";
+import { lines } from "../pageRequest";
+import { appendUrls, csvUrls } from "./urls";
 
 /** RFC 4180 §3 registers `text/csv`; files saved without that type still end in `.csv`. */
 const CSV_FILES = ".csv,text/csv";

@@ -1,19 +1,9 @@
 import { Table, Typography } from "@heroui/react";
 import { useId } from "react";
-import type { StreamState } from "../api/events";
 import { useJobEvents } from "../api/hooks/events";
 import { ProblemAlert } from "./ProblemAlert";
-import { StatusLabel, type StatusTone } from "./StatusLabel";
+import { StreamStateLabel } from "./StreamStateLabel";
 import { TruncatedText } from "./TruncatedText";
-
-// One tone per stream state: receiving, waiting to reconnect (SPEC-12 §4.5), closed after the job's end, or refused.
-const STATE_TONES: Record<StreamState, StatusTone> = {
-  connecting: "neutral",
-  live: "accent",
-  reconnecting: "warning",
-  ended: "success",
-  failed: "danger",
-};
 
 /** A job's run events as they are stored (`GET /v1/jobs/{id}/events`), live until the job ends. Each event's data is
  * shown as the server sent it, cut to its column and in full on hover or focus: a `task_failed` event carries why the
@@ -29,7 +19,7 @@ export function EventLog({ jobId }: Readonly<{ jobId: string }>) {
         <Typography.Heading level={2} id={headingId}>
           Events
         </Typography.Heading>
-        <StatusLabel text={state} tone={STATE_TONES[state]} />
+        <StreamStateLabel state={state} />
       </div>
       {problem === null ? null : <ProblemAlert problem={problem} />}
       <Table>

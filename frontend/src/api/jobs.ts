@@ -95,6 +95,16 @@ function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
 }
 
+// SPEC-10 §4.2: a completed or failed job can't be cancelled (409); a cancelled one is already.
+const CANCELLABLE: ReadonlySet<JobStatus> = new Set<JobStatus>(["queued", "running"]);
+
+/** Where a job is with cancelling: it can be cancelled, a cancel was asked for (it ends once its claimed tasks end),
+ * or it has ended. */
+export function cancelState(job: JobSummary): "cancellable" | "requested" | "ended" {
+  if (!CANCELLABLE.has(job.status)) return "ended";
+  return job.cancel_requested ? "requested" : "cancellable";
+}
+
 /** Which jobs a list shows: one kind and one status, or every one when null (SPEC-10 §4.2). */
 export interface JobFilters {
   kind: JobKind | null;

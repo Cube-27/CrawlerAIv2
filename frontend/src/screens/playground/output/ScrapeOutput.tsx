@@ -1,5 +1,5 @@
 import { Tabs, Typography } from "@heroui/react";
-import { memo, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import type { FieldTypes } from "../../../api/field";
 import type { ScrapeResponse } from "../../../api/scrape";
 import { EmptyView } from "../../../components/EmptyView";
@@ -22,6 +22,8 @@ function JsonTab({
   response,
   withMetadata,
 }: Readonly<{ response: ScrapeResponse; withMetadata: boolean }>) {
+  // One item per response: JsonView keeps its text and tokens while the item is the same object.
+  const item = useMemo(() => scrapeItem(response, withMetadata), [response, withMetadata]);
   return (
     <div className="flex flex-col gap-3">
       {hasUncalibrated(response.records ?? []) ? (
@@ -29,11 +31,7 @@ function JsonTab({
           <StatusLabel text="uncalibrated" tone="warning" />
         </div>
       ) : null}
-      <JsonView
-        label="Page JSON"
-        value={scrapeItem(response, withMetadata)}
-        filename={`job-${response.job_id}.json`}
-      />
+      <JsonView label="Page JSON" value={item} filename={`job-${response.job_id}.json`} />
     </div>
   );
 }

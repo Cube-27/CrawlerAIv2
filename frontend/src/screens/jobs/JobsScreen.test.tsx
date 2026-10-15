@@ -7,6 +7,8 @@ import type { JobPage, JobSummary, PageOutput, PageOutputPage } from "../../api/
 import type { RecordPage } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, sse, stubApi, type Call } from "../../test/api";
+import { catchDownloads } from "../../test/downloads";
+import { jobSummary } from "../../test/jobs";
 import { recordField } from "../../test/records";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
@@ -17,32 +19,7 @@ const SECOND_JOB_ID = "0192a000-0000-7000-8000-000000000902";
 const JOB = `/v1/jobs/${JOB_ID}`;
 
 function job(overrides: Partial<JobSummary> = {}): JobSummary {
-  return {
-    id: JOB_ID,
-    kind: "batch_scrape",
-    status: "running",
-    counts: { queued: 1, claimed: 0, done: 2, failed: 0, cancelled: 0 },
-    outcomes: {
-      extracted: 2,
-      partial: 0,
-      unchanged: 0,
-      links_only: 0,
-      blocked: 0,
-      shell: 0,
-      not_found: 0,
-      no_match: 0,
-      failed: 0,
-    },
-    usage: { pages_fetched: 2 },
-    llm_cost_usd: 0.0123,
-    created_at: "2026-10-14T09:00:00Z",
-    started_at: "2026-10-14T09:00:01Z",
-    finished_at: null,
-    engine_version: "0.0.0",
-    webhook_url: null,
-    cancel_requested: false,
-    ...overrides,
-  };
+  return jobSummary({ id: JOB_ID, ...overrides });
 }
 
 const schema: SchemaDef = {
@@ -300,25 +277,7 @@ describe("Job screen", () => {
   });
 
   it("exports every page of the records as CSV files", async () => {
-    const saved: { name: string; text: Promise<string> }[] = [];
-    const blobs = new Map<string, Blob>();
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: (blob: Blob) => {
-        const url = `blob:${String(blobs.size)}`;
-        blobs.set(url, blob);
-        return url;
-      },
-    });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
-      this: HTMLAnchorElement,
-    ) {
-      saved.push({
-        name: this.download,
-        text: blobs.get(this.href)?.text() ?? Promise.resolve(""),
-      });
-    });
+    const saved = catchDownloads();
     const calls = jobApi({
       [`GET ${JOB}/results`]: ({ query }) => {
         const params = new URLSearchParams(query);

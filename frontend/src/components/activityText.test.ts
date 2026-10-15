@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { StreamEvent } from "../api/events";
 import { activityGroups } from "./ActivityFeed";
-import { activityLine, eventUrl } from "./activityText";
+import { activityEntry } from "./activityText";
 
 const URL_A = "https://shop.test/items/1";
 
@@ -61,7 +61,12 @@ const LINES: readonly [string, object, string | null][] = [
   ["cancelled", {}, "Run cancelled."],
 ];
 
-describe("activityLine", () => {
+/** The event's line; null when it has none. */
+function activityLine(e: StreamEvent): string | null {
+  return activityEntry(e)?.text ?? null;
+}
+
+describe("activityEntry", () => {
   it.each(LINES)("words %s %j as %j", (kind, data, line) => {
     expect(activityLine(event(kind, data))).toBe(line);
   });
@@ -76,10 +81,10 @@ describe("activityLine", () => {
   });
 });
 
-describe("eventUrl", () => {
+describe("activityEntry's url", () => {
   it("is the task URL the event carries, or null for the whole run", () => {
-    expect(eventUrl(event("task_fetched", { url: URL_A, method: "http" }))).toBe(URL_A);
-    expect(eventUrl(event("completed", {}))).toBeNull();
+    expect(activityEntry(event("task_fetched", { url: URL_A, method: "http" }))?.url).toBe(URL_A);
+    expect(activityEntry(event("completed", {}))?.url).toBeNull();
   });
 });
 

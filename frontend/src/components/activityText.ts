@@ -1,5 +1,5 @@
 import type { StreamEvent } from "../api/events";
-import { isJsonObject, type JsonObject } from "../api/json";
+import { parseJsonObject, type JsonObject } from "../api/json";
 
 /** Each run event (SPEC-10 §4.2) as one plain-language line (SPEC-14 §4.5), the one place that wording lives. A line
  * says only what the event's data says: an event whose data lacks a member its line needs, or of a kind not listed
@@ -92,23 +92,11 @@ const LINES: Readonly<Record<string, Line>> = {
 // SPEC-10 §4.2: the task counts after each batch of events. They update the counts, and are no line of their own.
 const PROGRESS = "progress";
 
-function parsed(data: string): JsonObject {
-  try {
-    const value: unknown = JSON.parse(data);
-    return isJsonObject(value) ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-/** The event's line; null for `progress`, which has none. */
-export function activityLine(event: StreamEvent): string | null {
+/** An event's line and the task URL it is about (null for the whole run); null for `progress`, which has no line. The
+ * event's data is parsed once, here. */
+export function activityEntry(event: StreamEvent): { text: string; url: string | null } | null {
   if (event.kind === PROGRESS) return null;
+  const data = parseJsonObject(event.data) ?? {};
   const line = LINES[event.kind];
-  return (line === undefined ? null : line(parsed(event.data))) ?? event.kind;
-}
-
-/** The task URL an event is about, or null for an event about the whole run. */
-export function eventUrl(event: StreamEvent): string | null {
-  return text(parsed(event.data), "url");
+  return { text: (line === undefined ? null : line(data)) ?? event.kind, url: text(data, "url") };
 }

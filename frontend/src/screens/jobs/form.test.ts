@@ -6,17 +6,7 @@ import {
   INITIAL_CRAWL,
   INITIAL_EXTRACT,
   INITIAL_MAP,
-  lines,
 } from "./form";
-
-describe("lines", () => {
-  it("takes one entry per line, trimmed, without blank lines", () => {
-    expect(lines(" https://a.example.test/1 \r\n\nhttps://a.example.test/2\n  ")).toEqual([
-      "https://a.example.test/1",
-      "https://a.example.test/2",
-    ]);
-  });
-});
 
 describe("buildCrawl", () => {
   it("sends the rules, scope globs and limits that are set, leaving the others to the server", () => {

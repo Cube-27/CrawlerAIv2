@@ -1,8 +1,25 @@
 import type { PageKind, ScrapeFormat } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/FormatChoices";
-import { NO_RECORDS_PAGE_KINDS } from "../../components/PageKindChoices";
 import type { PageFormat } from "./FormatSelect";
+
+/** The page kinds whose records the server refuses, for a scrape and a batch scrape alike: SPEC-07 §4.4 and D-0502
+ * leave listing records out (`check_records`). */
+const NO_RECORDS_PAGE_KINDS: readonly PageKind[] = ["listing"];
+
+/** The non-blank lines of `text`, trimmed: a list entered one entry per line. */
+export function lines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+}
+
+/** The optional `webhook_url` member (SPEC-10 §4.2): left out when empty. */
+export function webhook(url: string): { webhook_url?: string } {
+  const trimmed = url.trim();
+  return trimmed === "" ? {} : { webhook_url: trimmed };
+}
 
 /** What the toolbar's Format and Schema hold, and the Metadata in JSON view option, in every mode that takes them
  * (Scrape, Batch, Crawl; SPEC-14 §4.2). `schemaId` is a stored schema's id, or "" for none; `schemaPageKind` is that
@@ -50,12 +67,7 @@ export function requestPageKind(form: PageKindForm): PageKind | null {
   return kind === null || NO_RECORDS_PAGE_KINDS.includes(kind) ? null : kind;
 }
 
-/** Whether `form` can be sent: it asks for some format, and a schema's records are for a page kind it can ask for. */
-export function canSend(form: PageKindForm): boolean {
-  return !asksForNothing(form) && (form.schemaId === "" || requestPageKind(form) !== null);
-}
-
-const NO_ERRORS: Readonly<Record<string, string>> = {};
+export const NO_ERRORS: Readonly<Record<string, string>> = {};
 const NO_FORMAT = { formats: "Choose a format, Metadata in JSON or a schema." };
 const NO_SCHEMA_PAGE_KIND = { page_kind: "The schema names no page kind, which its records need." };
 const NO_LISTING_RECORDS = { page_kind: "Records of listing pages are not available yet." };
@@ -67,6 +79,11 @@ export function pageKindErrors(form: PageKindForm): Readonly<Record<string, stri
   if (asksForNothing(form)) return NO_FORMAT;
   if (form.schemaId === "" || requestPageKind(form) !== null) return NO_ERRORS;
   return form.schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : NO_LISTING_RECORDS;
+}
+
+/** Whether `form` can be sent: `pageKindErrors` finds nothing. */
+export function canSend(form: PageKindForm): boolean {
+  return pageKindErrors(form) === NO_ERRORS;
 }
 
 /** Whether any setting differs from its default. SameValue (ECMA-262), so an empty limit (NaN) equals the default. */

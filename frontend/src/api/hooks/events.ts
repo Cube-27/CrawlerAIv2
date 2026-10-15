@@ -74,7 +74,11 @@ export function useJobEvents(
       }
       if (event.kind === PROGRESS) return;
       setEvents((previous) => [...previous, event]);
-      if (ended) void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
+      if (ended) {
+        // The end reads the results at once; a refresh still waiting would read them again.
+        refresh.cancel();
+        void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
+      }
     };
     let previous: StreamState = "connecting";
     void followEvents({

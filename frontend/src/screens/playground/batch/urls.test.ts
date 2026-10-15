@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { appendUrls, csvUrls, lines } from "./urls";
+import { lines } from "../pageRequest";
+import { appendUrls, csvUrls } from "./urls";
 
 describe("csvUrls", () => {
   it("reads the url column when the first record has that header", () => {

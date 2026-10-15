@@ -1,28 +1,18 @@
 import { Button } from "@heroui/react";
-import { useMemo, useRef, useState } from "react";
-import { fieldErrors } from "../../../api/problem";
+import { useRef, useState } from "react";
 import { useApiClient } from "../../../app/auth";
-import { SchemaSelect } from "../../../components/SchemaSelect";
-import { FormatSelect } from "../FormatSelect";
-import { OptionsToggle } from "../OptionsPanel";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { ScrapeOutput } from "../output/ScrapeOutput";
 import { requestUrl, UrlInput } from "../UrlInput";
-import {
-  asksForNothing,
-  optionsChanged,
-  pageKindErrors,
-  requestPageKind,
-  withSchema,
-} from "../pageRequest";
-import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM, type ScrapeFormState } from "./form";
+import { requestPageKind } from "../pageRequest";
+import { PageTools } from "../PageTools";
+import { usePageForm } from "../usePageForm";
+import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM } from "./form";
 import { runScrape, type ScrapeRun } from "./run";
 import { ScrapeOptions } from "./ScrapeOptions";
 
 type ScrapeState = { kind: "idle" } | { kind: "pending" } | ScrapeRun;
-
-const NO_ERRORS: Readonly<Record<string, string>> = {};
 
 function outputState(
   state: Exclude<ScrapeState, { kind: "idle" }>,
@@ -46,28 +36,17 @@ function outputState(
  * and schema, the inline options panel, then what the scrape returned. */
 export function ScrapePlayground() {
   const client = useApiClient();
-  const [form, setForm] = useState<ScrapeFormState>(INITIAL_FORM);
-  const [optionsOpen, setOptionsOpen] = useState(false);
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
-  const [refused, setRefused] = useState(false);
+  const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
+    INITIAL_FORM,
+    state.kind === "failed" ? state.problem : null,
+  );
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
   const latest = useRef(0);
-  const clientErrors = refused ? pageKindErrors(form) : NO_ERRORS;
-  const validationErrors = useMemo(
-    () => ({
-      ...(state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS),
-      ...clientErrors,
-    }),
-    [state, clientErrors],
-  );
 
   const submit = () => {
-    const request = buildRequest({ ...form, url: requestUrl(form.url) });
-    setRefused(request === null);
-    if (request === null) {
-      if (!asksForNothing(form)) setOptionsOpen(true);
-      return;
-    }
+    const request = check() ? buildRequest({ ...form, url: requestUrl(form.url) }) : null;
+    if (request === null) return;
     const run = ++latest.current;
     setState({ kind: "pending" });
     void runScrape(client, request).then((result) => {
@@ -89,27 +68,13 @@ export function ScrapePlayground() {
         />
       }
       tools={
-        <>
-          <OptionsToggle
-            isOpen={optionsOpen}
-            changed={optionsChanged(form.options, DEFAULT_OPTIONS)}
-            onChange={setOptionsOpen}
-          />
-          <FormatSelect
-            value={form.formats}
-            onChange={(formats) => {
-              setForm({ ...form, formats });
-            }}
-          />
-          <SchemaSelect
-            value={form.schemaId}
-            noneLabel="No schema"
-            hideLabel
-            onChange={(schemaId, schema) => {
-              setForm(withSchema(form, schemaId, schema?.page_kind ?? null));
-            }}
-          />
-        </>
+        <PageTools
+          form={form}
+          defaults={DEFAULT_OPTIONS}
+          optionsOpen={optionsOpen}
+          onOptionsOpen={setOptionsOpen}
+          onChange={setForm}
+        />
       }
       action={
         <Button type="submit" isPending={state.kind === "pending"}>

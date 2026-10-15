@@ -32,11 +32,7 @@ interface NavGroup {
 // at the foot of the sidebar.
 const PLAYGROUND: NavGroup = {
   title: "Playground",
-  entries: MODE_GROUPS.flatMap((group) => group.modes).map(({ href, label, icon }) => ({
-    href,
-    label,
-    icon,
-  })),
+  entries: MODE_GROUPS.flatMap((group) => group.modes),
 };
 
 const DATA: NavGroup = {

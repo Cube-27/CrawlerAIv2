@@ -1,21 +1,11 @@
 import { Typography } from "@heroui/react";
-import { useId } from "react";
-import type { StreamState } from "../api/events";
+import { useId, useMemo } from "react";
 import type { JobEvents } from "../api/hooks/events";
 import type { JobSummary } from "../api/jobs";
-import { activityLine, eventUrl } from "./activityText";
+import { activityEntry } from "./activityText";
 import { ElapsedTime } from "./ElapsedTime";
 import { ProblemAlert } from "./ProblemAlert";
-import { StatusLabel, type StatusTone } from "./StatusLabel";
-
-// One tone per stream state: receiving, waiting to reconnect (SPEC-12 §4.5), closed after the job's end, or refused.
-const STATE_TONES: Record<StreamState, StatusTone> = {
-  connecting: "neutral",
-  live: "accent",
-  reconnecting: "warning",
-  ended: "success",
-  failed: "danger",
-};
+import { StreamStateLabel } from "./StreamStateLabel";
 
 /** One line, keyed by its event's place in the stream: events only ever arrive after it. */
 interface Line {
@@ -33,9 +23,9 @@ interface Group {
 export function activityGroups(events: JobEvents["events"]): Group[] {
   const groups = new Map<string | null, Group>();
   events.forEach((event, key) => {
-    const text = activityLine(event);
-    if (text === null) return;
-    const url = eventUrl(event);
+    const entry = activityEntry(event);
+    if (entry === null) return;
+    const { text, url } = entry;
     const group = groups.get(url) ?? { url, lines: [] };
     group.lines.push({ key, text });
     // Moved to the end of the map's order, which is newest last.
@@ -59,14 +49,15 @@ export function ActivityFeed({
   activity,
 }: Readonly<{ job: JobSummary; activity: JobEvents }>) {
   const headingId = useId();
-  const groups = activityGroups(activity.events);
+  // Only a new event changes the lines; the summary above re-renders the feed on every progress event.
+  const groups = useMemo(() => activityGroups(activity.events), [activity.events]);
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
         <Typography.Heading level={2} id={headingId}>
           Activity
         </Typography.Heading>
-        <StatusLabel text={activity.state} tone={STATE_TONES[activity.state]} />
+        <StreamStateLabel state={activity.state} />
       </div>
       <div className="flex flex-wrap gap-x-3">
         <Typography.Paragraph size="sm">{progressText(job)}</Typography.Paragraph>

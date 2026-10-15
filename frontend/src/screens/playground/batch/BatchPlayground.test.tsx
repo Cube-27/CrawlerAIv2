@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { JobSummary, JsonValuesItem, JsonValuesPage } from "../../../api/jobs";
 import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
+import { jobSummary } from "../../../test/jobs";
 import { openOptions, openPlayground, pick, posted, toggleFormats } from "../../../test/playground";
 
 // `fetch` answers the batch, job, results and events endpoints with the shapes SPEC-10 §4.2–4.3 and SPEC-14 §4.4
@@ -14,33 +15,10 @@ const JOB = `/v1/jobs/${JOB_ID}`;
 const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";
 const CURSOR = "0192a000-0000-7000-8000-0000000000t2";
 
+/** The batch's job: three tasks, one extracted, one blocked, one queued. */
 function job(overrides: Partial<JobSummary> = {}): JobSummary {
-  return {
-    id: JOB_ID,
-    kind: "batch_scrape",
-    status: "running",
-    counts: { queued: 1, claimed: 0, done: 2, failed: 0, cancelled: 0 },
-    outcomes: {
-      extracted: 1,
-      partial: 0,
-      unchanged: 0,
-      links_only: 0,
-      blocked: 1,
-      shell: 0,
-      not_found: 0,
-      no_match: 0,
-      failed: 0,
-    },
-    usage: { pages_fetched: 2 },
-    llm_cost_usd: 0,
-    created_at: "2026-10-15T09:00:00Z",
-    started_at: "2026-10-15T09:00:01Z",
-    finished_at: null,
-    engine_version: "0.0.0",
-    webhook_url: null,
-    cancel_requested: false,
-    ...overrides,
-  };
+  const summary = jobSummary({ id: JOB_ID, ...overrides });
+  return { ...summary, outcomes: { ...summary.outcomes, extracted: 1, blocked: 1 }, ...overrides };
 }
 
 const FIRST: JsonValuesItem = {
@@ -252,31 +230,41 @@ describe("batch playground: the run", () => {
   });
 
   it("reads the page shown again as tasks end, at most once a second", async () => {
+    let push: (text: string) => void = () => undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (text) => {
+          controller.enqueue(new TextEncoder().encode(text));
+        };
+      },
+    });
     const calls = batchApi({
       [`GET ${JOB}/events`]: () =>
-        sse(
-          [
-            "1",
-            "task_extracted",
-            { url: FIRST.url, outcome: "extracted", mode: "config", llm_calls: 0 },
-          ],
-          ["2", "task_failed", { url: SECOND.url, attempts: 3, last_error: "timeout" }],
-          [
-            "3",
-            "task_extracted",
-            { url: THIRD.url, outcome: "extracted", mode: "config", llm_calls: 0 },
-          ],
-          ["4", "completed", {}],
-        ),
+        new Response(stream, { headers: { "content-type": "text/event-stream" } }),
     });
     await openPlayground(`/batch?job=${JOB_ID}`);
     await pagesGrid();
+    const ended = (id: string, url: string) =>
+      `id: ${id}
+event: task_failed
+data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
 
+`;
+
+    push(ended("1", FIRST.url));
     await waitFor(() => {
-      expect(resultQueries(calls).length).toBeGreaterThanOrEqual(2);
+      expect(resultQueries(calls)).toHaveLength(2);
     });
-    // The first read, one refresh at once, then at most one more within the next second, and the end's.
-    expect(resultQueries(calls).length).toBeLessThanOrEqual(4);
+    push(ended("2", SECOND.url) + ended("3", THIRD.url));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(resultQueries(calls)).toHaveLength(2);
+
+    await waitFor(
+      () => {
+        expect(resultQueries(calls)).toHaveLength(3);
+      },
+      { timeout: 2000 },
+    );
   });
 
   it("downloads every page's item in task order, equal to the drawers' items", async () => {

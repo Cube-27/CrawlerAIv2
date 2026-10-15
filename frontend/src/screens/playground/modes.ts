@@ -20,8 +20,8 @@ export interface ModeGroup {
   modes: readonly Mode[];
 }
 
-export const SCRAPE: Mode = { id: "scrape", label: "Scrape", href: "/", icon: Magnifier };
+const SCRAPE: Mode = { id: "scrape", label: "Scrape", href: "/", icon: Magnifier };
 
-export const BATCH: Mode = { id: "batch", label: "Batch", href: "/batch", icon: ListCheck };
+const BATCH: Mode = { id: "batch", label: "Batch", href: "/batch", icon: ListCheck };
 
 export const MODE_GROUPS: readonly ModeGroup[] = [{ caption: "Pages", modes: [SCRAPE, BATCH] }];

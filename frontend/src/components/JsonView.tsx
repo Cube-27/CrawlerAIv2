@@ -1,6 +1,6 @@
 import { Button, toast } from "@heroui/react";
 import { ArrowDownToLine, Copy } from "@gravity-ui/icons";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { saveText } from "../app/download";
 import { jsonTokens, type JsonTokenKind } from "./jsonTokens";
 
@@ -21,7 +21,8 @@ export const JsonView = memo(function JsonView({
   value,
   filename,
 }: Readonly<{ label: string; value: unknown; filename: string }>) {
-  const text = JSON.stringify(value, null, 2);
+  const text = useMemo(() => JSON.stringify(value, null, 2), [value]);
+  const tokens = useMemo(() => jsonTokens(text), [text]);
   return (
     <div className="flex flex-col gap-2">
       <div className="flex justify-end gap-2">
@@ -51,7 +52,7 @@ export const JsonView = memo(function JsonView({
       </div>
       <section aria-label={label}>
         <pre className="json-view h-json-view">
-          {jsonTokens(text).map((token) => (
+          {tokens.map((token) => (
             <span key={token.start} className={TOKEN_CLASSES[token.kind]}>
               {token.text}
             </span>

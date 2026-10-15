@@ -1,12 +1,6 @@
-/** The URL list of the Batch command bar (SPEC-14 §4.2): one URL per line, filled by hand or from a CSV file. */
+import { lines } from "../pageRequest";
 
-/** The non-blank lines of `text`, trimmed: a list entered one entry per line. */
-export function lines(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-}
+/** The URL list of the Batch command bar (SPEC-14 §4.2): one URL per line, filled by hand or from a CSV file. */
 
 /** `list` (one URL per line) with `added` appended, leaving out a URL already listed, by exact string. */
 export function appendUrls(list: string, added: readonly string[]): string {

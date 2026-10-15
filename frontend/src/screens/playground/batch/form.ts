@@ -2,8 +2,7 @@ import type { BatchRequest } from "../../../api/jobs";
 import type { MethodHint, PageKind } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
-import { canSend, requestFormats, requestPageKind } from "../pageRequest";
-import { lines } from "./urls";
+import { canSend, lines, requestFormats, requestPageKind, webhook } from "../pageRequest";
 
 /** Batch's options panel (SPEC-14 §4.2): each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format and the results' `include=metadata`. */
@@ -39,12 +38,6 @@ export const INITIAL_BATCH: BatchFormState = {
   schemaPageKind: null,
   options: DEFAULT_BATCH_OPTIONS,
 };
-
-/** The optional `webhook_url` member: left out when empty. */
-export function webhook(url: string): { webhook_url?: string } {
-  const trimmed = url.trim();
-  return trimmed === "" ? {} : { webhook_url: trimmed };
-}
 
 /** The batch request for `form`, or null when it can't be sent (`canSend`). */
 export function buildBatch(form: BatchFormState): BatchRequest | null {
