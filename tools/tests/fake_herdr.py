@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from scan_repo import git
+
 # Logs every call; `herdr agent list` prints the listing in $FAKE_HERDR_LIST.
 FAKE_HERDR = """#!/bin/bash
 echo "herdr $*" >> "$FAKE_LOG"
@@ -27,6 +29,14 @@ def herdr_cwd(path: Path) -> str:
         check=True,
     )
     return top.stdout.strip().replace("/", "\\")
+
+
+def init_main(tmp_path: Path) -> tuple[Path, str, str]:
+    """A main checkout at TMP_PATH/repo, with its cwd and its worktrees root's as herdr prints them."""
+    main = tmp_path / "repo"
+    git(tmp_path, "init", "-q", main.as_posix())
+    main_cwd = herdr_cwd(main)
+    return main, main_cwd, main_cwd.rsplit("\\", 1)[0] + r"\CrawlerAIv2-worktrees"
 
 
 def fake_env(tmp_path: Path, executables: dict[str, str], listing: str) -> dict[str, str]:

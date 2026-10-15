@@ -1,8 +1,8 @@
 #!/bin/bash
-# One watcher for every herdr agent of this project (lib.sh project_agents): exits (printing why) as soon as any named agent is not working
-# (SETTLED <name> <status>, including one already idle at start; `unknown` counts as working, since herdr reports
-# it briefly for agents mid-turn), disappears (GONE <name>), or free memory
-# falls below MIN_FREE_MB (LOWMEM), or a new comment starting READY, BLOCKED or ESCALATE appears on an open PR
+# One watcher for every herdr agent of this project (lib.sh project_agents; herdr lists every project's): exits
+# (printing why) as soon as any named agent is not working (SETTLED <name> <status>, including one already idle at
+# start; `unknown` counts as working, since herdr reports it briefly for agents mid-turn), disappears (GONE <name>),
+# or free memory falls below MIN_FREE_MB (LOWMEM), or a new comment starting READY, BLOCKED or ESCALATE appears on an open PR
 # (PRCOMMENT <n>; counted from start). Replaces one `herdr agent wait` per agent.
 # IGNORE: comma-separated agent names to skip, e.g. implementors left waiting on CI or their reviewer.
 # Single instance: exits 2 with "ERROR another watcher is running (pid N, windows pid W)" on stderr while a live
@@ -15,7 +15,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 main=$(main_checkout)
 
 snapshot() {
-  # Only this project's agents: herdr lists every project's (project_agents strips Windows Python's \r).
   herdr agent list 2>/dev/null | project_agents "$main" 2>/dev/null | sort
   return 0
 }

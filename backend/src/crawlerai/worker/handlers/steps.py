@@ -143,10 +143,10 @@ async def fetch_page(
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
 
-    async def page(url: str, admit_retry: Admit) -> FetchResult | Unchanged:
+    async def page(url: str, admit_next: Admit) -> FetchResult | Unchanged:
         async def fetch(sent: Validators | None) -> FetchResult:
             result = await acquire(
-                url, policy, site.fetch_method, fetching.rungs, recipe=recipe, validators=sent, admit_retry=admit_retry
+                url, policy, site.fetch_method, fetching.rungs, recipe=recipe, validators=sent, admit_next=admit_next
             )
             attempts.extend(result.attempts)
             return result

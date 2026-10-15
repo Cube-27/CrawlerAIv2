@@ -480,8 +480,8 @@ async def polite_fetch(
     rung = None
     if recipe is not None:
         rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
-    admit_retry = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
-    result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_retry=admit_retry)
+    admit_next = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
+    result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_next=admit_next)
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)

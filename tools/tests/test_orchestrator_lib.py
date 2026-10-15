@@ -16,15 +16,21 @@ GIT = shutil.which("git")
 pytestmark = pytest.mark.skipif(BASH is None or GIT is None, reason="needs bash and git")
 
 
-def lib(cwd: Path, call: str) -> str:
-    result = subprocess.run(  # noqa: S603
+def run_lib(cwd: Path, call: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
         [str(BASH), "-c", f'source "$1"; {call}', "lib", LIB.as_posix()],
         cwd=cwd,
+        input=stdin,
         capture_output=True,
         text=True,
         timeout=60,
-        check=True,
+        check=False,
     )
+
+
+def lib(cwd: Path, call: str, stdin: str | None = None) -> str:
+    result = run_lib(cwd, call, stdin)
+    assert result.returncode == 0, result.stderr
     return result.stdout.strip()
 
 
@@ -57,27 +63,14 @@ def test_project_agents_keeps_only_agents_in_the_main_checkout_or_its_worktrees(
             ("impl-e", r"C:\p\Other-worktrees\fix-2", "working"),
         ]
     )
-    result = subprocess.run(  # noqa: S603
-        [str(BASH), "-c", 'source "$1"; project_agents C:/p/repo', "lib", LIB.as_posix()],
-        cwd=tmp_path,
-        input=listing,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=True,
-    )
-    assert result.stdout.splitlines() == ["orchestrator working", "impl-b working", "impl-c idle"]
+    assert lib(tmp_path, "project_agents C:/p/repo", listing).splitlines() == [
+        "orchestrator working",
+        "impl-b working",
+        "impl-c idle",
+    ]
 
 
 def test_project_agents_fails_on_a_listing_it_cannot_read(tmp_path: Path) -> None:
-    result = subprocess.run(  # noqa: S603
-        [str(BASH), "-c", 'source "$1"; project_agents C:/p/repo', "lib", LIB.as_posix()],
-        cwd=tmp_path,
-        input="not json",
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
+    result = run_lib(tmp_path, "project_agents C:/p/repo", "not json")
     assert result.returncode != 0
     assert result.stdout == ""
