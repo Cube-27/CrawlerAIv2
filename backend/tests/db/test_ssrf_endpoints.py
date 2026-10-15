@@ -26,6 +26,9 @@ from urllib.parse import urlsplit
 
 import httpx
 import pytest
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+from mcp.types import TextContent
 from pydantic import SecretStr
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -344,6 +347,70 @@ async def test_a_named_target_is_refused_before_anything_is_stored(
         assert (problem["type"], problem["errors"]) == ("ssrf_rejected", [{"field": member.field, "reason": refusal}])
     # The problem never echoes the target (SPEC-02 §4.11).
     assert str(urlsplit(target).hostname) not in response.text
+    assert await job_count(engine) == jobs
+
+
+@dataclass(frozen=True)
+class Tool:
+    """Where an MCP tool's request names a target (SPEC-10 §4.7): `request` builds the tool's `request` around it,
+    `field` is the member a refusal names (`None` where the tool has one target)."""
+
+    name: str
+    field: str | None
+    request: Callable[[str, str, str], dict[str, Any]]  # (target, a public URL of the site, a schema id) -> request
+    glob: bool = False
+
+    def __str__(self) -> str:
+        return f"{self.name}:{self.field or 'url'}{':glob' if self.glob else ''}"
+
+
+# The tools that fetch, each target as its REST endpoint takes it (`MEMBERS`).
+TOOLS: Sequence[Tool] = [
+    Tool("scrape", None, lambda target, _, __: {"url": target, "formats": ["markdown"]}),
+    Tool("map", None, lambda target, _, __: {"url": target}),
+    Tool("crawl_start", "url", lambda target, _, __: {"url": target, "formats": ["markdown"]}),
+    Tool(
+        "crawl_start",
+        "webhook_url",
+        lambda target, public, _: {"url": public, "formats": ["markdown"], "webhook_url": target},
+    ),
+    Tool("extract", "urls[1]", lambda target, public, schema: _extract([public, target], schema)),
+    Tool("extract", "urls[1]", lambda target, public, schema: _extract([public, _glob(target)], schema), glob=True),
+    Tool("extract", "webhook_url", lambda target, public, schema: _extract([public], schema, webhook_url=target)),
+]
+
+
+@pytest.fixture
+async def mcp(client: httpx.AsyncClient) -> AsyncIterator[ClientSession]:
+    """The SDK's MCP client, connected to `/mcp` through `client`."""
+    async with (
+        streamable_http_client("http://api.test/mcp", http_client=client) as (read, write, _),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        yield session
+
+
+def _named_to_tools() -> list[Any]:
+    cases = []
+    for tool, (authority, reason) in itertools.product(TOOLS, TARGETS):
+        target = f"http://{authority}"
+        if not (tool.glob and "[" in target):  # as in `_named`
+            cases.append(pytest.param(tool, target, reason, id=f"{tool}-{target}"))
+    return cases
+
+
+@pytest.mark.parametrize(("tool", "target", "reason"), _named_to_tools())
+async def test_a_target_named_to_an_mcp_tool_is_refused_before_anything_is_stored(
+    mcp: ClientSession, engine: AsyncEngine, site: str, schema_id: str, tool: Tool, target: str, reason: str
+) -> None:
+    jobs = await job_count(engine)
+
+    result = await mcp.call_tool(tool.name, {"request": tool.request(target, f"{site}/p/1", schema_id)})
+
+    refusal = f"ssrf_rejected: {reason}" if tool.field is None else f"{tool.field}: ssrf_rejected: {reason}"
+    texts = [block.text for block in result.content if isinstance(block, TextContent)]
+    assert (result.isError, texts) == (True, [f"Error executing tool {tool.name}: {refusal}"])
     assert await job_count(engine) == jobs
 
 

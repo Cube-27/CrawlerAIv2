@@ -3,8 +3,14 @@
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app
 (`crawlerai.api.mcp`). Each transport binds a call to the runtime it runs with and the API key that authenticated it.
+
+A tool answers the errors the services raise for a request they refuse with their message, as REST answers them with
+a problem. Any other exception may carry internals (SQL and its parameters, paths): the client gets a fixed message,
+as REST's `problems._on_unexpected` answers, and the server logs the exception.
 """
 
+import functools
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Final
@@ -13,23 +19,31 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolResult, ToolAnnotations
+from pydantic import ValidationError
 
 from crawlerai.config_ir.exporters.configs import ConfigFormat
 from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, SchemaStatus
-from crawlerai.mcp_server.output import MarkdownCursor, markdown_page, tool_result
+from crawlerai.llm.client import LLMFailure
+from crawlerai.mcp_server.output import InvalidCursor, MarkdownCursor, markdown_page, tool_result
+from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.schemas.types import Name
 from crawlerai.services import captures, configs, crawl, extract, jobs, schemas
 from crawlerai.services import map as map_service
 from crawlerai.services import scrape as scrape_service
-from crawlerai.services.configs import ExportRequest
+from crawlerai.services.captures import CaptureNotFound
+from crawlerai.services.configs import ConfigNotFound, ExportRequest, SiteNotFound
 from crawlerai.services.crawl import CrawlRequest
-from crawlerai.services.extract import ExtractRequest
-from crawlerai.services.jobs import ResultsQuery
+from crawlerai.services.extract import DraftTimedOut, ExtractRequest, NoSamplePage, NothingToExtract
+from crawlerai.services.fetching import TargetRejected, TargetsRejected
+from crawlerai.services.jobs import JobNotFound, ResultsQuery
 from crawlerai.services.map import MapRequest
 from crawlerai.services.records import RecordPage
 from crawlerai.services.runtime import Runtime
-from crawlerai.services.schemas import NewSchema
-from crawlerai.services.scrape import ScrapeRequest
+from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
+from crawlerai.services.scrape import RecordsUnavailable, ScrapeRequest, ScrapeTimedOut
+from crawlerai.services.scrape_steps import SchemaUnusable
+
+log = logging.getLogger(__name__)
 
 # §13.3, §18: page content is untrusted, and every tool that returns it says so to the client.
 UNTRUSTED: Final = (
@@ -40,6 +54,30 @@ _STATUS_RESULTS: Final = 10  # results on a status tool's first page; `cursor` p
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 _FETCHES = ToolAnnotations(readOnlyHint=False, openWorldHint=True)
 _WRITES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+# What the tools' services raise for a request they refuse, with a message written for the caller: the errors the REST
+# routers answer as problems, the client's own invalid input, and a refused key (`ToolError`).
+_REFUSALS: Final = (
+    ToolError,
+    ValidationError,
+    InvalidCursor,
+    TargetRejected,
+    TargetsRejected,
+    SchemaUnusable,
+    InvalidSchema,
+    SchemaConflict,
+    SchemaNotFound,
+    RecordsUnavailable,
+    ScrapeTimedOut,
+    LLMFailure,
+    NothingToExtract,
+    NoSamplePage,
+    DraftTimedOut,
+    JobNotFound,
+    SiteNotFound,
+    ConfigNotFound,
+    CaptureNotFound,
+)
+UNEXPECTED: Final = "the server failed to answer the request"
 
 AnyContext = Context[Any, Any, Any]
 
@@ -201,6 +239,22 @@ _TOOLS: Final = {
 }
 
 
+def _answered[**P](tool: Callable[P, Awaitable[CallToolResult]]) -> Callable[P, Awaitable[CallToolResult]]:
+    """`tool`, answering an exception that is not a refusal with `UNEXPECTED` instead of its text."""
+
+    @functools.wraps(tool)
+    async def answer(*args: P.args, **kwargs: P.kwargs) -> CallToolResult:
+        try:
+            return await tool(*args, **kwargs)
+        except _REFUSALS:
+            raise
+        except Exception as e:
+            log.exception("MCP tool %s failed", tool.__name__)
+            raise ToolError(UNEXPECTED) from e
+
+    return answer
+
+
 def build_server(bind: Bind) -> FastMCP:
     """The server with its ten tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
     one. Over HTTP the server is stateless and answers JSON, so any API process can take any request; DNS-rebinding
@@ -214,5 +268,5 @@ def build_server(bind: Bind) -> FastMCP:
     )
     tools = _Tools(bind)
     for name, (method, description, annotations) in _TOOLS.items():
-        server.add_tool(getattr(tools, method), name=name, description=description, annotations=annotations)
+        server.add_tool(_answered(getattr(tools, method)), name=name, description=description, annotations=annotations)
     return server

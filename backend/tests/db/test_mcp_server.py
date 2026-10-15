@@ -36,6 +36,7 @@ from crawlerai.mcp_server.stdio import key_bind
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.services import schemas
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.keys import CreatedKey, create_key, revoke_key
 from crawlerai.services.runtime import Runtime
@@ -346,3 +347,29 @@ async def test_a_revoked_key_stops_the_stdio_server_at_its_next_call(
     assert not before.isError
     assert after.isError
     assert _texts(after) == ["Error executing tool list_schemas: CRAWLERAI_API_KEY is unknown or revoked"]
+
+
+async def test_an_unexpected_error_reaches_the_client_without_its_text(
+    key: CreatedKey,
+    engine: AsyncEngine,
+    fetching: Fetching,
+    engine_data: EngineData,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def failing(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("SELECT secret FROM internals")
+
+    monkeypatch.setattr(schemas, "list_all", failing)
+    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, drift_margins=None)
+    server = build_server(key_bind(runtime, key.key))
+
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("list_schemas", {})
+
+    # As REST answers an unexpected exception (`problems._on_unexpected`); the server logs it.
+    assert (result.isError, _texts(result)) == (
+        True,
+        ["Error executing tool list_schemas: the server failed to answer the request"],
+    )
+    assert "SELECT secret FROM internals" in caplog.text
