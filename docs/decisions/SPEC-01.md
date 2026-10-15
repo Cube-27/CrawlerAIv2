@@ -324,3 +324,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Open the store inside `expire_captures` from settings.
 - Why: Keeps `Periodic.run` as `(conn) -> …` with the store explicit; retention needs both `db` and `storage`, independent siblings in the layering.
 - Reversible: yes
+
+### D-0867 — Expired leases are released a batch per scheduler run
+- Date: 2026-10-16 · Spec/PR: follow-ups (#197) · Status: decided
+- Decision: `release_expired_leases(batch=)` releases up to `LEASE_BATCH = 100` per run; a full batch runs again at once, as `fail_stalled_jobs` does.
+- Alternatives: No limit.
+- Why: When many workers die at once, one transaction would lock every expired task and its job.
+- Reversible: yes
