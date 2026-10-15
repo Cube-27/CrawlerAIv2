@@ -17,10 +17,11 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
   (SPEC-04 §4.2); the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
   up to any `+`, that follow schema.org naming. The paths are read from the documents, as columns are read from the
   schema.
-URL hosts are always checked.
+Schemas (the tables and the schema documents) are read only from files outside the exempt paths: an exempt file
+is not scanned, so a name it defines would excuse a host it is free to hold. URL hosts are always checked.
 
 With `--public`, `--staged` (the pre-commit hook) scans only the files staged for commit, as the index holds
-them. Names of tracked files, modules and schema columns still come from the whole repository.
+them. Names of tracked files, modules and schemas still come from the whole repository, as above.
 
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
 allowlist or the TLD list cannot be used, or when `--allowlist` lies outside the scanned repository (`--root`);
@@ -245,19 +246,23 @@ class RepoNames:
     def of(cls, root: Path, paths: list[str]) -> "RepoNames":
         extensions: set[str] = set()
         modules: set[str] = set()
-        columns: set[tuple[str, str]] = set()
-        schema_paths: set[str] = set()
         for path in paths:
             pure = PurePosixPath(path)
             if pure.suffix:
                 extensions.add(pure.suffix[1:].lower())
             if pure.suffix == ".py":
                 modules.update(module_names(pure))
-                columns.update((table.lower(), column.lower()) for table, column in schema_columns(root / path))
-            if pure.suffix == ".json":
-                schema_paths.update(schema_org_paths(root / path))
             if path == DATA_MANIFEST:
                 extensions.update(manifest_extensions(root / path))
+        # An exempt file is not scanned, so it may hold anything: a schema it defines excuses no token.
+        sources = [PurePosixPath(path) for path in paths if not is_exempt(path)]
+        columns = {
+            (table.lower(), column.lower())
+            for path in sources
+            if path.suffix == ".py"
+            for table, column in schema_columns(root / path)
+        }
+        schema_paths = {found for path in sources if path.suffix == ".json" for found in schema_org_paths(root / path)}
         return cls(frozenset(extensions), frozenset(modules), frozenset(columns), frozenset(schema_paths))
 
     def names(self, token: str) -> bool:
