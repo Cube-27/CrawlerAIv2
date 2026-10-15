@@ -43,7 +43,8 @@ def align(claim: SpanClaim, cleaned_text: str) -> GroundedSpan | None:
     value = claim.value
     if not value:
         return None  # an empty span holds no value
-    if claim.start >= 0 and claim.end <= len(cleaned_text) and cleaned_text[claim.start : claim.end] == value:
+    # Both ends must be offsets into the text: a negative end would slice counting from the end.
+    if 0 <= claim.start < claim.end <= len(cleaned_text) and cleaned_text[claim.start : claim.end] == value:
         return GroundedSpan(value, claim.start, claim.end)
     occurrences = _occurrences(value, cleaned_text)
     if not occurrences:

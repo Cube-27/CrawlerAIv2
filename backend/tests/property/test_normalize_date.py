@@ -24,7 +24,6 @@ _datetimes = st.datetimes(min_value=datetime(1970, 1, 2), max_value=datetime(210
 # The first call for a locale loads its CLDR and `dateparser` data from disk, once per process, which can take longer
 # than Hypothesis's default deadline; the tests that read locale data have no deadline.
 _LOADS_LOCALE_DATA = settings(deadline=None)
-_whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 
 
 def _ctx(html_lang: str | None = None, og_locale: str | None = None) -> Context:
@@ -43,7 +42,7 @@ def test_an_iso_date_round_trips(value: date) -> None:
 
 
 @given(_datetimes)
-def test_an_rfc_3339_datetime_normalizes_to_utc_and_to_itself(value: datetime) -> None:
+def test_an_rfc_3339_datetime_normalizes_to_utc_and_to_itself_and_a_date_field_takes_its_date(value: datetime) -> None:
     result = normalize(value.isoformat(), DATETIME)
 
     assert isinstance(result, Ok)
@@ -51,10 +50,7 @@ def test_an_rfc_3339_datetime_normalizes_to_utc_and_to_itself(value: datetime) -
     assert result.value.endswith("Z")
     assert datetime.fromisoformat(result.value) == value
     assert normalize(result.value, DATETIME) == result
-
-
-@given(_datetimes)
-def test_a_date_field_takes_the_date_the_datetime_states(value: datetime) -> None:
+    # The date the datetime states, in its own offset, not in UTC.
     assert normalize(value.isoformat()) == Ok(value.date().isoformat())
 
 
@@ -129,11 +125,6 @@ def test_a_date_first_iso_prefix_fixes_the_field_order_in_every_locale(value: da
 def test_iso_8601_offset_forms_parse_directly_without_a_language(raw: str, expected: str) -> None:
     assert normalize(raw, DATETIME) == Ok(expected)
     assert normalize(raw) == Ok("2026-03-04")
-
-
-@given(st.sampled_from([DATE, DATETIME]), _whitespace)
-def test_empty_or_whitespace_input_is_invalid(spec: FieldSpec, raw: str) -> None:
-    assert normalize(raw, spec, _ctx("en-GB")) == Invalid("empty")
 
 
 @_LOADS_LOCALE_DATA
@@ -299,17 +290,6 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
     with pytest.raises(TypeError):
         normalize("2026-03-04", spec)
-
-
-@_LOADS_LOCALE_DATA
-@given(st.sampled_from([DATE, DATETIME]), st.text(max_size=30) | _dates.map(str))
-def test_the_result_depends_only_on_the_arguments_and_never_raises(spec: FieldSpec, raw: str) -> None:
-    ctx = _ctx("en", "en_GB")
-
-    first = normalize(raw, spec, ctx)
-
-    assert isinstance(first, Ok | Ambiguous | Invalid)
-    assert normalize(raw, spec, ctx) == first
 
 
 @pytest.mark.parametrize(

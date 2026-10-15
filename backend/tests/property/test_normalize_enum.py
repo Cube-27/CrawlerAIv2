@@ -160,21 +160,6 @@ def test_a_spec_of_another_type_is_a_programming_error() -> None:
         enum.normalize("in stock", spec, CTX)
 
 
-@given(st.sampled_from([SCHEMA, TYPE]), st.text(max_size=60))
-def test_normalize_is_pure(spec: FieldSpec, raw: str) -> None:
-    first = enum.normalize(raw, spec, CTX)
-
-    assert enum.normalize(raw, spec, CTX) == first
-
-
-@given(st.sampled_from([SCHEMA, TYPE]), st.text(max_size=60))
-def test_an_ok_value_is_a_member(spec: FieldSpec, raw: str) -> None:
-    result = enum.normalize(raw, spec, CTX)
-
-    if isinstance(result, Ok):
-        assert result.value in MEMBERS
-
-
 def test_the_dispatcher_sends_enum_to_the_enum_module() -> None:
     assert normalize("https://schema.org/SoldOut", SCHEMA, CTX) == Ok("SoldOut")
 

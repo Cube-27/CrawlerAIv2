@@ -99,9 +99,13 @@ def _script(document: JsonValue) -> str:
 
 
 @given(st.lists(BLOCKS, min_size=1, max_size=3))
-def test_locators_read_back_the_raw_values(documents: list[JsonValue]) -> None:
+def test_locators_read_back_the_raw_values(generated: list[JsonValue]) -> None:
+    # A known Product first, so a collector that finds nothing fails.
+    known: JsonValue = {"@context": "https://schema.org", "@type": "Product", "name": "Known title"}
+    documents = [known, *generated]
     page = ParsedPage("<html><head>" + "".join(map(_script, documents)) + "</head></html>")
     result = JsonLdCollector(VOCABULARY).collect(page, SCHEMA, CTX)
+    assert ("title", "Known title", "jsonld:0:$['name']") in [(c.field, c.raw, c.locator) for c in result.candidates]
     for entity in result.entities:
         _, block, path = entity.id.split(":", 2)
         assert isinstance(_read(documents[int(block)], path), dict)

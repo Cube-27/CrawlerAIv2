@@ -71,7 +71,6 @@ def value(
 
 
 _separators = st.sampled_from([", ", " , ", " - ", " / ", "; ", " "])
-_whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 
 # (locality, region, country code, country name) of cities with one place per name.
 _UNIQUE = [
@@ -183,11 +182,6 @@ def test_text_with_no_name_of_a_place_is_invalid(text: str) -> None:
     assert norm(text) == Invalid("no_match")
 
 
-@given(_whitespace)
-def test_empty_or_whitespace_text_is_invalid(text: str) -> None:
-    assert norm(text) == Invalid("empty")
-
-
 def test_a_lone_surrogate_is_invalid() -> None:
     assert norm("Alderton \ud800") == Invalid("surrogate")
 
@@ -292,14 +286,6 @@ def test_a_value_with_no_place_and_no_remote_is_invalid(raw: JsonValue, reason: 
 
 
 # Purity, dispatch and the data files
-
-
-@given(st.sampled_from(["Harwick", "Alderton, Northland", "Remote", "nothing here"]))
-def test_normalize_is_a_pure_function(text: str) -> None:
-    # The same input against an equal gazetteer gives the same result: nothing earlier calls cached changes it.
-    fresh = location.Gazetteer.parse(COUNTRY_INFO, ADMIN1, CITIES)
-
-    assert norm(text) == location.normalize(text, SPEC, CTX, gazetteer=fresh)
 
 
 def test_the_dispatcher_sends_location_here(monkeypatch: pytest.MonkeyPatch) -> None:

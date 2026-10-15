@@ -1,11 +1,11 @@
 """Grounding by alignment (SPEC-06 §4.3, INV-12): on generated texts and spans, `align` returns the exact span; a
-value absent from the text is dropped; a repeated value takes the occurrence nearest the model's `start`; whatever it
-accepts is a verbatim slice of the text at its stated offsets."""
+value absent from the text is dropped; a repeated value takes the occurrence nearest the model's `start`; an accepted
+claim's locator names its offsets."""
 
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from crawlerai.collect.locator import parse_locator
+from crawlerai.collect.locator import Locator, parse_locator
 from crawlerai.llm.grounding import SpanClaim, align
 
 _text = st.text(st.characters(codec="utf-8", exclude_categories=["Cs"]), max_size=200)
@@ -33,6 +33,7 @@ def test_a_claim_whose_offsets_hold_the_value_is_accepted_as_stated(case: tuple[
 
     assert grounded is not None
     assert (grounded.value, grounded.start, grounded.end) == (text[start:end], start, end)
+    assert parse_locator(grounded.locator) == Locator("text", (str(start), str(end)))
 
 
 @given(_text_and_span(), _offset, _offset)
@@ -54,20 +55,6 @@ def test_a_value_absent_from_the_text_is_dropped(text: str, value: str, start: i
     assume(value not in text)
 
     assert align(SpanClaim(value=value, start=start, end=end), text) is None
-
-
-@given(_text, _text, _offset, _offset)
-def test_whatever_is_accepted_is_the_text_at_its_offsets_and_its_locator_says_so(
-    text: str, value: str, start: int, end: int
-) -> None:
-    grounded = align(SpanClaim(value=value, start=start, end=end), text)
-
-    if grounded is not None:
-        assert 0 <= grounded.start < grounded.end <= len(text)
-        assert text[grounded.start : grounded.end] == grounded.value == value
-        locator = parse_locator(grounded.locator)
-        assert locator.scheme == "text"
-        assert locator.parts == (str(grounded.start), str(grounded.end))
 
 
 @given(

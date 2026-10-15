@@ -16,18 +16,12 @@ def _spec(type_: FieldType, **parameters: object) -> FieldSpec:
 
 
 @given(ANY_RAW)
-def test_text_long_text_and_objects_are_never_checkable(raw: str | int | float) -> None:
+def test_text_and_objects_are_never_checkable_and_types_with_a_grammar_always_are(raw: str | int | float) -> None:
     opaque = (
         _spec(FieldType.TEXT),
         _spec(FieldType.LONG_TEXT),
         _spec(FieldType.OBJECT, fields={"amount": {"type": "money", "description": "An amount."}}),
     )
-
-    assert [checkable(raw, spec) for spec in opaque] == [False, False, False]
-
-
-@given(ANY_RAW)
-def test_types_with_a_grammar_or_vocabulary_are_always_checkable(raw: str | int | float) -> None:
     specs = (
         _spec(FieldType.MONEY),
         _spec(FieldType.ENUM, vocab="schema:ItemAvailability"),
@@ -37,7 +31,8 @@ def test_types_with_a_grammar_or_vocabulary_are_always_checkable(raw: str | int 
         _spec(FieldType.RANGE),
     )
 
-    assert all(checkable(raw, spec) for spec in specs)
+    assert [checkable(raw, spec) for spec in opaque] == [False, False, False]
+    assert [checkable(raw, spec) for spec in specs] == [True] * len(specs)
 
 
 def test_an_identifier_is_checkable_only_under_a_scheme_with_a_check_digit() -> None:

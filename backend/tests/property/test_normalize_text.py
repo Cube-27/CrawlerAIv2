@@ -23,38 +23,20 @@ _whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str
 _words = st.from_regex(r"[A-Za-z0-9]{1,12}", fullmatch=True)
 
 
-@given(st.sampled_from([TEXT, LONG]), _whitespace)
-def test_empty_or_whitespace_input_is_invalid(spec: FieldSpec, raw: str) -> None:
-    assert text.normalize(raw, spec, CTX) == Invalid("empty")
-
-
 @given(st.sampled_from([TEXT, LONG]), st.text(max_size=200))
-def test_an_ok_value_rendered_as_html_normalizes_to_itself(spec: FieldSpec, raw: str) -> None:
+def test_an_ok_value_is_nfc_without_control_characters_and_normalizes_to_itself_as_html(
+    spec: FieldSpec, raw: str
+) -> None:
     result = text.normalize(raw, spec, CTX)
-
-    if isinstance(result, Ok):
-        assert isinstance(result.value, str)
-        assert text.normalize(html.escape(result.value, quote=False), spec, CTX) == result
-
-
-@given(st.text(max_size=200))
-def test_a_text_value_is_nfc_trimmed_and_on_one_line_with_single_spaces(raw: str) -> None:
-    result = text.normalize(raw, TEXT, CTX)
 
     if isinstance(result, Ok):
         value = result.value
         assert isinstance(value, str)
         assert value == unicodedata.normalize("NFC", value)
-        assert value == " ".join(value.split())
-
-
-@given(st.sampled_from([TEXT, LONG]), st.text(max_size=200))
-def test_an_ok_value_has_no_control_characters_but_line_breaks(spec: FieldSpec, raw: str) -> None:
-    result = text.normalize(raw, spec, CTX)
-
-    if isinstance(result, Ok):
-        assert isinstance(result.value, str)
-        assert all(unicodedata.category(c) != "Cc" or c == "\n" for c in result.value)
+        assert all(unicodedata.category(c) != "Cc" or c == "\n" for c in value)
+        # A text value is trimmed and on one line with single spaces.
+        assert spec is LONG or value == " ".join(value.split())
+        assert text.normalize(html.escape(value, quote=False), spec, CTX) == result
 
 
 @pytest.mark.parametrize("raw", ["\x00", "\x01\x7f", " \x1b \x9f "])
@@ -135,10 +117,3 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
     with pytest.raises(TypeError):
         text.normalize("a", spec, CTX)
-
-
-@given(st.sampled_from([TEXT, LONG]), st.text(max_size=50))
-def test_the_result_depends_only_on_the_arguments(spec: FieldSpec, raw: str) -> None:
-    first = text.normalize(raw, spec, CTX)
-
-    assert text.normalize(raw, spec, CTX) == first

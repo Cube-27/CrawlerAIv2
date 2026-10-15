@@ -56,13 +56,16 @@ _reference = st.one_of(
 
 @given(st.lists(_reference, max_size=6), st.lists(_reference, max_size=2))
 def test_links_are_absolute_canonical_http_urls(hrefs: list[str], bases: list[str]) -> None:
+    # An absolute link reads the same against any base, so it is always found, as its canonical form.
     page = ParsedPage(
         "".join(f'<base href="{escape(b)}">' for b in bases)
         + "".join(f'<a href="{escape(h)}">x</a><link rel="next" href="{escape(h)}">' for h in hrefs)
+        + '<a href="HTTPS://Shop.Example.TEST:443/known#top">k</a>'
     )
 
     found = links(page, FINAL_URL)
 
+    assert "https://shop.example.test/known" in found
     assert len(set(found)) == len(found)
     for url in found:
         assert urlsplit(url).scheme in ("http", "https")
@@ -102,8 +105,11 @@ _fragment = st.one_of(
 
 @given(st.lists(_fragment, max_size=12))
 def test_cleaned_html_runs_no_script(fragments: list[str]) -> None:
-    reparsed = LexborHTMLParser(cleaned_html(ParsedPage("".join(fragments))))
+    # Inert markup before the fragments is kept, so an empty result cannot pass.
+    cleaned = cleaned_html(ParsedPage('<p class="kept">inert text</p>' + "".join(fragments)))
+    reparsed = LexborHTMLParser(cleaned)
 
+    assert "inert text" in cleaned
     assert reparsed.css("script, style, noscript, template") == []
     for node in reparsed.root.traverse() if reparsed.root is not None else ():
         for name, value in node.attributes.items():

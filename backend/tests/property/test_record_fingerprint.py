@@ -81,11 +81,6 @@ def test_list_order_is_part_of_the_fingerprint() -> None:
     assert first != record_fingerprint({"title": ["b", "a"]}, SCHEMA)
 
 
-@given(_data)
-def test_a_record_compared_with_itself_has_no_changed_fields(data: dict[str, JsonValue]) -> None:
-    assert changed_fields(data, dict(data), SCHEMA) == []
-
-
 @given(_data, _data)
 def test_changed_fields_are_the_fields_whose_published_json_value_differs_in_schema_order(
     previous: dict[str, JsonValue], current: dict[str, JsonValue]

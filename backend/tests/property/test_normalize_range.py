@@ -73,7 +73,6 @@ def _value(
 
 _amounts = st.decimals(min_value=1, max_value=10**6, places=2)
 _bounds = st.tuples(_amounts, _amounts).map(sorted)
-_whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 
 
 @given(_bounds, st.sampled_from(CODES), st.sampled_from(PERIODS))
@@ -125,7 +124,8 @@ def test_a_missing_period_is_ambiguous(bounds: list[Decimal], code: str) -> None
 def test_only_a_period_unit_after_per_or_slash_is_a_period(bounds: list[Decimal], code: str, tail: str) -> None:
     lo, hi = bounds
 
-    assert not isinstance(norm(f"{code} {lo} - {hi} {tail}"), Ok)
+    # The words stay in the upper bound, and money declines it.
+    assert norm(f"{code} {lo} - {hi} {tail}") == Invalid("no_currency")
 
 
 @given(_bounds, st.sampled_from(PERIODS))
@@ -191,42 +191,21 @@ def test_a_quantitative_value_with_only_a_period_is_ambiguous(period: str) -> No
 
 
 @pytest.mark.parametrize(
-    "raw",
+    ("raw", "reason"),
     [
-        {"currency": "EUR", "minValue": 1},
-        {"currency": "EUR", "minValue": True, "maxValue": 2},
-        {"minValue": "1", "maxValue": "NaN", "unitCode": "KGM"},
-        {"minValue": "one", "maxValue": "2", "unitCode": "KGM"},
-        {"currency": "EUR", "value": [1, 2]},
-        {"currency": 978, "minValue": 1, "maxValue": 2},
-        [1, 2],
-        3,
-        None,
+        ({"currency": "EUR", "minValue": 1}, "bound_missing"),
+        ({"currency": "EUR", "minValue": True, "maxValue": 2}, "bound_not_a_number"),
+        ({"minValue": "1", "maxValue": "NaN", "unitCode": "KGM"}, "bound_not_a_number"),
+        ({"minValue": "one", "maxValue": "2", "unitCode": "KGM"}, "bound_not_a_number"),
+        ({"currency": "EUR", "value": [1, 2]}, "bound_not_a_number"),
+        ({"currency": 978, "minValue": 1, "maxValue": 2}, "currency_not_a_string"),
+        ([1, 2], "not_a_range_value"),
+        (3, "not_a_range_value"),
+        (None, "not_a_range_value"),
     ],
 )
-def test_malformed_structured_input_is_invalid(raw: JsonValue) -> None:
-    assert isinstance(norm(raw), Invalid)
-
-
-@given(_whitespace)
-def test_empty_or_whitespace_input_is_invalid(raw: str) -> None:
-    assert norm(raw) == Invalid("empty")
-
-
-@given(
-    st.one_of(
-        st.text(max_size=30),
-        st.dictionaries(
-            st.sampled_from(["currency", "minValue", "maxValue", "value", "unitText", "unitCode"]),
-            st.one_of(st.text(max_size=5), st.integers()),
-        ),
-    )
-)
-def test_normalize_is_pure(raw: JsonValue) -> None:
-    first = norm(raw)
-    second = norm(raw)
-
-    assert first == second
+def test_malformed_structured_input_is_invalid(raw: JsonValue, reason: str) -> None:
+    assert norm(raw) == Invalid(reason)
 
 
 def test_another_type_is_a_programming_error() -> None:

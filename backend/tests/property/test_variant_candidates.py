@@ -144,21 +144,15 @@ def _values(candidates: tuple[Candidate, ...]) -> Counter[tuple[str, str]]:
 
 
 @given(st.text(alphabet="abc ", min_size=1, max_size=6).map(str.strip).filter(bool), VARIANTS)
-def test_json_ld_and_microdata_give_equal_sub_field_candidates(group_name: str, variants: list[Variant]) -> None:
-    jsonld = JsonLdCollector(VOCABULARY).collect(_jsonld_page(group_name, variants), SCHEMA, CTX)
-    microdata = MicrodataCollector(VOCABULARY).collect(_microdata_page(group_name, variants), SCHEMA, CTX)
-
-    assert _values(jsonld.candidates) == _values(microdata.candidates)
-
-
-@given(st.text(alphabet="abc ", min_size=1, max_size=6).map(str.strip).filter(bool), VARIANTS)
-def test_the_row_path_gives_no_candidates_and_each_sub_field_one_per_value(
+def test_the_row_path_gives_no_candidates_and_json_ld_and_microdata_give_equal_sub_field_candidates(
     group_name: str, variants: list[Variant]
 ) -> None:
-    found = JsonLdCollector(VOCABULARY).collect(_jsonld_page(group_name, variants), SCHEMA, CTX).candidates
-    fields = Counter(c.field for c in found)
+    jsonld = JsonLdCollector(VOCABULARY).collect(_jsonld_page(group_name, variants), SCHEMA, CTX).candidates
+    microdata = MicrodataCollector(VOCABULARY).collect(_microdata_page(group_name, variants), SCHEMA, CTX).candidates
+    fields = Counter(c.field for c in jsonld)
 
     assert "variants" not in fields
     assert fields["variants.sku"] == sum((v.sku is not None) + (v.offer_sku is not None) for v in variants)
     assert fields["variants.price"] == sum(v.price is not None for v in variants)
     assert fields["variants.url"] == sum(v.url is not None for v in variants)
+    assert _values(jsonld) == _values(microdata)

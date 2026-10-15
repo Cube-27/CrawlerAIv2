@@ -100,7 +100,7 @@ _documents = st.fixed_dictionaries(
 
 
 @given(_documents)
-def test_valid_documents_round_trip_through_json(raw: dict[str, Any]) -> None:
+def test_valid_documents_round_trip_through_json_and_the_role_s_wire_form(raw: dict[str, Any]) -> None:
     document = SchemaDocument.model_validate(raw)
 
     assert SchemaDocument.model_validate_json(document.model_dump_json(exclude_none=True)) == document
@@ -108,12 +108,6 @@ def test_valid_documents_round_trip_through_json(raw: dict[str, Any]) -> None:
         **raw,
         "fields": _without_defaults(raw["fields"]),
     }
-
-
-@given(_documents)
-def test_valid_documents_round_trip_through_the_role_s_wire_form(raw: dict[str, Any]) -> None:
-    document = SchemaDocument.model_validate(raw)
-
     wire = to_wire(document.model_dump(mode="json", exclude={"name", "version"}, exclude_none=True))
 
     assert list(Draft202012Validator(wire_schema()).iter_errors(wire)) == []
@@ -183,19 +177,28 @@ def _broken(field: dict[str, Any], change: str, value: Any) -> dict[str, Any]:
     return {**field, change: value} if value is not None else {k: v for k, v in field.items() if k != change}
 
 
-@given(_documents, _row_mapped(), _row_breakers())
-def test_a_row_mapping_that_breaks_its_rules_is_rejected(
-    raw: dict[str, Any], field: dict[str, Any], breaker: tuple[str, Any]
-) -> None:
-    raw["fields"]["k_row"] = _broken(field, *breaker)
+def _document(**fields: dict[str, Any]) -> dict[str, Any]:
+    """A valid document with one plain field and `fields`."""
+    return {
+        "name": "doc",
+        "version": 1,
+        "page_kind": "detail",
+        "fields": {"title": {"type": "text", "description": "d"}, **fields},
+    }
+
+
+@given(_row_mapped(), _row_breakers())
+def test_a_row_mapping_that_breaks_its_rules_is_rejected(field: dict[str, Any], breaker: tuple[str, Any]) -> None:
+    SchemaDocument.model_validate(_document(k_row=field))  # valid before the change
+    raw = _document(k_row=_broken(field, *breaker))
 
     with pytest.raises(ValidationError):
         SchemaDocument.model_validate(raw)
 
 
-@given(_documents, st.sampled_from(list(FieldType)).flatmap(lambda t: _spec_of(t, 1, described=True)))
-def test_a_key_outside_a_row_mapped_field_is_rejected(raw: dict[str, Any], spec: dict[str, Any]) -> None:
-    raw["fields"]["k_field"] = {k: v for k, v in spec.items() if k != "schema_org"} | {"key": ["a"]}
+@given(st.sampled_from(list(FieldType)).flatmap(lambda t: _spec_of(t, 1, described=True)))
+def test_a_key_outside_a_row_mapped_field_is_rejected(spec: dict[str, Any]) -> None:
+    raw = _document(k_field={k: v for k, v in spec.items() if k != "schema_org"} | {"key": ["a"]})
 
     with pytest.raises(ValidationError, match="`key` is only for"):
         SchemaDocument.model_validate(raw)

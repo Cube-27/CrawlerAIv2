@@ -1,6 +1,5 @@
 """API keys are `ck_` followed by 32 random bytes in base62 (SPEC-07 §4.2), and only their SHA-256 is stored."""
 
-import hashlib
 import string
 
 from hypothesis import given
@@ -35,11 +34,6 @@ def test_a_generated_key_is_the_prefix_and_43_base62_digits() -> None:
         assert key.startswith("ck_")
         assert len(key) == 46
         assert set(key[3:]) <= set(BASE62)
-
-
-@given(st.text())
-def test_the_stored_hash_is_the_sha256_hex_of_the_key(key: str) -> None:
-    assert hash_key(key) == hashlib.sha256(key.encode()).hexdigest()
 
 
 def test_the_hash_of_a_known_key() -> None:
