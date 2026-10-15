@@ -753,3 +753,92 @@ def test_a_field_output_offers_the_kept_values_of_each_kind() -> None:
     output = page_output(result, "ok")
 
     assert list(output.fields["title"].offered.items()) == [("jsonld", ("A",)), ("og", ("A", "B"))]
+
+
+OFFER_SCHEMA = SchemaDef(
+    id=SchemaId(uuid7()),
+    origin="user",
+    status="active",
+    name="synthetic_offer",
+    version=1,
+    page_kind="detail",
+    fields={
+        "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
+        "price": FieldSpec(
+            type=FieldType.MONEY, description="d", required=True, schema_org="Offer.price+priceCurrency"
+        ),
+        "availability": FieldSpec(
+            type=FieldType.ENUM, description="d", vocab="schema:ItemAvailability", schema_org="Offer.availability"
+        ),
+    },
+)
+
+
+_OFFER_LABELS: dict[str, JsonValue] = {
+    "title": {"value": "Item 1", "absent": False},
+    "price": {"value": None, "absent": True},
+    "availability": {"value": None, "absent": True},
+}
+
+
+class PriceLLM:
+    """Stands in for a provider answering role C with the page text's price as written (`$12.50`), nothing else."""
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        text = req.user.split("<page_text>\n", 1)[1].rsplit("\n</page_text>", 1)[0]
+        asked = json.loads(json.dumps(req.output_schema))["properties"]["fields"]["required"]
+        claims: dict[str, JsonValue] = {name: {"value": "", "start": 0, "end": 0} for name in asked}
+        start = text.index("$12.50")
+        claims["price"] = {"value": "$12.50", "start": start, "end": start + len("$12.50")}
+        return LLMResponse(
+            data={"fields": claims},
+            provider="provider-a",
+            model="model-a",
+            tokens_in=len(req.user),
+            tokens_out=12,
+            latency_ms=100,
+            request_hash=request_hash(req),
+        )
+
+
+def test_an_aggregate_offer_s_price_read_only_by_role_c_stays_an_offer_split() -> None:
+    # SPEC-05 §4.8, D-0440 (accuracy class R1b): the AggregateOffer holds the page's offer fields (availability), so
+    # it is the anchor Offer; a price only role C reads is no value of that Offer and does not publish, even though
+    # the page's stated currency (USD) settles the `$` it is written with (R1a).
+    aggregate = {
+        "@type": "AggregateOffer",
+        "lowPrice": "12.50",
+        "highPrice": "15.00",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock",
+    }
+    node = {"@context": "https://schema.org", "@type": "Product", "name": "Item 1", "offers": aggregate}
+    script = f'<script type="application/ld+json">{json.dumps(node)}</script>'
+    body = f"<html><head>{script}</head><body><h1>Item 1</h1><p>From $12.50 today.</p></body></html>".encode()
+    original = bundle(1)
+    manifest = original.manifest.model_copy(update={"html_sha256": sha256_hex(body)})
+    store = MemoryStore()
+    capture_id = asyncio.run(
+        store.put_capture(original.model_copy(update={"manifest": manifest, "body": body}), "custom_store")
+    )
+    page = EvalPageRow(
+        capture_id=capture_id,
+        split="dev",
+        schema_id=OFFER_SCHEMA.id,
+        schema_name=OFFER_SCHEMA.name,
+        page_kind="detail",
+        category="custom_store",
+        labels=labels(1) | {"fields": _OFFER_LABELS},
+    )
+    asyncio.run(store.put_page(page))
+    engine = PipelineEngine(DATA, {OFFER_SCHEMA.name: OFFER_SCHEMA})
+
+    asyncio.run(replay_split(store, engine, live=PriceLLM()))
+    [case] = asyncio.run(replay_split(store, engine, live=None))
+
+    assert isinstance(case.output, PageOutput)
+    assert case.output.llm_calls == 1
+    assert case.output.fields["price"] == FieldOutput(
+        status="conflict", offered={"llm": ({"amount": "12.50", "currency": "USD"},)}
+    )
+    assert case.output.fields["availability"].status == "published"
