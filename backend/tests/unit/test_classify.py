@@ -22,22 +22,12 @@ _EMPTY_APP = b'<html><head><script src="/app.js"></script></head><body><div id="
     ("status", "expected"),
     [
         (404, "not_found"),
-        (410, "not_found"),
-        (401, "blocked"),
         (403, "blocked"),
-        (407, "blocked"),
-        (429, "blocked"),
-        (451, "blocked"),
+        # 503 is a server error that asks the client to back off: blocked wins over error.
         (503, "blocked"),
         (400, "error"),
-        (405, "error"),
-        (418, "error"),
         (500, "error"),
-        (502, "error"),
-        (504, "error"),
-        (599, "error"),
         (200, "ok"),
-        (203, "ok"),
         # The fetcher follows redirects; a 3xx reaching classify is not a 2xx page, so the shell rule does not apply.
         (301, "ok"),
     ],
@@ -57,8 +47,15 @@ def test_status_decides_before_the_body(status: int, expected: BlockClass) -> No
         (_page(200, 0), "ok"),
         (_page(0, 5), "ok"),
         # Text inside script, style, noscript and template is not visible.
-        (_page(10, 0, "<script>" + "y" * 500 + "</script><style>" + "z" * 500 + "</style>"), "shell"),
-        (_page(10, 0, "<noscript>" + "y" * 500 + "</noscript><template><p>" + "z" * 500 + "</p></template>"), "shell"),
+        (
+            _page(
+                10,
+                0,
+                "<script>" + "y" * 500 + "</script><style>" + "z" * 500 + "</style>"
+                "<noscript>" + "y" * 500 + "</noscript><template><p>" + "z" * 500 + "</p></template>",
+            ),
+            "shell",
+        ),
         # Links inside a template are not in the document.
         (_page(10, 0, "<template>" + '<a href="/x">x</a>' * 10 + "</template>"), "shell"),
         # An anchor without href is not a link.

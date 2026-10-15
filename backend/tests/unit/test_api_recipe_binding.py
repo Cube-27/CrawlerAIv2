@@ -162,10 +162,13 @@ def test_a_regex_binder_reads_its_group_from_the_page_path() -> None:
 
 
 def test_a_missing_or_empty_value_resolves_to_none() -> None:
-    assert resolve(Binder("path", "3"), f"{_PAGE}/p/a", {}) is None
-    assert resolve(Binder("query", "id"), f"{_PAGE}/p?id=&x=1", {}) is None
-    assert resolve(Binder("jsonld", "$[*]['sku']"), _PAGE, {"jsonld": [{"sku": 1}, {"sku": 2}]}) is None
-    assert resolve(Binder("js_state", "$['flag']"), _PAGE, {"js_state": {"flag": True}}) is None
+    jsonld: PageData = {"jsonld": [{"sku": 1}, {"sku": 2}]}
+    js_state: PageData = {"js_state": {"flag": True, "n": 7}}
+
+    assert [resolve(Binder("path", arg), f"{_PAGE}/p/a", {}) for arg in ("1", "3")] == ["a", None]
+    assert [resolve(Binder("query", arg), f"{_PAGE}/p?id=&x=1", {}) for arg in ("x", "id")] == ["1", None]
+    assert [resolve(Binder("jsonld", arg), _PAGE, jsonld) for arg in ("$[0]['sku']", "$[*]['sku']")] == ["1", None]
+    assert [resolve(Binder("js_state", arg), _PAGE, js_state) for arg in ("$['n']", "$['flag']")] == ["7", None]
 
 
 def test_values_render_encoded_in_the_url_and_escaped_in_the_body() -> None:
