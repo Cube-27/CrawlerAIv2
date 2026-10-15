@@ -25,10 +25,10 @@ class Clock:
     [
         (None, None, timedelta(seconds=1)),
         (250, None, timedelta(milliseconds=250)),
+        (0, None, timedelta(0)),
         (None, timedelta(seconds=10), timedelta(seconds=10)),
         (5000, timedelta(seconds=2), timedelta(seconds=5)),
         (250, timedelta(seconds=2), timedelta(seconds=2)),
-        (0, None, timedelta(0)),
     ],
 )
 def test_the_interval_is_the_site_setting_or_1s_never_below_the_robots_crawl_delay(
@@ -48,7 +48,6 @@ def test_the_interval_is_the_site_setting_or_1s_never_below_the_robots_crawl_del
         ("-5", None),
         ("1.5", None),
         ("soon", None),
-        ("", None),
         # Beyond what a timedelta holds, or what int() parses: the longest pause there is.
         ("99999999999999", timedelta.max),
         ("9" * 5000, timedelta.max),

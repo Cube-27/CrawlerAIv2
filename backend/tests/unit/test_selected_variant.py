@@ -80,6 +80,11 @@ def _value(preference: Preference) -> object:
     return preference.candidate.normalized.value  # type: ignore[union-attr]
 
 
+def _why(preference: Preference) -> tuple[str, str]:
+    assert isinstance(preference, Unpublished), preference
+    return preference.status, preference.reason
+
+
 TWO_PRICES = _group(_variant(VARIANT_URLS[0], "10.00", sku="W-11"), _variant(VARIANT_URLS[1], "12.00", sku="W-12"))
 
 
@@ -122,7 +127,7 @@ def test_a_selected_variant_s_aggregate_offer_gives_no_offer_field() -> None:
 
     result = _resolve(_group(selected, _variant(VARIANT_URLS[1], "12.00")), VARIANT_URLS[0])
 
-    assert isinstance(result["price"], Unpublished)
+    assert _why(result["price"]) == ("missing", "other_variant")
     assert {reason for _, reason in result["price"].rejected} == {"other_variant"}
 
 
@@ -130,7 +135,7 @@ def test_the_selected_variant_fills_an_identifier_the_group_does_not_state() -> 
     result = _resolve(TWO_PRICES, VARIANT_URLS[0])
 
     assert _value(result["sku"]) == {"scheme": "sku", "value": "W-11"}
-    assert isinstance(result["gtin"], Unpublished)  # no variant states one
+    assert _why(result["gtin"]) == ("missing", "no_candidates")  # no variant states one
 
 
 def test_without_a_selection_an_identifier_fills_only_when_every_variant_agrees() -> None:
@@ -142,9 +147,9 @@ def test_without_a_selection_an_identifier_fills_only_when_every_variant_agrees(
 
     result = _resolve(agreeing)
     assert _value(result["gtin"]) == {"scheme": "gtin", "value": "4006381333931"}
-    assert isinstance(result["sku"], Unpublished)  # the variants disagree
+    assert _why(result["sku"]) == ("missing", "not_owned")  # the variants disagree
     assert result["sku"] == _resolve(agreeing, rules=False)["sku"]
-    assert isinstance(_resolve(one_missing)["gtin"], Unpublished)
+    assert _why(_resolve(one_missing)["gtin"]) == ("missing", "not_owned")
 
 
 def test_variant_fill_never_replaces_the_group_s_own_value_or_fills_another_field() -> None:
@@ -153,4 +158,4 @@ def test_variant_fill_never_replaces_the_group_s_own_value_or_fills_another_fiel
     del nameless["name"]
 
     assert _value(_resolve(document, VARIANT_URLS[0])["sku"]) == {"scheme": "sku", "value": "W-1"}
-    assert isinstance(_resolve(nameless, VARIANT_URLS[0])["title"], Unpublished)
+    assert _why(_resolve(nameless, VARIANT_URLS[0])["title"]) == ("missing", "not_owned")

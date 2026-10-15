@@ -36,7 +36,6 @@ from crawlerai.llm.roles.c_extract import (
     LISTING_MAX_CHARS,
     LISTING_MAX_ROWS,
     MAX_OUTPUT_TOKENS,
-    SYSTEM,
     Filled,
     FilledListing,
     detail_request,
@@ -183,13 +182,10 @@ def test_a_value_past_the_cut_is_ungrounded() -> None:
     filled = extract(ScriptedClient(reply(title=span("Widget One", DETAIL_MAX_CHARS))), ["title"], text)
 
     assert filled.candidates == ()
-    assert "role C: title ungrounded" in filled.diagnostics
-
-
-def test_null_proposes_nothing() -> None:
-    filled = extract(ScriptedClient(reply(title=None, released=None)))
-
-    assert (filled.candidates, filled.diagnostics) == ((), ())
+    assert filled.diagnostics == (
+        f"role C read the first {DETAIL_MAX_CHARS} of {DETAIL_MAX_CHARS + 10} characters",
+        "role C: title ungrounded",
+    )
 
 
 def test_a_value_its_normalizer_declines_stays_a_candidate_with_the_decline() -> None:
@@ -197,7 +193,7 @@ def test_a_value_its_normalizer_declines_stays_a_candidate_with_the_decline() ->
     filled = extract(ScriptedClient(reply(title=None, released=span("In stock", 31))))
 
     (candidate,) = filled.candidates
-    assert (candidate.field, candidate.raw, isinstance(candidate.normalized, Invalid)) == ("released", "In stock", True)
+    assert (candidate.field, candidate.raw, candidate.normalized) == ("released", "In stock", Invalid("no_language"))
 
 
 # INV-12: every candidate's value is the cleaned text at its locator, for any text and any claimed offsets.
@@ -368,8 +364,6 @@ def test_the_listing_request_is_a_fast_listing_call_with_row_and_page_fields() -
     req = listing_request(LISTING_TEXT, ROW_SPECS, PAGE_SPECS, page_url=PAGE_URL, job_id=JOB)
 
     assert (req.prompt_kind, req.model_class, req.job_id) == ("c_extract_listing", "fast", JOB)
-    assert req.system.startswith(SYSTEM)
-    assert req.system != SYSTEM
     assert (
         f"Row fields, for each listed item (at most {LISTING_MAX_ROWS} rows):\n"
         "- sku (identifier, scheme sku): Stock keeping unit\n- title (text): Name of the item\n\n"

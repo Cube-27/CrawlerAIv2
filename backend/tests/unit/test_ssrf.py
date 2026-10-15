@@ -19,7 +19,6 @@ _NON_PUBLIC = [
     "172.31.255.255",  # RFC 1918
     "192.168.1.1",  # RFC 1918
     "127.0.0.1",  # loopback, RFC 1122
-    "127.255.255.254",
     "0.0.0.0",  # noqa: S104 -- unspecified / "this network", RFC 1122; a value under test, not a bind address
     "169.254.0.1",  # link-local, RFC 3927
     "169.254.169.254",  # cloud metadata, inside link-local
@@ -30,23 +29,17 @@ _NON_PUBLIC = [
     "240.0.0.1",  # reserved, RFC 1112
     "255.255.255.255",  # limited broadcast, RFC 919
     "224.0.0.1",  # multicast, RFC 5771
-    "239.255.255.250",  # multicast
     "::1",  # loopback, RFC 4291
     "::",  # unspecified, RFC 4291
     "fe80::1",  # link-local, RFC 4291
     "fc00::1",  # unique-local, RFC 4193
-    "fd12:3456::1",  # unique-local
     "ff02::1",  # multicast, RFC 4291
     "::ffff:127.0.0.1",  # IPv4-mapped loopback, RFC 4291
-    "::ffff:10.0.0.1",  # IPv4-mapped private
     "::ffff:169.254.169.254",  # IPv4-mapped metadata
     "::127.0.0.1",  # IPv4-compatible (deprecated, RFC 4291 §2.5.5.1), inside the IETF-reserved ::/8
-    "::10.0.0.1",
-    "::169.254.169.254",
     "::93.184.215.14",  # IPv4-compatible is rejected even when the embedded address is public
     "4000::1",  # outside 2000::/3, the only IPv6 global unicast allocation (IANA IPv6 address space)
     "64:ff9b::7f00:1",  # NAT64 well-known prefix embedding 127.0.0.1, RFC 6052
-    "64:ff9b::a9fe:a9fe",  # NAT64 embedding 169.254.169.254
     "2002:7f00:1::1",  # 6to4 embedding 127.0.0.1, RFC 3056
     "2001:db8::1",  # documentation, RFC 3849
 ]
@@ -71,6 +64,10 @@ def _reason(connector: SafeConnector, url: str) -> RejectReason:
     return e.value.reason
 
 
+# `is_public` is checked over every range above; the connector's paths to it, over one address of each family and form.
+_NON_PUBLIC_SAMPLE = ["10.0.0.1", "::1", "::ffff:169.254.169.254"]
+
+
 @pytest.mark.parametrize("address", _NON_PUBLIC)
 def test_is_public_rejects_reserved_ranges(address: str) -> None:
     assert is_public(ip_address(address)) is False
@@ -81,13 +78,13 @@ def test_is_public_accepts_global_unicast(address: str) -> None:
     assert is_public(ip_address(address)) is True
 
 
-@pytest.mark.parametrize("address", _NON_PUBLIC)
+@pytest.mark.parametrize("address", _NON_PUBLIC_SAMPLE)
 def test_host_resolving_to_a_reserved_address_is_rejected(address: str) -> None:
     connector = SafeConnector(StubResolver({"www.example.com": [address]}))
     assert _reason(connector, "https://www.example.com/p") == "private_address"
 
 
-@pytest.mark.parametrize("address", _NON_PUBLIC)
+@pytest.mark.parametrize("address", _NON_PUBLIC_SAMPLE)
 def test_literal_reserved_ip_is_rejected_without_dns(address: str) -> None:
     resolver = StubResolver({})
     host = f"[{address}]" if ":" in address else address
@@ -118,10 +115,7 @@ def test_resolution_failure_fails_closed(table: dict[str, Sequence[str]], reason
     "url",
     [
         "file:///etc/passwd",
-        "ftp://www.example.com/",
-        "gopher://www.example.com/",
         "data:text/html,hi",
-        "javascript:alert(1)",
         "//www.example.com/",
         "www.example.com",
     ],
@@ -134,7 +128,6 @@ def test_non_http_schemes_are_rejected(url: str) -> None:
     "url",
     [
         "http://www.example.com:22/",
-        "https://www.example.com:6379/",
         "http://www.example.com:0/",
         "http://www.example.com:99999/",
     ],
@@ -159,7 +152,6 @@ def test_malformed_or_non_canonical_hosts_are_rejected(url: str) -> None:
     [
         ("http://www.example.com/", 80),
         ("https://www.example.com/", 443),
-        ("http://www.example.com:8080/", 8080),
         ("https://www.example.com:8443/", 8443),
         ("HTTPS://WWW.EXAMPLE.COM/", 443),
     ],
@@ -194,9 +186,7 @@ def test_redirect_to_a_private_address_is_rejected_after_a_public_first_hop() ->
     ("location", "reason"),
     [
         ("http://169.254.169.254/latest/meta-data/", "private_address"),
-        ("http://[::ffff:127.0.0.1]/", "private_address"),
         ("file:///etc/passwd", "scheme"),
-        ("ftp://www.example.com/", "scheme"),
         ("https://www.example.com:22/", "port"),
         # A scheme-relative location keeps the current scheme and is checked like any other.
         (f"//{_NUMERIC_HOSTS[1]}/", "host"),

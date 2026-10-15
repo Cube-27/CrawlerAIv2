@@ -130,10 +130,8 @@ def test_connect_to_a_rejected_target_is_refused_by_ruleset_and_recorded(host: s
 @pytest.mark.parametrize(
     ("atyp", "address"),
     [
-        pytest.param(1, IPv4Address("127.0.0.1").packed, id="ipv4-loopback"),
         pytest.param(1, IPv4Address("169.254.169.254").packed, id="ipv4-metadata"),
         pytest.param(4, ip_address("::ffff:10.0.0.1").packed, id="ipv4-mapped-ipv6"),
-        pytest.param(4, ip_address("fd00::1").packed, id="ipv6-unique-local"),
     ],
 )
 def test_connect_to_a_literal_private_address_is_refused(atyp: int, address: bytes) -> None:

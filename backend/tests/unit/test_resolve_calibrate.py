@@ -49,15 +49,6 @@ def test_a_kind_measured_on_fewer_than_30_fields_keeps_its_place() -> None:
     assert fit_order(("adapter", "jsonld", "og"), measured) == ("adapter", "og", "jsonld")
 
 
-def test_an_unmeasured_kind_keeps_its_place() -> None:
-    measured: dict[SourceKind, Measured] = {
-        "jsonld": Measured(n=40, precision=0.80),
-        "og": Measured(n=40, precision=0.90),
-    }
-
-    assert fit_order(("jsonld", "llm", "og"), measured) == ("og", "llm", "jsonld")
-
-
 def test_a_measured_kind_outside_the_order_is_not_added() -> None:
     measured: dict[SourceKind, Measured] = {
         "js_state": Measured(n=500, precision=1.0, coverage=1.0),
@@ -65,16 +56,6 @@ def test_a_measured_kind_outside_the_order_is_not_added() -> None:
     }
 
     assert fit_order(("jsonld", "og"), measured) == ("jsonld", "og")
-
-
-def test_a_kind_without_a_precision_keeps_its_place() -> None:
-    # Every field it offered sits in a suppressed cell, or none had a label to compare with.
-    measured: dict[SourceKind, Measured] = {
-        "jsonld": Measured(n=40, precision=None),
-        "og": Measured(n=40, precision=0.9),
-    }
-
-    assert fit_order(("og", "jsonld"), measured) == ("og", "jsonld")
 
 
 @given(

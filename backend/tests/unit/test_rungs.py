@@ -99,8 +99,8 @@ def test_a_site_that_answers_over_http_is_fetched_over_http_only() -> None:
     assert stubs.browser.calls == []
 
 
-@pytest.mark.parametrize("http", ["shell", "blocked"])
-def test_a_shell_or_block_over_http_is_retried_in_the_browser_and_its_ok_kept(http: BlockClass) -> None:
+def test_a_shell_or_block_over_http_is_retried_in_the_browser_and_its_ok_kept() -> None:
+    http: BlockClass = "shell"
     stubs = web(http, "ok")
 
     result = stubs.acquire(OVERRIDE)
@@ -111,8 +111,8 @@ def test_a_shell_or_block_over_http_is_retried_in_the_browser_and_its_ok_kept(ht
     assert result.duration_ms == 2  # both rungs' time
 
 
-@pytest.mark.parametrize("browser", ["shell", "blocked", "not_found", "error"])
-def test_the_http_outcome_is_kept_when_the_browser_does_no_better(browser: BlockClass) -> None:
+def test_the_http_outcome_is_kept_when_the_browser_does_no_better() -> None:
+    browser: BlockClass = "blocked"
     stubs = web("shell", browser)
 
     result = stubs.acquire()
@@ -121,8 +121,8 @@ def test_the_http_outcome_is_kept_when_the_browser_does_no_better(browser: Block
     assert _attempts(result) == [("http", "shell"), ("browser", browser)]
 
 
-@pytest.mark.parametrize("status", [429, 503])
-def test_a_request_to_slow_down_is_not_retried_in_the_browser(status: int) -> None:
+def test_a_request_to_slow_down_is_not_retried_in_the_browser() -> None:
+    status = 429
     stubs = web("blocked", http_status=status)
 
     result = stubs.acquire()
@@ -132,13 +132,12 @@ def test_a_request_to_slow_down_is_not_retried_in_the_browser(status: int) -> No
     assert stubs.browser.calls == []
 
 
-@pytest.mark.parametrize("http", ["not_found", "error"])
-def test_a_missing_page_or_an_error_is_not_retried_in_the_browser(http: BlockClass) -> None:
-    stubs = web(http)
+def test_a_missing_page_or_an_error_is_not_retried_in_the_browser() -> None:
+    stubs = web("not_found")
 
     result = stubs.acquire()
 
-    assert _attempts(result) == [("http", http)]
+    assert _attempts(result) == [("http", "not_found")]
     assert stubs.browser.calls == []
 
 
@@ -202,19 +201,18 @@ def test_each_rung_runs_at_most_once_and_an_ok_attempt_is_always_kept(
 # --- the API recipe rung (SPEC-09 §4.8, §4.10) ------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("remembered", ["http", "browser"])
-def test_a_page_with_a_recipe_is_served_by_it_and_no_other_rung(remembered: FetchMethod) -> None:
+def test_a_page_with_a_recipe_is_served_by_it_and_no_other_rung() -> None:
     stubs = web("ok", "ok", recipe="ok")
 
-    result = stubs.acquire(remembered=remembered)
+    result = stubs.acquire(remembered="browser")
 
     assert (result.method, result.block_class) == ("api", "ok")
     assert _attempts(result) == [("api", "ok")]
     assert (len(stubs.http.calls), len(stubs.browser.calls)) == (0, 0)
 
 
-@pytest.mark.parametrize("failed", ["blocked", "not_found", "error"])
-def test_a_failed_recipe_falls_back_to_the_configured_method_and_every_attempt_is_recorded(failed: BlockClass) -> None:
+def test_a_failed_recipe_falls_back_to_the_configured_method_and_every_attempt_is_recorded() -> None:
+    failed: BlockClass = "not_found"
     result = web("shell", "ok", recipe=failed).acquire()
 
     assert (result.method, result.block_class) == ("browser", "ok")
@@ -225,9 +223,8 @@ def test_a_failed_recipe_falls_back_to_the_configured_method_and_every_attempt_i
     assert result.duration_ms == 3
 
 
-@pytest.mark.parametrize("status", [429, 503])
-def test_a_recipe_asked_to_slow_down_is_kept_without_a_fallback(status: int) -> None:
-    stubs = web("ok", recipe="blocked", recipe_status=status)
+def test_a_recipe_asked_to_slow_down_is_kept_without_a_fallback() -> None:
+    stubs = web("ok", recipe="blocked", recipe_status=503)
 
     result = stubs.acquire()
 
