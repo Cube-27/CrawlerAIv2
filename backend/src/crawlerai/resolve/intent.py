@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from crawlerai.collect.base import Entity
-from crawlerai.collect.schema_org_map import Vocabulary, parse_path
+from crawlerai.collect.schema_org_map import Vocabulary, parse_paths
 from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -34,13 +34,14 @@ class AmbiguousTarget:
 
 
 def primary_types(schema: SchemaDef, vocabulary: Vocabulary) -> frozenset[str]:
-    """The types the schema's required row fields' `schema_org` paths start at, without Offer when another type
-    remains: an Offer belongs to the item it offers (`OFFER`). A listing's page fields describe the page, not its
-    rows (§5.2), so they name no primary type."""
+    """The types the schema's required row fields' `schema_org` paths start at (each alternative's), without Offer
+    when another type remains: an Offer belongs to the item it offers (`OFFER`). A listing's page fields describe the
+    page, not its rows (§5.2), so they name no primary type."""
     roots = {
-        parse_path(spec.schema_org).root
+        path.root
         for spec in schema.fields.values()
         if spec.required and spec.schema_org and spec.scope == "row"
+        for path in parse_paths(spec.schema_org)
     }
     items = frozenset(root for root in roots if not vocabulary.is_a(root, OFFER))
     return items or frozenset(roots)

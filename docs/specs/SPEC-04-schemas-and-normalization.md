@@ -72,7 +72,13 @@ Rules:
 - `required` defaults false; `scope` ∈ {`row`, `page`}, default `row`; on `detail` pages every field is `row`
   (the one entity). "Core fields" in the architecture = `required: true` fields plus `required_groups`.
 - `schema_org` is a dotted path from a schema.org type; `+` joins two properties into one atomic value
-  (`Offer.price+priceCurrency`). Validated against a pinned schema.org vocabulary file (manifest).
+  (`Offer.price+priceCurrency`). Validated against a pinned schema.org vocabulary file (manifest). Up to four
+  alternatives are separated by `|` (`Product.sku|Offer.sku`); their candidates are pooled, none outranking another
+  (SPEC-13 §4.1).
+- A `list` whose `item` is an `object` and which has `schema_org` is row-mapped (SPEC-13 §4.2): the path names the
+  row entities (no `+`), the item has no `schema_org` of its own, its sub-fields are leaf types each with their own
+  path (or none), and `key` names 1–3 distinct `identifier` or `url` sub-fields. `key` is required there and allowed
+  nowhere else. A `list` of `object` without `schema_org` keeps literal keys (§4.4).
 - `vocab` references a vocabulary: `schema:<Enumeration>` (members from the pinned schema.org file) or
   `type:<name>` (a language-tagged vocabulary in `normalize/vocab/`).
 - `identifier.scheme` ∈ {`gtin`, `isbn`, `mpn`, `sku`, `custom`}.

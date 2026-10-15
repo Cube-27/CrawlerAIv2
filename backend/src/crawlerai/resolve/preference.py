@@ -21,7 +21,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.json_doc import scalars
-from crawlerai.collect.schema_org_map import parse_path
+from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.dispatch import equal
@@ -127,8 +127,11 @@ class Resolver:
         return None
 
     def _is_offer_field(self, spec: FieldSpec) -> bool:
-        # A field whose `schema_org` path starts at Offer (or a subtype) holds a part of an offer (§4.8).
-        return spec.schema_org is not None and self.graph.vocabulary.is_a(parse_path(spec.schema_org).root, OFFER)
+        # A field whose `schema_org` path starts at Offer (or a subtype), in every alternative, holds a part of an
+        # offer (§4.8).
+        return spec.schema_org is not None and all(
+            self.graph.vocabulary.is_a(path.root, OFFER) for path in parse_paths(spec.schema_org)
+        )
 
     def _offer_of(self, candidate: Candidate) -> str | None:
         owner = self.graph.owner_of(candidate)

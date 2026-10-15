@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
+from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
@@ -114,12 +115,13 @@ def _value(metas: Sequence[_Meta], spec: FieldSpec) -> _Value | None:
 
 
 def _role(spec: FieldSpec) -> str | None:
-    """The one property a `schema_org` path names on its root type (`Offer.price+priceCurrency` gives `price`), or
-    `None` when the path goes through another object."""
-    if spec.schema_org is None:
+    """The one property a `schema_org` path names on its root type (`Offer.price+priceCurrency` gives `price`), the
+    same in every alternative, or `None` when an alternative goes through another object or the alternatives name
+    different properties (SPEC-13 §4.1). A row-mapped field's path names rows, so it has no role."""
+    if spec.schema_org is None or spec.row_mapped:
         return None
-    steps = spec.schema_org.split("+", 1)[0].split(".")
-    return steps[1] if len(steps) == 2 else None
+    roles = {path.steps[0] if len(path.steps) == 1 else None for path in parse_paths(spec.schema_org)}
+    return roles.pop() if len(roles) == 1 else None
 
 
 def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:

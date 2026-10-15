@@ -38,8 +38,11 @@ NAME_PATTERN = r"[a-z][a-z0-9_]{0,63}"
 Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # schema.org naming conventions: types are UpperCamelCase, properties lowerCamelCase. A path starts at a type and
 # follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
+# `|` separates up to four alternatives, whose candidates are pooled (SPEC-13 §4.1): `Product.sku|Offer.sku`.
+_ALTERNATIVE = r"[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?"
+MAX_ALTERNATIVES = 4
 SchemaOrgPath = Annotated[
-    str, StringConstraints(pattern=r"^[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?$")
+    str, StringConstraints(pattern=rf"^{_ALTERNATIVE}(\|{_ALTERNATIVE}){{0,{MAX_ALTERNATIVES - 1}}}$")
 ]
 # `schema:<Enumeration>` names a schema.org enumeration (a type, so UpperCamelCase); `type:<name>` names a
 # language-tagged vocabulary in `crawlerai.normalize.vocab`.
@@ -58,7 +61,8 @@ class FieldSpec(_Model):
     """One field of a schema, or the item of a list.
 
     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-    `item` for `list`, `fields` for `object`.
+    `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13
+    §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
     """
 
     type: FieldType
@@ -70,6 +74,12 @@ class FieldSpec(_Model):
     scheme: IdentifierScheme | None = None
     item: "FieldSpec | None" = None
     fields: "dict[Name, FieldSpec] | None" = None
+    key: list[Name] | None = None
+
+    @property
+    def row_mapped(self) -> bool:
+        """A `list` of `object` whose rows a `schema_org` path finds (SPEC-13 §4.2)."""
+        return self.schema_org is not None and self.item is not None and self.item.type is FieldType.OBJECT
 
     @model_validator(mode="after")
     def _parameters_match_type(self) -> Self:
@@ -81,7 +91,35 @@ class FieldSpec(_Model):
                 raise ValueError(f"`{name}` is only for type {owner}, not {self.type}")
         if self.fields is not None and not self.fields:
             raise ValueError("type object needs at least one sub-field")
+        if self.schema_org is not None and self.item is not None and self.item.type is FieldType.OBJECT:
+            _check_row_mapping(self.schema_org, self.item, self.key or [])
+        elif self.key is not None:
+            raise ValueError("`key` is only for a list of objects with a `schema_org` path (a row-mapped field)")
         return self
+
+
+# A row's key identifies it: an identifier identifies a thing by definition (GS1, ISO 2108, a seller's sku), and a URL
+# identifies a resource (RFC 3986 §1.1).
+_KEY_TYPES = (FieldType.IDENTIFIER, FieldType.URL)
+MAX_KEY = 3
+
+
+def _check_row_mapping(row_path: str, item: FieldSpec, key: list[str]) -> None:
+    """SPEC-13 §4.2: the row path names nodes, so it joins no value (`+`); the item's sub-fields are leaf values, each
+    with its own path; `key` names one to three distinct identifier or url sub-fields."""
+    fields = item.fields or {}
+    if "+" in row_path:
+        raise ValueError("a row path names the row entities, not a value: no `+`")
+    if item.schema_org is not None:
+        raise ValueError("the item of a row-mapped field has no `schema_org`: the list's path names its rows")
+    if nested := sorted(n for n, s in fields.items() if s.type in (FieldType.LIST, FieldType.OBJECT)):
+        raise ValueError(f"the sub-fields of a row-mapped field are leaf values, not lists or objects: {nested}")
+    if not 1 <= len(key) <= MAX_KEY or len(set(key)) != len(key):
+        raise ValueError(f"a row-mapped field's `key` names 1 to {MAX_KEY} distinct sub-fields")
+    for name in key:
+        sub = fields.get(name)
+        if sub is None or sub.type not in _KEY_TYPES:
+            raise ValueError(f"`key` names {name!r}, which is not an identifier or url sub-field")
 
 
 _PARAMETER_OWNER = {
