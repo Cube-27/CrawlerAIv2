@@ -10,7 +10,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
@@ -109,6 +109,11 @@ def _rows(outcome: FieldOutcome) -> list[str]:
     return sorted(json.dumps(row, sort_keys=True) for row in value)
 
 
+# Each example runs the whole extraction pipeline; its time depends on the machine, not on the property.
+_RUNS_THE_PIPELINE = settings(deadline=None)
+
+
+@_RUNS_THE_PIPELINE
 @given(DISTINCT, st.randoms(use_true_random=False))
 def test_the_order_of_rows_and_sources_does_not_change_the_rows(variants: list[Variant], random: Any) -> None:
     shuffled = random.sample(variants, len(variants))
@@ -119,6 +124,7 @@ def test_the_order_of_rows_and_sources_does_not_change_the_rows(variants: list[V
     assert _rows(in_order) == _rows(reordered)
 
 
+@_RUNS_THE_PIPELINE
 @given(DISTINCT)
 def test_rows_with_different_keys_never_merge(variants: list[Variant]) -> None:
     outcome = _outcome(head=_jsonld(variants))
@@ -126,6 +132,7 @@ def test_rows_with_different_keys_never_merge(variants: list[Variant]) -> None:
     assert len(_rows(outcome)) == len(variants)
 
 
+@_RUNS_THE_PIPELINE
 @given(VARIANTS, st.sampled_from(["10.00", "12.00"]))
 def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Variant, other_price: str) -> None:
     twin = Variant(variant.sku, other_price, variant.color)
@@ -141,6 +148,7 @@ def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Vari
         assert (price.status, price.value) == ("conflict", None)
 
 
+@_RUNS_THE_PIPELINE
 @given(DISTINCT)
 def test_json_ld_and_microdata_give_equal_variants(variants: list[Variant]) -> None:
     assert _rows(_outcome(head=_jsonld(variants))) == _rows(_outcome(body=_microdata(variants)))

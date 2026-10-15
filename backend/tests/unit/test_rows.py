@@ -13,8 +13,9 @@ from pydantic import JsonValue
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.learning import learnable
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
+from crawlerai.db.models import EvalRunId, SchemaId, SourceKind
 from crawlerai.resolve import pipeline
+from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.records import FieldMeta
@@ -45,7 +46,7 @@ def _group(*variants: dict[str, Any], **values: Any) -> dict[str, Any]:
     return {"@type": "ProductGroup", "name": "Synthetic Widget", "url": PAGE_URL, "hasVariant": list(variants)} | values
 
 
-def _variants(*nodes: dict[str, Any], body: str = "") -> FieldOutcome:
+def _variants(*nodes: dict[str, Any], body: str = "", data: EngineData = DATA) -> FieldOutcome:
     blocks = "".join(
         f'<script type="application/ld+json">{json.dumps({"@context": "https://schema.org", **n})}</script>'
         for n in nodes
@@ -67,7 +68,7 @@ def _variants(*nodes: dict[str, Any], body: str = "") -> FieldOutcome:
         engine_version="0+cal.0",
     )
     result = asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=DATA)
+        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=data)
     )
     assert result.entity is not None
     return result.entity["variants"]
@@ -162,6 +163,27 @@ def test_variants_that_repeat_the_group_url_have_no_url_key() -> None:
     assert [row.reason for row in outcome.dropped] == ["no_row_key"]
 
 
+def test_a_group_url_that_offers_and_variants_repeat_is_no_key() -> None:
+    # The group's own URL, not the page's, repeated by every direct Offer and every variant names the group (§4.4).
+    group_url = "https://shop.example.test/g/1"
+    first = _variant("W-11", "10.00", url=group_url)
+    second = _variant("W-12", "12.00", url=group_url)
+    offers = [_offer("10.00", url=group_url), _offer("12.00", url=group_url)]
+
+    outcome = _variants(_group(first, second, url=group_url, offers=offers))
+
+    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
+
+
+def test_one_offer_s_url_that_repeats_the_target_url_stays_its_key() -> None:
+    # One-Offer-per-variant: the default variant's Offer may carry the product's own URL; only that row holds it.
+    product_url = "https://shop.example.test/g/1"
+    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": product_url}
+    product["offers"] = [_offer("10.00", url=product_url), _offer("12.00", url=f"{product_url}?v=12")]
+
+    assert [row["url"] for row in _rows(_variants(product))] == [product_url, f"{product_url}?v=12"]
+
+
 def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
     # INV-33: both rows say W-11, but name two GTINs: two variants joined, or one source wrong.
     first = _variant("W-11", "10.00", gtin="4006381333931")
@@ -170,6 +192,20 @@ def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
     outcome = _variants(_group(first, second))
 
     assert (outcome.status, outcome.reason) == ("missing", "row_key_conflict")
+
+
+def test_rows_whose_key_sub_fields_are_all_below_tau_make_the_field_abstain() -> None:
+    # §4.5: a key sub-field's row bucket (`list.<type>|<evidence>`) calibrated below τ drops each variant as
+    # `key_unpublished`; when every variant went that way the field abstains, it is not missing.
+    buckets = {"list.identifier|structured": Bucket(n=40, precision=0.5)}
+    calibration = Calibration(eval_run_id=EvalRunId(uuid7()), git_sha="a" * 40, buckets=buckets)
+    data = EngineData(VOCABULARY, DATA.orders, calibration)
+
+    outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00")), data=data)
+
+    assert (outcome.status, outcome.reason) == ("abstained", "below_tau")
+    assert outcome.dropped is not None
+    assert [row.reason for row in outcome.dropped] == ["key_unpublished", "key_unpublished"]
 
 
 def test_a_row_s_price_comes_from_one_offer() -> None:
