@@ -8,7 +8,6 @@ import type { RecordPage } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi, type Call } from "../../test/api";
 import { recordField } from "../../test/records";
-import { connect } from "../../test/connect";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -133,7 +132,6 @@ function jobApi(extra: Record<string, (call: Call) => Response> = {}) {
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await connect();
   await screen.findByRole("heading", { level: 1, name: heading });
 }
 
@@ -283,6 +281,8 @@ describe("Job screen", () => {
       `https://shop.example.test/item/1failedfailed${reason}—`,
       "https://shop.example.test/item/2doneblockedrobots—",
     ]);
+    // React Aria opens a tooltip on hover only while the pointer is the interaction modality, which a press sets.
+    await userEvent.click(screen.getByRole("heading", { level: 1 }));
     await userEvent.hover(within(grid).getByRole("button", { name: reason }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
   });

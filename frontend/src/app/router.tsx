@@ -1,6 +1,5 @@
 import type { RouteObject } from "react-router";
 import { ApiQueryProvider } from "../api/hooks/query";
-import { ConnectScreen } from "../screens/connect/ConnectScreen";
 import { HomeScreen } from "../screens/home/HomeScreen";
 import { JobScreen } from "../screens/jobs/JobScreen";
 import { JobsScreen } from "../screens/jobs/JobsScreen";
@@ -15,23 +14,22 @@ import { SchemaScreen } from "../screens/schemas/SchemaScreen";
 import { SchemasScreen } from "../screens/schemas/SchemasScreen";
 import { LabelingList } from "../screens/labeling/LabelingList";
 import { LabelingPage } from "../screens/labeling/LabelingPage";
-import { AuthProvider, RequireKey } from "./auth";
+import { AccessProvider, RequireAccess } from "./auth";
 import { Shell } from "./shell";
 
 export const routes: RouteObject[] = [
   {
     element: (
-      <AuthProvider>
+      <AccessProvider>
         <ApiQueryProvider>
           <Shell />
         </ApiQueryProvider>
-      </AuthProvider>
+      </AccessProvider>
     ),
     children: [
-      { path: "connect", element: <ConnectScreen /> },
-      // Screens that call the API with the key (SPEC-12 §4.1: unauthenticated → /connect).
+      // The server that serves the UI attaches the API key; a 401 shows the setup notice (SPEC-14 §4.1).
       {
-        element: <RequireKey />,
+        element: <RequireAccess />,
         children: [
           { index: true, element: <HomeScreen /> },
           { path: "scrape", element: <ScrapeScreen /> },

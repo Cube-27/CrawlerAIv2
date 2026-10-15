@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { useAuth } from "../../app/auth";
 import type { Problem } from "../problem";
 import type { ApiResult } from "../result";
 
@@ -31,18 +30,13 @@ export function problemOf(error: Error | null): Problem | null {
 
 function newQueryClient(): QueryClient {
   return new QueryClient({
-    // A failed call shows its problem at once; the viewer retries. A 401 also drops the key (`useApiClient`).
+    // A failed call shows its problem at once; the viewer retries. A 401 also shows the setup notice (`useApiClient`).
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 }
 
-/** Server state for the screens (SPEC-12 §4.1). The cache belongs to one API key: a new key, or none, starts an empty
- * cache, so nothing read with one key is shown under another. */
+/** Server state for the screens (SPEC-12 §4.1). */
 export function ApiQueryProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const { apiKey } = useAuth();
-  const [cache, setCache] = useState(() => ({ apiKey, client: newQueryClient() }));
-  // State adjusted while rendering (React docs, "Storing information from previous renders"): the old cache is never
-  // committed under the new key.
-  if (cache.apiKey !== apiKey) setCache({ apiKey, client: newQueryClient() });
-  return <QueryClientProvider client={cache.client}>{children}</QueryClientProvider>;
+  const [client] = useState(newQueryClient);
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

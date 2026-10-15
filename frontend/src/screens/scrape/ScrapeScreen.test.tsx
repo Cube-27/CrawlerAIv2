@@ -5,7 +5,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { RecordField, ScrapeResponse } from "../../api/scrape";
 import { problem, stubApi } from "../../test/api";
-import { connect } from "../../test/connect";
 
 // `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
 
@@ -103,7 +102,6 @@ function schemaList(): Response {
 
 async function openScrape() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/scrape"] })} />);
-  await connect();
   await screen.findByRole("heading", { level: 1, name: "Scrape" });
 }
 
@@ -158,7 +156,7 @@ describe("scrape screen: the request", () => {
       method: "POST",
       path: "/v1/scrape",
       query: "",
-      authorization: "Bearer ck_first",
+      authorization: null,
       body: {
         url: "https://store.test/items/1",
         formats: ["markdown", "records"],

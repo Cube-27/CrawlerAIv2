@@ -6,7 +6,6 @@ import type { JobPage, JobSummary } from "../../api/jobs";
 import type { SchemaDef } from "../../api/schemas";
 import type { CostReport } from "../../api/usage";
 import { problem, stubApi } from "../../test/api";
-import { connect } from "../../test/connect";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 
@@ -64,9 +63,8 @@ function jobsReply(): Response {
   return Response.json(page);
 }
 
-async function renderOverview() {
+function renderOverview() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
-  await connect();
 }
 
 describe("overview", () => {
@@ -77,7 +75,7 @@ describe("overview", () => {
         Response.json({ items: [schema("item_detail", 1), schema("item_detail", 2)] }),
       "GET /v1/usage/llm": () => Response.json(COSTS),
     });
-    await renderOverview();
+    renderOverview();
 
     expect(await screen.findByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
     expect(screen.getByRole("link", { name: /Scrape a page/ })).toHaveAttribute("href", "/scrape");
@@ -101,7 +99,7 @@ describe("overview", () => {
       "GET /v1/schemas": () => problem(500, { title: "Internal Server Error" }),
       "GET /v1/usage/llm": () => Response.json(COSTS),
     });
-    await renderOverview();
+    renderOverview();
 
     expect(await screen.findByText("No jobs yet")).toBeVisible();
     expect(await screen.findByText("Could not load")).toBeVisible();

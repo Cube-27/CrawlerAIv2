@@ -1,6 +1,5 @@
-import { Button, Link, RouterProvider, Toast, ToggleButton, Typography } from "@heroui/react";
+import { Link, RouterProvider, Toast, ToggleButton, Typography } from "@heroui/react";
 import {
-  ArrowRightFromSquare,
   Database,
   Gear,
   Globe,
@@ -16,7 +15,6 @@ import {
 import type { ComponentType, SVGProps } from "react";
 import { matchPath, Outlet, useHref, useLocation, useNavigate } from "react-router";
 import { useEvalUi } from "../api/hooks/health";
-import { useAuth } from "./auth";
 import { useTheme } from "./theme";
 
 interface NavEntry {
@@ -116,16 +114,9 @@ function MainNav() {
 
 function SidebarFooter() {
   const [theme, setTheme] = useTheme();
-  const { apiKey, disconnect } = useAuth();
   const dark = theme === "dark";
   return (
     <div className="flex items-center gap-2 border-t border-border pt-3">
-      {apiKey === null ? null : (
-        <Button variant="ghost" size="sm" onPress={disconnect}>
-          <ArrowRightFromSquare aria-hidden="true" />
-          Disconnect
-        </Button>
-      )}
       <ToggleButton
         className="ms-auto"
         isIconOnly

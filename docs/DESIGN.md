@@ -58,7 +58,7 @@ screen or component.
 
 - One app shell (`src/app/shell.tsx`): a left sidebar and the content area. The sidebar holds the product mark, the
   navigation in labelled groups with one icon per item (the current screen is marked by `aria-current`, shown with a
-  filled background), and at its foot Settings, Disconnect and the dark-theme toggle. The content sits on an inset
+  filled background), and at its foot Settings and the dark-theme toggle. The content sits on an inset
   panel beside it.
 - Content is at most 1280px wide (`--container-content` in theme.css).
 - At phone width the sidebar moves above the content, gutters are 16px, and nothing scrolls horizontally.
