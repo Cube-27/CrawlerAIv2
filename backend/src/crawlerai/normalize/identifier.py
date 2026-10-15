@@ -9,10 +9,11 @@ values such as `gtin13` unquoted). Any other JSON value is `Invalid("not_a_strin
 """
 
 import re
+from collections.abc import Hashable
 
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # GS1 General Specifications §3.3.2: the GTIN formats are GTIN-8, GTIN-12, GTIN-13 and GTIN-14.
@@ -112,6 +113,11 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
         return True
     left, right = _gtin14(a), _gtin14(b)
     return left is not None and left == right
+
+
+def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    gtin = _gtin14(value)
+    return raw_key(value) if gtin is None else ("gtin", gtin)
 
 
 def _gtin14(value: JsonValue) -> str | None:

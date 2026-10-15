@@ -1,14 +1,16 @@
 """Type equality (SPEC-04 §4.5) through the dispatcher: each type's rule, lists as multisets of item equality,
 objects field by field. The resolver's agreement rule (SPEC-05) and eval (SPEC-03) compare values this way."""
 
+import itertools
 from decimal import Decimal
 from typing import Any
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize.dispatch import equal
+from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 _PARAMETERS: dict[FieldType, dict[str, object]] = {
@@ -161,3 +163,66 @@ def _gs1_check_digit(digits: str) -> str:
     # GS1 General Specifications §7.9.1, for the digits before the check digit (weight 3 on the rightmost).
     total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(reversed(digits)))
     return str(-total % 10)
+
+
+# Values of each type that are equal without being identical, so a drawn pair is often equal; with `_json`, often not.
+_NEAR: dict[FieldType, list[JsonValue]] = {
+    FieldType.TEXT: ["a b", "a  b", " a b ", "a &amp; b", "a & b", "A b", "a\n\nb", "", 1],
+    FieldType.URL: ["HTTPS://Example.test:443/a/./b#top", "https://example.test/a/b", "https://example.test/A", "/a"],
+    FieldType.IDENTIFIER: [
+        {"scheme": "gtin", "value": "4006381333931"},
+        {"scheme": "gtin", "value": "04006381333931"},
+        {"scheme": "sku", "value": "4006381333931"},
+    ],
+    FieldType.MONEY: [
+        {"amount": "19.9", "currency": "EUR"},
+        {"amount": "19.90", "currency": "EUR"},
+        {"amount": "19.90", "currency": "USD"},
+        {"amount": "x", "currency": "EUR"},
+    ],
+    FieldType.RANGE: [
+        {"min": "1", "max": "2.0", "currency": "EUR", "unit": None, "period": "YEAR"},
+        {"min": "1.00", "max": "2", "currency": "EUR", "unit": None, "period": "YEAR"},
+        {"min": "1", "max": "2", "currency": None, "unit": None, "period": "YEAR"},
+    ],
+    FieldType.LIST: [["a b", "c"], ["c", "a  b"], ["c"], [], "c"],
+    FieldType.OBJECT: [{"name": "a b"}, {"name": " a  b"}, {"name": "c"}, {}, {"other": "a b"}],
+}
+_NEAR_SPECS = {FieldType.LIST: _spec(FieldType.LIST, item={"type": "text"})}
+
+
+def _keyed_spec(type_: FieldType) -> FieldSpec:
+    return _NEAR_SPECS.get(type_, _spec(type_))
+
+
+_KEYED = [t for t in FieldType if t is not FieldType.LOCATION]
+
+
+@pytest.mark.parametrize("type_", _KEYED)
+def test_an_equality_key_is_equal_exactly_when_the_values_are(type_: FieldType) -> None:
+    spec, near = _keyed_spec(type_), _NEAR.get(type_, ["a"])
+
+    for a, b in itertools.product(near, near):
+        assert (equality_key(a, spec) == equality_key(b, spec)) is equal(a, b, spec), (a, b)
+
+
+@given(st.sampled_from(_KEYED), _json, _json)
+def test_every_keyed_type_keys_any_json_value(type_: FieldType, a: JsonValue, b: JsonValue) -> None:
+    spec = _keyed_spec(type_)
+
+    key_a, key_b = equality_key(a, spec), equality_key(b, spec)
+
+    assert key_a is not None
+    assert hash(key_a) == hash(equality_key(a, spec))
+    assert (key_a == key_b) is equal(a, b, spec)
+
+
+def test_a_type_whose_equality_is_not_transitive_has_no_key() -> None:
+    place = _place("Springfield", None, "DE")
+
+    assert equality_key(place, LOCATION) is None
+    assert equality_key([place], LOCATIONS) is None
+    assert (
+        equality_key({"name": "a", "place": place}, _spec(FieldType.OBJECT, fields={"name": TEXT, "place": LOCATION}))
+        is None
+    )

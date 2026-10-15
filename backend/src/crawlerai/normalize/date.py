@@ -15,6 +15,7 @@ needs a time and a numeric UTC offset; a date takes the calendar date the input 
 """
 
 import re
+from collections.abc import Hashable
 from datetime import UTC, date, datetime, timedelta
 from functools import cache, lru_cache
 from typing import Literal
@@ -25,7 +26,7 @@ from dateparser.data.languages_info import language_order
 from dateparser.date import DateDataParser
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 Order = Literal["DMY", "MDY", "YMD"]
@@ -317,3 +318,7 @@ def _languages(ctx: Context) -> tuple[str, ...]:
 def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
     """SPEC-04 §4.5: exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
     return a == b
+
+
+def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    return raw_key(value)  # equality is exact

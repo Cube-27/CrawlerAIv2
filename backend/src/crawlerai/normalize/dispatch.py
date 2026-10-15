@@ -1,18 +1,30 @@
 """The normalize dispatcher (SPEC-04 §4.3, §4.5): the entry points that send each field type to its one module (C8).
 
-Callers (the resolver, eval, the API) normalize and compare through `normalize` and `equal` and never pick a type
-module themselves. `list` and `object` have no values of their own (§4.1), so both recurse here into their items and
-sub-fields.
+Callers (the resolver, eval, the API) normalize and compare through `normalize`, `equal` and `equality_key` and never
+pick a type module themselves. `list` and `object` have no values of their own (§4.1), so all three recurse here into
+their items and sub-fields.
 """
 
-from collections.abc import Iterator, Sequence
+from collections import Counter
+from collections.abc import Hashable, Iterator, Sequence
 from functools import partial
 
 from pydantic import JsonValue
 
 from crawlerai.normalize import date, enum, identifier, location, money, text, url
 from crawlerai.normalize import range as range_
-from crawlerai.normalize.base import Ambiguous, Context, Equality, Invalid, Normalizer, NormalizeResult, Ok, Raw
+from crawlerai.normalize.base import (
+    Ambiguous,
+    Context,
+    Equality,
+    EqualityKey,
+    Invalid,
+    Normalizer,
+    NormalizeResult,
+    Ok,
+    Raw,
+    raw_key,
+)
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 _MONEY = FieldSpec(type=FieldType.MONEY)
@@ -24,19 +36,20 @@ def _money(raw: Raw, ctx: Context) -> NormalizeResult:
     return normalize(raw, _MONEY, ctx)
 
 
-# The field-type registry: every §5.1 type with values of its own, with its normalizer and its equality.
-_TYPES: dict[FieldType, tuple[Normalizer, Equality]] = {
-    FieldType.TEXT: (text.normalize, text.equal),
-    FieldType.LONG_TEXT: (text.normalize, text.equal),
-    FieldType.ENUM: (enum.normalize, enum.equal),
-    FieldType.MONEY: (money.normalize, money.equal),
-    FieldType.LOCATION: (location.normalize, location.equal),
-    FieldType.URL: (url.normalize, url.equal),
-    FieldType.IDENTIFIER: (identifier.normalize, identifier.equal),
-    FieldType.IMAGE_URL: (url.normalize, url.equal),
-    FieldType.DATE: (date.normalize, date.equal),
-    FieldType.DATETIME: (date.normalize, date.equal),
-    FieldType.RANGE: (partial(range_.normalize, money=_money), range_.equal),
+# The field-type registry: every §5.1 type with values of its own, with its normalizer, its equality and, when that
+# equality is an equivalence relation, its key.
+_TYPES: dict[FieldType, tuple[Normalizer, Equality, EqualityKey | None]] = {
+    FieldType.TEXT: (text.normalize, text.equal, text.key),
+    FieldType.LONG_TEXT: (text.normalize, text.equal, text.key),
+    FieldType.ENUM: (enum.normalize, enum.equal, enum.key),
+    FieldType.MONEY: (money.normalize, money.equal, money.key),
+    FieldType.LOCATION: (location.normalize, location.equal, None),
+    FieldType.URL: (url.normalize, url.equal, url.key),
+    FieldType.IDENTIFIER: (identifier.normalize, identifier.equal, identifier.key),
+    FieldType.IMAGE_URL: (url.normalize, url.equal, url.key),
+    FieldType.DATE: (date.normalize, date.equal, date.key),
+    FieldType.DATETIME: (date.normalize, date.equal, date.key),
+    FieldType.RANGE: (partial(range_.normalize, money=_money), range_.equal, range_.key),
 }
 
 
@@ -70,6 +83,30 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
         )
     registered = _TYPES.get(spec.type)
     return registered is not None and registered[1](a, b, spec)
+
+
+def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
+    """A hashable key of `value` under `spec`'s equality (`equal(a, b, spec)` exactly when the keys are equal), or
+    `None` when that equality is no equivalence (it involves location, which is not transitive): values then group by
+    hashing, not by comparing every pair. A list keys as the multiset of its items' keys, an object by its fields'."""
+    if spec.type is FieldType.LIST:
+        return _list_key(value, _item(spec)) if isinstance(value, list) else raw_key(value)
+    if spec.type is FieldType.OBJECT:
+        fields = _fields(spec)
+        if not (isinstance(value, dict) and value.keys() <= fields.keys()):
+            return raw_key(value)
+        keys = {name: equality_key(v, fields[name]) for name, v in value.items()}
+        return None if None in keys.values() else ("object", frozenset(keys.items()))
+    registered = _TYPES.get(spec.type)
+    if registered is None:
+        return raw_key(value)
+    key = registered[2]
+    return None if key is None else key(value, spec)
+
+
+def _list_key(items: list[JsonValue], item: FieldSpec) -> Hashable | None:
+    keys = [equality_key(v, item) for v in items]
+    return None if None in keys else ("list", frozenset(Counter(keys).items()))
 
 
 # The types whose normalizer accepts only a grammar or a vocabulary, so arbitrary text declines: money (ISO 4217 and

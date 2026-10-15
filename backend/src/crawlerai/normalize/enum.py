@@ -9,10 +9,12 @@
 No match is `Invalid`; two members in one input are `Ambiguous`.
 """
 
+from collections.abc import Hashable
+
 from pydantic import JsonValue
 
 from crawlerai.normalize import vocab
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org names its terms under https://schema.org/ and, earlier, http://schema.org/ (schema.org, "Data model");
@@ -75,3 +77,7 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
 def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
     """SPEC-04 §4.5: exact. A normalized value has one form (one code per member)."""
     return a == b
+
+
+def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    return raw_key(value)  # equality is exact

@@ -8,10 +8,11 @@ in the content layer); here it keeps its line breaks, with at most one blank lin
 import html
 import re
 import unicodedata
+from collections.abc import Hashable
 
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # SPEC-04 §4.4 and D-0017: length bounds after normalization, in characters.
@@ -42,6 +43,11 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
         return True
     left, right = _text(a, spec.type), _text(b, spec.type)
     return isinstance(left, Ok) and left == right
+
+
+def key(value: JsonValue, spec: FieldSpec) -> Hashable:
+    text = _text(value, spec.type)
+    return ("text", text.value, text.reasons) if isinstance(text, Ok) else raw_key(value)
 
 
 def compose(s: str) -> str:

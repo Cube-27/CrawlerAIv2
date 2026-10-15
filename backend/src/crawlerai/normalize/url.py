@@ -6,11 +6,12 @@ other JSON value is `Invalid("not_a_string")`. A relative reference resolves aga
 
 import re
 import string
+from collections.abc import Hashable
 from urllib.parse import SplitResult, quote, unquote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # WHATWG URL Standard, basic URL parser: strip leading and trailing C0 controls and spaces, and remove every ASCII
@@ -65,6 +66,11 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
         return False
     left = canonical(a, None)
     return isinstance(left, Ok) and left == canonical(b, None)
+
+
+def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+    url = canonical(value, None) if isinstance(value, str) else None
+    return ("url", url.value, url.reasons) if isinstance(url, Ok) else raw_key(value)
 
 
 def is_absolute(raw: Raw) -> bool:

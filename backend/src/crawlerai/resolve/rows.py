@@ -8,16 +8,16 @@ key value are one variant, and a variant whose key sub-fields disagree is droppe
 Each variant resolves its sub-fields with the resolver's own rules, its scope standing in for ownership.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, TypeGuard
 
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.schema_org_map import MappedPath, parse_paths
 from crawlerai.normalize.base import Ok
-from crawlerai.normalize.dispatch import equal
+from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.resolve.evidence import TAU_OPTIONAL, TAU_REQUIRED, Calibration, assess
 from crawlerai.resolve.intent import LISTS, RELATIONS
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, OFFER, EntityGraph
@@ -183,7 +183,7 @@ def _variants(
     dropped = [DroppedRow(locators=(row.id,), reason="no_row_key") for row in rows if not keys.get(row.id)]
     reasons = ["no_row_key"] * len(dropped)
     variants: list[_Variant] = []
-    for group in _linked(row_field, keyed, keys):
+    for group in linked(row_field.sub_fields, keyed, keys):
         variant = _Variant(group, _merged_keys(group, keys))
         if _conflicting(row_field, variant):
             dropped.append(DroppedRow(locators=tuple(row.id for row in group), reason="row_key_conflict"))
@@ -200,16 +200,16 @@ def _key_values(
     names the page or the target rather than one variant."""
     screen = Resolver(row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda _: True)
     excluded, shared = _not_keys(row_field)
+    urls = frozenset(sub for sub in row_field.key if row_field.sub_fields[sub].type is FieldType.URL)
     values: dict[str, dict[str, list[JsonValue]]] = {}
     for sub in row_field.key:
-        url = row_field.sub_fields[sub].type is FieldType.URL
         kept, _ = screen.screen([c for c in candidates if c.field == f"{row_field.name}.{sub}"])
         for candidate in kept:
-            value = _key_value(candidate, excluded if url else frozenset())
+            value = _key_value(candidate, excluded if sub in urls else frozenset())
             row = row_of(candidate)
             if value is not None and row is not None:
                 values.setdefault(row, {}).setdefault(sub, []).append(value)
-    return _without_group_urls(values, shared)
+    return _without_group_urls(values, shared, urls)
 
 
 def _key_value(candidate: Candidate, excluded: frozenset[str]) -> JsonValue:
@@ -229,51 +229,67 @@ def _not_keys(row_field: RowField) -> tuple[frozenset[str], frozenset[str]]:
     return frozenset((*row_field.page_urls, *own)), frozenset(u for u in target.urls if u in offers)
 
 
-def _without_group_urls(values: dict[str, dict[str, list[JsonValue]]], shared: frozenset[str]) -> dict[str, _Keys]:
-    """Drops a URL the target and its Offers both carry when more than one row carries it (§4.4): one row's URL is
-    that variant's key (the one-Offer-per-variant shape); a URL many rows repeat names the group, and as a key it
-    would join every row into one variant."""
+def _without_group_urls(
+    values: dict[str, dict[str, list[JsonValue]]], shared: frozenset[str], url_subs: frozenset[str]
+) -> dict[str, _Keys]:
+    """Drops a URL the target and its Offers both carry from the url key sub-fields when more than one row carries
+    it (§4.4): one row's URL is that variant's key (the one-Offer-per-variant shape); a URL many rows repeat names the
+    group, and as a key it would join every row into one variant. Only url sub-fields are screened (`_key_value`)."""
     carriers: dict[str, set[str]] = {}
     for row, keys in values.items():
-        for url in _urls_in(keys, shared):
+        for url in _urls_in(keys, shared, url_subs):
             carriers.setdefault(url, set()).add(row)
     group = frozenset(url for url, rows in carriers.items() if len(rows) > 1)
-    return {row: _without(keys, group) for row, keys in values.items()} if group else values
+    return {row: _without(keys, group, url_subs) for row, keys in values.items()} if group else values
 
 
-def _urls_in(keys: _Keys, urls: frozenset[str]) -> set[str]:
-    return {v for vs in keys.values() for v in vs if isinstance(v, str) and v in urls}
+def _urls_in(keys: _Keys, urls: frozenset[str], url_subs: frozenset[str]) -> set[str]:
+    return {v for sub in keys.keys() & url_subs for v in keys[sub] if _in(v, urls)}
 
 
-def _without(keys: _Keys, urls: frozenset[str]) -> _Keys:
-    kept = {sub: [v for v in vs if not (isinstance(v, str) and v in urls)] for sub, vs in keys.items()}
+def _in(value: JsonValue, urls: frozenset[str]) -> TypeGuard[str]:
+    return isinstance(value, str) and value in urls
+
+
+def _without(keys: _Keys, urls: frozenset[str], url_subs: frozenset[str]) -> _Keys:
+    kept = {sub: [v for v in vs if sub not in url_subs or not _in(v, urls)] for sub, vs in keys.items()}
     return {sub: vs for sub, vs in kept.items() if vs}
 
 
-def _linked(
-    row_field: RowField, rows: Sequence[Entity], keys: Mapping[str, Mapping[str, list[JsonValue]]]
+def linked(
+    sub_fields: Mapping[str, FieldSpec], rows: Sequence[Entity], keys: Mapping[str, Mapping[str, list[JsonValue]]]
 ) -> list[list[Entity]]:
-    """Connected components of rows that share a value of some key sub-field; order-independent, each in collector
-    order, ordered by its first row."""
+    """Connected components of rows that share a value of some key sub-field (§4.4); order-independent, each in
+    collector order, ordered by its first row."""
     parent = {row.id: row.id for row in rows}
 
     def root(row_id: str) -> str:
         while parent[row_id] != row_id:
+            parent[row_id] = parent[parent[row_id]]  # path halving keeps the trees shallow
             row_id = parent[row_id]
         return row_id
 
-    for i, a in enumerate(rows):
-        for b in rows[i + 1 :]:
-            if _share_key(row_field, keys[a.id], keys[b.id]):
-                parent[root(b.id)] = root(a.id)
+    for sub, spec in sub_fields.items():
+        values = [(row.id, v) for row in rows for v in keys[row.id].get(sub, ())]
+        for a, b in _sharing(values, spec):
+            parent[root(b)] = root(a)
     groups: dict[str, list[Entity]] = {}
     for row in rows:
         groups.setdefault(root(row.id), []).append(row)
     return list(groups.values())
 
 
-def _share_key(row_field: RowField, a: Mapping[str, list[JsonValue]], b: Mapping[str, list[JsonValue]]) -> bool:
-    return any(equal(x, y, row_field.sub_fields[sub]) for sub in a.keys() & b.keys() for x in a[sub] for y in b[sub])
+def _sharing(values: Sequence[tuple[str, JsonValue]], spec: FieldSpec) -> Iterator[tuple[str, str]]:
+    """Pairs of rows whose values of one sub-field are equal, enough to connect every such pair: values meet by their
+    equality key in one pass; only a value with no key (its type's equality is not transitive) is compared with the
+    sub-field's other values."""
+    first: dict[Hashable, str] = {}
+    for row_id, value in values:
+        key = equality_key(value, spec)
+        if key is not None:
+            yield first.setdefault(key, row_id), row_id
+            continue
+        yield from ((other_id, row_id) for other_id, other in values if equal(value, other, spec))
 
 
 def _merged_keys(rows: Sequence[Entity], keys: Mapping[str, _Keys]) -> _Keys:

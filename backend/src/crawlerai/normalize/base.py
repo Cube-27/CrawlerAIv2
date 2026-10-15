@@ -6,6 +6,7 @@ The type modules import this module and nothing else from `crawlerai.normalize`;
 """
 
 import re
+from collections.abc import Hashable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -92,3 +93,26 @@ class Equality(Protocol):
     by eval. It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
 
     def __call__(self, a: JsonValue, b: JsonValue, spec: FieldSpec, /) -> bool: ...
+
+
+class EqualityKey(Protocol):
+    """One field type's equality as a key (SPEC-04 §4.5): `equal(a, b)` exactly when the keys of `a` and `b` are
+    equal, so values group by hashing instead of comparing every pair. Only a type whose equality is an equivalence
+    relation has one (location's is not transitive)."""
+
+    def __call__(self, value: JsonValue, spec: FieldSpec, /) -> Hashable: ...
+
+
+def frozen(value: JsonValue) -> Hashable:
+    """A hashable stand-in for a JSON value, equal to another's exactly when the values are `==` (lists as tuples,
+    objects as sets of their members)."""
+    if isinstance(value, list):
+        return tuple(frozen(v) for v in value)
+    if isinstance(value, dict):
+        return frozenset((k, frozen(v)) for k, v in value.items())
+    return value
+
+
+def raw_key(value: JsonValue) -> Hashable:
+    """The key of a value that only equals itself: tagged, so it never meets a type's own key form."""
+    return ("raw", frozen(value))
