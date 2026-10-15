@@ -5481,3 +5481,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Edit variant rows in the screen now.
 - Why: A pass saved from the screen never drops row labels added through the API, and labeling keeps working on preset v3 pages.
 - Reversible: yes
+
+### D-0807 — The OpenAPI document declares the bearer API key
+- Date: 2026-10-15 · Spec/PR: SPEC-07 §4.2 (#175) · Status: decided
+- Context: The API key was checked by a hand-written dependency, so the OpenAPI document declared no security (a static-analysis finding).
+- Decision: A non-refusing `HTTPBearer(auto_error=False)` is a sub-dependency of `require_api_key`; every operation but `/healthz` declares `HTTPBearer`. Auth still runs in `require_api_key`.
+- Alternatives: A global `security` entry with `/healthz` exempted by hand.
+- Why: The requirement is stated per operation, from the dependency that enforces it, with no behaviour change.
+- Reversible: yes
