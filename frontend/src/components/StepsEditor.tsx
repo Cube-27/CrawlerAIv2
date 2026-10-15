@@ -88,15 +88,15 @@ function PostOpsEditor({
     <Fieldset>
       <Fieldset.Legend>Post operations</Fieldset.Legend>
       {ops.map((op, index) => (
-        // Operations have no identity of their own; their position is what the step runs.
-        <div key={index} className="flex flex-wrap items-end gap-3">
+        <div key={op.id} className="flex flex-wrap items-end gap-3">
           <OptionSelect
             label={`Operation ${String(index + 1)}`}
             options={POST_OP_KINDS}
             value={op.op}
             accepts={isPostOpKind}
             onChange={(kind) => {
-              onChange(replaced(ops, index, emptyPostOp(kind)));
+              // A new kind keeps the operation's row.
+              onChange(replaced(ops, index, { ...emptyPostOp(kind), id: op.id }));
             }}
           />
           <PostOpFields
@@ -240,9 +240,8 @@ export function StepsEditor({
   return (
     <div className="flex flex-col gap-4">
       {steps.map((step, index) => (
-        // Steps have no identity of their own; their order is what the config runs.
         <StepRow
-          key={index}
+          key={step.id}
           step={step}
           position={index + 1}
           count={steps.length}

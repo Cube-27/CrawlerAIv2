@@ -355,11 +355,10 @@ async def test_a_prompt_without_a_draft_fails_its_job_with_no_tasks(
         web.serve(urls[0], _page("Blue kettle"))
     web.serve(urls[3], _page("Red kettle"))  # past the first three: never a sample
     request = _request(urls, {"prompt": prompt}, budget={"llm_calls": budget})
+    llm = MeteredClient([FakeProvider([reply])], engine)
 
     with pytest.raises(error):
-        await submit_extract(
-            engine, fetching, request, llm=MeteredClient([FakeProvider([reply])], engine), data=engine_data
-        )
+        await submit_extract(engine, fetching, request, llm=llm, data=engine_data)
 
     [(job_id, status)] = await _extract_jobs(engine)
     assert (status, await _tasks(engine, job_id)) == ("failed", [])

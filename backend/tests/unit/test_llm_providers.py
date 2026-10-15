@@ -299,6 +299,7 @@ def test_a_refused_request_is_not_failed_over() -> None:
         job_id=None,
     )
 
+    call = client.complete_json(request)
     with pytest.raises(ProviderRefused):
-        asyncio.run(client.complete_json(request))
+        asyncio.run(call)
     assert (len(refused), len(other)) == (1, 0)

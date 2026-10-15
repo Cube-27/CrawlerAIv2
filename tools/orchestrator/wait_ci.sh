@@ -23,7 +23,8 @@ check_conflict() {
 
 # Fails when the ci workflow has not started on the head by the grace deadline.
 check_ci_started() {
-  if ! grep -q '^backend ' <<< "$1" && (( $(date +%s) >= no_run_end )); then
+  local checks=$1
+  if ! grep -q '^backend ' <<< "$checks" && (( $(date +%s) >= no_run_end )); then
     err "no workflow run for $sha after ${no_run_s}s and the PR does not conflict: check the workflow triggers or re-push"
   fi
   return 0
