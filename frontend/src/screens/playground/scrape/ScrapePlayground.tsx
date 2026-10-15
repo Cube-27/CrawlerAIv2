@@ -27,13 +27,17 @@ type ScrapeState = { kind: "idle" } | { kind: "pending" } | ScrapeRun;
 
 const NO_ERRORS: Readonly<Record<string, string>> = {};
 
-const NO_FORMAT = "Choose a format, Metadata in JSON or a schema.";
+const NO_FORMAT = { formats: "Choose a format, Metadata in JSON or a schema." };
+const NO_SCHEMA_PAGE_KIND = { page_kind: "The schema names no page kind, which its records need." };
+const NO_LISTING_RECORDS = { page_kind: "Records of listing pages are not available yet." };
 
-/** Why the chosen schema's records can't be asked for: its page kind is none, or one the server refuses records of. */
-function noPageKind(form: ScrapeFormState): string {
-  return form.schemaPageKind === null
-    ? "The schema names no page kind, which its records need."
-    : "Records of listing pages are not available yet.";
+/** Why `form` can't be sent, by field: it asks for no format, or its schema's records are for no page kind it can ask
+ * for (its page kind is none, or one the server refuses records of). Derived from the current form, so a change
+ * anywhere that fixes it clears it; each answer is one constant, so the errors change only when the reason does. */
+function clientErrorsOf(form: ScrapeFormState): Readonly<Record<string, string>> {
+  if (asksForNothing(form)) return NO_FORMAT;
+  if (form.schemaId === "" || requestPageKind(form) !== null) return NO_ERRORS;
+  return form.schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : NO_LISTING_RECORDS;
 }
 
 /** RFC 3986 §3: a URL with an authority starts with its scheme and `://`. The bar shows `https://`, so text typed
@@ -75,9 +79,10 @@ export function ScrapePlayground() {
   const [form, setForm] = useState<ScrapeFormState>(INITIAL_FORM);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
-  const [clientErrors, setClientErrors] = useState<Readonly<Record<string, string>>>(NO_ERRORS);
+  const [refused, setRefused] = useState(false);
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
   const latest = useRef(0);
+  const clientErrors = refused ? clientErrorsOf(form) : NO_ERRORS;
   const validationErrors = useMemo(
     () => ({
       ...(state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS),
@@ -88,16 +93,11 @@ export function ScrapePlayground() {
 
   const submit = () => {
     const request = buildRequest({ ...form, url: requestUrl(form.url) });
+    setRefused(request === null);
     if (request === null) {
-      if (asksForNothing(form)) {
-        setClientErrors({ formats: NO_FORMAT });
-      } else {
-        setClientErrors({ page_kind: noPageKind(form) });
-        setOptionsOpen(true);
-      }
+      if (!asksForNothing(form)) setOptionsOpen(true);
       return;
     }
-    setClientErrors(NO_ERRORS);
     const run = ++latest.current;
     setState({ kind: "pending" });
     void runScrape(client, request).then((result) => {

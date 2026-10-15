@@ -332,6 +332,21 @@ describe("scrape playground: the request", () => {
     expect(screen.getByText("extracted")).toBeInTheDocument();
   });
 
+  it("drops the Format error once a schema or Metadata in JSON gives the scrape something to ask for", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl();
+    await toggleFormats("Markdown");
+    await submit();
+    const options = await openOptions();
+
+    await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({ formats: ["metadata"] });
+  });
+
   it("sends a URL typed without a scheme with the https:// the bar shows", async () => {
     const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
     await openScrape();
