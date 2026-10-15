@@ -9,24 +9,14 @@ preset's name nor edit or retire a preset.
 from collections.abc import Sequence
 from functools import cache
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import PageKind, SchemaId, SchemaStatus
+from crawlerai.db.models import SchemaId, SchemaStatus
 from crawlerai.eval.labels import from_pydantic
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import NotLatest, SchemaExists
-from crawlerai.schemas.types import FieldSpec, Name, SchemaChanges, SchemaDef, SchemaDocument
-
-
-class SchemaContent(BaseModel):
-    """A schema document as a caller writes it, without the name and version the registry assigns."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    page_kind: PageKind
-    required_groups: list[list[Name]] = []
-    fields: dict[Name, FieldSpec] = Field(min_length=1)
+from crawlerai.schemas.types import Name, SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
 
 
 class NewSchema(SchemaContent):

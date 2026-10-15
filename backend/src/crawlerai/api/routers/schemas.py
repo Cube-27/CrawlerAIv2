@@ -13,9 +13,9 @@ from crawlerai.api.dto import PROBLEM_RESPONSE, SchemaList
 from crawlerai.api.problems import conflict, invalid, not_found
 from crawlerai.db.models import SchemaId, SchemaStatus
 from crawlerai.schemas.registry import SchemaNotFound
-from crawlerai.schemas.types import Name, SchemaDef
+from crawlerai.schemas.types import Name, SchemaContent, SchemaDef
 from crawlerai.services import schemas
-from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict, SchemaContent
+from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
 
 router = APIRouter(
     prefix="/v1/schemas",

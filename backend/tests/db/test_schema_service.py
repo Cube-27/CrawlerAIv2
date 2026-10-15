@@ -5,8 +5,9 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaContent
 from crawlerai.services import schemas
-from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict, SchemaContent
+from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
 
 pytestmark = pytest.mark.anyio
 
