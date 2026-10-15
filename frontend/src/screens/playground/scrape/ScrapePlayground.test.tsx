@@ -319,7 +319,7 @@ describe("scrape playground: the request", () => {
     expect(posted(calls)).toMatchObject({ url: "https://store.test/a" });
   });
 
-  it("sends nothing and opens the options when a schema has no page kind for its records", async () => {
+  it("sends nothing and opens the options, saying why, when a schema's records are for no page kind it can ask for", async () => {
     const listing = { ...itemSchema, status: "active", page_kind: "listing" };
     const calls = stubScrape({ "GET /v1/schemas": () => Response.json({ items: [listing] }) });
     await openScrape();
@@ -329,12 +329,30 @@ describe("scrape playground: the request", () => {
 
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
     expect(screen.getByRole("region", { name: "Options" })).toBeInTheDocument();
+    expect(screen.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
+    await userEvent.click(selectTrigger(/Page kind/));
+    for (const kind of ["Detail", "Listing"]) {
+      expect(await screen.findByRole("option", { name: kind })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    }
+  });
+
+  it("offers only the chosen schema's page kind", async () => {
+    stubScrape({});
+    await openScrape();
+    await fillRecordsByIdForm();
+    await openOptions();
+
+    expect(selectTrigger(/Page kind/)).toHaveTextContent("Detail");
     await userEvent.click(selectTrigger(/Page kind/));
     expect(await screen.findByRole("option", { name: "Listing" })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
   });
+
   it("drops the page kind a previous schema set when the next one has none for its records", async () => {
     const listing = {
       ...itemSchema,

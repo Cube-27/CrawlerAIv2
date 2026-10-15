@@ -1,5 +1,4 @@
 import type { MethodHint, PageKind } from "../../../api/scrape";
-import { NO_RECORDS_PAGE_KINDS } from "../../../components/PageKindChoices";
 import { METHOD_HINTS, PAGE_KINDS } from "../../../components/requestOptions";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
 import { DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
@@ -57,12 +56,18 @@ function AdvancedRows({
 }
 
 /** Scrape's options panel (SPEC-14 §4.2): page kind and Metadata in JSON, then fetch and limits under Advanced. With a
- * schema, the records need a page kind, and the server refuses listing records (SPEC-07 §4.4). */
+ * schema, the page kind is the one its records can be for, `schemaPageKind`, or none (SPEC-07 §4.4). */
 export function ScrapeOptions({
   options,
   hasSchema,
+  schemaPageKind,
   onChange,
-}: Readonly<{ options: Options; hasSchema: boolean; onChange: (options: Options) => void }>) {
+}: Readonly<{
+  options: Options;
+  hasSchema: boolean;
+  schemaPageKind: PageKind | null;
+  onChange: (options: Options) => void;
+}>) {
   return (
     <OptionsPanel
       advanced={<AdvancedRows options={options} onChange={onChange} />}
@@ -72,12 +77,16 @@ export function ScrapeOptions({
     >
       <SelectRow<PageKind>
         label="Page kind"
-        help="Whether the page shows one item or a list of items. Required with a schema; records of listing pages are not available yet."
+        help="Whether the page shows one item or a list of items. With a schema, it is the schema's; records of listing pages are not available yet."
         name="page_kind"
         options={PAGE_KINDS}
-        value={options.pageKind}
+        value={hasSchema ? schemaPageKind : options.pageKind}
         placeholder="Not set"
-        disabled={hasSchema ? NO_RECORDS_PAGE_KINDS : []}
+        disabled={
+          hasSchema
+            ? PAGE_KINDS.map(([kind]) => kind).filter((kind) => kind !== schemaPageKind)
+            : []
+        }
         onChange={(pageKind) => {
           onChange({ ...options, pageKind });
         }}

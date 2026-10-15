@@ -5568,7 +5568,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 ### D-0818 — Scrape's Schema is a stored schema or none; a schema asks for records with its page kind
 - Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, PR 2 (#191) · Status: decided
 - Context: §4.2 gives the toolbar a `SchemaSelect` or "None" and no schema-source row for Scrape; SPEC-07 §4.4 makes `records` need a schema and a matching `page_kind`, and refuses listing records.
-- Decision: Format lists the page formats only. Picking a stored schema adds `records` and copies the schema's page kind, unless it is one whose records the server refuses; a schema with no page kind keeps the request unsent and opens the options. Inline and prompt schemas leave Scrape mode; Extract keeps a schema source (§4.2).
+- Decision: Format lists the page formats only. Picking a stored schema adds `records`, and the request's page kind is the schema's, the only one the server accepts for it; Page kind offers no other. A schema with no page kind, or one whose records the server refuses, keeps the request unsent and says why under Page kind. Inline and prompt schemas leave Scrape mode; Extract keeps a schema source (§4.2).
 - Alternatives: keep Records in Format and the schema-source choice.
 - Why: Follows the §4.2 toolbar and sends no request the server must refuse.
 - Reversible: yes

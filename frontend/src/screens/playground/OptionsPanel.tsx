@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   Disclosure,
+  FieldError,
   Label,
   ListBox,
   NumberField,
@@ -145,6 +146,7 @@ export function SelectRow<K extends string>({
           ))}
         </ListBox>
       </Select.Popover>
+      <FieldError />
     </Select>
   );
 }

@@ -26,11 +26,13 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   llmCalls: Number.NaN,
 };
 
-/** What the command bar and the options panel hold. `schemaId` is a stored schema's id, or "" for none. */
+/** What the command bar and the options panel hold. `schemaId` is a stored schema's id, or "" for none;
+ * `schemaPageKind` is that schema's page kind. */
 export interface ScrapeFormState {
   url: string;
   formats: readonly PageFormat[];
   schemaId: string;
+  schemaPageKind: SchemaPageKind | null;
   options: ScrapeOptions;
 }
 
@@ -38,6 +40,7 @@ export const INITIAL_FORM: ScrapeFormState = {
   url: "",
   formats: ["markdown"],
   schemaId: "",
+  schemaPageKind: null,
   options: DEFAULT_OPTIONS,
 };
 
@@ -48,19 +51,21 @@ export function optionsChanged(options: ScrapeOptions): boolean {
   );
 }
 
-/** `form` with the stored schema `schemaId`. A schema's records need the page kind it is for (SPEC-07 §4.4), so a
- * chosen schema sets it; when the schema has none, or one whose records the server refuses, the page kind is cleared
- * so the request waits for one. */
+/** `form` with the stored schema `schemaId`, for `schemaPageKind` pages. */
 export function withSchema(
   form: ScrapeFormState,
   schemaId: string,
   schemaPageKind: SchemaPageKind | null,
 ): ScrapeFormState {
-  const pageKind =
-    schemaPageKind === null || NO_RECORDS_PAGE_KINDS.includes(schemaPageKind)
-      ? null
-      : schemaPageKind;
-  return { ...form, schemaId, options: { ...form.options, pageKind } };
+  return { ...form, schemaId, schemaPageKind };
+}
+
+/** The page kind the request names. A stored schema's records are for its own page kind only, and not for one the
+ * server refuses records of (SPEC-07 §4.4), so with a schema it is that kind, or null when there is none. */
+export function requestPageKind(form: ScrapeFormState): PageKind | null {
+  if (form.schemaId === "") return form.options.pageKind;
+  const kind = form.schemaPageKind;
+  return kind === null || NO_RECORDS_PAGE_KINDS.includes(kind) ? null : kind;
 }
 
 /** The request's formats: the page formats chosen, `metadata` for Metadata in JSON, and `records` with a schema. */
@@ -77,16 +82,17 @@ export function asksForNothing(form: ScrapeFormState): boolean {
   return requestFormats(form).length === 0;
 }
 
-/** The request for `form`, or null when it asks for no format, or has a schema but no page kind, which records need
- * (SPEC-07 §4.4). Empty limits are left out, so the server's defaults apply. */
+/** The request for `form`, or null when it asks for no format, or has a schema with no page kind its records can be
+ * for (SPEC-07 §4.4). Empty limits are left out, so the server's defaults apply. */
 export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   const { options } = form;
-  if (asksForNothing(form) || (form.schemaId !== "" && options.pageKind === null)) return null;
+  const pageKind = requestPageKind(form);
+  if (asksForNothing(form) || (form.schemaId !== "" && pageKind === null)) return null;
   return {
     url: form.url.trim(),
     formats: requestFormats(form),
     schema: form.schemaId === "" ? null : { id: form.schemaId },
-    page_kind: options.pageKind,
+    page_kind: pageKind,
     fetch: { method_hint: options.methodHint },
     ...(Number.isNaN(options.maxAge) ? {} : { max_age: options.maxAge }),
     ...(Number.isNaN(options.timeoutS) ? {} : { timeout_s: options.timeoutS }),

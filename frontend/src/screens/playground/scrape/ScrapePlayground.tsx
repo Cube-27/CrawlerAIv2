@@ -13,6 +13,7 @@ import { OptionsToggle } from "../OptionsPanel";
 import {
   asksForNothing,
   buildRequest,
+  requestPageKind,
   INITIAL_FORM,
   optionsChanged,
   withSchema,
@@ -27,6 +28,13 @@ type ScrapeState = { kind: "idle" } | { kind: "pending" } | ScrapeRun;
 const NO_ERRORS: Readonly<Record<string, string>> = {};
 
 const NO_FORMAT = "Choose a format, Metadata in JSON or a schema.";
+
+/** Why the chosen schema's records can't be asked for: its page kind is none, or one the server refuses records of. */
+function noPageKind(form: ScrapeFormState): string {
+  return form.schemaPageKind === null
+    ? "The schema names no page kind, which its records need."
+    : "Records of listing pages are not available yet.";
+}
 
 /** RFC 3986 §3.1: a URI starts with its scheme and `:`. The bar shows `https://`, so text typed without a scheme
  * gets it. */
@@ -67,24 +75,27 @@ export function ScrapePlayground() {
   const [form, setForm] = useState<ScrapeFormState>(INITIAL_FORM);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
-  const [noFormat, setNoFormat] = useState(false);
-  const validationErrors = useMemo(() => {
-    const errors = state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS;
-    return noFormat ? { ...errors, formats: NO_FORMAT } : errors;
-  }, [state, noFormat]);
+  const [clientErrors, setClientErrors] = useState<Readonly<Record<string, string>>>(NO_ERRORS);
+  const validationErrors = useMemo(
+    () => ({
+      ...(state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS),
+      ...clientErrors,
+    }),
+    [state, clientErrors],
+  );
 
   const submit = () => {
-    if (asksForNothing(form)) {
-      setNoFormat(true);
-      return;
-    }
-    setNoFormat(false);
     const request = buildRequest({ ...form, url: requestUrl(form.url) });
-    // A schema's records need a page kind, which is set in the options panel.
     if (request === null) {
-      setOptionsOpen(true);
+      if (asksForNothing(form)) {
+        setClientErrors({ formats: NO_FORMAT });
+      } else {
+        setClientErrors({ page_kind: noPageKind(form) });
+        setOptionsOpen(true);
+      }
       return;
     }
+    setClientErrors(NO_ERRORS);
     setState({ kind: "pending" });
     void runScrape(client, request).then(setState);
   };
@@ -136,6 +147,7 @@ export function ScrapePlayground() {
           <ScrapeOptions
             options={form.options}
             hasSchema={form.schemaId !== ""}
+            schemaPageKind={requestPageKind(form)}
             onChange={(options) => {
               setForm({ ...form, options });
             }}
