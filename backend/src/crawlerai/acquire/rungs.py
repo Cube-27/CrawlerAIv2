@@ -16,7 +16,7 @@ from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
-from crawlerai.acquire.politeness import SLOW_DOWN
+from crawlerai.acquire.politeness import SLOW_DOWN, Admit
 from crawlerai.acquire.types import (
     AttemptRecord,
     BlockClass,
@@ -61,13 +61,15 @@ async def acquire(
     *,
     recipe: Rung | None = None,
     validators: Validators | None = None,
+    admit_retry: Admit | None = None,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any. Otherwise through `recipe`, the active config's
     API recipe bound to its fetch (SPEC-09 §4.8), when the site has one: its result is kept when it is `ok` or asks
     for fewer requests, and otherwise the page is fetched as if there were no recipe (§4.10). Without a recipe, fetch
     it with `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched
-    again in the browser, and the browser's outcome is kept only if it is `ok`. The result lists every attempt, in its
-    bundle's manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
+    again in the browser, once `admit_retry` admits one more request to the site (SPEC-02 §4.6), and the browser's
+    outcome is kept only if it is `ok`. The result lists every attempt, in its bundle's manifest too. `validators` go
+    with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
     if (adapter := rungs.adapters.detect(url)) is not None:
         return await adapter.fetch(url, policy)
     served: FetchResult | None = None
@@ -75,14 +77,19 @@ async def acquire(
         served = await recipe(url, policy)
         if served.block_class == "ok" or slow_down(served):
             return served
-    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators)
+    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_retry)
     if served is not None:
         attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms
     return with_attempts(kept, attempts, duration_ms)
 
 
 async def _page(
-    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs, validators: Validators | None
+    url: str,
+    policy: FetchPolicy,
+    remembered: FetchMethod,
+    rungs: Rungs,
+    validators: Validators | None,
+    admit_retry: Admit | None,
 ) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
@@ -92,6 +99,8 @@ async def _page(
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     kept, attempts, duration_ms = result, result.attempts, result.duration_ms
     if policy.method_hint == "auto" and method == "http" and _browser_may_pass(result):
+        if admit_retry is not None:
+            await admit_retry()
         retry = await rungs.browser(url, policy)
         if retry.block_class == "ok":
             kept = retry

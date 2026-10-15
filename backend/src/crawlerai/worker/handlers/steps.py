@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.robots import Fetch
 from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.ssrf import SsrfRejected
@@ -142,9 +143,11 @@ async def fetch_page(
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
 
-    async def page(url: str) -> FetchResult | Unchanged:
+    async def page(url: str, admit_retry: Admit) -> FetchResult | Unchanged:
         async def fetch(sent: Validators | None) -> FetchResult:
-            result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=recipe, validators=sent)
+            result = await acquire(
+                url, policy, site.fetch_method, fetching.rungs, recipe=recipe, validators=sent, admit_retry=admit_retry
+            )
             attempts.extend(result.attempts)
             return result
 

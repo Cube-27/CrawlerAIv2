@@ -25,6 +25,7 @@ import os
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Any, Final, Self, TypedDict
 from urllib.parse import urlsplit
 
@@ -479,7 +480,8 @@ async def polite_fetch(
     rung = None
     if recipe is not None:
         rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
-    result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung)
+    admit_retry = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
+    result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_retry=admit_retry)
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)

@@ -4,8 +4,9 @@ The limiter's state lives in the worker process. With several workers a site see
 from each, which the design point (0.1 tasks/s) accepts; shared state is a candidate only if measured.
 """
 
+import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Final
@@ -17,6 +18,9 @@ BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
+
+# Waits until the site's rate admits one more request, and records it.
+Admit = Callable[[], Awaitable[None]]
 
 
 def interval(crawl_delay_ms: int | None, robots_delay: timedelta | None) -> timedelta:
@@ -65,6 +69,11 @@ class HostLimiter:
             return wait
         self._next[host] = now + interval.total_seconds()
         return timedelta(0)
+
+    async def wait(self, host: str, interval: timedelta) -> None:
+        """Wait in place until a request to `host` may go, recording it."""
+        while wait := self.admit(host, interval):
+            await asyncio.sleep(wait.total_seconds())
 
     def pause(self, host: str, after: timedelta) -> None:
         """Admit nothing to `host` for `after`, unless a longer wait is already due."""

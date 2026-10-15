@@ -230,3 +230,36 @@ def test_a_recipe_asked_to_slow_down_is_kept_without_a_fallback() -> None:
 
     assert _attempts(result) == [("api", "blocked")]
     assert len(stubs.http.calls) == 0
+
+
+def _acquire_admitting(http: BlockClass) -> tuple[list[str], FetchResult]:
+    """`acquire` in auto with an `admit_retry` that logs, alongside the rungs, when it runs."""
+    log: list[str] = []
+
+    async def admit_retry() -> None:
+        log.append("admit")
+
+    async def logged(rung: Rung, url: str, policy: FetchPolicy) -> FetchResult:
+        log.append(rung.method)
+        return await rung(url, policy)
+
+    http_rung, browser_rung = Rung("http", http), Rung("browser", "ok")
+    rungs = Rungs(
+        http=lambda url, policy: logged(http_rung, url, policy),
+        browser=lambda url, policy: logged(browser_rung, url, policy),
+    )
+    result = asyncio.run(acquire(URL, FetchPolicy(), "http", rungs, admit_retry=admit_retry))
+    return log, result
+
+
+@pytest.mark.parametrize("http", ["shell", "blocked"])
+def test_the_browser_retry_waits_for_its_admission(http: BlockClass) -> None:
+    log, result = _acquire_admitting(http)
+    assert log == ["http", "admit", "browser"]
+    assert result.method == "browser"
+
+
+def test_a_fetch_without_a_retry_asks_no_admission() -> None:
+    log, result = _acquire_admitting("ok")
+    assert log == ["http"]
+    assert result.method == "http"

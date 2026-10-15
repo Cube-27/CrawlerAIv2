@@ -14,9 +14,9 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.robots import RobotsSnapshot
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, claim_tasks
@@ -43,13 +43,14 @@ class Clock:
 
 @dataclass
 class Web:
-    """Answers each URL from `pages`, as (status, body, response headers); anything else is a 404."""
+    """Answers each URL from `pages`, as (status, body, response headers); anything else is a 404. A page fetch's
+    `Admit` goes unused: it makes one request."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, tuple[int, bytes, tuple[tuple[str, str], ...]]] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
 
-    async def __call__(self, url: str) -> FetchResult:
+    async def __call__(self, url: str, _admit: Admit | None = None) -> FetchResult:
         self.fetched.append(url)
         status, body, headers = self.pages.get(url, (404, b"no such page", ()))
         return self.fetch_result(url, status, body, headers, block_class="ok" if status < 400 else "blocked")
@@ -242,6 +243,48 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     assert result == Failed(f"http {status}", transient=True, after=asked, exhausted="blocked")
     # The site's other pages wait out the same pause.
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
+
+
+async def test_a_further_request_of_the_fetch_takes_a_turn_at_the_sites_rate(conn: AsyncConnection, web: Web) -> None:
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
+    first, second = await _tasks(conn, "/item/1", "/item/2")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    async def retried(url: str, admit: Admit) -> FetchResult:
+        # The first request takes a second; its retry is admitted as it ends, at the next turn.
+        clock.now += 1.0
+        await admit()
+        return await web(url)
+
+    first_result = await fetch_politely(conn, first, site_id, FetchPolicy(), retried, limiter, fetch_robots=web)
+
+    assert isinstance(first_result, FetchResult)
+    clock.now += 0.25
+    # The retry took the turn at 1 s, so the site's next page waits until 2 s, not 1 s.
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=0.75))
+
+
+async def test_a_slow_down_answering_a_request_whose_outcome_was_not_kept_backs_off(
+    conn: AsyncConnection, web: Web
+) -> None:
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (403, b"", ())
+    first, second = await _tasks(conn, "/item/1", "/item/2")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+    browser = AttemptRecord(method="browser", status=503, block_class="blocked", duration_ms=1)
+
+    async def retried(url: str, _admit: Admit) -> FetchResult:
+        # The HTTP outcome is kept; the browser retry was answered 503.
+        kept = await web(url)
+        return kept.model_copy(update={"attempts": (*kept.attempts, browser)})
+
+    result = await fetch_politely(conn, first, site_id, FetchPolicy(), retried, limiter, fetch_robots=web)
+
+    assert result == Failed("http 503", transient=True, after=None, exhausted="blocked")
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=30))
 
 
 @pytest.mark.parametrize("value", ["901", "99999999999999", "9" * 5000])
