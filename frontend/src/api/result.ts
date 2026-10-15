@@ -44,7 +44,7 @@ async function send<T>(
 }
 
 /** Runs `call` and returns the body it answered with, or why it failed (`what` names the call in that message). A 401
- * also drops the key, through the client's middleware (`useApiClient`). */
+ * also shows the setup notice, through the client's middleware (`useApiClient`). */
 export async function apiResult<T>(
   call: () => Promise<Answer<T>>,
   what: string,

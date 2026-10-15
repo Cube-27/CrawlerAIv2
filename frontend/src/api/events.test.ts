@@ -209,7 +209,7 @@ describe("followEvents", () => {
       if (next === undefined) throw new Error(`no more connections expected: ${request.url}`);
       return Promise.resolve(next());
     });
-    const client = createApiClient({ baseUrl: "http://api.test", apiKey: "ck_test" });
+    const client = createApiClient({ baseUrl: "http://api.test" });
     const states: StreamState[] = [];
 
     await followEvents({

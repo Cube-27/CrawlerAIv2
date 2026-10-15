@@ -6,7 +6,6 @@ import { routes } from "../../app/router";
 import type { ConfigDetail, ConfigSummary, ValidationReport } from "../../api/configs";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
-import { connect } from "../../test/connect";
 
 const HOST = "shop.example.test";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -125,7 +124,6 @@ const json = (body: unknown) => () => Response.json(body);
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await connect();
   await screen.findByRole("heading", { level: 1, name: heading });
 }
 
@@ -179,7 +177,7 @@ describe("sites screen", () => {
     expect(calls.find((call) => call.path.startsWith("/v1/sites"))).toMatchObject({
       method: "GET",
       path: `/v1/sites/${HOST}/configs`,
-      authorization: "Bearer ck_first",
+      authorization: null,
     });
   });
 

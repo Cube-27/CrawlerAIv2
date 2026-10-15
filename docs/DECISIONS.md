@@ -5513,3 +5513,19 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Options: (a) a `fields` request member; the server drafts a typed schema from the names (role S); (b) the UI sends the names as a prompt where prompts are allowed; (c) chips pick fields from presets and stored schemas.
 - Recommendation: (a), one path for every run type, with the draft shown for editing; it changes the public API.
 - Blocked: SPEC-14 PR 11 only. The owner discusses it before it is built.
+
+### D-0811 — The UI's `.env` is read once at config load, from the package's parent directory
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.1, PR 1 (#189) · Status: decided
+- Context: §4.1 says the dev config reads the repo-root `.env` with `loadEnv(mode, <repo root>, "")`. The frontend has no Node types to locate the repo root from the config file, and `vite.config.ts` is an object config that Vite+ also reads for lint and format settings.
+- Decision: `vite.config.ts` calls `loadEnv("development", "..", "")` once at module scope and builds one proxy entry for `/v1` and `/healthz` from `CRAWLERAI_UI_API_KEY`; an empty value counts as unset. A variable exported in the shell wins over `.env` (Vite's `loadEnv`).
+- Alternatives: add `@types/node` and resolve the root from `import.meta.url`; a function-form `defineConfig` that passes the real mode.
+- Why: pnpm runs scripts in the package directory, so `..` is the repo root for `pnpm dev` and Vitest; no new dependency, and the config stays static.
+- Reversible: yes
+
+### D-0812 — A 401 replaces the routed screen with the setup notice until reload
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.1, PR 1 (#189) · Status: decided
+- Context: The browser holds no key; every call uses the one key the dev proxy attaches, so a 401 on one call means every call fails the same way.
+- Decision: The API client's middleware sets one `rejected` flag on any 401; the route element then shows the §4.1 `EmptyView` in place of the screen, the sidebar kept, until the page is reloaded.
+- Alternatives: each screen shows its own 401 problem; clear the flag on the next successful call.
+- Why: Only editing `.env` and restarting `pnpm dev` changes the key; per-screen errors would hide that fix.
+- Reversible: yes

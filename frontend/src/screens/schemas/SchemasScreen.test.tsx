@@ -5,7 +5,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
-import { connect } from "../../test/connect";
 
 const V1_ID = "0192a000-0000-7000-8000-000000000101";
 const V2_ID = "0192a000-0000-7000-8000-000000000102";
@@ -52,7 +51,6 @@ const one = (schema: SchemaDef) => () => Response.json(schema);
 
 async function open(path: string, heading: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await connect();
   await screen.findByRole("heading", { level: 1, name: heading });
 }
 
@@ -93,7 +91,7 @@ describe("schemas screen: the list", () => {
     expect(calls[0]).toMatchObject({
       path: "/v1/schemas",
       query: "",
-      authorization: "Bearer ck_first",
+      authorization: null,
     });
   });
 

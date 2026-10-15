@@ -5,21 +5,21 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { healthReply, problem, stubApi } from "../test/api";
 import { prefersDark } from "../test/media";
 import { routes } from "./router";
-import { connect } from "../test/connect";
 
 function renderApp(path = "/") {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
 }
 
 describe("app shell", () => {
-  it("renders the sidebar, the navigation and, without a key, the connect screen", () => {
+  it("renders the sidebar, the navigation and the overview, with no key prompt", () => {
     renderApp();
 
     expect(screen.getByRole("complementary", { name: "Sidebar" })).toHaveTextContent("CrawlerAI");
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("main")).toContainElement(
-      screen.getByRole("heading", { level: 1, name: "Connect" }),
+      screen.getByRole("heading", { level: 1, name: "Overview" }),
     );
+    expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
   });
 
   it("asks /healthz without a key and shows the Labeling entry when the API reports eval_ui", async () => {
@@ -31,7 +31,7 @@ describe("app shell", () => {
       "href",
       "/labeling",
     );
-    expect(calls).toEqual([
+    expect(calls.filter((call) => call.path === "/healthz")).toEqual([
       { method: "GET", path: "/healthz", query: "", authorization: null, body: null },
     ]);
   });
@@ -41,7 +41,7 @@ describe("app shell", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(calls).toHaveLength(1);
+      expect(calls.filter((call) => call.path === "/healthz")).toHaveLength(1);
     });
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(
@@ -58,7 +58,7 @@ describe("app shell", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(calls).toHaveLength(1);
+      expect(calls.filter((call) => call.path === "/healthz")).toHaveLength(1);
     });
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).queryByRole("link", { name: "Labeling" })).toBeNull();
@@ -70,8 +70,6 @@ describe("app shell", () => {
       "GET /v1/eval/pages/page-1": () => problem(404, { title: "Not Found" }),
     });
     renderApp("/labeling/page-1");
-    // The labeling routes need a key (SPEC-03 §4.10): /connect first, then back.
-    await connect();
 
     // The labeling route renders once its page has answered.
     await screen.findByText("No dev eval page has this id.");

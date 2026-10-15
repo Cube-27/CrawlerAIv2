@@ -1,82 +1,56 @@
-import { createContext, use, useCallback, useMemo, useState, type ReactNode } from "react";
-import { Navigate, Outlet, useLocation } from "react-router";
-import { createApiClient, type ApiClient } from "../api/client";
-import { readProblem, type ProblemSummary } from "../api/problem";
+import { Typography } from "@heroui/react";
+import { createContext, use, useMemo, useState, type ReactNode } from "react";
+import { Outlet } from "react-router";
+import { sameOriginClient, type ApiClient } from "../api/client";
+import { EmptyView } from "../components/EmptyView";
 
-interface AuthState {
-  apiKey: string | null;
-  /** Why the last key was dropped: the API's 401 problem. Null after a connect or a disconnect. */
-  rejection: ProblemSummary | null;
+interface AccessContextValue {
+  client: ApiClient;
+  /** Whether the API answered 401: the key the dev proxy attaches is missing or not accepted. */
+  rejected: boolean;
 }
 
-interface AuthContextValue extends AuthState {
-  connect: (apiKey: string) => void;
-  disconnect: () => void;
-  /** Drops `apiKey` after the API answered 401 for it. A key connected since then is kept. */
-  reject: (apiKey: string, problem: ProblemSummary | null) => void;
-}
+const AccessContext = createContext<AccessContextValue | null>(null);
 
-const AuthContext = createContext<AuthContextValue | null>(null);
-
-const KEY_REJECTED: ProblemSummary = { title: "The API rejected the key.", detail: null };
-
-/** Holds the API key in React state only: never in storage or cookies, so a reload returns to /connect (§18). */
-export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [state, setState] = useState<AuthState>({ apiKey: null, rejection: null });
-
-  const connect = useCallback((apiKey: string) => {
-    setState({ apiKey, rejection: null });
+/** The API client for the screens. The browser holds no key: the server that serves the UI attaches one (SPEC-14
+ * §4.1), so a 401 can only be fixed there, and the content area shows how until the page is reloaded. */
+export function AccessProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const [rejected, setRejected] = useState(false);
+  const client = useMemo(() => {
+    const created = sameOriginClient();
+    created.use({
+      onResponse({ response }) {
+        // RFC 9110 §15.5.2: 401 means the request's credentials were not accepted (SPEC-07 §4.2: missing, unknown or
+        // revoked).
+        if (response.status === 401) setRejected(true);
+      },
+    });
+    return created;
   }, []);
-  const disconnect = useCallback(() => {
-    setState({ apiKey: null, rejection: null });
-  }, []);
-  const reject = useCallback((apiKey: string, problem: ProblemSummary | null) => {
-    setState((current) =>
-      current.apiKey === apiKey ? { apiKey: null, rejection: problem ?? KEY_REJECTED } : current,
-    );
-  }, []);
-
-  const value = useMemo(
-    () => ({ ...state, connect, disconnect, reject }),
-    [state, connect, disconnect, reject],
-  );
-  return <AuthContext value={value}>{children}</AuthContext>;
+  const value = useMemo(() => ({ client, rejected }), [client, rejected]);
+  return <AccessContext value={value}>{children}</AccessContext>;
 }
 
-export function useAuth(): AuthContextValue {
-  const auth = use(AuthContext);
-  if (auth === null) throw new Error("useAuth is used outside AuthProvider");
-  return auth;
+function useAccess(): AccessContextValue {
+  const access = use(AccessContext);
+  if (access === null) throw new Error("useApiClient is used outside AccessProvider");
+  return access;
 }
 
-function authenticatedClient(apiKey: string, reject: AuthContextValue["reject"]): ApiClient {
-  const client = createApiClient({ baseUrl: window.location.origin, apiKey });
-  client.use({
-    async onResponse({ response }) {
-      // RFC 9110 §15.5.2: 401 means the request's credentials were not accepted (SPEC-07 §4.2: unknown or revoked).
-      if (response.status === 401) reject(apiKey, await readProblem(response.clone()));
-    },
-  });
-  return client;
-}
-
-/** The API client for the connected key. A 401 answer drops the key, and RequireKey then shows /connect. */
+/** The API client of this page's origin. A 401 answer makes `RequireAccess` show the setup notice. */
 export function useApiClient(): ApiClient {
-  const { apiKey, reject } = useAuth();
-  const client = useMemo(
-    () => (apiKey === null ? null : authenticatedClient(apiKey, reject)),
-    [apiKey, reject],
-  );
-  if (client === null) throw new Error("useApiClient is used on a route outside RequireKey");
-  return client;
+  return useAccess().client;
 }
 
-/** Route element for screens that call the API: without a key, sends the viewer to /connect and back afterwards. */
-export function RequireKey() {
-  const { apiKey } = useAuth();
-  const location = useLocation();
-  if (apiKey === null) {
-    return <Navigate to="/connect" replace state={{ from: location.pathname + location.search }} />;
-  }
-  return <Outlet />;
+/** Route element for the screens: the screen, or the setup notice in its place once the API has answered 401. */
+export function RequireAccess() {
+  if (!useAccess().rejected) return <Outlet />;
+  return (
+    <EmptyView title="The API rejected the request.">
+      Set <Typography.Code>CRAWLERAI_UI_API_KEY</Typography.Code> in{" "}
+      <Typography.Code>.env</Typography.Code> to a key from{" "}
+      <Typography.Code>crawlerai apikey create</Typography.Code>, then restart{" "}
+      <Typography.Code>pnpm dev</Typography.Code>.
+    </EmptyView>
+  );
 }

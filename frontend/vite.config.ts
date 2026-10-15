@@ -1,6 +1,16 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite-plus";
+import { defineConfig, loadEnv, type ProxyOptions } from "vite-plus";
+
+// SPEC-14 §4.1: the dev server attaches the UI's API key to proxied requests, so the browser never holds one. Vite
+// reads no repo-root `.env` by itself, so it is loaded from `..`: pnpm runs scripts in this package's directory. The
+// variable has no `VITE_` prefix, so it never reaches client code. An empty value counts as unset (.env.example).
+const uiApiKey = loadEnv("development", "..", "")["CRAWLERAI_UI_API_KEY"];
+const target = "http://127.0.0.1:8000";
+const backend: ProxyOptions =
+  uiApiKey === undefined || uiApiKey === ""
+    ? { target }
+    : { target, headers: { Authorization: `Bearer ${uiApiKey}` } };
 
 export default defineConfig({
   // `vp migrate` translated the former ESLint sets rule by rule: typescript-eslint strictTypeChecked, react-hooks
@@ -271,9 +281,11 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   // `pnpm dev` serves the screens and forwards API calls to `make dev`'s backend, so the app calls its own origin:
-  // `/v1`, and `/healthz` at the root, which tells the shell whether to list Labeling (SPEC-12 §4.3).
+  // `/v1`, and `/healthz` at the root, which tells the shell whether to list Labeling (SPEC-12 §4.3). Anyone who
+  // reaches the dev server acts with the key, so it listens on loopback only (ARCHITECTURE §18).
   server: {
-    proxy: { "/v1": "http://127.0.0.1:8000", "/healthz": "http://127.0.0.1:8000" },
+    host: "127.0.0.1",
+    proxy: { "/v1": backend, "/healthz": backend },
   },
   test: {
     environment: "jsdom",
@@ -281,9 +293,9 @@ export default defineConfig({
     // Timestamps render in the viewer's time zone; tests pin one so the expected text is the same everywhere.
     env: { TZ: "UTC" },
     css: false,
-    // A screen test renders the whole app through its router and connects first: about 1 s alone, but several
-    // times that while the suite's files run in parallel on a loaded machine (UAT F25, F35). One budget for every
-    // file, in place of a per-file override that a new screen's tests forget.
+    // A screen test renders the whole app through its router: about 1 s alone, but several times that while the
+    // suite's files run in parallel on a loaded machine (UAT F25, F35). One budget for every file, in place of a
+    // per-file override that a new screen's tests forget.
     testTimeout: 20_000,
   },
 });

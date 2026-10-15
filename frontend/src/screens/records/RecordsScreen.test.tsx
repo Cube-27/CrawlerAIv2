@@ -7,7 +7,6 @@ import type { ExtractedRecord, RecordPage, ReplayResult, StoredRecord } from "..
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
 import { recordField } from "../../test/records";
-import { connect } from "../../test/connect";
 
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
 const OTHER_SCHEMA_ID = "0192a000-0000-7000-8000-000000000102";
@@ -69,7 +68,6 @@ const replayReply = (result: ReplayResult) => () => Response.json(result);
 
 async function open(path: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
-  await connect();
   await screen.findByRole("heading", { level: 1, name: "Records" });
 }
 
@@ -135,7 +133,7 @@ describe("records screen: the list", () => {
         method: "GET",
         path: "/v1/records",
         query: `schema_id=${SCHEMA_ID}&site=shop.example.test&limit=20`,
-        authorization: "Bearer ck_first",
+        authorization: null,
         body: null,
       },
     ]);
@@ -432,7 +430,7 @@ describe("records screen: the inspector", () => {
         method: "POST",
         path: `/v1/captures/${CAPTURE_ID}/replay`,
         query: "",
-        authorization: "Bearer ck_first",
+        authorization: null,
         body: { allow_llm: false },
       },
     ]);
