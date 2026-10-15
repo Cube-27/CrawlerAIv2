@@ -1,18 +1,14 @@
-import { Table } from "@heroui/react";
 import { useSearchParams } from "react-router";
 import { useJobs } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import type { JobFilters, JobKind, JobStatus, JobSummary } from "../../api/jobs";
 import { useCursorPages } from "../../components/cursors";
 import { EmptyView } from "../../components/EmptyView";
-import { JOB_STATUS_TEXT, JobStatusLabel } from "../../components/JobStatusLabel";
+import { JOB_STATUS_TEXT } from "../../components/JobStatusLabel";
 import { isOptionOf, OptionSelect } from "../../components/OptionSelect";
-import { TaskCountsText } from "../../components/OutcomeCounts";
 import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
-import { Timestamp } from "../../components/Timestamp";
-import { runPath } from "../playground/modes";
+import { JobRows } from "./JobRows";
 import { KIND_LABELS } from "./kinds";
-import { jobPath } from "./paths";
 
 /** The filter choice that sends no filter. */
 const ANY = "any";
@@ -71,47 +67,13 @@ function JobFilterFields({
   );
 }
 
-/** Where a job's row goes: its run in its playground mode, or the job page for a kind no mode runs (SPEC-14 §4.8). */
-function rowPath(job: JobSummary): string {
-  return runPath(job.kind, job.id) ?? jobPath(job.id);
-}
-
-/** Jobs as table rows, newest first; a row opens its run. */
-export function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
-  return (
-    <Table>
-      <Table.ScrollContainer>
-        {/* Fixed column widths: a page of long values truncates rather than moving the columns. */}
-        <Table.Content aria-label="Jobs" className="table-fixed">
-          <Table.Header>
-            <Table.Column isRowHeader className="w-1/6">
-              Kind
-            </Table.Column>
-            <Table.Column className="w-1/6">Status</Table.Column>
-            <Table.Column className="w-5/12">Tasks</Table.Column>
-            <Table.Column className="w-1/4">Created</Table.Column>
-          </Table.Header>
-          <Table.Body items={jobs}>
-            {(job) => (
-              <Table.Row id={job.id} href={rowPath(job)}>
-                <Table.Cell className="truncate">{KIND_LABELS[job.kind]}</Table.Cell>
-                <Table.Cell>
-                  <JobStatusLabel status={job.status} />
-                </Table.Cell>
-                <Table.Cell className="truncate">
-                  <TaskCountsText counts={job.counts} />
-                </Table.Cell>
-                <Table.Cell className="truncate">
-                  <Timestamp value={job.created_at} />
-                </Table.Cell>
-              </Table.Row>
-            )}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-    </Table>
-  );
-}
+/** The Jobs screen's columns and their widths. */
+const JOB_COLUMNS = [
+  ["kind", "w-1/6"],
+  ["status", "w-1/6"],
+  ["tasks", "w-5/12"],
+  ["created", "w-1/4"],
+] as const;
 
 /** The page's rows; an empty first page says why there are none. */
 function JobPageContent({
@@ -119,7 +81,7 @@ function JobPageContent({
   filters,
   first,
 }: Readonly<{ jobs: readonly JobSummary[]; filters: JobFilters; first: boolean }>) {
-  if (jobs.length > 0 || !first) return <JobRows jobs={jobs} />;
+  if (jobs.length > 0 || !first) return <JobRows label="Jobs" jobs={jobs} columns={JOB_COLUMNS} />;
   if (filters.kind !== null || filters.status !== null) {
     return (
       <EmptyView title="No job matches these filters">Choose another kind or status.</EmptyView>
