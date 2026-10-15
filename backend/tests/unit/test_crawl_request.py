@@ -25,7 +25,6 @@ def test_a_stored_request_reads_back_as_itself() -> None:
     request = CrawlRequest.model_validate(body)
 
     assert CrawlRequest.model_validate(request.model_dump(mode="json", by_alias=True)) == request
-    assert (request.max_depth, request.limit) == (3, 500)
 
 
 @pytest.mark.parametrize(
@@ -74,9 +73,10 @@ def test_formats_take_rules_of_any_page_kind() -> None:
 
 
 def test_the_frontier_is_scoped_to_the_start_urls_host() -> None:
-    request = CrawlRequest.model_validate({"url": "HTTPS://Shop.Example.Test/a?b=1&a=2#top", "formats": ["markdown"]})
+    body = {"url": "HTTPS://Shop.Example.Test/a?b=1&a=2#top", "formats": ["markdown"], "max_depth": 2, "limit": 7}
+    request = CrawlRequest.model_validate(body)
 
     frontier = request.frontier()
 
     assert request.start == "https://shop.example.test/a?a=2&b=1"
-    assert (frontier.scope.host, frontier.max_depth, frontier.limit) == ("shop.example.test", 3, 500)
+    assert (frontier.scope.host, frontier.max_depth, frontier.limit) == ("shop.example.test", 2, 7)

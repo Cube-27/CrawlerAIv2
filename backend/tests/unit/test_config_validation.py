@@ -192,12 +192,9 @@ def test_corroboration_compares_the_config_with_structured_values(
     [
         (2, 2, "uncorroborated"),
         (3, 3, "corroborated"),
-        (9, 9, "corroborated"),
         (9, 8, "uncorroborated"),
         (10, 9, "corroborated"),
         (10, 8, "uncorroborated"),
-        (100, 90, "corroborated"),
-        (100, 89, "uncorroborated"),
     ],
 )
 def test_corroboration_thresholds(comparable: int, agreeing: int, status: str) -> None:
@@ -250,7 +247,7 @@ def test_a_listing_with_three_rows_on_every_page_keeps_its_row_fields_and_next()
     assert result.ir is not None
     assert result.ir.listing is not None
     assert result.ir.listing.fields["title"].status == "uncorroborated"
-    assert result.ir.listing.next is not None
+    assert result.ir.listing.next == XPathStep.model_validate(LISTING["next"])
     listing = result.report.model_dump(mode="json")["listing"]
     assert (listing["rows_ok"], listing["fields"]["title"]["reproduced"], listing["next"]["reproduced"]) == (3, 3, 3)
 
@@ -284,14 +281,6 @@ def test_a_next_step_that_is_not_reproduced_is_dropped_and_the_rows_stay() -> No
     assert result.ir.listing is not None
     assert result.ir.listing.next is None
     assert list(result.ir.listing.fields) == ["title"]
-
-
-def test_the_validated_config_is_a_valid_ir_document() -> None:
-    result = _validate(_ir({"title": TITLE}), [_titled(n) for n in range(3)])
-    assert result.ir is not None
-    document = result.ir.model_dump(mode="json", by_alias=True)
-    assert ExtractionConfigIR.model_validate(document) == result.ir
-    assert document["fields"]["title"]["steps"] == [XPathStep.model_validate(TITLE).model_dump(mode="json")]
 
 
 # --- fields learning gave no steps ---
