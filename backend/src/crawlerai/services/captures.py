@@ -9,6 +9,7 @@ gets no role C.
 """
 
 import asyncio
+from collections import OrderedDict
 
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -29,6 +30,10 @@ from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
 _COLUMNS = (Capture.id, Capture.site_id, Capture.url, Capture.object_key)
 _Capture = Row[CaptureId, SiteId, str, str]
+
+# The markdown of the captures paged most recently, least recent first: enough for a few clients paging at once.
+_MARKDOWN_KEPT = 8
+_MARKDOWN: OrderedDict[CaptureId, str] = OrderedDict()
 
 
 class CaptureNotFound(Refusal, LookupError):
@@ -70,11 +75,20 @@ async def replay(
 
 async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId) -> str:
     """The capture's markdown, made again from its bundle: a format is a function of the capture alone (ARCHITECTURE
-    §15, INV-26), so it equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it."""
+    §15, INV-26), so it equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it, one
+    call per page, so the last few captures' markdown is kept and a later page is not made again; the capture row is
+    still read each time, so a capture that is gone is not found."""
     async with engine.connect() as conn:
         capture = await _capture(conn, capture_id)
-    bundle = await _bundle(store, capture)
-    return await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle), bundle.manifest.final_url))
+    made = _MARKDOWN.get(capture_id)
+    if made is None:
+        bundle = await _bundle(store, capture)
+        made = await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle), bundle.manifest.final_url))
+    _MARKDOWN[capture_id] = made
+    _MARKDOWN.move_to_end(capture_id)
+    while len(_MARKDOWN) > _MARKDOWN_KEPT:
+        _MARKDOWN.popitem(last=False)
+    return made
 
 
 async def _capture(conn: AsyncConnection, capture_id: CaptureId) -> _Capture:

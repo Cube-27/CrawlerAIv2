@@ -320,6 +320,29 @@ async def test_replaying_a_capture_whose_bundle_is_gone_is_not_found(world: Worl
         await captures.replay(world.engine, empty_store, world.data, made.capture_id)
 
 
+class _CountingStore(FsStore):
+    """The world's store, counting the bundles read from it."""
+
+    reads = 0
+
+    def get(self, key: str) -> bytes:
+        self.reads += 1
+        return super().get(key)
+
+
+async def test_a_capture_s_markdown_is_made_once_for_all_its_pages(world: World, tmp_path: Path) -> None:
+    text = "A blue kettle boils a litre of water in under three minutes and keeps it warm for an hour."
+    body = f"<body><article><h1>Blue kettle</h1><p>{text}</p></article></body></html>"
+    made = await world.scrape("/p/1", _page("Blue kettle").replace(b"</html>", body.encode()))
+    store = _CountingStore(tmp_path / "objects")  # the world's store
+
+    first = await captures.markdown_of(world.engine, store, made.capture_id)
+    again = await captures.markdown_of(world.engine, store, made.capture_id)
+
+    assert text in first
+    assert (again, store.reads) == (first, 1)
+
+
 async def test_a_listing_replays_one_record_per_row_as_the_page_task_stored_them(world: World) -> None:
     url = FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url")
     listed = SchemaChanges(page_kind="listing", fields={**world.schema.fields, "url": url})
