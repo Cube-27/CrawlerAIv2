@@ -44,7 +44,7 @@ def test_buckets_are_independent() -> None:
     limiter = RateLimiter(rate=1, burst=1, clock=Clock())
 
     assert limiter.take("a") is None
-    assert limiter.take("a") is not None
+    assert limiter.take("a") == pytest.approx(1.0)
     assert limiter.take("b") is None
 
 

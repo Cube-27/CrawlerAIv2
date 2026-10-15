@@ -317,7 +317,9 @@ def test_an_aggregate_low_price_is_never_the_price() -> None:
 
     result = resolver.prefer(schema, collected.candidates)
 
-    assert isinstance(result["title"], Chosen)
+    title = result["title"]
+    assert isinstance(title, Chosen)
+    assert title.candidate.normalized == Ok("Lamp")
     assert result["price"] == Unpublished("missing", "no_candidates", ())
 
 

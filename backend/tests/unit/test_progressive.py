@@ -1,3 +1,4 @@
+from itertools import product
 from typing import get_args
 
 import pytest
@@ -25,10 +26,7 @@ EXPECTED: dict[tuple[ProgressiveMode, LearnEvent], ProgressiveMode | None] = {
 }
 
 
-def test_the_table_covers_every_mode_and_event() -> None:
-    assert set(EXPECTED) == {(mode, event) for mode in get_args(ProgressiveMode) for event in get_args(LearnEvent)}
-
-
-@pytest.mark.parametrize(("mode", "event"), list(EXPECTED))
+# Parametrized over every (mode, event) pair the types allow, so a pair missing from EXPECTED fails with a KeyError.
+@pytest.mark.parametrize(("mode", "event"), list(product(get_args(ProgressiveMode), get_args(LearnEvent))))
 def test_transitions(mode: ProgressiveMode, event: LearnEvent) -> None:
     assert next_mode(mode, event) == EXPECTED[mode, event]
