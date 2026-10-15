@@ -11,16 +11,26 @@ export type StepKind = "xpath" | "css" | "jsonld" | "jsonpath" | "regex" | "attr
 /** Where a `jsonpath` step reads (SPEC-08 §4.2). */
 export type JsonPathSource = Extract<CorrectedStep, { jsonpath: string }>["source"];
 
+/** An editor-only identity, the React key of a step or post operation: it keeps its row when another one moves or is
+ * removed. It is never sent (`toCorrectedStep`). */
+let lastId = 0;
+function newId(): string {
+  lastId += 1;
+  return `draft-${String(lastId)}`;
+}
+
 /** A post operation, run on the step's value in order. */
-export type PostOp =
+export type PostOp = { id: string } & (
   | { op: "trim" }
   | { op: "absolutize_url" }
   | { op: "normalize"; type: FieldType }
-  | { op: "regex_replace"; pattern: string; repl: string };
+  | { op: "regex_replace"; pattern: string; repl: string }
+);
 
 export type PostOpKind = PostOp["op"];
 
 export interface DraftStep {
+  id: string;
   kind: StepKind;
   /** The selector, path, pattern or attribute name of the kind. */
   expression: string;
@@ -68,18 +78,19 @@ export function isPostOpKind(value: unknown): value is PostOpKind {
 
 /** A new step of `kind` with nothing typed yet. */
 export function emptyStep(kind: StepKind = "xpath"): DraftStep {
-  return { kind, expression: "", whenType: "", source: "jsonld", post: [] };
+  return { id: newId(), kind, expression: "", whenType: "", source: "jsonld", post: [] };
 }
 
 /** A new post operation of `op`. */
 export function emptyPostOp(op: PostOpKind): PostOp {
+  const id = newId();
   switch (op) {
     case "normalize":
-      return { op, type: "text" };
+      return { id, op, type: "text" };
     case "regex_replace":
-      return { op, pattern: "", repl: "" };
+      return { id, op, pattern: "", repl: "" };
     default:
-      return { op };
+      return { id, op };
   }
 }
 
@@ -96,10 +107,10 @@ function regexReplaceOf(op: IrPostOp): { pattern: string; repl: string } | null 
  * operation is stored as `{"<field type>": {}}`. */
 function postOpOf(op: IrPostOp): PostOp | null {
   const replace = regexReplaceOf(op);
-  if (replace !== null) return { op: "regex_replace", ...replace };
+  if (replace !== null) return { id: newId(), op: "regex_replace", ...replace };
   const [name] = Object.keys(op);
-  if (name === "trim" || name === "absolutize_url") return { op: name };
-  return isFieldType(name) ? { op: "normalize", type: name } : null;
+  if (name === "trim" || name === "absolutize_url") return { id: newId(), op: name };
+  return isFieldType(name) ? { id: newId(), op: "normalize", type: name } : null;
 }
 
 function kindAndExpression(step: IrStep): Pick<DraftStep, "kind" | "expression"> {

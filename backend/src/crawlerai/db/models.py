@@ -31,6 +31,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 
+# SQL referential action (ISO/IEC 9075-2 §11.8): a deleted parent leaves the reference empty.
+_SET_NULL = "SET NULL"
+
 ProjectId = NewType("ProjectId", uuid.UUID)
 ApiKeyId = NewType("ApiKeyId", uuid.UUID)
 SiteId = NewType("SiteId", uuid.UUID)
@@ -322,7 +325,7 @@ class UrlState(Base):
     missing_runs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The crawl whose listing last held the URL (SPEC-11 §4.5); NULL while no listing has.
-    last_seen_job_id: Mapped[JobId | None] = mapped_column(ForeignKey("job.id", ondelete="SET NULL"))
+    last_seen_job_id: Mapped[JobId | None] = mapped_column(ForeignKey("job.id", ondelete=_SET_NULL))
 
 
 class Job(Base):
@@ -376,7 +379,7 @@ class UrlTask(Base):
     status: Mapped[TaskStatus] = mapped_column(Text, server_default=text("'queued'"))
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     # Captures expire after 30 days (ARCHITECTURE §15) and the task outlives its capture. Indexed for that delete.
-    capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete="SET NULL"), index=True)
+    capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete=_SET_NULL), index=True)
     outcome: Mapped[TaskOutcome | None] = mapped_column(Text)
     last_error: Mapped[str | None] = mapped_column(Text)
     claimed_by: Mapped[str | None] = mapped_column(Text)
@@ -455,7 +458,7 @@ class Extraction(Base):
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id), index=True)
     # Captures expire after 30 days (ARCHITECTURE §15) and the extraction, which records cite, stays. Indexed for
     # that delete.
-    capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete="SET NULL"), index=True)
+    capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete=_SET_NULL), index=True)
     engine_version: Mapped[str] = mapped_column(Text)
     config_version: Mapped[int | None] = mapped_column(Integer)
     mode: Mapped[ExtractionMode] = mapped_column(Text)

@@ -368,8 +368,10 @@ def test_a_retry_that_gets_no_answer_still_carries_the_first_call() -> None:
 
 
 def test_a_failure_before_any_answer_carries_no_call() -> None:
+    provider = FakeProvider([ProviderError("503")])
+
     with pytest.raises(ProviderUnavailable) as unavailable:
-        complete(FakeProvider([ProviderError("503")]))
+        complete(provider)
     assert unavailable.value.answered == ()
 
 
@@ -387,8 +389,9 @@ def test_a_refusal_is_logged_once_per_provider_model_and_status(
 
     with caplog.at_level(logging.WARNING, logger="crawlerai.llm.client"):
         for _ in range(3):
+            call = client.complete_json(REQUEST)
             with pytest.raises(ProviderRefused):
-                asyncio.run(client.complete_json(REQUEST))
+                asyncio.run(call)
 
     assert [record.getMessage() for record in caplog.records] == [
         "LLM provider fake refused model fast-model: fake: HTTP 404: model: fast-model not found",

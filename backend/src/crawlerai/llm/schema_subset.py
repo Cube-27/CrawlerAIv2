@@ -23,7 +23,9 @@ SUBSET_FILES: Final = {
     "gemini": Path("llm") / "gemini-structured-output.json",
 }
 # Keywords whose value is a map of names to subschemas, not a subschema.
-_SCHEMA_MAPS: Final = frozenset({"properties", "$defs", "definitions"})
+# JSON Schema 2020-12 §8.2.4: the keyword of reusable subschemas.
+_DEFS: Final = "$defs"
+_SCHEMA_MAPS: Final = frozenset({"properties", _DEFS, "definitions"})
 _DEFS_PREFIX: Final = "#/$defs/"
 
 
@@ -122,7 +124,7 @@ def _refs(node: Mapping[str, JsonValue]) -> set[str]:
     """The `$defs` names `node` refers to, at any depth outside `$defs` itself."""
     return {
         ref.removeprefix(_DEFS_PREFIX)
-        for path, child in _subschemas({k: v for k, v in node.items() if k != "$defs"}, "$")
+        for path, child in _subschemas({k: v for k, v in node.items() if k != _DEFS}, "$")
         if isinstance(ref := child.get("$ref"), str) and ref.startswith(_DEFS_PREFIX)
     }
 
@@ -131,7 +133,7 @@ def _ref_cycle(schema: Mapping[str, JsonValue]) -> str | None:
     """A definition that reaches itself through `$ref`s (or a `$ref` to the root, `#`), if any."""
     if any(child.get("$ref") == "#" for _, child in _subschemas(schema, "$")):
         return "#"
-    defs = schema.get("$defs")
+    defs = schema.get(_DEFS)
     graph = {name: _refs(d) for name, d in defs.items() if isinstance(d, dict)} if isinstance(defs, dict) else {}
     for start in graph:
         seen: set[str] = set()

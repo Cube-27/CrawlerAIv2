@@ -12,6 +12,7 @@ the object in its block's JSON (`$['@graph'][1]`).
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 from pydantic import JsonValue
@@ -30,6 +31,9 @@ from crawlerai.collect.schema_org_map import (
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
+
+# JSON-LD 1.1 §4.2: the keyword of a value object, which holds a scalar.
+_VALUE: Final = "@value"
 
 # The JSON-LD media type (JSON-LD 1.1, IANA considerations); HTML embeds JSON-LD in a script element of that type
 # (JSON-LD 1.1 §7.3).
@@ -128,8 +132,8 @@ class _Node:
             return None
         if not isinstance(written, dict):
             return Value(written, locator)
-        if "@value" in written:  # a value object (JSON-LD 1.1 §4.2) holds a scalar
-            scalar = written["@value"]
+        if _VALUE in written:  # a value object (JSON-LD 1.1 §4.2) holds a scalar
+            scalar = written[_VALUE]
             return None if scalar is None or isinstance(scalar, (list, dict)) else Value(scalar, locator)
         target: _Object | None = self.graph.at[locator]
         if written.keys() == {"@id"}:
@@ -252,7 +256,7 @@ def _scoped_objects(document: JsonValue) -> Iterator[tuple[Mapping[str, JsonValu
 def _scalars(written: JsonValue) -> Iterator[JsonValue]:
     """The scalar values written for a property: each item of an array (§4.3.1), a value object's `@value` (§4.2)."""
     for item in written if isinstance(written, list) else [written]:
-        scalar = item.get("@value") if isinstance(item, dict) else item
+        scalar = item.get(_VALUE) if isinstance(item, dict) else item
         if scalar is not None and not isinstance(scalar, (list, dict)):
             yield scalar
 

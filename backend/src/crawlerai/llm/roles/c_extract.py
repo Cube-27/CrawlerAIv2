@@ -213,7 +213,7 @@ def _read_listing(
 
 def _claims(fields: Sequence[str]) -> dict[str, JsonValue]:
     claim = closed_object({"value": {"type": "string"}, "start": {"type": "integer"}, "end": {"type": "integer"}})
-    return closed_object({name: claim for name in sorted(fields)})
+    return closed_object(dict.fromkeys(sorted(fields), claim))
 
 
 def _failed(failure: LLMFailure) -> str:

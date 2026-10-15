@@ -57,19 +57,25 @@ class FieldOutcome(_Model):
     @model_validator(mode="after")
     def _status_fits(self) -> Self:
         if self.status == "published":
-            for name in _PUBLISHED_REQUIRES:
-                if getattr(self, name) is None:
-                    raise ValueError(f"a published field carries {name} (INV-22)")
+            self._check_published()
         else:
-            if self.value is not None:
-                raise ValueError(f"a {self.status} field holds no value")
-            if self.reason is None:
-                raise ValueError(f"a {self.status} field states its reason")
+            self._check_unpublished()
         if self.calibrated and self.confidence is None:
             raise ValueError("a calibrated field has a confidence")
         if self.items is not None and len(self.items) != (len(self.value) if isinstance(self.value, list) else 0):
             raise ValueError("a row-mapped field has one item per published row")
         return self
+
+    def _check_published(self) -> None:
+        for name in _PUBLISHED_REQUIRES:
+            if getattr(self, name) is None:
+                raise ValueError(f"a published field carries {name} (INV-22)")
+
+    def _check_unpublished(self) -> None:
+        if self.value is not None:
+            raise ValueError(f"a {self.status} field holds no value")
+        if self.reason is None:
+            raise ValueError(f"a {self.status} field states its reason")
 
 
 class RowOutcome(_Model):

@@ -47,6 +47,15 @@ describe("steps: from a stored config to a correction", () => {
     expect(sameSteps(stored, edited)).toBe(false);
   });
 
+  it("gives every draft step and post operation its own editor id, which is never sent", () => {
+    // The ids are the editor's React keys: a row keeps its key when another one moves or is removed.
+    const drafts = [...STORED.map(draftOf), emptyStep()];
+    const ids = drafts.flatMap((step) => [step.id, ...step.post.map((op) => op.id)]);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(JSON.stringify(drafts.map(toCorrectedStep))).not.toContain("draft-");
+  });
+
   it("lists a step as its kind and expression", () => {
     expect(STORED.map(stepText)).toEqual([
       "xpath: //h1",

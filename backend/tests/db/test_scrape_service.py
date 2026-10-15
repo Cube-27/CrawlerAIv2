@@ -563,7 +563,9 @@ async def test_a_scrape_that_fails_unexpectedly_ends_its_job_at_once(
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
+    scrape_request, broken = request(url, "links", schema={"prompt": prompt}), _Broken()
+
     with pytest.raises(RuntimeError, match="synthetic failure"):
-        await scrape(engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=_Broken())
+        await scrape(engine, fetching, scrape_request, llm=broken)
 
     assert await _failed(engine, url) == ("failed", "internal_error", "failed")
