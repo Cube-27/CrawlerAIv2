@@ -2,8 +2,9 @@
 extracts with as the job pinned them (INV-28); fetching its page politely and storing the capture; the result a page
 that was not reached ends with; and extracting and storing a reached page's record.
 
-Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The fetch
-of a reached page is counted as the job's usage after its extraction (`count_fetch`, D-0346).
+Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The
+task's fetch attempts are counted as the job's usage at its end (`count_fetch`): that write locks the job's row until
+the task commits.
 """
 
 from dataclasses import dataclass
@@ -17,18 +18,19 @@ from crawlerai.acquire.robots import Fetch
 from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
-from crawlerai.config_ir.active import config_by_id, config_recipe
+from crawlerai.config_ir.active import config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.execute import RecipeRung
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import CaptureId, ExtractionConfig, ExtractionConfigId, Job, RecordId, SchemaId, SiteId
+from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
 from crawlerai.recurring.state import record_fetch, standing_record, stored_validators
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.registry import get_by_id
 from crawlerai.services.batch import JobPins
 from crawlerai.services.fetching import Fetching, endpoint_rules, recipe_rung, recording, refusal
@@ -55,11 +57,11 @@ _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 @dataclass(frozen=True)
 class Records:
     """What a records task extracts with: the job's schema version, the engine data its pins give, the config they
-    name for the task's host (None: cold), and the drift margins of this worker."""
+    name for the task's host bound to its executor (None: cold), and the drift margins of this worker."""
 
     schema_id: SchemaId
     data: EngineData
-    config_id: ExtractionConfigId | None
+    config: ActiveConfig | None
     margins: DriftMargins | None
 
 
@@ -67,7 +69,8 @@ async def load_job(
     conn: AsyncConnection, task: ClaimedTask, data: EngineData | None, margins: DriftMargins | None
 ) -> tuple[dict[str, object], Records | None] | Failed:
     """The task's job request, and what the task extracts records with from the job's schema and pins (`JobPins`):
-    None for a job without records. A records task fails in a worker without the engine's data (`data` None)."""
+    None for a job without records. The pinned config is read and bound once, whatever its status now (INV-28). A
+    records task fails in a worker without the engine's data (`data` None)."""
     job: _JobRow = (
         await conn.execute(select(Job.request, Job.schema_id, Job.pinned).where(Job.id == task.job_id))
     ).one()
@@ -76,8 +79,10 @@ async def load_job(
     if data is None:
         return Failed(RECORDS_UNAVAILABLE, transient=False)
     pins = JobPins.model_validate(job.pinned)
+    pinned = data.pinned(pins.engine_data)
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
-    return job.request, Records(job.schema_id, data.pinned(pins.engine_data), config_id, margins)
+    config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
+    return job.request, Records(job.schema_id, pinned, config, margins)
 
 
 @dataclass(frozen=True)
@@ -93,6 +98,16 @@ class FetchedPage:
     proxy_pool: str | None
 
 
+@dataclass(frozen=True)
+class Ended:
+    """A task that ends this run without a page to extract, with what it ends with, and the fetch attempts it made,
+    which `count_fetch` counts as the job's usage."""
+
+    task_result: TaskResult
+    attempts: tuple[AttemptRecord, ...] = ()
+    proxy_pool: str | None = None
+
+
 async def fetch_page(
     conn: AsyncConnection,
     fetching: Fetching,
@@ -102,9 +117,9 @@ async def fetch_page(
     *,
     recurring: Records | None = None,
     served: Records | None = None,
-) -> FetchedPage | TaskResult:
+) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
-    its capture, or the result the task ends this run with. The attempts count as the job's usage. A request the SSRF
+    its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
     guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
@@ -117,7 +132,7 @@ async def fetch_page(
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
-        return Failed(str(e), transient=False)
+        return Ended(Failed(str(e), transient=False))
     site = await site_row(conn, urlsplit(task.url).hostname or "")
     policy = fetch_policy(options, locale, site.proxy_pool)
     standing = None if recurring is None else await _standing(conn, task, site.id, recurring)
@@ -141,13 +156,12 @@ async def fetch_page(
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
             return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool)
         fetched = Failed(refused, transient=False)
-    await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)
         # The task stands for the record that stood for the 304 (`fetch_unless_unchanged` takes none without one).
         await link_records(conn, task.id, [] if standing is None else [standing])
-        return Finished("unchanged")
-    return fetched
+        fetched = Finished("unchanged")
+    return Ended(fetched, tuple(attempts), policy.proxy_pool)
 
 
 async def _recipe(
@@ -155,29 +169,24 @@ async def _recipe(
 ) -> RecipeRung | None:
     """The API recipe of the config `served` names, bound to fetch the task's page; robots.txt of its endpoint is
     fetched with `robots`, and read in the task's transaction."""
-    if served is None or served.config_id is None:
-        return None
-    recipe = await config_recipe(conn, served.config_id)
+    recipe = None if served is None or served.config is None else recipe_of(served.config)
     if recipe is None:
         return None
     host = urlsplit(task.url).hostname or ""
     return recipe_rung(fetching, recipe, host, lambda url, policy: endpoint_rules(conn, url, policy, robots))
 
 
-async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
-    """Count the page's fetch attempts as the job's usage. A handler counts them once it has extracted the page: role
-    C's client updates the job's usage on a connection of its own, and would wait on this transaction's write to the
-    job's row (D-0346)."""
+async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:
+    """Count the task's fetch attempts as the job's usage. A handler counts them at the task's end, as its last write
+    but the frontier's: the job's row stays locked from this write until the task commits, and role C's client, which
+    updates the job's usage on a connection of its own, would wait on it (D-0346), as would a cancel."""
     await record_fetch_usage(conn, task.job_id, page.attempts, page.proxy_pool)
 
 
 async def _standing(conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records) -> RecordId | None:
     """The record that stands for the page while it is unchanged (`standing_record`), for the config the job pinned
-    (None: `adhoc`). Only the config's version is read here: the page may never be extracted."""
-    version = None
-    if records.config_id is not None:
-        query = select(ExtractionConfig.version).where(ExtractionConfig.id == records.config_id)
-        version = (await conn.execute(query)).scalar_one()
+    (None: `adhoc`)."""
+    version = None if records.config is None else records.config.version
     return await standing_record(conn, site_id, task.canonical_url, records.schema_id, version)
 
 
@@ -206,9 +215,8 @@ async def extract_records(
     page may end `no_match`."""
     schema = await get_by_id(conn, records.schema_id)
     config = None
-    if records.config_id is not None:
-        pinned = await config_by_id(conn, records.config_id, records.data.vocabulary)
-        config = pinned.for_capture(page.result.bundle.manifest, records.data.adapters)
+    if records.config is not None:
+        config = records.config.for_capture(page.result.bundle.manifest, records.data.adapters)
     executor = None if config is None else config.executor
     gap_fill = None if llm is None else role_c(llm, job_id=task.job_id)
     extraction = await extract_page(page.result.bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)

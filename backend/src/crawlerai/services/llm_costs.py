@@ -47,6 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.core.ids import uuid7_floor
 from crawlerai.db.models import Job, JobId, JobKind, UsageEvent
+from crawlerai.db.paging import keyset_page
 from crawlerai.llm.pricing import TOKENS_PER_PRICE_UNIT, Pricing
 from crawlerai.services.records import MAX_PAGE
 
@@ -169,12 +170,10 @@ async def job_costs(conn: AsyncConnection, query: JobCostQuery, pricing: Pricing
     """The page of jobs after `query.cursor` (the first page without one) with LLM calls in the range. Jobs are ordered
     by id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
     costed = _costed(pricing, (query.first_day, query.last_day))
-    statement = _jobs(costed).order_by(costed.c.job_id.desc()).limit(query.limit + 1)
-    if query.cursor is not None:
-        statement = statement.where(costed.c.job_id < query.cursor)
-    rows = (await conn.execute(statement)).all()
-    items = [_job_usage(row) for row in rows[: query.limit]]
-    return JobCostPage(items=items, next_cursor=items[-1].job_id if len(rows) > query.limit else None)
+    rows, next_cursor = await keyset_page(
+        conn, _jobs(costed), costed.c.job_id, after=query.cursor, limit=query.limit, descending=True
+    )
+    return JobCostPage(items=[_job_usage(row) for row in rows], next_cursor=next_cursor)
 
 
 async def costs_of_jobs(conn: AsyncConnection, job_ids: Sequence[JobId], pricing: Pricing) -> dict[JobId, float | None]:

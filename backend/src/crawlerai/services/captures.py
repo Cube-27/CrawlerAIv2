@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.config_ir.active import active_config
 from crawlerai.content.markdown import markdown
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.errors import Refusal
 from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
@@ -30,7 +31,7 @@ _COLUMNS = (Capture.id, Capture.site_id, Capture.url, Capture.object_key)
 _Capture = Row[CaptureId, SiteId, str, str]
 
 
-class CaptureNotFound(LookupError):
+class CaptureNotFound(Refusal, LookupError):
     """No capture has the id, or its bundle is no longer stored (captures expire, §15)."""
 
 

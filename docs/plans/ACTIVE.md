@@ -62,20 +62,17 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Playground: the batch JSON drawer shows a snapshot of its row and does not follow table refreshes; `screens/jobs/form.ts` imports from `playground/pageRequest` until rows 6–7 remove it [#194].
 - Clarifying spec edits: SPEC-11 §4.2 names `task_record`, not `url_task.record_id` (D-0762), §5's INV-10/INV-11 citations, §4.4's `url_state.record_fingerprint` wording [#136, #158]; SPEC-05 §4.3 "expanded graph" (locators address each JSON-LD block as written) [#78]; SPEC-08 §4.11 `platform_draft` shape (D-0606) [#124].
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
-- A task adds to `job.usage` mid-transaction, locking the job row until the task commits; record usage at the task's end [#153].
-- Declare `anyio` as a direct backend dependency (`services/events.py`, `mcp_server` import it) [#153].
-- Unexpected exception text reaches MCP clients; wrap the tools as REST's `_on_unexpected` does; run the SSRF matrix over the MCP tools too [#144, #145].
-- Learning: an unparseable learn request is re-picked; shutdown waits for a running learn run; SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
-- A max_age-reused api capture can meet a config with no recipe; `config_recipe` parses the recipe twice [#150]. Optional: report non-LLM recipe errors as a refused recipe [#151].
+- MCP passes any `ValidationError` raised inside a tool to the client, a service's parse of a stored row included; validate the client's cursor in the tool and drop `ValidationError` from `_REFUSALS` [#195].
+- Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149]. A cancel during a run's final transaction leaves the job `running` until `expire_learn_runs` [#195].
+- The captures replay reads an old `api` capture with page steps when the active config has no recipe [#150]. Optional: report non-LLM recipe errors as a refused recipe [#151].
 - `/v1/schemas`: retiring the latest version freezes the name; decide un-retire, reuse or PUT on a retired latest (D-0395) [#81].
 - Page fetching: pass `fetch_politely` the HTTP rung for robots.txt; the browser retry through `HostLimiter`; check every attempt for `SLOW_DOWN` (D-0634) [#31, #128]. Robots snapshots are per site, but robots.txt is per scheme, host and port (RFC 9309 §2.3) [#26].
-- Indexes with their queries: `record.job_id`, `extraction.url_task_id`, `capture (site_id, fetched_at)`; a `url_task (job_id, status, outcome)` index if large-crawl listing is measured slow [#19, #146].
+- Indexes, measure first: `url_task (job_id, status, outcome)` if large-crawl listing is slow [#19, #146]; `job (started_at) WHERE status = 'running'` for `fail_stalled_jobs` and `expire_learn_runs`, which share one shape and could share one reaper [#195].
 - `release_expired_leases` runs in one transaction; add a per-run batch limit if many workers die at once [#19].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
 - Recurring crawls: an equal fingerprint with a moved SimHash re-extracts every run (fix in `standing_record`); unchanged re-scrapes emit no `task.abstained`; `changed_since` can miss a late-committing row; `extract` jobs are not runs yet; a timed-out sitemap read is not a partial run [#136, #142].
-- Jobs: a prompt job's tasks are inserted before the job row is locked; a process that dies mid-draft or mid-`map` leaves the job `running`; the crawl start task re-reads sitemaps on a retry; `include`/`exclude` lists are unbounded [#130, #137, #140].
-- One shared keyset-page helper for `list_records`, page outputs and `list_jobs` [#146]. `TruncatedText` makes every event data and Reason cell a tab stop [#157].
+- `TruncatedText` makes every event data and Reason cell a tab stop [#157].
 - Resolve: `_linked` in `resolve/rows.py` compares every row pair; `holders()` could reuse `_single_offer`; zero-touch ignores a required row-mapped field (no preset has one) [#174, #176]. Optional: scan only url-typed key sub-fields for group URLs [#173]; `Final` on `_SET_NULL` [#177].
 - Markdown: `_tidy` strips a list item's continuation indent; `markdown` deep-copies the tree twice [#162]. A replay pinning R1b with an Offer-rooted availability field [#161].
 - Collectors: js_state reads only a script's first assignment [#86]; mixed-syntax microdata drops an `itemprop` under a `typeof`-only element [#83].

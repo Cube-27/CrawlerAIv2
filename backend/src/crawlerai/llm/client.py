@@ -26,6 +26,7 @@ from jsonschema.exceptions import SchemaError, best_match
 from pydantic import BaseModel, ConfigDict, JsonValue, field_validator
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from crawlerai.core.errors import Refusal
 from crawlerai.db.models import JobId, UsageResource
 from crawlerai.db.usage import BUDGET_EXHAUSTED, budget_remaining, record_usage
 from crawlerai.storage.capture_bundle import sha256_hex
@@ -177,7 +178,7 @@ def is_transient(status: int) -> bool:
     return status in (408, 429) or 500 <= status <= 599
 
 
-class LLMFailure(Exception):
+class LLMFailure(Refusal):
     """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type, and
     `field_reason` as the reason of the fields the call was for, which stay `missing`. `answered` holds the calls that
     answered before it failed, which are charged all the same (an invalid reply, then its retry)."""

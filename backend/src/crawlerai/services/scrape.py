@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.config_ir.active import active_config, config_recipe
+from crawlerai.config_ir.active import active_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
@@ -44,6 +44,7 @@ from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.errors import Refusal
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
@@ -175,12 +176,12 @@ class ScrapeResult(BaseModel):
     usage: Usage
 
 
-class ScrapeTimedOut(Exception):
+class ScrapeTimedOut(Refusal):
     def __init__(self, timeout_s: float) -> None:
         super().__init__(f"the scrape did not finish within {timeout_s:g} s")
 
 
-class RecordsUnavailable(Exception):
+class RecordsUnavailable(Refusal):
     """`records` was asked of a process without the engine's data files (`EngineData`, D-0492)."""
 
 
@@ -315,11 +316,11 @@ async def _run(
     records_only = set(request.formats) == {"records"}
     async with engine.begin() as conn:
         site = await site_row(conn, host)
+        config = await _config(conn, site.id, work)
+        recipe = recipe_of(config) if config is not None and records_only else None
         row = None
         if request.max_age:
-            row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age, records_only=records_only)
-        config = await _config(conn, site.id, work)
-        recipe = await config_recipe(conn, config.id) if config is not None and records_only else None
+            row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age, api=recipe is not None)
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
     attempts: list[AttemptRecord] = []
@@ -361,11 +362,12 @@ _CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
 
 
 async def _recent_capture(
-    conn: AsyncConnection, site_id: SiteId, canonical: str, max_age: int, *, records_only: bool
+    conn: AsyncConnection, site_id: SiteId, canonical: str, max_age: int, *, api: bool
 ) -> _CaptureRow | None:
     """The latest capture of `canonical` that reached its page (§4.8) within `max_age` seconds and has not expired;
-    one an API recipe fetched only for a scrape that asks for the record only, as it holds JSON, not the page.
-    Captures are found through the tasks that fetched them, which hold the canonical URL."""
+    one an API recipe fetched only with `api`: a scrape that asks for the record only, with a config whose recipe
+    reads it, as it holds JSON, not the page (SPEC-09 §4.8). Captures are found through the tasks that fetched them,
+    which hold the canonical URL."""
     query = (
         select(Capture.id, Capture.object_key, Capture.duration_ms, Capture.fetch_policy)
         .join(UrlTask, UrlTask.capture_id == Capture.id)
@@ -379,7 +381,7 @@ async def _recent_capture(
         .order_by(Capture.fetched_at.desc())
         .limit(1)
     )
-    if not records_only:
+    if not api:
         query = query.where(Capture.method != "api")
     return (await conn.execute(query)).one_or_none()
 

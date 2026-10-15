@@ -16,6 +16,7 @@ from crawlerai.db.queue import (
     cancel_task,
     claim_tasks,
     complete_task,
+    fail_stalled_jobs,
     fail_task,
     release_expired_leases,
     release_task,
@@ -28,7 +29,7 @@ async def _job(conn: AsyncConnection, status: JobStatus = "running", **columns: 
     default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
     values = {"project_id": default_project, "kind": "crawl", "request": {}, "engine_version": "0+cal.0"}
     job_id: JobId = (
-        await conn.execute(insert(Job).values(**values, status=status, **columns).returning(Job.id))
+        await conn.execute(insert(Job).values({**values, "status": status, **columns}).returning(Job.id))
     ).scalar_one()
     return job_id
 
@@ -413,3 +414,18 @@ async def test_an_expired_lease_is_requeued_with_backoff_and_the_old_claim_is_fe
         await complete_task(conn, stale, "extracted")
     await complete_task(conn, live, "extracted")
     assert await _job_state(conn, job_id) == ("running", [])
+
+
+async def test_a_job_left_running_without_tasks_for_a_lease_fails(conn: AsyncConnection) -> None:
+    stale = func.now() - LEASE - timedelta(seconds=1)
+    died_mapping = await _job(conn, kind="map", started_at=stale)
+    drafting = await _job(conn, kind="extract", started_at=func.now() - timedelta(seconds=5))
+    crawling = await _job(conn, started_at=stale)
+    await _tasks(conn, crawling, 1)
+    learning = await _job(conn, kind="learn", started_at=stale)  # a run without tasks, ended by its own expiry
+
+    failed = await fail_stalled_jobs(conn, batch=10)
+
+    assert failed == 1
+    assert await _job_state(conn, died_mapping) == ("failed", ["failed"])
+    assert [(await _job_state(conn, job))[0] for job in (drafting, crawling, learning)] == ["running"] * 3

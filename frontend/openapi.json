@@ -869,6 +869,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
             "title": "Exclude",
             "type": "array"
           },
@@ -899,6 +900,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
             "title": "Include",
             "type": "array"
           },
@@ -3012,6 +3014,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
             "title": "Exclude",
             "type": "array"
           },
@@ -3020,6 +3023,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
             "title": "Include",
             "type": "array"
           },

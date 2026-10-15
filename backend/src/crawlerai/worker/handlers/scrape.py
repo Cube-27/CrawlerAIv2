@@ -40,6 +40,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import FetchOptions
 from crawlerai.worker.handlers.steps import (
+    Ended,
     FetchedPage,
     Records,
     count_fetch,
@@ -76,9 +77,7 @@ def scrape_handler(
         request, records = _PageFetch.model_validate(job[0]), job[1]
         # A records job asks for nothing else of its pages (`BatchScrapeRequest`, `ExtractRequest`).
         page = await fetch_page(conn, fetching, task, request.fetch, request.locale, recurring=records, served=records)
-        if not isinstance(page, FetchedPage):
-            return page
-        result = await _settle(conn, task, page, records, llm)
+        result = page.task_result if isinstance(page, Ended) else await _settle(conn, task, page, records, llm)
         await count_fetch(conn, task, page)
         return result
 

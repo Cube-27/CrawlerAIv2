@@ -9,7 +9,9 @@ wrote for it. `lease_until` is thus the claim's identity too: anything that exte
 new value, or the holder fences itself out.
 
 A lease runs out when its worker died or hung; `release_expired_leases` (the scheduler, every minute) counts that as
-a transient failure of the attempt.
+a transient failure of the attempt. A job that a process runs while its caller waits, with no task (a `map`, a prompt's
+draft), has no lease: one still `running` with no task a lease after it started lost its process, and
+`fail_stalled_jobs` ends it `failed`.
 
 Finishing a task records its run events (`crawlerai.db.task_events`) and settles its job in the same transaction.
 The job row is locked first, so of two workers finishing a job's last two tasks, the second one waits, then sees the
@@ -39,6 +41,7 @@ from crawlerai.db.models import (
     FinishedOutcome,
     Job,
     JobId,
+    JobKind,
     JobStatus,
     PageKind,
     TaskOutcome,
@@ -52,6 +55,11 @@ LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
 BACKOFF_BASE: Final = timedelta(seconds=30)
 LAST_ERROR_BYTES: Final = 2048
+# How many stalled jobs one scheduler turn ends (`fail_stalled_jobs`); a full batch runs again at once.
+STALLED_BATCH: Final = 100
+# The kinds of job a process runs while its caller waits, with no task for a while or ever: a `map`, an `extract`
+# drafting its prompt's schema.
+_RUN_INLINE: Final[tuple[JobKind, ...]] = ("map", "extract")
 
 # Runs as a job ends (`settle_job`): the job, and the status it is about to end in.
 JobEnding = Callable[[AsyncConnection, JobId, JobStatus], Awaitable[None]]
@@ -154,6 +162,11 @@ async def complete_task(
     await _finish(conn, task, "done", ending, outcome=outcome, last_error=reason, **values)
 
 
+def retried(task: ClaimedTask, *, transient: bool) -> bool:
+    """Whether a failure of `task` on this attempt is retried: a transient one, until `MAX_ATTEMPTS` (D-0006)."""
+    return transient and task.attempts < MAX_ATTEMPTS
+
+
 def retry_delay(attempts: int) -> timedelta:
     """The backoff before retrying a task that failed transiently on attempt `attempts` (1 for the first)."""
     delay: timedelta = BACKOFF_BASE * 2 ** (attempts - 1)
@@ -178,7 +191,7 @@ async def fail_task(
     values: dict[str, Any] = {"last_error": _cut(error)}
     if capture_id is not None:
         values["capture_id"] = capture_id
-    if transient and task.attempts < MAX_ATTEMPTS:
+    if retried(task, transient=transient):
         delay = retry_delay(task.attempts) if after is None else after
         await _move(conn, task, "queued", next_attempt_at=func.now() + delay, **values)
     elif exhausted == "failed":
@@ -214,6 +227,29 @@ async def release_expired_leases(conn: AsyncConnection, *, ending: JobEnding | N
     for task in tasks:
         await fail_task(conn, task, "lease expired", transient=True, ending=ending)
     return len(tasks)
+
+
+async def fail_stalled_jobs(conn: AsyncConnection, *, batch: int) -> int:
+    """End `failed` up to `batch` jobs of `_RUN_INLINE` kinds `running` with no task for longer than `LEASE`, and
+    return how many. A process runs such a job while its caller waits, within the request's time cap (a `map`'s, a
+    draft's), far under a lease."""
+    stalled = (
+        select(Job.id)
+        .where(
+            Job.status == "running",
+            Job.kind.in_(_RUN_INLINE),
+            Job.started_at < func.now() - LEASE,
+            ~select(UrlTask.id).where(UrlTask.job_id == Job.id).exists(),
+        )
+        .order_by(Job.id)
+        .limit(batch)
+        # FOR NO KEY UPDATE, as `settle_job` takes; a job another transaction holds is left to the next run.
+        .with_for_update(key_share=True, skip_locked=True)
+    )
+    job_ids = (await conn.execute(stalled)).scalars().all()
+    for job_id in job_ids:
+        await transition_job(conn, job_id, "failed")
+    return len(job_ids)
 
 
 def _cut(error: str) -> str:

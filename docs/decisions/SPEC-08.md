@@ -547,3 +547,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: A separate `unlearned` key in the report (a new stored shape the UI would need to read); logging the reasons only.
 - Why: The operator sees in the config view why a required field is missing, in the shape the report and UI already have (D-0583).
 - Reversible: yes
+
+### D-0836 — A stopping worker cancels its learn run
+- Date: 2026-10-15 · Spec/PR: SPEC-08 §4.8 follow-up (#195) · Status: decided
+- Decision: When the worker stops, `run_learner` cancels the run in progress, which ends as a failed run with reason `shutdown`; the state learns again as after any failed run.
+- Alternatives: Wait for the run (role A calls of minutes each); a grace period, then cancel; leave the run to `expire_learn_runs` after an hour.
+- Why: Shutdown stays bounded, and the state is not left `learning` until the run expires.
+- Reversible: yes

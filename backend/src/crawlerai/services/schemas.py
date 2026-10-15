@@ -12,6 +12,7 @@ from functools import cache
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.errors import Refusal
 from crawlerai.db.models import SchemaId, SchemaStatus
 from crawlerai.eval.labels import from_pydantic
 from crawlerai.schemas import registry
@@ -23,12 +24,12 @@ class NewSchema(SchemaContent):
     name: Name
 
 
-class SchemaConflict(Exception):
+class SchemaConflict(Refusal):
     """The request is valid but the stored schemas don't allow it: a taken or preset name, an edit to a version that
     is not the latest or is retired, a change to a preset."""
 
 
-class InvalidSchema(Exception):
+class InvalidSchema(Refusal):
     """The document breaks a schema rule (SPEC-04 §4.2); `errors` are (field path, reason) pairs as labels report
     theirs, `""` for the whole document."""
 

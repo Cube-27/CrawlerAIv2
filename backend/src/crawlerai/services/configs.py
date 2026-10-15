@@ -26,6 +26,7 @@ from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.progressive import LEARN_AFTER_PAGES, StateKey, lock_state, request_learning
 from crawlerai.config_ir.validation import ValidationReport, validate
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.errors import Refusal
 from crawlerai.db.models import (
     ConfigOrigin,
     ConfigStatus,
@@ -76,11 +77,11 @@ class ExportRequest(_Out):
     format: ConfigFormat
 
 
-class SiteNotFound(LookupError):
+class SiteNotFound(Refusal, LookupError):
     pass
 
 
-class ConfigNotFound(LookupError):
+class ConfigNotFound(Refusal, LookupError):
     pass
 
 

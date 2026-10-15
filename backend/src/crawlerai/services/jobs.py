@@ -24,6 +24,7 @@ from crawlerai.config_ir.progressive import StateKey, learning_failed
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
+from crawlerai.core.errors import Refusal
 from crawlerai.db.jobs import JOB_TRANSITIONS, transition_job
 from crawlerai.db.models import (
     Capture,
@@ -41,6 +42,7 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
+from crawlerai.db.paging import keyset_page
 from crawlerai.db.queue import settle_job
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.resolve.records import FieldMeta, RecordContent
@@ -56,7 +58,7 @@ ResultFormat = Literal["json", "json_values", RecordFormat]
 _EXTRACTED: frozenset[TaskOutcome | None] = frozenset({"extracted", "partial"})
 
 
-class JobNotFound(LookupError):
+class JobNotFound(Refusal, LookupError):
     pass
 
 
@@ -241,16 +243,16 @@ async def get_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
 async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:
     """The page of jobs after `query.cursor` (the first page without one) of its kind and status. Jobs are ordered by
     id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
-    statement = select(*_JOB_COLUMNS).order_by(Job.id.desc()).limit(query.limit + 1)
+    statement = select(*_JOB_COLUMNS)
     if query.kind is not None:
         statement = statement.where(Job.kind == query.kind)
     if query.status is not None:
         statement = statement.where(Job.status == query.status)
-    if query.cursor is not None:
-        statement = statement.where(Job.id < query.cursor)
-    rows = (await conn.execute(statement)).mappings().all()
-    items = await _summaries(conn, rows[: query.limit])
-    return JobPage(items=items, next_cursor=items[-1].id if len(rows) > query.limit else None)
+    rows, next_cursor = await keyset_page(
+        conn, statement, Job.id, after=query.cursor, limit=query.limit, descending=True
+    )
+    items = await _summaries(conn, [row._mapping for row in rows])
+    return JobPage(items=items, next_cursor=next_cursor)
 
 
 async def _summaries(conn: AsyncConnection, jobs: Sequence[RowMapping]) -> list[JobSummary]:
@@ -356,9 +358,10 @@ class _TaskRow(NamedTuple):
     object_key: str | None
 
 
-async def _task_rows(conn: AsyncConnection, job_id: JobId, query: ResultsQuery) -> list[_TaskRow]:
-    """The job's tasks after `query.cursor`, oldest first, one more than `query.limit` when there are more."""
-    after = () if query.cursor is None else (UrlTask.id > query.cursor,)
+async def _task_rows(
+    conn: AsyncConnection, job_id: JobId, query: ResultsQuery
+) -> tuple[list[_TaskRow], UrlTaskId | None]:
+    """The page of the job's tasks after `query.cursor`, oldest first, and the cursor of the page after it."""
     columns = (
         UrlTask.id,
         UrlTask.url,
@@ -371,22 +374,18 @@ async def _task_rows(conn: AsyncConnection, job_id: JobId, query: ResultsQuery) 
         Capture.block_class,
         Capture.object_key,
     )
-    statement = (
-        select(*columns)
-        .outerjoin(Capture, Capture.id == UrlTask.capture_id)
-        .where(UrlTask.job_id == job_id, *after)
-        .order_by(UrlTask.id)
-        .limit(query.limit + 1)
-    )
-    return [_TaskRow(**row._mapping) for row in await conn.execute(statement)]
+    statement = select(*columns).outerjoin(Capture, Capture.id == UrlTask.capture_id).where(UrlTask.job_id == job_id)
+    after = None if query.cursor is None else UrlTaskId(query.cursor)
+    rows, next_cursor = await keyset_page(conn, statement, UrlTask.id, after=after, limit=query.limit, descending=False)
+    return [_TaskRow(**row._mapping) for row in rows], next_cursor
 
 
 async def _page_outputs(
     conn: AsyncConnection, store: ObjectStore, job_id: JobId, formats: list[PageFormat], query: ResultsQuery
 ) -> PageOutputPage:
-    rows = await _task_rows(conn, job_id, query)
-    items = [await _page_output(store, row, formats) for row in rows[: query.limit]]
-    return PageOutputPage(items=items, next_cursor=items[-1].task_id if len(rows) > query.limit else None)
+    rows, next_cursor = await _task_rows(conn, job_id, query)
+    items = [await _page_output(store, row, formats) for row in rows]
+    return PageOutputPage(items=items, next_cursor=next_cursor)
 
 
 async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageFormat]) -> PageOutput:
@@ -411,15 +410,13 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
 async def _json_values(
     conn: AsyncConnection, store: ObjectStore, job_id: JobId, schema_id: SchemaId | None, query: ResultsQuery
 ) -> JsonValuesPage:
-    rows = await _task_rows(conn, job_id, query)
-    page = rows[: query.limit]
+    page, next_cursor = await _task_rows(conn, job_id, query)
     # A task's records are linked when it ends, so one read before its outcome shows none.
     records = await _clean_records(conn, schema_id, [row.id for row in page if row.outcome is not None])
     items = [
         await _json_values_item(store, row, records.get(row.id, []), metadata=query.include == "metadata")
         for row in page
     ]
-    next_cursor = page[-1].id if len(rows) > query.limit else None
     return JsonValuesPage(format="json_values", items=items, next_cursor=next_cursor)
 
 

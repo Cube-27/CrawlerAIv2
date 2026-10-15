@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from crawlerai.crawl.rules import MAX_PATTERNS
 from crawlerai.services.batch import MAX_URLS
 from crawlerai.services.extract import ExtractRequest
 
@@ -81,4 +82,18 @@ def test_the_guard_checks_each_url_and_each_globs_origin() -> None:
     assert request.targets() == [
         ("urls[0]", "https://shop.example.test/p/1"),
         ("urls[1]", "https://other.example.test/"),
+    ]
+
+
+def test_takes_at_most_max_patterns_globs_per_host() -> None:
+    # A host's globs are the `include` of its map (§4.6), which takes `MAX_PATTERNS`.
+    globs = [f"https://shop.example.test/c{n}/*" for n in range(MAX_PATTERNS)]
+    other_host = "https://other.example.test/p/*"
+    accepted = ExtractRequest.model_validate(BODY | {"urls": [*globs, other_host]})
+
+    errors = _errors(BODY | {"urls": [*globs, "https://shop.example.test/more/*"]})
+
+    assert len(accepted.urls) == MAX_PATTERNS + 1
+    assert errors == [
+        (("urls",), f"Value error, at most {MAX_PATTERNS} globs per host: a host's globs are its map's include")
     ]

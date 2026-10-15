@@ -4,7 +4,8 @@
 
 A reached page contributes its links and next-page candidates at its depth plus one. The start URL's task also reads
 the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else `/sitemap.xml`) and adds their
-URLs as seeds, at depth 0, even when its own page was not reached. Sitemaps are fetched over HTTP, politely: the
+URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that ends the task: an attempt that
+is postponed or retried leaves them to the next, so they are read once. Sitemaps are fetched over HTTP, politely: the
 worker waits for the site's rate in place, within `SITEMAP_TIMEOUT_S`, past which the seeds read so far are kept; a
 sitemap the SSRF guard refused ends the reading the same way (INV-16: it is never fetched).
 
@@ -36,6 +37,7 @@ from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, re
 from crawlerai.services.map import TIMEOUT_S
 from crawlerai.services.scrape_steps import fetch_policy, record_fetch_usage, site_row
 from crawlerai.worker.handlers.steps import (
+    Ended,
     FetchedPage,
     Records,
     count_fetch,
@@ -44,7 +46,7 @@ from crawlerai.worker.handlers.steps import (
     load_job,
     unreached,
 )
-from crawlerai.worker.loop import Failed, Finished, Postpone, TaskHandler, TaskResult
+from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, ends_task
 
 log = logging.getLogger(__name__)
 
@@ -86,14 +88,12 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     reads_links = task.depth < crawl.frontier.max_depth or task.page_kind is None
     served = None if reads_links else crawl.records
     page = await fetch_page(conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served)
-    if isinstance(page, (Failed, Postpone)):  # the task runs again: what it adds, it adds then
-        return page
-    result, found = (page, ()) if isinstance(page, Finished) else await _visit(conn, crawl, page)
+    result, found = (page.task_result, ()) if isinstance(page, Ended) else await _visit(conn, crawl, page)
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
     # task commits: a cancel, which locks that row, never waits for the reading (up to `SITEMAP_TIMEOUT_S`).
-    seeds = await _sitemap_seeds(conn, fetching, crawl) if task.canonical_url == crawl.request.start else []
-    if isinstance(page, FetchedPage):
-        await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
+    reads_sitemaps = task.canonical_url == crawl.request.start and ends_task(task, result)
+    seeds = await _sitemap_seeds(conn, fetching, crawl) if reads_sitemaps else []
+    await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
     await crawl.frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
     await crawl.frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
     return result
