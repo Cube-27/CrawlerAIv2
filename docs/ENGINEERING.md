@@ -104,3 +104,38 @@ Never relax the predicate to declare victory. A real dead end, after three hones
 **Encode lessons in structure.** When the same mistake recurs, fix it with the strongest tool that works, in this
 order: types, a lint or import contract, a CI check, a test. A sentence in a doc comes last. A rule nothing
 enforces is a symptom.
+
+## Patterns the analysers flag
+
+SonarCloud checks every PR. These rules fired more than once here (SonarCloud issue history to 2026-10-15); write
+the right pattern first. A finding that misreads the code (a protocol method that must be `async` or keep an unused
+parameter) is explained in the PR body, never suppressed.
+
+Python:
+- **S5778 one call in `pytest.raises`:** build arguments before the `with`; the block holds only the raising call.
+- **S9073 one fact per `assert`:** `assert a == 1` and `assert b == 2`, not `assert a == 1 and b == 2`.
+- **S3776 cognitive complexity ≤ 15:** extract named steps (complexipy enforces it, C11).
+- **S6353 concise regex classes:** `\d`, `\w`, not `[0-9]`, `[A-Za-z0-9_]`.
+- **S1192 repeated literal:** a literal used three or more times becomes a named constant that cites its standard.
+- **S7503 needless `async`:** a function that awaits nothing is sync, unless a protocol or framework requires a
+  coroutine.
+- **S1172 unused parameter:** remove it, unless a protocol defines the signature.
+- **S7519 same value for every key:** `dict.fromkeys(keys, value)`, not a comprehension.
+- **S8409 FastAPI `response_model`:** omit it when the return annotation already says the type.
+- **S9100 fixture without teardown:** `return`, not `yield`.
+- **S5713 redundant `except`:** don't catch a subclass beside its base class in one `except`.
+
+TS/TSX:
+- **S6759 read-only props:** `({ title }: Readonly<CardProps>)`, inline prop types too.
+- **S6479 list keys:** key rows by a stable id, never the array index; give editor-only rows an id at creation.
+- **S3358 nested ternary:** an `if` chain, a lookup table or a named helper.
+- **S1186 empty method:** a stub says why in a comment (`// no-op: jsdom has no layout`).
+- **S7718 catch parameter:** name it `error` (`error_` when `error` is taken).
+- **S9382 `await` in a loop:** `Promise.all` when iterations are independent; a sequential loop (backoff, cursor
+  pagination) is explained in the PR body.
+
+Shell (`tools/orchestrator/*.sh`) and CI:
+- **S7688 `[[ ]]`, not `[ ]`; S7677 errors to stderr (`>&2`); S7679 positional parameters into named variables
+  (`name=$1`); S7682 a function ends with an explicit `return` or `exit`.**
+- **GitHub Actions S8541/S8544:** install from the lockfile and build nothing third-party: `uv sync --frozen
+  --no-build`, `uv run --no-sync --no-build`, `pnpm install --frozen-lockfile`.
