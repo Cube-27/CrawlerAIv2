@@ -87,7 +87,7 @@ class PageFacts:
 @dataclass(frozen=True, slots=True)
 class Variants:
     """The variant rules of a detail page's target (SPEC-13 §4.6): `selected` is the variant holder the page URLs
-    select (`intent.select_variant`), or None."""
+    select (`select_variant` in `resolve/intent.py`), or None."""
 
     selected: Entity | None
 
