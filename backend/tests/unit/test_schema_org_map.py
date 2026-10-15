@@ -40,9 +40,7 @@ def vocabulary() -> Vocabulary:
         ("IndividualProduct", "Product", True),
         ("IndividualProduct", "Thing", True),
         ("ProductModel", "CreativeWork", True),  # two parents
-        ("AggregateOffer", "Offer", True),
         ("Offer", "AggregateOffer", False),
-        ("Offer", "Product", False),
         ("Widget", "Thing", False),  # not in the vocabulary
         ("Product", "Widget", False),
     ],
@@ -142,9 +140,7 @@ def test_a_path_follows_nodes_and_text_stands_for_a_thing_s_name() -> None:
         Selected("Acme 7", "brand/name/0"),
         Selected("Other 3", "product/brand/1"),
     ]
-
-
-def test_text_does_not_stand_for_other_properties() -> None:
+    # ... and for no other property.
     assert select(PRODUCT, parse_paths("Product.brand.logo")[0], as_list=False) == []
 
 

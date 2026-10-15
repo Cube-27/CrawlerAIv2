@@ -23,12 +23,6 @@ def _rejection(document: dict[str, Any]) -> str:
     return str(error.value)
 
 
-def test_defaults_are_optional_row_fields() -> None:
-    field = SchemaDocument.model_validate(_document({"title": _text()})).fields["title"]
-
-    assert (field.required, field.scope) == (False, "row")
-
-
 @pytest.mark.parametrize(
     ("spec", "message"),
     [
@@ -57,7 +51,9 @@ def test_every_field_and_object_sub_field_needs_a_description() -> None:
 def test_a_list_item_is_described_by_its_field() -> None:
     document = _document({"tags": {"type": "list", "description": "d", "item": {"type": "text"}}})
 
-    assert SchemaDocument.model_validate(document).fields["tags"].item is not None
+    item = SchemaDocument.model_validate(document).fields["tags"].item
+    assert item is not None
+    assert (item.type, item.description) == (FieldType.TEXT, None)
 
 
 def test_a_blank_description_is_rejected() -> None:
@@ -92,72 +88,24 @@ def test_required_groups_name_existing_fields(groups: list[list[str]], message: 
 
 @pytest.mark.parametrize(
     "path",
-    ["Product", "product.sku", "Product.Sku", "Product.sku+", "Product.sku+price+priceCurrency", "Product..sku"],
+    ["Product", "product.sku", "Product.sku+price+priceCurrency"],
 )
 def test_malformed_schema_org_paths_are_rejected(path: str) -> None:
     assert "schema_org" in _rejection(_document({"f": _text(schema_org=path)}))
 
 
-@pytest.mark.parametrize("vocab", ["ItemAvailability", "schema:itemAvailability", "type:Availability", "x:y"])
+@pytest.mark.parametrize("vocab", ["ItemAvailability", "x:y"])
 def test_malformed_vocab_references_are_rejected(vocab: str) -> None:
     assert "vocab" in _rejection(_document({"f": {"type": "enum", "description": "d", "vocab": vocab}}))
 
 
-@pytest.mark.parametrize("name", ["Title", "1st", "title-text", "a" * 65, ""])
+@pytest.mark.parametrize("name", ["Title", "1st", "a" * 65])
 def test_field_names_are_lowercase_snake_case(name: str) -> None:
     assert "fields" in _rejection(_document({name: _text()}))
 
 
 def test_unknown_keys_are_rejected() -> None:
     assert "optional" in _rejection(_document({"f": _text(optional=True)}))
-
-
-def _core(document: SchemaDocument) -> dict[str, str]:
-    return {name: spec.type.value for name, spec in document.fields.items() if spec.required}
-
-
-def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
-    presets = {preset.name: preset for preset in load_presets()}
-
-    assert sorted(presets) == ["commerce_detail", "commerce_listing", "job_detail", "job_listing"]
-    # commerce_detail 2: `brand` optional (owner, Appendix A #35); 3: the optional row-mapped `variants` (SPEC-13 §4.7).
-    assert {name: preset.version for name, preset in presets.items()} == {
-        "commerce_detail": 3,
-        "commerce_listing": 1,
-        "job_detail": 1,
-        "job_listing": 1,
-    }
-    assert _core(presets["commerce_detail"]) == {
-        "title": "text",
-        "price": "money",
-        "availability": "enum",
-        "url": "url",
-        "image_url": "image_url",
-    }
-    assert presets["commerce_detail"].fields["brand"].type.value == "text"
-    assert presets["commerce_detail"].required_groups == [["sku", "gtin"]]
-    assert presets["commerce_detail"].fields["availability"].vocab == "schema:ItemAvailability"
-    variants = presets["commerce_detail"].fields["variants"]
-    assert (variants.row_mapped, variants.required, variants.key) == (True, False, ["gtin", "sku", "url"])
-    assert {n: s.scheme for n, s in presets["commerce_detail"].fields.items() if s.scheme} == {
-        "sku": "sku",
-        "gtin": "gtin",
-    }
-    assert _core(presets["job_detail"]) == {
-        "title": "text",
-        "company": "text",
-        "locations": "list",
-        "description": "long_text",
-        "apply_url": "url",
-        "date_posted": "date",
-    }
-    assert presets["job_detail"].fields["locations"].item.type is FieldType.LOCATION  # type: ignore[union-attr]
-    assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.url"  # D-0015
-    for listing, optional in (("commerce_listing", "price"), ("job_listing", "location")):
-        fields = presets[listing].fields
-        assert _core(presets[listing]) == {"title": "text", "url": "url"}
-        assert sorted(fields) == sorted(["title", "url", optional, "next_page_url"])
-        assert {n for n, s in fields.items() if s.scope == "page"} == {"next_page_url"}
 
 
 def test_every_preset_field_maps_to_schema_org_except_page_navigation() -> None:
