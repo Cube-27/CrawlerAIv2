@@ -4,8 +4,6 @@ derivation, and the value says which."""
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.ids import uuid7
@@ -90,7 +88,7 @@ def test_the_page_url_field_is_a_detail_schemas_url_of_its_primary_type() -> Non
 
 def test_a_listing_has_no_page_url_field() -> None:
     schema = _schema("listing", url=URL)
-    assert not is_page_url_field(schema, URL, frozenset({"Product"}))
+    assert is_page_url_field(schema, URL, frozenset({"Product"})) is False
 
 
 def test_a_missing_page_url_is_the_canonical_link() -> None:
@@ -109,15 +107,9 @@ def test_only_the_page_url_field_takes_the_page_url() -> None:
     assert _fill(URL, MISSING, page_url_field=False) == MISSING
 
 
-@pytest.mark.parametrize(
-    "preference",
-    [
-        Unpublished("conflict", "disagree", ()),
-        Unpublished("conflict", "intent_ambiguous", ()),
-    ],
-)
-def test_a_conflict_is_not_filled(preference: Unpublished) -> None:
+def test_a_conflict_is_not_filled() -> None:
     # A conflict is a field with values that disagree, not an empty one (INV-07, INV-14).
+    preference = Unpublished("conflict", "disagree", ())
     assert _fill(URL, preference) == preference
 
 

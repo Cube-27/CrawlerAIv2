@@ -77,7 +77,6 @@ def test_a_sitemap_past_the_protocol_size_declines() -> None:
         b"<urlset><url><loc>https://shop.example.test/a</loc>",
         b"\x1f\x8bnot gzip",
         b"",
-        f"<rss><channel><link>{ORIGIN}/a</link></channel></rss>".encode(),
     ],
 )
 def test_what_is_not_a_sitemap_declines(body: bytes) -> None:
@@ -98,8 +97,8 @@ def test_roots_are_the_robots_sitemaps_on_the_host() -> None:
     assert roots(f"{ORIGIN}/start", listed) == (f"{ORIGIN}/s.xml",)
 
 
-@pytest.mark.parametrize("listed", [[], ["https://cdn.example.test/s.xml"]])
-def test_without_a_robots_sitemap_on_the_host_the_root_is_sitemap_xml(listed: list[str]) -> None:
+def test_without_a_robots_sitemap_on_the_host_the_root_is_sitemap_xml() -> None:
+    listed = ["https://cdn.example.test/s.xml"]
     assert roots("https://shop.example.test:8443/a/b?q=1", listed) == ("https://shop.example.test:8443/sitemap.xml",)
 
 

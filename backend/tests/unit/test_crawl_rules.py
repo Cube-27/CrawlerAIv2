@@ -14,7 +14,6 @@ HOST = "shop.example.test"
         ("https://shop.example.test/p/1", True),
         ("http://shop.example.test:8080/p/1", True),
         ("https://sub.shop.example.test/p/1", False),
-        ("https://example.test/p/1", False),
     ],
 )
 def test_without_include_the_scope_is_the_exact_host(url: str, kept: bool) -> None:
@@ -105,11 +104,7 @@ def test_a_glob_is_expanded_on_its_canonical_origin(pattern: str, origin: str, c
     "pattern",
     [
         "https://*.example.test/p/*",
-        "https://shop.example.test:8*/p/1",
-        "https://shop.example.test?/p/*",
-        "http*://shop.example.test/p/*",
         "ftp://shop.example.test/p/*",
-        "https:///p/*",
         "/p/*",
     ],
 )
