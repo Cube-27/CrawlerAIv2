@@ -36,9 +36,9 @@ function noPageKind(form: ScrapeFormState): string {
     : "Records of listing pages are not available yet.";
 }
 
-/** RFC 3986 §3.1: a URI starts with its scheme and `:`. The bar shows `https://`, so text typed without a scheme
- * gets it. */
-const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i;
+/** RFC 3986 §3: a URL with an authority starts with its scheme and `://`. The bar shows `https://`, so text typed
+ * without one gets it; `host:port` (RFC 3986 §3.2) has no `//`, so it is a host, not a scheme. */
+const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
 
 function requestUrl(text: string): string {
   const url = text.trim();

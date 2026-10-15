@@ -5576,7 +5576,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 ### D-0819 — The URL bar's `https://` prefix applies to text typed without a scheme
 - Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, PR 2 (#191) · Status: decided
 - Context: §4.2 shows an `https://` prefix in the URL field.
-- Decision: Text without an RFC 3986 §3.1 scheme is sent with `https://`; a URL with a scheme is sent as typed.
+- Decision: Text that does not start with a scheme and `://` (RFC 3986 §3) is sent with `https://`, so `host:port/path` gets it too; a URL with one is sent as typed.
 - Alternatives: a decorative prefix only.
 - Why: What the bar shows is what is sent.
 - Reversible: yes

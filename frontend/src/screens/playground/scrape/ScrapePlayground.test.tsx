@@ -319,6 +319,17 @@ describe("scrape playground: the request", () => {
     expect(posted(calls)).toMatchObject({ url: "https://store.test/a" });
   });
 
+  it("sends a host and port typed without a scheme with the https:// the bar shows", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl("localhost:8000/a");
+
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({ url: "https://localhost:8000/a" });
+  });
+
   it("sends nothing and opens the options, saying why, when a schema's records are for no page kind it can ask for", async () => {
     const listing = { ...itemSchema, status: "active", page_kind: "listing" };
     const calls = stubScrape({ "GET /v1/schemas": () => Response.json({ items: [listing] }) });
