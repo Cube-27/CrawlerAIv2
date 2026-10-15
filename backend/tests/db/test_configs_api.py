@@ -267,9 +267,14 @@ async def test_a_sites_configs_are_listed_with_their_status_and_one_config_has_i
 async def test_unknown_sites_and_configs_are_not_found(client: httpx.AsyncClient, world: World) -> None:
     site = await client.get("/v1/sites/nowhere.example.test/configs")
     config = await client.get(f"/v1/configs/{world.schema.id}")
+    corrected = await client.put(f"/v1/configs/{world.schema.id}", json={"confirm": ["title"]})
 
-    assert (site.status_code, config.status_code) == (404, 404)
     assert site.headers["content-type"] == "application/problem+json"
+    assert [(r.status_code, r.json()["type"], r.json()["detail"]) for r in (site, config, corrected)] == [
+        (404, "not_found", "no site nowhere.example.test"),
+        (404, "not_found", f"no config {world.schema.id}"),
+        (404, "not_found", f"no config {world.schema.id}"),
+    ]
 
 
 async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: World) -> None:
@@ -418,18 +423,13 @@ async def test_a_correction_that_does_not_fit_is_a_validation_problem(
     assert await world.configs() == [(1, "active", "induced")]
 
 
-async def test_correcting_an_unknown_config_is_not_found(client: httpx.AsyncClient, world: World) -> None:
-    response = await client.put(f"/v1/configs/{world.schema.id}", json={"confirm": ["title"]})
-    assert response.status_code == 404
-
-
 @pytest.mark.parametrize("app_data", [None])
 async def test_without_the_engine_data_a_correction_is_unavailable(client: httpx.AsyncClient, world: World) -> None:
     first = await world.active_config(H1)
 
     response = await client.put(f"/v1/configs/{first}", json={"confirm": ["title"]})
 
-    assert response.status_code == 503
+    assert (response.status_code, response.json()["type"]) == (503, "records_unavailable")
     assert await world.configs() == [(1, "active", "induced")]
 
 
@@ -457,7 +457,7 @@ async def test_learn_is_refused_while_a_run_is_in_flight(client: httpx.AsyncClie
 
     again = await _learn(client, world, force=True)
 
-    assert again.status_code == 409
+    assert (again.status_code, again.json()["type"]) == (409, "conflict")
 
 
 async def test_an_active_site_relearns_only_when_forced(client: httpx.AsyncClient, world: World) -> None:
@@ -476,7 +476,11 @@ async def test_learning_an_unknown_site_or_schema_is_not_found(client: httpx.Asy
     schema = await client.post(f"/v1/sites/{world.host}/learn", json={"schema_id": str(world.site_id)})
     missing = await client.post(f"/v1/sites/{world.host}/learn", json={"force": True})
 
-    assert (site.status_code, schema.status_code, missing.status_code) == (404, 404, 422)
+    assert [(r.status_code, r.json()["type"], r.json()["detail"]) for r in (site, schema)] == [
+        (404, "not_found", "no site nowhere.example.test"),
+        (404, "not_found", f"no schema with id {world.site_id}"),
+    ]
+    assert (missing.status_code, missing.json()["type"]) == (422, "validation")
 
 
 # The held-out loader.

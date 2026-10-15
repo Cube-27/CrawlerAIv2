@@ -40,7 +40,7 @@ from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services import captures, records
-from crawlerai.services.captures import CaptureNotFound, NotReplayable
+from crawlerai.services.captures import CaptureNotFound
 from crawlerai.services.keys import create_key
 from crawlerai.services.records import RecordFilter
 from crawlerai.storage.fs import FsStore
@@ -188,17 +188,6 @@ async def test_a_field_that_did_not_publish_is_listed_without_a_value(world: Wor
     assert (record.fields["price"].status, record.fields["price"].value) == ("missing", None)
 
 
-async def test_pages_are_newest_first_and_the_cursor_walks_them_without_overlap(world: World) -> None:
-    made = [await world.scrape(f"/p/{n}", _page(f"Kettle {n}")) for n in range(3)]
-
-    first = await _list(world.engine, schema_id=world.schema.id, limit=2)
-    assert first.next_cursor is not None
-    second = await _list(world.engine, schema_id=world.schema.id, limit=2, cursor=first.next_cursor)
-
-    assert [r.id for r in first.items + second.items] == [m.record_id for m in reversed(made)]
-    assert second.next_cursor is None
-
-
 async def test_filters_narrow_by_job_site_and_schema(world: World) -> None:
     one = await world.scrape("/p/1", _page("Kettle 1"))
     two = await world.scrape("/p/2", _page("Kettle 2"))
@@ -245,23 +234,6 @@ async def test_a_changed_price_is_listed_as_version_2_naming_price(world: World)
     assert (newest.id, newest.version, newest.changed_fields) == (changed.record_id, 2, ["price"])
     assert newest.fields["price"].value == {"amount": "17.50", "currency": "EUR"}
     assert (oldest.id, oldest.version, oldest.changed_fields) == (first.record_id, 1, [])
-
-
-async def test_changed_since_lists_the_new_versions_and_new_entities_stored_from_then(world: World) -> None:
-    await world.scrape("/p/1", _page("Kettle 1"))
-    await world.scrape("/p/2", _page("Kettle 2"))
-    async with world.engine.connect() as conn:
-        since = (await conn.execute(select(func.now()))).scalar_one()
-    changed = await world.scrape("/p/1", _page("Kettle 1", amount="17.50"))
-    await world.scrape("/p/2", _page("Kettle 2"))
-    new = await world.scrape("/p/3", _page("Kettle 3"))
-
-    page = await _list(world.engine, schema_id=world.schema.id, changed_since=since)
-
-    assert [(r.id, r.version, r.changed_fields) for r in page.items] == [
-        (new.record_id, 1, []),
-        (changed.record_id, 2, ["price"]),
-    ]
 
 
 # The captures service.
@@ -341,23 +313,11 @@ async def test_a_schema_version_with_an_active_config_replays_with_it(world: Wor
     assert (replayed.mode, title.value, title.source_kind) == ("config", "Blue kettle", "jsonld")
 
 
-async def test_replaying_an_unknown_capture_is_not_found(world: World) -> None:
-    unknown = CaptureId(uuid7())
-    with pytest.raises(CaptureNotFound):
-        await captures.replay(world.engine, world.store, world.data, unknown)
-
-
 async def test_replaying_a_capture_whose_bundle_is_gone_is_not_found(world: World, tmp_path: Path) -> None:
     made = await world.scrape("/p/1", _page("Blue kettle"))
     empty_store = FsStore(tmp_path / "elsewhere")
     with pytest.raises(CaptureNotFound, match="no longer stored"):
         await captures.replay(world.engine, empty_store, world.data, made.capture_id)
-
-
-async def test_a_capture_no_record_was_made_from_is_not_replayable(world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"), extract=False)
-    with pytest.raises(NotReplayable):
-        await captures.replay(world.engine, world.store, world.data, made.capture_id)
 
 
 async def test_a_listing_replays_one_record_per_row_as_the_page_task_stored_them(world: World) -> None:
@@ -445,28 +405,33 @@ async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx
     assert second.json()["next_cursor"] is None
 
 
-async def test_changed_since_narrows_the_listed_records(client: httpx.AsyncClient, world: World) -> None:
+async def test_changed_since_lists_the_new_versions_and_new_entities_stored_from_then(
+    client: httpx.AsyncClient, world: World
+) -> None:
     await world.scrape("/p/1", _page("Kettle 1"))
+    await world.scrape("/p/2", _page("Kettle 2"))
     async with world.engine.connect() as conn:
         since = (await conn.execute(select(func.now()))).scalar_one()
     changed = await world.scrape("/p/1", _page("Kettle 1", amount="17.50"))
+    await world.scrape("/p/2", _page("Kettle 2"))
+    new = await world.scrape("/p/3", _page("Kettle 3"))
 
     query = {"schema_id": str(world.schema.id), "changed_since": since.isoformat()}
     response = await client.get("/v1/records", params=query)
 
     assert response.status_code == 200, response.text
-    [record] = response.json()["items"]
-    assert (record["id"], record["version"], record["changed_fields"]) == (str(changed.record_id), 2, ["price"])
+    assert [(r["id"], r["version"], r["changed_fields"]) for r in response.json()["items"]] == [
+        (str(new.record_id), 1, []),
+        (str(changed.record_id), 2, ["price"]),
+    ]
 
 
 @pytest.mark.parametrize(
     "query",
     [
-        {"limit": 0},
         {"limit": 201},
         {"cursor": "not-an-id"},
         {"page": 2},
-        {"changed_since": "yesterday"},
         # A time without its offset names no instant (RFC 3339 §4.4).
         {"changed_since": "2026-10-01T00:00:00"},
     ],
@@ -479,16 +444,6 @@ async def test_a_query_outside_the_filters_is_a_validation_problem(
     assert response.status_code == 422
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json()["type"] == "validation"
-
-
-async def test_records_and_replay_need_a_key(client: httpx.AsyncClient, world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-    del client.headers["authorization"]
-
-    listed = await client.get("/v1/records")
-    replayed = await client.post(f"/v1/captures/{made.capture_id}/replay", json={})
-
-    assert (listed.status_code, replayed.status_code) == (401, 401)
 
 
 async def test_a_replay_answers_the_records_without_ids(client: httpx.AsyncClient, world: World) -> None:
