@@ -19,42 +19,46 @@ function ScopeFields({ form, edit }: Readonly<{ form: CrawlFormState; edit: Edit
   return (
     <Fieldset>
       <Fieldset.Legend>Scope</Fieldset.Legend>
-      <LinesField
-        label="Include"
-        name="include"
-        description="URL globs, one per line. Empty: the start URL's host."
-        value={form.include}
-        onChange={(include) => {
-          edit({ include });
-        }}
-      />
-      <LinesField
-        label="Exclude"
-        name="exclude"
-        description="URL globs, one per line, left out of the crawl."
-        value={form.exclude}
-        onChange={(exclude) => {
-          edit({ exclude });
-        }}
-      />
-      <LimitField
-        label="Max depth"
-        name="max_depth"
-        value={form.maxDepth}
-        minValue={0}
-        onChange={(maxDepth) => {
-          edit({ maxDepth });
-        }}
-      />
-      <LimitField
-        label="Page limit"
-        name="limit"
-        value={form.limit}
-        minValue={1}
-        onChange={(limit) => {
-          edit({ limit });
-        }}
-      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <LinesField
+          label="Include"
+          name="include"
+          description="URL globs, one per line. Empty: the start URL's host."
+          value={form.include}
+          onChange={(include) => {
+            edit({ include });
+          }}
+        />
+        <LinesField
+          label="Exclude"
+          name="exclude"
+          description="URL globs, one per line, left out of the crawl."
+          value={form.exclude}
+          onChange={(exclude) => {
+            edit({ exclude });
+          }}
+        />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <LimitField
+          label="Max depth"
+          name="max_depth"
+          value={form.maxDepth}
+          minValue={0}
+          onChange={(maxDepth) => {
+            edit({ maxDepth });
+          }}
+        />
+        <LimitField
+          label="Page limit"
+          name="limit"
+          value={form.limit}
+          minValue={1}
+          onChange={(limit) => {
+            edit({ limit });
+          }}
+        />
+      </div>
     </Fieldset>
   );
 }

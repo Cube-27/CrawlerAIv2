@@ -46,6 +46,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0782 | Investigate: variants, availability and stock | needs-owner |
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner |
+| D-0810 | Additional fields: how typed field names become an extraction | needs-owner |
 
 ---
 
@@ -5497,3 +5498,18 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Treat an AggregateOffer under a variant as that variant's offer.
 - Why: One rule for AggregateOffers across holders, offers and row keys (C7: decline rather than guess).
 - Reversible: yes
+
+### D-0809 — The UI becomes one playground; the server attaches the API key
+- Date: 2026-10-15 · Spec/PR: SPEC-14 · Status: decided (owner)
+- Context: The owner found the UI's flow spread over screens and dialogs, settings in one long vertical column with the action at the bottom, no batch on the main screen, JSON not the main output, and an API-key prompt on every load. The owner gave a reference playground's screenshots (mode tabs above a URL bar, inline options, a Get code drawer) and v1's feature set as the target UX.
+- Decision: SPEC-14. One playground for Scrape, Batch, Crawl, Map and Extract at `/`; primary action at the top; inline options panel with Advanced (fetch, limits) collapsed; no pop-up windows for runs. Clean JSON (schema fields only, metadata only when asked) is the default output and a new `json_values` export. Batch and crawl show a running table with a JSON side drawer and plain-language activity; CSV upload is an icon in the batch box. Get code is the second-to-last PR; additional fields are last (D-0810). `json_values` (the name `json` is taken by the records shape) has one item per task, `{url, outcome, records, metadata?}`, with `records` always an array (empty for a failed or schemaless task, several for a listing page), so the table, the drawer and the download share one shape (review of #178). The dev proxy attaches `CRAWLERAI_UI_API_KEY`; the Connect screen goes (ARCHITECTURE §18 rev 17, Appendix A #38).
+- Alternatives: keep SPEC-12's screens; a login with sessions; remember the key in the browser; JSON built in the browser.
+- Why: The owner's answers, 2026-10-15.
+- Reversible: yes
+
+### D-0810 — Additional fields: how typed field names become an extraction
+- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 11 · Status: needs-owner
+- Context: v1 let a user type field names as chips for an ad-hoc extraction. v2 extracts by a schema (stored, inline or drafted from a prompt; prompts only on scrape and extract).
+- Options: (a) a `fields` request member; the server drafts a typed schema from the names (role S); (b) the UI sends the names as a prompt where prompts are allowed; (c) chips pick fields from presets and stored schemas.
+- Recommendation: (a), one path for every run type, with the draft shown for editing; it changes the public API.
+- Blocked: SPEC-14 PR 11 only. The owner discusses it before it is built.

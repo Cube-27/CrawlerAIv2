@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 16, 2026-10-15. No code exists.
+Status: design, rev 17, 2026-10-15. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -597,6 +597,9 @@ translate it, so what we export is what we run.
   hint. This is a draft for an external crawler platform, revised once a sample of its config format exists
   (OPEN_QUESTIONS #1).
 - `json_records`, `csv_records`, `markdown`.
+- `json_values`: one item per task, `{url, outcome, records, metadata?}`, where each record holds the schema's
+  published fields only (null when not published), with page `metadata` on request; no status columns; jobs with and
+  without a schema (SPEC-14).
 
 ### 12.3 Release check
 
@@ -619,7 +622,7 @@ matches the engine. Correctness is measured in §16, per field status.
 | `POST /v1/crawl` | Async. Start URL, include/exclude globs, depth, limit, `formats`, optional `schema` with page-kind rules per URL pattern. |
 | `POST /v1/extract` | Async. URLs (globs expanded through `map`) plus `schema` or `prompt` → records, in progressive mode. Returns the drafted schema when a prompt was used. |
 | `GET /v1/jobs` | Jobs, newest first, each with its status summary; optional `kind` and `status` filters; cursor-paginated. |
-| `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status (with whether a cancel was requested), cancel, paginated results (a page output with its task's failure or block reason), server-sent events for progress (from stored run events). A webhook on completion. |
+| `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status (with whether a cancel was requested), cancel, paginated results (a page output with its task's failure or block reason; or clean `json_values` items, §12.2), server-sent events for progress (from stored run events). A webhook on completion. |
 | `/v1/schemas` | Create, read, update, delete. |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
 | `/v1/records`, `/v1/captures/{id}/replay` | Records with `field_meta`; replay a capture with the current engine. |
@@ -748,8 +751,10 @@ subtraction.
 
 ## 18. Security
 
-- **Access.** API keys: hashed, revocable, rate limited before any DB lookup. The web UI sends the API key as a
-  bearer header, held in memory. No cookies, no sessions, no CSRF surface.
+- **Access.** API keys: hashed, revocable, rate limited before any DB lookup. The web UI never asks for a key: whatever serves
+  it (today the dev proxy) attaches the bearer key from its own environment (`CRAWLERAI_UI_API_KEY`), so the key never
+  reaches the browser. Anyone who can reach the UI can use the API through it, so the UI is served on localhost or a
+  private network only (Appendix A #38). No cookies, no sessions, no CSRF surface.
 - **SSRF** (§7.1): fails closed and is re-checked on every redirect hop.
 - **Secrets** come from environment or a secret store, never the repo, and are redacted in logs.
 - **Generated artifacts are data.** Selectors, recipes and schemas run in our interpreter. We never `exec` LLM
@@ -933,6 +938,7 @@ implementation go in `DECISIONS.md`, not here.
 | 35 | `brand` optional (2026-10-14) | "Brand is not that important": preset `commerce_detail` version 2 makes `brand` optional (§5.3). A page without a brand is complete, and the gap rule no longer asks role C for it. |
 | 36 | Variants are members (2026-10-15) | A primary entity's `hasVariant` variants are members of it, not candidates for the target, and their Offers are the target's under the atomic-offer rule (§8.2 rule 3, §10). Step A of the variants proposal; variant-matrix handling itself (§22) is admitted separately and specified in SPEC-13. |
 | 37 | Variant matrix (2026-10-15) | Variant-matrix handling (§22) is admitted now, ahead of labels. `commerce_detail` version 3 adds an optional `variants` list from structured data; sub-fields of a `list` of `object` map by their own `schema_org` paths; the single price, availability, sku and gtin follow the variant the page URL names, else the all-agree rule. No platform JSON adapter. Variant labels and their scoring are specified, not built (SPEC-13). |
+| 38 | Playground UI (2026-10-15) | The UI is one playground: a mode switch (Scrape, Batch, Crawl, Map, Extract), a command bar with the primary action at the top, settings in an inline options panel with Advanced collapsed, and output on the same page. No pop-up windows for runs. Clean JSON is the main output: schema fields only, metadata only when asked for. Batch and crawl show a running table with each page's JSON in a side drawer, and plain-language live activity. The UI never asks for an API key; the server that serves it attaches one (§18). `/` opens the playground. SPEC-14. |
 
 ---
 
@@ -1016,3 +1022,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 14 | 2026-10-15 | **`brand` optional** (owner approval, accuracy Q1; Appendix A #35). §5.3: `commerce_detail` version 2 lists `brand` as shown-when-present. SPEC-04 §4.2 updated. |
 | 15 | 2026-10-15 | **Variants are members** (owner approval, variants proposal step A; Appendix A #36). §8.2 rule 3: `hasVariant` variants are excluded from target candidates and their Offers are owned by the target; §10 atomic offers count them. SPEC-05 §4.6 and §4.8 updated. |
 | 16 | 2026-10-15 | **Variant matrix** (owner admission; Appendix A #37). §5.2: `\|` alternatives in `schema_org`, row-mapped `list` of `object` fields with `key`. §5.3: `commerce_detail` version 3 adds optional `variants`. §10: selected variant by URL identity, variant fill, per-row resolution. §22: the candidate is marked admitted. SPEC-13 added; SPEC-04 and SPEC-05 point to it. INV-33–INV-36. |
+| 17 | 2026-10-15 | **Playground UI and server-side key** (owner; Appendix A #38). §18: the UI never holds an API key; the server that serves it attaches one. §12.2: `json_values` record export. SPEC-14 added; SPEC-12 points to it for the Connect screen, job dialogs, Overview and Scrape layout. |
