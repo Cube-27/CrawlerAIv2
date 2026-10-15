@@ -22,7 +22,11 @@ _EMPTY_APP = b'<html><head><script src="/app.js"></script></head><body><div id="
     ("status", "expected"),
     [
         (404, "not_found"),
+        (410, "not_found"),
+        (401, "blocked"),
         (403, "blocked"),
+        (407, "blocked"),
+        (451, "blocked"),
         # 503 is a server error that asks the client to back off: blocked wins over error.
         (503, "blocked"),
         (400, "error"),

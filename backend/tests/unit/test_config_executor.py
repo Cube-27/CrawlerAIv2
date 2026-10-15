@@ -32,6 +32,7 @@ NO_BASE = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
 
 TEXT = FieldSpec(type=FieldType.TEXT, description="d")
 URL = FieldSpec(type=FieldType.URL, description="d")
+TEXTS = FieldSpec(type=FieldType.LIST, description="d", item=FieldSpec(type=FieldType.TEXT))
 MONEY = FieldSpec(type=FieldType.MONEY, description="d")
 
 
@@ -122,6 +123,12 @@ def test_without_a_valid_value_the_first_match_is_proposed_with_its_decline() ->
     candidate = _only(_run(_ir({"price": steps}), "<p>soon</p><span>later</span>", _schema(price=MONEY)))
     assert candidate.locator == "config:price:1://p"
     assert (candidate.raw, candidate.normalized) == ("soon", Invalid("no_amount"))
+
+
+def test_a_list_field_takes_every_match_in_document_order() -> None:
+    html = "<ul><li>a</li><li>b</li><li>c</li></ul>"
+    candidate = _only(_run(_ir({"tags": [{"xpath": "//li"}]}), html, _schema(tags=TEXTS)))
+    assert candidate.normalized == Ok(["a", "b", "c"])
 
 
 def test_string_and_attribute_results() -> None:
