@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1–10 in order, with PR 9 (backend `json_values`) before PR 4; PR 9 can start now. PR 11 (additional fields) is blocked on D-0810.
+- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1–10 in order, with PR 9 (backend `json_values`) before PR 4. PR 1 (server-side key; drop Connect) #189 done; next: PR 2 and PR 9. PR 11 (additional fields) is blocked on D-0810.
 - Data accuracy by failure class (UAT re-run backlog): money page currency #161, markdown links and whitespace #162, and learn report says why #163 merged; UI refresh #164, js_state admission by checkable type #166 and brand optional #167 and variants step A (hasVariant members) #168 merged; the investigate items are recorded (D-0782 variants, D-0783 learned-config approval, D-0784 absent status; OPEN_QUESTIONS #24-#27). SPEC-13 PR 1 #170, PR 3 #171 and PR 2 (row resolution, preset v3) #172, the #172 review follow-ups #173 and PR 4 (row labels and scoring) #174 merged: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter. After that: option (b), structural ownership of array rows, is the follow-up for checkable types inside related-item arrays. To investigate, not decided (owner): variants incl. availability and stock; learned config approval before it becomes a reusable recipe; D-0355 url from the final URL; an "absent" field status. Next test target after the crawler-test sites: Shopify stores (owner). Open: drift_margins.json (OQ #20 / D-0576), sites list (D-0656).
 - Follow-ups from #158: job results paging cost grows with job size (the `task_record` IN-subquery builds the job's whole record set per page); measure a results page on a ~100k-task job before redesigning (paging by task id is the likely cheaper fix). A clarifying SPEC-11 §4.2 edit naming `task_record` in place of `url_task.record_id` (D-0762).
 - Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim object for `rows`.
@@ -282,7 +282,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
-| 1 | Server-side key; drop Connect | todo | |
+| 1 | Server-side key; drop Connect | done (#189) | D-0811, D-0812. |
 | 2 | Playground shell + Scrape mode + options panel | todo | Needs 1. |
 | 3 | Single-page output with JSON default | todo | Needs 2. |
 | 4 | Batch mode + running results table + JSON drawer + CSV upload + export buttons | todo | Needs 3 and 9. |
