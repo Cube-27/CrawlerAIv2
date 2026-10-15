@@ -200,7 +200,8 @@ async def test_a_page_without_a_required_field_is_partial_and_keeps_its_record(
     assert record.complete is False
     price = record.fields["price"]
     assert (price.status, price.value, price.evidence, price.locator) == ("missing", None, None, None)
-    assert price.reason == "no_candidates"
+    # A missing required field asks role C, and this test configures no LLM provider.
+    assert price.reason == "llm_unavailable"
     task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("done", "partial")
 
