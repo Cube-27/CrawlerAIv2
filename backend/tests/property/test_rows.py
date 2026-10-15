@@ -115,21 +115,19 @@ _RUNS_THE_PIPELINE = settings(deadline=None)
 
 @_RUNS_THE_PIPELINE
 @given(DISTINCT, st.randoms(use_true_random=False))
-def test_the_order_of_rows_and_sources_does_not_change_the_rows(variants: list[Variant], random: Any) -> None:
+def test_rows_never_merge_and_neither_their_order_nor_their_source_changes_them(
+    variants: list[Variant], random: Any
+) -> None:
     shuffled = random.sample(variants, len(variants))
 
-    in_order = _outcome(head=_jsonld(variants), body=_microdata(variants))
-    reordered = _outcome(head=_jsonld(shuffled), body=_microdata(list(reversed(variants))))
+    in_order = _rows(_outcome(head=_jsonld(variants), body=_microdata(variants)))
+    reordered = _rows(_outcome(head=_jsonld(shuffled), body=_microdata(list(reversed(variants)))))
+    from_jsonld = _rows(_outcome(head=_jsonld(variants)))
 
-    assert _rows(in_order) == _rows(reordered)
-
-
-@_RUNS_THE_PIPELINE
-@given(DISTINCT)
-def test_rows_with_different_keys_never_merge(variants: list[Variant]) -> None:
-    outcome = _outcome(head=_jsonld(variants))
-
-    assert len(_rows(outcome)) == len(variants)
+    # Rows with different keys never merge, and JSON-LD and microdata give equal rows.
+    assert len(from_jsonld) == len(variants)
+    assert from_jsonld == _rows(_outcome(body=_microdata(variants)))
+    assert in_order == reordered
 
 
 @_RUNS_THE_PIPELINE
@@ -146,9 +144,3 @@ def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Vari
         assert price.value == {"amount": variant.price, "currency": "EUR"}
     else:
         assert (price.status, price.value) == ("conflict", None)
-
-
-@_RUNS_THE_PIPELINE
-@given(DISTINCT)
-def test_json_ld_and_microdata_give_equal_variants(variants: list[Variant]) -> None:
-    assert _rows(_outcome(head=_jsonld(variants))) == _rows(_outcome(body=_microdata(variants)))

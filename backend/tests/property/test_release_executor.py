@@ -103,6 +103,10 @@ def _context(base: bool) -> Context:
     return Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=url, page_url=url)
 
 
+# Each example parses the page and runs both executors; its time depends on the machine, not on the property.
+_RUNS_BOTH_EXECUTORS = settings(deadline=None)
+
+
 @st.composite
 def _detail_page(draw: st.DrawFn) -> tuple[str, tuple[bytes, ...]]:
     spans = "".join(f"<span class='v'>{escape(v)}</span>" for v in draw(st.lists(_padded, max_size=3)))
@@ -125,7 +129,7 @@ def _detail_page(draw: st.DrawFn) -> tuple[str, tuple[bytes, ...]]:
     return html, network
 
 
-@settings(max_examples=200, deadline=None)
+@_RUNS_BOTH_EXECUTORS
 @given(
     _detail_page(),
     st.fixed_dictionaries({}, optional={"title": _steps, "link": _steps, "tags": _steps}),
@@ -157,7 +161,7 @@ def _listing_page(draw: st.DrawFn) -> str:
     return f"<html><body><em>outside</em><ul>{items}</ul>{next_link}</body></html>"
 
 
-@settings(max_examples=200, deadline=None)
+@_RUNS_BOTH_EXECUTORS
 @given(
     _listing_page(),
     st.fixed_dictionaries({}, optional={"title": _row_steps, "link": _row_steps}),

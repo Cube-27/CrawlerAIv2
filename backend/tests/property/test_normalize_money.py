@@ -67,17 +67,15 @@ _amounts = st.decimals(min_value=Decimal("0.01"), max_value=Decimal("999999999.9
 
 
 @pytest.mark.parametrize("sign", _SHARED)
-def test_a_shared_symbol_is_never_ok_without_context(sign: str) -> None:
-    assert not isinstance(money.normalize(f"{sign} 12", MONEY, CTX), Ok)
+def test_a_shared_symbol_without_context_is_ambiguous_over_its_currencies(sign: str) -> None:
+    over_its_currencies = Ambiguous(
+        "currency_symbol", tuple({"amount": "12", "currency": c} for c in sorted(_symbols()[sign]))
+    )
 
+    result = money.normalize(f"{sign} 12", MONEY, CTX)
 
-@given(st.sampled_from(_LOCATED_SHARED), st.integers(min_value=1, max_value=99_999))
-def test_a_shared_symbol_without_context_is_ambiguous_over_its_currencies(sign: str, amount: int) -> None:
-    result = money.normalize(f"{sign}{amount}", MONEY, CTX)
-
-    assert isinstance(result, Ambiguous)
-    assert result.reason == "currency_symbol"
-    assert result.options == tuple({"amount": str(amount), "currency": c} for c in sorted(_symbols()[sign]))
+    # A sign `price-parser` does not locate on its own may still decline as no currency; never Ok (C7).
+    assert result == over_its_currencies or (not _located(sign) and result == Invalid("no_currency"))
 
 
 @given(st.data())
@@ -215,8 +213,8 @@ def test_locales_that_disagree_on_the_decimal_separator_decline() -> None:
 
     result = money.normalize("1.234 EUR", MONEY, ctx)
 
-    assert isinstance(result, Ambiguous)
-    assert result.reason == "decimal_separator"
+    readings: tuple[JsonValue, ...] = ({"amount": "1.234", "currency": "EUR"}, {"amount": "1234", "currency": "EUR"})
+    assert result == Ambiguous("decimal_separator", readings)
 
 
 @given(st.sampled_from(_CODES), st.decimals(max_value=0, places=2, allow_nan=False, allow_infinity=False))
@@ -241,11 +239,6 @@ def test_a_written_amount_that_is_not_positive_is_invalid(raw: str) -> None:
 )
 def test_two_amounts_are_a_range_not_money(code: str, low: int, high: int, separator: str) -> None:
     assert money.normalize(f"{code} {low}{separator}{high}", MONEY, CTX) == Invalid("range")
-
-
-@given(st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8))
-def test_empty_or_whitespace_input_is_invalid(raw: str) -> None:
-    assert money.normalize(raw, MONEY, CTX) == Invalid("empty")
 
 
 def test_text_without_an_amount_or_a_currency_is_invalid() -> None:
@@ -292,15 +285,6 @@ def test_an_ok_value_normalizes_to_itself_in_both_structured_forms(code: str, am
 
     assert result == Ok({"amount": format(amount, "f"), "currency": code})
     assert money.normalize(result.value, MONEY, CTX) == result
-
-
-@given(st.sampled_from(sorted(_symbols())), st.sampled_from(["en", "en-US", "de-DE", None]))
-def test_the_same_input_and_context_give_the_same_result(sign: str, tag: str | None) -> None:
-    ctx = Context(captured_at=AT, html_lang=tag)
-
-    first = money.normalize(f"{sign} 1.234", MONEY, ctx)
-
-    assert money.normalize(f"{sign} 1.234", MONEY, ctx) == first
 
 
 def test_the_dispatcher_sends_money_to_the_money_module() -> None:

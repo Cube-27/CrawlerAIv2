@@ -135,13 +135,11 @@ def bundles(draw: st.DrawFn) -> CaptureBundle:
 
 
 @given(bundles())
-def test_decode_inverts_encode(bundle: CaptureBundle) -> None:
-    assert decode(encode(bundle)) == bundle
+def test_encode_is_deterministic_and_decode_inverts_it(bundle: CaptureBundle) -> None:
+    blob = encode(bundle)
 
-
-@given(bundles())
-def test_encode_is_deterministic(bundle: CaptureBundle) -> None:
-    assert encode(bundle) == encode(bundle.model_copy(deep=True))
+    assert blob == encode(bundle.model_copy(deep=True))
+    assert decode(blob) == bundle
 
 
 def test_archive_holds_manifest_html_body_and_numbered_network_files_in_order() -> None:

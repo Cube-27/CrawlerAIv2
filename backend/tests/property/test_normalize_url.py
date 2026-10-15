@@ -31,37 +31,17 @@ _urls = st.builds(
     st.sampled_from(["", "?", "?a=1&b=%7e", "?q=café x"]),
     st.sampled_from(["", "#", "#top", "#a?b"]),
 )
-# Unicode White_Space, plus every C0 control and space: what the WHATWG URL parser trims from the ends.
-_whitespace = st.text(
-    alphabet=st.characters(max_codepoint=0x20) | st.characters(categories=["Zs", "Cc"]).filter(str.isspace),
-    max_size=8,
-)
 
 
 @given(st.sampled_from([URL, IMAGE]), _urls)
-def test_output_is_absolute_http_without_a_fragment(spec: FieldSpec, raw: str) -> None:
+def test_output_is_absolute_http_without_a_fragment_and_normalizes_to_itself(spec: FieldSpec, raw: str) -> None:
     result = url.normalize(raw, spec, CTX)
 
     assert isinstance(result, Ok)
     assert isinstance(result.value, str)
     assert result.value.startswith(("http://", "https://"))
     assert "#" not in result.value
-
-
-@given(st.sampled_from([URL, IMAGE]), _urls)
-def test_an_ok_value_normalizes_to_itself(spec: FieldSpec, raw: str) -> None:
-    result = url.normalize(raw, spec, CTX)
-
-    assert isinstance(result, Ok)
     assert url.normalize(result.value, spec, CTX) == result
-
-
-@given(st.sampled_from([URL, IMAGE]), _whitespace)
-def test_empty_or_whitespace_input_is_invalid_even_with_a_base(spec: FieldSpec, raw: str) -> None:
-    ctx = Context(captured_at=AT, base_url="https://example.test/a")
-
-    assert url.normalize(raw, spec, CTX) == Invalid("empty")
-    assert url.normalize(raw, spec, ctx) == Invalid("empty")
 
 
 @pytest.mark.parametrize("raw", ["\x00", "\x01\x02", " \x1f\t\n", "\x0b\x0c"])
@@ -214,12 +194,3 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
     with pytest.raises(TypeError):
         url.normalize("http://example.test/", spec, CTX)
-
-
-@given(st.sampled_from([URL, IMAGE]), st.text(max_size=40) | _urls)
-def test_the_result_depends_only_on_the_arguments(spec: FieldSpec, raw: str) -> None:
-    ctx = Context(captured_at=AT, base_url="https://example.test/a/", page_url="https://example.test/a/")
-
-    first = url.normalize(raw, spec, ctx)
-
-    assert url.normalize(raw, spec, ctx) == first

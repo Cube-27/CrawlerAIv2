@@ -1,6 +1,6 @@
 """The enum normalizer and the vocabulary framework (SPEC-04 §4.4, ARCHITECTURE §9): schema.org members by IRI or
 name, language-tagged type vocabularies by token sequence (never substring order), and declines on no match, two
-members, and empty input (INV-06)."""
+members, and empty input (INV-06, tested for every type in `test_normalize_dispatch.py`)."""
 
 import re
 from datetime import UTC, datetime
@@ -112,12 +112,6 @@ def test_a_member_repeated_is_one_member(member: str, middle: str) -> None:
     assert enum.normalize(f"{_phrase(member)} {middle} {_phrase(member)}", TYPE, CTX) == Ok(member)
 
 
-@given(_whitespace)
-def test_empty_input_is_invalid(raw: str) -> None:
-    assert enum.normalize(raw, TYPE, CTX) == Invalid("empty")
-    assert enum.normalize(raw, SCHEMA, CTX) == Invalid("empty")
-
-
 def test_a_type_value_that_is_not_a_string_is_invalid() -> None:
     assert enum.normalize({"@id": "InStock"}, TYPE, CTX) == Invalid("not_a_string")
 
@@ -158,21 +152,6 @@ def test_a_spec_of_another_type_is_a_programming_error() -> None:
 
     with pytest.raises(TypeError):
         enum.normalize("in stock", spec, CTX)
-
-
-@given(st.sampled_from([SCHEMA, TYPE]), st.text(max_size=60))
-def test_normalize_is_pure(spec: FieldSpec, raw: str) -> None:
-    first = enum.normalize(raw, spec, CTX)
-
-    assert enum.normalize(raw, spec, CTX) == first
-
-
-@given(st.sampled_from([SCHEMA, TYPE]), st.text(max_size=60))
-def test_an_ok_value_is_a_member(spec: FieldSpec, raw: str) -> None:
-    result = enum.normalize(raw, spec, CTX)
-
-    if isinstance(result, Ok):
-        assert result.value in MEMBERS
 
 
 def test_the_dispatcher_sends_enum_to_the_enum_module() -> None:

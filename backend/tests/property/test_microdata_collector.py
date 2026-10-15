@@ -94,8 +94,12 @@ def _resolve(page: ParsedPage, xpath: str) -> LexborNode:
 
 @given(st.lists(ELEMENTS, min_size=1, max_size=3))
 def test_entities_and_locators_name_their_elements(elements: list[Element]) -> None:
-    page = ParsedPage("<html><body>" + "".join(e.html() for e in elements) + "</body></html>")
+    # A known item first, so a collector that finds nothing fails.
+    known = '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">Known title</span></div>'
+    page = ParsedPage("<html><body>" + known + "".join(e.html() for e in elements) + "</body></html>")
     result = MicrodataCollector(VOCABULARY).collect(page, SCHEMA, CTX)
+    title = ("title", "Known title", "microdata:/html[1]/body[1]/div[1]/span[1]")
+    assert title in [(c.field, c.raw, c.locator) for c in result.candidates]
     parents = {entity.id: entity.parent for entity in result.entities}
     for entity in result.entities:
         attributes = _resolve(page, parse_locator(entity.id).parts[0]).attributes

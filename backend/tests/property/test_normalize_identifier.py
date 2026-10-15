@@ -1,6 +1,6 @@
 """The identifier normalizer (SPEC-04 §4.4, ARCHITECTURE §9): GS1 check digits for GTIN-8/12/13/14, ISO 2108
 checksums for ISBN-10/13, opaque `mpn`/`sku`/`custom` values, and declines on failed checksums and empty input
-(INV-06)."""
+(INV-06, tested for every type in `test_normalize_dispatch.py`)."""
 
 from datetime import UTC, datetime
 
@@ -56,18 +56,11 @@ def _perturb(value: str, at: int, delta: int) -> str:
     return value[:at] + new + value[at + 1 :]
 
 
-@given(st.sampled_from(SCHEMES), _whitespace)
-def test_empty_or_whitespace_input_is_invalid(scheme: IdentifierScheme, raw: str) -> None:
-    assert identifier.normalize(raw, _spec(scheme), CTX) == Invalid("empty")
-
-
-@given(_gtins)
-def test_a_gtin_with_a_correct_check_digit_is_ok(value: str) -> None:
-    assert identifier.normalize(value, _spec("gtin"), CTX) == Ok({"scheme": "gtin", "value": value})
-
-
 @given(_gtins, st.integers(min_value=0), st.integers(min_value=1, max_value=9))
-def test_a_gtin_with_one_digit_changed_is_invalid(value: str, at: int, delta: int) -> None:
+def test_a_gtin_is_ok_with_a_correct_check_digit_and_invalid_with_one_digit_changed(
+    value: str, at: int, delta: int
+) -> None:
+    assert identifier.normalize(value, _spec("gtin"), CTX) == Ok({"scheme": "gtin", "value": value})
     assert identifier.normalize(_perturb(value, at, delta), _spec("gtin"), CTX) == Invalid("check_digit")
 
 
@@ -91,17 +84,15 @@ def test_a_gtin_with_anything_but_ascii_digits_is_invalid(raw: str) -> None:
     assert identifier.normalize(raw, _spec("gtin"), CTX) == Invalid("not_digits")
 
 
-@given(st.one_of(_isbn13s, _isbn10s))
-def test_an_isbn_with_a_correct_checksum_is_ok(value: str) -> None:
-    assert identifier.normalize(value, _spec("isbn"), CTX) == Ok({"scheme": "isbn", "value": value})
-
-
 @given(st.one_of(_isbn13s, _isbn10s), st.integers(min_value=0), st.integers(min_value=1, max_value=9))
-def test_an_isbn_with_one_digit_changed_is_invalid(value: str, at: int, delta: int) -> None:
+def test_an_isbn_is_ok_with_a_correct_checksum_and_invalid_with_one_digit_changed(
+    value: str, at: int, delta: int
+) -> None:
     changed = _perturb(value, at, delta)
     # A change inside an ISBN-13's 978/979 prefix leaves the ISBN range before it breaks the checksum.
     reason = "prefix" if len(changed) == 13 and not changed.startswith(("978", "979")) else "check_digit"
 
+    assert identifier.normalize(value, _spec("isbn"), CTX) == Ok({"scheme": "isbn", "value": value})
     assert identifier.normalize(changed, _spec("isbn"), CTX) == Invalid(reason)
 
 
@@ -164,22 +155,6 @@ def test_a_json_integer_is_read_as_its_decimal_digits(scheme: IdentifierScheme, 
 @pytest.mark.parametrize("raw", [None, True, 1.5, -5, ["4006381333931"], {"@value": "4006381333931"}])
 def test_other_json_values_are_invalid(raw: JsonValue) -> None:
     assert identifier.normalize(raw, _spec("sku"), CTX) == Invalid("not_a_string")
-
-
-@given(st.sampled_from(SCHEMES), st.one_of(_gtins, _isbn13s, st.text(max_size=70)))
-def test_an_ok_value_normalizes_to_itself(scheme: IdentifierScheme, raw: str) -> None:
-    result = identifier.normalize(raw, _spec(scheme), CTX)
-
-    if isinstance(result, Ok):
-        assert isinstance(result.value, dict)
-        assert identifier.normalize(result.value["value"], _spec(scheme), CTX) == result
-
-
-@given(st.sampled_from(SCHEMES), st.text(max_size=30))
-def test_the_result_depends_only_on_the_arguments(scheme: IdentifierScheme, raw: str) -> None:
-    first = identifier.normalize(raw, _spec(scheme), CTX)
-
-    assert identifier.normalize(raw, _spec(scheme), CTX) == first
 
 
 def test_a_spec_of_another_type_is_a_programming_error() -> None:

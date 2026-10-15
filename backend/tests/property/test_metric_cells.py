@@ -122,52 +122,38 @@ def _ratio(num: int, den: int) -> float | None:
     return num / den if den else None
 
 
-@given(_pages)
-def test_each_field_lands_in_its_cell(pages: list[tuple[list[FieldCase], str]]) -> None:
-    report = _build(pages)
+def _metrics(of_type: list[FieldCase]) -> FieldMetrics:
+    """A field type's metrics, counted from its fields' cells (SPEC-03 §4.6)."""
+    c = Counter(f.cell for f in of_type)
+    fp_absent = sum(f.cell == "FP" and not f.present for f in of_type)
+    return FieldMetrics(
+        precision=_ratio(c["TP"], c["TP"] + c["FP"]),
+        coverage=_ratio(c["TP"], c["TP"] + c["FN"]),
+        abstain_rate=_ratio(c["FN"] + c["TN"], len(of_type)),
+        false_publish_on_absent=_ratio(fp_absent, fp_absent + c["TN"]),
+        wrong_product=sum(f.behaviour == "distractor" for f in of_type),
+        n=len(of_type),
+    )
+
+
+@given(_pages, st.randoms())
+def test_each_field_lands_in_its_cell_and_the_ratios_follow_whatever_the_page_order(
+    pages: list[tuple[list[FieldCase], str]], rnd: random.Random
+) -> None:
+    cases = [_case(i, fields, category) for i, (fields, category) in enumerate(pages)]
+    report = build_report(cases, "dev", engine_version="e1", git_sha="abc")
 
     assert report.pages is not None
     expected = [(f"f{i}", f.cell) for fields, _ in pages for i, f in enumerate(fields)]
     assert [(j.field, j.cell) for p in report.pages for j in p.judgments] == expected
-
-
-@given(_pages)
-def test_ratios_follow_from_the_cells(pages: list[tuple[list[FieldCase], str]]) -> None:
-    report = _build(pages)
-
-    fields = [f for fs, _ in pages for f in fs]
-    for type_ in {f.type_ for f in fields}:
-        of_type = [f for f in fields if f.type_ == type_]
-        c = Counter(f.cell for f in of_type)
-        fp_absent = sum(f.cell == "FP" and not f.present for f in of_type)
-        assert report.by_field_type[type_] == FieldMetrics(
-            precision=_ratio(c["TP"], c["TP"] + c["FP"]),
-            coverage=_ratio(c["TP"], c["TP"] + c["FN"]),
-            abstain_rate=_ratio(c["FN"] + c["TN"], len(of_type)),
-            false_publish_on_absent=_ratio(fp_absent, fp_absent + c["TN"]),
-            wrong_product=sum(f.behaviour == "distractor" for f in of_type),
-            n=len(of_type),
-        )
-    assert set(report.by_field_type) == {f.type_ for f in fields}
-
-
-@given(_pages)
-def test_a_page_is_zero_touch_when_its_required_field_is_tp(pages: list[tuple[list[FieldCase], str]]) -> None:
-    report = _build(pages)
-
-    assert report.pages is not None
+    # A page is zero-touch when its required field is TP.
     assert [p.zero_touch for p in report.pages] == [fields[0].cell == "TP" for fields, _ in pages]
-
-
-@given(_pages, st.randoms())
-def test_page_order_does_not_matter(pages: list[tuple[list[FieldCase], str]], rnd: random.Random) -> None:
-    cases = [_case(i, fields, category) for i, (fields, category) in enumerate(pages)]
+    fields = [f for fs, _ in pages for f in fs]
+    assert report.by_field_type == {t: _metrics([f for f in fields if f.type_ == t]) for t in {f.type_ for f in fields}}
     shuffled = list(cases)
     rnd.shuffle(shuffled)
-
-    a = build_report(cases, "dev", engine_version="e1", git_sha="abc")
-    b = build_report(shuffled, "dev", engine_version="e1", git_sha="abc")
-    assert a.model_dump_json() == b.model_dump_json()
+    reordered = build_report(shuffled, "dev", engine_version="e1", git_sha="abc")
+    assert reordered.model_dump_json() == report.model_dump_json()
 
 
 @given(_pages, st.sampled_from(["hidden", "fresh"]))

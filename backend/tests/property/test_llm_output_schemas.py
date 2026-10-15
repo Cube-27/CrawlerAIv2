@@ -23,18 +23,6 @@ PROVIDERS = pytest.mark.parametrize("subset", SUBSETS.values(), ids=SUBSETS.keys
 names = st.lists(st.from_regex(rf"^{NAME_PATTERN}$", fullmatch=True), min_size=1, max_size=40, unique=True)
 
 
-@PROVIDERS
-@given(names)
-def test_role_c_detail(subset: SchemaSubset, fields: list[str]) -> None:
-    assert violations(c_extract.output_schema(fields), subset) == []
-
-
-@PROVIDERS
-@given(names, st.lists(st.from_regex(rf"^{NAME_PATTERN}$", fullmatch=True), max_size=10, unique=True))
-def test_role_c_listing(subset: SchemaSubset, rows: list[str], page: list[str]) -> None:
-    assert violations(c_extract.listing_output_schema(rows, page), subset) == []
-
-
 def _arrays(schema: JsonValue) -> int:
     """How many array schemas `schema` holds, at any depth."""
     if isinstance(schema, list):
@@ -45,7 +33,7 @@ def _arrays(schema: JsonValue) -> int:
 
 
 @given(names)
-def test_a_role_c_detail_reply_holds_one_claim_per_field_asked(fields: list[str]) -> None:
+def test_a_role_c_detail_reply_holds_one_claim_per_field_asked_in_every_subset(fields: list[str]) -> None:
     # F29: a closed object with one required claim per field and no array, so no reply can run on with more claims
     # than the fields asked (neither provider's subset has `maxItems` and `maxLength` both).
     schema: Any = c_extract.output_schema(fields)
@@ -53,21 +41,24 @@ def test_a_role_c_detail_reply_holds_one_claim_per_field_asked(fields: list[str]
 
     assert (_arrays(schema), sorted(claims["properties"]), claims["required"]) == (0, sorted(fields), sorted(fields))
     assert claims["additionalProperties"] is False
+    assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
 @given(names, st.lists(st.from_regex(rf"^{NAME_PATTERN}$", fullmatch=True), max_size=10, unique=True))
-def test_a_role_c_listing_row_holds_one_claim_per_row_field(rows: list[str], page: list[str]) -> None:
+def test_a_role_c_listing_row_holds_one_claim_per_row_field_in_every_subset(rows: list[str], page: list[str]) -> None:
     # The rows are the one array; their count is capped in the prompt and cut on reading (§4.4).
     schema: Any = c_extract.listing_output_schema(rows, page)
     row = schema["properties"]["rows"]["items"]
 
     assert (_arrays(schema), sorted(row["properties"]), row["additionalProperties"]) == (1, sorted(rows), False)
+    assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
-@PROVIDERS
 @given(names | st.just([]), st.booleans(), names)
-def test_role_a(subset: SchemaSubset, page: list[str], row: bool, rows: list[str]) -> None:
-    assert violations(synthesis.output_schema(page, row, rows), subset) == []
+def test_role_a(page: list[str], row: bool, rows: list[str]) -> None:
+    schema = synthesis.output_schema(page, row, rows)
+
+    assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
 @PROVIDERS

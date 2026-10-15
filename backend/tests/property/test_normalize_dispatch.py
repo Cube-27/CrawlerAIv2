@@ -33,7 +33,10 @@ def _spec(type_: FieldType) -> FieldSpec:
     st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8),
 )
 def test_no_type_returns_ok_for_empty_input(type_: FieldType, raw: str) -> None:
-    assert not isinstance(normalize(raw, _spec(type_), PAGE_CTX), Ok)
+    # A list reads a string as a list of one item, and an object needs an object.
+    expected = {FieldType.LIST: Invalid("no_item"), FieldType.OBJECT: Invalid("not_an_object")}
+
+    assert normalize(raw, _spec(type_), PAGE_CTX) == expected.get(type_, Invalid("empty"))
 
 
 def test_text_and_long_text_go_to_the_text_module() -> None:
@@ -96,10 +99,18 @@ def test_a_list_normalizes_each_item(items: list[str]) -> None:
 )
 def test_a_normalized_list_of_objects_normalizes_to_itself(raw: list[JsonValue]) -> None:
     people = FieldSpec(type=FieldType.LIST, item=PERSON)
+    # An object publishes when its required name is not empty after whitespace collapse.
+    names = [n for person in raw if isinstance(person, dict) and (n := " ".join(str(person["name"]).split()))]
+
     result = normalize(raw, people, CTX)
 
-    if isinstance(result, Ok):
-        assert normalize(result.value, people, CTX) == Ok(result.value)
+    if not names:
+        assert not isinstance(result, Ok)
+        return
+    assert isinstance(result, Ok)
+    assert isinstance(result.value, list)
+    assert [person["name"] for person in result.value if isinstance(person, dict)] == names
+    assert normalize(result.value, people, CTX) == Ok(result.value)
 
 
 def test_a_single_value_is_a_list_of_one() -> None:
