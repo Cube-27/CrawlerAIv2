@@ -2580,6 +2580,93 @@
         "type": "object"
       },
       "JsonValue": {},
+      "JsonValuesItem": {
+        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata. `records` is empty for a task with no record (failed,\nblocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or partial page\nwhose capture is still kept.",
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/PageMetadata"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "extracted",
+                  "partial",
+                  "unchanged",
+                  "links_only",
+                  "blocked",
+                  "shell",
+                  "not_found",
+                  "no_match",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "outcome",
+          "records"
+        ],
+        "title": "JsonValuesItem",
+        "type": "object"
+      },
+      "JsonValuesPage": {
+        "description": "One page of a job's tasks in `json_values`, oldest first; `next_cursor` is the `cursor` of the page after it,\nNone on the last.",
+        "properties": {
+          "format": {
+            "const": "json_values",
+            "title": "Format",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JsonValuesItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "format",
+          "items",
+          "next_cursor"
+        ],
+        "title": "JsonValuesPage",
+        "type": "object"
+      },
       "LLMUsage": {
         "description": "LLM calls and their tokens, with their estimated cost in USD: null when some of the tokens have no price\n(`unpriced_tokens`), never a guess.",
         "properties": {
@@ -7558,7 +7645,7 @@
     },
     "/v1/jobs/{job_id}/results": {
       "get": {
-        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached. Pass a page's\n`next_cursor` as `cursor` for the page after it. 409: an export of a job without a schema.",
+        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached. Any job answers\n`format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the schema's\nfields, each its published value or null); `include=metadata`, accepted with `json_values` only, adds a reached\npage's metadata while its capture is kept. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an\nexport other than `json_values` of a job without a schema.",
         "operationId": "job_results_v1_jobs__job_id__results_get",
         "parameters": [
           {
@@ -7608,12 +7695,30 @@
               "default": "json",
               "enum": [
                 "json",
+                "json_values",
                 "json_records",
                 "csv_records",
                 "markdown"
               ],
               "title": "Format",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "metadata",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Include"
             }
           }
         ],
@@ -7631,6 +7736,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/PageOutputPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/JsonValuesPage"
                     }
                   ],
                   "title": "Response Job Results V1 Jobs  Job Id  Results Get"

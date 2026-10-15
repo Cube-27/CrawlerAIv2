@@ -358,8 +358,11 @@ export interface paths {
          * Job Results
          * @description The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
          *     `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
-         *     tasks, oldest first, each with the content formats the job asked for once its page was reached. Pass a page's
-         *     `next_cursor` as `cursor` for the page after it. 409: an export of a job without a schema.
+         *     tasks, oldest first, each with the content formats the job asked for once its page was reached. Any job answers
+         *     `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the schema's
+         *     fields, each its published value or null); `include=metadata`, accepted with `json_values` only, adds a reached
+         *     page's metadata while its capture is kept. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an
+         *     export other than `json_values` of a job without a schema.
          */
         get: operations["job_results_v1_jobs__job_id__results_get"];
         put?: never;
@@ -1537,6 +1540,40 @@ export interface components {
             source: "jsonld" | "js_state" | "xhr" | "api";
         };
         JsonValue: unknown;
+        /**
+         * JsonValuesItem
+         * @description A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
+         *     its page stands for, and, when asked for, its page's metadata. `records` is empty for a task with no record (failed,
+         *     blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or partial page
+         *     whose capture is still kept.
+         */
+        JsonValuesItem: {
+            metadata?: components["schemas"]["PageMetadata"];
+            /** Outcome */
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
+            /** Records */
+            records: {
+                [key: string]: components["schemas"]["JsonValue"];
+            }[];
+            /** Url */
+            url: string;
+        };
+        /**
+         * JsonValuesPage
+         * @description One page of a job's tasks in `json_values`, oldest first; `next_cursor` is the `cursor` of the page after it,
+         *     None on the last.
+         */
+        JsonValuesPage: {
+            /**
+             * Format
+             * @constant
+             */
+            format: "json_values";
+            /** Items */
+            items: components["schemas"]["JsonValuesItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /**
          * LLMUsage
          * @description LLM calls and their tokens, with their estimated cost in USD: null when some of the tokens have no price
@@ -3903,7 +3940,8 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
-                format?: "json" | "json_records" | "csv_records" | "markdown";
+                format?: "json" | "json_values" | "json_records" | "csv_records" | "markdown";
+                include?: "metadata" | null;
             };
             header?: never;
             path: {
@@ -3919,7 +3957,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecordPage"] | components["schemas"]["ExportPage"] | components["schemas"]["PageOutputPage"];
+                    "application/json": components["schemas"]["RecordPage"] | components["schemas"]["ExportPage"] | components["schemas"]["PageOutputPage"] | components["schemas"]["JsonValuesPage"];
                 };
             };
             /** @description Unauthorized */

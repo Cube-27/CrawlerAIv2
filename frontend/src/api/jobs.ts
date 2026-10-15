@@ -25,6 +25,7 @@ export type TaskStatus = PageOutput["status"];
 export type PageOutputPage = Schemas["PageOutputPage"];
 export type ExportPage = Schemas["ExportPage"];
 export type ExportFormat = ExportPage["format"];
+export type JsonValuesPage = Schemas["JsonValuesPage"];
 export type PageKindRule = Schemas["PageKindRule"];
 export type MapResult = Schemas["MapResult"];
 
@@ -73,8 +74,8 @@ function isPageOutput(item: StoredRecord | PageOutput): item is PageOutput {
   return !isRecord(item);
 }
 
-function resultsPage(page: RecordPage | ExportPage | PageOutputPage): ResultsPage {
-  if ("content" in page)
+function resultsPage(page: RecordPage | ExportPage | PageOutputPage | JsonValuesPage): ResultsPage {
+  if ("format" in page)
     throw new Error("GET /v1/jobs/{id}/results answered an export to format=json");
   const items: (StoredRecord | PageOutput)[] = page.items;
   const { next_cursor } = page;
