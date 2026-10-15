@@ -29,31 +29,6 @@ async def _checks(conn: AsyncConnection, *tables: str) -> set[str]:
 
 
 @pytest.mark.anyio
-async def test_checks_of_the_first_tables_are_prefixed_once(conn: AsyncConnection) -> None:
-    assert await _checks(conn, "site", "schema_def", "job", "url_task") == {
-        "ck_site_host_lowercase",
-        "ck_site_fetch_method",
-        "ck_site_crawl_delay_ms_non_negative",
-        "ck_schema_def_version_positive",
-        "ck_schema_def_page_kind",
-        "ck_schema_def_origin",
-        "ck_schema_def_status",
-        "ck_job_kind",
-        "ck_job_status",
-        "ck_url_task_page_kind",
-        "ck_url_task_status",
-        "ck_url_task_outcome",
-        "ck_url_task_attempts_non_negative",
-        "ck_url_task_depth_non_negative",
-    }
-
-
-@pytest.mark.anyio
-async def test_usage_event_checks_are_prefixed_once(conn: AsyncConnection) -> None:
-    assert await _checks(conn, "usage_event") == {"ck_usage_event_resource", "ck_usage_event_quantity_non_negative"}
-
-
-@pytest.mark.anyio
 async def test_every_check_in_the_database_has_the_name_the_models_give_it(conn: AsyncConnection) -> None:
     modelled = {
         str(constraint.name)

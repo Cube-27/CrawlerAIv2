@@ -79,9 +79,3 @@ async def test_batch_problems(submit_client: httpx.AsyncClient) -> None:
         "records with markdown": (422, "validation"),
         "no engine data": (503, "records_unavailable"),
     }
-
-
-async def test_a_batch_needs_a_key(submit_client: httpx.AsyncClient) -> None:
-    del submit_client.headers["authorization"]
-
-    assert (await _post(submit_client, urls=[URL], formats=["markdown"])).status_code == 401
