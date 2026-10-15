@@ -32,7 +32,7 @@ from crawlerai.llm.client import (
     redacted,
     request_hash,
 )
-from crawlerai.llm.providers.fake import FakeProvider
+from crawlerai.llm.providers.fake import FakeProvider, ScriptedClient
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -227,6 +227,23 @@ def test_a_schema_mismatch_then_a_refused_reply_is_two_calls_then_output_invalid
     with pytest.raises(OutputInvalid, match="the summary holds an x"):
         asyncio.run(call)
     assert len(provider.calls) == 2
+
+
+def test_the_scripted_client_retries_a_reply_the_role_check_refuses_as_the_client_does() -> None:
+    client = ScriptedClient({"summary": "x"}, {"summary": "good"})
+
+    response = asyncio.run(client.complete_json(REQUEST, check=_no_x))
+
+    assert (response.data, len(client.requests)) == ({"summary": "good"}, 2)
+
+
+def test_the_scripted_client_raises_output_invalid_when_the_retry_is_refused_too() -> None:
+    client = ScriptedClient({"summary": "x"}, {"summary": "xx"}, {"summary": "good"})
+    call = client.complete_json(REQUEST, check=_no_x)
+
+    with pytest.raises(OutputInvalid, match="the summary holds an x"):
+        asyncio.run(call)
+    assert len(client.requests) == 2
 
 
 def test_a_provider_error_raises_provider_unavailable() -> None:
