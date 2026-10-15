@@ -1,12 +1,12 @@
 """Behaviour of `tools/orchestrator/wait_ci.sh`, run under bash with a fake `gh` on PATH that prints a fixed
 `gh pr view --jq` result, as the real `gh` prints it for the script's jq program."""
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from fake_bin import fake_bin
 
 WAIT_CI = Path(__file__).resolve().parents[1] / "orchestrator" / "wait_ci.sh"
 BASH = shutil.which("bash")
@@ -21,20 +21,15 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 
 def run_wait_ci(tmp_path: Path, lines: list[str], no_run_s: int = 300) -> subprocess.CompletedProcess[str]:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    gh = bin_dir / "gh"
-    gh.write_text(FAKE_GH, newline="\n")
-    gh.chmod(0o755)
     response = tmp_path / "gh_out.txt"
     response.write_text("\n".join(lines) + "\n", newline="\n")
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir.as_posix()}{os.pathsep}{os.environ['PATH']}",
-        "FAKE_GH_OUT": response.as_posix(),
-        "WAIT_CI_POLL_S": "1",
-        "WAIT_CI_NO_RUN_S": str(no_run_s),
-    }
+    env = fake_bin(
+        tmp_path,
+        {"gh": FAKE_GH},
+        FAKE_GH_OUT=response.as_posix(),
+        WAIT_CI_POLL_S="1",
+        WAIT_CI_NO_RUN_S=str(no_run_s),
+    )
     return subprocess.run(  # noqa: S603
         [str(BASH), WAIT_CI.as_posix(), "7", "abc1234", "1"],
         env=env,

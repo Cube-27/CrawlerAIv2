@@ -2,12 +2,12 @@
 `gh pr view --jq` as the real `gh` prints it for the script's jq programs (comments, checks, head) and logs a merge
 instead of making one."""
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from fake_bin import fake_bin
 
 MERGE_PR = Path(__file__).resolve().parents[1] / "orchestrator" / "merge_pr.sh"
 BASH = shutil.which("bash")
@@ -29,22 +29,13 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 
 def run_merge_pr(tmp_path: Path, comments: list[str]) -> tuple[subprocess.CompletedProcess[str], str]:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    gh = bin_dir / "gh"
-    gh.write_text(FAKE_GH, newline="\n")
-    gh.chmod(0o755)
     listed = tmp_path / "comments.txt"
     listed.write_text("".join(f"{line}\n" for line in comments), newline="\n")
     log = tmp_path / "gh.log"
     log.touch()
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir.as_posix()}{os.pathsep}{os.environ['PATH']}",
-        "FAKE_COMMENTS": listed.as_posix(),
-        "FAKE_LOG": log.as_posix(),
-        "WAIT_CI_POLL_S": "1",
-    }
+    env = fake_bin(
+        tmp_path, {"gh": FAKE_GH}, FAKE_COMMENTS=listed.as_posix(), FAKE_LOG=log.as_posix(), WAIT_CI_POLL_S="1"
+    )
     result = subprocess.run(  # noqa: S603
         [str(BASH), MERGE_PR.as_posix(), "7", SHA],
         env=env,

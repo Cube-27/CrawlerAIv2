@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from fake_bin import fake_bin
 from scan_repo import IDENTITY
 
 CLEANUP = Path(__file__).resolve().parents[1] / "orchestrator" / "cleanup_worktree.sh"
@@ -47,11 +48,6 @@ def git(cwd: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def write_exe(path: Path, text: str) -> None:
-    path.write_text(text, newline="\n")
-    path.chmod(0o755)
-
-
 def make_repo(tmp_path: Path, *, branch_ahead: bool) -> Repo:
     origin = tmp_path / "origin.git"
     main = tmp_path / "main"
@@ -65,16 +61,8 @@ def make_repo(tmp_path: Path, *, branch_ahead: bool) -> Repo:
     if branch_ahead:
         git(worktree, "commit", "-q", "--allow-empty", "-m", "work")
     git(worktree, "push", "-q", "origin", BRANCH)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    write_exe(bin_dir / "gh", FAKE_GH)
-    write_exe(bin_dir / "docker", FAKE_DOCKER)
     docker_log = tmp_path / "docker.log"
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir.as_posix()}{os.pathsep}{os.environ['PATH']}",
-        "FAKE_DOCKER_LOG": docker_log.as_posix(),
-    }
+    env = fake_bin(tmp_path, {"gh": FAKE_GH, "docker": FAKE_DOCKER}, FAKE_DOCKER_LOG=docker_log.as_posix())
     return Repo(main, worktree, docker_log, env)
 
 
