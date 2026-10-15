@@ -44,6 +44,7 @@ from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.services import captures
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching
@@ -307,6 +308,30 @@ async def test_max_age_reuses_no_api_capture_once_the_config_has_no_recipe(
     assert again.fetch is not None
     assert (again.fetch.method, web.page_fetches()) == ("http", [url])
     assert await _drift_window(engine, recipe_config) == {"title": [[True, True]]}
+
+
+async def test_an_api_capture_replays_without_page_steps_once_the_config_has_no_recipe(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    lamp_schema: SchemaDef,
+    recipe_config: uuid.UUID,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/p/desk-lamp"
+    web.pages[url] = PAGE
+    web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
+    first = await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
+    async with engine.begin() as conn:  # an operator's correction drops the recipe
+        stripped = ExtractionConfig.ir.op("-")("api_recipe")
+        await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == recipe_config).values(ir=stripped))
+    assert first.capture_id is not None
+
+    replayed = await captures.replay(engine, fetching.store, engine_data, first.capture_id)
+
+    # The capture is the JSON the recipe fetched: the config's page steps were never meant for it.
+    assert [record.mode for record in replayed] == ["adhoc"]
 
 
 async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is_fetched(
