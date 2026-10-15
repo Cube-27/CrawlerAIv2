@@ -733,3 +733,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: a SonarCloud quality profile change (needs the owner's account).
 - Why: Owner request; S5778, S9073 and the shell rules recurred across PRs.
 - Reversible: yes.
+
+### D-0845 — `merge_pr.sh` tells the reviewer's verdict by its form
+- Date: 2026-10-15 · Spec/PR: workflow (#193) · Status: decided
+- Context: `merge_pr.sh` refuses a PR without `READY <sha7>` and a reviewer's verdict from a non-author, but every agent posts as the owner's one GitHub account, so a login check would refuse every PR.
+- Decision: The verdict is a comment that starts with `## Review` and has a line `**Verdict: MERGE**` or `**Verdict: MERGE AFTER FIX**` (`/review-pr` §4 fixes the form); `READY <sha7>` starts a comment's first line, for the head being merged. Like `merge_guard.py`, it guards against mistakes, not a forged review. Duplicate `### D-NNNN` IDs fail `tools/decision_ids.py` in CI's `site-literals` job.
+- Alternatives: a login check; a verdict anywhere in any comment (an implementor's READY note "Verdict MERGE" would pass).
+- Why: The only signal that separates the reviewer's comment from the implementor's on one account.
+- Reversible: yes

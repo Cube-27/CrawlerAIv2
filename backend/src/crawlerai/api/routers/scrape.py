@@ -2,9 +2,9 @@
 a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems (§4.8)."""
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable, target_refused
 from crawlerai.config_ir.drift import DriftMargins
@@ -38,7 +38,7 @@ async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
     those are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`
     holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to its
     name's latest version, and one that differs from that version is a 409."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     fetching: Fetching = request.app.state.fetching
     llm: LLMClient = request.app.state.llm
     data: EngineData | None = request.app.state.engine_data

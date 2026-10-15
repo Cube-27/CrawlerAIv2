@@ -480,3 +480,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: skip offending lines and report line numbers (a line number points at a hidden host); require private credentials for every dev capture (contradicts C1's custodian-only credentials).
 - Why: A site sits in one split (§16.1); counts-only output keeps C1. Remaining gap by design: a non-custodian dev capture of a hidden/fresh host can't be detected; `promote` and `rotate-hidden` still guard moves.
 - Reversible: yes
+
+### D-0847 — A listing pre-fill without row fields asks for no rows
+- Date: 2026-10-15 · Spec/PR: SPEC-03 §4.10 follow-up (#154, #193) · Status: decided
+- Decision: When a listing schema has no row field role C is asked for, the pre-fill makes the detail-shaped `c_prefill` call over the page fields (`extract_detail`, owner the page), so no empty `rows` claim is sent; `extract_listing` states that `row_fields` is not empty. The pre-fill's diagnostics are still not returned: §4.10's response is the stored draft, and adding them changes a public response shape (CLAUDE.md §4).
+- Alternatives: let the listing output schema drop `rows` when there are no row fields (a second mode no pipeline caller needs).
+- Why: A listing call returns rows; with none to ask for, the page fields are the page entity's, as on a detail page.
+- Reversible: yes

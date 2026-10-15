@@ -4,6 +4,7 @@ debugging; nothing is stored."""
 from fastapi import APIRouter, Depends, Request
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE, ReplayRequest, ReplayResult
 from crawlerai.api.problems import conflict, not_found, records_unavailable
 from crawlerai.db.models import CaptureId
@@ -29,7 +30,7 @@ async def replay_capture(capture_id: CaptureId, body: ReplayRequest, request: Re
         raise records_unavailable("the engine's data files are not installed")
     fetching: Fetching = request.app.state.fetching
     try:
-        made = await captures.replay(request.app.state.database, fetching.store, data, capture_id)
+        made = await captures.replay(database(request), fetching.store, data, capture_id)
     except CaptureNotFound as e:
         raise not_found(str(e)) from e
     except NotReplayable as e:

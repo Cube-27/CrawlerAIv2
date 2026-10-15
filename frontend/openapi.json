@@ -4674,10 +4674,10 @@
           }
         },
         "required": [
-          "name",
-          "version",
           "page_kind",
           "fields",
+          "name",
+          "version",
           "id",
           "origin",
           "status"

@@ -325,3 +325,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: A global `security` entry with `/healthz` exempted by hand.
 - Why: The requirement is stated per operation, from the dependency that enforces it, with no behaviour change.
 - Reversible: yes
+
+### D-0848 — Schema errors in label form; `SchemaContent` in `schemas/types.py`; one `database` function
+- Date: 2026-10-15 · Spec/PR: SPEC-07 §4.6 follow-up (#81, #193) · Status: decided
+- Decision: `InvalidSchema` errors come from `eval.labels.from_pydantic`: a rule's own message without pydantic's `Value error, ` prefix, and paths as `a[0].b`; the 422 shape is unchanged. `SchemaDocument` extends `SchemaContent` (in `schemas/types.py`), so OpenAPI lists `name` and `version` after the content in `required`. `crawlerai.api.database.database(request)` replaces each `request.app.state.database`; `/healthz` keeps it as its `Depends`.
+- Alternatives: `Depends(database)` in every endpoint signature; a neutral home for `from_pydantic` used by every 422 (a follow-up: it changes every 422's wording).
+- Why: One error format for labels and schemas, one schema content model, one place the engine is read.
+- Reversible: yes

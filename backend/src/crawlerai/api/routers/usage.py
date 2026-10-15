@@ -4,9 +4,9 @@ visibility, not billing (ARCHITECTURE §1)."""
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.services import llm_costs
@@ -26,7 +26,7 @@ async def llm_cost_report(query: Annotated[CostQuery, Query()], request: Request
     their tokens and estimated cost in USD: in total, per day, per provider, model and prompt kind, and for the
     costliest jobs. A cost is null when some of its tokens have no price. Calls made without a job are not
     recorded, so they are not included."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     async with engine.connect() as conn:
         return await llm_costs.cost_report(conn, query, default_pricing())
 
@@ -35,6 +35,6 @@ async def llm_cost_report(query: Annotated[CostQuery, Query()], request: Request
 async def llm_job_costs(query: Annotated[JobCostQuery, Query()], request: Request) -> JobCostPage:
     """The jobs with LLM calls in the range, newest first, each with those calls' tokens and estimated cost. Pass a
     page's `next_cursor` as `cursor` for the page after it."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     async with engine.connect() as conn:
         return await llm_costs.job_costs(conn, query, default_pricing())

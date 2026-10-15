@@ -2,9 +2,9 @@
 read are left out of a 200 answer, and the timeout cuts the answer (`truncated`) rather than failing it."""
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import target_refused
 from crawlerai.services import map as map_service
@@ -24,7 +24,7 @@ async def map_urls(body: MapRequest, request: Request) -> MapResult:
     """The URLs of `url`'s site from its sitemaps and the start page's links, canonical and in scope: the exact host
     of `url`, or the `include` globs, less the `exclude` globs. At most `limit`; `truncated` says more were found, or
     that reading stopped at a cap or the 60 s timeout."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     fetching: Fetching = request.app.state.fetching
     try:
         return await map_service.map_urls(engine, fetching, body)

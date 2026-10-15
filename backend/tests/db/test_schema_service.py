@@ -5,8 +5,9 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaContent
 from crawlerai.services import schemas
-from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict, SchemaContent
+from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
 
 pytestmark = pytest.mark.anyio
 
@@ -53,9 +54,7 @@ async def test_update_reports_a_broken_result_with_its_field(conn: AsyncConnecti
     with pytest.raises(InvalidSchema) as refused:
         await schemas.update(conn, first.id, row_scope_only)
 
-    [(field, reason)] = refused.value.errors
-    assert field == ""
-    assert "title: a detail page has one entity, so every field is `row`" in reason
+    assert refused.value.errors == [("", "title: a detail page has one entity, so every field is `row` (§5.2)")]
     assert await schemas.list_all(conn, name="event_detail") == [first]
 
 

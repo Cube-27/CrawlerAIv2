@@ -130,7 +130,15 @@ _PARAMETER_OWNER = {
 }
 
 
-class SchemaDocument(_Model):
+class SchemaContent(_Model):
+    """A schema document as a caller writes it, without the name and version the registry assigns."""
+
+    page_kind: PageKind
+    required_groups: list[list[Name]] = []
+    fields: dict[Name, FieldSpec] = Field(min_length=1)
+
+
+class SchemaDocument(SchemaContent):
     """A schema as written (a preset file, an API body): everything but the row's identity and lifecycle.
 
     §4.2 rules checked here: every field and object sub-field is described (role C reads the description; a list
@@ -140,9 +148,6 @@ class SchemaDocument(_Model):
 
     name: Name
     version: int = Field(ge=1)
-    page_kind: PageKind
-    required_groups: list[list[Name]] = []
-    fields: dict[Name, FieldSpec] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _rules(self) -> Self:

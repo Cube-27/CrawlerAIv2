@@ -4,9 +4,9 @@ time, a job's summary, its cancel, and its records or page outputs a page at a t
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import conflict, not_found
 from crawlerai.db.models import JobId
@@ -38,7 +38,7 @@ router = APIRouter(
 async def list_jobs(query: Annotated[JobListQuery, Query()], request: Request) -> JobPage:
     """The jobs, newest first, each with the summary `GET /v1/jobs/{id}` answers; only those of `kind` and `status`
     when given. Pass a page's `next_cursor` as `cursor` for the page after it."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     async with engine.connect() as conn:
         return await jobs.list_jobs(conn, query)
 
@@ -46,7 +46,7 @@ async def list_jobs(query: Annotated[JobListQuery, Query()], request: Request) -
 @router.get("/{job_id}")
 async def get_job(job_id: JobId, request: Request) -> JobSummary:
     """The job's status, its task counts by status and by outcome, and its usage."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     async with engine.connect() as conn:
         try:
             return await jobs.get_job(conn, job_id)
@@ -58,7 +58,7 @@ async def get_job(job_id: JobId, request: Request) -> JobSummary:
 async def cancel_job(job_id: JobId, request: Request) -> JobSummary:
     """Cancel the job: its queued tasks are not run, and it is `cancelled` once no task is running. 409: it already
     completed or failed."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     try:
         async with engine.begin() as conn:
             return await jobs.cancel_job(conn, job_id)
@@ -79,7 +79,7 @@ async def job_results(
     fields in name order, each its published value or null); `include=metadata`, accepted with `json_values` only,
     adds a reached page's metadata while its capture is kept. Pass a page's `next_cursor` as `cursor` for the page
     after it. 409: an export other than `json_values` of a job without a schema."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     fetching: Fetching = request.app.state.fetching
     async with engine.connect() as conn:
         try:

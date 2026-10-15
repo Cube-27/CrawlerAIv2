@@ -73,6 +73,7 @@ check-tools:
 	cd backend && $(UV_RUN) mypy --strict ../tools
 	cd backend && $(UV_RUN) pytest ../tools/tests
 	cd backend && $(UV_RUN) python ../tools/site_literal_scan.py --public
+	cd backend && $(UV_RUN) python ../tools/decision_ids.py
 
 # Same steps and order as CI's backend job. The migration round trip and the tests (tests/db needs a live Postgres)
 # run against a scratch database recreated each run, so the dev database keeps its data. 127.0.0.1, not localhost:

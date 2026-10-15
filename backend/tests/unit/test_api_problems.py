@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.routers import eval as eval_router
-from crawlerai.api.routers import health
 from crawlerai.db.models import ApiKeyId
 
 
@@ -94,7 +94,7 @@ def test_an_unexpected_error_is_an_internal_problem_without_its_message() -> Non
     async def broken() -> AsyncEngine:
         raise RuntimeError("secret-bearing internal message")
 
-    app.dependency_overrides[health.database] = broken
+    app.dependency_overrides[database] = broken
 
     response = _request(app, "GET", "/healthz")
 
@@ -119,7 +119,7 @@ def test_healthz_is_a_503_problem_when_the_database_does_not_answer(
     unreachable_database: Callable[[], AsyncIterator[AsyncEngine]],
 ) -> None:
     app = create_app(eval_ui=False)
-    app.dependency_overrides[health.database] = unreachable_database
+    app.dependency_overrides[database] = unreachable_database
 
     response = _request(app, "GET", "/healthz")
 

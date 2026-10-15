@@ -589,3 +589,33 @@ def test_each_alternative_of_a_schema_org_path_is_a_path(tmp_path: Path) -> None
     result = run_scan(repo, allowlist=[])
 
     assert (result.returncode, result.stdout) == (0, "site-literals: ok, 2 files scanned\n")
+
+
+# Exempt paths are not scanned, so they may hold anything; a name they define must not excuse a host elsewhere.
+ADAPTER = "backend/src/crawlerai/adapters/shop.py"
+EXEMPT_SCHEMAS = {
+    ADAPTER: 'def upgrade():\n    op.create_table("widget", sa.Column("io", sa.Text()))\n',
+    "docs/p.json": schema_document({"a": {"type": "text", "schema_org": OFFER_NAME}}),
+}
+REFS = f'A = "{WIDGET_IO}"\nB = "{OFFER_NAME}"\n'
+EXPECTED_REFS = [f"refs.py:1: {WIDGET_IO}", f"refs.py:2: {OFFER_NAME.lower()}"]
+
+
+def test_schemas_under_exempt_paths_define_no_names(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {**EXEMPT_SCHEMAS, "refs.py": REFS})
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == EXPECTED_REFS
+
+
+def test_staged_mode_takes_schemas_from_non_exempt_tracked_files_only(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo", {**EXEMPT_SCHEMAS, "backend/migrations/versions/0001_widgets.py": MIGRATION})
+    commit(repo)
+    make_repo(repo, {"refs.py": f'{REFS}C = "{WIDGET_ID}"\n'})
+
+    result = run_scan(repo, "--staged", allowlist=[])
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == EXPECTED_REFS

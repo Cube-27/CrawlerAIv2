@@ -3,6 +3,7 @@ anything is stored, every validation error returned with its field and reason (Â
 the dev store and `schema_def`; `tests/db/test_labeling_api.py` runs the same flow against Postgres."""
 
 import asyncio
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -635,6 +636,27 @@ def test_prefill_of_a_listing_labels_rows_in_page_order_and_page_fields() -> Non
     }
     parse_labels(body, "listing", specs)
     assert client.requests[0].prompt_kind == "c_prefill"
+
+
+def test_prefill_of_a_listing_without_row_fields_asks_for_no_rows() -> None:
+    # Role C is asked only for what the schema has: with no row field there is no row to claim.
+    specs = {"heading": FieldSpec(type=FieldType.TEXT, scope="page")}
+    client = ScriptedClient({"fields": {"heading": _span("Blue mug", 0)}})
+    backend = FakeBackend(llm=client, specs=specs)
+    page = backend.store.add(page_kind="listing")
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["fields"], body["rows"]) == (
+        {"heading": {"value": "Blue mug", "absent": False, "locator": "text:0-8", "distractors": []}},
+        [],
+    )
+    parse_labels(body, "listing", specs)
+    (request,) = client.requests
+    assert (request.prompt_kind, "rows" in json.dumps(request.output_schema)) == ("c_prefill", False)
+    assert "Row fields" not in request.user
 
 
 def test_prefill_replaces_a_draft() -> None:

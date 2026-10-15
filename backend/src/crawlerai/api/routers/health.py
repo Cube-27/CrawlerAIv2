@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE, Health
 from crawlerai.api.problems import ProblemError
 
@@ -15,11 +16,6 @@ from crawlerai.api.problems import ProblemError
 PING_TIMEOUT_S = 5
 
 router = APIRouter(tags=["health"])
-
-
-def database(request: Request) -> AsyncEngine:
-    engine: AsyncEngine = request.app.state.database
-    return engine
 
 
 @router.get("/healthz", responses={503: PROBLEM_RESPONSE})

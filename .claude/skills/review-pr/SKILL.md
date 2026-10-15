@@ -74,7 +74,10 @@ Filter for "nitpick gravity". If all you have are nits, the code is fine; say so
 ## 4. Verdict
 
 Post the review as a PR comment (`gh pr comment <n> --body-file …`), never with `gh pr review`: the implementor and
-`watch_agents.sh` read comments only. The comment holds the intent, the buckets and one of these verdicts:
+`watch_agents.sh` read comments only. Start it with a `## Review: #<n> at <sha7>` heading and give the verdict on
+its own line as `**Verdict: <verdict>**`: every agent posts as the same GitHub account, so `merge_pr.sh` tells a
+review from the implementor's comments by this form. The comment holds the intent, the buckets and one of these
+verdicts:
 - `MERGE`: no Act-on items and CI is green;
 - `MERGE AFTER FIX`: the PR merges once the listed Act-on items are fixed and CI is green again. There is no
   second review, so make each item specific enough that the fix is unambiguous;
