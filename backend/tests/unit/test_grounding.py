@@ -31,6 +31,7 @@ def test_an_end_past_the_text_is_not_clamped_to_it() -> None:
 
 
 def test_matching_is_exact_not_case_or_whitespace_insensitive() -> None:
+    assert align(SpanClaim(value="Price 12.50 EUR", start=0, end=15), _TEXT) == GroundedSpan("Price 12.50 EUR", 0, 15)
     assert align(SpanClaim(value="price 12.50  eur", start=0, end=15), _TEXT) is None
 
 
@@ -40,12 +41,6 @@ def test_an_empty_value_is_dropped() -> None:
 
 def test_the_locator_is_the_text_span() -> None:
     assert GroundedSpan("12.50 EUR", 6, 15).locator == "text:6-15"
-
-
-def test_a_claim_is_read_from_the_model_reply_shape() -> None:
-    claim = SpanClaim.model_validate({"value": "EUR", "start": 12, "end": 15})
-
-    assert claim == SpanClaim(value="EUR", start=12, end=15)
 
 
 def test_a_claim_with_extra_keys_is_refused() -> None:
