@@ -32,8 +32,9 @@ DRAFT: dict[str, JsonValue] = {
 
 
 def test_the_name_is_the_hash_of_the_prompt() -> None:
-    # sha256("Job titles and salaries")[:12]
+    # sha256(prompt)[:12]
     assert draft_name("Job titles and salaries") == "draft_1731376895d1"
+    assert draft_name("Job titles") == "draft_9afad3cc2cba"
 
 
 # Space, tab, line feed, carriage return, no-break space, ideographic space: Unicode White_Space characters.
@@ -47,10 +48,6 @@ def test_prompts_that_differ_only_in_whitespace_share_a_name(parts: list[str], d
     spaced = data.draw(spaces) + "".join(part + data.draw(spaces) for part in parts)
 
     assert draft_name(spaced) == draft_name(" ".join(parts))
-
-
-def test_different_prompts_have_different_names() -> None:
-    assert draft_name("Job titles") != draft_name("Job title")
 
 
 def test_the_request_is_a_strong_s_draft_call_charged_to_the_job() -> None:
