@@ -32,7 +32,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 
 ## Current focus
 
-- Data accuracy by failure class (UAT re-run backlog): money page currency #161, markdown links and whitespace #162, and learn report says why #163 merged; UI refresh #164, js_state admission by checkable type #166 and brand optional #167 and variants step A (hasVariant members) #168 merged; the investigate items are recorded (D-0782 variants, D-0783 learned-config approval, D-0784 absent status; OPEN_QUESTIONS #24-#27). Next: option (b), structural ownership of array rows, is the follow-up for checkable types inside related-item arrays. To investigate, not decided (owner): variants incl. availability and stock; learned config approval before it becomes a reusable recipe; D-0355 url from the final URL; an "absent" field status. Next test target after the crawler-test sites: Shopify stores (owner). Open: drift_margins.json (OQ #20 / D-0576), sites list (D-0656).
+- Data accuracy by failure class (UAT re-run backlog): money page currency #161, markdown links and whitespace #162, and learn report says why #163 merged; UI refresh #164, js_state admission by checkable type #166 and brand optional #167 and variants step A (hasVariant members) #168 merged; the investigate items are recorded (D-0782 variants, D-0783 learned-config approval, D-0784 absent status; OPEN_QUESTIONS #24-#27). Next: SPEC-13 PR 1 (path alternatives, row-mapped `list<object>` grammar, sub-field candidates; no extraction change), then PRs 2–4; then re-run the Shopify baseline and decide the adapter. After that: option (b), structural ownership of array rows, is the follow-up for checkable types inside related-item arrays. To investigate, not decided (owner): variants incl. availability and stock; learned config approval before it becomes a reusable recipe; D-0355 url from the final URL; an "absent" field status. Next test target after the crawler-test sites: Shopify stores (owner). Open: drift_margins.json (OQ #20 / D-0576), sites list (D-0656).
 - Follow-ups from #158: job results paging cost grows with job size (the `task_record` IN-subquery builds the job's whole record set per page); measure a results page on a ~100k-task job before redesigning (paging by task id is the likely cheaper fix). A clarifying SPEC-11 §4.2 edit naming `task_record` in place of `url_task.record_id` (D-0762).
 - Follow-ups from #154 review: labeling prefill of a listing schema whose fields are all page-scoped sends an empty claim object for `rows`.
 - Follow-ups from #159: confirm in UAT with one real call that the configured `fast` Anthropic model accepts `output_config.effort` (D-0766); a listing row now claims every row field, so a sparse 200-row listing spends ~14 output tokens per absent field per row: measure before reshaping; Gemini's thinking is not lowered for role C (the setting could move onto the request, mapped per provider).
@@ -63,6 +63,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 - Done: the learning validation report names every schema field learning gave no steps, with why (`not_learned: <reason>`), and `api_recipe` always says why there is no recipe (#163, D-0776, D-0777).
 - Done: a visible js_state/xhr value with no other candidate is admitted only for field types with a checkable syntax; opaque types admit by equality only (ARCHITECTURE §8.1, Appendix A #34) (#166, D-0780).
 - Done: preset `commerce_detail` version 2 makes `brand` optional (Appendix A #35); variants, learned-config approval and an absent field status recorded as needs-owner investigate items (#167, D-0781–D-0784).
+- Done: SPEC-13 variant matrix spec approved by the owner (§22 variant-matrix admitted, ARCHITECTURE rev 16, Appendix A #37, INV-33–INV-36) (#169, D-0786). Next: SPEC-13 PR 1.
 - Done: a product group's `hasVariant` variants are its members, not target candidates; their Offers are the group's under the atomic-offer rule (ARCHITECTURE §8.2 r3, Appendix A #36) (#168, D-0785).
 - Done: UI refresh (owner request): sidebar shell, Overview dashboard, readable timestamps, one lookup bar, bundled typefaces; DESIGN.md follows (#164, D-0778, D-0779).
 - Done: `make up` runs Postgres and migrations, then the API, a worker, the scheduler and the frontend in one terminal; Ctrl+C stops all (tools/dev_up.sh, owner request) (#165).
@@ -259,3 +260,11 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 10 | Jobs table on /jobs | done (#147) | D-0700. Uses `GET /v1/jobs` (#146). |
 | 11 | Settings screen with LLM usage & cost | done (#148) | D-0719, D-0725. Range presets; tables only. |
 
+## [SPEC-13 — Variant matrix](../specs/SPEC-13-variant-matrix.md)
+
+| PR | Scope | Status | Notes |
+|---|---|---|---|
+| 1 | Path alternatives and row-mapped `list<object>` grammar; sub-field candidates | todo | No extraction change. |
+| 2 | Row resolution, record shape, preset v3 | todo | |
+| 3 | Selected variant and variant fill | todo | |
+| 4 | Row labels and scoring | todo | |

@@ -5314,3 +5314,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Own the variants' values too (a variant sku would be published as the group's, the error the Shopify baseline saw as F7); treat `isVariantOf` from a top-level variant the same way (not in the baseline shapes; left for SPEC-13).
 - Why: Owner approval of the variants proposal step A; schema.org `hasVariant` "indicates a Product that is a member of this ProductGroup".
 - Reversible: yes
+
+### D-0786 — SPEC-13 variant matrix approved
+- Date: 2026-10-15 · Spec/PR: SPEC-13; ARCHITECTURE §5.2, §5.3, §10, §22, Appendix A #37, rev 16 (#169) · Status: decided
+- Decision: The owner approved SPEC-13 and admitted the §22 variant-matrix candidate ahead of its labels criterion: row-mapped `list<object>` fields with a `key`, preset `commerce_detail` v3 `variants`, the selected variant by URL identity, variant fill for sku and gtin only, label version 2 with row scoring. Built as the spec's four PRs.
+- Alternatives: Wait for labels (milestone M) before admitting; a platform adapter first (not now, owner).
+- Why: Shopify baseline evidence (variant offers that disagree decline `offers_disagree`); owner approval 2026-10-15.
+- Reversible: yes
