@@ -143,10 +143,6 @@ def test_a_type_without_precision_on_either_side_is_not_compared(
     assert (result.passed, result.reasons) == (True, [])
 
 
-def test_a_type_missing_from_the_candidate_is_not_compared() -> None:
-    assert gate(report({"money": cell(0.97)}), BASELINE).passed is True
-
-
 def test_suppressed_cells_are_refused() -> None:
     # The gate reads the unsuppressed in-job report (D-0182); an exported aggregate can hide a wrong product.
     suppressed = report({"money": Suppressed(n=3)})

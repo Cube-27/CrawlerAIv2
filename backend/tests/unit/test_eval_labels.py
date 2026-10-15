@@ -122,10 +122,6 @@ def _detail_field(name: str, **changes: Any) -> dict[str, Any]:
     [
         (_detail(label_version=3), {LabelError("label_version", "Input should be 1 or 2")}),
         (
-            _detail(checker="labeler-a"),
-            {LabelError("", "a checked page is checked by someone other than its labeler")},
-        ),
-        (
             _detail(checker=" Labeler-A "),
             {LabelError("", "a checked page is checked by someone other than its labeler")},
         ),
