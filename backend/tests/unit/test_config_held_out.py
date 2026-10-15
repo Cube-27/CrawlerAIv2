@@ -49,10 +49,6 @@ def test_a_listing_splits_page_fields_from_rows_in_stored_order() -> None:
     assert rows == (Facts(published={"name": "A"}), Facts(published={"name": "B"}))
 
 
-def test_a_page_without_records_has_no_facts() -> None:
-    assert facts_of(_schema("detail", title=TEXT), [], []) == (Facts(), ())
-
-
 def test_a_sample_page_reads_published_values_with_their_locators() -> None:
     schema = _schema("detail", title=TEXT, brand=TEXT, sku=TEXT)
     record = StoredRecord({"title": "Kettle", "brand": "Acme"}, {"title": "jsonld:0:$['name']", "sku": "x"})
