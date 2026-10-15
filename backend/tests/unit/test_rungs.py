@@ -4,6 +4,7 @@ The rungs are stubs answering synthetic outcomes; no network.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
@@ -230,3 +231,42 @@ def test_a_recipe_asked_to_slow_down_is_kept_without_a_fallback() -> None:
 
     assert _attempts(result) == [("api", "blocked")]
     assert len(stubs.http.calls) == 0
+
+
+def _acquire_admitting(http: BlockClass, recipe: BlockClass | None = None) -> tuple[list[str], FetchResult]:
+    """`acquire` in auto with an `admit_next` that logs, alongside the rungs, when it runs."""
+    log: list[str] = []
+
+    async def admit_next() -> None:
+        log.append("admit")
+
+    def logged(rung: Rung) -> Callable[[str, FetchPolicy], Awaitable[FetchResult]]:
+        async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
+            log.append(rung.method)
+            return await rung(url, policy)
+
+        return fetch
+
+    rungs = Rungs(http=logged(Rung("http", http)), browser=logged(Rung("browser", "ok")))
+    api = None if recipe is None else logged(Rung("api", recipe))
+    result = asyncio.run(acquire(URL, FetchPolicy(), "http", rungs, recipe=api, admit_next=admit_next))
+    return log, result
+
+
+@pytest.mark.parametrize("http", ["shell", "blocked"])
+def test_the_browser_retry_waits_for_its_admission(http: BlockClass) -> None:
+    log, result = _acquire_admitting(http)
+    assert log == ["http", "admit", "browser"]
+    assert result.method == "browser"
+
+
+def test_the_page_after_a_failed_recipe_waits_for_its_admission() -> None:
+    log, result = _acquire_admitting("ok", recipe="not_found")
+    assert log == ["api", "admit", "http"]
+    assert result.method == "http"
+
+
+@pytest.mark.parametrize("recipe", [None, "ok"])
+def test_a_fetch_of_one_request_asks_no_admission(recipe: BlockClass | None) -> None:
+    log, _ = _acquire_admitting("ok", recipe=recipe)
+    assert log == ["api" if recipe else "http"]

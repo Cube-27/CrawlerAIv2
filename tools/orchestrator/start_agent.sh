@@ -1,7 +1,8 @@
 #!/bin/bash
 # start_agent.sh NAME WORKTREE PROMPT [MIN_FREE_MB]
 # A worker (any NAME not starting with "reviewer") is refused when MAX_WORKERS (default 4, set by the owner) workers
-# are already alive. Reviewers don't count: they run no builds or tests, so their memory use is small.
+# of this project (lib.sh project_agents; herdr lists every project's) are already alive. Reviewers don't count: they
+# run no builds or tests, so their memory use is small.
 # Starts a claude herdr agent in <main>/../CrawlerAIv2-worktrees/WORKTREE, checks that the pane's cwd really is
 # that worktree (a wrong cwd stops at a trust prompt in the home folder), refuses when free memory is low, then
 # sends PROMPT. Prints "<pane> <status>", or "ERROR ..." on stderr and exits 1.
@@ -25,8 +26,8 @@ free=$(powershell -NoProfile -c "[int]((Get-CimInstance Win32_OperatingSystem).F
 workspace=${HERDR_WORKSPACE_ID:-}
 [[ -n $workspace ]] || err "HERDR_WORKSPACE_ID is unset: run this from a herdr pane"
 if [[ $name != reviewer* ]]; then
-  workers=$(herdr agent list 2>/dev/null | python -c "import json,sys;print(sum(1 for a in json.load(sys.stdin)['result']['agents'] if a.get('name') and not a['name'].startswith('reviewer')))")
-  [[ $workers =~ ^[0-9]+$ ]] || err "could not count live workers"
+  agents=$(herdr agent list 2>/dev/null | project_agents) || err "could not count live workers"
+  workers=$(awk '$1 != "" && $1 !~ /^reviewer/ {n++} END {print n + 0}' <<< "$agents")
   (( workers < ${MAX_WORKERS:-4} )) || err "worker limit: $workers alive, max ${MAX_WORKERS:-4}"
 fi
 

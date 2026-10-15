@@ -4,8 +4,9 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts; no network.
 """
 
 import asyncio
+import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -14,9 +15,9 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.robots import RobotsSnapshot
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, claim_tasks
@@ -28,6 +29,7 @@ pytestmark = pytest.mark.anyio
 
 ORIGIN = "https://shop.example.test"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
+OPEN_ROBOTS = "User-agent: *\nDisallow:\n"
 PAGE = b"<html><body><h1>Item</h1></body></html>"
 DEFAULT_PROJECT = select(Project.id).where(Project.name == "default").scalar_subquery()
 OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
@@ -43,13 +45,14 @@ class Clock:
 
 @dataclass
 class Web:
-    """Answers each URL from `pages`, as (status, body, response headers); anything else is a 404."""
+    """Answers each URL from `pages`, as (status, body, response headers); anything else is a 404. A page fetch's
+    `Admit` goes unused: it makes one request."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, tuple[int, bytes, tuple[tuple[str, str], ...]]] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
 
-    async def __call__(self, url: str) -> FetchResult:
+    async def __call__(self, url: str, _admit: Admit | None = None) -> FetchResult:
         self.fetched.append(url)
         status, body, headers = self.pages.get(url, (404, b"no such page", ()))
         return self.fetch_result(url, status, body, headers, block_class="ok" if status < 400 else "blocked")
@@ -88,9 +91,15 @@ async def _polite(
     return await fetch_politely(conn, task, site_id, policy, web, limiter, fetch_robots=web)
 
 
-async def _snapshot(conn: AsyncConnection, site_id: SiteId) -> RobotsSnapshot | None:
+def _stored(snapshots: dict[str, RobotsSnapshot]) -> str:
+    """`site.robots_snapshot` holding `snapshots`, by the URL of the robots.txt each was fetched from."""
+    return json.dumps({url: snapshot.model_dump(mode="json") for url, snapshot in snapshots.items()})
+
+
+async def _snapshot(conn: AsyncConnection, site_id: SiteId, origin: str = ORIGIN) -> RobotsSnapshot | None:
     stored = (await conn.execute(select(Site.robots_snapshot).where(Site.id == site_id))).scalar_one()
-    return None if stored is None else RobotsSnapshot.model_validate_json(stored)
+    snapshot = None if stored is None else json.loads(stored).get(f"{origin}/robots.txt")
+    return None if snapshot is None else RobotsSnapshot.model_validate(snapshot)
 
 
 async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(conn: AsyncConnection, web: Web) -> None:
@@ -146,7 +155,7 @@ async def test_the_override_fetches_a_disallowed_page_without_reading_robots(con
 
 async def test_a_fresh_snapshot_is_used_and_a_stale_one_refetched(conn: AsyncConnection, web: Web) -> None:
     fresh = RobotsSnapshot(fetched_at=datetime.now(UTC) - timedelta(hours=23), status_code=200, body="")
-    site_id = await _site(conn, robots_snapshot=fresh.model_dump_json())
+    site_id = await _site(conn, robots_snapshot=_stored({f"{ORIGIN}/robots.txt": fresh}))
     first, second = await _tasks(conn, "/private/a", "/private/b")
 
     # The fresh snapshot allows everything: no robots fetch, the page is fetched.
@@ -154,11 +163,43 @@ async def test_a_fresh_snapshot_is_used_and_a_stale_one_refetched(conn: AsyncCon
     assert web.fetched == [f"{ORIGIN}/private/a"]
 
     stale = fresh.model_copy(update={"fetched_at": datetime.now(UTC) - timedelta(hours=25)})
-    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=stale.model_dump_json()))
+    stored = _stored({f"{ORIGIN}/robots.txt": stale})
+    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=stored))
     result = await _polite(conn, second, site_id, FetchPolicy(), web, HostLimiter())
 
     assert result == Finished("blocked", reason="robots")
     assert web.fetched[1:] == [f"{ORIGIN}/robots.txt"]
+    snapshot = await _snapshot(conn, site_id)
+    assert snapshot is not None
+    assert snapshot.body == ROBOTS
+
+
+async def test_each_origin_of_the_site_is_governed_by_its_own_robots_file(conn: AsyncConnection, web: Web) -> None:
+    # RFC 9309 §2.3: robots.txt governs its scheme, host and port only.
+    other = "http://shop.example.test:8080"
+    web.pages[f"{other}/robots.txt"] = (200, OPEN_ROBOTS.encode(), ())
+    web.pages[f"{other}/private/a"] = (200, PAGE, ())
+    site_id = await _site(conn)
+    [task] = await _tasks(conn, "/private/a")
+
+    assert await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter()) == Finished("blocked", reason="robots")
+    other_task = replace(task, url=f"{other}/private/a")
+    assert isinstance(await _polite(conn, other_task, site_id, FetchPolicy(), web, HostLimiter()), FetchResult)
+
+    assert web.fetched == [f"{ORIGIN}/robots.txt", f"{other}/robots.txt", f"{other}/private/a"]
+    snapshots = [await _snapshot(conn, site_id, origin) for origin in (ORIGIN, other)]
+    assert [None if snapshot is None else snapshot.body for snapshot in snapshots] == [ROBOTS, OPEN_ROBOTS]
+
+
+async def test_a_snapshot_stored_before_origins_were_kept_apart_is_fetched_again(
+    conn: AsyncConnection, web: Web
+) -> None:
+    unkeyed = RobotsSnapshot(fetched_at=datetime.now(UTC), status_code=200, body="")
+    site_id = await _site(conn, robots_snapshot=unkeyed.model_dump_json())
+    [task] = await _tasks(conn, "/private/a")
+
+    assert await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter()) == Finished("blocked", reason="robots")
+    assert web.fetched == [f"{ORIGIN}/robots.txt"]
     snapshot = await _snapshot(conn, site_id)
     assert snapshot is not None
     assert snapshot.body == ROBOTS
@@ -242,6 +283,48 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     assert result == Failed(f"http {status}", transient=True, after=asked, exhausted="blocked")
     # The site's other pages wait out the same pause.
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
+
+
+async def test_a_further_request_of_the_fetch_takes_a_turn_at_the_sites_rate(conn: AsyncConnection, web: Web) -> None:
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
+    first, second = await _tasks(conn, "/item/1", "/item/2")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    async def retried(url: str, admit: Admit) -> FetchResult:
+        # The first request takes a second; its retry is admitted as it ends, at the next turn.
+        clock.now += 1.0
+        await admit()
+        return await web(url)
+
+    first_result = await fetch_politely(conn, first, site_id, FetchPolicy(), retried, limiter, fetch_robots=web)
+
+    assert isinstance(first_result, FetchResult)
+    clock.now += 0.25
+    # The retry took the turn at 1 s, so the site's next page waits until 2 s, not 1 s.
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=0.75))
+
+
+async def test_a_slow_down_answering_a_request_whose_outcome_was_not_kept_backs_off(
+    conn: AsyncConnection, web: Web
+) -> None:
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (403, b"", ())
+    first, second = await _tasks(conn, "/item/1", "/item/2")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+    browser = AttemptRecord(method="browser", status=503, block_class="blocked", duration_ms=1)
+
+    async def retried(url: str, _admit: Admit) -> FetchResult:
+        # The HTTP outcome is kept; the browser retry was answered 503.
+        kept = await web(url)
+        return kept.model_copy(update={"attempts": (*kept.attempts, browser)})
+
+    result = await fetch_politely(conn, first, site_id, FetchPolicy(), retried, limiter, fetch_robots=web)
+
+    assert result == Failed("http 503", transient=True, after=None, exhausted="blocked")
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=30))
 
 
 @pytest.mark.parametrize("value", ["901", "99999999999999", "9" * 5000])

@@ -338,3 +338,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Drop cookies on every hop (also meets INV-29, but differs from the other fetchers); pin the address at the connection layer so httpx's jar sees host names (a larger change).
 - Why: INV-29. `Domain=` uses the stdlib's heuristic rather than public-suffix data; a follow-up row can add it.
 - Reversible: yes
+
+### D-0865 — A fetch's further requests wait for their turn; the worker waits in place
+- Date: 2026-10-16 · Spec/PR: follow-ups (#197) · Status: decided
+- Decision: `acquire(..., admit_next=)` awaits the hook before each request after its first (the browser retry, the page after a failed recipe). The scrape service passes `admitted`; the worker passes `HostLimiter.wait`, waiting in place rather than postponing. `fetch_politely` backs off when any attempt got a 429 or 503. Completes D-0634's open items.
+- Alternatives: Postpone the task; skip the retry when no turn is free.
+- Why: The first request is already sent: postponing would send it again each run and never reach the retry; skipping loses the browser fallback.
+- Reversible: yes
+
+### D-0866 — `site.robots_snapshot` holds a snapshot per robots.txt URL
+- Date: 2026-10-16 · Spec/PR: follow-ups (#197) · Status: decided
+- Decision: A JSON map `{robots_url: snapshot}` in the same `Text` column; stale entries are dropped on write, and a value of the old single-snapshot shape counts as none and is fetched again.
+- Alternatives: A table keyed by origin; a data migration.
+- Why: RFC 9309 §2.3 (robots.txt per scheme, host and port); no DDL change, every reader goes through `site_robots`, and an old value's origin is unknown.
+- Reversible: yes

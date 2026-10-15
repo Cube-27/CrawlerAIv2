@@ -151,8 +151,9 @@ if r.method == "browser" and r.block_class == "ok": site.fetch_method = "browser
 - Per-site token bucket, default 1 req/s, overridden by `site.crawl_delay_ms` or robots `Crawl-delay`.
 - Backoff: on 429/503 honour `Retry-After` (seconds or HTTP-date), else exponential from 30 s, max 15 min;
   the task is requeued with `next_attempt_at` (SPEC-01) rather than sleeping in the worker.
-- Robots: fetched once per site per 24 h, stored in `site.robots_snapshot`; disallowed URLs produce outcome
-  `blocked` with `last_error='robots'` unless the job's `respect_robots=false` override (recorded in `job.request`).
+- Robots: fetched once per origin (scheme, host and port, RFC 9309 §2.3) per 24 h, stored in `site.robots_snapshot`
+  by robots.txt URL; disallowed URLs produce outcome `blocked` with `last_error='robots'` unless the job's
+  `respect_robots=false` override (recorded in `job.request`).
 - Limiter state is per worker process (implementation detail). With several workers this over-admits by the
   worker count; the design point (0.1 tasks/s) makes that acceptable. Anything shared is a candidate only if
   measured.

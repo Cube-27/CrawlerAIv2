@@ -20,6 +20,7 @@ from crawlerai.core.data import DataReport
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.core.settings import AcquireSettings, Settings
+from crawlerai.db.queue import LEASE_BATCH
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic
 from crawlerai.storage.fs import FsStore
@@ -175,7 +176,7 @@ def test_a_job_its_last_expired_lease_ends_is_diffed() -> None:
 
     (release,) = (entry.run for entry in entries if entry.name == "release_expired_leases")
     assert isinstance(release, partial)
-    assert release.keywords == {"ending": close_run}
+    assert release.keywords == {"batch": LEASE_BATCH, "ending": close_run}
 
 
 def test_data_fetch_reports_each_fetched_entry(
