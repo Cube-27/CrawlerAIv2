@@ -5369,3 +5369,35 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Add a vocabulary check of properties.
 - Why: No such check exists today; adding one is out of this row's scope.
 - Reversible: yes
+
+### D-0793 — An AggregateOffer is not a variant holder
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.6 (#171) · Status: decided
+- Context: §4.6 lists the Offers directly under the target as variant holders.
+- Decision: `EntityGraph.holders` excludes an AggregateOffer.
+- Alternatives: Admit it as a holder.
+- Why: schema.org: a summary of several offers, not the offer of one variant (as §4.3's never-a-row).
+- Reversible: yes
+
+### D-0794 — Variant fill when the selected holder is an Offer
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.6 (#171) · Status: decided
+- Context: §4.6: fill takes the selected variant's candidates.
+- Decision: A selected direct Offer is not a variant; fill then uses the every-variant-agrees rule.
+- Alternatives: Fill from the Offer.
+- Why: An Offer's own values are already the target's (atomic offers).
+- Reversible: yes
+
+### D-0795 — "The target has no owned candidate" for variant fill
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.6 (#171) · Status: decided
+- Context: §4.6 conditions variant fill on the target stating nothing.
+- Decision: No candidate of the field is `owned_by` the target, page-level ones included, whatever its validity.
+- Alternatives: Only valid owned candidates count.
+- Why: Conservative: an invalid value the target states is still its statement.
+- Reversible: yes
+
+### D-0796 — Variant rules apply to a detail page's target only
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.6 (#171) · Status: decided
+- Context: `Resolver` also resolves listing rows and the listing page.
+- Decision: `Resolver.variants` is None there; listings are unchanged.
+- Alternatives: Apply to listing rows too.
+- Why: §4.6 covers a detail page's single offer fields.
+- Reversible: yes
