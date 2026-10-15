@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-  buildBatch,
   buildCrawl,
   buildExtract,
   buildMap,
-  INITIAL_BATCH,
   INITIAL_CRAWL,
   INITIAL_EXTRACT,
   INITIAL_MAP,
@@ -17,49 +15,6 @@ describe("lines", () => {
       "https://a.example.test/1",
       "https://a.example.test/2",
     ]);
-  });
-});
-
-describe("buildBatch", () => {
-  it("sends the URLs, the formats in request order, the stored schema and the page kind", () => {
-    const request = buildBatch({
-      ...INITIAL_BATCH,
-      urls: "https://a.example.test/1\nhttps://a.example.test/2",
-      formats: ["records", "markdown"],
-      schema: { source: "id", id: "s-1", json: "", prompt: "" },
-      pageKind: "detail",
-    });
-
-    expect(request).toEqual({
-      urls: ["https://a.example.test/1", "https://a.example.test/2"],
-      formats: ["markdown", "records"],
-      schema: { id: "s-1" },
-      page_kind: "detail",
-      fetch: { method_hint: "auto" },
-    });
-  });
-
-  it("sends an inline schema and a webhook when given", () => {
-    const request = buildBatch({
-      ...INITIAL_BATCH,
-      urls: "https://a.example.test/1",
-      schema: { source: "inline", id: "", json: '{"name":"x"}', prompt: "" },
-      webhookUrl: " https://hooks.example.test/done ",
-    });
-
-    expect(request).toMatchObject({
-      schema: { inline: { name: "x" } },
-      webhook_url: "https://hooks.example.test/done",
-    });
-  });
-
-  it("declines an inline schema that is not a JSON object", () => {
-    expect(
-      buildBatch({
-        ...INITIAL_BATCH,
-        schema: { source: "inline", id: "", json: "[1]", prompt: "" },
-      }),
-    ).toBeNull();
   });
 });
 

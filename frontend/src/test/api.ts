@@ -58,3 +58,14 @@ export function problem(
     headers: { "content-type": "application/problem+json", ...headers },
   });
 }
+
+/** A `text/event-stream` answer (WHATWG HTML §9.2) carrying `events`, each `[id, kind, data]`; a null id is left out. */
+export function sse(...events: [string | null, string, object][]): Response {
+  const text = events
+    .map(
+      ([id, kind, data]) =>
+        `${id === null ? "" : `id: ${id}\n`}event: ${kind}\ndata: ${JSON.stringify(data)}\n\n`,
+    )
+    .join("");
+  return new Response(text, { headers: { "content-type": "text/event-stream" } });
+}

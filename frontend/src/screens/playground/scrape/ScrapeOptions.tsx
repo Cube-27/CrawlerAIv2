@@ -1,6 +1,6 @@
-import type { MethodHint, PageKind } from "../../../api/scrape";
-import { METHOD_HINTS, PAGE_KINDS } from "../../../components/requestOptions";
-import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
+import type { PageKind } from "../../../api/scrape";
+import { NumberRow, OptionsPanel } from "../OptionsPanel";
+import { FetchMethodRow, MetadataRow, PageKindRow } from "../rows";
 import { DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
 
 function AdvancedRows({
@@ -9,11 +9,7 @@ function AdvancedRows({
 }: Readonly<{ options: Options; onChange: (options: Options) => void }>) {
   return (
     <>
-      <SelectRow<MethodHint>
-        label="Fetch method"
-        help="How the page is fetched. Auto starts with HTTP and moves to a browser when the page needs one."
-        name="fetch.method_hint"
-        options={METHOD_HINTS}
+      <FetchMethodRow
         value={options.methodHint}
         onChange={(methodHint) => {
           onChange({ ...options, methodHint });
@@ -55,8 +51,7 @@ function AdvancedRows({
   );
 }
 
-/** Scrape's options panel (SPEC-14 §4.2): page kind and Metadata in JSON, then fetch and limits under Advanced. With a
- * schema, the page kind is the one its records can be for, `schemaPageKind`, or none (SPEC-07 §4.4). */
+/** Scrape's options panel (SPEC-14 §4.2): page kind and Metadata in JSON, then fetch and limits under Advanced. */
 export function ScrapeOptions({
   options,
   hasSchema,
@@ -75,25 +70,15 @@ export function ScrapeOptions({
         onChange(DEFAULT_OPTIONS);
       }}
     >
-      <SelectRow<PageKind>
-        label="Page kind"
-        help="Whether the page shows one item or a list of items. With a schema, it is the schema's; records of listing pages are not available yet."
-        name="page_kind"
-        options={PAGE_KINDS}
-        value={hasSchema ? schemaPageKind : options.pageKind}
-        placeholder="Not set"
-        disabled={
-          hasSchema
-            ? PAGE_KINDS.map(([kind]) => kind).filter((kind) => kind !== schemaPageKind)
-            : []
-        }
+      <PageKindRow
+        value={options.pageKind}
+        hasSchema={hasSchema}
+        schemaPageKind={schemaPageKind}
         onChange={(pageKind) => {
           onChange({ ...options, pageKind });
         }}
       />
-      <SwitchRow
-        label="Metadata in JSON"
-        help="Adds the page's metadata (title, description, language, canonical URL) to the output."
+      <MetadataRow
         isSelected={options.metadataInJson}
         onChange={(metadataInJson) => {
           onChange({ ...options, metadataInJson });

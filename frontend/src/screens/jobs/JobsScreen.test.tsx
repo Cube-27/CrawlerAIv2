@@ -6,7 +6,7 @@ import { routes } from "../../app/router";
 import type { JobPage, JobSummary, PageOutput, PageOutputPage } from "../../api/jobs";
 import type { RecordPage } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
-import { problem, stubApi, type Call } from "../../test/api";
+import { problem, sse, stubApi, type Call } from "../../test/api";
 import { recordField } from "../../test/records";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
@@ -85,17 +85,6 @@ const page: PageOutput = {
 };
 
 const pages: PageOutputPage = { items: [page], next_cursor: null };
-
-/** A `text/event-stream` answer (WHATWG HTML §9.2) carrying `events`, each `[id, kind, data]`; a null id is left out. */
-function sse(...events: [string | null, string, object][]): Response {
-  const text = events
-    .map(
-      ([id, kind, data]) =>
-        `${id === null ? "" : `id: ${id}\n`}event: ${kind}\ndata: ${JSON.stringify(data)}\n\n`,
-    )
-    .join("");
-  return new Response(text, { headers: { "content-type": "text/event-stream" } });
-}
 
 const ENDED = () =>
   sse(
@@ -404,66 +393,6 @@ describe("Job screen", () => {
 });
 
 describe("Jobs screen", () => {
-  it("queues a batch from its dialog and opens the new job", async () => {
-    const calls = jobApi({
-      "POST /v1/batch/scrape": () => Response.json({ job_id: JOB_ID }, { status: 202 }),
-    });
-    await open("/jobs", "Jobs");
-
-    await userEvent.click(screen.getByRole("button", { name: "New batch" }));
-    const dialog = within(await screen.findByRole("dialog"));
-    await userEvent.type(
-      dialog.getByLabelText("URLs"),
-      "https://shop.example.test/item/1{Enter}https://shop.example.test/item/2",
-    );
-    await userEvent.click(dialog.getByRole("button", { name: "Queue batch" }));
-
-    await screen.findByRole("heading", { level: 1, name: "Batch scrape job" });
-    expect(calls.find(({ path }) => path === "/v1/batch/scrape")?.body).toEqual({
-      urls: ["https://shop.example.test/item/1", "https://shop.example.test/item/2"],
-      formats: ["markdown"],
-      schema: null,
-      page_kind: null,
-      fetch: { method_hint: "auto" },
-    });
-  });
-
-  it("offers detail pages only for a batch's records, which the server refuses for listing pages", async () => {
-    jobApi();
-    await open("/jobs", "Jobs");
-    await userEvent.click(screen.getByRole("button", { name: "New batch" }));
-    const dialog = within(await screen.findByRole("dialog"));
-    await userEvent.click(
-      within(dialog.getByRole("radiogroup", { name: "Page kind" })).getByLabelText("Listing"),
-    );
-
-    await userEvent.click(dialog.getByRole("checkbox", { name: "Records" }));
-
-    const kinds = within(dialog.getByRole("radiogroup", { name: "Page kind" }));
-    expect(kinds.getByLabelText("Listing")).toBeDisabled();
-    expect(kinds.getByLabelText("Listing")).not.toBeChecked();
-    expect(dialog.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
-  });
-
-  it("shows a refused batch's problem with the member it names", async () => {
-    jobApi({
-      "POST /v1/batch/scrape": () =>
-        problem(422, {
-          title: "Invalid request",
-          errors: [{ field: "urls.0", reason: "the target is not allowed" }],
-        }),
-    });
-    await open("/jobs", "Jobs");
-
-    await userEvent.click(screen.getByRole("button", { name: "New batch" }));
-    const dialog = within(await screen.findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText("URLs"), "https://shop.example.test/item/1");
-    await userEvent.click(dialog.getByRole("button", { name: "Queue batch" }));
-
-    expect(await dialog.findByText("Invalid request")).toBeInTheDocument();
-    expect(dialog.getByText("urls.0: the target is not allowed")).toBeInTheDocument();
-  });
-
   it("queues a crawl with a page-kind rule", async () => {
     const calls = jobApi({
       "POST /v1/crawl": () => Response.json({ job_id: JOB_ID }, { status: 202 }),

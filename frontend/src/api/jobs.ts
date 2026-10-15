@@ -141,6 +141,49 @@ export async function listJobResults(
   return result.kind === "done" ? { kind: "done", value: resultsPage(result.value) } : result;
 }
 
+/** One page of the job's tasks as `json_values` items (SPEC-14 §4.4) at `cursor` (the first page when null), `limit`
+ * at most; `withMetadata` asks for each page's metadata (`include=metadata`). */
+export async function listJobValues(
+  client: ApiClient,
+  id: string,
+  { cursor, limit, withMetadata }: { cursor: string | null; limit: number; withMetadata: boolean },
+): Promise<ApiResult<JsonValuesPage>> {
+  const query: ResultsQuery = {
+    format: "json_values",
+    limit,
+    ...(cursor === null ? {} : { cursor }),
+    ...(withMetadata ? { include: "metadata" } : {}),
+  };
+  const result = await apiResult(() => results(client, id, query), "Listing the job's pages");
+  if (result.kind === "failed") return result;
+  const page = result.value;
+  if (!("format" in page) || page.format !== "json_values")
+    throw new Error("GET /v1/jobs/{id}/results answered format=json_values with another format");
+  return { kind: "done", value: page };
+}
+
+/** Every page of the job's `json_values` items, at the largest page size, read in turn by cursor. */
+export async function exportJobValues(
+  client: ApiClient,
+  id: string,
+  withMetadata: boolean,
+): Promise<ApiResult<JsonValuesItem[]>> {
+  const items: JsonValuesItem[] = [];
+  let cursor: string | null = null;
+  do {
+    // Sequential: each page's cursor comes from the page before it (SPEC-07 §4.6).
+    const page: ApiResult<JsonValuesPage> = await listJobValues(client, id, {
+      cursor,
+      limit: EXPORT_LIMIT,
+      withMetadata,
+    });
+    if (page.kind === "failed") return page;
+    items.push(...page.value.items);
+    cursor = page.value.next_cursor;
+  } while (cursor !== null);
+  return { kind: "done", value: items };
+}
+
 /** One page of the job's records exported as `format`, at the largest page size. */
 export async function exportJobPage(
   client: ApiClient,

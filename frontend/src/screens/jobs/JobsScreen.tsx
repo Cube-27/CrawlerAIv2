@@ -1,14 +1,13 @@
 import { useNavigate } from "react-router";
 import { LookupForm } from "../../components/LookupForm";
 import { PageHeader } from "../../components/PageHeader";
-import { BatchDialog } from "./BatchDialog";
 import { CrawlDialog } from "./CrawlDialog";
 import { ExtractDialog } from "./ExtractDialog";
 import { JobTable } from "./JobTable";
 import { MapDialog } from "./MapDialog";
 import { jobPath } from "./paths";
 
-/** Starts batch scrapes, crawls, extracts and maps, lists the jobs (SPEC-12 §4.3), and opens a job by its id. A new
+/** Starts crawls, extracts and maps, lists the jobs (SPEC-12 §4.3), and opens a job by its id. A new
  * job opens on its own page. */
 export function JobsScreen() {
   const navigate = useNavigate();
@@ -22,7 +21,6 @@ export function JobsScreen() {
             <MapDialog />
             <CrawlDialog />
             <ExtractDialog />
-            <BatchDialog />
           </>
         }
       />

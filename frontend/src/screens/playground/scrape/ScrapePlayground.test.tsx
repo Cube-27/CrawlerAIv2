@@ -1,11 +1,18 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
-import { routes } from "../../../app/router";
 import type { RecordField, ScrapeResponse } from "../../../api/scrape";
-import { problem, stubApi, type Call } from "../../../test/api";
+import { problem, stubApi } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
+import {
+  openOptions,
+  openPlayground,
+  optionsButton,
+  pick,
+  posted,
+  selectTrigger,
+  toggleFormats,
+} from "../../../test/playground";
 
 // `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
 
@@ -102,57 +109,16 @@ function schemaList(): Response {
 }
 
 async function openScrape() {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
-  await screen.findByRole("heading", { level: 1, name: "Playground" });
+  await openPlayground("/");
 }
 
 async function typeUrl(url = "https://store.test/a") {
   await userEvent.type(screen.getByRole("textbox", { name: "URL" }), url);
 }
 
-/** The trigger of the Select named by `name`; its help icon has the name too. */
-function selectTrigger(name: RegExp): HTMLElement {
-  const trigger = screen
-    .getAllByRole("button", { name })
-    .find((button) => button.getAttribute("aria-haspopup") === "listbox");
-  if (trigger === undefined) throw new Error(`no select named ${String(name)}`);
-  return trigger;
-}
-
-/** Picks `option` in the Select named by `name`. */
-async function pick(name: RegExp, option: string) {
-  await userEvent.click(selectTrigger(name));
-  await userEvent.click(await screen.findByRole("option", { name: option }));
-}
-
 /** Stubs the API with `replies`; the toolbar's schema list is always read. */
 function stubScrape(replies: Parameters<typeof stubApi>[0]) {
   return stubApi({ "GET /v1/schemas": schemaList, ...replies });
-}
-
-/** The body of the one scrape that was posted. */
-function posted(calls: readonly Call[]): unknown {
-  const posts = calls.filter(({ method }) => method === "POST");
-  expect(posts).toHaveLength(1);
-  return posts[0]?.body;
-}
-
-/** Toggles each of `formats` in the toolbar's Format select, then closes it. */
-async function toggleFormats(...formats: string[]) {
-  await userEvent.click(selectTrigger(/Format/));
-  for (const format of formats) {
-    await userEvent.click(await screen.findByRole("option", { name: format }));
-  }
-  await userEvent.keyboard("{Escape}");
-}
-
-function optionsButton(): HTMLElement {
-  return screen.getByRole("button", { name: "Options" });
-}
-
-async function openOptions() {
-  await userEvent.click(optionsButton());
-  return within(screen.getByRole("region", { name: "Options" }));
 }
 
 async function fillRecordsByIdForm() {

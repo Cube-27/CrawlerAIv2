@@ -3,9 +3,11 @@ import { useApiClient } from "../../app/auth";
 import {
   cancelJob,
   exportJobPage,
+  exportJobValues,
   getJob,
   listJobs,
   listJobResults,
+  listJobValues,
   mapUrls,
   submitBatch,
   submitCrawl,
@@ -52,6 +54,27 @@ export function useJobResults(id: string, page: { cursor: string | null; limit: 
   return useQuery({
     queryKey: [...jobResultsKey(id), page],
     queryFn: () => unwrap(listJobResults(client, id, page)),
+  });
+}
+
+/** The job's `json_values` page at `cursor`. Under the results key, so the job's events read it again; the page shown
+ * stays while it is read again. */
+export function useJobValues(
+  id: string,
+  page: { cursor: string | null; limit: number; withMetadata: boolean },
+) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...jobResultsKey(id), "json_values", page],
+    queryFn: () => unwrap(listJobValues(client, id, page)),
+  });
+}
+
+/** Every `json_values` item of the job, for its JSON download (SPEC-14 §4.4). */
+export function useExportJobValues(id: string) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (withMetadata: boolean) => unwrap(exportJobValues(client, id, withMetadata)),
   });
 }
 

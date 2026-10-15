@@ -1,9 +1,9 @@
-import { Button, Typography } from "@heroui/react";
+import { Typography } from "@heroui/react";
 import { useParams } from "react-router";
-import { useCancelJob, useJob } from "../../api/hooks/jobs";
+import { useJob } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import type { JobStatus, JobSummary } from "../../api/jobs";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { CancelJobAction } from "../../components/CancelJobAction";
 import { EventLog } from "../../components/EventLog";
 import { JobStatusLabel } from "../../components/JobStatusLabel";
 import { LoadingView } from "../../components/LoadingView";
@@ -22,30 +22,6 @@ import { KIND_LABELS } from "./kinds";
 // SPEC-10 §4.2: a completed or failed job can't be cancelled (409); a cancelled one is already.
 const CANCELLABLE: ReadonlySet<JobStatus> = new Set<JobStatus>(["queued", "running"]);
 
-function CancelAction({ id }: Readonly<{ id: string }>) {
-  const cancel = useCancelJob(id);
-  const problem = problemOf(cancel.error);
-  return (
-    <>
-      <ConfirmDialog
-        trigger={
-          <Button variant="danger" isPending={cancel.isPending}>
-            Cancel job
-          </Button>
-        }
-        title="Cancel this job?"
-        confirmLabel="Cancel job"
-        onConfirm={() => {
-          cancel.mutate();
-        }}
-      >
-        Its queued pages are not fetched. Pages already fetched keep their results.
-      </ConfirmDialog>
-      {problem === null ? null : <ProblemAlert problem={problem} />}
-    </>
-  );
-}
-
 function JobTimes({ job }: Readonly<{ job: JobSummary }>) {
   return (
     <Typography.Paragraph size="sm" color="muted">
@@ -63,7 +39,7 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
     <section className="flex flex-col gap-6">
       <PageHeader
         title={`${KIND_LABELS[job.kind]} job`}
-        actions={cancellable && !job.cancel_requested ? <CancelAction id={job.id} /> : undefined}
+        actions={cancellable && !job.cancel_requested ? <CancelJobAction id={job.id} /> : undefined}
       >
         <JobStatusLabel status={job.status} />
         {cancellable && job.cancel_requested ? (
