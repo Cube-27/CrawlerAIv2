@@ -13,8 +13,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which path-gated jobs a pull request needs, from the files it changes (tools/ci_changes.py; owner, 2026-10-15: a
+  # docs-only PR runs no backend). A gated job that is not needed is skipped, and a skipped job counts as passed for
+  # required checks. A push to main runs every job.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      licenses: ${{ steps.filter.outputs.licenses }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            git diff --name-only "$BASE...$HEAD" | python3 tools/ci_changes.py >> "$GITHUB_OUTPUT"
+          else
+            python3 tools/ci_changes.py --all >> "$GITHUB_OUTPUT"
+          fi
+
   # SPEC-00 §4.6. Later SPEC-00 rows add the replay split and the other jobs.
   backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -70,6 +97,8 @@ jobs:
 
   # SPEC-00 §4.6, including the API client freshness check (§4.5).
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -136,6 +165,8 @@ jobs:
 
   # SPEC-00 §4.6 job 3: dependency license deny-list and CycloneDX SBOMs (ARCHITECTURE §18).
   licenses:
+    needs: changes
+    if: needs.changes.outputs.licenses == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
