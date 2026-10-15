@@ -14,8 +14,8 @@ err() { echo "ERROR $*" >&2; exit 1; }
 # herdr agent names are lowercase; an uppercase NAME used to fail only after the tab opened, as a misleading
 # "cwd ''" error. Checked first, before memory or herdr is touched.
 [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || err "agent name must be lowercase: '$name' (allowed: a-z, 0-9 and '-', not starting with '-'; e.g. impl-uata)"
-main=$(git worktree list --porcelain | sed -n '1s/^worktree //p')   # e.g. C:/Projects/CrawlerAIv2
-root_fwd="$(dirname "$main")/CrawlerAIv2-worktrees"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+root_fwd=$(worktrees_root)
 path=$(cygpath -w "$root_fwd/$wt" 2>/dev/null || echo "$root_fwd/$wt" | tr '/' '\')
 
 free=$(powershell -NoProfile -c "[int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024)" | tr -d '\r')

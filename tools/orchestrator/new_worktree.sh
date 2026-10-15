@@ -12,9 +12,10 @@ name=$1; branch=$2
 if [[ -z $name || $name == */* || $name == *\\* || $name == . || $name == .. ]]; then
   usage "ERROR NAME must be a directory name, not a path: '$name'"
 fi
-main=$(git worktree list --porcelain | sed -n '1s/^worktree //p')   # e.g. C:/Projects/CrawlerAIv2
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+main=$(main_checkout)
 [[ -n $main ]] || err "not inside a git repository"
-dir="$(dirname "$main")/CrawlerAIv2-worktrees/$name"
+dir="$(worktrees_root "$main")/$name"
 [[ -e $dir ]] && err "$dir already exists"
 git -C "$main" rev-parse -q --verify "refs/heads/$branch" >/dev/null && err "branch $branch already exists"
 [[ -n $(git -C "$main" ls-remote --heads origin "$branch") ]] && err "branch $branch already exists on origin"

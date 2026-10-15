@@ -11,8 +11,9 @@
 set -u
 if [[ $# -ne 2 ]]; then echo "usage: cleanup_worktree.sh WORKTREE BRANCH" >&2; exit 2; fi
 wt=$1; branch=$2
-main=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
-dir="$(dirname "$main")/CrawlerAIv2-worktrees/$wt"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+main=$(main_checkout)
+dir="$(worktrees_root "$main")/$wt"
 short=${wt//-/}   # spec-03-pr-8 -> spec03pr8
 
 refuse() {
