@@ -11,9 +11,8 @@ import type { MethodHint } from "../../api/scrape";
 import { Choices } from "../../components/Choices";
 import { METHOD_HINTS } from "../../components/requestOptions";
 import { SchemaSelect } from "../../components/SchemaSelect";
-import { parseJsonObject } from "../scrape/form";
-import type { SchemaSource } from "../scrape/form";
-import type { JobSchemaState } from "./form";
+import { parseJsonObject } from "../../api/json";
+import type { JobSchemaState, SchemaSource } from "./form";
 
 /** Inputs the job forms share. */
 

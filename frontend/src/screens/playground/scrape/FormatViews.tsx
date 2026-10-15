@@ -1,7 +1,7 @@
 import { Label, Link, Table, TextArea, TextField } from "@heroui/react";
-import { adoptSchemaPath } from "../schemas/paths";
-import type { FetchAttempt, PageMetadata, ScrapeResponse } from "../../api/scrape";
-import type { SchemaDef } from "../../api/schemas";
+import { adoptSchemaPath } from "../../schemas/paths";
+import type { FetchAttempt, PageMetadata, ScrapeResponse } from "../../../api/scrape";
+import type { SchemaDef } from "../../../api/schemas";
 
 /** A text format (markdown, html, raw_html) in a read-only text area, to read, scroll and copy as sent. */
 export function TextFormat({ label, text }: Readonly<{ label: string; text: string }>) {

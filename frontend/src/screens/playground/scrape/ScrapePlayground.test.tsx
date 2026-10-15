@@ -1,10 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
-import { routes } from "../../app/router";
-import type { RecordField, ScrapeResponse } from "../../api/scrape";
-import { problem, stubApi } from "../../test/api";
+import { routes } from "../../../app/router";
+import type { RecordField, ScrapeResponse } from "../../../api/scrape";
+import { problem, stubApi, type Call } from "../../../test/api";
 
 // `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
 
@@ -101,23 +101,62 @@ function schemaList(): Response {
 }
 
 async function openScrape() {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/scrape"] })} />);
-  await screen.findByRole("heading", { level: 1, name: "Scrape" });
+  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
+  await screen.findByRole("heading", { level: 1, name: "Playground" });
 }
 
-async function choose(groupName: string, option: string) {
-  await userEvent.click(
-    within(screen.getByRole("radiogroup", { name: groupName })).getByLabelText(option),
-  );
+async function typeUrl(url = "https://store.test/a") {
+  await userEvent.type(screen.getByRole("textbox", { name: "URL" }), url);
+}
+
+/** The trigger of the Select named by `name`; its help icon has the name too. */
+function selectTrigger(name: RegExp): HTMLElement {
+  const trigger = screen
+    .getAllByRole("button", { name })
+    .find((button) => button.getAttribute("aria-haspopup") === "listbox");
+  if (trigger === undefined) throw new Error(`no select named ${String(name)}`);
+  return trigger;
+}
+
+/** Picks `option` in the Select named by `name`. */
+async function pick(name: RegExp, option: string) {
+  await userEvent.click(selectTrigger(name));
+  await userEvent.click(await screen.findByRole("option", { name: option }));
+}
+
+/** Stubs the API with `replies`; the toolbar's schema list is always read. */
+function stubScrape(replies: Parameters<typeof stubApi>[0]) {
+  return stubApi({ "GET /v1/schemas": schemaList, ...replies });
+}
+
+/** The body of the one scrape that was posted. */
+function posted(calls: readonly Call[]): unknown {
+  const posts = calls.filter(({ method }) => method === "POST");
+  expect(posts).toHaveLength(1);
+  return posts[0]?.body;
+}
+
+/** Toggles each of `formats` in the toolbar's Format select, then closes it. */
+async function toggleFormats(...formats: string[]) {
+  await userEvent.click(selectTrigger(/Format/));
+  for (const format of formats) {
+    await userEvent.click(await screen.findByRole("option", { name: format }));
+  }
+  await userEvent.keyboard("{Escape}");
+}
+
+function optionsButton(): HTMLElement {
+  return screen.getByRole("button", { name: "Options" });
+}
+
+async function openOptions() {
+  await userEvent.click(optionsButton());
+  return within(screen.getByRole("region", { name: "Options" }));
 }
 
 async function fillRecordsByIdForm() {
-  await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/items/1");
-  await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
-  await choose("Schema", "Stored schema");
-  await userEvent.click(screen.getByRole("button", { name: /Stored schema/ }));
-  await userEvent.click(await screen.findByRole("option", { name: "item_detail version 2" }));
-  await choose("Page kind", "Detail");
+  await typeUrl("https://store.test/items/1");
+  await pick(/Schema/, "item_detail version 2");
 }
 
 async function submit() {
@@ -129,21 +168,72 @@ async function openTab(name: string) {
   return within(screen.getByRole("tabpanel", { name }));
 }
 
-describe("scrape screen: the request", () => {
-  it("is in the main navigation", async () => {
+describe("scrape playground: the shell", () => {
+  it("is the app's start page, under Playground in the main navigation", async () => {
     await openScrape();
 
     expect(
       within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", {
         name: "Scrape",
       }),
-    ).toHaveAttribute("href", "/scrape");
+    ).toHaveAttribute("href", "/");
   });
 
-  it("posts the request SPEC-07 defines, with the key, and leaves empty limits to the server", async () => {
-    const calls = stubApi({
+  it("switches modes with tabs that are links to their routes", async () => {
+    await openScrape();
+
+    const tab = within(screen.getByRole("navigation", { name: "Mode" })).getByRole("tab", {
+      name: "Scrape",
+    });
+    expect(tab).toHaveAttribute("href", "/");
+    expect(tab).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the options inline under the command bar, with Advanced collapsed, and no dialog", async () => {
+    await openScrape();
+    expect(screen.queryByRole("region", { name: "Options" })).not.toBeInTheDocument();
+
+    const options = await openOptions();
+
+    expect(screen.getByRole("button", { name: "Options" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeVisible();
+    expect(options.getByRole("button", { name: "Advanced" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(options.queryByRole("textbox", { name: "Max age (seconds)" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("marks Options exactly when a setting differs from its default, until Reset settings", async () => {
+    await openScrape();
+    const options = await openOptions();
+    expect(optionsButton()).not.toHaveAccessibleDescription();
+
+    await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    expect(optionsButton()).toHaveAccessibleDescription("Settings changed");
+
+    await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    expect(optionsButton()).not.toHaveAccessibleDescription();
+
+    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
+    await userEvent.type(options.getByRole("textbox", { name: "Timeout (seconds)" }), "90");
+    await userEvent.tab();
+    expect(optionsButton()).toHaveAccessibleDescription("Settings changed");
+
+    await userEvent.click(options.getByRole("button", { name: "Reset settings" }));
+    expect(optionsButton()).not.toHaveAccessibleDescription();
+    expect(options.getByRole("textbox", { name: "Timeout (seconds)" })).toHaveValue("");
+  });
+});
+
+describe("scrape playground: the request", () => {
+  it("posts the request SPEC-07 defines: a schema asks for records, with the schema's page kind", async () => {
+    const calls = stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
-      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
     await openScrape();
@@ -167,38 +257,182 @@ describe("scrape screen: the request", () => {
     });
   });
 
-  it("sends the limits and fetch hint that were entered", async () => {
-    const calls = stubApi({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+  it("sends the formats, limits and fetch method that were set, and leaves empty limits to the server", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
     await openScrape();
-    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
-    await userEvent.click(screen.getByRole("checkbox", { name: "Markdown" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Links" }));
-    await choose("Fetch method", "Browser");
-    await userEvent.type(screen.getByRole("textbox", { name: "Max age (seconds)" }), "3600");
-    await userEvent.type(screen.getByRole("textbox", { name: "Timeout (seconds)" }), "90");
-    await userEvent.type(screen.getByRole("textbox", { name: "LLM call budget" }), "0");
+    await typeUrl();
+    await toggleFormats("Markdown", "Links");
+    const options = await openOptions();
+    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
+    await pick(/Fetch method/, "Browser");
+    await userEvent.type(options.getByRole("textbox", { name: "Max age (seconds)" }), "3600");
+    await userEvent.type(options.getByRole("textbox", { name: "LLM call budget" }), "0");
 
     await submit();
 
     await screen.findByText("extracted");
-    expect(calls[0]?.body).toEqual({
+    expect(posted(calls)).toEqual({
       url: "https://store.test/a",
       formats: ["links"],
       schema: null,
       page_kind: null,
       fetch: { method_hint: "browser" },
       max_age: 3600,
-      timeout_s: 90,
       budget: { llm_calls: 0 },
     });
   });
+
+  it("asks for the metadata format with Metadata in JSON", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl();
+    const options = await openOptions();
+    await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({ formats: ["markdown", "metadata"] });
+  });
+
+  it("sends nothing and marks Format when no format, Metadata in JSON or schema is chosen", async () => {
+    const calls = stubScrape({});
+    await openScrape();
+    await typeUrl();
+    await toggleFormats("Markdown");
+
+    await submit();
+
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+    expect(selectTrigger(/Format/).closest("[data-invalid]")).not.toBeNull();
+    expect(screen.getByText("Choose a format, Metadata in JSON or a schema.")).toBeInTheDocument();
+  });
+
+  it("shows the latest scrape's reply when an earlier one returns after it", async () => {
+    const replies: ((response: Response) => void)[] = [];
+    stubScrape({
+      "POST /v1/scrape": () =>
+        new Promise<Response>((resolve) => {
+          replies.push(resolve);
+        }),
+    });
+    await openScrape();
+    await typeUrl();
+    await submit();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "x{Enter}");
+    await waitFor(() => {
+      expect(replies).toHaveLength(2);
+    });
+
+    replies[1]?.(Response.json(scrapeResponse()));
+    await screen.findByText("extracted");
+    replies[0]?.(problem(404, { type: "not_found", title: "Not found" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText("extracted")).toBeInTheDocument();
+  });
+
+  it("drops the Format error once a schema or Metadata in JSON gives the scrape something to ask for", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl();
+    await toggleFormats("Markdown");
+    await submit();
+    const options = await openOptions();
+
+    await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({ formats: ["metadata"] });
+  });
+
+  it("sends a URL typed without a scheme with the https:// the bar shows", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl("store.test/a");
+
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({ url: "https://store.test/a" });
+  });
+
+  it("sends a host and port typed without a scheme with the https:// the bar shows", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl("localhost:8000/a");
+
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({ url: "https://localhost:8000/a" });
+  });
+
+  it("sends nothing and opens the options, saying why, when a schema's records are for no page kind it can ask for", async () => {
+    const listing = { ...itemSchema, status: "active", page_kind: "listing" };
+    const calls = stubScrape({ "GET /v1/schemas": () => Response.json({ items: [listing] }) });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+    expect(screen.getByRole("region", { name: "Options" })).toBeInTheDocument();
+    expect(screen.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
+    await userEvent.click(selectTrigger(/Page kind/));
+    for (const kind of ["Detail", "Listing"]) {
+      expect(await screen.findByRole("option", { name: kind })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    }
+  });
+
+  it("offers only the chosen schema's page kind", async () => {
+    stubScrape({});
+    await openScrape();
+    await fillRecordsByIdForm();
+    await openOptions();
+
+    expect(selectTrigger(/Page kind/)).toHaveTextContent("Detail");
+    await userEvent.click(selectTrigger(/Page kind/));
+    expect(await screen.findByRole("option", { name: "Listing" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("drops the page kind a previous schema set when the next one has none for its records", async () => {
+    const listing = {
+      ...itemSchema,
+      id: "0f9e8d7c-6b5a-4f3e-9d2c-1b0a9f8e7d6c",
+      name: "item_listing",
+      version: 1,
+      status: "active",
+      page_kind: "listing",
+    };
+    const calls = stubScrape({
+      "GET /v1/schemas": () =>
+        Response.json({
+          items: [{ ...itemSchema, status: "active", page_kind: "detail" }, listing],
+        }),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+    await pick(/Schema/, "item_listing version 1");
+
+    await submit();
+
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+    expect(screen.getByRole("region", { name: "Options" })).toBeInTheDocument();
+  });
 });
 
-describe("scrape screen: records and schemas", () => {
+describe("scrape playground: records", () => {
   it("shows each record field with its value, status, confidence, evidence, source and locator", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
-      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
     await openScrape();
@@ -221,9 +455,8 @@ describe("scrape screen: records and schemas", () => {
   });
 
   it("renders a conflict field as an em dash with reason disagree, its status, and no value", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
-      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
     await openScrape();
@@ -238,9 +471,8 @@ describe("scrape screen: records and schemas", () => {
   });
 
   it("shows field values as JSON when the schema can't be read", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
-      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () =>
         problem(404, { type: "not_found", title: "Not found" }),
     });
@@ -261,9 +493,8 @@ describe("scrape screen: records and schemas", () => {
   });
 
   it("still shows the records when the schema request itself fails", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
-      "GET /v1/schemas": schemaList,
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => {
         throw new TypeError("network down");
       },
@@ -277,108 +508,11 @@ describe("scrape screen: records and schemas", () => {
     expect(within(records.getByRole("row", { name: /title/ })).getByText("Blue mug")).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
-
-  it("types an inline schema's records by the schema sent, without reading a stored one", async () => {
-    const calls = stubApi({ "POST /v1/scrape": () => Response.json(withRecords) });
-    await openScrape();
-    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
-    await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
-    await choose("Schema", "Inline JSON");
-    // user-event reads `{` and `[` as key descriptors; doubled, they type the character.
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "Schema JSON" }),
-      '{{"name":"item","fields":{{"price":{{"type":"money"}}}',
-    );
-    await choose("Page kind", "Detail");
-
-    await submit();
-
-    const records = await openTab("Records");
-    expect(
-      within(records.getByRole("row", { name: /price/ })).getByText("19.90 EUR"),
-    ).toBeVisible();
-    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /v1/scrape"]);
-    expect(calls[0]?.body).toMatchObject({
-      schema: { inline: { name: "item", fields: { price: { type: "money" } } } },
-    });
-  });
-
-  it("refuses inline schema text that is not a JSON object", async () => {
-    const calls = stubApi({});
-    await openScrape();
-    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
-    await choose("Schema", "Inline JSON");
-    await userEvent.type(screen.getByRole("textbox", { name: "Schema JSON" }), "[[1]");
-
-    await submit();
-
-    expect(screen.getByRole("textbox", { name: "Schema JSON" })).toHaveAttribute(
-      "aria-invalid",
-      "true",
-    );
-    expect(calls).toEqual([]);
-  });
-
-  it("offers detail pages only for records, which the server refuses for listing pages", async () => {
-    const calls = stubApi({});
-    await openScrape();
-    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
-    await choose("Page kind", "Listing");
-
-    await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
-
-    const kinds = within(screen.getByRole("radiogroup", { name: "Page kind" }));
-    expect(kinds.getByLabelText("Listing")).toBeDisabled();
-    expect(kinds.getByLabelText("Listing")).not.toBeChecked();
-    expect(screen.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
-    await submit();
-    expect(calls).toEqual([]);
-  });
-
-  it("requires a page kind when records are asked for", async () => {
-    const calls = stubApi({});
-    await openScrape();
-    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
-    await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
-
-    await submit();
-
-    expect(calls).toEqual([]);
-  });
-
-  it("shows a prompt's draft schema and types the records by it", async () => {
-    const draft = { ...itemSchema, name: "drafted", origin: "prompt_draft" };
-    const calls = stubApi({
-      "POST /v1/scrape": () => Response.json({ ...withRecords, schema: draft }),
-    });
-    await openScrape();
-    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
-    await userEvent.click(screen.getByRole("checkbox", { name: "Records" }));
-    await choose("Schema", "From a prompt");
-    await userEvent.type(screen.getByRole("textbox", { name: "Prompt" }), "the item's price");
-    await choose("Page kind", "Detail");
-
-    await submit();
-
-    const schemaTab = await openTab("Draft schema");
-    expect(schemaTab.getByText("drafted")).toBeInTheDocument();
-    expect(schemaTab.getByText("prompt_draft")).toBeInTheDocument();
-    expect(schemaTab.getByRole("link", { name: "Edit as schema" })).toHaveAttribute(
-      "href",
-      `/schemas/new?from=${SCHEMA_ID}`,
-    );
-    const records = await openTab("Records");
-    expect(
-      within(records.getByRole("row", { name: /price/ })).getByText("19.90 EUR"),
-    ).toBeVisible();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.body).toMatchObject({ schema: { prompt: "the item's price" } });
-  });
 });
 
-describe("scrape screen: formats and problems", () => {
+describe("scrape playground: formats and problems", () => {
   it("shows each returned format in its own tab", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () =>
         Response.json(
           scrapeResponse({
@@ -421,7 +555,7 @@ describe("scrape screen: formats and problems", () => {
   });
 
   it("shows the outcome, fetch attempts and usage", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () => Response.json(scrapeResponse({ outcome: "blocked" })),
     });
     await openScrape();
@@ -442,7 +576,7 @@ describe("scrape screen: formats and problems", () => {
   });
 
   it("shows a page robots.txt kept from being fetched without a fetch or a final URL", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () =>
         Response.json(
           scrapeResponse({
@@ -466,7 +600,7 @@ describe("scrape screen: formats and problems", () => {
   });
 
   it("shows a problem with its per-field errors, and the retry time on 429", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () =>
         problem(
           429,
@@ -486,7 +620,7 @@ describe("scrape screen: formats and problems", () => {
   });
 
   it("lists a validation problem's field errors and marks the inputs they name", async () => {
-    stubApi({
+    stubScrape({
       "POST /v1/scrape": () =>
         problem(422, {
           type: "validation",
@@ -509,7 +643,7 @@ describe("scrape screen: formats and problems", () => {
   });
 
   it("says so when the API answers without a problem body", async () => {
-    stubApi({ "POST /v1/scrape": () => new Response("upstream down", { status: 502 }) });
+    stubScrape({ "POST /v1/scrape": () => new Response("upstream down", { status: 502 }) });
     await openScrape();
     await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
 

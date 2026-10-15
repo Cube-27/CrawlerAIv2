@@ -283,7 +283,7 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 1 | Server-side key; drop Connect | done (#189) | D-0811, D-0812. |
-| 2 | Playground shell + Scrape mode + options panel | todo | Needs 1. |
+| 2 | Playground shell + Scrape mode + options panel | done (#191) | D-0817–D-0819. |
 | 3 | Single-page output with JSON default | todo | Needs 2. |
 | 4 | Batch mode + running results table + JSON drawer + CSV upload + export buttons | todo | Needs 3 and 9. |
 | 5 | Live activity feed | todo | Needs 4. |

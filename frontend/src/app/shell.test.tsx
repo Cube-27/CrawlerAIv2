@@ -11,13 +11,13 @@ function renderApp(path = "/") {
 }
 
 describe("app shell", () => {
-  it("renders the sidebar, the navigation and the overview, with no key prompt", () => {
+  it("renders the sidebar, the navigation and the Scrape playground at /, with no key prompt", () => {
     renderApp();
 
     expect(screen.getByRole("complementary", { name: "Sidebar" })).toHaveTextContent("CrawlerAI");
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Scrape" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("main")).toContainElement(
-      screen.getByRole("heading", { level: 1, name: "Overview" }),
+      screen.getByRole("heading", { level: 1, name: "Playground" }),
     );
     expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe("app shell", () => {
       within(nav)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Overview", "Scrape", "Jobs", "Records", "Schemas", "Sites", "Settings"]);
+    ).toEqual(["Scrape", "Jobs", "Records", "Schemas", "Sites", "Settings"]);
   });
 
   it("hides the Labeling entry when /healthz fails", async () => {
