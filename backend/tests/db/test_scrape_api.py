@@ -22,6 +22,7 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
+from crawlerai.db.keys import create_key
 from crawlerai.db.models import ApiKey, Job
 from crawlerai.llm.client import MeteredClient, ProviderError, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
@@ -31,7 +32,6 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.keys import create_key
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -280,7 +280,7 @@ async def test_a_blank_prompt_is_a_validation_problem_and_starts_no_job(
     problem = response.json()
     assert problem["type"] == "validation"
     # The union reports each schema form's error; the prompt form's is that the prompt is empty.
-    assert {"field": "schema.SchemaPrompt.prompt", "reason": "Value error, the prompt is empty"} in problem["errors"]
+    assert {"field": "schema.SchemaPrompt.prompt", "reason": "the prompt is empty"} in problem["errors"]
     async with database.connect() as conn:
         assert (await conn.execute(select(func.count()).select_from(Job))).scalar_one() == jobs_before
 

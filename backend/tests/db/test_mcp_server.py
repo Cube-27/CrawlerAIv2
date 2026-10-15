@@ -29,6 +29,7 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
+from crawlerai.db.keys import CreatedKey, create_key, revoke_key
 from crawlerai.db.models import ApiKey, ExtractionConfig, ExtractionConfigId, Job, Project, Site, SiteId
 from crawlerai.llm.client import Unconfigured
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
@@ -39,7 +40,6 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services import schemas
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.keys import CreatedKey, create_key, revoke_key
 from crawlerai.services.runtime import Runtime
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import PRIVATE_HOST, resolve

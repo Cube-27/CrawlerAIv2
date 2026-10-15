@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 
 from crawlerai.api.dto import FieldErrorOut, Problem
 from crawlerai.core.errors import UNEXPECTED
+from crawlerai.core.validation import field_error
 from crawlerai.llm.client import BudgetExhausted, LLMFailure, OutputInvalid, ProviderUnavailable
 
 PROBLEM_JSON = "application/problem+json"  # RFC 9457 §3
@@ -88,12 +89,6 @@ def _status_only(status: int, detail: str | None = None) -> ProblemError:
     return ProblemError(status, "about:blank", phrase, detail or phrase)
 
 
-def _field(location: Sequence[int | str]) -> str:
-    """The dotted path of a validation error: within the body as is, else prefixed with where it is (`query.x`)."""
-    parts = [str(part) for part in location]
-    return ".".join(parts[1:] if parts[:1] == ["body"] else parts)
-
-
 async def _on_problem(request: Request, exc: ProblemError) -> JSONResponse:
     return problem_response(request, exc)
 
@@ -107,8 +102,13 @@ async def _on_http(request: Request, exc: HTTPException) -> JSONResponse:
     return problem_response(request, error)
 
 
+def _within_body(location: tuple[int | str, ...]) -> tuple[int | str, ...]:
+    """A body error's location within the body; any other keeps where it is (`query.status`)."""
+    return location[1:] if location[:1] == ("body",) else location
+
+
 async def _on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
-    errors = [(_field(error["loc"]), error["msg"]) for error in exc.errors()]
+    errors = [field_error(e | {"loc": _within_body(e["loc"])}) for e in exc.errors()]
     return problem_response(request, invalid("the request is invalid", errors))
 
 

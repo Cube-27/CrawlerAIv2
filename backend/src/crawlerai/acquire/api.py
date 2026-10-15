@@ -19,6 +19,7 @@ import httpx
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
+from crawlerai.acquire.public_suffix import SuffixCookiePolicy, default_suffixes
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
@@ -108,8 +109,10 @@ async def _follow(
 ) -> tuple[Exchange, bytes]:
     target = await _checked(connector.check(request.url), None)
     # Cookies live for this fetch only (INV-29), matched on each hop's host name (RFC 6265 §5.4), not by httpx's jar
-    # (`_NO_COOKIES`). Host-only cookies stay on their host (§5.3 step 6).
-    cookies = httpx.Cookies(CookieJar(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain)))
+    # (`_NO_COOKIES`). Host-only cookies stay on their host (§5.3 step 6), and no cookie is set for a public suffix
+    # (§5.3 step 5).
+    # The list is parsed on the first fetch only (cached), off the event loop.
+    cookies = httpx.Cookies(CookieJar(SuffixCookiePolicy(await asyncio.to_thread(default_suffixes))))
     # `trust_env=False` ignores proxy environment variables: a proxy resolves the host itself, which would bypass the
     # checked address.
     async with httpx.AsyncClient(

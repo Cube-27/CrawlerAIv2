@@ -45,8 +45,10 @@ _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
 # The `type:period` vocabulary (SPEC-04 §4.4) maps each phrase to one of these units; its JUSTIFICATION.md names the
 # source.
 _PERIOD_VOCABULARY = "period"
-# The range separators SPEC-04 §4.4 names: hyphen-minus, en dash (the range dash, Unicode U+2013) and `en` "to".
-_SEPARATOR = re.compile(r"\s*(?:-|\u2013|\bto\b)\s*", re.IGNORECASE)
+# The range separators SPEC-04 §4.4 names: hyphen-minus and en dash (the range dash, Unicode U+2013), in any language;
+# the `type:range_to` vocabulary holds the words, such as `en` "to", for the page's languages.
+_DASHES = r"-|\u2013"
+_SEPARATOR_VOCABULARY = "range_to"
 # A written amount: ASCII digits (`re.ASCII`), with the grouping and decimal marks CLDR number patterns use between
 # them (full stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount
 # is the money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
@@ -129,10 +131,11 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         return Invalid("surrogate")
     if not raw.strip():
         return Invalid("empty")
-    text, periods = _strip_periods(raw, vocab.context_languages(ctx))
+    languages = vocab.context_languages(ctx)
+    text, periods = _strip_periods(raw, languages)
     if len(periods) > 1:
         return Invalid("period_mismatch")
-    bounds = _split_bounds(text)
+    bounds = _split_bounds(text, _separator(languages))
     if bounds is None:
         return Invalid("not_a_range")
     texts = _bound_texts(*bounds)
@@ -144,11 +147,11 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
 Parts = tuple[str, str, str]
 
 
-def _split_bounds(text: str) -> tuple[Parts, Parts] | None:
+def _split_bounds(text: str, separator: re.Pattern[str]) -> tuple[Parts, Parts] | None:
     """The two bounds of `text`, each as (text before, amount, text after), or `None` unless it is one range."""
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
     starts = [m.start() for m in _AMOUNT.finditer(text)]
-    splits = [m for m in _SEPARATOR.finditer(text) if starts and starts[0] < m.start() and m.end() <= starts[-1]]
+    splits = [m for m in separator.finditer(text) if starts and starts[0] < m.start() and m.end() <= starts[-1]]
     if len(splits) != 1:
         return None
     left = _around_amount(text[: splits[0].start()].strip())
@@ -171,6 +174,20 @@ def _bound_texts(left: Parts, right: Parts) -> tuple[str, str] | None:
     elif not right_has:
         right_before, right_after = left_before, left_after
     return left_before + left_amount + left_after, right_before + right_amount + right_after
+
+
+@lru_cache(maxsize=64)  # keyed by the page's languages, a small set
+def _separator(languages: frozenset[str]) -> re.Pattern[str]:
+    """The dashes and the `type:range_to` words of the page's languages (every language when it states none), each
+    word whole and in any case, with the white space around them."""
+    entries = vocab.entries_for(vocab.type_vocabulary(_SEPARATOR_VOCABULARY) or {}, languages)
+    words = sorted({phrase for e in entries for phrase in e.phrases})
+    return re.compile(rf"\s*(?:{'|'.join([_DASHES, *map(_whole_words, words)])})\s*", re.IGNORECASE)
+
+
+def _whole_words(phrase: str) -> str:
+    """A vocabulary phrase (token form) as a pattern: its words whole, with any white space between them."""
+    return r"\b" + r"\s+".join(map(re.escape, phrase.split(" "))) + r"\b"
 
 
 def _strip_periods(raw: str, languages: frozenset[str]) -> tuple[str, set[str]]:
@@ -199,9 +216,8 @@ def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[st
     alternatives: list[str] = []
     codes: dict[str, str] = {}
     for i, (phrase, code) in enumerate(sorted(phrases.items())):
-        words = phrase.split(" ")
-        written = r"\s+".join(map(re.escape, words))
-        alternatives.append(rf"(?P<p{i}>\b{written}\b|/\s*{re.escape(words[-1])}\b)")
+        last = phrase.rsplit(" ", 1)[-1]
+        alternatives.append(rf"(?P<p{i}>{_whole_words(phrase)}|/\s*{re.escape(last)}\b)")
         codes[f"p{i}"] = code
     return re.compile("|".join(alternatives), re.IGNORECASE), codes
 

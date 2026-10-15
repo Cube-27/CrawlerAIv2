@@ -21,6 +21,7 @@ from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7
+from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
     Capture,
@@ -42,7 +43,6 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaChanges, SchemaDef, SchemaDocument
 from crawlerai.services import captures, records
 from crawlerai.services.captures import CaptureNotFound
-from crawlerai.services.keys import create_key
 from crawlerai.services.records import RecordFilter
 from crawlerai.storage.fs import FsStore
 

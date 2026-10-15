@@ -61,10 +61,32 @@ def test_a_json_ld_node_reference_to_a_member_matches(member: str) -> None:
 
 @pytest.mark.parametrize(
     "raw",
-    ["https://schema.org/Instock", "instock", "https://schema.org/Product", "https://example.test/InStock", "In stock"],
+    ["https://schema.org/Instock", "instock", "https://schema.org/Product", "https://example.test/InStock", "red"],
 )
 def test_a_name_that_is_no_member_is_invalid(raw: str) -> None:
     assert enum.normalize(raw, SCHEMA, CTX) == Invalid("not_a_member")
+
+
+@given(_members, _filler, _filler)
+def test_text_stating_a_member_matches_through_the_vocabulary_of_its_members(
+    member: str, before: str, after: str
+) -> None:
+    # Page text ("In stock") names no member, but `type:availability` maps phrases to ItemAvailability members.
+    assert enum.normalize(f"{before} {_phrase(member)} {after}", SCHEMA, CTX) == Ok(member)
+
+
+def test_text_stating_two_members_is_ambiguous() -> None:
+    assert enum.normalize("in stock, sold out", SCHEMA, CTX) == Ambiguous("several_members", ("InStock", "SoldOut"))
+
+
+def test_text_on_a_page_in_a_language_without_phrases_is_no_member() -> None:
+    ctx = CTX.model_copy(update={"html_lang": "xx"})
+
+    assert enum.normalize("in stock", SCHEMA, ctx) == Invalid("not_a_member")
+
+
+def test_an_iri_outside_schema_org_is_never_read_as_text() -> None:
+    assert enum.normalize("https://example.test/in-stock", SCHEMA, CTX) == Invalid("not_a_member")
 
 
 @pytest.mark.parametrize("raw", [3, None, ["InStock"], {"@id": 3}, {"@id": "InStock", "name": "x"}])

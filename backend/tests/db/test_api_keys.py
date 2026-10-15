@@ -20,8 +20,8 @@ from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
 from crawlerai.cli import main
 from crawlerai.core.settings import Settings
+from crawlerai.db.keys import hash_key
 from crawlerai.db.models import ApiKey, ApiKeyId
-from crawlerai.services.keys import hash_key
 from crawlerai.worker.loop import run_worker
 
 pytestmark = pytest.mark.anyio

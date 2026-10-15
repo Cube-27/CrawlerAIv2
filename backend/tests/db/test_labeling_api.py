@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.core.settings import Settings
+from crawlerai.db.keys import create_key
 from crawlerai.db.models import ApiKey, Capture, EvalPage, SchemaDef, Site
 from crawlerai.eval.store import EvalPageRow, get_store
-from crawlerai.services.keys import create_key
 
 pytestmark = pytest.mark.anyio
 

@@ -40,12 +40,12 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
+from crawlerai.db.keys import create_key
 from crawlerai.db.models import ApiKey, Job, JobId, JobKind, UrlTask
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDocument
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.keys import create_key
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler

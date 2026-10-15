@@ -13,6 +13,7 @@ import json
 import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import cache
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 
@@ -87,6 +88,16 @@ def schema_members(enumeration: str) -> frozenset[str] | None:
 def type_vocabulary(name: str) -> Mapping[str, Entries] | None:
     """A type vocabulary's entries by language (BCP 47 primary subtag), or `None` when none is shipped."""
     return _TYPE.get(name)
+
+
+@cache
+def type_vocabularies_within(members: frozenset[str]) -> tuple[Mapping[str, Entries], ...]:
+    """The type vocabularies with phrases whose every code, in every language, is one of `members`."""
+    return tuple(
+        by_language
+        for by_language in _TYPE.values()
+        if by_language and all(set(entries.phrases.values()) <= members for entries in by_language.values())
+    )
 
 
 def find_codes(by_language: Mapping[str, Entries], words: Tokens, ctx: Context) -> frozenset[str] | None:

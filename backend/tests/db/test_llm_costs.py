@@ -23,10 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7_floor
+from crawlerai.db.keys import create_key
 from crawlerai.db.models import ApiKey, Job, JobId, Project, UsageEvent, UsageResource
 from crawlerai.llm.pricing import PriceList, Pricing
 from crawlerai.services import jobs, llm_costs
-from crawlerai.services.keys import create_key
 from crawlerai.services.llm_costs import CostQuery
 
 pytestmark = pytest.mark.anyio

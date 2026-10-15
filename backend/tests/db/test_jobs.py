@@ -24,6 +24,7 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7
 from crawlerai.db.jobs import start_jobs
+from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
     Capture,
@@ -56,7 +57,6 @@ from crawlerai.services.jobs import (
     PageOutputPage,
     ResultsQuery,
 )
-from crawlerai.services.keys import create_key
 from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
 

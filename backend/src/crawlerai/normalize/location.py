@@ -25,7 +25,7 @@ from pathlib import Path
 from babel import Locale, UnknownLocaleError
 from pydantic import JsonValue
 
-from crawlerai.core.engine_version import backend_dir, data_dir
+from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.normalize import vocab
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -136,11 +136,11 @@ def _rows(lines: Iterable[str]) -> Iterable[list[str]]:
 
 @cache
 def default_gazetteer() -> Gazetteer:
-    """The gazetteer from `backend/data/geonames/` of the source tree, read once."""
-    backend = backend_dir(Path(__file__))
-    if backend is None:
-        raise GazetteerMissing("no backend source tree: GeoNames files are read from backend/data/geonames/")
-    return Gazetteer.read(data_dir(backend) / GEONAMES_DIR)
+    """The gazetteer from the engine directory's `data/geonames/`, read once."""
+    data = engine_data_dir()
+    if data is None:
+        raise GazetteerMissing("no engine directory: GeoNames files are read from its data/geonames/")
+    return Gazetteer.read(data / GEONAMES_DIR)
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, gazetteer: Gazetteer | None = None) -> NormalizeResult:

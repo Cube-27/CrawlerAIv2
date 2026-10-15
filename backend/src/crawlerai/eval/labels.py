@@ -27,8 +27,8 @@ from pydantic import (
     ValidationError,
     model_validator,
 )
-from pydantic_core import ErrorDetails
 
+from crawlerai.core.validation import field_error
 from crawlerai.db.models import PageKind
 from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import FieldSpec
@@ -176,7 +176,7 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, specs: Mapping[str, FieldS
     try:
         labels = Labels.model_validate(raw)
     except ValidationError as e:
-        raise InvalidLabels([from_pydantic(err) for err in e.errors()]) from None
+        raise InvalidLabels([LabelError(*field_error(err)) for err in e.errors()]) from None
     complete = labels.status != "draft"
     check = _check_detail if page_kind == "detail" else _check_listing
     errors = list(check(labels, specs, complete))
@@ -293,10 +293,3 @@ def _check_distractors(path: str, label: FieldLabel, spec: FieldSpec) -> Iterato
             yield LabelError(f"{path}.distractors[{i}]", "a distractor has a value")
         elif label.value is not None and equal(distractor, label.value, spec):
             yield LabelError(f"{path}.distractors[{i}]", "a distractor equals the value")
-
-
-def from_pydantic(err: ErrorDetails) -> LabelError:
-    path = "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in err["loc"]).removeprefix(".")
-    # Our own validators raise ValueError; pydantic prefixes its message with "Value error, ".
-    reason = str(err["ctx"]["error"]) if err["type"] == "value_error" else err["msg"]
-    return LabelError(path, reason)

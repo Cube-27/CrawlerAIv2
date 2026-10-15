@@ -13,8 +13,8 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.core.errors import Refusal
+from crawlerai.core.validation import field_error
 from crawlerai.db.models import SchemaId, SchemaStatus
-from crawlerai.eval.labels import from_pydantic
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import NotLatest, SchemaExists
 from crawlerai.schemas.types import Name, SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
@@ -30,12 +30,12 @@ class SchemaConflict(Refusal):
 
 
 class InvalidSchema(Refusal):
-    """The document breaks a schema rule (SPEC-04 §4.2); `errors` are (field path, reason) pairs as labels report
-    theirs, `""` for the whole document."""
+    """The document breaks a schema rule (SPEC-04 §4.2); `errors` are (field path, reason) pairs, `""` for the whole
+    document."""
 
     def __init__(self, error: ValidationError) -> None:
         super().__init__("the schema document is invalid")
-        self.errors = [(e.path, e.reason) for e in map(from_pydantic, error.errors())]
+        self.errors = [field_error(e) for e in error.errors()]
 
 
 async def create(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:

@@ -14,8 +14,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from crawlerai.api.database import database
 from crawlerai.api.forwarded import Network, client_address
 from crawlerai.api.problems import ProblemError
+from crawlerai.db.keys import authenticate, hash_key
 from crawlerai.db.models import ApiKeyId
-from crawlerai.services.keys import authenticate, hash_key
 
 _BEARER = "bearer"  # the auth scheme is case-insensitive (RFC 9110 §11.1)
 

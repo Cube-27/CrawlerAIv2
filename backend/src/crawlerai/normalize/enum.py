@@ -2,13 +2,16 @@
 
 - `schema:<Enumeration>`: the input is a string or a JSON-LD node reference (`{"@id": …}`) naming a member by IRI
   (`https://schema.org/InStock`, `http://schema.org/InStock`), compact IRI (`schema:InStock`) or name (`InStock`).
-  The value is the member name.
+  The value is the member name. Other text, not an IRI, is matched as the `type:` path does against each type
+  vocabulary whose codes are all members of the enumeration (`type:availability` for `ItemAvailability`), so a page
+  that states "In stock" in its text gives `InStock`.
 - `type:<name>`: the input is a string; a phrase of the vocabulary matches when its tokens are a contiguous run of
   the input's tokens (`crawlerai.normalize.vocab`). The value is the phrase's code.
 
 No match is `Invalid`; two members in one input are `Ambiguous`.
 """
 
+import re
 from collections.abc import Hashable
 
 from pydantic import JsonValue
@@ -20,6 +23,9 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # schema.org names its terms under https://schema.org/ and, earlier, http://schema.org/ (schema.org, "Data model");
 # `schema:` is the prefix its JSON-LD context declares for compact IRIs (JSON-LD 1.1 §4.1.5).
 _SCHEMA_PREFIXES = ("https://schema.org/", "http://schema.org/", "schema:")
+# An absolute IRI starts with its scheme and a colon (RFC 3987 §2.2, RFC 3986 §3.1) and holds no white space; it names
+# a resource, so it is never read as text.
+_IRI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S*")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -29,11 +35,11 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         raise TypeError(f"the enum normalizer does not handle type {spec.type} without a vocab")
     kind, name = spec.vocab.split(":", 1)
     if kind == "schema":
-        return _schema_member(raw, name)
+        return _schema_member(raw, name, ctx)
     return _type_code(raw, name, ctx)
 
 
-def _schema_member(raw: Raw, enumeration: str) -> NormalizeResult:
+def _schema_member(raw: Raw, enumeration: str, ctx: Context) -> NormalizeResult:
     members = vocab.schema_members(enumeration)
     if members is None:
         return Invalid("unknown_vocab")
@@ -47,10 +53,20 @@ def _schema_member(raw: Raw, enumeration: str) -> NormalizeResult:
     if not name:
         return Invalid("empty")
     prefix = next((p for p in _SCHEMA_PREFIXES if name.startswith(p)), "")
-    name = name.removeprefix(prefix)
-    if name not in members:
+    member = name.removeprefix(prefix)
+    if member in members:
+        return Ok(member)
+    if prefix or _IRI.fullmatch(name):
         return Invalid("not_a_member")
-    return Ok(name)
+    return _stated_member(name, members, ctx)
+
+
+def _stated_member(text: str, members: frozenset[str], ctx: Context) -> NormalizeResult:
+    """The member that `text` states through the type vocabularies whose codes are all `members`: their phrases
+    name members of this enumeration and nothing else (the structural property the match rests on)."""
+    words = vocab.tokens(text)
+    found = [vocab.find_codes(v, words, ctx) for v in vocab.type_vocabularies_within(members)]
+    return _one_code(frozenset().union(*(c for c in found if c is not None)), "not_a_member")
 
 
 def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
@@ -67,8 +83,13 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
     codes = vocab.find_codes(by_language, words, ctx)
     if codes is None:
         return Invalid("no_vocabulary_for_language")
+    return _one_code(codes, "no_match")
+
+
+def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
+    """The one code found; two or more are `Ambiguous`, none is `Invalid(none)`."""
     if not codes:
-        return Invalid("no_match")
+        return Invalid(none)
     if len(codes) > 1:
         return Ambiguous("several_members", tuple(sorted(codes)))
     return Ok(next(iter(codes)))

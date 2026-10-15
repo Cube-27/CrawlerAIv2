@@ -16,8 +16,9 @@ from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.core.capture import BlockClass
+from crawlerai.core.validation import field_error
 from crawlerai.db.models import ExtractionMode, FieldStatus, SourceKind
-from crawlerai.eval.labels import from_pydantic, parse_labels
+from crawlerai.eval.labels import parse_labels
 from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
 from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
@@ -182,7 +183,7 @@ async def _replay(
         try:
             config = ConfigSnapshot.model_validate(page.config_snapshot)
         except ValidationError as e:
-            reasons = "; ".join(f"{err.path}: {err.reason}" for err in map(from_pydantic, e.errors()))
+            reasons = "; ".join(f"{path}: {reason}" for path, reason in map(field_error, e.errors()))
             return ReplayFailed(error=f"invalid config_snapshot: {reasons}"), {}
     mode: ExtractionMode = "adhoc" if config is None else "config"
     try:

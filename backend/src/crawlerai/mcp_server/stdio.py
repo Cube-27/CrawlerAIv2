@@ -5,8 +5,8 @@ client, so no rate limit stands in front of the lookup."""
 from mcp.server.fastmcp.exceptions import ToolError
 
 from crawlerai.core.settings import McpSettings, Settings
+from crawlerai.db.keys import authenticate, hash_key
 from crawlerai.mcp_server.server import AnyContext, Bind, Caller, build_server
-from crawlerai.services.keys import authenticate, hash_key
 from crawlerai.services.runtime import Runtime, open_runtime
 
 

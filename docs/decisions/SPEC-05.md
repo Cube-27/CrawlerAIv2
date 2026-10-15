@@ -560,3 +560,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Split at the second-to-last wildcard (wrong for a list field without an item wildcard); one candidate per item (the old behaviour).
 - Why: The entity is the posting, not each item of its list.
 - Reversible: yes
+
+### D-0880 — The wheel carries the engine's data (closes D-0492)
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: A hatchling build hook (`backend/hatch_build.py`) writes `VERSION` (from `CRAWLERAI_GIT_SHA`, else `git rev-parse HEAD`) and packs it, the files `data/manifest.json` lists that are present, and the dev-fitted files under `crawlerai/_engine/`. `engine_dir()` reads the source tree's `backend/` first, else that copy; every loader goes through `engine_data_dir()`.
+- Alternatives: A settings path to a data directory.
+- Why: An installed wheel or the image is self-contained with no new setting, and the manifest stays the one list of what ships (C4). ARCHITECTURE is unchanged.
+- Reversible: yes
+
+### D-0881 — The image build continues past a refused fetch
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: The Dockerfile runs the pinned fetch before building the project, prints refused entries and leaves them out; the engine reports them missing at run time.
+- Alternatives: Fail the build on any refusal.
+- Why: The GeoNames pin goes stale daily until D-0311 is answered; failing would make the image unbuildable.
+- Reversible: yes

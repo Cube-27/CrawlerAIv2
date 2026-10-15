@@ -20,7 +20,7 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from crawlerai.core.engine_version import backend_dir, data_dir
+from crawlerai.core.engine_version import engine_data_dir
 
 # The price lists the engine reads, one per provider (`backend/data/manifest.json`).
 PRICE_FILES: Final = (Path("llm") / "anthropic-pricing.json", Path("llm") / "gemini-pricing.json")
@@ -105,7 +105,7 @@ class Pricing:
 
 @cache
 def default_pricing() -> Pricing:
-    """The prices in `backend/data/` of the source tree, read once. An installed package has no backend tree, so it
-    has no prices and every cost is unknown, never guessed (the data directory follow-up in plans/ACTIVE.md)."""
-    backend = backend_dir(Path(__file__))
-    return Pricing(()) if backend is None else Pricing.read(data_dir(backend))
+    """The prices in the engine directory's `data/`, read once. Without an engine directory there are no prices and
+    every cost is unknown, never guessed."""
+    data = engine_data_dir()
+    return Pricing(()) if data is None else Pricing.read(data)

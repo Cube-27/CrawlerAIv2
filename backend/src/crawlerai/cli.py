@@ -7,14 +7,14 @@ import logging
 import signal
 import sys
 import uuid
-from collections.abc import Sequence
-from contextlib import aclosing, suppress
+from collections.abc import AsyncIterator, Sequence
+from contextlib import aclosing, asynccontextmanager, suppress
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from typing import get_args
 
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
@@ -28,6 +28,7 @@ from crawlerai.api.webhooks import poster
 from crawlerai.core.data import fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
+from crawlerai.db.keys import create_key, revoke_key
 from crawlerai.db.models import EvalCategory, EvalRunId, JobKind, PageKind, Split
 from crawlerai.eval import calibrate, promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
@@ -43,7 +44,6 @@ from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
 from crawlerai.services.fetching import Fetching, learning_replay
-from crawlerai.services.keys import create_key, revoke_key
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
@@ -183,25 +183,28 @@ async def _eval_rotate_hidden(fraction: float) -> None:
         sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, fresh, dev, fraction)))
 
 
-async def _sync_presets() -> None:
+@asynccontextmanager
+async def _transaction() -> AsyncIterator[AsyncConnection]:
+    """One transaction on the configured database, for a command that writes once; the engine closes with it."""
     engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
     try:
         async with engine.begin() as conn:
-            inserted = await sync_presets(conn)
+            yield conn
     finally:
         await engine.dispose()
+
+
+async def _sync_presets() -> None:
+    async with _transaction() as conn:
+        inserted = await sync_presets(conn)
     for schema in inserted:
         print(f"inserted preset {schema.name} version {schema.version}")
     print(f"{len(inserted)} preset version(s) inserted")
 
 
 async def _apikey_create(label: str) -> None:
-    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
-    try:
-        async with engine.begin() as conn:
-            created = await create_key(conn, label)
-    finally:
-        await engine.dispose()
+    async with _transaction() as conn:
+        created = await create_key(conn, label)
     # The key is printed this once; only its hash is stored (SPEC-07 §4.2). The webhook secret, which verifies the
     # signature of the key's webhooks (SPEC-10 §4.2), is printed with it.
     print(
@@ -217,12 +220,8 @@ async def _apikey_create(label: str) -> None:
 
 
 async def _apikey_revoke(parser: argparse.ArgumentParser, key_id: uuid.UUID) -> None:
-    engine = create_async_engine(DatabaseSettings().database_url.get_secret_value())
-    try:
-        async with engine.begin() as conn:
-            outcome = await revoke_key(conn, key_id)
-    finally:
-        await engine.dispose()
+    async with _transaction() as conn:
+        outcome = await revoke_key(conn, key_id)
     if outcome == "not_found":
         parser.exit(2, f"crawlerai apikey revoke: no API key {key_id}\n")
     print(json.dumps({"id": str(key_id), "revoked": outcome == "revoked"}))

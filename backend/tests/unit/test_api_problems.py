@@ -80,6 +80,15 @@ def test_a_request_body_that_fails_validation_lists_each_field_and_reason() -> N
     ]
 
 
+def test_a_list_member_that_fails_validation_is_named_by_its_index() -> None:
+    body = {"split": "dev", "schema": "s", "page_kind": "detail", "category": "custom_store", "urls": [7]}
+
+    response = _request(_labeling_app(), "POST", "/v1/eval/capture", body)
+
+    assert response.status_code == 422
+    assert _problem(response)["errors"] == [{"field": "urls[0]", "reason": "Input should be a valid string"}]
+
+
 def test_a_query_parameter_that_fails_validation_names_its_location() -> None:
     response = _request(_labeling_app(), "GET", "/v1/eval/pages?status=finished")
 

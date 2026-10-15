@@ -1,10 +1,10 @@
 """Shared by the orchestrator script tests: a `herdr agent list` listing and fake executables on PATH."""
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
+from fake_bin import fake_bin
 from scan_repo import git
 
 # Logs every call; `herdr agent list` prints the listing in $FAKE_HERDR_LIST.
@@ -41,16 +41,11 @@ def init_main(tmp_path: Path) -> tuple[Path, str, str]:
 
 def fake_env(tmp_path: Path, executables: dict[str, str], listing: str) -> dict[str, str]:
     """An environment with EXECUTABLES (name -> script) first on PATH, a call log and the herdr LISTING."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    for exe, text in executables.items():
-        (bin_dir / exe).write_text(text, newline="\n")
-        (bin_dir / exe).chmod(0o755)
     (tmp_path / "calls.log").touch()
     (tmp_path / "herdr_list.json").write_text(listing, newline="\n")
-    return {
-        **os.environ,
-        "PATH": f"{bin_dir.as_posix()}{os.pathsep}{os.environ['PATH']}",
-        "FAKE_LOG": (tmp_path / "calls.log").as_posix(),
-        "FAKE_HERDR_LIST": (tmp_path / "herdr_list.json").as_posix(),
-    }
+    return fake_bin(
+        tmp_path,
+        executables,
+        FAKE_LOG=(tmp_path / "calls.log").as_posix(),
+        FAKE_HERDR_LIST=(tmp_path / "herdr_list.json").as_posix(),
+    )

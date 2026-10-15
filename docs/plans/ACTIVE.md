@@ -58,7 +58,7 @@ Full rows are in git history.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
-- Packaging: an installed wheel has no `backend/data`, `VERSION` or `calibration.json` (`ENGINE_VERSION = unknown+cal.none`, empty pricing); one PR decides where `EngineData.load` gets its directory and makes the build write `VERSION` (D-0492) [#100, #148].
+- Packaging: a wheel built from an sdist (`uv build`'s default) has no `.git` and no fetched files, so it reports `unknown` and lacks fetched data unless `CRAWLERAI_GIT_SHA` is set and the data fetched first; the image's fetch re-runs on every `src/` change (copy only `core/data.py` before it) and keeps the data twice (D-0880) [#200].
 - Playground: the recent-runs table and the Jobs table could share one row component; the mode tests could share their API-stub fixtures [#198].
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
@@ -70,12 +70,11 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
 - `TruncatedText` makes every event data and Reason cell a tab stop [#157].
 - Resolve: zero-touch ignores a required row-mapped field (no preset has one) [#176]. Optional: `Final` on `_SET_NULL` [#177]. A listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
-- Acquisition: CDP streaming for the browser's memory bound; public-suffix data for `Domain=` cookies; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #53, #64].
-- Smaller items from done-spec tables (unverified; check before building): theme tracks live OS changes and SPEC-00 §4.3's HeroUI licence/version [#4]; `commerce_detail` availability reads `type:availability` for DOM text [#54]; period words only in the page's languages, range's `to` separator into `vocab/` [#66]; key store to `db/`, one CLI transaction helper, `Forwarded`/XFF precedence [#77].
+- Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64]. The HTTP rung's cookies (libcurl's engine, built without libpsl) are not checked against the public-suffix list, and a `Domain=` equal to a setting host that is itself a public suffix is kept as a domain cookie, not host-only (RFC 6265 §5.3 step 5) (D-0884) [#200].
+- Smaller items from done-spec tables (unverified; check before building): theme tracks live OS changes and SPEC-00 §4.3's HeroUI licence/version [#4].
 - More of the same, SPEC-05/08/10: CSV formula injection in downloads, blocked on D-0879 [#115]; the INV-27 markdown leg parses table cells back [#120]; two concurrent first uses of a new inline schema name give a 409 [#105].
 - Recurring crawls: a test that `changed_since` waits on `RECORD_FEED_LOCK` (hold the shared lock in an open transaction) [#199].
-- Workflow tooling: ruff/Oxlint rules for more of ENGINEERING's analyser patterns; if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192]. One shared fake-bin helper for the orchestrator script tests (`test_wait_ci`, `test_merge_pr`, `test_start_agent`, `test_cleanup_worktree`) [#193].
-- `eval.labels.from_pydantic` moves below `eval` (services now import it) and formats every 422, `api/problems.py` included; it changes every 422's reason wording [#193].
+- Workflow tooling: ruff/Oxlint rules for more of ENGINEERING's analyser patterns; if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32]. The project license (`AGPL-3.0-only` in `backend/pyproject.toml`) is the owner's call [#175].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)

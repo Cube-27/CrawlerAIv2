@@ -352,3 +352,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: A table keyed by origin; a data migration.
 - Why: RFC 9309 §2.3 (robots.txt per scheme, host and port); no DDL change, every reader goes through `site_robots`, and an old value's origin is unknown.
 - Reversible: yes
+
+### D-0884 — Public suffixes for `Domain=` cookies
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: The Public Suffix List is a fetched manifest entry pinned to a commit of the list's repository (MPL-2.0, NOTICE). The JSON rung's per-fetch jar ignores a cookie whose `Domain` is a public suffix other than the setting host (RFC 6265 §5.3 step 5); without the file the list is empty and only the single-label rule applies. The HTTP rung is a follow-up.
+- Alternatives: Commit the list (its host names trip the C3 scan); the standard library's heuristic only.
+- Why: C4 data for a standard rule; curl_cffi keeps cookies in libcurl, built here without libpsl.
+- Reversible: yes
