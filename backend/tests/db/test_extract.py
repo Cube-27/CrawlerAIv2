@@ -92,17 +92,21 @@ def _urlset(*locs: str) -> bytes:
 
 @dataclass
 class Web:
-    """Answers each URL from `pages`; anything else is a 404. Records every URL fetched; `slow` URLs take a minute."""
+    """Answers each URL from `pages`; anything else is a 404. Records every URL fetched; `slow` URLs take a minute, and
+    `held` ones answer once their event is set."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, tuple[int, bytes, BlockClass]] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
     slow: set[str] = field(default_factory=set)
+    held: dict[str, asyncio.Event] = field(default_factory=dict)
 
     async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.fetched.append(url)
         if url in self.slow:
             await asyncio.sleep(60)
+        if url in self.held:
+            await self.held[url].wait()
         status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
         return self.fetch_result(url, status, body, block_class=block_class)
 
@@ -378,6 +382,30 @@ async def test_a_draft_past_its_timeout_fails_its_job(
 
     [(job_id, status)] = await _extract_jobs(engine)
     assert (status, await _tasks(engine, job_id)) == ("failed", [])
+
+
+async def test_a_job_cancelled_during_its_draft_queues_no_task(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str, engine_data: EngineData
+) -> None:
+    url = f"{own_origin}/p/1"
+    web.serve(url, _page("Blue kettle"))
+    web.held[url] = release = asyncio.Event()
+    llm = MeteredClient([FakeProvider([_draft_reply()])], engine)
+    submitting = asyncio.create_task(
+        submit_extract(engine, fetching, _request([url], {"prompt": prompt}), llm=llm, data=engine_data)
+    )
+    async with asyncio.timeout(30):
+        while url not in web.fetched:
+            await asyncio.sleep(0.05)
+    [(job_id, _)] = await _extract_jobs(engine)
+    async with engine.begin() as conn:
+        await jobs.cancel_job(conn, job_id)
+    release.set()
+
+    submitted = await submitting
+
+    assert submitted.job_id == job_id
+    assert ((await _job(engine, job_id)).status, await _tasks(engine, job_id)) == ("cancelled", [])
 
 
 # Running.

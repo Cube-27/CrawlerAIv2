@@ -22,17 +22,18 @@ a draft of another page kind, or the timeout.
 
 import asyncio
 import itertools
+from collections import Counter
 from typing import Final, Self, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.content.page import ParsedPage
 from crawlerai.crawl.canonical import canonicalize
-from crawlerai.crawl.rules import UrlGlob, is_glob, url_glob
+from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind
 from crawlerai.llm.client import LLMClient
@@ -80,12 +81,17 @@ class ExtractRequest(Input):
     @field_validator("urls")
     @classmethod
     def _urls_and_globs(cls, urls: list[str]) -> list[str]:
+        origins: Counter[str] = Counter()
         for index, url in enumerate(urls):
-            if is_glob(url):
-                if url_glob(url) is None:
-                    raise ValueError(f"urls[{index}] is not a glob on one http or https host")
-            elif canonicalize(url) is None:
-                raise ValueError(f"urls[{index}] is not an absolute http or https URL")
+            if not is_glob(url):
+                if canonicalize(url) is None:
+                    raise ValueError(f"urls[{index}] is not an absolute http or https URL")
+            elif (glob := url_glob(url)) is None:
+                raise ValueError(f"urls[{index}] is not a glob on one http or https host")
+            else:
+                origins[glob.origin] += 1
+        if any(count > MAX_PATTERNS for count in origins.values()):
+            raise ValueError(f"at most {MAX_PATTERNS} globs per host: a host's globs are its map's include")
         return urls
 
     @field_validator("webhook_url")
@@ -225,7 +231,8 @@ async def _drafted(
     timeout_s: float,
 ) -> ExtractSubmitted:
     """The job of a prompt, stored and started before its draft, which charges its usage and budget, then given the
-    draft, its pins and its tasks; it fails when no draft is made."""
+    draft, its pins and its tasks; it fails when no draft is made. A job that ended during the draft (a cancel, or
+    `fail_stalled_jobs`) is given no tasks: they would run for a job that has ended."""
     async with engine.begin() as conn:
         job_id = await _insert_job(conn, request, None, None, urls, api_key_id)
         await transition_job(conn, job_id, "running")
@@ -241,9 +248,12 @@ async def _drafted(
             raise DraftTimedOut(timeout_s) from e
         raise
     async with engine.begin() as conn:
-        pinned = await job_pins(conn, data, list(urls.values()), drafted)
-        await conn.execute(update(Job).where(Job.id == job_id).values(schema_id=drafted.id, pinned=pinned))
-        await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))
+        # FOR NO KEY UPDATE, as `settle_job` takes: a cancel waits for the tasks, or the tasks see the cancel.
+        locked = select(Job.status).where(Job.id == job_id).with_for_update(key_share=True)
+        if (await conn.execute(locked)).scalar_one() == "running":
+            pinned = await job_pins(conn, data, list(urls.values()), drafted)
+            await conn.execute(update(Job).where(Job.id == job_id).values(schema_id=drafted.id, pinned=pinned))
+            await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))
     return ExtractSubmitted(job_id=job_id, schema_=drafted)
 
 

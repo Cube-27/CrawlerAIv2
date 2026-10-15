@@ -9,7 +9,9 @@ wrote for it. `lease_until` is thus the claim's identity too: anything that exte
 new value, or the holder fences itself out.
 
 A lease runs out when its worker died or hung; `release_expired_leases` (the scheduler, every minute) counts that as
-a transient failure of the attempt.
+a transient failure of the attempt. A job that a process runs while its caller waits, with no task (a `map`, a prompt's
+draft), has no lease: one still `running` with no task a lease after it started lost its process, and
+`fail_stalled_jobs` ends it `failed`.
 
 Finishing a task records its run events (`crawlerai.db.task_events`) and settles its job in the same transaction.
 The job row is locked first, so of two workers finishing a job's last two tasks, the second one waits, then sees the
@@ -52,6 +54,8 @@ LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
 BACKOFF_BASE: Final = timedelta(seconds=30)
 LAST_ERROR_BYTES: Final = 2048
+# How many stalled jobs one scheduler turn ends (`fail_stalled_jobs`); a full batch runs again at once.
+STALLED_BATCH: Final = 100
 
 # Runs as a job ends (`settle_job`): the job, and the status it is about to end in.
 JobEnding = Callable[[AsyncConnection, JobId, JobStatus], Awaitable[None]]
@@ -219,6 +223,29 @@ async def release_expired_leases(conn: AsyncConnection, *, ending: JobEnding | N
     for task in tasks:
         await fail_task(conn, task, "lease expired", transient=True, ending=ending)
     return len(tasks)
+
+
+async def fail_stalled_jobs(conn: AsyncConnection, *, batch: int) -> int:
+    """End `failed` up to `batch` jobs `running` with no task for longer than `LEASE`, and return how many. A process
+    runs such a job while its caller waits, within the request's time cap (a `map`'s, a draft's), far under a lease;
+    `learn` jobs run without tasks too, and end by their own expiry (`expire_learn_runs`)."""
+    stalled = (
+        select(Job.id)
+        .where(
+            Job.status == "running",
+            Job.kind != "learn",
+            Job.started_at < func.now() - LEASE,
+            ~select(UrlTask.id).where(UrlTask.job_id == Job.id).exists(),
+        )
+        .order_by(Job.id)
+        .limit(batch)
+        # FOR NO KEY UPDATE, as `settle_job` takes; a job another transaction holds is left to the next run.
+        .with_for_update(key_share=True, skip_locked=True)
+    )
+    job_ids = (await conn.execute(stalled)).scalars().all()
+    for job_id in job_ids:
+        await transition_job(conn, job_id, "failed")
+    return len(job_ids)
 
 
 def _cut(error: str) -> str:

@@ -16,6 +16,10 @@ from crawlerai.db.models import PageKind
 
 # The characters `fnmatch` gives a meaning (Python `fnmatch` docs: `*`, `?`, `[seq]`).
 _PATTERN_CHARACTERS: Final = frozenset("*?[")
+# The most globs an `include` or `exclude` list takes (D-0835). Every URL a map or crawl reads is matched against each,
+# on the event loop: about 0.8 µs a match, so the two lists over a map's 50k sitemap URLs (`sitemaps.MAX_URLS`) take
+# at most about 1.6 s.
+MAX_PATTERNS: Final = 20
 
 
 class PageKindRule(BaseModel):

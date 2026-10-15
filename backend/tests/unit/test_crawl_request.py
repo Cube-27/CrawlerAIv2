@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from crawlerai.crawl.rules import MAX_PATTERNS
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.map import MAX_LIMIT
 
@@ -80,3 +81,15 @@ def test_the_frontier_is_scoped_to_the_start_urls_host() -> None:
 
     assert request.start == "https://shop.example.test/a?a=2&b=1"
     assert (frontier.scope.host, frontier.max_depth, frontier.limit) == ("shop.example.test", 2, 7)
+
+
+@pytest.mark.parametrize("member", ["include", "exclude"])
+def test_takes_at_most_max_patterns_globs_in_a_scope_list(member: str) -> None:
+    globs = [f"https://shop.example.test/c{n}/*" for n in range(MAX_PATTERNS + 1)]
+    body = {"url": URL, "formats": ["markdown"]}
+    accepted = CrawlRequest.model_validate(body | {member: globs[:MAX_PATTERNS]})
+
+    [(location, _)] = _errors(body | {member: globs})
+
+    assert len(getattr(accepted, member)) == MAX_PATTERNS
+    assert location == (member,)
