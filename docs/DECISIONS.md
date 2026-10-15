@@ -5321,3 +5321,51 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Wait for labels (milestone M) before admitting; a platform adapter first (not now, owner).
 - Why: Shopify baseline evidence (variant offers that disagree decline `offers_disagree`); owner approval 2026-10-15.
 - Reversible: yes
+
+### D-0787 — Alternatives are deduplicated per entity
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.1–§4.2 (#170) · Status: decided
+- Context: §4.1 says the same value at the same locator reached twice is one candidate.
+- Decision: A selection is dropped only when an earlier alternative already reached the same (entity, locator); one alternative's own selections are all kept.
+- Alternatives: Dedupe on the locator alone, across entities.
+- Why: Single paths stay byte-identical; ownership is per entity, and evidence counts distinct source kinds.
+- Reversible: yes
+
+### D-0788 — A sub-field candidate's entity is the alternative's root entity
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.1–§4.2 (#170) · Status: decided
+- Context: §4.2: sub-fields yield candidates exactly as a top-level field does.
+- Decision: `Candidate.entity_id` is the entity of the alternative's root type the path started from.
+- Alternatives: The entity holding the value.
+- Why: Reuses the existing ownership model.
+- Reversible: yes
+
+### D-0789 — og role with path alternatives
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.1–§4.2 (#170) · Status: decided
+- Context: §4.1: a field's og role with alternatives.
+- Decision: A role exists only when every alternative is two-step and all name the same property; a row-mapped field has none.
+- Alternatives: Ignore alternatives that are not two-step.
+- Why: Conservative: `Product.image|Product.brand.image` may name the brand's image.
+- Reversible: yes
+
+### D-0790 — The item of a row-mapped field has no `schema_org`
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.1–§4.2 (#170) · Status: decided
+- Context: §4.2 defines the row path on the list and paths on the sub-fields only.
+- Decision: A path on the item is rejected (SPEC-04 §4.2 text).
+- Alternatives: Ignore it.
+- Why: It would be a second row path with no meaning.
+- Reversible: yes
+
+### D-0791 — Adapters get no row-mapped fields
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.1–§4.2 (#170) · Status: decided
+- Context: `collect/adapter` maps field paths to adapter queries.
+- Decision: Row-mapped fields are left out; the entity kinds are the roots of every alternative of the mapped fields.
+- Alternatives: Pass row paths to adapters.
+- Why: A row path names nodes; adapters read values.
+- Reversible: yes
+
+### D-0792 — No vocabulary check of paths to extend
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.1–§4.2 (#170) · Status: decided
+- Context: §4.1: every alternative is checked against the pinned schema.org vocabulary as today.
+- Decision: No change: paths are checked by the naming pattern, now per alternative.
+- Alternatives: Add a vocabulary check of properties.
+- Why: No such check exists today; adding one is out of this row's scope.
+- Reversible: yes
