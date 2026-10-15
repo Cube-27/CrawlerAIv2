@@ -4,19 +4,23 @@ Pure functions over labels and engine output: `build_report` scores replayed pag
 and `export_aggregate` turns a report into the form that may leave the protected job (no pages, small cells
 suppressed).
 
+A row-mapped field (SPEC-13 §4.10) is scored per sub-field, as `<field>.<sub>` in `list.<type>` cells: engine rows
+match label rows by the field's key, and row precision and recall count the matches.
+
 `FieldOutput`, `PageOutput` and `SchemaFields` are the parts of SPEC-05's `ExtractionResult` and SPEC-04's
 `SchemaDef` that metrics read. Those specs bring the full types; callers then pass them instead, and these go.
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, SourceKind, Split
-from crawlerai.eval.labels import FieldLabel, LabelRow, Labels, parse_labels
+from crawlerai.eval.labels import DistractorKey, FieldLabel, LabelRow, Labels, ListLabel, parse_labels, sub_fields
 from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
@@ -44,6 +48,8 @@ class FieldOutput(_Model):
     # The normalized values of the field's kept candidates (valid, owned, not a URL parameter), per source kind,
     # published or not: what `fit-precedence` scores each kind on (SPEC-05 §4.11).
     offered: dict[SourceKind, tuple[JsonValue, ...]] = {}
+    # A row-mapped field's published rows (SPEC-13 §4.5): each sub-field's output.
+    items: tuple[dict[str, "FieldOutput"], ...] = ()
 
 
 class PageOutput(_Model):
@@ -87,7 +93,8 @@ class EvalCase(_Model):
 
 class Judgment(_Model):
     """One field scored against its label (§4.6). `entity` is `page`, `row[i]` for the i-th label row, or
-    `extra[j]` for the j-th engine row that matched no label row."""
+    `extra[j]` for the j-th engine row that matched no label row. A row-mapped field's sub-field is `<field>.<sub>`
+    (SPEC-13 §4.10), its rows numbered the same way."""
 
     field: str
     entity: str
@@ -130,6 +137,15 @@ class SourceMetrics(_Model):
     n: int  # fields the kind offered a value for: TP + FP
 
 
+class RowMetrics(_Model):
+    """Row matching of row-mapped fields (SPEC-13 §4.10)."""
+
+    row_precision: float | None  # matched engine rows / engine rows
+    row_recall: float | None  # matched label rows / label rows
+    engine_rows: int
+    n: int  # label rows
+
+
 class ZeroTouch(_Model):
     zero_touch: float
     n: int  # pages
@@ -162,6 +178,30 @@ class Report(_Model):
     pages: tuple[PageDetail, ...] | None = None  # dev only, unsuppressed (§4.7)
     # "rule_type|source_kind" (SPEC-05 §4.11): dev only, like `pages`.
     by_source: dict[str, SourceMetrics | Suppressed] = {}
+    # Row-mapped fields (SPEC-13 §4.10): over all of them, and per "schema|field" (empty in a hidden/fresh aggregate).
+    # `None` when no checked page labels one.
+    row_matching: RowMetrics | Suppressed | None = None
+    row_matching_by_field: dict[str, RowMetrics | Suppressed] = {}
+
+
+@dataclass(frozen=True)
+class _RowCount:
+    """A row-mapped field's rows on one page, or summed over pages."""
+
+    engine: int = 0
+    label: int = 0
+    matched: int = 0
+
+    def __add__(self, other: "_RowCount") -> "_RowCount":
+        return _RowCount(self.engine + other.engine, self.label + other.label, self.matched + other.matched)
+
+    def metrics(self) -> RowMetrics:
+        return RowMetrics(
+            row_precision=_ratio(self.matched, self.engine),
+            row_recall=_ratio(self.matched, self.label),
+            engine_rows=self.engine,
+            n=self.label,
+        )
 
 
 def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, git_sha: str) -> Report:
@@ -169,6 +209,7 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
     `n_pages` and every metric. Per-page detail is kept for dev only."""
     scored: list[tuple[EvalCase, PageOutput, list[Judgment], bool]] = []
     details: list[PageDetail] = []
+    row_counts: defaultdict[str, _RowCount] = defaultdict(_RowCount)
     for case in sorted(cases, key=lambda c: c.page_id):
         if case.labels.status != "checked":
             continue
@@ -176,7 +217,7 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
             case ReplayFailed(error=error):
                 details.append(_detail(case, error, None, ()))
             case PageOutput() as output:
-                judgments = list(_judge_page(case.schema_def, case.labels, output))
+                judgments = _judge_case(case.schema_def, case.labels, output, row_counts)
                 zero_touch = _zero_touch(case.schema_def, judgments)
                 scored.append((case, output, judgments, zero_touch))
                 details.append(_detail(case, None, zero_touch, tuple(judgments)))
@@ -191,7 +232,7 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
         pages_by_category[case.category].append((zero_touch, output.block_class))
         pages_by_mode[output.mode].append(output)
         for j in judgments:
-            type_ = case.schema_def.fields[j.field].type
+            type_ = _cell_type(case.schema_def, j.field)
             by_type[type_].append(j)
             by_field[f"{case.schema_def.name}|{j.field}"].append(j)
             if j.evidence is not None:
@@ -223,7 +264,29 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
         pages=tuple(details) if split == "dev" else None,
         # Precedence is fitted on dev only (C1, INV-02), so no other split measures per kind.
         by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored) if split == "dev" else {},
+        row_matching=sum(row_counts.values(), _RowCount()).metrics() if row_counts else None,
+        row_matching_by_field={k: v.metrics() for k, v in sorted(row_counts.items())},
     )
+
+
+def _judge_case(
+    schema: SchemaFields, labels: Labels, output: PageOutput, row_counts: defaultdict[str, _RowCount]
+) -> list[Judgment]:
+    """A page's judgments, its row-mapped fields' included; their row counts are added to `row_counts`."""
+    judgments = list(_judge_page(schema, labels, output))
+    for name, (list_judgments, count) in _judge_lists(schema, labels, output).items():
+        judgments += list_judgments
+        row_counts[f"{schema.name}|{name}"] += count
+    return judgments
+
+
+def _cell_type(schema: SchemaFields, field: str) -> str:
+    """A judgment's field type cell: the field's type, or `list.<type>` for a row-mapped field's sub-field
+    (SPEC-13 §4.10). A row value can be wrong in a way a page value cannot (a wrong row match), so it is measured
+    apart, as the calibration buckets are (SPEC-13 §4.5)."""
+    name, _, sub = field.partition(".")
+    spec = schema.fields[name]
+    return f"list.{sub_fields(spec)[sub].type.value}" if sub else spec.type
 
 
 def export_aggregate(report: Report) -> Report:
@@ -251,6 +314,9 @@ def export_aggregate(report: Report) -> Report:
             "usage": _complement(_suppress_all(report.usage), _whole, dev),
             "pages": None,
             "by_source": _suppress_all(report.by_source) if dev else {},
+            "row_matching": _suppress(report.row_matching) if report.row_matching is not None else None,
+            # Its keys name schemas, as `by_field`'s do.
+            "row_matching_by_field": _suppress_all(report.row_matching_by_field) if dev else {},
         }
     )
 
@@ -276,12 +342,18 @@ def _by_source(pages: Iterable[tuple[SchemaFields, Sequence[Judgment]]]) -> dict
     cells: defaultdict[tuple[FieldType, SourceKind], list[SourceCell]] = defaultdict(list)
     labeled: Counter[FieldType] = Counter()  # per rule type, the judged fields whose label holds a value
     for schema, judgments in pages:
-        for j in judgments:
+        # Row sub-fields fit no precedence: a row value is measured apart (SPEC-13 §4.10).
+        for j in (j for j in judgments if not _is_sub_field(j.field)):
             type_ = rule_type(schema.fields[j.field])
             labeled[type_] += _labeled(j)
             for kind, cell in j.sources.items():
                 cells[type_, kind].append(cell)
     return {f"{type_.value}|{kind}": _source_metrics(v, labeled[type_]) for (type_, kind), v in sorted(cells.items())}
+
+
+def _is_sub_field(field: str) -> bool:
+    # A row-mapped field's sub-field is judged as `<field>.<sub>`; schema field names have no dot (SPEC-04 §4.2).
+    return "." in field
 
 
 def _labeled(judgment: Judgment) -> bool:
@@ -327,13 +399,102 @@ def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput) -> Ite
     matched = set(matches.values())
     for j, out_row in enumerate(output.rows):
         if j not in matched:
-            yield from _unmatched_row(j, out_row, schema)
+            yield from _unmatched_row(j, out_row, schema.fields)
 
 
-def _unmatched_row(j: int, row: Mapping[str, FieldOutput], schema: SchemaFields) -> Iterator[Judgment]:
+def _judge_lists(
+    schema: SchemaFields, labels: Labels, output: PageOutput
+) -> dict[str, tuple[list[Judgment], _RowCount]]:
+    """Each labeled row-mapped field's sub-field judgments and row counts (SPEC-13 §4.10). Version 1 labels have none,
+    so those fields are not scored."""
+    return {
+        name: _judge_list(name, label, output.fields.get(name), schema.fields[name])
+        for name, label in sorted(labels.lists.items())
+    }
+
+
+def _judge_list(
+    name: str, label: ListLabel, out: FieldOutput | None, spec: FieldSpec
+) -> tuple[list[Judgment], _RowCount]:
+    """A matched pair's sub-fields are judged as top-level fields are (§4.6). An unmatched label row is FN for each
+    sub-field it does not label absent; an unmatched engine row is FP for each published sub-field. An engine row with
+    a distractor key is a wrong product, counted once on that key's sub-field."""
+    subs = sub_fields(spec)
+    engine = out.items if out is not None and out.status == "published" else ()
+    matches = _match_keyed(label.rows, engine, spec.key or (), subs)
+    wrong = _wrong_products(engine, label.distractor_keys, subs)
+    judgments: list[Judgment] = []
+    for i, row in enumerate(label.rows):
+        j = matches.get(i)
+        out_row = engine[j] if j is not None else {}
+        for sub, sub_label in sorted(row.fields.items()):
+            judgment = _judge(f"{name}.{sub}", f"row[{i}]", sub_label, out_row.get(sub), subs[sub])
+            judgments.append(_row_judgment(judgment, j is not None and wrong.get(j) == sub))
+    matched = set(matches.values())
+    for j, out_row in enumerate(engine):
+        if j not in matched:
+            for judgment in _unmatched_row(j, out_row, subs):
+                renamed = judgment.model_copy(update={"field": f"{name}.{judgment.field}"})
+                judgments.append(_row_judgment(renamed, wrong.get(j) == judgment.field))
+    return judgments, _RowCount(engine=len(engine), label=len(label.rows), matched=len(matches))
+
+
+def _row_judgment(judgment: Judgment, wrong_product: bool) -> Judgment:
+    # Row sub-fields fit no precedence (`_by_source`), so they carry no source cells.
+    return judgment.model_copy(update={"sources": {}, "wrong_product": judgment.wrong_product or wrong_product})
+
+
+def _match_keyed(
+    label_rows: Sequence[LabelRow],
+    engine: Sequence[Mapping[str, FieldOutput]],
+    key: Sequence[str],
+    subs: Mapping[str, FieldSpec],
+) -> dict[int, int]:
+    """Label row index → engine row index (SPEC-13 §4.10, the §4.4 rule): the two share a key value and differ on none.
+    A row that matches several rows on the other side counts as unmatched."""
+    pairs = [
+        (i, j) for i, lr in enumerate(label_rows) for j, er in enumerate(engine) if _same_variant(lr, er, key, subs)
+    ]
+    by_label, by_engine = Counter(i for i, _ in pairs), Counter(j for _, j in pairs)
+    return {i: j for i, j in pairs if by_label[i] == 1 and by_engine[j] == 1}
+
+
+def _same_variant(
+    label_row: LabelRow, engine_row: Mapping[str, FieldOutput], key: Sequence[str], subs: Mapping[str, FieldSpec]
+) -> bool:
+    agree = [
+        equal(label.value, out.value, subs[sub])
+        for sub in key
+        if (label := label_row.fields.get(sub)) is not None
+        and not label.absent
+        and (out := engine_row.get(sub)) is not None
+        and out.status == "published"
+    ]
+    return bool(agree) and all(agree)
+
+
+def _wrong_products(
+    engine: Sequence[Mapping[str, FieldOutput]], keys: Sequence[DistractorKey], subs: Mapping[str, FieldSpec]
+) -> dict[int, str]:
+    """Engine row index → the sub-field whose published value is a distractor key (SPEC-13 §4.10)."""
+    wrong: dict[int, str] = {}
+    for j, row in enumerate(engine):
+        hit = next(
+            (key.field for key in keys if _published_equal(row.get(key.field), key.value, subs[key.field])), None
+        )
+        if hit is not None:
+            wrong[j] = hit
+    return wrong
+
+
+def _published_equal(out: FieldOutput | None, value: JsonValue, spec: FieldSpec) -> bool:
+    return out is not None and out.status == "published" and equal(out.value, value, spec)
+
+
+def _unmatched_row(j: int, row: Mapping[str, FieldOutput], names: Collection[str]) -> Iterator[Judgment]:
     # §4.6: an engine row that matches no label row is FP for every published field.
     for name, out in sorted(row.items()):
-        if out.status == "published" and name in schema.fields:
+        if out.status == "published" and name in names:
             yield Judgment(
                 field=name,
                 entity=f"extra[{j}]",
@@ -393,8 +554,9 @@ def _source_cells(out: FieldOutput, label: FieldLabel, spec: FieldSpec) -> dict[
 
 def _zero_touch(schema: SchemaFields, judgments: Sequence[Judgment]) -> bool:
     """Every required field is TP, and every required group has a TP member and no FP member (§4.6), on each entity
-    the page has; and the engine published no row that the labels don't have."""
-    if any(j.entity.startswith("extra[") for j in judgments):
+    the page has; and the engine published no row that the labels don't have. A row-mapped field is optional and holds
+    no required field, so its rows don't count (SPEC-13 §4.10)."""
+    if any(j.entity.startswith("extra[") and not _is_sub_field(j.field) for j in judgments):
         return False
     if any(j.field in schema.required and j.cell != "TP" for j in judgments):
         return False
@@ -434,13 +596,15 @@ def _precision(judgments: Sequence[Judgment]) -> PrecisionMetrics:
     return PrecisionMetrics(precision=_ratio(tp, tp + fp), n=tp + fp)
 
 
-def _suppress_all[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppressed](
+def _suppress_all[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | RowMetrics | Suppressed](
     table: Mapping[str, C],
 ) -> dict[str, C | Suppressed]:
     return {k: _suppress(v) for k, v in table.items()}
 
 
-def _suppress[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | Suppressed](cell: C) -> C | Suppressed:
+def _suppress[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | RowMetrics | Suppressed](
+    cell: C,
+) -> C | Suppressed:
     return Suppressed(n=cell.n) if cell.n < MIN_CELL else cell
 
 

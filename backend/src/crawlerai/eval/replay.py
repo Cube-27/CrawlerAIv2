@@ -150,7 +150,12 @@ def page_output(result: ExtractionResult, block_class: BlockClass) -> PageOutput
 def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
     return {
         name: FieldOutput(
-            status=outcome.status, value=outcome.value, evidence=outcome.evidence, offered=_offered(outcome)
+            status=outcome.status,
+            value=outcome.value,
+            evidence=outcome.evidence,
+            offered=_offered(outcome),
+            # A row-mapped field's rows, each scored per sub-field (SPEC-13 §4.10).
+            items=tuple(_field_outputs(row.fields) for row in outcome.items or ()),
         )
         for name, outcome in fields.items()
     }

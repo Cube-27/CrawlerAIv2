@@ -6,10 +6,13 @@ saved (§4.11). Whether each `value` is a valid normalized value is the type nor
 the labeling API (SPEC-03 PR 8).
 
 Values compare by type equality (SPEC-04 §4.5), `crawlerai.normalize.dispatch.equal`.
+
+`label_version` 2 adds `lists` (SPEC-13 §4.10): a detail page's row-mapped `list<object>` fields, labeled as rows of
+sub-field labels. Version 1 labels stay valid; they leave those fields unlabeled, so metrics don't score them.
 """
 
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Literal, Self
 
@@ -17,6 +20,7 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
+    Field,
     JsonValue,
     StringConstraints,
     TypeAdapter,
@@ -30,6 +34,7 @@ from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import FieldSpec
 
 LabelStatus = Literal["draft", "labeled", "checked"]
+_NOT_LABELED = "not labeled; mark it absent if the page does not show it"
 
 
 class _Model(BaseModel):
@@ -92,14 +97,48 @@ class LabelRow(_Model):
     fields: dict[str, FieldLabel]
 
 
+class DistractorKey(_Model):
+    """A key value of another product's variant shown on the page (SPEC-13 §4.10): an engine row with it is a wrong
+    product."""
+
+    field: Name
+    value: JsonValue
+
+    @model_validator(mode="after")
+    def _has_value(self) -> Self:
+        if self.value is None:
+            raise ValueError("a distractor key has a value")
+        return self
+
+
+class ListLabel(_Model):
+    """A row-mapped field's label (SPEC-13 §4.10): one row per variant shown on the page, in page order. `absent`
+    means the page offers no variant choice."""
+
+    absent: bool
+    rows: tuple[LabelRow, ...] = ()
+    distractor_keys: tuple[DistractorKey, ...] = ()
+
+    @model_validator(mode="after")
+    def _rows_match_absent(self) -> Self:
+        if self.absent and self.rows:
+            raise ValueError("an absent field has no rows")
+        if not self.absent and not self.rows:
+            raise ValueError("a present field has a row")
+        return self
+
+
 class Labels(_Model):
-    label_version: Literal[1]
+    label_version: Literal[1, 2]
     status: LabelStatus
     labeler: Name | None = None
     checker: Name | None = None
     prefill_source: Annotated[str, AfterValidator(_check_prefill_source)] | None = None
     fields: dict[str, FieldLabel] = {}
     rows: tuple[LabelRow, ...] = ()  # listing pages only, in page order
+    # Detail pages' row-mapped fields; label_version 2 only. Left out of a dump when empty, so version 1 labels dump
+    # as they always did.
+    lists: dict[str, ListLabel] = Field(default={}, exclude_if=lambda lists: not lists)
     notes: str = ""
 
     @model_validator(mode="after")
@@ -147,36 +186,96 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, specs: Mapping[str, FieldS
 
 
 def _check_detail(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
-    # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope.
-    yield from _check_fields("fields", labels.fields, specs, specs, complete)
+    # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope; a row-mapped field is
+    # labeled as rows in `lists` (SPEC-13 §4.10).
+    plain = {name: spec for name, spec in specs.items() if not spec.row_mapped}
+
+    def misplaced(name: str) -> str:
+        return "a row-mapped field belongs in lists" if name in specs else "not a field of the schema"
+
+    yield from _check_fields("fields", labels.fields, plain, misplaced, complete)
     if labels.rows:
         yield LabelError("rows", "only listing pages have rows")
+    yield from _check_lists(labels, specs, complete)
+
+
+def _check_lists(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
+    if labels.label_version == 1:
+        # Version 1 labels predate row-mapped fields: those stay unlabeled and unscored (SPEC-13 §4.10).
+        if labels.lists:
+            yield LabelError("lists", "row-mapped fields need label_version 2")
+        return
+    mapped = {name: spec for name, spec in specs.items() if spec.row_mapped}
+    for name, label in labels.lists.items():
+        spec = mapped.get(name)
+        if spec is None:
+            yield LabelError(f"lists.{name}", "not a row-mapped field of the schema")
+        else:
+            yield from _check_list(f"lists.{name}", name, label, spec, complete)
+    if complete:
+        for name in mapped.keys() - labels.lists.keys():
+            yield LabelError(f"lists.{name}", _NOT_LABELED)
+
+
+def _check_list(path: str, name: str, label: ListLabel, spec: FieldSpec, complete: bool) -> Iterator[LabelError]:
+    subs = sub_fields(spec)
+
+    def misplaced(_sub: str) -> str:
+        return f"not a sub-field of {name}"
+
+    for i, row in enumerate(label.rows):
+        yield from _check_fields(f"{path}.rows[{i}].fields", row.fields, subs, misplaced, complete)
+    for i, key in enumerate(label.distractor_keys):
+        yield from _check_distractor_key(f"{path}.distractor_keys[{i}]", name, key, label, spec)
+
+
+def _check_distractor_key(
+    path: str, name: str, key: DistractorKey, label: ListLabel, spec: FieldSpec
+) -> Iterator[LabelError]:
+    if key.field not in (spec.key or ()):
+        yield LabelError(path, f"not a key sub-field of {name}")
+        return
+    sub = sub_fields(spec)[key.field]
+    rows = (row.fields.get(key.field) for row in label.rows)
+    if any(own is not None and own.value is not None and equal(own.value, key.value, sub) for own in rows):
+        yield LabelError(path, "a distractor key equals a row's key")
+
+
+def sub_fields(spec: FieldSpec) -> Mapping[str, FieldSpec]:
+    """A row-mapped field's sub-fields (SPEC-13 §4.1)."""
+    return (spec.item.fields or {}) if spec.item is not None else {}
 
 
 def _check_listing(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
     page = {name: spec for name, spec in specs.items() if spec.scope == "page"}
     row = {name: spec for name, spec in specs.items() if spec.scope == "row"}
-    yield from _check_fields("fields", labels.fields, page, specs, complete)
+
+    def misplaced(name: str) -> str:
+        return _misplaced(name, specs)
+
+    yield from _check_fields("fields", labels.fields, page, misplaced, complete)
     for i, label_row in enumerate(labels.rows):
-        yield from _check_fields(f"rows[{i}].fields", label_row.fields, row, specs, complete)
+        yield from _check_fields(f"rows[{i}].fields", label_row.fields, row, misplaced, complete)
+    if labels.lists:
+        yield LabelError("lists", "only detail pages have row-mapped fields")
 
 
 def _check_fields(
     path: str,
     labels: Mapping[str, FieldLabel],
     expected: Mapping[str, FieldSpec],
-    specs: Mapping[str, FieldSpec],
+    misplaced: Callable[[str], str],
     complete: bool,
 ) -> Iterator[LabelError]:
     for name, label in labels.items():
         spec = expected.get(name)
         if spec is None:
-            yield LabelError(f"{path}.{name}", _misplaced(name, specs))
+            yield LabelError(f"{path}.{name}", misplaced(name))
         else:
             yield from _check_distractors(f"{path}.{name}", label, spec)
     if complete:
         for name in expected.keys() - labels.keys():
-            yield LabelError(f"{path}.{name}", "not labeled; mark it absent if the page does not show it")
+            yield LabelError(f"{path}.{name}", _NOT_LABELED)
 
 
 def _misplaced(name: str, specs: Mapping[str, FieldSpec]) -> str:

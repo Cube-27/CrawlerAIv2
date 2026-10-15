@@ -119,6 +119,14 @@ hidden/fresh when the private settings are empty — which is the normal state o
 - `category` on the row: `platform_store`, `custom_store`, `api_backed`, `job_board`, `mixed` (ARCHITECTURE
   categories, §16.1). These are category names, not sites.
 - A page counts for metrics only when `status == "checked"` (two passes, §16.2).
+- **Row-mapped fields** (`label_version` 2, SPEC-13 §4.10): a detail page labels each row-mapped `list<object>`
+  field under `lists`, by field name, never under `fields`:
+  `"lists": { "variants": { "absent": false, "rows": [ { "fields": { "sku": {...}, "price": {...} } } ],
+  "distractor_keys": [ { "field": "sku", "value": {...} } ] } }`. A row labels sub-fields as `fields` labels fields;
+  a checked or labeled page labels every sub-field of every row, and every row-mapped field. `absent: true` (no
+  variant choice) has no rows; otherwise there is at least one. A distractor key names a key sub-field and a value
+  no row has. Version 1 labels stay valid: they have no `lists`, and their row-mapped fields are not scored. The
+  pre-fill writes version 1 drafts and leaves row-mapped fields out (role C is never asked for them, SPEC-13 §4.9).
 
 ### 4.4 CLI
 
@@ -183,6 +191,16 @@ Also:
 
 Listings: rows are matched to label rows by canonicalized `url`; unmatched engine rows are FP for every
 published field; unmatched label rows are FN.
+
+Row-mapped fields (SPEC-13 §4.10): engine rows are matched to label rows by the field's key: they share a key value
+and differ on none; a row matching several on the other side is unmatched. A matched pair's sub-fields are counted as
+fields are, as `<field>.<sub>` in the cells `list.<type>` (per field type), `schema|<field>.<sub>` and
+`list.<type>|evidence`; an unmatched engine row is FP for each published sub-field, an unmatched label row FN for
+each sub-field not labeled absent. An engine row with a key value in `distractor_keys` is one WP, on that key's
+sub-field. `row_matching` reports row precision (matched engine rows / engine rows) and row recall (matched label
+rows / label rows), with `n` the label rows, over all row-mapped fields, and `row_matching_by_field` per
+`schema|field` (dev only, like per-field cells). Row sub-fields take no part in zero-touch or in precedence fitting.
+The gate's precision rule does not cover `list.<type>` cells (the field is optional); a WP in one fails it.
 
 ### 4.7 Aggregate report (`eval-aggregate.json`)
 

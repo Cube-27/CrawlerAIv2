@@ -5,7 +5,8 @@ label only when it is grounded in the cleaned text and its normalizer accepts it
 and its `text:` locator. Everything else (null, ungrounded, declined) is left unlabeled for the labeler; a pre-fill
 never marks a field `absent`, which is a labeler's claim about the page (G2). A listing row that labels no field is no
 row. The draft names `prefill_source=llm:<model>` and no labeler, and never counts as ground truth: only a checked
-page does (§16.2).
+page does (§16.2). Row-mapped fields are left out: role C is never asked for them (SPEC-13 §4.9), so the labeler labels
+their rows.
 """
 
 import asyncio
@@ -30,6 +31,7 @@ async def prefill(
 ) -> Labels:
     """The draft labels role C reads from the captured page. Raises the client's `LLMFailure` when the call gives
     no valid reply: a pre-fill without values is not a draft worth storing."""
+    fields = {name: spec for name, spec in fields.items() if not spec.row_mapped}
     page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
     text = page.cleaned_text.text
     ctx = with_stated_currencies(page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at), page)

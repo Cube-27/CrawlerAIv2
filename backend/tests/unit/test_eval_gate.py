@@ -88,6 +88,17 @@ def test_precision_drop_on_a_type_without_required_fields_passes() -> None:
     assert (result.passed, result.reasons, result.by_field_type["list"]) == (True, [], True)
 
 
+def test_a_row_sub_field_cell_is_gated_on_wrong_products_only() -> None:
+    # SPEC-13 §4.10: `list.<type>` cells are an optional field's; a precision drop passes, a wrong product fails.
+    base = report({"money": cell(0.97), "list.money": cell(0.97)}, git_sha=BASE_SHA)
+
+    dropped = gate(report({"money": cell(0.97), "list.money": cell(0.5)}), base)
+    wrong = gate(report({"money": cell(0.97), "list.money": cell(0.97, wrong_product=1)}), base)
+
+    assert (dropped.passed, dropped.reasons) == (True, [])
+    assert (wrong.passed, wrong.reasons) == (False, ["wrong_product:list.money"])
+
+
 def test_any_wrong_product_fails_on_any_type() -> None:
     result = gate(report({"money": cell(0.97), "list": cell(0.8, wrong_product=1)}), BASELINE)
     assert result == GateResult(

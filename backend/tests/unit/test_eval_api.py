@@ -604,6 +604,32 @@ def test_prefill_leaves_null_ungrounded_and_declined_values_unlabeled() -> None:
     assert (response.json()["fields"], response.json()["prefill_source"]) == ({}, "llm:fake-fast")
 
 
+def test_prefill_never_asks_for_a_row_mapped_field() -> None:
+    # SPEC-13 §4.9: role C is never asked for a row-mapped field; the labeler labels its rows.
+    variants = FieldSpec.model_validate(
+        {
+            "type": "list",
+            "schema_org": "Product.offers",
+            "key": ["sku"],
+            "item": {
+                "type": "object",
+                "fields": {"sku": {"type": "identifier", "scheme": "sku", "schema_org": "Offer.sku"}},
+            },
+        }
+    )
+    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": _ABSENT}})
+    backend = FakeBackend(llm=client, specs=SPECS | {"variants": variants})
+    page = backend.store.add()
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert response.status_code == 200
+    assert "lists" not in response.json()
+    (request,) = client.requests
+    assert "variants" not in request.user
+    assert "title" in request.user
+
+
 def test_prefill_of_a_listing_labels_rows_in_page_order_and_page_fields() -> None:
     specs = {
         "title": FieldSpec(type=FieldType.TEXT, scope="row"),

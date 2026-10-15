@@ -1112,6 +1112,26 @@
         "title": "DayUsage",
         "type": "object"
       },
+      "DistractorKey": {
+        "additionalProperties": false,
+        "description": "A key value of another product's variant shown on the page (SPEC-13 \u00a74.10): an engine row with it is a wrong\nproduct.",
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ],
+        "title": "DistractorKey",
+        "type": "object"
+      },
       "DraftField": {
         "additionalProperties": false,
         "properties": {
@@ -2642,7 +2662,10 @@
             "type": "object"
           },
           "label_version": {
-            "const": 1,
+            "enum": [
+              1,
+              2
+            ],
             "title": "Label Version",
             "type": "integer"
           },
@@ -2657,6 +2680,14 @@
               }
             ],
             "title": "Labeler"
+          },
+          "lists": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ListLabel"
+            },
+            "default": {},
+            "title": "Lists",
+            "type": "object"
           },
           "notes": {
             "default": "",
@@ -2733,6 +2764,37 @@
           "job_id"
         ],
         "title": "LearnStarted",
+        "type": "object"
+      },
+      "ListLabel": {
+        "additionalProperties": false,
+        "description": "A row-mapped field's label (SPEC-13 \u00a74.10): one row per variant shown on the page, in page order. `absent`\nmeans the page offers no variant choice.",
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "boolean"
+          },
+          "distractor_keys": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DistractorKey"
+            },
+            "title": "Distractor Keys",
+            "type": "array"
+          },
+          "rows": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LabelRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "absent"
+        ],
+        "title": "ListLabel",
         "type": "object"
       },
       "ListingReport": {
