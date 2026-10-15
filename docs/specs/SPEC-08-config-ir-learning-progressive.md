@@ -113,6 +113,8 @@ For each field, collect the chosen candidate's locator on each sample page:
 - `text:` (role C) → no induction; goes to synthesis.
 A selector is kept only if on **every** sample page it selects exactly one node whose value normalizes to the
 published value (`equal`). Otherwise the field goes to synthesis.
+A row-mapped field (SPEC-13 §4.9) is neither induced nor synthesized: the validation report records it as
+`not_learned: row_field`, the structured collectors still fill it in `config` mode, and drift does not track it.
 
 ### 4.6 Synthesis (role A, §11)
 

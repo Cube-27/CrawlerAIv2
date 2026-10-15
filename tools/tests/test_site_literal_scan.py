@@ -580,3 +580,12 @@ def test_schema_org_paths_follow_schema_org_naming_and_match_as_written(tmp_path
         f"refs.py:1: {SHOP}",
         f"refs.py:2: {PRODUCT_NAME.lower()}",
     ]
+
+
+def test_each_alternative_of_a_schema_org_path_is_a_path(tmp_path: Path) -> None:
+    preset = schema_document({"sku": {"type": "identifier", "schema_org": f"Product.sku|{OFFER_NAME}"}})
+    repo = make_repo(tmp_path / "repo", {"schemas/p.json": preset, "refs.py": f'A = "{OFFER_NAME}"\n'})
+
+    result = run_scan(repo, allowlist=[])
+
+    assert (result.returncode, result.stdout) == (0, "site-literals: ok, 2 files scanned\n")

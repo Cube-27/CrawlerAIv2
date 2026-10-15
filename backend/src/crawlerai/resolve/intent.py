@@ -22,10 +22,10 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 # schema.org: an ItemList (with its ListItems) lists things, so a thing in it is one of many, not the page's own.
 LISTS = ("ItemList", "ListItem")
 # schema.org relation properties of a Product: a thing that is the value of one is another thing than its holder.
-_RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
+RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
 # A primary entity's variants are members of it (`VARIANT`, schema.org `hasVariant`), not other things the page is
 # about: they often repeat the group's URL, which would leave the page ambiguous.
-_NOT_THE_SUBJECT = _RELATIONS | {VARIANT}
+_NOT_THE_SUBJECT = RELATIONS | {VARIANT}
 _URL = FieldSpec(type=FieldType.URL)
 
 

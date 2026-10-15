@@ -30,7 +30,7 @@ from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.collect.run import Adapters, Collected, collect_page
-from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary
+from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls
 from crawlerai.content.context import page_context
 from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
@@ -39,7 +39,7 @@ from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
-from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration
+from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target, select_variant
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import EntityGraph
@@ -56,8 +56,9 @@ from crawlerai.resolve.preference import (
     load_precedence,
 )
 from crawlerai.resolve.records import is_complete, record_confidence
+from crawlerai.resolve.rows import RowField, resolve_rows
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome
-from crawlerai.schemas.types import FieldType, SchemaDef, Scope
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 log = logging.getLogger(__name__)
@@ -274,6 +275,7 @@ class _Page:
     target: Entity | AmbiguousTarget
     facts: PageFacts
     variants: Variants | None  # the target's variant rules, for a detail page's target (SPEC-13 §4.6)
+    page_urls: tuple[str, ...]  # the request, final and canonical URLs, canonicalized (SPEC-13 §4.4)
 
     @classmethod
     def read(cls, source: _Source) -> "_Page":
@@ -290,7 +292,10 @@ class _Page:
         variants = None
         if schema.page_kind == "detail" and isinstance(target, Entity):
             variants = Variants(select_variant(manifest.url, manifest.final_url, canonical, graph, target))
-        return cls(page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts, variants)
+        page_urls = canonical_urls((manifest.url, manifest.final_url, canonical), ctx)
+        return cls(
+            page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts, variants, page_urls
+        )
 
     @property
     def candidates(self) -> tuple[Candidate, ...]:
@@ -346,7 +351,32 @@ class _Page:
                 )
                 for name, spec in schema.fields.items()
             }
-        return assess_fields(schema, decisions, self.data.calibration, corroborated=self.config.corroborated)
+        fields = assess_fields(schema, decisions, self.data.calibration, corroborated=self.config.corroborated)
+        if variants is not None and isinstance(target, Entity):
+            fields |= self._rows(target, candidates)
+        return fields
+
+    def _rows(self, target: Entity, candidates: Sequence[Candidate]) -> FieldSet:
+        """A detail target's row-mapped fields, resolved row by row (SPEC-13 §4.3 to §4.5)."""
+        required = required_fields(self.schema)
+        return {
+            name: resolve_rows(
+                RowField(
+                    name=name,
+                    spec=spec,
+                    required=name in required,
+                    graph=self.graph,
+                    target=target,
+                    page=self.facts,
+                    orders=self.data.orders,
+                    calibration=self.data.calibration,
+                    page_urls=self.page_urls,
+                ),
+                candidates,
+            )
+            for name, spec in self.schema.fields.items()
+            if spec.row_mapped
+        }
 
 
 def _read_and_resolve(source: _Source) -> tuple[_Page, FieldSet]:
@@ -462,13 +492,22 @@ def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple
     """§4.13: the fields role C is asked for, in schema order. Only `missing` fields the active config does not run
     are asked (ARCHITECTURE §8.4), never a conflict or an abstention, and only when a required one is among them: a
     required field, or a member of a required group that no member fills yet. Missing optional fields then ride along
-    in the same call (SPEC-06 §4.4, D-0025)."""
+    in the same call (SPEC-06 §4.4, D-0025). An `object` field, and a list of objects (a row-mapped field included), is
+    never asked: a claim is one verbatim span, which cannot hold typed sub-fields (SPEC-13 §4.9)."""
     published = {name for name, outcome in fields.items() if outcome.status == "published"}
     unmet = {name for group in schema.required_groups if not published.intersection(group) for name in group}
-    missing = [name for name, outcome in fields.items() if outcome.status == "missing" and name not in covered]
+    missing = [
+        name
+        for name, outcome in fields.items()
+        if outcome.status == "missing" and name not in covered and not _holds_objects(schema.fields[name])
+    ]
     if not any(schema.fields[name].required or name in unmet for name in missing):
         return ()
     return tuple(missing)
+
+
+def _holds_objects(spec: FieldSpec) -> bool:
+    return spec.type is FieldType.OBJECT or (spec.item is not None and spec.item.type is FieldType.OBJECT)
 
 
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:

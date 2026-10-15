@@ -1194,6 +1194,29 @@
         "title": "DraftListing",
         "type": "object"
       },
+      "DroppedRowMeta": {
+        "additionalProperties": false,
+        "description": "A row that did not publish: its row entities' locators and the reason (SPEC-13 \u00a74.8).",
+        "properties": {
+          "locators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Locators",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locators",
+          "reason"
+        ],
+        "title": "DroppedRowMeta",
+        "type": "object"
+      },
       "ExportPage": {
         "description": "One page of a job's records in an export format (SPEC-08 \u00a74.11); `next_cursor` as in `RecordPage`.",
         "properties": {
@@ -3972,6 +3995,20 @@
             ],
             "title": "Derived By"
           },
+          "dropped": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DroppedRowMeta"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped"
+          },
           "evidence": {
             "anyOf": [
               {
@@ -3990,6 +4027,20 @@
               }
             ],
             "title": "Evidence"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RowMeta"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
           },
           "locator": {
             "anyOf": [
@@ -4329,6 +4380,24 @@
           "template"
         ],
         "title": "RequestBody",
+        "type": "object"
+      },
+      "RowMeta": {
+        "additionalProperties": false,
+        "description": "A published row's sub-field outcomes, aligned with the field's value by index (SPEC-13 \u00a74.8).",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SubFieldMeta"
+            },
+            "title": "Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "RowMeta",
         "type": "object"
       },
       "SchemaById": {
@@ -4908,6 +4977,113 @@
           "changed_fields"
         ],
         "title": "StoredRecord",
+        "type": "object"
+      },
+      "SubFieldMeta": {
+        "additionalProperties": false,
+        "description": "A row sub-field's outcome without its candidates (SPEC-13 \u00a74.8, INV-34).",
+        "properties": {
+          "calibrated": {
+            "title": "Calibrated",
+            "type": "boolean"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "adapter",
+                  "structured",
+                  "agreed",
+                  "config_corroborated",
+                  "config_uncorroborated",
+                  "llm_grounded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "adapter",
+                  "api",
+                  "jsonld",
+                  "microdata",
+                  "og",
+                  "js_state",
+                  "xhr",
+                  "config",
+                  "llm"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Kind"
+          },
+          "status": {
+            "enum": [
+              "published",
+              "missing",
+              "conflict",
+              "abstained"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "evidence",
+          "confidence",
+          "calibrated",
+          "source_kind",
+          "locator"
+        ],
+        "title": "SubFieldMeta",
         "type": "object"
       },
       "TaskCounts": {

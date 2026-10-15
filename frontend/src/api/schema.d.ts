@@ -1037,6 +1037,16 @@ export interface components {
             row_xpath: string | null;
         };
         /**
+         * DroppedRowMeta
+         * @description A row that did not publish: its row entities' locators and the reason (SPEC-13 §4.8).
+         */
+        DroppedRowMeta: {
+            /** Locators */
+            locators: string[];
+            /** Reason */
+            reason: string;
+        };
+        /**
          * ExportPage
          * @description One page of a job's records in an export format (SPEC-08 §4.11); `next_cursor` as in `RecordPage`.
          */
@@ -2081,8 +2091,12 @@ export interface components {
             confidence: number | null;
             /** Derived By */
             derived_by: ("canonical_link" | "final_url" | "absolutize") | null;
+            /** Dropped */
+            dropped?: components["schemas"]["DroppedRowMeta"][] | null;
             /** Evidence */
             evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded") | null;
+            /** Items */
+            items?: components["schemas"]["RowMeta"][] | null;
             /** Locator */
             locator: string | null;
             /** Reason */
@@ -2191,6 +2205,16 @@ export interface components {
         RequestBody: {
             /** Template */
             template: string;
+        };
+        /**
+         * RowMeta
+         * @description A published row's sub-field outcomes, aligned with the field's value by index (SPEC-13 §4.8).
+         */
+        RowMeta: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["SubFieldMeta"];
+            };
         };
         /** SchemaById */
         SchemaById: {
@@ -2433,6 +2457,29 @@ export interface components {
             schema_id: string;
             /** Version */
             version: number;
+        };
+        /**
+         * SubFieldMeta
+         * @description A row sub-field's outcome without its candidates (SPEC-13 §4.8, INV-34).
+         */
+        SubFieldMeta: {
+            /** Calibrated */
+            calibrated: boolean;
+            /** Confidence */
+            confidence: number | null;
+            /** Evidence */
+            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded") | null;
+            /** Locator */
+            locator: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Source Kind */
+            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "published" | "missing" | "conflict" | "abstained";
         };
         /**
          * TaskCounts

@@ -108,7 +108,8 @@ Input (flat, cleaned, never raw HTML):
   listing) from the start; truncation is recorded in the call metadata;
 - the schema's field `description`s and types for the fields requested (the fields SPEC-05 4.13 sends: `missing`
   required fields in cold mode, uncovered or suspended fields in active mode; optional fields are included when
-  they are missing and the budget allows — same call);
+  they are missing and the budget allows — same call); never an `object` field or a list of objects (a row-mapped
+  field included): a claim is one verbatim span, which cannot hold typed sub-fields (SPEC-13 §4.9);
 - the request URL (as context; the model is told it is not a source of values — §8.2 rule 4 is enforced later
   anyway).
 

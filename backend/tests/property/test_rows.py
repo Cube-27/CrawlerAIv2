@@ -1,0 +1,146 @@
+"""Row matching properties (SPEC-13 §6, INV-33): rows are matched by key and never by position, so the order of rows
+and of sources does not change the published rows; rows with different keys never merge; a sub-field that disagrees
+inside one variant is a conflict, never a value; and JSON-LD and microdata give equal `variants` values."""
+
+import asyncio
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from html import escape
+from pathlib import Path
+from typing import Any
+
+from hypothesis import given
+from hypothesis import strategies as st
+from pydantic import JsonValue
+
+from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.core.ids import uuid7
+from crawlerai.db.models import SchemaId, SourceKind
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.types import FieldOutcome
+from crawlerai.schemas.registry import load_presets
+from crawlerai.schemas.types import SchemaDef
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+
+VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
+ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
+DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
+PAGE_URL = "https://shop.example.test/p/1"
+_PRESET = next(p for p in load_presets() if p.name == "commerce_detail")
+SCHEMA = SchemaDef(**_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
+_SCHEMA_ORG = "https://schema.org/"
+
+
+@dataclass(frozen=True)
+class Variant:
+    sku: str
+    price: str
+    color: str | None
+
+    def jsonld(self) -> dict[str, Any]:
+        offer = {"@type": "Offer", "price": self.price, "priceCurrency": "EUR"}
+        node: dict[str, Any] = {"@type": "Product", "sku": self.sku, "offers": offer}
+        return node | ({"color": self.color} if self.color else {})
+
+    def microdata(self) -> str:
+        color = f'<meta itemprop="color" content="{escape(self.color)}">' if self.color else ""
+        return (
+            f'<div itemprop="hasVariant" itemscope itemtype="{_SCHEMA_ORG}Product">'
+            f'<meta itemprop="sku" content="{escape(self.sku)}">{color}'
+            f'<div itemprop="offers" itemscope itemtype="{_SCHEMA_ORG}Offer">'
+            f'<meta itemprop="price" content="{self.price}"><meta itemprop="priceCurrency" content="EUR"></div></div>'
+        )
+
+
+SKUS = st.sampled_from(["W-11", "W-12", "W-13", "W-14"])
+VARIANTS = st.builds(Variant, SKUS, st.sampled_from(["10.00", "12.00"]), st.none() | st.sampled_from(["Red", "Blue"]))
+# Variants with distinct skus: one per variant.
+DISTINCT = st.lists(VARIANTS, min_size=1, max_size=4, unique_by=lambda v: v.sku)
+
+
+def _jsonld(variants: list[Variant]) -> str:
+    group: dict[str, Any] = {
+        "@context": "https://schema.org",
+        "@type": "ProductGroup",
+        "name": "Synthetic Widget",
+        "url": PAGE_URL,
+    }
+    group["hasVariant"] = [v.jsonld() for v in variants]
+    return f'<script type="application/ld+json">{json.dumps(group)}</script>'
+
+
+def _microdata(variants: list[Variant]) -> str:
+    inner = "".join(v.microdata() for v in variants)
+    return (
+        f'<div itemscope itemtype="{_SCHEMA_ORG}ProductGroup"><meta itemprop="name" content="Synthetic Widget">'
+        f'<link itemprop="url" href="{PAGE_URL}">{inner}</div>'
+    )
+
+
+def _outcome(head: str = "", body: str = "") -> FieldOutcome:
+    raw = f"<html><head>{head}</head><body>{body}</body></html>".encode()
+    manifest = CaptureManifest(
+        capture_id=uuid7(),
+        url=PAGE_URL,
+        final_url=PAGE_URL,
+        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+        method="http",
+        status_code=200,
+        block_class="ok",
+        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
+        timings_ms={},
+        html_sha256=sha256_hex(raw),
+        network_bodies=(),
+        fetch_policy={},
+        engine_version="0+cal.0",
+    )
+    bundle = CaptureBundle(manifest=manifest, body=raw, network=())
+    result = asyncio.run(extract_page(bundle, SCHEMA, None, None, data=DATA))
+    assert result.entity is not None
+    return result.entity["variants"]
+
+
+def _rows(outcome: FieldOutcome) -> list[str]:
+    """The published rows, each as canonical JSON, sorted: row order follows the page, and is compared apart."""
+    value: JsonValue = outcome.value if outcome.status == "published" else []
+    assert isinstance(value, list)
+    return sorted(json.dumps(row, sort_keys=True) for row in value)
+
+
+@given(DISTINCT, st.randoms(use_true_random=False))
+def test_the_order_of_rows_and_sources_does_not_change_the_rows(variants: list[Variant], random: Any) -> None:
+    shuffled = random.sample(variants, len(variants))
+
+    in_order = _outcome(head=_jsonld(variants), body=_microdata(variants))
+    reordered = _outcome(head=_jsonld(shuffled), body=_microdata(list(reversed(variants))))
+
+    assert _rows(in_order) == _rows(reordered)
+
+
+@given(DISTINCT)
+def test_rows_with_different_keys_never_merge(variants: list[Variant]) -> None:
+    outcome = _outcome(head=_jsonld(variants))
+
+    assert len(_rows(outcome)) == len(variants)
+
+
+@given(VARIANTS, st.sampled_from(["10.00", "12.00"]))
+def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Variant, other_price: str) -> None:
+    twin = Variant(variant.sku, other_price, variant.color)
+
+    outcome = _outcome(head=_jsonld([variant, twin]))
+
+    assert outcome.items is not None
+    assert len(outcome.items) == 1
+    price = outcome.items[0].fields["price"]
+    if other_price == variant.price:
+        assert price.value == {"amount": variant.price, "currency": "EUR"}
+    else:
+        assert (price.status, price.value) == ("conflict", None)
+
+
+@given(DISTINCT)
+def test_json_ld_and_microdata_give_equal_variants(variants: list[Variant]) -> None:
+    assert _rows(_outcome(head=_jsonld(variants))) == _rows(_outcome(body=_microdata(variants)))

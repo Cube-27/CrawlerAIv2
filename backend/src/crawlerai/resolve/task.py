@@ -7,7 +7,7 @@ and crawl tasks (SPEC-10). Storing only serializes what resolution decided (INV-
 was chosen or why it was rejected, and the record holds the published values.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
@@ -37,7 +37,7 @@ from crawlerai.db.queue import ClaimedTask
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.records import RecordDraft, assemble, assemble_listing
-from crawlerai.resolve.types import ExtractionResult, FieldSet
+from crawlerai.resolve.types import ExtractionResult, FieldOutcome, FieldSet
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
@@ -244,13 +244,21 @@ def _marks(result: ExtractionResult) -> tuple[set[_CandidateKey], dict[_Candidat
     chosen: set[_CandidateKey] = set()
     reasons: dict[_CandidateKey, str] = {}
     for fields in (result.entity or {}, *result.rows):
-        for outcome in fields.values():
+        for outcome in _with_sub_fields(fields.values()):
             if outcome.chosen is not None:
                 chosen.add(_key(outcome.chosen))
             for candidate, reason in outcome.rejected:
                 if reasons.get(_key(candidate), "not_owned") == "not_owned":
                     reasons[_key(candidate)] = reason
     return chosen, reasons
+
+
+def _with_sub_fields(outcomes: Iterable[FieldOutcome]) -> Iterator[FieldOutcome]:
+    """Each outcome, and the sub-field outcomes of a row-mapped field's published rows (SPEC-13 §4.8)."""
+    for outcome in outcomes:
+        yield outcome
+        for item in outcome.items or ():
+            yield from item.fields.values()
 
 
 def _normalized(candidate: Candidate) -> tuple[NormalizeStatus, JsonValue]:

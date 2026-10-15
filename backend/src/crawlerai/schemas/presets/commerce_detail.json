@@ -1,6 +1,6 @@
 {
   "name": "commerce_detail",
-  "version": 2,
+  "version": 3,
   "page_kind": "detail",
   "required_groups": [["sku", "gtin"]],
   "fields": {
@@ -51,6 +51,70 @@
       "scheme": "gtin",
       "description": "GS1 trade item number (GTIN-8, -12, -13 or -14) of the selected or default variant",
       "schema_org": "Product.gtin"
+    },
+    "variants": {
+      "type": "list",
+      "description": "Every variant the buyer can choose (for example a size or colour), one entry each, with its own identifiers, price and availability",
+      "schema_org": "ProductGroup.hasVariant|Product.offers|Product.offers.offers",
+      "key": ["gtin", "sku", "url"],
+      "item": {
+        "type": "object",
+        "fields": {
+        "sku": {
+          "type": "identifier",
+          "scheme": "sku",
+          "description": "The seller's stock keeping unit of this variant",
+          "schema_org": "Product.sku|Offer.sku"
+        },
+        "gtin": {
+          "type": "identifier",
+          "scheme": "gtin",
+          "description": "GS1 trade item number (GTIN-8, -12, -13 or -14) of this variant",
+          "schema_org": "Product.gtin|Offer.gtin"
+        },
+        "price": {
+          "type": "money",
+          "description": "Current price of this variant, with its currency",
+          "schema_org": "Offer.price+priceCurrency"
+        },
+        "availability": {
+          "type": "enum",
+          "vocab": "schema:ItemAvailability",
+          "description": "Whether this variant can be bought now",
+          "schema_org": "Offer.availability"
+        },
+        "url": {
+          "type": "url",
+          "description": "URL that shows this variant",
+          "schema_org": "Product.url|Offer.url"
+        },
+        "name": {
+          "type": "text",
+          "description": "Name of this variant as shown to the buyer",
+          "schema_org": "Product.name|Offer.name"
+        },
+        "size": {
+          "type": "text",
+          "description": "Size of this variant",
+          "schema_org": "Product.size.name"
+        },
+        "color": {
+          "type": "text",
+          "description": "Colour of this variant",
+          "schema_org": "Product.color"
+        },
+        "material": {
+          "type": "text",
+          "description": "Material of this variant",
+          "schema_org": "Product.material.name"
+        },
+        "pattern": {
+          "type": "text",
+          "description": "Pattern of this variant",
+          "schema_org": "Product.pattern.name"
+        }
+        }
+      }
     }
   }
 }
