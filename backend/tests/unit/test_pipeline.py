@@ -508,6 +508,29 @@ def test_an_item_list_holding_the_items_directly_and_in_microdata_gives_rows() -
     assert titles == ["Widget 1", "Widget 3"]
 
 
+def _microdata_items(*ns: int) -> str:
+    items = "".join(
+        '<li itemprop="itemListElement" itemscope itemtype="https://schema.org/Product">'
+        f'<link itemprop="mainEntityOfPage" href="{LISTING_URL}">'
+        f'<a itemprop="url" href="/p/{n}"><span itemprop="name">Widget {n}</span></a></li>'
+        for n in ns
+    )
+    return f'<ul itemscope itemtype="https://schema.org/ItemList">{items}</ul>'
+
+
+def test_items_both_syntaxes_state_are_one_row_each() -> None:
+    # A row is an item, not a statement of it: microdata repeating the JSON-LD items adds only the item JSON-LD lacks.
+    # Every row names the listing page too, which names no item.
+    rows = [_row(n, mainEntityOfPage=LISTING_URL) for n in (1, 2)]
+    result = _listing(_html(_item_list(*rows), body=_microdata_items(1, 2, 3)))
+
+    assert [(row["title"].value, row["title"].source_kind) for row in result.rows] == [
+        ("Widget 1", "jsonld"),
+        ("Widget 2", "jsonld"),
+        ("Widget 3", "microdata"),
+    ]
+
+
 def test_three_top_level_items_no_page_url_names_are_the_rows() -> None:
     result = _listing(_html(_row(1), _row(2), _row(3)))
     assert [row["title"].value for row in result.rows] == ["Widget 1", "Widget 2", "Widget 3"]

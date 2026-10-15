@@ -400,7 +400,7 @@ class _Listing:
         candidates = page.candidates
         # SPEC-08 §4.8: the config's rows serve only where structured data gives none. Its row candidates belong to its
         # own row entities, so structured and config values never meet in one row.
-        rows = listing_rows(page.graph, page.primary, page.target) or page.config.rows
+        rows = listing_rows(page.graph, page.primary, page.target, page.page_urls) or page.config.rows
         fields, resolved = page.resolve_listing(candidates, rows)
         next_pages = next_page_candidates(page.page, source.bundle.manifest.final_url)
         return cls(page, fields, resolved, next_pages, candidates, page.diagnostics)
