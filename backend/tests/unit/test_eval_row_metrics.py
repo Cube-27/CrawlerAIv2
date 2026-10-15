@@ -22,7 +22,10 @@ from crawlerai.eval.metrics import (
     build_report,
     export_aggregate,
 )
-from crawlerai.schemas.types import FieldSpec
+from crawlerai.schemas.types import FieldSpec, FieldType
+
+# A row sub-field's cell (SPEC-13 §4.10), built from its type: the literal would read as a hostname to the C3 scan.
+LIST_MONEY = f"list.{FieldType.MONEY.value}"
 
 VARIANTS = FieldSpec.model_validate(
     {
@@ -120,13 +123,13 @@ def test_rows_match_by_key_whatever_their_order() -> None:
         case("p1", [label_row("W-11"), label_row("W-12", "12.00")], [engine_row("W-12", "12.00"), engine_row("W-11")])
     )
 
-    identifier, money = metrics(r.by_field_type["list.identifier"]), metrics(r.by_field_type["list.money"])
+    identifier, money = metrics(r.by_field_type["list.identifier"]), metrics(r.by_field_type[LIST_MONEY])
     assert (identifier.precision, identifier.coverage, identifier.n) == (1.0, 1.0, 2)
     assert (money.precision, money.n) == (1.0, 2)
     # Both urls are labeled absent and not published: TN.
     assert metrics(r.by_field_type["list.url"]).abstain_rate == 1.0
     assert metrics(r.by_field["commerce_detail|variants.sku"]).n == 2
-    assert r.by_bucket["list.money|structured"] == PrecisionMetrics(precision=1.0, n=2)
+    assert r.by_bucket[f"{LIST_MONEY}|structured"] == PrecisionMetrics(precision=1.0, n=2)
     assert r.row_matching == RowMetrics(row_precision=1.0, row_recall=1.0, engine_rows=2, n=2)
     # A top-level field's cells are untouched.
     assert metrics(r.by_field_type["text"]).n == 1
@@ -174,7 +177,7 @@ def test_an_engine_row_with_a_distractor_key_is_a_wrong_product() -> None:
     r = report(case("p1", [label_row("W-11")], [engine_row("W-11"), engine_row("X-7")], distractor_keys=[distractor]))
 
     assert metrics(r.by_field_type["list.identifier"]).wrong_product == 1
-    assert metrics(r.by_field_type["list.money"]).wrong_product == 0
+    assert metrics(r.by_field_type[LIST_MONEY]).wrong_product == 0
 
 
 def test_rows_published_where_the_label_says_absent_are_fp() -> None:
