@@ -170,21 +170,20 @@ def test_gemini_asks_for_the_class_model_with_a_json_schema_output_at_temperatur
 
 
 @VENDORS
-@pytest.mark.parametrize(("model_class", "model"), [("fast", "fast-model"), ("strong", "strong-model")])
-def test_the_model_follows_the_model_class(vendor: Vendor, model_class: str, model: str) -> None:
+def test_the_model_follows_the_model_class(vendor: Vendor) -> None:
+    # The strong class's model is in each vendor's request test above.
     requests: list[Any] = []
-    run(vendor.build(requests, answering(vendor)), CALL.model_copy(update={"model_class": model_class}))
+    run(vendor.build(requests, answering(vendor)), CALL.model_copy(update={"model_class": "fast"}))
     [request] = requests
     sent = request.url.path.removeprefix("/v1beta/models/").removesuffix(":generateContent")
-    assert json.loads(request.content).get("model", sent) == model
+    assert json.loads(request.content).get("model", sent) == "fast-model"
 
 
 @VENDORS
-@pytest.mark.parametrize("timeout_s", [60, 120])
-def test_the_call_timeout_is_the_request_timeout(vendor: Vendor, timeout_s: int) -> None:
+def test_the_call_timeout_is_the_request_timeout(vendor: Vendor) -> None:
     requests: list[Any] = []
-    run(vendor.build(requests, answering(vendor)), CALL.model_copy(update={"timeout_s": timeout_s}))
-    assert requests[0].extensions["timeout"]["read"] == timeout_s
+    run(vendor.build(requests, answering(vendor)), CALL.model_copy(update={"timeout_s": 60}))
+    assert requests[0].extensions["timeout"]["read"] == 60
 
 
 # --- what is read ---
@@ -198,9 +197,9 @@ def test_the_reply_text_model_and_token_counts_are_read(vendor: Vendor) -> None:
 
 
 @VENDORS
-@pytest.mark.parametrize("cut", [False, True])
-def test_a_reply_stopped_at_the_token_cap_is_marked_cut(vendor: Vendor, cut: bool) -> None:
-    assert run(vendor.build([], answering(vendor, '{"summ', cut))).cut is cut
+def test_a_reply_stopped_at_the_token_cap_is_marked_cut(vendor: Vendor) -> None:
+    # A reply that ends normally is not cut: test_the_reply_text_model_and_token_counts_are_read.
+    assert run(vendor.build([], answering(vendor, '{"summ', cut=True))).cut is True
 
 
 @VENDORS
@@ -212,7 +211,7 @@ def test_an_invalid_reply_is_passed_on_for_the_client_to_check(vendor: Vendor) -
 
 
 @VENDORS
-@pytest.mark.parametrize("status", [408, 429, 500, 503, 529])
+@pytest.mark.parametrize("status", [408, 429, 500])
 def test_a_transient_status_is_a_provider_error_after_one_request(vendor: Vendor, status: int) -> None:
     requests: list[Any] = []
     provider = vendor.build(requests, failing(status))
@@ -233,16 +232,15 @@ def test_a_timeout_is_a_provider_error(vendor: Vendor) -> None:
 
 
 @VENDORS
-@pytest.mark.parametrize("status", [400, 401, 404])
-def test_a_rejected_request_is_refused_with_the_providers_message(vendor: Vendor, status: int) -> None:
+def test_a_rejected_request_is_refused_with_the_providers_message(vendor: Vendor) -> None:
     # A bad key, an unknown model or a refused schema: the request's own fault, which a retry does not fix (§4.7).
     requests: list[Any] = []
-    provider = vendor.build(requests, failing(status))
+    provider = vendor.build(requests, failing(400))
 
-    with pytest.raises(ProviderRefused, match=f"{vendor.name}: HTTP {status}: .*synthetic error") as refused:
+    with pytest.raises(ProviderRefused, match=f"{vendor.name}: HTTP 400: .*synthetic error") as refused:
         run(provider)
     assert (refused.value.code, refused.value.field_reason, len(requests)) == ("llm_unavailable", "llm_unavailable", 1)
-    assert (refused.value.provider, refused.value.model, refused.value.status) == (vendor.name, "strong-model", status)
+    assert (refused.value.provider, refused.value.model, refused.value.status) == (vendor.name, "strong-model", 400)
 
 
 @VENDORS

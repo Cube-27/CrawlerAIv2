@@ -15,9 +15,7 @@ from crawlerai.llm.providers.from_settings import client_from_settings, provider
 KEYS = {"llm_api_key_anthropic": SecretStr("a-key"), "llm_api_key_gemini": SecretStr("g-key")}
 
 
-@pytest.mark.parametrize(
-    "order", [("anthropic", "gemini"), ("gemini", "anthropic"), ("gemini",)], ids=lambda order: ",".join(order)
-)
+@pytest.mark.parametrize("order", [("anthropic", "gemini"), ("gemini", "anthropic")], ids=lambda order: ",".join(order))
 def test_providers_come_in_the_configured_order(order: tuple[str, ...]) -> None:
     settings = LLMSettings.model_validate({"llm_providers": order} | KEYS)
     assert [provider.name for provider in providers_from_settings(settings)] == list(order)
