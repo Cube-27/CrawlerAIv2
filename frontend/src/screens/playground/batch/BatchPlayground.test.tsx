@@ -6,6 +6,7 @@ import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
 import {
+  fill,
   openOptions,
   openPlayground,
   optionsButton,
@@ -73,7 +74,7 @@ function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
 }
 
 async function typeUrls(text: string) {
-  await userEvent.type(screen.getByRole("textbox", { name: "URLs" }), text);
+  await fill(screen.getByRole("textbox", { name: "URLs" }), text);
 }
 
 async function start() {
@@ -111,7 +112,7 @@ describe("batch playground: the command bar", () => {
     await openPlayground("/batch");
     expect(screen.getByText("0 URLs")).toBeInTheDocument();
 
-    await typeUrls("https://shop.test/a{Enter}{Enter}https://shop.test/b");
+    await typeUrls("https://shop.test/a\n\nhttps://shop.test/b");
 
     expect(screen.getByText("2 URLs")).toBeInTheDocument();
   });
@@ -141,7 +142,7 @@ describe("batch playground: the command bar", () => {
   it("posts the batch request SPEC-10 defines from the list, toolbar and options", async () => {
     const calls = batchApi();
     await openPlayground("/batch");
-    await typeUrls("https://shop.test/a{Enter} https://shop.test/b ");
+    await typeUrls("https://shop.test/a\n https://shop.test/b ");
     await toggleFormats("Links");
     await pick(/Schema/, "item_detail version 2");
     const options = await openOptions();
@@ -429,7 +430,7 @@ describe("batch playground: runs", () => {
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
-    await userEvent.type(list, "{Enter}https://shop.test/c");
+    await fill(list, "\nhttps://shop.test/c");
     await start();
 
     await waitFor(() => {

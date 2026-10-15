@@ -1,10 +1,14 @@
 import { Alert, Typography } from "@heroui/react";
+import { useState } from "react";
 import type { MapResult } from "../../../api/jobs";
+import { ScrapeAsBatchBar } from "../run/scrapeAsBatch";
 import { LinksTable } from "./LinksTable";
 
-/** What a map found (SPEC-14 §4.3): how many URLs from each source, whether the list was cut short, then the links. */
+/** What a map found (SPEC-14 §4.3): how many URLs from each source, whether the list was cut short, then the links,
+ * whose selected URLs open as a batch (SPEC-14 §2.8). */
 export function MapOutput({ result }: Readonly<{ result: MapResult }>) {
   const { urls, sources, truncated } = result;
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   return (
     <>
       <Typography.Paragraph>
@@ -21,7 +25,8 @@ export function MapOutput({ result }: Readonly<{ result: MapResult }>) {
           </Alert.Content>
         </Alert>
       ) : null}
-      <LinksTable urls={urls} />
+      <ScrapeAsBatchBar selected={selected} />
+      <LinksTable urls={urls} selected={selected} onSelect={setSelected} />
     </>
   );
 }

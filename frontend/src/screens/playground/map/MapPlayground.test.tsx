@@ -107,4 +107,29 @@ describe("map playground", () => {
     const options = await openOptions();
     expect(options.getByRole("switch", { name: "Use links" })).not.toBeChecked();
   });
+
+  it("opens the URLs selected on any page as a batch", async () => {
+    mapApi({ urls: URLS, sources: { sitemap: 25, links: 0 }, truncated: false });
+    await openPlayground("/map");
+    await map();
+    await screen.findByRole("grid", { name: "Links" });
+    const scrapeAsBatch = screen.getByRole("button", { name: "Scrape as batch" });
+    expect(scrapeAsBatch).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: `Select ${URLS[1] ?? ""}` }));
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: `Select ${URLS[24] ?? ""}` }));
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    await userEvent.click(scrapeAsBatch);
+
+    const batch = within(screen.getByRole("navigation", { name: "Mode" })).getByRole("tab", {
+      name: "Batch",
+    });
+    await waitFor(() => {
+      expect(batch).toHaveAttribute("aria-selected", "true");
+    });
+    expect(screen.getByRole("textbox", { name: "URLs" })).toHaveValue(
+      `${URLS[1] ?? ""}\n${URLS[24] ?? ""}`,
+    );
+  });
 });

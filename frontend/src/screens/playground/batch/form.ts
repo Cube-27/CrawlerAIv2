@@ -40,13 +40,18 @@ export interface BatchFormState {
   options: BatchOptions;
 }
 
-export const INITIAL_BATCH: BatchFormState = {
+const INITIAL_BATCH: BatchFormState = {
   urls: "",
   formats: ["markdown"],
   schemaId: "",
   schemaPageKind: null,
   options: DEFAULT_BATCH_OPTIONS,
 };
+
+/** A new batch's form, its list `urls` (one per line). */
+export function initialBatch(urls: string): BatchFormState {
+  return { ...INITIAL_BATCH, urls };
+}
 
 /** The batch request for `form`, or null when it can't be sent (`canSend`). */
 export function buildBatch(form: BatchFormState): BatchRequest | null {

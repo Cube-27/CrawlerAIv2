@@ -98,8 +98,6 @@ describe("crawl playground", () => {
     await userEvent.click(options.getByRole("button", { name: "Add rule" }));
     await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
     await pick(/Page kind 1/, "Listing");
-    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
-    await fill(options.getByRole("textbox", { name: "Max depth" }), "2");
 
     await start();
 
@@ -112,7 +110,6 @@ describe("crawl playground", () => {
       page_kind_rules: [{ pattern: "https://shop.test/items/*", page_kind: "listing" }],
       include: ["https://shop.test/items/*"],
       exclude: ["https://shop.test/cart/*"],
-      max_depth: 2,
       fetch: { method_hint: "auto" },
     });
   });
@@ -171,5 +168,16 @@ describe("crawl playground", () => {
 
     expect(options.queryByRole("grid", { name: "Include" })).not.toBeInTheDocument();
     expect(optionsButton()).not.toHaveAccessibleDescription("Settings changed");
+  });
+
+  it("opens the pages selected in its results as a batch", async () => {
+    crawlApi();
+    await openPlayground(`/crawl?job=${JOB_ID}`);
+    await screen.findByText(ITEM.url);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: `Select ${ITEM.url}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Scrape as batch" }));
+
+    expect(await screen.findByRole("textbox", { name: "URLs" })).toHaveValue(ITEM.url);
   });
 });

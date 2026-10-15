@@ -1,4 +1,5 @@
 import { Button } from "@heroui/react";
+import { useLocation } from "react-router";
 import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { OptionsToggle } from "../OptionsPanel";
@@ -8,20 +9,23 @@ import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobRunOutput } from "../run/JobRun";
 import { RecentRuns } from "../run/RecentRuns";
+import { batchUrls } from "../run/scrapeAsBatch";
 import { useShownJob } from "../run/useShownJob";
 import { usePageForm } from "../usePageForm";
 import { BatchOptions } from "./BatchOptions";
-import { batchForm, buildBatch, DEFAULT_BATCH_OPTIONS, INITIAL_BATCH } from "./form";
+import { batchForm, buildBatch, DEFAULT_BATCH_OPTIONS, initialBatch } from "./form";
 import { UrlList } from "./UrlList";
 
 /** The Batch playground at `/batch` (SPEC-14 §4.2): a URL list, the same formats, schema and options for every URL
  * (`POST /v1/batch/scrape`), and the run on the same page (`?job=`) as a running results table; before any run, the
- * recent batches. */
+ * recent batches. URLs selected in a Map or Crawl result arrive in the navigation's state as the list. */
 export function BatchPlayground() {
+  // react-router types a navigation's state as `any`; `batchUrls` checks it.
+  const state: unknown = useLocation().state;
   const submit = useSubmitBatch();
   const problem = problemOf(submit.error);
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
-    INITIAL_BATCH,
+    initialBatch(batchUrls(state)),
     problem,
     pageKindErrors,
   );

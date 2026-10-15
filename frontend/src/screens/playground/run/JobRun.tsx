@@ -35,7 +35,11 @@ function RunHeader({ job, withMetadata }: Readonly<{ job: JobSummary; withMetada
 /** A job's run on the page (SPEC-14 §4.3, §4.5): its status line and counts, then the results table with the live
  * activity beside it from `lg` and under it below. The run's events feed the activity and read the summary and the
  * table again. */
-function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
+function JobRunView({
+  job,
+  withMetadata,
+  selectable,
+}: Readonly<{ job: JobSummary; withMetadata: boolean; selectable: boolean }>) {
   const activity = useJobEvents(job.id);
   return (
     <>
@@ -43,7 +47,7 @@ function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
       <OutcomeCounts counts={job.counts} outcomes={job.outcomes} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
-          <ResultsTable jobId={job.id} withMetadata={withMetadata} />
+          <ResultsTable jobId={job.id} withMetadata={withMetadata} selectable={selectable} />
         </div>
         <ActivityFeed job={job} activity={activity} />
       </div>
@@ -52,17 +56,21 @@ function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
 }
 
 /** The output area for the job `jobId`: loading, its problem, or its run. `withMetadata` (Metadata in JSON) asks the
- * results for each page's metadata. */
+ * results for each page's metadata; `selectable` lets its pages' URLs be selected to open as a batch (a crawl's). */
 export function JobRunOutput({
   jobId,
   withMetadata,
-}: Readonly<{ jobId: string; withMetadata: boolean }>) {
+  selectable = false,
+}: Readonly<{ jobId: string; withMetadata: boolean; selectable?: boolean }>) {
   const job = useJob(jobId);
   const problem = problemOf(job.error);
   let state: OutputState;
   if (problem !== null) state = { kind: "failed", problem };
   else if (job.isSuccess)
-    state = { kind: "done", content: <JobRunView job={job.data} withMetadata={withMetadata} /> };
+    state = {
+      kind: "done",
+      content: <JobRunView job={job.data} withMetadata={withMetadata} selectable={selectable} />,
+    };
   else state = { kind: "pending", label: "Loading the run" };
   return <OutputArea state={state} />;
 }

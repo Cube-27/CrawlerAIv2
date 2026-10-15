@@ -38,7 +38,14 @@ export function CrawlPlayground() {
     output = <OutputArea state={{ kind: "pending", label: "Starting the crawl" }} />;
   else if (problem !== null) output = <OutputArea state={{ kind: "failed", problem }} />;
   else if (jobId !== null)
-    output = <JobRunOutput key={jobId} jobId={jobId} withMetadata={form.options.metadataInJson} />;
+    output = (
+      <JobRunOutput
+        key={jobId}
+        jobId={jobId}
+        withMetadata={form.options.metadataInJson}
+        selectable
+      />
+    );
 
   return (
     <PlaygroundLayout
