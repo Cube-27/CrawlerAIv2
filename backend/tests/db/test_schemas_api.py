@@ -131,9 +131,8 @@ async def test_a_broken_document_rule_is_a_validation_problem(client: httpx.Asyn
     problem = response.json()
     assert response.status_code == 422
     assert problem["type"] == "validation"
-    [error] = problem["errors"]
-    assert error["field"] == ""
-    assert "unknown fields ['sku']" in error["reason"]
+    # The reason is the rule's own message, as labels report theirs (`eval.labels.from_pydantic`).
+    assert problem["errors"] == [{"field": "", "reason": "required group ['sku'] names unknown fields ['sku']"}]
 
 
 async def test_a_malformed_field_is_a_validation_problem_naming_it(client: httpx.AsyncClient) -> None:
