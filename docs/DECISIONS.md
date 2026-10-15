@@ -5449,3 +5449,35 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep it as a key (joins every row into one `row_key_conflict`); split `Entity.urls` by origin in the collectors.
 - Why: One row's URL identifies that variant; a URL many rows repeat identifies the group (C7).
 - Reversible: yes
+
+### D-0803 — Row-mapped labels under `lists`
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.10 (#174) · Status: decided
+- Context: SPEC-13 §4.10 shows the `variants` label but not where it sits in the labels document.
+- Decision: A new top-level key `lists`, by field name, in `label_version` 2; left out of a dump when empty.
+- Alternatives: Put row labels under `fields` as a union shape.
+- Why: `fields` keeps one label shape for the API, stored documents and the labeling screen; v1 documents are unchanged.
+- Reversible: yes
+
+### D-0804 — Row metrics shape
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.10 (#174) · Status: decided
+- Context: §4.10 asks for row precision and recall, with hidden cells suppressed.
+- Decision: `row_matching`: one aggregate over all row-mapped fields (`n` = label rows), suppressed under `MIN_CELL`; `row_matching_by_field` per `schema|field`, dev only.
+- Alternatives: Per-field cells only.
+- Why: An aggregate that names no schema can leave the protected job.
+- Reversible: yes
+
+### D-0805 — Row sub-fields outside zero-touch and precedence fitting
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.10 (#174) · Status: decided
+- Context: Zero-touch is about required fields (SPEC-03 §4.6); calibration measures row values apart (SPEC-13 §4.5).
+- Decision: An unmatched engine row of a row-mapped field does not break zero-touch; sub-field judgments carry no source cells.
+- Alternatives: Count them as listing rows are counted.
+- Why: `variants` is optional; a row value can be wrong through a row match, which says nothing about a source kind.
+- Reversible: yes
+
+### D-0806 — Pre-fill and labeling screen with row-mapped fields
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.10 (#174) · Status: decided
+- Context: Role C is never asked for a row field (§4.9); the screen edits only field labels.
+- Decision: The pre-fill leaves row-mapped fields out and writes version 1; the screen keeps stored `lists` and writes version 2 only when `lists` is non-empty.
+- Alternatives: Edit variant rows in the screen now.
+- Why: A pass saved from the screen never drops row labels added through the API, and labeling keeps working on preset v3 pages.
+- Reversible: yes

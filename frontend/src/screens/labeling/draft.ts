@@ -20,6 +20,8 @@ export type FieldDrafts = Record<string, FieldDraft>;
 export interface Draft {
   fields: FieldDrafts; // detail-page fields, or a listing page's page-scoped fields
   rows: FieldDrafts[]; // listing pages only, in page order
+  // Row-mapped fields' labels (SPEC-13 §4.10), as stored: the form does not edit them, and a save keeps them.
+  lists: Labels["lists"];
   notes: string;
 }
 
@@ -36,12 +38,13 @@ export const emptyField: FieldDraft = {
   distractors: "",
 };
 
-/** The fields a page's labels have at the top level, and those each listing row has (SPEC-03 §4.3). */
+/** The fields a page's labels have at the top level, and those each listing row has (SPEC-03 §4.3). A row-mapped
+ * field (one with a `key`) is labeled as rows under `lists` (SPEC-13 §4.10), which this form does not edit. */
 export function fieldNames(
   pageKind: "detail" | "listing",
   shapes: Record<string, FieldShape>,
 ): { page: string[]; row: string[] } {
-  const names = Object.keys(shapes);
+  const names = Object.keys(shapes).filter((name) => shapes[name]?.key == null);
   // On a detail page every field belongs to the one entity, whatever its scope (SPEC-04 §4.2).
   if (pageKind === "detail") return { page: names, row: [] };
   return {
@@ -75,6 +78,7 @@ export function draftFrom(
   return {
     fields: fieldDrafts(names.page, labels?.fields ?? {}),
     rows: (labels?.rows ?? []).map((row) => fieldDrafts(names.row, row.fields)),
+    lists: labels?.lists ?? {},
     notes: labels?.notes ?? "",
   };
 }
@@ -152,7 +156,8 @@ export function toLabels({
 }): Built {
   const errors: FieldError[] = [];
   const labels: Labels = {
-    label_version: 1,
+    // Version 2 only when the page has row labels, so a version 1 document saves as it was read.
+    label_version: Object.keys(draft.lists).length > 0 ? 2 : 1,
     status,
     labeler: labeler.trim() === "" ? null : labeler.trim(),
     checker: checker === null ? null : checker.trim(),
@@ -161,6 +166,7 @@ export function toLabels({
     rows: draft.rows.map((row, i) => ({
       fields: fieldLabels(`rows[${String(i)}].fields`, row, errors),
     })),
+    lists: draft.lists,
     notes: draft.notes,
   };
   return errors.length > 0 ? { kind: "invalid", errors } : { kind: "labels", labels };

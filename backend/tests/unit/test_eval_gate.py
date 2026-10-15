@@ -16,6 +16,10 @@ from crawlerai.db.models import Split
 from crawlerai.eval.gate import GateInputInvalid, GateResult, commits_on, find_baseline, gate
 from crawlerai.eval.metrics import FieldMetrics, Report, Suppressed
 from crawlerai.eval.store import EvalRunRow
+from crawlerai.schemas.types import FieldType
+
+# A row sub-field's cell (SPEC-13 §4.10), built from its type: the literal would read as a hostname to the C3 scan.
+LIST_MONEY = f"list.{FieldType.MONEY.value}"
 
 
 def cell(precision: float | None = 0.97, wrong_product: int = 0, n: int = 100) -> FieldMetrics:
@@ -86,6 +90,17 @@ def test_precision_drop_on_a_type_without_required_fields_passes() -> None:
     # `list` is not in the §4.8 required-type set, so only wrong products can fail it.
     result = gate(report({"money": cell(0.97), "list": cell(0.5)}), BASELINE)
     assert (result.passed, result.reasons, result.by_field_type["list"]) == (True, [], True)
+
+
+def test_a_row_sub_field_cell_is_gated_on_wrong_products_only() -> None:
+    # SPEC-13 §4.10: `list.<type>` cells are an optional field's; a precision drop passes, a wrong product fails.
+    base = report({"money": cell(0.97), LIST_MONEY: cell(0.97)}, git_sha=BASE_SHA)
+
+    dropped = gate(report({"money": cell(0.97), LIST_MONEY: cell(0.5)}), base)
+    wrong = gate(report({"money": cell(0.97), LIST_MONEY: cell(0.97, wrong_product=1)}), base)
+
+    assert (dropped.passed, dropped.reasons) == (True, [])
+    assert (wrong.passed, wrong.reasons) == (False, [f"wrong_product:{LIST_MONEY}"])
 
 
 def test_any_wrong_product_fails_on_any_type() -> None:

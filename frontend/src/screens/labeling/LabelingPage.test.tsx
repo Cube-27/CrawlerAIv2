@@ -47,6 +47,7 @@ const labeled: Labels = {
     price: { value: null, absent: true, locator: null, distractors: [] },
   },
   rows: [],
+  lists: {},
   notes: "",
 };
 

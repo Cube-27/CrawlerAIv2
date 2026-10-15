@@ -1016,6 +1016,16 @@ export interface components {
             /** Unpriced Tokens */
             unpriced_tokens: number;
         };
+        /**
+         * DistractorKey
+         * @description A key value of another product's variant shown on the page (SPEC-13 §4.10): an engine row with it is a wrong
+         *     product.
+         */
+        DistractorKey: {
+            /** Field */
+            field: string;
+            value: components["schemas"]["JsonValue"];
+        };
         /** DraftField */
         DraftField: {
             /** Manual */
@@ -1564,11 +1574,18 @@ export interface components {
             };
             /**
              * Label Version
-             * @constant
+             * @enum {integer}
              */
-            label_version: 1;
+            label_version: 1 | 2;
             /** Labeler */
             labeler?: string | null;
+            /**
+             * Lists
+             * @default {}
+             */
+            lists: {
+                [key: string]: components["schemas"]["ListLabel"];
+            };
             /**
              * Notes
              * @default
@@ -1610,6 +1627,25 @@ export interface components {
              * Format: uuid
              */
             job_id: string;
+        };
+        /**
+         * ListLabel
+         * @description A row-mapped field's label (SPEC-13 §4.10): one row per variant shown on the page, in page order. `absent`
+         *     means the page offers no variant choice.
+         */
+        ListLabel: {
+            /** Absent */
+            absent: boolean;
+            /**
+             * Distractor Keys
+             * @default []
+             */
+            distractor_keys: components["schemas"]["DistractorKey"][];
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["LabelRow"][];
         };
         /**
          * ListingReport

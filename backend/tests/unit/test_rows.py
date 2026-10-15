@@ -14,12 +14,13 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.learning import learnable
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import EvalRunId, SchemaId, SourceKind
+from crawlerai.eval.replay import page_output
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.records import FieldMeta
-from crawlerai.resolve.types import FieldOutcome
+from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
@@ -237,6 +238,25 @@ def test_the_record_meta_holds_one_item_per_row_and_the_dropped_rows() -> None:
     assert dumped["dropped"] == [{"locators": ["jsonld:0:$['hasVariant'][1]"], "reason": "no_row_key"}]
     plain = FieldMeta.of(_variants(_group()))
     assert "items" not in plain.model_dump(mode="json")
+
+
+def test_the_eval_output_holds_each_row_s_sub_fields() -> None:
+    # SPEC-13 §4.10: metrics match engine rows to label rows by key, so the replay output keeps each row.
+    outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00")))
+    result = ExtractionResult(
+        outcome="extracted",
+        entity={"variants": outcome},
+        rows=(),
+        candidates=(),
+        llm_calls=(),
+        mode="adhoc",
+        record_confidence=None,
+    )
+
+    items = page_output(result, "ok").fields["variants"].items
+
+    assert [row["sku"].value for row in items] == [_sku("W-11"), _sku("W-12")]
+    assert items[0]["price"].evidence == "structured"
 
 
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:

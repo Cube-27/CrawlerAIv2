@@ -28,6 +28,7 @@ describe("draftFrom and toLabels", () => {
         },
       },
       rows: [],
+      lists: {},
       notes: "two prices shown",
     };
 
@@ -49,6 +50,7 @@ describe("draftFrom and toLabels", () => {
     expect(draft).toEqual({
       fields: { title: emptyField, price: emptyField },
       rows: [],
+      lists: {},
       notes: "",
     });
     expect(
@@ -63,9 +65,49 @@ describe("draftFrom and toLabels", () => {
         prefill_source: null,
         fields: {},
         rows: [],
+        lists: {},
         notes: "",
       },
     });
+  });
+
+  it("leaves a row-mapped field out of the form and keeps its stored rows", () => {
+    // SPEC-13 §4.10: a field with a `key` is labeled as rows under `lists`, which this form does not edit.
+    const shapes: Record<string, FieldShape> = {
+      ...detailShapes,
+      variants: { type: "list", scope: "row", required: false, key: ["sku"] },
+    };
+    const variants = {
+      absent: false,
+      rows: [{ fields: { sku: { value: "W-11", absent: false, locator: null, distractors: [] } } }],
+      distractor_keys: [],
+    };
+    const stored = {
+      label_version: 2 as const,
+      status: "labeled" as const,
+      labeler: "ana",
+      checker: null,
+      prefill_source: null,
+      fields: {
+        title: { value: "Blue mug", absent: false, locator: null, distractors: [] },
+        price: { value: null, absent: true, locator: null, distractors: [] },
+      },
+      rows: [],
+      lists: { variants },
+      notes: "",
+    };
+
+    const draft = draftFrom("detail", shapes, stored);
+    const built = toLabels({
+      draft,
+      status: "labeled",
+      labeler: "ana",
+      checker: null,
+      prefillSource: null,
+    });
+
+    expect(Object.keys(draft.fields)).toEqual(["title", "price"]);
+    expect(built).toEqual({ kind: "labels", labels: stored });
   });
 
   it("puts page fields at the top of a listing and row fields in each row", () => {
