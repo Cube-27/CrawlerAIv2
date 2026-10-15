@@ -316,7 +316,7 @@ def test_get_page_returns_sanitized_html_with_a_base_at_the_capture_url() -> Non
     )
     assert (body["url"], body["final_url"], body["labels"], body["text"]) == (PAGE_URL, FINAL_URL, None, None)
     unset = {"description": None, "required": False, "scope": "row", "schema_org": None, "vocab": None}
-    unset |= {"scheme": None, "item": None, "fields": None}
+    unset |= {"scheme": None, "item": None, "fields": None, "key": None}
     assert body["fields"] == {"title": {"type": "text", **unset}, "price": {"type": "money", **unset}}
 
 
