@@ -236,3 +236,16 @@ def test_the_period_vocabulary_names_each_schema_org_salary_unit_once() -> None:
 
     assert by_language is not None
     assert sorted(by_language["en"].phrases.values()) == sorted(PERIODS)
+
+
+@given(_bounds, st.sampled_from(CODES))
+def test_the_word_separator_is_that_of_the_page_language(bounds: list[Decimal], code: str) -> None:
+    lo, hi = bounds
+
+    def in_language(raw: str, html_lang: str) -> NormalizeResult:
+        return range_.normalize(raw, RANGE, Context(captured_at=AT, html_lang=html_lang), money=_money)
+
+    assert in_language(f"{code} {lo} to {code} {hi} per year", "en") == Ok(_value(lo, hi, currency=code, period="YEAR"))
+    # The `type:range_to` vocabulary has no `de` words, so on a German page "to" separates nothing; a dash does.
+    assert in_language(f"{code} {lo} to {code} {hi}", "de") == Invalid("not_a_range")
+    assert in_language(f"{code} {lo} - {code} {hi}", "de") == Ambiguous("period_missing", ())
