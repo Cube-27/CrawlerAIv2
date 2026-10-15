@@ -1,6 +1,5 @@
-import type { CrawlRequest, ExtractRequest, JobSchemaRef, MapRequest } from "../../api/jobs";
-import type { MethodHint, PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
-import { orderedFormats } from "../../components/FormatChoices";
+import type { ExtractRequest } from "../../api/jobs";
+import type { MethodHint, PageKind, SchemaRef } from "../../api/scrape";
 import { parseJsonObject } from "../../api/json";
 import { lines, webhook } from "../playground/pageRequest";
 
@@ -20,27 +19,6 @@ export interface JobSchemaState {
   prompt: string;
 }
 
-/** One page-kind rule as edited: `key` keeps a row's inputs when another row is removed. */
-export interface RuleRow {
-  key: string;
-  pattern: string;
-  pageKind: PageKind;
-}
-
-export interface CrawlFormState {
-  url: string;
-  formats: readonly ScrapeFormat[];
-  schema: JobSchemaState;
-  rules: readonly RuleRow[];
-  /** One glob per line. */
-  include: string;
-  exclude: string;
-  maxDepth: number;
-  limit: number;
-  methodHint: MethodHint;
-  webhookUrl: string;
-}
-
 export interface ExtractFormState {
   /** One URL or URL glob per line. */
   urls: string;
@@ -52,29 +30,7 @@ export interface ExtractFormState {
   webhookUrl: string;
 }
 
-export interface MapFormState {
-  url: string;
-  include: string;
-  exclude: string;
-  limit: number;
-  useSitemaps: boolean;
-  useLinks: boolean;
-}
-
 const NO_SCHEMA: JobSchemaState = { source: "none", id: "", json: "", prompt: "" };
-
-export const INITIAL_CRAWL: CrawlFormState = {
-  url: "",
-  formats: ["markdown"],
-  schema: NO_SCHEMA,
-  rules: [],
-  include: "",
-  exclude: "",
-  maxDepth: Number.NaN,
-  limit: Number.NaN,
-  methodHint: "auto",
-  webhookUrl: "",
-};
 
 export const INITIAL_EXTRACT: ExtractFormState = {
   urls: "",
@@ -84,16 +40,6 @@ export const INITIAL_EXTRACT: ExtractFormState = {
   llmCalls: Number.NaN,
   methodHint: "auto",
   webhookUrl: "",
-};
-
-// MapRequest's own defaults (SPEC-10 §4.4): both sources are read.
-export const INITIAL_MAP: MapFormState = {
-  url: "",
-  include: "",
-  exclude: "",
-  limit: Number.NaN,
-  useSitemaps: true,
-  useLinks: true,
 };
 
 type SchemaChoice<T> = { kind: "ok"; schema: T } | { kind: "invalid" };
@@ -123,36 +69,6 @@ function schemaChoice({
   }
 }
 
-/** A batch's or crawl's schema: these requests take no prompt, so one is invalid (their forms don't offer it). */
-function jobSchema(state: JobSchemaState): SchemaChoice<JobSchemaRef | null> {
-  const choice = schemaChoice(state);
-  if (choice.kind === "invalid") return choice;
-  const { schema } = choice;
-  if (schema !== null && "prompt" in schema) return { kind: "invalid" };
-  return { kind: "ok", schema };
-}
-
-/** The crawl request for `form`, or null when its inline schema is not a JSON object (the form shows why). A rule
- * without a pattern is left out. */
-export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
-  const choice = jobSchema(form.schema);
-  if (choice.kind === "invalid") return null;
-  return {
-    url: form.url.trim(),
-    formats: orderedFormats(form.formats),
-    schema: choice.schema,
-    page_kind_rules: form.rules
-      .filter(({ pattern }) => pattern.trim() !== "")
-      .map(({ pattern, pageKind }) => ({ pattern: pattern.trim(), page_kind: pageKind })),
-    include: lines(form.include),
-    exclude: lines(form.exclude),
-    fetch: { method_hint: form.methodHint },
-    ...(Number.isNaN(form.maxDepth) ? {} : { max_depth: form.maxDepth }),
-    ...(Number.isNaN(form.limit) ? {} : { limit: form.limit }),
-    ...webhook(form.webhookUrl),
-  };
-}
-
 /** The extract request for `form`, or null when it has no schema, or an inline schema that is not a JSON object. */
 export function buildExtract(form: ExtractFormState): ExtractRequest | null {
   const choice = schemaChoice(form.schema);
@@ -165,16 +81,5 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
     ...(Number.isNaN(form.limit) ? {} : { limit: form.limit }),
     ...(Number.isNaN(form.llmCalls) ? {} : { budget: { llm_calls: form.llmCalls } }),
     ...webhook(form.webhookUrl),
-  };
-}
-
-export function buildMap(form: MapFormState): MapRequest {
-  return {
-    url: form.url.trim(),
-    include: lines(form.include),
-    exclude: lines(form.exclude),
-    use_sitemaps: form.useSitemaps,
-    use_links: form.useLinks,
-    ...(Number.isNaN(form.limit) ? {} : { limit: form.limit }),
   };
 }

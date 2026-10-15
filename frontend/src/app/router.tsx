@@ -4,6 +4,8 @@ import { JobScreen } from "../screens/jobs/JobScreen";
 import { JobsScreen } from "../screens/jobs/JobsScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
 import { BatchPlayground } from "../screens/playground/batch/BatchPlayground";
+import { CrawlPlayground } from "../screens/playground/crawl/CrawlPlayground";
+import { MapPlayground } from "../screens/playground/map/MapPlayground";
 import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
@@ -34,6 +36,8 @@ export const routes: RouteObject[] = [
           // The playground: `/` is its Scrape mode (SPEC-14 §4.8).
           { index: true, element: <ScrapePlayground /> },
           { path: "batch", element: <BatchPlayground /> },
+          { path: "map", element: <MapPlayground /> },
+          { path: "crawl", element: <CrawlPlayground /> },
           { path: "schemas", element: <SchemasScreen /> },
           { path: "schemas/new", element: <NewSchemaScreen /> },
           { path: "schemas/:id", element: <SchemaScreen /> },

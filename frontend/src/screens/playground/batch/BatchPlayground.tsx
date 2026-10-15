@@ -3,17 +3,15 @@ import { useSearchParams } from "react-router";
 import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { OutputArea } from "../OutputArea";
-import { requestPageKind } from "../pageRequest";
+import { pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
+import { JOB } from "../run/jobParam";
 import { JobRunOutput } from "../run/JobRun";
 import { usePageForm } from "../usePageForm";
 import { BatchOptions } from "./BatchOptions";
 import { buildBatch, DEFAULT_BATCH_OPTIONS, INITIAL_BATCH } from "./form";
 import { UrlList } from "./UrlList";
-
-/** The run the page shows (SPEC-14 §2.4): `?job=<id>`, so a run survives a reload and back goes to the one before. */
-const JOB = "job";
 
 /** The Batch playground at `/batch` (SPEC-14 §4.2): a URL list, the same formats, schema and options for every URL
  * (`POST /v1/batch/scrape`), and the run on the same page as a running results table. */
@@ -25,6 +23,7 @@ export function BatchPlayground() {
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
     INITIAL_BATCH,
     problem,
+    pageKindErrors,
   );
 
   const start = () => {

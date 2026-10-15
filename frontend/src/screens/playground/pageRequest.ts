@@ -68,17 +68,26 @@ export function requestPageKind(form: PageKindForm): PageKind | null {
 }
 
 export const NO_ERRORS: Readonly<Record<string, string>> = {};
-const NO_FORMAT = { formats: "Choose a format, Metadata in JSON or a schema." };
+export const NO_FORMAT = { formats: "Choose a format, Metadata in JSON or a schema." };
 const NO_SCHEMA_PAGE_KIND = { page_kind: "The schema names no page kind, which its records need." };
 const NO_LISTING_RECORDS = { page_kind: "Records of listing pages are not available yet." };
+
+/** Why a stored schema's records can't be asked for: it names no page kind, or one the server refuses records of;
+ * null when they can. */
+export function schemaPageKindErrors(
+  schemaPageKind: SchemaPageKind | null,
+): Readonly<Record<string, string>> | null {
+  if (schemaPageKind === null) return NO_SCHEMA_PAGE_KIND;
+  return NO_RECORDS_PAGE_KINDS.has(schemaPageKind) ? NO_LISTING_RECORDS : null;
+}
 
 /** Why `form` can't be sent, by field: it asks for no format, or its schema's records are for no page kind it can ask
  * for (its page kind is none, or one the server refuses records of). Derived from the current form, so a change
  * anywhere that fixes it clears it; each answer is one constant, so the errors change only when the reason does. */
 export function pageKindErrors(form: PageKindForm): Readonly<Record<string, string>> {
   if (asksForNothing(form)) return NO_FORMAT;
-  if (form.schemaId === "" || requestPageKind(form) !== null) return NO_ERRORS;
-  return form.schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : NO_LISTING_RECORDS;
+  if (form.schemaId === "") return NO_ERRORS;
+  return schemaPageKindErrors(form.schemaPageKind) ?? NO_ERRORS;
 }
 
 /** Whether `form` can be sent: `pageKindErrors` finds nothing. */
@@ -86,9 +95,16 @@ export function canSend(form: PageKindForm): boolean {
   return pageKindErrors(form) === NO_ERRORS;
 }
 
-/** Whether any setting differs from its default. SameValue (ECMA-262), so an empty limit (NaN) equals the default. */
+/** SameValue (ECMA-262), so an empty limit (NaN) equals the default; a list equals one with the same entries. */
+function sameSetting(value: unknown, other: unknown): boolean {
+  if (Array.isArray(value) && Array.isArray(other))
+    return value.length === other.length && value.every((entry, i) => sameSetting(entry, other[i]));
+  return Object.is(value, other);
+}
+
+/** Whether any setting differs from its default. */
 export function optionsChanged<O extends object>(options: O, defaults: O): boolean {
   return (Object.keys(defaults) as (keyof O)[]).some(
-    (key) => !Object.is(options[key], defaults[key]),
+    (key) => !sameSetting(options[key], defaults[key]),
   );
 }

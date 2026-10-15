@@ -4,16 +4,19 @@ import { OptionsToggle } from "./OptionsPanel";
 import { optionsChanged, withSchema, type FormatForm } from "./pageRequest";
 
 /** The toolbar of a mode that takes formats and a schema (Scrape, Batch, Crawl; SPEC-14 §4.2): Options, which marks a
- * setting that differs from `defaults`, then Format and Schema. */
+ * setting that differs from `defaults`, then Format and Schema. `formatsUnused` disables Format when the request
+ * sends no page format (a crawl with a schema asks for records alone). */
 export function PageTools<F extends FormatForm>({
   form,
   defaults,
   optionsOpen,
   onOptionsOpen,
+  formatsUnused = false,
   onChange,
 }: Readonly<{
   form: F;
   defaults: F["options"];
+  formatsUnused?: boolean;
   optionsOpen: boolean;
   onOptionsOpen: (isOpen: boolean) => void;
   onChange: (form: F) => void;
@@ -27,6 +30,7 @@ export function PageTools<F extends FormatForm>({
       />
       <FormatSelect
         value={form.formats}
+        isDisabled={formatsUnused}
         onChange={(formats) => {
           onChange({ ...form, formats });
         }}

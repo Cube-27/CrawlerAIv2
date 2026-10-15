@@ -352,34 +352,6 @@ describe("Job screen", () => {
 });
 
 describe("Jobs screen", () => {
-  it("queues a crawl with a page-kind rule", async () => {
-    const calls = jobApi({
-      "POST /v1/crawl": () => Response.json({ job_id: JOB_ID }, { status: 202 }),
-    });
-    await open("/jobs", "Jobs");
-
-    await userEvent.click(screen.getByRole("button", { name: "New crawl" }));
-    const dialog = within(await screen.findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText("Start URL"), "https://shop.example.test/");
-    await userEvent.click(dialog.getByRole("button", { name: "Add rule" }));
-    await userEvent.type(dialog.getByLabelText("Pattern 1"), "https://shop.example.test/item/*");
-    await userEvent.click(
-      within(dialog.getByRole("radiogroup", { name: "Page kind 1" })).getByLabelText("Listing"),
-    );
-    await userEvent.click(dialog.getByRole("button", { name: "Queue crawl" }));
-
-    await screen.findByRole("heading", { level: 1, name: "Batch scrape job" });
-    expect(calls.find(({ path }) => path === "/v1/crawl")?.body).toEqual({
-      url: "https://shop.example.test/",
-      formats: ["markdown"],
-      schema: null,
-      page_kind_rules: [{ pattern: "https://shop.example.test/item/*", page_kind: "listing" }],
-      include: [],
-      exclude: [],
-      fetch: { method_hint: "auto" },
-    });
-  });
-
   it("queues an extract with a prompt and opens the new job", async () => {
     const calls = jobApi({
       "POST /v1/extract": () =>
@@ -405,36 +377,6 @@ describe("Jobs screen", () => {
       schema: { prompt: "title and price" },
       page_kind: "detail",
       fetch: { method_hint: "auto" },
-    });
-  });
-
-  it("maps a site and lists the URLs found", async () => {
-    const calls = jobApi({
-      "POST /v1/map": () =>
-        Response.json({
-          urls: ["https://shop.example.test/item/1", "https://shop.example.test/item/2"],
-          sources: { sitemap: 2, links: 0 },
-          truncated: true,
-        }),
-    });
-    await open("/jobs", "Jobs");
-
-    await userEvent.click(screen.getByRole("button", { name: "Map URLs" }));
-    const dialog = within(await screen.findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText("URL"), "https://shop.example.test/");
-    await userEvent.click(dialog.getByRole("button", { name: "Map" }));
-
-    expect(await dialog.findByLabelText("URLs found")).toHaveValue(
-      "https://shop.example.test/item/1\nhttps://shop.example.test/item/2",
-    );
-    expect(dialog.getByText("2 URLs: 2 from sitemaps, 0 from links.")).toBeInTheDocument();
-    expect(dialog.getByText("The list is cut short.")).toBeInTheDocument();
-    expect(calls.find(({ path }) => path === "/v1/map")?.body).toEqual({
-      url: "https://shop.example.test/",
-      include: [],
-      exclude: [],
-      use_sitemaps: true,
-      use_links: true,
     });
   });
 });

@@ -5,7 +5,7 @@ import { OutputArea, type OutputState } from "../OutputArea";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { ScrapeOutput } from "../output/ScrapeOutput";
 import { requestUrl, UrlInput } from "../UrlInput";
-import { requestPageKind } from "../pageRequest";
+import { pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { usePageForm } from "../usePageForm";
 import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM } from "./form";
@@ -40,6 +40,7 @@ export function ScrapePlayground() {
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
     INITIAL_FORM,
     state.kind === "failed" ? state.problem : null,
+    pageKindErrors,
   );
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
   const latest = useRef(0);

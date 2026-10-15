@@ -1,38 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  buildCrawl,
-  buildExtract,
-  buildMap,
-  INITIAL_CRAWL,
-  INITIAL_EXTRACT,
-  INITIAL_MAP,
-} from "./form";
-
-describe("buildCrawl", () => {
-  it("sends the rules, scope globs and limits that are set, leaving the others to the server", () => {
-    const request = buildCrawl({
-      ...INITIAL_CRAWL,
-      url: "https://a.example.test/",
-      rules: [
-        { key: "r1", pattern: "/item/*", pageKind: "detail" },
-        { key: "r2", pattern: "  ", pageKind: "listing" },
-      ],
-      include: "/item/*\n/list/*",
-      maxDepth: 2,
-    });
-
-    expect(request).toEqual({
-      url: "https://a.example.test/",
-      formats: ["markdown"],
-      schema: null,
-      page_kind_rules: [{ pattern: "/item/*", page_kind: "detail" }],
-      include: ["/item/*", "/list/*"],
-      exclude: [],
-      max_depth: 2,
-      fetch: { method_hint: "auto" },
-    });
-  });
-});
+import { buildExtract, INITIAL_EXTRACT } from "./form";
 
 describe("buildExtract", () => {
   it("sends the URLs and globs, the prompt, the page kind, and the limits that are set", () => {
@@ -57,17 +24,5 @@ describe("buildExtract", () => {
     expect(
       buildExtract({ ...INITIAL_EXTRACT, schema: { ...INITIAL_EXTRACT.schema, id: "s-1" } }),
     ).toBeNull();
-  });
-});
-
-describe("buildMap", () => {
-  it("sends the switches and leaves an empty limit to the server", () => {
-    expect(buildMap({ ...INITIAL_MAP, url: "https://a.example.test/", useLinks: false })).toEqual({
-      url: "https://a.example.test/",
-      include: [],
-      exclude: [],
-      use_sitemaps: true,
-      use_links: false,
-    });
   });
 });

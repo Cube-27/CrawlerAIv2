@@ -19,14 +19,20 @@ function pageFormats(keys: Key | Key[] | null): PageFormat[] {
  * is the request member a server error names. */
 export function FormatSelect({
   value,
+  isDisabled = false,
   onChange,
-}: Readonly<{ value: readonly PageFormat[]; onChange: (formats: PageFormat[]) => void }>) {
+}: Readonly<{
+  value: readonly PageFormat[];
+  isDisabled?: boolean;
+  onChange: (formats: PageFormat[]) => void;
+}>) {
   return (
     <Select
       aria-label="Format"
       name="formats"
       selectionMode="multiple"
       placeholder="No page format"
+      isDisabled={isDisabled}
       value={[...value]}
       onChange={(keys) => {
         onChange(pageFormats(keys));

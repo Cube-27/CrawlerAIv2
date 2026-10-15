@@ -9,12 +9,15 @@ import {
   NumberField,
   Select,
   Switch,
+  Tag,
+  TagGroup,
+  TextArea,
   TextField,
   ToggleButton,
   Tooltip,
 } from "@heroui/react";
 import { ArrowRotateLeft, CircleQuestion, Sliders } from "@gravity-ui/icons";
-import { useId, type Key, type ReactNode } from "react";
+import { useId, useState, type Key, type ReactNode } from "react";
 
 /** The playground's options panel (SPEC-14 §4.2, DESIGN.md Options panel): rows of label, help icon and control, in
  * two columns from `md`, then a collapsed Advanced section and Reset settings. It is inline, never an overlay. */
@@ -214,6 +217,104 @@ export function TextRow({
       <Input autoComplete="off" spellCheck={false} placeholder={placeholder} />
       <FieldError />
     </TextField>
+  );
+}
+
+/** Free text over several lines, across the panel's width; empty leaves the member out. `name` is the request
+ * member a server error names. */
+export function TextAreaRow({
+  label,
+  help,
+  name,
+  value,
+  placeholder,
+  onChange,
+}: Readonly<{
+  label: string;
+  help: string;
+  name: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}>) {
+  return (
+    <TextField className="flex flex-col gap-2 md:col-span-2" name={name} value={value} onChange={onChange}>
+      <RowLabel label={label} help={help} />
+      <TextArea rows={6} spellCheck={false} placeholder={placeholder} />
+      <FieldError />
+    </TextField>
+  );
+}
+
+/** A list of entries, each added from the text field with Add (or Enter) and removed from its tag; an entry already
+ * listed is not added again. `name` is the request member a server error names. */
+export function TagListRow({
+  label,
+  help,
+  name,
+  values,
+  placeholder,
+  onChange,
+}: Readonly<{
+  label: string;
+  help: string;
+  name: string;
+  values: readonly string[];
+  placeholder: string;
+  onChange: (values: string[]) => void;
+}>) {
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const entry = draft.trim();
+    if (entry === "") return;
+    onChange(values.includes(entry) ? [...values] : [...values, entry]);
+    setDraft("");
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className={ROW}>
+        <TextField
+          className="flex flex-1 flex-row items-center justify-between gap-3"
+          name={name}
+          value={draft}
+          onChange={setDraft}
+        >
+          <RowLabel label={label} help={help} />
+          <Input
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={placeholder}
+            onKeyDown={(event) => {
+              // Enter adds the entry instead of sending the form.
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              add();
+            }}
+          />
+          <FieldError />
+        </TextField>
+        <Button size="sm" variant="secondary" aria-label={`Add to ${label}`} onPress={add}>
+          Add
+        </Button>
+      </div>
+      {values.length === 0 ? null : (
+        <TagGroup
+          aria-label={label}
+          size="sm"
+          onRemove={(keys) => {
+            onChange(values.filter((value) => !keys.has(value)));
+          }}
+        >
+          <TagGroup.List>
+            {values.map((value) => (
+              <Tag key={value} id={value} textValue={value}>
+                {value}
+              </Tag>
+            ))}
+          </TagGroup.List>
+        </TagGroup>
+      )}
+    </div>
   );
 }
 

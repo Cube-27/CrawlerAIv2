@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { toast } from "@heroui/react";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
 import { stubApi } from "./api";
 import { prefersDark } from "./media";
@@ -22,6 +22,10 @@ class NoResizeObserver {
 if (!("getAnimations" in Element.prototype)) {
   Object.defineProperty(Element.prototype, "getAnimations", { value: (): Animation[] => [] });
 }
+
+// A run on the playground is three requests deep (submit, job, results), each a HeroUI render in jsdom; on a busy
+// machine that passes Testing Library's 1 s default for `findBy*` and `waitFor`.
+configure({ asyncUtilTimeout: 5000 });
 
 beforeEach(() => {
   prefersDark(false);

@@ -37,6 +37,14 @@ export async function toggleFormats(...formats: string[]) {
   await userEvent.keyboard("{Escape}");
 }
 
+/** Enters `text` into `field` at once (a paste), then presses Enter when `enter` is set: typing a long URL key by key
+ * is slow in jsdom. */
+export async function fill(field: HTMLElement, text: string, enter = false) {
+  await userEvent.click(field);
+  await userEvent.paste(text);
+  if (enter) await userEvent.keyboard("{Enter}");
+}
+
 export function optionsButton(): HTMLElement {
   return screen.getByRole("button", { name: "Options" });
 }
