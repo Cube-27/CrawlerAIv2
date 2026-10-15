@@ -60,7 +60,8 @@ function pythonItems(
 ): string {
   if (items.length === 0) return open + close;
   const inner = INDENT.repeat(depth + 1);
-  return `${open}\n${items.map((item) => `${inner}${item},\n`).join("")}${INDENT.repeat(depth)}${close}`;
+  const lines = items.map((item) => `${inner}${item},\n`).join("");
+  return `${open}\n${lines}${INDENT.repeat(depth)}${close}`;
 }
 
 /** A Python script sending the request with `httpx` and printing the answer. */
@@ -70,7 +71,8 @@ export function pythonSnippet(origin: string, endpoint: Endpoint, body: object):
     "",
     "import httpx",
     "",
-    "response = httpx.post(",
+    "response = httpx.request(",
+    '    "POST",',
     `    ${JSON.stringify(origin + endpoint.path)},`,
     `    headers={"Authorization": f"Bearer {os.environ['${KEY_VARIABLE}']}"},`,
     `    json=${pythonLiteral(body, 1)},`,
