@@ -41,7 +41,7 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
      "<prompt>"` (§1a). Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator assigned you this row.
      Own the PR through `/implement-pr` §6 until it merges."
 3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR (`/implement-pr` §6). It starts one
-   reviewer in its worktree once the PR is implemented, simplified and green. The review happens once. Its verdict is
+   reviewer in its worktree once the PR is implemented and green. The review happens once. Its verdict is
    `MERGE` or `MERGE AFTER FIX`. With the second, the implementor fixes the listed items and gets CI green; there is
    no second review. Then it comments `READY <sha7>`. You don't rebase, fix or edit PRs yourself.
    - If CI stays red after 3 honest attempts, escalate.
