@@ -2,10 +2,11 @@
 same rules.
 
 An item is an element with `itemscope` (microdata) or `typeof` (RDFa Lite); an element with both is one item. Its
-properties are the elements with `itemprop` or `property` whose nearest enclosing item it is, plus, for microdata, the
-elements `itemref` names (HTML Standard, "Associating names with items"). A property element that is itself an item is
-a nested item: its value is that item, and it is the holder's child. An item that is no property is a top-level item,
-so DOM nesting alone makes no parent.
+properties are the elements with `property` whose nearest enclosing item it is, the elements with `itemprop` whose
+nearest enclosing `itemscope` element it is (HTML Standard, "Associating names with items": microdata knows no
+`typeof`, so an RDFa-only item between them does not take a microdata name), and the elements `itemref` names. A
+property element that is itself an item is a nested item: its value is that item, and it is the holder's child. An
+item that is no property is a top-level item, so DOM nesting alone makes no parent.
 
 Names are schema.org terms only where schema.org is the vocabulary: a microdata item typed with a schema.org
 `itemtype` (an untyped item is in no vocabulary), RDFa terms under a schema.org `vocab`, the `schema:` prefix of the
@@ -63,6 +64,7 @@ class _Element:
     order: int  # tree order
     rdfa_schema: bool  # whether the RDFa `vocab` in scope is schema.org
     enclosing: "_Element | None"  # the nearest item element it is inside, not counting itself
+    scope: "_Element | None"  # the nearest `itemscope` element it is inside, not counting itself: its microdata item
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +92,7 @@ class _Item:
 class _Document:
     items: dict[str, _Item] = field(default_factory=dict)  # by element xpath, in tree order
     elements: list[_Element] = field(default_factory=list)  # every element with `itemprop` or `property`
-    # The same elements by the xpath of their enclosing item element ("" for none), in tree order.
+    # The same elements by the xpath of their microdata item element ("" for none), in tree order.
     by_enclosing: defaultdict[str, list[_Element]] = field(default_factory=lambda: defaultdict(list))
     by_html_id: dict[str, _Element] = field(default_factory=dict)  # the first element with each `id`
     raws: dict[str, JsonValue] = field(default_factory=dict)  # each item's JSON object, built once
@@ -151,7 +153,7 @@ class MicrodataCollector:
                 document.by_html_id.setdefault(html_id, element)
             if "itemprop" in attributes or "property" in attributes:
                 document.elements.append(element)
-                document.by_enclosing[_xpath(element.enclosing)].append(element)
+                document.by_enclosing[_xpath(element.scope)].append(element)
             if "itemscope" in attributes or "typeof" in attributes:
                 document.items[element.xpath] = self._item(element, ctx)
         for element in document.elements:
@@ -184,7 +186,7 @@ def property_scalars(page: ParsedPage, prop: str) -> Iterator[str]:
         return
     for element in _walk(root):
         attributes = element.node.attributes
-        in_schema = _typed_in_schema(element.enclosing)
+        in_schema = _typed_in_schema(element.scope)
         if prop in (_microdata_term(t, in_schema) for t in _tokens(attributes.get("itemprop"))):
             yield _microdata_text(element.node)
         if prop in (_rdfa_term(t, element.rdfa_schema) for t in _tokens(attributes.get("property"))):
@@ -201,18 +203,20 @@ def _walk(root: LexborNode) -> Iterator[_Element]:
     """Every element in tree order, with its XPath, its RDFa vocabulary scope and its nearest enclosing item. Explicit
     stack, not recursion: document depth is not bounded by the interpreter's recursion limit."""
     order = count()
-    stack: list[tuple[LexborNode, str, bool, _Element | None]] = [
-        (root, "/" + xpath_step(root.tag or "", 1), False, None)
+    stack: list[tuple[LexborNode, str, bool, _Element | None, _Element | None]] = [
+        (root, "/" + xpath_step(root.tag or "", 1), False, None, None)
     ]
     while stack:
-        node, xpath, rdfa_schema, enclosing = stack.pop()
+        node, xpath, rdfa_schema, enclosing, scope = stack.pop()
         attributes = node.attributes
         if "vocab" in attributes:  # RDFa Core 1.1 §7.5 step 2: `vocab` sets the vocabulary; an empty one clears it
             rdfa_schema = (attributes["vocab"] or "").strip().rstrip("/") in _RDFA_VOCABULARIES
-        element = _Element(node, xpath, next(order), rdfa_schema, enclosing)
+        element = _Element(node, xpath, next(order), rdfa_schema, enclosing, scope)
         yield element
         inner = element if "itemscope" in attributes or "typeof" in attributes else enclosing
-        stack.extend(reversed([(child, f"{xpath}/{step}", rdfa_schema, inner) for child, step in _children(node)]))
+        inner_scope = element if "itemscope" in attributes else scope
+        children = [(child, f"{xpath}/{step}", rdfa_schema, inner, inner_scope) for child, step in _children(node)]
+        stack.extend(reversed(children))
 
 
 def _children(node: LexborNode) -> list[tuple[LexborNode, str]]:
@@ -226,11 +230,13 @@ def _children(node: LexborNode) -> list[tuple[LexborNode, str]]:
 
 
 def _add_properties(element: _Element, document: _Document) -> None:
-    """Add `element`'s properties to its nearest enclosing item."""
+    """Add `element`'s microdata properties to its microdata item and its RDFa properties to its nearest enclosing
+    item."""
+    if element.scope is not None:
+        _add_microdata(document.items[element.scope.xpath], element, document)
     if element.enclosing is None:
         return
     holder = document.items[element.enclosing.xpath]
-    _add_microdata(holder, element, document)
     rdfa = tuple(
         n for t in _tokens(element.node.attributes.get("property")) if (n := _rdfa_term(t, element.rdfa_schema))
     )
@@ -261,7 +267,7 @@ def _referenced(start: _Element, document: _Document) -> Iterator[_Element]:
     if start.xpath in document.items:
         return
     below = start.xpath + "/"
-    yield from (e for e in document.by_enclosing[_xpath(start.enclosing)] if e.xpath.startswith(below))
+    yield from (e for e in document.by_enclosing[_xpath(start.scope)] if e.xpath.startswith(below))
 
 
 def _xpath(element: _Element | None) -> str:
