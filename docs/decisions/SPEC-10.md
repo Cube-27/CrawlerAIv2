@@ -352,3 +352,31 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Row 9 as assigned.
 - Why: SPEC-12 row 9 (labeling nav) already exists and is done (#93).
 - Reversible: yes
+
+### D-0835 — `include` and `exclude` take at most 20 globs
+- Date: 2026-10-15 · Spec/PR: SPEC-10 follow-ups (#195) · Status: decided
+- Decision: `MAX_PATTERNS` = 20 globs per `include` or `exclude` list (map, crawl), and per host for extract's globs, which become that host's map `include`.
+- Alternatives: 50 or 100 per list; no bound.
+- Why: Every URL read is matched against each glob on the event loop, measured at about 0.8 µs a match: two lists of 20 over a map's 50k sitemap URLs take about 1.6 s at worst (50 per list took 4 s).
+- Reversible: yes
+
+### D-0837 — In-process jobs left `running` with no task fail after a lease
+- Date: 2026-10-15 · Spec/PR: SPEC-10 follow-ups (#195) · Status: decided
+- Decision: The scheduler's `fail_stalled_jobs` ends `failed` the `map` and `extract` jobs still `running` with no task one `LEASE` after they started, 100 per turn.
+- Alternatives: Give them a claimed task (`insert_claimed`), as the synchronous scrape does.
+- Why: A process runs them while the caller waits, with no lease; their time caps (60 s for a map, the draft's) are far under `LEASE`, so one still running has lost its process.
+- Reversible: yes
+
+### D-0838 — A crawl's start task reads the sitemaps on the attempt that ends it
+- Date: 2026-10-15 · Spec/PR: SPEC-10 follow-ups (#195) · Status: decided
+- Decision: The start task reads the site's sitemaps only on an attempt that is neither postponed nor retried (`ends_task`), including one whose fetch failed before the page (robots.txt unreachable, a 429 or 503).
+- Alternatives: Skip the read when the job already has depth-0 seeds.
+- Why: A retry no longer reads the sitemaps again, and seeds are still added when the start page was never reached, as §4.5 says.
+- Reversible: yes
+
+### D-0839 — One `Refusal` class marks what a caller may be told
+- Date: 2026-10-15 · Spec/PR: SPEC-07 §4.3, SPEC-10 §4.7 (#195) · Status: decided
+- Decision: `core.errors.Refusal` is the base of the services' refusals (and `LLMFailure`, `SchemaNotFound`); MCP passes their message on, and any other exception is answered with `UNEXPECTED`, as REST's 500 is.
+- Alternatives: A hand-kept tuple of exception classes in the MCP server.
+- Why: One marker keeps the interfaces from drifting apart when a service adds a refusal.
+- Reversible: yes
