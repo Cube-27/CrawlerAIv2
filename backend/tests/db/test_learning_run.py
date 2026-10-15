@@ -581,6 +581,55 @@ async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site:
         assert (status, await next_learn_job(conn)) == ("failed", None)
 
 
+async def test_a_learn_job_whose_request_names_no_state_fails_and_is_not_picked_again(site: LearnSite) -> None:
+    await site.pages(3)
+    await _forced(site)
+    async with site.engine.begin() as conn:
+        await conn.execute(update(Job).where(Job.kind == "learn").values(request={"site_id": "not a uuid"}))
+
+    job_id, learned = await site.learn(RoleA())
+
+    assert learned == Learned(None, "error")
+    async with site.engine.begin() as conn:
+        status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
+        assert (status, await next_learn_job(conn)) == ("failed", None)
+
+
+async def test_a_stopping_worker_ends_the_run_in_progress_without_waiting_for_it(site: LearnSite) -> None:
+    await site.pages(8)
+    await _forced(site)
+    asked, never = asyncio.Event(), asyncio.Event()
+
+    async def hang() -> None:  # role A takes as long as it may (minutes, `llm.client.TIMEOUT_S`)
+        asked.set()
+        await never.wait()
+
+    stop = asyncio.Event()
+    learner = asyncio.create_task(
+        run_learner(
+            site.engine,
+            site.store,
+            RoleA(PRICE_REPLY, before=hang),
+            stop,
+            vocabulary=site.data.vocabulary,
+            max_chars=1000,
+            replay=None,
+        )
+    )
+    async with asyncio.timeout(30):
+        await asked.wait()
+
+    stop.set()
+    async with asyncio.timeout(5):
+        await learner
+
+    async with site.engine.connect() as conn:
+        job_id = (await conn.execute(select(Job.id).where(Job.kind == "learn"))).scalar_one()
+    assert await site.finished(job_id) == ("failed", {"config_id": None, "reason": "shutdown", "report": None})
+    state = await site.state()
+    assert (state.mode, state.learning_started_at) == ("cold", None)
+
+
 async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: LearnSite) -> None:
     await site.pages(3)
     await _forced(site)

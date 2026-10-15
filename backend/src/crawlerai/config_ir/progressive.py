@@ -19,6 +19,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Final, Literal
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy import ColumnElement, case, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -78,6 +79,15 @@ class NotLearning(Exception):
         super().__init__(f"progressive_state {key}: {event} with no learning run in flight")
 
 
+class _LearnRequest(BaseModel):
+    """The `request` of a `learn` job, as `request_learning` writes it (D-0549)."""
+
+    site_id: UUID
+    schema_id: UUID
+    schema_version: int
+    page_kind: PageKind
+
+
 @dataclass(frozen=True)
 class StateKey:
     site_id: SiteId
@@ -90,9 +100,10 @@ class StateKey:
 
     @classmethod
     def from_request(cls, request: Mapping[str, Any]) -> "StateKey":
-        """The state a `learn` job's `request` names (`request_learning`, D-0549)."""
-        site_id, schema_id = SiteId(UUID(request["site_id"])), SchemaId(UUID(request["schema_id"]))
-        return cls(site_id, schema_id, request["schema_version"], request["page_kind"])
+        """The state a `learn` job's `request` names (`request_learning`, D-0549). Raises pydantic's
+        `ValidationError` for a request that names none."""
+        named = _LearnRequest.model_validate(request)
+        return cls(SiteId(named.site_id), SchemaId(named.schema_id), named.schema_version, named.page_kind)
 
     def where(self) -> list[ColumnElement[bool]]:
         return [getattr(ProgressiveState, name) == value for name, value in self.columns().items()]

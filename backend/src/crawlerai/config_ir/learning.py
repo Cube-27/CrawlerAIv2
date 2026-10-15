@@ -7,9 +7,9 @@ proposes selectors without an LLM (§4.5), role A synthesizes the fields it left
 the held-out pages (§4.7) and activated (§4.8), with the API recipe its pages' browser captures show their values came
 from when one is learned and validated (SPEC-09 §2, `api_recipe.learn`). Every other end is a failed run
 (`progressive.learning_failed`): validation refusing the config, an LLM failure (D-0588), a cancelled job, an error,
-or an operator's config activated while the run was in flight, which a run that started before it does not replace. A
-job that cannot start, and a run still `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`),
-end failed too.
+the worker stopping (`SHUTDOWN`), or an operator's config activated while the run was in flight, which a run that
+started before it does not replace. A job that cannot start, its request naming no state included, and a run still
+`running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
@@ -25,6 +25,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Final
 
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -75,6 +76,8 @@ LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
 # How many expired runs one scheduler turn ends; a full batch runs again at once (`scheduler.loop`).
 EXPIRE_BATCH: Final = 100
 EXPIRED: Final = "expired"
+# The reason of a run cancelled because its worker stops (`worker.learn.run_learner`).
+SHUTDOWN: Final = "shutdown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +139,10 @@ async def run_learn_job(
     except LLMFailure as e:
         async with engine.begin() as conn:
             return await _fail(conn, run, e.code)
+    except asyncio.CancelledError:  # the worker stops: the run ends as one that cannot finish, then the cancel goes on
+        async with engine.begin() as conn:
+            await _fail(conn, run, SHUTDOWN)
+        raise
     except Exception:  # §4.8: a run that cannot finish leaves the state as a failed run would, never `learning`
         log.exception("learn job %s failed", job_id)
         async with engine.begin() as conn:
@@ -190,8 +197,9 @@ async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned
     job = (await conn.execute(locked)).one()
     if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
         await transition_job(conn, job_id, "running")
-    # The state may have moved on already (an operator's config, a cancel), and then there is no run to end.
-    with suppress(NotLearning):
+    # The state may have moved on already (an operator's config, a cancel), and then there is no run to end; a request
+    # that names no state has none either, and its job still ends, or every poll would pick it again (D-0624).
+    with suppress(NotLearning, ValidationError):
         await learning_failed(conn, StateKey.from_request(job.request))
     await _end(conn, job_id, "failed", config_id=None, reason=reason, report=None)
     return Learned(None, reason)
