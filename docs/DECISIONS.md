@@ -5401,3 +5401,43 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Apply to listing rows too.
 - Why: §4.6 covers a detail page's single offer fields.
 - Reversible: yes
+
+### D-0797 — Role C skips every object field and list of objects
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.3–§4.9 (#172) · Status: decided
+- Context: §4.9: role C is never asked for a row-mapped field nor any object-typed field.
+- Decision: `_gaps` also skips a `list<object>` without `schema_org`.
+- Alternatives: Skip row-mapped and object fields only.
+- Why: A verbatim span cannot hold typed sub-fields either way.
+- Reversible: yes
+
+### D-0798 — A row field's locator and source kind
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.3–§4.9 (#172) · Status: decided
+- Context: §4.5: source_kind and locator of the first published row's entity.
+- Decision: The locator is that row's entity id; the source kind is its first published sub-field's.
+- Alternatives: The first published sub-field's locator.
+- Why: An entity id is a `jsonld:`/`microdata:` locator.
+- Reversible: yes
+
+### D-0799 — When an unpublished row field is abstained
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.3–§4.9 (#172) · Status: decided
+- Context: §4.5: abstained when every row was dropped because its sub-fields abstained.
+- Decision: `abstained`/`below_tau` only when every variant was dropped `key_unpublished` with an abstaining key sub-field; else `missing` with the furthest reason (`no_rows` < `no_row_key` < `row_key_conflict` < `key_unpublished`).
+- Alternatives: Abstained whenever any sub-field abstained.
+- Why: The literal reading of §4.5.
+- Reversible: yes
+
+### D-0800 — Reject reasons of dropped rows' candidates
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.3–§4.9 (#172) · Status: decided
+- Context: Stored candidate rows need a reject reason.
+- Decision: Candidates of rows dropped before resolution take the row's reason; those of a `key_unpublished` variant take `key_unpublished`.
+- Alternatives: `not_owned`.
+- Why: The stored candidate says why it was not used.
+- Reversible: yes
+
+### D-0801 — Learning's schema without row fields
+- Date: 2026-10-15 · Spec/PR: SPEC-13 §4.3–§4.9 (#172) · Status: decided
+- Context: §4.9: learning produces no steps for a row field.
+- Decision: Induction and synthesis get the schema without row-mapped fields (`learnable`); the report says `not_learned: row_field`.
+- Alternatives: Filter after induction.
+- Why: No step is ever tried for a row field.
+- Reversible: yes

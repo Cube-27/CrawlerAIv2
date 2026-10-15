@@ -217,6 +217,11 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
 - **Variant fill** (SPEC-13 §4.6): a `gtin` or `sku` identifier field for which no candidate is the target's takes
   the selected variant's own candidates; with no variant selected, its variants' only when every variant has one
   and all agree (else it stays as it was). A value the target states is never replaced; no other field is filled.
+- **Row-mapped fields** (SPEC-13 §4.3 to §4.5, `resolve/rows.py`): on a detail page, a row-mapped `list<object>`
+  field's rows are the entities its row path reaches from the target; sub-field candidates belong to the row whose
+  scope holds their owner (else `not_in_row`); rows are matched by key into variants (`no_row_key`,
+  `row_key_conflict`); each variant resolves its sub-fields with these rules, its scope as owner (atomic offers per
+  row, INV-35), in the `list.<type>|<evidence>` buckets; the field's outcome carries `items` and `dropped`.
 - **URL parameters** (INV-13): a candidate whose raw value equals a query-parameter value of the request URL is
   rejected (`url_param`) unless `visible(raw)`.
 - **Derived values** (C7, INV-07): the only derivations in core: `url` (detail) ← `<link rel=canonical>` else

@@ -71,8 +71,9 @@ DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|
 # that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
 COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
 # schema.org naming conventions (https://schema.org/docs/styleguide.html): a path starts at an UpperCamelCase type and
-# follows lowerCamelCase properties; `+` joins a second property of the last type (SPEC-04 §4.2). A path is matched
-# only as written, so a host in its usual lowercase form is never one.
+# follows lowerCamelCase properties; `+` joins a second property of the last type (SPEC-04 §4.2), and `|` separates
+# alternative paths (SPEC-13 §4.1). A path is matched only as written, so a host in its usual lowercase form is never
+# one.
 SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[a-z][A-Za-z0-9]*)?")
 # Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.
 HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
@@ -210,12 +211,19 @@ def schema_org_paths(file: Path) -> Iterator[str]:
         field = stack.pop()
         if not isinstance(field, dict):
             continue
-        if isinstance(value := field.get("schema_org"), str) and (match := SCHEMA_ORG_PATH.fullmatch(value)):
-            yield match[1]
+        yield from _paths(field.get("schema_org"))
         if isinstance(item := field.get("item"), dict):
             stack.append(item)
         if isinstance(fields := field.get("fields"), dict):
             stack.extend(fields.values())
+
+
+def _paths(value: object) -> Iterator[str]:
+    """The paths of a field's `schema_org` value, one per `|` alternative, each up to any `+`."""
+    if isinstance(value, str):
+        for alternative in value.split("|"):
+            if match := SCHEMA_ORG_PATH.fullmatch(alternative):
+                yield match[1]
 
 
 def module_names(pure: PurePosixPath) -> set[str]:

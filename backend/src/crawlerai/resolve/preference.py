@@ -96,7 +96,8 @@ class Variants:
 class Resolver:
     """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
     Its fields' candidates are screened, then chosen per type. `page_values`: whether page-level candidates are the
-    target's (`EntityGraph.owned_by`)."""
+    target's (`EntityGraph.owned_by`). `owns` stands in for ownership where the owner is not one entity: a variant's
+    rows (SPEC-13 §4.5)."""
 
     graph: EntityGraph
     target: Entity
@@ -104,27 +105,36 @@ class Resolver:
     orders: Orders
     page_values: bool = True
     variants: Variants | None = None  # a detail page's target only (SPEC-13 §4.6)
+    owns: Callable[[Candidate], bool] | None = None
 
     def prefer(self, schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
-        by_field = {name: [c for c in candidates if c.field == name] for name in schema.fields}
-        screened = {name: self._screen(by_field[name]) for name in schema.fields}
+        return self.prefer_fields(schema.fields, candidates)
+
+    def prefer_fields(
+        self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], *, prefix: str = ""
+    ) -> dict[str, Preference]:
+        """Every field's preference; a candidate is a field's when its field is `prefix` and the name (a row-mapped
+        field's sub-fields are `<field>.<sub-field>`, SPEC-13 §4.2)."""
+        by_field = {name: [c for c in candidates if c.field == f"{prefix}{name}"] for name in fields}
+        screened = {name: self.screen(by_field[name]) for name in fields}
         # In schema order: the anchor takes the first Offer seen on a tie.
-        offer_fields = [name for name, spec in schema.fields.items() if self._is_offer_field(spec)]
+        offer_fields = [name for name, spec in fields.items() if self._is_offer_field(spec)]
         if self.variants is not None and self.variants.selected is not None:
             selected = self.graph.offers_of(self.variants.selected)
             screened |= {name: self._from_selected(*screened[name], selected) for name in offer_fields}
         anchor = self._anchor({name: screened[name][0] for name in offer_fields})
         chosen = {
             name: self._choose(spec, *screened[name], anchor=anchor if name in offer_fields else None)
-            for name, spec in schema.fields.items()
+            for name, spec in fields.items()
         }
-        return {name: self._fill(spec, by_field[name], chosen[name]) for name, spec in schema.fields.items()}
+        return {name: self._fill(spec, by_field[name], chosen[name]) for name, spec in fields.items()}
 
     def prefer_field(self, spec: FieldSpec, candidates: Sequence[Candidate]) -> Preference:
         """One field on its own, outside the page's Offer anchor: for values derived after preference (`derive`)."""
-        return self._choose(spec, *self._screen(candidates), anchor=None)
+        return self._choose(spec, *self.screen(candidates), anchor=None)
 
-    def _screen(self, candidates: Sequence[Candidate]) -> tuple[list[Candidate], list[Rejection]]:
+    def screen(self, candidates: Sequence[Candidate]) -> tuple[list[Candidate], list[Rejection]]:
+        """The candidates kept by validity, ownership and the URL-parameter rule, and the others with their reason."""
         kept: list[Candidate] = []
         rejected: list[Rejection] = []
         for candidate in candidates:
@@ -140,12 +150,17 @@ class Resolver:
             return "invalid"
         if isinstance(candidate.normalized, Ambiguous):
             return "ambiguous"
-        if not self.graph.owned_by(candidate, self.target, page_values=self.page_values):
+        if not self._owned(candidate):
             return "not_owned"
         # §8.2 rule 4 (INV-13): a value the request URL carries is not evidence about the page unless the page shows it.
         if any(text_form(s) in self.page.query_values and not self.page.visible(s) for s in _scalars(candidate.raw)):
             return "url_param"
         return None
+
+    def _owned(self, candidate: Candidate) -> bool:
+        if self.owns is not None:
+            return self.owns(candidate)
+        return self.graph.owned_by(candidate, self.target, page_values=self.page_values)
 
     def _from_selected(
         self, kept: list[Candidate], rejected: list[Rejection], selected: frozenset[str]
@@ -179,7 +194,7 @@ class Resolver:
     def _variant_kept(self, member: Entity, candidates: Sequence[Candidate]) -> list[Candidate]:
         """The candidates the variant `member` holds itself that pass screening, as they would for it as a target."""
         own = [c for c in candidates if c.entity_id == member.id]
-        return Resolver(self.graph, member, self.page, self.orders, page_values=False)._screen(own)[0]
+        return Resolver(self.graph, member, self.page, self.orders, page_values=False).screen(own)[0]
 
     def _is_offer_field(self, spec: FieldSpec) -> bool:
         # A field whose `schema_org` path starts at Offer (or a subtype), in every alternative, holds a part of an

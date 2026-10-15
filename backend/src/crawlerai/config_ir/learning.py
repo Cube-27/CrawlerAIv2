@@ -235,20 +235,31 @@ async def _learn(
 ) -> tuple[ExtractionConfigIR, dict[str, str]]:
     """The config induction and synthesis learn from the sample, and why each other schema field got no steps: the
     reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics."""
-    induction = await asyncio.to_thread(induce, run.schema, sample, vocabulary)
+    schema, row_fields = learnable(run.schema)
+    induction = await asyncio.to_thread(induce, schema, sample, vocabulary)
     ir = _induced(run, induction)
     # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
     reasons = {name: reason for name, reason in induction.to_synthesize.items() if name not in induction.mapped}
     if sample and reasons:
         synthesis = await synthesize(
-            client, ir, run.schema, sample, list(reasons), vocabulary, max_chars=max_chars, job_id=run.job_id
+            client, ir, schema, sample, list(reasons), vocabulary, max_chars=max_chars, job_id=run.job_id
         )
         ir = synthesis.ir
         for name, diagnostics in synthesis.unresolved.items():
             if name in reasons:
                 reasons[name] += f"; synthesis: {_brief(diagnostics)}"
     learned = set(ir.fields) | (set(ir.listing.fields) if ir.listing is not None else set())
-    return ir, {name: reason for name, reason in reasons.items() if name not in learned}
+    return ir, {name: reason for name, reason in reasons.items() if name not in learned} | row_fields
+
+
+def learnable(schema: SchemaDef) -> tuple[SchemaDef, dict[str, str]]:
+    """The schema learning learns steps for, and why each other field gets none. A row-mapped field gets none
+    (`row_field`, SPEC-13 §4.9): induction generalizes one locator per field per page, and a row field needs a row
+    selector, sub-field selectors relative to it and row matching. The structured collectors still fill it in `config`
+    mode, and drift does not track it."""
+    row_fields = {name: "row_field" for name, spec in schema.fields.items() if spec.row_mapped}
+    fields = {name: spec for name, spec in schema.fields.items() if name not in row_fields}
+    return schema.model_copy(update={"fields": fields}), row_fields
 
 
 def _brief(diagnostics: Sequence[str]) -> str:

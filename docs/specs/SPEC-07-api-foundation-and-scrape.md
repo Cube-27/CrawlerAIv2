@@ -93,7 +93,9 @@ Response (200):
   "usage": { "llm_calls": 1, "llm_tokens_in": 1200, "llm_tokens_out": 80, "browser_seconds": 0, "http_requests": 1 } }
 ```
 Every field carries `value, status, evidence, confidence, calibrated, locator` (§13.1) plus `reason`,
-`source_kind`, `derived_by` (from `field_meta`).
+`source_kind`, `derived_by` (from `field_meta`). A row-mapped field (SPEC-13 §4.8) also carries `items`, one per
+published row with each sub-field's `status, reason, evidence, confidence, calibrated, source_kind, locator`, and
+`dropped`, the rows that did not publish (`locators`, `reason`); other fields have neither key.
 
 Behaviour:
 1. Create `job(kind='scrape', request=frozen body)` and one `url_task` (for usage/events bookkeeping), executed

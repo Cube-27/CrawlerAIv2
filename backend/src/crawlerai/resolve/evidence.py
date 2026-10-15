@@ -48,9 +48,11 @@ class Calibration(_Model):
     git_sha: str
     buckets: dict[str, Bucket]
 
-    def measure(self, type_: FieldType, evidence: Evidence) -> tuple[float | None, bool]:
-        """The bucket's confidence and whether it is calibrated: measured on at least `MIN_CALIBRATED_N` fields."""
-        bucket = self.buckets.get(f"{type_.value}|{evidence}")
+    def measure(self, type_: FieldType, evidence: Evidence, *, row: bool = False) -> tuple[float | None, bool]:
+        """The bucket's confidence and whether it is calibrated: measured on at least `MIN_CALIBRATED_N` fields. A row
+        sub-field's bucket is `list.<type>|<evidence>` (SPEC-13 §4.5): a row value can be wrong in a way a page value
+        cannot (a wrong row match), so it is measured apart."""
+        bucket = self.buckets.get(f"{'list.' if row else ''}{type_.value}|{evidence}")
         if bucket is None:
             return None, False
         return bucket.precision, bucket.precision is not None and bucket.n >= MIN_CALIBRATED_N
@@ -116,9 +118,10 @@ def assess(
     *,
     tau: float,
     corroborated: bool,
+    row: bool = False,
 ) -> FieldOutcome:
     """One field's outcome: a chosen or derived value publishes with its bucket's measurement unless that bucket is
-    calibrated below `tau`; a declined field keeps its status and reason."""
+    calibrated below `tau`; a declined field keeps its status and reason. `row`: a row sub-field (SPEC-13 §4.5)."""
     derived_by: Derivation | None = None
     if isinstance(decision, Derived):
         if decision.source is None:
@@ -134,7 +137,7 @@ def assess(
     evidence = evidence_of(chosen, decision.agreeing, corroborated=corroborated)
     if evidence is None:
         return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")), kept=decision.kept)
-    confidence, calibrated = calibration.measure(type_, evidence) if calibration else (None, False)
+    confidence, calibrated = calibration.measure(type_, evidence, row=row) if calibration else (None, False)
     if calibrated and confidence is not None and confidence < tau:
         return _unpublished(
             "abstained",

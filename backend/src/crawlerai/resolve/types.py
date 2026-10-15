@@ -36,6 +36,9 @@ class _Model(BaseModel):
 
 
 class FieldOutcome(_Model):
+    """One field's outcome. A row-mapped field (SPEC-13 §4.5) also holds `items`, one per published row in the order of
+    `value`, and `dropped`, the rows that did not publish; every other field holds neither."""
+
     status: FieldStatus
     reason: str | None  # why the field is not published: `invalid`, `not_owned`, `below_tau`, `disagree`, ...
     value: JsonValue
@@ -48,6 +51,8 @@ class FieldOutcome(_Model):
     chosen: Candidate | None
     kept: tuple[Candidate, ...] = ()  # the candidates that passed screening (validity, ownership, INV-13)
     rejected: tuple[tuple[Candidate, str], ...]  # each with its reject reason
+    items: "tuple[RowOutcome, ...] | None" = None
+    dropped: "tuple[DroppedRow, ...] | None" = None
 
     @model_validator(mode="after")
     def _status_fits(self) -> Self:
@@ -62,7 +67,25 @@ class FieldOutcome(_Model):
                 raise ValueError(f"a {self.status} field states its reason")
         if self.calibrated and self.confidence is None:
             raise ValueError("a calibrated field has a confidence")
+        if self.items is not None and len(self.items) != (len(self.value) if isinstance(self.value, list) else 0):
+            raise ValueError("a row-mapped field has one item per published row")
         return self
+
+
+class RowOutcome(_Model):
+    """A published row of a row-mapped field (SPEC-13 §4.5, INV-34): every sub-field's outcome, published or not."""
+
+    fields: dict[str, FieldOutcome]
+
+
+class DroppedRow(_Model):
+    """A row of a row-mapped field that did not publish: its row entities' locators, and why (SPEC-13 §4.4, §4.5)."""
+
+    locators: tuple[LocatorText, ...]
+    reason: str
+
+
+FieldOutcome.model_rebuild()
 
 
 # One entity's fields, by schema field name.

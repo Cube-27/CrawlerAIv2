@@ -11,7 +11,7 @@ resolution published (INV-27).
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.locator import LocatorText
 from crawlerai.collect.schema_org_map import parse_paths
@@ -28,8 +28,12 @@ class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class FieldMeta(_Model):
-    """`record.field_meta[field]` (§6): the field's outcome without its candidates."""
+def _absent(value: object) -> bool:
+    return value is None
+
+
+class SubFieldMeta(_Model):
+    """A row sub-field's outcome without its candidates (SPEC-13 §4.8, INV-34)."""
 
     status: FieldStatus
     reason: str | None
@@ -38,11 +42,42 @@ class FieldMeta(_Model):
     calibrated: bool
     source_kind: SourceKind | None
     locator: LocatorText | None
+
+    @classmethod
+    def of(cls, outcome: FieldOutcome) -> "SubFieldMeta":
+        return cls(**{name: getattr(outcome, name) for name in SubFieldMeta.model_fields})
+
+
+class RowMeta(_Model):
+    """A published row's sub-field outcomes, aligned with the field's value by index (SPEC-13 §4.8)."""
+
+    fields: dict[str, SubFieldMeta]
+
+
+class DroppedRowMeta(_Model):
+    """A row that did not publish: its row entities' locators and the reason (SPEC-13 §4.8)."""
+
+    locators: list[LocatorText]
+    reason: str
+
+
+class FieldMeta(SubFieldMeta):
+    """`record.field_meta[field]` (§6): the field's outcome without its candidates. A row-mapped field adds `items` and
+    `dropped` (SPEC-13 §4.8); other fields have neither key, so the shape is additive."""
+
     derived_by: Derivation | None
+    items: list[RowMeta] | None = Field(default=None, exclude_if=_absent)
+    dropped: list[DroppedRowMeta] | None = Field(default=None, exclude_if=_absent)
 
     @classmethod
     def of(cls, outcome: FieldOutcome) -> "FieldMeta":
-        return cls(**{name: getattr(outcome, name) for name in cls.model_fields})
+        items = None
+        if outcome.items is not None:
+            items = [RowMeta(fields={n: SubFieldMeta.of(o) for n, o in row.fields.items()}) for row in outcome.items]
+        dropped = None
+        if outcome.dropped is not None:
+            dropped = [DroppedRowMeta(locators=list(row.locators), reason=row.reason) for row in outcome.dropped]
+        return cls(**dict(SubFieldMeta.of(outcome)), derived_by=outcome.derived_by, items=items, dropped=dropped)
 
 
 class RecordContent(_Model):

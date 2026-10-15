@@ -1,0 +1,322 @@
+"""Rows of a row-mapped `list<object>` field (SPEC-13 §4.3 to §4.5, INV-33 to INV-35): which entities are the
+field's rows, which sub-field candidates belong to which row, which rows are one variant, and what each publishes.
+
+The rows are found in the entity graph, not by the collectors: the row path's alternatives that start at the target's
+type are followed through `Entity.via`. A row's scope is its entity and those below it, as far as the next row or a
+thing the page only relates to (SPEC-05 §4.6 exclusions). Rows are matched by key, never by position: rows that share a
+key value are one variant, and a variant whose key sub-fields disagree is dropped (C7: decline rather than guess).
+Each variant resolves its sub-fields with the resolver's own rules, its scope standing in for ownership.
+"""
+
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Final
+
+from pydantic import JsonValue
+
+from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.schema_org_map import MappedPath, parse_paths
+from crawlerai.normalize.base import Ok
+from crawlerai.normalize.dispatch import equal
+from crawlerai.resolve.evidence import TAU_OPTIONAL, TAU_REQUIRED, Calibration, assess
+from crawlerai.resolve.intent import LISTS, RELATIONS
+from crawlerai.resolve.ownership import AGGREGATE_OFFER, OFFER, EntityGraph
+from crawlerai.resolve.preference import Orders, PageFacts, Resolver
+from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
+from crawlerai.schemas.types import FieldSpec, FieldType
+
+# The row whose scope holds a candidate's owner, or None.
+_Keys = dict[str, list[JsonValue]]  # a row's key values, by key sub-field
+RowOf = Callable[[Candidate], str | None]
+NOT_IN_ROW: Final = "not_in_row"
+# Why a row-mapped field publishes nothing, from the earliest stage to the furthest; the furthest reached is the reason.
+_NO_ROWS = ("no_rows", "no_row_key", "row_key_conflict", "key_unpublished")
+_URL = FieldSpec(type=FieldType.URL)
+
+
+@dataclass(frozen=True, slots=True)
+class RowField:
+    """A row-mapped field of a detail page's target, and what its rows are resolved with."""
+
+    name: str
+    spec: FieldSpec
+    required: bool  # the list field is required (τ, §4.5)
+    graph: EntityGraph
+    target: Entity
+    page: PageFacts
+    orders: Orders
+    calibration: Calibration | None
+    page_urls: tuple[str, ...]  # request, final and canonical URLs, canonicalized
+
+    @property
+    def sub_fields(self) -> Mapping[str, FieldSpec]:
+        return (self.spec.item.fields or {}) if self.spec.item is not None else {}
+
+    @property
+    def key(self) -> tuple[str, ...]:
+        return tuple(self.spec.key or ())
+
+
+@dataclass(slots=True)
+class _Variant:
+    """Rows matched as one variant (a cluster), in collector order."""
+
+    rows: list[Entity]
+    keys: dict[str, list[JsonValue]] = field(default_factory=dict)
+
+
+def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldOutcome:
+    """The field's outcome: the published rows as its value, with `items` and `dropped` (§4.5)."""
+    mine = [c for c in candidates if c.field.startswith(f"{row_field.name}.")]
+    rows = row_entities(row_field.graph, row_field.target, row_field.spec)
+    row_of = _row_of(row_field.graph, rows)
+    in_rows = [c for c in mine if row_of(c) is not None]
+    variants, dropped, reasons = _variants(row_field, rows, in_rows, row_of)
+    resolved = _Resolved(rejected=[(c, NOT_IN_ROW) for c in mine if row_of(c) is None], dropped=dropped)
+    resolved.rejected.extend(_dropped_candidates(in_rows, row_of, dropped))
+    for variant in variants:
+        resolved.add(row_field, variant, in_rows, row_of)
+    if resolved.published:
+        return _published(resolved.published, tuple(resolved.dropped), tuple(resolved.rejected))
+    reasons += ["key_unpublished"] * (len(variants) - len(resolved.published))
+    abstained = bool(variants) and resolved.abstained and set(reasons) == {"key_unpublished"}
+    status: FieldStatus = "abstained" if abstained else "missing"
+    return FieldOutcome(
+        status=status,
+        reason="below_tau" if abstained else max(reasons, key=_NO_ROWS.index),
+        value=None,
+        evidence=None,
+        confidence=None,
+        calibrated=False,
+        source_kind=None,
+        locator=None,
+        derived_by=None,
+        chosen=None,
+        rejected=tuple(resolved.rejected),
+        dropped=tuple(resolved.dropped),
+    )
+
+
+@dataclass(slots=True)
+class _Resolved:
+    """The variants resolved so far: those that published (each with its first row entity), the dropped rows, the
+    rejected candidates, and whether every dropped variant was dropped because its key sub-fields abstained."""
+
+    rejected: list[tuple[Candidate, str]]
+    dropped: list[DroppedRow]
+    published: list[tuple[str, RowOutcome]] = field(default_factory=list)
+    abstained: bool = True
+
+    def add(self, row_field: RowField, variant: "_Variant", candidates: Sequence[Candidate], row_of: RowOf) -> None:
+        ids = {row.id for row in variant.rows}
+        own = [c for c in candidates if row_of(c) in ids]
+        outcome = _resolve_variant(row_field, own, ids, row_of)
+        keys = [outcome.fields[sub].status for sub in row_field.key]
+        if "published" in keys:
+            self.published.append((variant.rows[0].id, outcome))
+            return
+        # §4.5: a row publishes when at least one key sub-field publishes.
+        self.abstained = self.abstained and "abstained" in keys
+        self.dropped.append(DroppedRow(locators=tuple(row.id for row in variant.rows), reason="key_unpublished"))
+        self.rejected.extend((c, "key_unpublished") for c in own)
+
+
+def row_entities(graph: EntityGraph, target: Entity, spec: FieldSpec) -> list[Entity]:
+    """§4.3 steps 1 and 2: the entities the row path's alternatives that start at the target's type reach, in collector
+    order, without an AggregateOffer (schema.org: a summary of offers, not one item's offer) and without one that has
+    another reached entity below it (rows do not nest; the outer node groups them)."""
+    rows = [e for e in _reached(graph, target, spec) if not graph.is_a(e, AGGREGATE_OFFER)]
+    ids = {e.id for e in rows}
+    outer = {a.id for e in rows for a in graph.ancestors(e) if a.id in ids}
+    order = {entity_id: i for i, entity_id in enumerate(graph.entities)}
+    return sorted((e for e in rows if e.id not in outer), key=lambda e: order[e.id])
+
+
+def _reached(graph: EntityGraph, target: Entity, spec: FieldSpec) -> list[Entity]:
+    """What the row path's alternatives that start at the target's type reach, each entity once."""
+    paths = [path for path in parse_paths(spec.schema_org or "") if graph.is_a(target, path.root)]
+    return list({e.id: e for path in paths for e in _follow(graph, target, path)}.values())
+
+
+def _follow(graph: EntityGraph, start: Entity, path: MappedPath) -> list[Entity]:
+    # Step `p` from entity E reaches the entities whose parent is E and whose `via` is `p` (§4.3 step 1).
+    frontier = [start]
+    for step in path.steps:
+        ids = {e.id for e in frontier}
+        frontier = [e for e in graph.entities.values() if e.parent in ids and e.via == step]
+    return frontier
+
+
+def _row_of(graph: EntityGraph, rows: Sequence[Entity]) -> RowOf:
+    """§4.3 step 3: the row whose scope holds a candidate's owner, or None. The scope stops at a thing the row only
+    relates to (`isRelatedTo`, `isSimilarTo`) and at a list (ItemList, ListItem)."""
+    row_ids = {row.id for row in rows}
+    cache: dict[str, str | None] = {}
+
+    def row_of(candidate: Candidate) -> str | None:
+        owner = graph.owner_of(candidate)
+        if owner.id not in cache:
+            cache[owner.id] = _scope_row(graph, owner, row_ids)
+        return cache[owner.id]
+
+    return row_of
+
+
+def _scope_row(graph: EntityGraph, entity: Entity, row_ids: set[str]) -> str | None:
+    for node in (entity, *graph.ancestors(entity)):
+        if node.id in row_ids:
+            return node.id
+        if node.via in RELATIONS or any(graph.is_a(node, t) for t in LISTS):
+            return None
+    return None
+
+
+def _variants(
+    row_field: RowField, rows: Sequence[Entity], candidates: Sequence[Candidate], row_of: RowOf
+) -> tuple[list[_Variant], list[DroppedRow], list[str]]:
+    """§4.4: rows linked by a shared key value, as variants in order of their first row; rows with no key value and
+    variants whose key sub-fields disagree are dropped."""
+    if not rows:
+        return [], [], ["no_rows"]
+    keys = _key_values(row_field, candidates, row_of)
+    keyed = [row for row in rows if keys.get(row.id)]
+    dropped = [DroppedRow(locators=(row.id,), reason="no_row_key") for row in rows if not keys.get(row.id)]
+    reasons = ["no_row_key"] * len(dropped)
+    variants: list[_Variant] = []
+    for group in _linked(row_field, keyed, keys):
+        variant = _Variant(group, _merged_keys(group, keys))
+        if _conflicting(row_field, variant):
+            dropped.append(DroppedRow(locators=tuple(row.id for row in group), reason="row_key_conflict"))
+            reasons.append("row_key_conflict")
+        else:
+            variants.append(variant)
+    return variants, dropped, reasons
+
+
+def _key_values(
+    row_field: RowField, candidates: Sequence[Candidate], row_of: RowOf
+) -> dict[str, dict[str, list[JsonValue]]]:
+    """Each row's key values by key sub-field (§4.4): `Ok` values that pass screening (INV-13), without a URL that
+    names the page or the target rather than one variant."""
+    screen = Resolver(row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda _: True)
+    excluded = _not_keys(row_field)
+    values: dict[str, dict[str, list[JsonValue]]] = {}
+    for sub in row_field.key:
+        url = row_field.sub_fields[sub].type is FieldType.URL
+        kept, _ = screen.screen([c for c in candidates if c.field == f"{row_field.name}.{sub}"])
+        for candidate in kept:
+            value = _key_value(candidate, excluded if url else frozenset())
+            row = row_of(candidate)
+            if value is not None and row is not None:
+                values.setdefault(row, {}).setdefault(sub, []).append(value)
+    return values
+
+
+def _key_value(candidate: Candidate, excluded: frozenset[str]) -> JsonValue:
+    """The candidate's normalized value, unless it is a URL in `excluded` (only url keys are screened, §4.4)."""
+    value = candidate.normalized.value if isinstance(candidate.normalized, Ok) else None
+    return None if isinstance(value, str) and value in excluded else value
+
+
+def _not_keys(row_field: RowField) -> frozenset[str]:
+    """URLs that name the page or the target, not one variant (§4.4): the page URLs and the target's own URLs. The
+    target's Offers' URLs (which `Entity.urls` includes) stay keys: in the one-Offer-per-variant shape each is its
+    row's key."""
+    graph, target = row_field.graph, row_field.target
+    offers = {u for e in graph.entities.values() if e.parent == target.id and graph.is_a(e, OFFER) for u in e.urls}
+    own = [u for u in target.urls if u not in offers]
+    return frozenset((*row_field.page_urls, *own))
+
+
+def _linked(
+    row_field: RowField, rows: Sequence[Entity], keys: Mapping[str, Mapping[str, list[JsonValue]]]
+) -> list[list[Entity]]:
+    """Connected components of rows that share a value of some key sub-field; order-independent, each in collector
+    order, ordered by its first row."""
+    parent = {row.id: row.id for row in rows}
+
+    def root(row_id: str) -> str:
+        while parent[row_id] != row_id:
+            row_id = parent[row_id]
+        return row_id
+
+    for i, a in enumerate(rows):
+        for b in rows[i + 1 :]:
+            if _share_key(row_field, keys[a.id], keys[b.id]):
+                parent[root(b.id)] = root(a.id)
+    groups: dict[str, list[Entity]] = {}
+    for row in rows:
+        groups.setdefault(root(row.id), []).append(row)
+    return list(groups.values())
+
+
+def _share_key(row_field: RowField, a: Mapping[str, list[JsonValue]], b: Mapping[str, list[JsonValue]]) -> bool:
+    return any(equal(x, y, row_field.sub_fields[sub]) for sub in a.keys() & b.keys() for x in a[sub] for y in b[sub])
+
+
+def _merged_keys(rows: Sequence[Entity], keys: Mapping[str, _Keys]) -> _Keys:
+    merged: dict[str, list[JsonValue]] = {}
+    for row in rows:
+        for sub, values in keys[row.id].items():
+            merged.setdefault(sub, []).extend(values)
+    return merged
+
+
+def _conflicting(row_field: RowField, variant: _Variant) -> bool:
+    """INV-33: a key sub-field with two different values means two variants were joined, or one source is wrong."""
+    spec = row_field.sub_fields
+    return any(not equal(values[0], other, spec[sub]) for sub, values in variant.keys.items() for other in values[1:])
+
+
+def _resolve_variant(row_field: RowField, candidates: Sequence[Candidate], ids: set[str], row_of: RowOf) -> RowOutcome:
+    """§4.5: the variant's sub-fields, chosen by the resolver with the variant's scope as owner (atomic offers per row,
+    INV-35) and assessed in the `list.<type>` buckets."""
+    resolver = Resolver(
+        row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda c: row_of(c) in ids
+    )
+    preferences = resolver.prefer_fields(row_field.sub_fields, candidates, prefix=f"{row_field.name}.")
+    outcomes: dict[str, FieldOutcome] = {}
+    for sub, spec in row_field.sub_fields.items():
+        calibration, tau = row_field.calibration, _tau(row_field, spec)
+        outcomes[sub] = assess(spec.type, preferences[sub], calibration, tau=tau, corroborated=False, row=True)
+    return RowOutcome(fields=outcomes)
+
+
+def _tau(row_field: RowField, sub: FieldSpec) -> float:
+    # §4.5: τ is the required one when the list field and the sub-field are both required.
+    return TAU_REQUIRED if row_field.required and sub.required else TAU_OPTIONAL
+
+
+def _dropped_candidates(
+    candidates: Sequence[Candidate], row_of: RowOf, dropped: Sequence[DroppedRow]
+) -> list[tuple[Candidate, str]]:
+    """The candidates of rows dropped before resolution, each with its row's reason."""
+    reason_of = {row_id: row.reason for row in dropped for row_id in row.locators}
+    return [(c, reason_of[r]) for c in candidates if (r := row_of(c)) is not None and r in reason_of]
+
+
+def _published(
+    rows: Sequence[tuple[str, RowOutcome]], dropped: tuple[DroppedRow, ...], rejected: tuple[tuple[Candidate, str], ...]
+) -> FieldOutcome:
+    """§4.5 "The field's outcome": the published rows' published sub-fields as the value; `agreed` when every published
+    sub-field is, else `structured`; the least confidence, calibrated only when all are; the first row's source kind
+    and its entity's locator."""
+    published = [o for _, row in rows for o in row.fields.values() if o.status == "published"]
+    confidences = [o.confidence for o in published]
+    first_row, first = rows[0][0], next(o for o in rows[0][1].fields.values() if o.status == "published")
+    evidence: Evidence = "agreed" if all(o.evidence == "agreed" for o in published) else "structured"
+    return FieldOutcome(
+        status="published",
+        reason=None,
+        value=[{sub: o.value for sub, o in row.fields.items() if o.status == "published"} for _, row in rows],
+        evidence=evidence,
+        confidence=None if None in confidences else min(c for c in confidences if c is not None),
+        calibrated=all(o.calibrated for o in published),
+        source_kind=first.source_kind,
+        locator=first_row,
+        derived_by=None,
+        chosen=None,
+        rejected=rejected,
+        items=tuple(row for _, row in rows),
+        dropped=dropped,
+    )
