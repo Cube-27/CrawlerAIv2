@@ -649,9 +649,11 @@ def test_prefill_replaces_a_draft() -> None:
     assert (stored.labels["prefill_source"], stored.labeler) == ("llm:fake-fast", None)
 
 
-def test_prefill_never_replaces_a_labeled_pass() -> None:
+@pytest.mark.parametrize("status", ["labeled", "checked"])
+def test_prefill_never_replaces_a_labeled_pass(status: str) -> None:
     backend = FakeBackend()
-    page = backend.store.add(_stored(_labels("checked", checker="ben")), labeler="ana")
+    labels = _stored(_labels(status, checker="ben" if status == "checked" else None))
+    page = backend.store.add(labels, labeler="ana")
 
     response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
 

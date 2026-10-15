@@ -179,7 +179,7 @@ def _result(**changes: Any) -> ExtractionResult:
     return ExtractionResult(**(values | changes))
 
 
-@pytest.mark.parametrize("outcome", ["blocked", "shell"])
+@pytest.mark.parametrize("outcome", ["blocked", "not_found", "shell"])
 def test_a_page_that_was_not_served_has_no_candidates_and_no_fields(outcome: str) -> None:
     candidates = (_candidate(),)
     with pytest.raises(ValidationError, match="candidates"):

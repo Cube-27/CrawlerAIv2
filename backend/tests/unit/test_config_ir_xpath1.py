@@ -34,6 +34,43 @@ def test_xpath1_expressions_pass(expression: str) -> None:
     assert check_xpath1(expression) == expression
 
 
+# W3C XPath 1.0 §4.1-4.4: the core function library.
+CORE_FUNCTIONS = [
+    "last",
+    "position",
+    "count",
+    "id",
+    "local-name",
+    "namespace-uri",
+    "name",
+    "string",
+    "concat",
+    "starts-with",
+    "contains",
+    "substring-before",
+    "substring-after",
+    "substring",
+    "string-length",
+    "normalize-space",
+    "translate",
+    "boolean",
+    "not",
+    "true",
+    "false",
+    "lang",
+    "number",
+    "sum",
+    "floor",
+    "ceiling",
+    "round",
+]
+
+
+@pytest.mark.parametrize("name", CORE_FUNCTIONS)
+def test_every_xpath1_core_function_is_accepted(name: str) -> None:
+    assert check_xpath1(f"//p[{name}(.)]") == f"//p[{name}(.)]"
+
+
 @pytest.mark.parametrize("expression", REFUSED_SYNTAX)
 def test_xpath2_syntax_is_refused(expression: str) -> None:
     with pytest.raises(XPath1Error):

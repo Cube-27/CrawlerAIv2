@@ -104,6 +104,7 @@ def test_a_glob_is_expanded_on_its_canonical_origin(pattern: str, origin: str, c
     "pattern",
     [
         "https://*.example.test/p/*",
+        "https://shop.example.test?/p/*",
         "ftp://shop.example.test/p/*",
         "/p/*",
     ],
