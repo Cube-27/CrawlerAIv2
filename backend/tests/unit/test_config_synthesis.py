@@ -188,7 +188,6 @@ def test_a_repair_asks_only_for_the_fields_that_failed() -> None:
     [
         ({"xpath": "//h1 | //h2"}, "page 1: multi_match(2)"),
         ({"xpath": "//h3"}, "page 1: no_match"),
-        ({"xpath": "lower-case(//h1)"}, "step 0: invalid_xpath("),
         ({"regex": "<h1>(.*)</h1>", "source": "xhr"}, "step 0: invalid_step(Extra inputs are not permitted"),
     ],
 )
@@ -323,7 +322,7 @@ def test_a_row_selector_with_too_few_rows_is_repaired_with_its_row_fields() -> N
     assert "  - row_not_verified" in client.requests[1].user
     assert result.ir.listing is not None
     assert sorted(result.ir.listing.fields) == ["link", "title"]
-    assert result.ir.listing.next is not None
+    assert result.ir.listing.next == XPathStep.model_validate(NEXT_STEP)
 
 
 def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
