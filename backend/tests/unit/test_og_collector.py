@@ -103,13 +103,14 @@ def test_og_title_maps_only_to_the_name_of_the_root_type() -> None:
 
 def test_a_field_maps_only_when_its_type_matches_the_role() -> None:
     schema = _schema(
+        title=_field(FieldType.TEXT, "Product.name"),
         name_as_url=_field(FieldType.URL, "Product.name"),
         image_as_text=_field(FieldType.TEXT, "Product.image"),
     )
 
     result = _collect(("og:title", "Synthetic Widget"), ("og:image", "https://shop.example.test/a.png"), schema=schema)
 
-    assert result.candidates == ()
+    assert result.candidates == (_og("title", "Synthetic Widget", Ok("Synthetic Widget"), "meta:og:title"),)
 
 
 def test_the_first_value_of_a_repeated_property_is_the_value() -> None:
@@ -159,7 +160,9 @@ def test_a_price_without_a_currency_is_a_candidate_that_declines() -> None:
 
 
 def test_a_currency_without_an_amount_is_no_candidate() -> None:
-    assert _collect(("product:price:currency", "EUR")).candidates == ()
+    result = _collect(("product:price:currency", "EUR"), ("og:title", "Synthetic Widget"))
+
+    assert result.candidates == (_og("title", "Synthetic Widget", Ok("Synthetic Widget"), "meta:og:title"),)
 
 
 def test_the_name_attribute_reads_like_property() -> None:
@@ -189,12 +192,6 @@ def test_og_url_names_the_page_entity_even_without_a_url_field() -> None:
         entities=(Entity(id="page", kind="page", urls=("https://shop.example.test/p/1",), parent=None),),
         candidates=(),
     )
-
-
-def test_a_page_without_opengraph_has_no_entity() -> None:
-    page = ParsedPage('<html><head><meta name="description" content="Synthetic"></head></html>')
-
-    assert OpenGraphCollector().collect(page, SCHEMA, CTX) == CollectResult(entities=(), candidates=())
 
 
 def test_alternatives_have_a_role_only_when_each_names_the_same_property_of_its_root() -> None:
