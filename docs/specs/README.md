@@ -5,7 +5,7 @@ Written from `docs/ARCHITECTURE.md` rev 4, aligned with rev 5 (the single source
 design, invariants, testing, acceptance, PR plan, open issues). Specs are numbered in implementation order. If a spec changes an
 architectural decision, `ARCHITECTURE.md` is updated in the same change.
 
-Nothing in these specs designs a §22 candidate. Where the architecture was under-specified, each spec takes the
+Nothing in these specs designs a §22 candidate, except SPEC-13, which the owner admitted (Appendix A #37). Where the architecture was under-specified, each spec takes the
 most conservative reading, marks additions as "implementation detail, not architecture", and lists the review
 finding in its Open issues. Findings that rev 5 resolved are marked "Resolved in ARCHITECTURE rev 5 §…". Choices
 marked "Owner to confirm" are agent decisions pending owner confirmation; they are recorded in
@@ -28,6 +28,7 @@ marked "Owner to confirm" are agent decisions pending owner confirmation; they a
 | 10 | [Async jobs, map, crawl frontier, extract, SSE, webhooks, MCP](SPEC-10-jobs-crawl-extract-mcp.md) | §13 (all), §17, §23 | 01, 02, 05, 06, 07, 08 | L3 |
 | 11 | [Recurring crawls](SPEC-11-recurring-crawls.md) | §14, §6 (`url_state`, `record`) | 01, 02, 05, 08, 10 | L4 |
 | 12 | [Frontend application screens](SPEC-12-frontend-application.md) | §1, §3, §13.1, §5.4, §18, C5 | 00, 03, 07, 08, 10, 11 | L1–L4 |
+| 13 | [Variant matrix: per-variant rows from structured data](SPEC-13-variant-matrix.md) | §5.1–§5.3, §8.2 r3, §10, §16, §22 (admitted, Appendix A #37) | 03, 04, 05, 06, 07, 08 | admitted candidate |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.
@@ -57,6 +58,8 @@ flowchart TB
   S08 --> S12
   S10 --> S12
   S11 --> S12
+  S05 --> S13[13 variant matrix]
+  S08 --> S13
 ```
 
 Layer mapping (§21): L0 = 00, 01, 02 (PRs 1–5), 03. L1 = 02 (PRs 6–9), 04, 05, 06, 07, 12 (PRs 1–5, 9).

@@ -29,7 +29,7 @@ Core:
 Out of scope (§22 unless noted):
 - Learned ranker, LLM adjudication, independent verifier, self-consistency.
 - Generic structural DOM collectors (repeated structure, label–value pairs, typed value spotting).
-- Variant matrices. Page-type gate (§23). Any `[class*=…]`, bare `h1`, card selectors (§8.1).
+- Variant matrices: SPEC-13 (admitted, ARCHITECTURE Appendix A #37). Page-type gate (§23). Any `[class*=…]`, bare `h1`, card selectors (§8.1).
 - Learning/induction (SPEC-08); role C prompt (SPEC-06).
 
 ## 3. Dependencies

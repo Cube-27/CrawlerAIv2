@@ -24,7 +24,7 @@ Core:
 Out of scope:
 - Types not in §5.1 (quantity, rating, duration) until a schema needs them (§5.1), each a new module + contract
   entry.
-- Variant matrices (§22).
+- Variant matrices: SPEC-13 (admitted, ARCHITECTURE Appendix A #37), which extends the §4.2 path grammar.
 - Role S schema drafting (SPEC-06) and the `/v1/schemas` API (SPEC-07); this spec provides the registry service.
 - Any host, retailer or symbol→currency default table (C7). Any phrase list not tagged by language and justified
   (C4).
