@@ -1,6 +1,6 @@
 # CrawlerAI v2 — Architecture
 
-Status: design, rev 12, 2026-10-14. No code exists.
+Status: design, rev 16, 2026-10-15. No code exists.
 
 **Role of this document.** This is the single design reference. Related documents:
 - `OPEN_QUESTIONS.md`: decisions still open.
@@ -221,7 +221,11 @@ Types not in this table are added when a schema needs them, each with its one no
 - **Scope.** `scope` ∈ {`row`, `page`}, default `row`. On detail pages everything is `row`; on listings,
   `page` fields such as `next_page_url` belong to the page.
 - **`description`** is required on every field; LLM roles read it.
-- **`schema_org`** is a dotted path from a schema.org type. `+` joins two properties into one atomic value.
+- **`schema_org`** is a dotted path from a schema.org type. `+` joins two properties into one atomic value. `|`
+  separates alternatives, whose candidates are pooled and resolved as usual (Appendix A #37).
+- **Rows.** A `list` of `object` with a `schema_org` path is row-mapped: the path names the row nodes from the
+  target, each sub-field maps by its own path within its row, and `key` names the identifier or url sub-fields
+  that match one row across sources (SPEC-13).
 - **Versioning.** Schemas are immutable per version. Records and configs reference `(schema_id, schema_version)`.
 - Full rules: SPEC-04.
 
@@ -235,6 +239,8 @@ Types not in this table are added when a schema needs them, each with its one no
 | `job_listing` | row: `title`, `url`; `location` when shown; page: `next_page_url` |
 
 "When shown" fields are optional fields in the preset: `required` can't express a condition.
+`commerce_detail` version 3 adds the optional `variants` list, one row per variant with its sku, gtin, price,
+availability, url, name and distinguishing attributes (Appendix A #37, SPEC-13).
 Optional fields are added when a user needs them (OPEN_QUESTIONS #3). The presets map onto Google Merchant Center
 and Google-for-Jobs `JobPosting` required properties **[verified]**. `apply_url` has no direct schema.org property;
 its mapping is chosen in SPEC-04.
@@ -488,7 +494,16 @@ Three structural stages, then a simple preference rule. A learned ranker is a ca
 | **Preference** | **Exact-match types** (money, identifier, enum, date, range, location): if the valid, owned candidates agree after normalization, publish; if they disagree, the field is `conflict` and nothing is published. **Text, url and image:** a per-type source-precedence order in `source_precedence.yaml`, fitted on dev only and measured on hidden. |
 
 **Atomic offers.** Price, currency and availability come from one `Offer`. With several Offers, the target's own
-and its variants' (§8.2 rule 3), and no variant handling (§22), the field is `conflict` unless they all agree. An aggregate `lowPrice` is never the current price.
+and its variants' (§8.2 rule 3), and no variant selected (below), the field is `conflict` unless they all agree.
+An aggregate `lowPrice` is never the current price.
+
+**Variant matrix (Appendix A #37, SPEC-13).** The single offer fields mean the selected or default variant. A
+variant is selected when the request, final or canonical URL names exactly one of the target's variants or
+Offers by its own URL (the intent test of §8.2 rule 3, never a query value, rule 4). Its Offer then gives price
+and availability, and its identifiers fill a top-level `sku` or `gtin` the target leaves empty. With none selected, the rule
+above stands. A row-mapped list resolves one row per variant: rows reached from the target, matched across
+sources by key, each sub-field resolved by these stages inside its row, with price and availability from one
+Offer of the row and evidence per sub-field. Only structured collectors give rows; learning and role C do not.
 
 **Confidence from evidence buckets.** Each published field carries an `evidence` value:
 - `adapter`: adapter or API recipe;
@@ -846,7 +861,7 @@ is measured after it is added.
 | **Self-consistency sampling** for role C | LLM value errors | Hidden precision of the `llm_grounded` bucket is below τ. |
 | **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | Role C cost or coverage on DOM-only fresh sites misses target, and dev shows the collector would help. |
 | **More platform adapters** (Shopify JSON, Workday CXS, iCIMS, ADP, Oracle CX) | Coverage or cost on those platforms | Results for the platform fall short through the generic path, or volume justifies it (OPEN_QUESTIONS #2). |
-| **Variant-matrix handling** | Per-variant price and availability; the multiple-Offer `conflict` | A schema requests variants and labels exist for them. |
+| **Variant-matrix handling** | Per-variant price and availability; the multiple-Offer `conflict` | **Admitted 2026-10-15** by the owner ahead of labels (Appendix A #37); designed in SPEC-13. |
 | **Anti-bot measures**: allowlisting program, cookie handoff, vendor strategies, real Chrome with a behaviour layer (Appendix A #20 owner note: no Patchright on real Chrome), residential proxies, unblockers, CAPTCHA handling, detection bench | Blocked pages | The `blocked` or `shell` outcome rate for a category is material. The cheapest measure that fixes the blocked class is admitted first. |
 | **Recurring schedule storage** | Callers having to re-submit | Recurring volume makes re-submission a burden. |
 | **Review queue UI** beyond labeling and config correction | Operator throughput | Operators correct configs often enough that the API and config view slow them down. |
@@ -917,6 +932,7 @@ implementation go in `DECISIONS.md`, not here.
 | 34 | Embedded-state admission (2026-10-14) | A visible `js_state` or `xhr` value with no other candidate to equal is admitted only for field types with a checkable syntax (§8.1); opaque types such as text and sku admit by equality only. Accuracy Q2, option (a). |
 | 35 | `brand` optional (2026-10-14) | "Brand is not that important": preset `commerce_detail` version 2 makes `brand` optional (§5.3). A page without a brand is complete, and the gap rule no longer asks role C for it. |
 | 36 | Variants are members (2026-10-15) | A primary entity's `hasVariant` variants are members of it, not candidates for the target, and their Offers are the target's under the atomic-offer rule (§8.2 rule 3, §10). Step A of the variants proposal; variant-matrix handling itself (§22) is admitted separately and specified in SPEC-13. |
+| 37 | Variant matrix (2026-10-15) | Variant-matrix handling (§22) is admitted now, ahead of labels. `commerce_detail` version 3 adds an optional `variants` list from structured data; sub-fields of a `list` of `object` map by their own `schema_org` paths; the single price, availability, sku and gtin follow the variant the page URL names, else the all-agree rule. No platform JSON adapter. Variant labels and their scoring are specified, not built (SPEC-13). |
 
 ---
 
@@ -999,3 +1015,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 13 | 2026-10-15 | **Embedded-state admission** (owner approval, accuracy Q2 option a; Appendix A #34). §8.1: a visible `js_state` or `xhr` value is admitted on its own only for field types with a checkable syntax; opaque types admit by equality only. SPEC-05 §4.5 updated. |
 | 14 | 2026-10-15 | **`brand` optional** (owner approval, accuracy Q1; Appendix A #35). §5.3: `commerce_detail` version 2 lists `brand` as shown-when-present. SPEC-04 §4.2 updated. |
 | 15 | 2026-10-15 | **Variants are members** (owner approval, variants proposal step A; Appendix A #36). §8.2 rule 3: `hasVariant` variants are excluded from target candidates and their Offers are owned by the target; §10 atomic offers count them. SPEC-05 §4.6 and §4.8 updated. |
+| 16 | 2026-10-15 | **Variant matrix** (owner admission; Appendix A #37). §5.2: `\|` alternatives in `schema_org`, row-mapped `list` of `object` fields with `key`. §5.3: `commerce_detail` version 3 adds optional `variants`. §10: selected variant by URL identity, variant fill, per-row resolution. §22: the candidate is marked admitted. SPEC-13 added; SPEC-04 and SPEC-05 point to it. INV-33–INV-36. |

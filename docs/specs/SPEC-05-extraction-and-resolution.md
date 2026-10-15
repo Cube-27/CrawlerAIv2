@@ -29,7 +29,7 @@ Core:
 Out of scope (§22 unless noted):
 - Learned ranker, LLM adjudication, independent verifier, self-consistency.
 - Generic structural DOM collectors (repeated structure, label–value pairs, typed value spotting).
-- Variant matrices. Page-type gate (§23). Any `[class*=…]`, bare `h1`, card selectors (§8.1).
+- Variant matrices: SPEC-13 (admitted, ARCHITECTURE Appendix A #37). Page-type gate (§23). Any `[class*=…]`, bare `h1`, card selectors (§8.1).
 - Learning/induction (SPEC-08); role C prompt (SPEC-06).
 
 ## 3. Dependencies
@@ -204,7 +204,8 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
 
 - **Atomic offers** (INV-15): `price`, `availability` (and `currency` within money) must come from the same
   `Offer` entity. When several Offers exist, the target's own and its variants' (§4.6), and there is no variant
-  handling in core, the field is `conflict` unless all Offers agree; `AggregateOffer.lowPrice/highPrice` are never published as price (they feed `range` fields only).
+  handling in core, the field is `conflict` unless all Offers agree (the selected variant and per-variant rows:
+  SPEC-13); `AggregateOffer.lowPrice/highPrice` are never published as price (they feed `range` fields only).
 - **URL parameters** (INV-13): a candidate whose raw value equals a query-parameter value of the request URL is
   rejected (`url_param`) unless `visible(raw)`.
 - **Derived values** (C7, INV-07): the only derivations in core: `url` (detail) ← `<link rel=canonical>` else
