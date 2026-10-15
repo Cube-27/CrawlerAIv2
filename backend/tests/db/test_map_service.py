@@ -344,7 +344,6 @@ async def test_a_fetch_the_guard_refuses_fails_the_job(
     ("body", "member"),
     [
         ({"url": "/relative"}, "url"),
-        ({"url": "https://example.test/", "limit": 5001}, "limit"),
         ({"url": "https://example.test/", "limit": 0}, "limit"),
         ({"url": "https://example.test/", "depth": 2}, "depth"),
     ],

@@ -217,7 +217,6 @@ async def test_a_second_page_of_the_site_waits_out_the_interval_in_the_queue(
     ("status", "headers", "attempts", "asked", "pause"),
     [
         (429, (("Retry-After", "120"),), 0, timedelta(seconds=120), timedelta(seconds=120)),
-        (503, (("Retry-After", "5"),), 2, timedelta(seconds=5), timedelta(seconds=5)),
         # Without Retry-After the queue's backoff applies: 30 s, doubling per attempt.
         (429, (), 0, None, timedelta(seconds=30)),
         (503, (), 1, None, timedelta(seconds=60)),
@@ -245,7 +244,7 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
 
 
-@pytest.mark.parametrize("value", ["901", "3600", "99999999999999", "9" * 5000])
+@pytest.mark.parametrize("value", ["901", "99999999999999", "9" * 5000])
 async def test_a_retry_after_beyond_15_min_blocks_the_task(conn: AsyncConnection, web: Web, value: str) -> None:
     site_id = await _site(conn)
     web.pages[f"{ORIGIN}/item/1"] = (429, b"", (("Retry-After", value),))

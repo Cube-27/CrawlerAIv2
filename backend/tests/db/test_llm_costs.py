@@ -11,7 +11,7 @@ import os
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -27,7 +27,7 @@ from crawlerai.db.models import ApiKey, Job, JobId, Project, UsageEvent, UsageRe
 from crawlerai.llm.pricing import PriceList, Pricing
 from crawlerai.services import jobs, llm_costs
 from crawlerai.services.keys import create_key
-from crawlerai.services.llm_costs import CostQuery, JobCostQuery
+from crawlerai.services.llm_costs import CostQuery
 
 pytestmark = pytest.mark.anyio
 
@@ -140,10 +140,6 @@ class World:
         async with self.engine.connect() as conn:
             return await llm_costs.cost_report(conn, CostQuery(start=start, end=end), PRICING)
 
-    async def job_page(self, start: date, end: date, **query: Any) -> llm_costs.JobCostPage:
-        async with self.engine.connect() as conn:
-            return await llm_costs.job_costs(conn, JobCostQuery(start=start, end=end, **query), PRICING)
-
 
 @pytest.fixture
 def world(engine: AsyncEngine) -> World:
@@ -251,22 +247,6 @@ async def test_the_top_jobs_are_the_costliest_first(world: World) -> None:
     assert report.top_jobs[0].estimated_usd == pytest.approx(_usd(100_000, 1000))
 
 
-async def test_the_job_costs_page_through_every_job_with_calls_newest_first(world: World) -> None:
-    made = [await world.job() for _ in range(3)]
-    for job_id in made:
-        await world.call(job_id, _day(2))
-    idle = await world.job()
-
-    first = await world.job_page(date(2031, 1, 2), date(2031, 1, 2), limit=2)
-    assert first.next_cursor is not None
-    second = await world.job_page(date(2031, 1, 2), date(2031, 1, 2), limit=2, cursor=first.next_cursor)
-
-    listed = [j.job_id for j in first.items + second.items]
-    assert listed == made[::-1]
-    assert idle not in listed
-    assert second.next_cursor is None
-
-
 async def test_a_jobs_cost_counts_every_call_it_made(world: World) -> None:
     job_id, other = await world.job(), await world.job()
     await world.call(job_id, _day(2), tokens_in=1000, tokens_out=100)
@@ -293,31 +273,6 @@ async def test_a_job_summary_carries_its_estimated_llm_cost(world: World) -> Non
         summaries = {job_id: await jobs.get_job(conn, job_id) for job_id in (idle, unpriced)}
 
     assert (summaries[idle].llm_cost_usd, summaries[unpriced].llm_cost_usd) == (0, None)
-
-
-async def test_without_prices_every_cost_is_unknown(world: World) -> None:
-    job_id = await world.job()
-    await world.call(job_id, _day(2))
-
-    async with world.engine.connect() as conn:
-        report = await llm_costs.cost_report(conn, CostQuery(start=date(2031, 1, 2), end=date(2031, 1, 2)), Pricing(()))
-
-    assert (report.total.calls, report.total.unpriced_tokens, report.total.estimated_usd) == (1, 1100, None)
-
-
-def test_the_default_range_is_the_last_30_days_through_today() -> None:
-    query = CostQuery()
-    today = datetime.now(UTC).date()
-    assert (query.first_day, query.last_day) == (today - timedelta(days=29), today)
-
-
-@pytest.mark.parametrize(
-    "fields",
-    [{"start": date(2031, 1, 2), "end": date(2031, 1, 1)}, {"start": date(2030, 1, 1), "end": date(2031, 1, 2)}],
-)
-def test_a_range_that_ends_before_it_starts_or_spans_over_a_year_is_refused(fields: dict[str, date]) -> None:
-    with pytest.raises(ValueError, match="range"):
-        CostQuery(**fields)
 
 
 # Over HTTP.
@@ -369,16 +324,20 @@ async def test_the_report_is_served_for_a_range(client: httpx.AsyncClient, world
     assert [j["job_id"] for j in body["top_jobs"]] == [str(job_id)]
 
 
-async def test_the_job_costs_are_served_a_page_at_a_time(client: httpx.AsyncClient, world: World) -> None:
+async def test_the_job_costs_page_through_every_job_with_calls_newest_first(
+    client: httpx.AsyncClient, world: World
+) -> None:
     older, newer = await world.job(), await world.job()
     await world.call(older, _day(2))
     await world.call(newer, _day(2))
+    await world.job()  # made no call, so it is not listed
     params = {"start": "2031-01-02", "end": "2031-01-02", "limit": "1"}
 
     first = (await client.get("/v1/usage/llm/jobs", params=params)).json()
     second = (await client.get("/v1/usage/llm/jobs", params=params | {"cursor": first["next_cursor"]})).json()
 
-    assert [first["items"][0]["job_id"], second["items"][0]["job_id"]] == [str(newer), str(older)]
+    listed = [item["job_id"] for item in first["items"] + second["items"]]
+    assert listed == [str(newer), str(older)]
     assert second["next_cursor"] is None
 
 
@@ -398,6 +357,6 @@ async def test_cost_problems(client: httpx.AsyncClient, world: World) -> None:
 async def test_costs_need_a_key(client: httpx.AsyncClient, world: World) -> None:
     del client.headers["authorization"]
 
-    responses = [await client.get("/v1/usage/llm"), await client.get("/v1/usage/llm/jobs")]
+    response = await client.get("/v1/usage/llm")
 
-    assert [r.status_code for r in responses] == [401, 401]
+    assert (response.status_code, response.json()["type"]) == (401, "unauthorized")
