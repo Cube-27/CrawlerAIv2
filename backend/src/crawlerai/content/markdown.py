@@ -25,7 +25,7 @@ from crawlerai.content.page import ParsedPage
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 # CommonMark §5.2: a list item starts with a bullet (`-`, `+`, `*`) or an ordered marker (digits, then `.` or `)`),
 # then whitespace; its indentation is what nests it, and its content starts after that whitespace.
-_LIST_ITEM = re.compile(r"^[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+")
+_LIST_ITEM = re.compile(r"^([ \t]*(?:[-+*]|\d{1,9}[.)]))([ \t]+)")
 
 
 def markdown(page: ParsedPage, final_url: str) -> str:
@@ -101,8 +101,8 @@ def _reached(items: list[int], indent: int) -> int:
 def _content_column(marker: re.Match[str]) -> int:
     # CommonMark §5.2: the content starts after the marker's spaces; after five or more, the first is the separator and
     # the rest start an indented code block, so the content column is the marker's end plus one.
-    spaces = len(marker.group(0)) - len(marker.group(0).rstrip())
-    return len(marker.group(0)) - spaces + 1 if spaces >= 5 else len(marker.group(0))
+    spaces = len(marker[2])
+    return marker.end(1) + (spaces if spaces <= 4 else 1)
 
 
 def _closes(opened: re.Match[str] | None, fence: str) -> bool:

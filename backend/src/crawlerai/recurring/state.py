@@ -58,11 +58,9 @@ async def standing_record(
 ) -> RecordId | None:
     """The record that stands for the page when it has not changed: the newest of its entity (`entity_key`) under the
     schema version that a task extracting the way it would be now (by config `config_version`, or `adhoc` for None)
-    stood for (`task_record`) no earlier than the page's content last changed (`record_content`). None when there is
-    none: the page must be extracted. A record made before the page last changed describes content it no longer has,
-    whichever task saw the change, unless a task extracted the changed content and found the record unchanged
-    (SPEC-11 §4.4): then that record stands, and the next run does not extract the page again. A link stored before
-    links had a time counts from its record's."""
+    stood for since the page's content last changed (`record_content`); None when the page must be extracted. A task
+    that extracted the changed content and found its record unchanged stands for that record too (SPEC-11 §4.4), so
+    the next run does not extract the page again."""
     mode: ExtractionMode = "adhoc" if config_version is None else "config"
     changed = select(UrlState.last_changed_at).where(*_url(site_id, canonical_url)).scalar_subquery()
     extracted_since = (
@@ -72,7 +70,7 @@ async def standing_record(
             TaskRecord.record_id == Record.id,
             Extraction.mode == mode,
             Extraction.config_version.is_not_distinct_from(config_version),
-            changed.is_(None) | (func.coalesce(TaskRecord.created_at, Record.created_at) >= changed),
+            changed.is_(None) | (TaskRecord.created_at >= changed),
         )
     )
     query = (

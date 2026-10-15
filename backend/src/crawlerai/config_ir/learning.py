@@ -48,7 +48,7 @@ from crawlerai.config_ir.progressive import (
 from crawlerai.config_ir.synthesis import synthesize
 from crawlerai.config_ir.validation import Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.db.jobs import record_event, transition_job
+from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
 from crawlerai.db.models import (
     ConfigOrigin,
     ExtractionConfig,
@@ -144,7 +144,7 @@ async def run_learn_job(
             return await _fail(conn, run, e.code)
     except asyncio.CancelledError:  # the worker stops: the run ends as one that cannot finish, then the cancel goes on
         async with engine.begin() as conn:
-            await _stopped(conn, run)
+            await _abandon(conn, job_id, SHUTDOWN)
         raise
     except Exception:  # §4.8: a run that cannot finish leaves the state as a failed run would, never `learning`
         log.exception("learn job %s failed", job_id)
@@ -192,10 +192,13 @@ async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
 
 
 async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
-    """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`."""
+    """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`. A run that
+    ended meanwhile is left as it ended: a stopping worker's cancel can come as the run's final transaction commits."""
     # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
     locked = select(Job.status, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
     job = (await conn.execute(locked)).one()
+    if not JOB_TRANSITIONS[job.status]:
+        return Learned(None, reason)
     if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
         await transition_job(conn, job_id, "running")
     # The state may have moved on already (an operator's config, a cancel), and then there is no run to end; a request
@@ -307,15 +310,6 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
     config_id = await activate(conn, run.key, validated)
     await _end(conn, run.job_id, "completed", config_id=config_id, reason=None, report=validated.report)
     return Learned(config_id)
-
-
-async def _stopped(conn: AsyncConnection, run: _Run) -> None:
-    """End the run its stopping worker cancelled as one that cannot finish, unless it has ended: the cancel may have
-    come as its final transaction committed, or after `expire_learn_runs` ended it."""
-    # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
-    locked = select(Job.status).where(Job.id == run.job_id).with_for_update(key_share=True)
-    if (await conn.execute(locked)).scalar_one() == "running":
-        await _fail(conn, run, SHUTDOWN)
 
 
 async def _operator_since(conn: AsyncConnection, run: _Run) -> bool:

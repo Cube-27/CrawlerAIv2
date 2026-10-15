@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 from urllib.parse import urlsplit
 
-from sqlalchemy import Row, case, func, literal, select, update
+from sqlalchemy import Row, case, exists, func, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -68,11 +68,11 @@ _JobRow = Row[str, SchemaId | None, dict[str, Any]]
 @dataclass(frozen=True)
 class _Listing:
     """A run's listing: its URLs a page-kind rule matched, sorted (every run locks rows in one order); how many tasks
-    the job has; and whether a page no rule matched was not reached, or the sitemap reading timed out."""
+    the job has; and whether a page no rule matched was not reached."""
 
     urls: list[str]
     tasks: int
-    unread: bool
+    unreached: bool
 
 
 async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> None:
@@ -91,7 +91,7 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     if not listing.urls:
         return
     await _seen(conn, site_id, job_id, listing.urls)
-    if listing.unread or listing.tasks >= job.request["limit"]:
+    if listing.unreached or listing.tasks >= job.request["limit"] or await _sitemaps_timed_out(conn, job_id):
         return
     for url in await _missed(conn, site_id, job_id, job):
         await record_event(conn, job_id, URL_GONE, {"url": url})
@@ -103,8 +103,12 @@ async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> _L
     tasks = (await conn.execute(query)).all()
     listed = (url for url, page_kind, _ in tasks if page_kind is not None and urlsplit(url).hostname == host)
     unreached = any(page_kind is None and outcome in _UNREACHED for _, page_kind, outcome in tasks)
-    timed_out = select(JobEvent.id).where(JobEvent.job_id == job_id, JobEvent.kind == SITEMAPS_TIMED_OUT).exists()
-    return _Listing(sorted(listed), len(tasks), unreached or bool((await conn.execute(select(timed_out))).scalar()))
+    return _Listing(sorted(listed), len(tasks), unreached)
+
+
+async def _sitemaps_timed_out(conn: AsyncConnection, job_id: JobId) -> bool:
+    timed_out = exists().where(JobEvent.job_id == job_id, JobEvent.kind == SITEMAPS_TIMED_OUT)
+    return bool((await conn.execute(select(timed_out))).scalar_one())
 
 
 async def _seen(conn: AsyncConnection, site_id: SiteId, job_id: JobId, urls: Sequence[str]) -> None:
