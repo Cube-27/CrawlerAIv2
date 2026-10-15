@@ -141,7 +141,8 @@ jobs:
             exit 1
           }
 
-  # SPEC-00 §4.6 job 4: no site literals outside adapters/ (C3, INV-03). Also lints and tests the repo tools.
+  # SPEC-00 §4.6 job 4: no site literals outside adapters/ (C3, INV-03). Also lints and tests the repo tools and checks
+  # the decisions log.
   site-literals:
     runs-on: ubuntu-24.04
     defaults:
@@ -159,6 +160,8 @@ jobs:
       - run: uv run --no-sync --no-build mypy --strict ../tools
       - run: uv run --no-sync --no-build pytest ../tools/tests
       - run: uv run --no-sync --no-build python ../tools/site_literal_scan.py --public
+      # One decision ID per entry across docs/DECISIONS.md and docs/decisions/ (D-0823).
+      - run: uv run --no-sync --no-build python ../tools/decision_ids.py
 
   # SPEC-00 §4.6 job 5: every file under backend/data/ is pinned in the manifest (C4, INV-05).
   data-manifest:
