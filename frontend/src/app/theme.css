@@ -104,6 +104,39 @@
     @apply text-[0.8125rem] leading-5;
   }
 
+  /* Field groups (DESIGN.md, Forms): HeroUI stacks a checkbox group's options in a column, and lets a horizontal radio
+   * group's label wrap inline with its options. Both become the label on its own line, the options in a wrapping row
+   * under it, then the description and any error. */
+  .checkbox-group,
+  .radio-group[data-orientation="horizontal"] {
+    @apply flex-row flex-wrap gap-x-5 gap-y-2;
+    & > [data-slot="label"],
+    & > [data-slot="description"],
+    & > [data-slot="field-error"] {
+      @apply basis-full;
+    }
+    & > [data-slot="field-error"]:not([data-visible]) {
+      @apply hidden;
+    }
+  }
+  .checkbox-group [data-slot="checkbox"] {
+    @apply mt-0;
+  }
+
+  /* A form's sections (HeroUI Fieldset): fields inside a section sit closer than the sections do, and a hairline
+   * above a heading-weight legend opens each section, so the groups read without boxes (DESIGN.md, Field groups). A
+   * floated legend is an ordinary box rather than one drawn into the top border (HTML, the fieldset and legend
+   * elements), so the fieldset's gap spaces it from the first field. */
+  .fieldset {
+    @apply gap-4;
+  }
+  .fieldset__legend {
+    @apply float-left w-full font-semibold;
+  }
+  form > .fieldset {
+    @apply mt-2 border-t border-separator pt-5;
+  }
+
   /* Surfaces are outlined, not raised. */
   .card {
     @apply border border-border shadow-none;
