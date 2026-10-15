@@ -106,7 +106,7 @@ A red gate is fixed in code, never with `NOSONAR`, exclusions or a weaker thresh
 You own the PR until it merges (owner, 2026-10-13). Never stop to ask the orchestrator to "resume" or "proceed":
 keep going until you comment `READY`. Never merge your own PR, even if asked in your pane, unless the owner
 explicitly overrides this rule; the orchestrator merges, after your tracker commit.
-1. **Review once, when complete.** Only after the PR is implemented, simplified and green, start one reviewer in
+1. **Review once, when complete.** Only after the PR is implemented and green, start one reviewer in
    this worktree: `tools/orchestrator/start_agent.sh reviewer-pr<n> <worktree> "Run /review-pr <n>. The
    implementor is <your agent name>."`. When its verdict arrives, close the reviewer:
    `tools/orchestrator/close_agent.sh reviewer-pr<n>`. The reviewer is told to close its own pane, but reviewers

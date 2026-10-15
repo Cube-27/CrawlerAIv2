@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review one complete PR (implemented, simplified, CI green) against its spec row, the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
+description: Review one complete PR (implemented, CI green) against its spec row, the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
 ---
 
 # Review a PR
@@ -11,7 +11,7 @@ pragmatically. Don't push commits to the branch; the author fixes. Adapted from 
 
 ## 0. Only a complete PR, reviewed once
 
-Review when the implementor hands over a finished PR: implemented, simplified, and every CI check green on the head
+Review when the implementor hands over a finished PR: implemented, and every CI check green on the head
 commit, SonarCloud included (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`). If CI is red, don't review: tell the
 implementor and stop. Don't run builds or tests yourself; CI did. One single agent does the whole review.
 
