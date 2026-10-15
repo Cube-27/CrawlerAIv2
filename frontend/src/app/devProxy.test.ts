@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import config from "../../vite.config";
+import config, { refuseCrossSite } from "../../vite.config";
 import openapi from "../../openapi.json?raw";
 
 /** The dev server config as `pnpm dev` loads it with `CRAWLERAI_UI_API_KEY` set to `apiKey`; a process variable wins
@@ -9,6 +9,11 @@ async function configWith(apiKey: string) {
   vi.resetModules();
   const { default: loaded } = await import("../../vite.config");
   return loaded.server ?? {};
+}
+
+/** What the proxies' bypass answers for a request with `headers`: `false` refuses it (Vite answers 404). */
+function bypassFor(headers: Record<string, string>): unknown {
+  return refuseCrossSite({ headers });
 }
 
 afterEach(() => {
@@ -31,21 +36,48 @@ describe("pnpm dev proxy", () => {
     const { proxy = {} } = await configWith("ui-test-key");
 
     expect(Object.values(proxy)).toEqual([
-      { target: "http://127.0.0.1:8000", headers: { Authorization: "Bearer ui-test-key" } },
-      { target: "http://127.0.0.1:8000", headers: { Authorization: "Bearer ui-test-key" } },
+      expect.objectContaining({
+        target: "http://127.0.0.1:8000",
+        headers: { Authorization: "Bearer ui-test-key" },
+      }),
+      expect.objectContaining({
+        target: "http://127.0.0.1:8000",
+        headers: { Authorization: "Bearer ui-test-key" },
+      }),
     ]);
   });
 
   it("forwards requests unchanged when CRAWLERAI_UI_API_KEY is empty", async () => {
     const { proxy = {} } = await configWith("");
 
-    expect(Object.values(proxy)).toEqual([
-      { target: "http://127.0.0.1:8000" },
-      { target: "http://127.0.0.1:8000" },
-    ]);
+    for (const options of Object.values(proxy)) {
+      expect(options).toMatchObject({ target: "http://127.0.0.1:8000" });
+      expect(options).not.toHaveProperty("headers");
+    }
   });
 
   it("listens on loopback only, since anyone who reaches it acts with the key", () => {
     expect(config.server?.host).toBe("127.0.0.1");
+  });
+
+  it("checks every proxied request's origin before it is proxied", () => {
+    for (const options of Object.values(config.server?.proxy ?? {})) {
+      expect(options).toMatchObject({ bypass: refuseCrossSite });
+    }
+  });
+
+  it("refuses requests another site's page made, so they never get the key", () => {
+    expect(bypassFor({ "sec-fetch-site": "cross-site" })).toBe(false);
+    expect(bypassFor({ "sec-fetch-site": "same-site" })).toBe(false);
+  });
+
+  it("proxies the app's own requests, typed URLs and requests from tools without Fetch Metadata", () => {
+    expect(bypassFor({ "sec-fetch-site": "same-origin" })).toBeUndefined();
+    expect(bypassFor({ "sec-fetch-site": "none" })).toBeUndefined();
+    expect(bypassFor({})).toBeUndefined();
+  });
+
+  it("lets no other origin read its responses (CORS off)", () => {
+    expect(config.server?.cors).toBe(false);
   });
 });
