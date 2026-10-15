@@ -96,7 +96,7 @@ def test_an_adapter_value_stays_adapter_when_others_agree() -> None:
 
 def test_a_lone_state_value_has_no_bucket_and_abstains() -> None:
     state = _candidate("js_state")
-    outcome = _assess(Chosen(state, (), ()))
+    outcome = _assess(Chosen(state, (), (), (state,)))
     assert (outcome.status, outcome.reason, outcome.value) == ("abstained", "no_bucket", None)
     assert outcome.rejected == ((state, "no_bucket"),)
 
@@ -106,25 +106,25 @@ def test_a_lone_state_value_has_no_bucket_and_abstains() -> None:
 
 def test_without_a_calibration_a_value_publishes_uncalibrated() -> None:
     chosen = _candidate()
-    outcome = _assess(Chosen(chosen, (), ()))
+    outcome = _assess(Chosen(chosen, (), (), (chosen,)))
     assert (outcome.status, outcome.value, outcome.evidence) == ("published", "A-1", "structured")
     assert (outcome.confidence, outcome.calibrated) == (None, False)
     assert (outcome.source_kind, outcome.locator, outcome.chosen) == ("jsonld", chosen.locator, chosen)
 
 
 def test_the_confidence_is_the_buckets_dev_precision() -> None:
-    outcome = _assess(Chosen(_candidate(), (), ()), _calibration(identifier__structured=(120, 0.99)))
+    outcome = _assess(Chosen(_candidate(), (), (), (_candidate(),)), _calibration(identifier__structured=(120, 0.99)))
     assert (outcome.status, outcome.confidence, outcome.calibrated) == ("published", 0.99, True)
 
 
 def test_a_bucket_of_another_type_does_not_apply() -> None:
-    outcome = _assess(Chosen(_candidate(), (), ()), _calibration(money__structured=(120, 0.99)))
+    outcome = _assess(Chosen(_candidate(), (), (), (_candidate(),)), _calibration(money__structured=(120, 0.99)))
     assert (outcome.confidence, outcome.calibrated) == (None, False)
 
 
 @pytest.mark.parametrize(("n", "calibrated"), [(29, False), (30, True)])
 def test_a_bucket_is_calibrated_from_30_dev_labels(n: int, calibrated: bool) -> None:
-    outcome = _assess(Chosen(_candidate(), (), ()), _calibration(identifier__structured=(n, 0.5)))
+    outcome = _assess(Chosen(_candidate(), (), (), (_candidate(),)), _calibration(identifier__structured=(n, 0.5)))
     assert (outcome.calibrated, outcome.status) == (calibrated, "abstained" if calibrated else "published")
     assert outcome.confidence == 0.5
 
@@ -132,7 +132,7 @@ def test_a_bucket_is_calibrated_from_30_dev_labels(n: int, calibrated: bool) -> 
 @pytest.mark.parametrize(("precision", "status"), [(0.969, "abstained"), (0.97, "published")])
 def test_a_required_field_abstains_below_tau(precision: float, status: str) -> None:
     chosen = _candidate()
-    outcome = _assess(Chosen(chosen, (), ()), _calibration(identifier__structured=(30, precision)))
+    outcome = _assess(Chosen(chosen, (), (), (chosen,)), _calibration(identifier__structured=(30, precision)))
     assert outcome.status == status
     if status == "abstained":
         assert (outcome.reason, outcome.value, outcome.evidence, outcome.confidence) == (
@@ -146,12 +146,13 @@ def test_a_required_field_abstains_below_tau(precision: float, status: str) -> N
 
 def test_the_bucket_of_the_agreeing_kinds_is_measured() -> None:
     calibration = _calibration(identifier__structured=(50, 0.5), identifier__agreed=(50, 0.99))
-    outcome = _assess(Chosen(_candidate(), (_candidate("og"),), ()), calibration)
+    chosen, og = _candidate(), _candidate("og")
+    outcome = _assess(Chosen(chosen, (og,), (), (chosen, og)), calibration)
     assert (outcome.status, outcome.evidence, outcome.confidence) == ("published", "agreed", 0.99)
 
 
 def test_a_bucket_without_a_precision_is_uncalibrated() -> None:
-    outcome = _assess(Chosen(_candidate(), (), ()), _calibration(identifier__structured=(40, None)))
+    outcome = _assess(Chosen(_candidate(), (), (), (_candidate(),)), _calibration(identifier__structured=(40, None)))
     assert (outcome.status, outcome.confidence, outcome.calibrated) == ("published", None, False)
 
 
@@ -206,7 +207,7 @@ def test_required_fields_are_the_required_ones_and_the_group_members() -> None:
 
 def test_optional_fields_abstain_below_the_optional_tau_only() -> None:
     calibration = _calibration(identifier__structured=(30, 0.96))
-    decisions = {name: Chosen(_candidate(), (), ()) for name in ("sku", "gtin", "mpn", "note")}
+    decisions = {name: Chosen(_candidate(), (), (), (_candidate(),)) for name in ("sku", "gtin", "mpn", "note")}
     outcomes = assess_fields(_schema(), decisions, calibration, frozenset())
     assert {name: o.status for name, o in outcomes.items()} == {
         "sku": "abstained",
@@ -217,7 +218,9 @@ def test_optional_fields_abstain_below_the_optional_tau_only() -> None:
 
 
 def test_the_configs_corroborated_fields_are_named() -> None:
-    decisions = {name: Chosen(_candidate("config"), (), ()) for name in ("sku", "gtin", "mpn", "note")}
+    decisions = {
+        name: Chosen(_candidate("config"), (), (), (_candidate("config"),)) for name in ("sku", "gtin", "mpn", "note")
+    }
     outcomes = assess_fields(_schema(), decisions, None, frozenset({"gtin"}))
     assert outcomes["gtin"].evidence == "config_corroborated"
     assert outcomes["sku"].evidence == "config_uncorroborated"
