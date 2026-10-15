@@ -11,7 +11,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.admission import Admitted
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.js_state import JsStateCollector
+from crawlerai.collect.js_state import JsStateCollector, state_documents
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
@@ -192,7 +192,7 @@ def test_booleans_null_and_unnormalizable_values_are_not_candidates() -> None:
         'if (x) { go(); }\nconst s =\n {"cost": "€5.00"}\n;',
     ],
 )
-def test_the_json_after_the_first_assignment_is_the_state(script: str) -> None:
+def test_the_json_after_an_assignment_is_the_state(script: str) -> None:
     result = _collect(_page(script, body="€5.00"))
 
     assert [(c.field, c.locator) for c in result.candidates] == [("price", f"js_state:{SCRIPT}:$['cost']")]
@@ -215,10 +215,24 @@ def test_script_code_that_is_not_an_assignment_of_json_is_not_state(script: str)
     assert [c.locator for c in _collect(page).candidates] == ["js_state:/html[1]/head[1]/script[2]:$['cost']"]
 
 
-def test_only_the_first_assignment_of_a_script_is_read() -> None:
-    script = 'window.a = {"cost": "€5.00"}; window.b = {"was": "€5.00"};'
+@pytest.mark.parametrize(
+    "script",
+    [
+        'window.a = {"cost": "€5.00"}; window.b = {"was": "€5.00"};',
+        'var n = 1; var f = x => x; window.a = {"cost": "€5.00"}; window.b = {"was": "€5.00"};',
+    ],
+)
+def test_every_assignment_of_json_in_a_script_is_read_in_order(script: str) -> None:
+    assert [c.locator for c in _collect(_page(script, body="€5.00")).candidates] == [
+        f"js_state:{SCRIPT}:$['cost']",
+        f"js_state:{SCRIPT}:$['was']",
+    ]
 
-    assert [c.locator for c in _collect(_page(script, body="€5.00")).candidates] == [f"js_state:{SCRIPT}:$['cost']"]
+
+def test_an_assignment_written_inside_a_state_value_is_not_read() -> None:
+    script = 'window.a = {"code": "var b = [1, 2]"};'
+
+    assert [d.data for d in state_documents(_page(script), [])] == [{"code": "var b = [1, 2]"}]
 
 
 def test_an_application_json_script_is_a_document() -> None:

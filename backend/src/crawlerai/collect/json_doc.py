@@ -25,12 +25,15 @@ def parse(text: str) -> JsonValue:
     return _guarded(lambda: _DECODER.decode(text))
 
 
-def parse_prefix(text: str, start: int) -> JsonValue:
-    """The JSON value that starts at `text[start]` after optional whitespace, ignoring what follows it; raises
-    `ValueError` when none does."""
+def parse_prefix(text: str, start: int) -> tuple[JsonValue, int]:
+    """The JSON value that starts at `text[start]` after optional whitespace, ignoring what follows it, and the index
+    just past it; raises `ValueError` when none does."""
     found = _NOT_WHITESPACE.search(text, start)
     start = len(text) if found is None else found.start()
-    return _guarded(lambda: _DECODER.raw_decode(text, start)[0])
+    try:
+        return _DECODER.raw_decode(text, start)
+    except RecursionError:
+        raise ValueError("nested too deeply") from None
 
 
 def scalars(document: JsonValue) -> Iterator[tuple[str, str | int | float]]:

@@ -1,10 +1,12 @@
 """The embedded JSON state collector (SPEC-05 §4.5, ARCHITECTURE §8.1): JSON a page carries in its inline scripts.
 
 A document is the text of a `<script type="application/json">` (an invalid one is skipped with a diagnostic), or, in
-any other script except JSON-LD's, the JSON value after the `=` of the script's first `window.<ident> =` or
-`var|let|const <ident> =` assignment (ECMAScript assignment and variable declaration syntax). Script code that is not
-such an assignment is not state, and is skipped without a diagnostic. The structure is all that is read: no variable
-name or key is looked up. Values are admitted by `admission`; locators are `js_state:<script_xpath>:<path>`.
+any other script except JSON-LD's, the JSON value after the `=` of each `window.<ident> =` or `var|let|const <ident> =`
+assignment (ECMAScript assignment and variable declaration syntax), in script order; the search for the next one
+starts after the value just read, so an assignment written inside a string of that value is not one. Script code that
+is not such an assignment is not state, and is skipped without a diagnostic. The structure is all that is read: no
+variable name or key is looked up. Values are admitted by `admission`; locators are `js_state:<script_xpath>:<path>`,
+so the documents of one script share its address.
 """
 
 import re
@@ -49,12 +51,13 @@ def _documents(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonValu
         except ValueError as e:
             diagnostics.append(f"js_state:{script.xpath}: invalid JSON ({e})")
         return
-    if (match := _ASSIGNMENT.search(script.text)) is None:
-        return
-    try:
-        data = parse_prefix(script.text, match.end())
-    except ValueError:
-        return
-    # State is an object or an array; a scalar initializer (`var n = 1`) is a script variable.
-    if isinstance(data, (dict, list)):
-        yield data
+    start = 0
+    while (match := _ASSIGNMENT.search(script.text, start)) is not None:
+        start = match.end()
+        try:
+            data, start = parse_prefix(script.text, start)
+        except ValueError:
+            continue  # not JSON (`var f = function …`): code, not state
+        # State is an object or an array; a scalar initializer (`var n = 1`) is a script variable.
+        if isinstance(data, (dict, list)):
+            yield data
