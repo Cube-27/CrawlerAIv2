@@ -52,7 +52,8 @@ function extracted(data: JsonObject): string | null {
 function abstained(data: JsonObject): string | null {
   const fields = data["fields"];
   if (!Array.isArray(fields) || fields.length === 0) return null;
-  return `Did not publish ${fields.map(String).join(", ")}.`;
+  const names = fields.map(String);
+  return `Did not publish ${names.join(", ")}.`;
 }
 
 function taskFailed(data: JsonObject): string | null {

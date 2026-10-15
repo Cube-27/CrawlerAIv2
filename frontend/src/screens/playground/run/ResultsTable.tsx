@@ -15,6 +15,11 @@ interface Row {
   item: JsonValuesItem;
 }
 
+/** The name of a row's JSON button: the page's place in the job. */
+function pageLabel({ id }: Row): string {
+  return `JSON of page ${String(id)}`;
+}
+
 function PagesTable({
   rows,
   onOpen,
@@ -54,7 +59,7 @@ function PagesTable({
                   <Button
                     size="sm"
                     variant="secondary"
-                    aria-label={`JSON of page ${String(row.id)}`}
+                    aria-label={pageLabel(row)}
                     onPress={() => {
                       onOpen(row);
                     }}
