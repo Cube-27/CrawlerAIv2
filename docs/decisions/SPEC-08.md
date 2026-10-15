@@ -554,3 +554,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Wait for the run (role A calls of minutes each); a grace period, then cancel; leave the run to `expire_learn_runs` after an hour.
 - Why: Shutdown stays bounded, and the state is not left `learning` until the run expires.
 - Reversible: yes
+
+### D-0876 — A stopping worker ends a learn run during its final transaction too
+- Date: 2026-10-16 · Spec/PR: SPEC-08 follow-ups (#199) · Status: decided
+- Decision: `_finish` runs inside the run's `try`; on `CancelledError` the run ends through `_abandon(SHUTDOWN)`, which leaves a job that already ended as it is.
+- Alternatives: `asyncio.shield` the final transaction.
+- Why: A cancelled commit rolled back and left the job `running` until `expire_learn_runs` (review of #195); the guard covers a cancel that comes as the commit lands.
+- Reversible: yes
+
+### D-0878 — css→xpath translations are pinned by a recorded replay
+- Date: 2026-10-16 · Spec/PR: SPEC-08 follow-ups (#199) · Status: decided
+- Decision: `tests/fixtures/synthetic/css_translations.json` holds 32 selectors and their translations from the locked cssselect; `test_css_translations` checks each stored pair still loads.
+- Alternatives: Keep a stored `xpath` that differs from today's translation, or re-translate on load: either reverses D-0461 or changes what a validated config runs.
+- Why: A cssselect bump that changes a translation fails CI before stored IRs stop loading; that PR decides how to migrate them (review of #95).
+- Reversible: yes
