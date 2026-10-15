@@ -117,7 +117,7 @@ async def test_a_refused_webhook_is_retried_after_30_s_then_2_min_then_given_up(
     engine: AsyncEngine, key: CreatedKey
 ) -> None:
     job_id = await _ended(engine, key.id)
-    post = Receiver([500, 503, 404])
+    post = Receiver([500, 302, 404])
 
     await _deliver(engine, post)
     status, attempts, error, wait = await _delivery(engine, job_id)
@@ -128,7 +128,7 @@ async def test_a_refused_webhook_is_retried_after_30_s_then_2_min_then_given_up(
     await _make_due(engine, job_id)
     await _deliver(engine, post)
     status, attempts, error, wait = await _delivery(engine, job_id)
-    assert (status, attempts, error) == ("pending", 2, "status 503")
+    assert (status, attempts, error) == ("pending", 2, "status 302")
     assert timedelta(seconds=115) < wait <= timedelta(minutes=2)
 
     await _make_due(engine, job_id)
