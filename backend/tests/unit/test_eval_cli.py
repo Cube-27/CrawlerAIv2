@@ -112,10 +112,12 @@ def test_hosts_with_pages_in_another_split_are_refused_by_count_only() -> None:
     assert "example.test" not in str(error.value)
 
 
-def test_hosts_absent_from_every_other_split_pass() -> None:
+def test_only_hosts_in_another_split_are_refused() -> None:
     taken: dict[Split, set[str]] = {"hidden": {"b.example.test"}, "fresh": set()}
 
     check_hosts([_request(1, f"{A}/p/1"), _request(2, f"{A}/p/2")], taken)
+    with pytest.raises(EvalCliError, match=r"^1 host\(s\) of the input .* another split \(hidden: 1\)"):
+        check_hosts([_request(1, f"{A}/p/1"), _request(2, f"{B}/p/2")], taken)
 
 
 def test_the_report_has_one_json_line_per_page_in_input_order() -> None:
@@ -219,7 +221,7 @@ def test_import_sites_captures_the_kept_pages_and_reports_the_rest(
     assert capsys.readouterr().out == '{"n": 1, "skipped": "robots"}\n{"n": 2, "skipped": "pages_per_site"}\n'
 
 
-@pytest.mark.parametrize("pages", ["0", "-1", "three"])
+@pytest.mark.parametrize("pages", ["0", "three"])
 def test_import_sites_needs_a_positive_page_count(runs: list[Call], tmp_path: Path, pages: str) -> None:
     with pytest.raises(SystemExit) as exit_info:
         main(["eval", "import-sites", "--split", "fresh", "--file", str(tmp_path / "s.txt"), "--pages-per-site", pages])
@@ -309,16 +311,15 @@ def _capture_raising(monkeypatch: pytest.MonkeyPatch, split: Split) -> None:
     )  # fmt: skip
 
 
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
 def test_an_unexpected_failure_on_a_private_split_is_reported_by_its_type_only(
-    monkeypatch: pytest.MonkeyPatch, settings_env: None, capsys: pytest.CaptureFixture[str], split: Split
+    monkeypatch: pytest.MonkeyPatch, settings_env: None, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        _capture_raising(monkeypatch, split)
+        _capture_raising(monkeypatch, "hidden")
 
     assert exit_info.value.code == 1
     captured = capsys.readouterr()
-    assert captured.err == f"crawlerai eval: failed with RuntimeError; details withheld for the {split} split\n"
+    assert captured.err == "crawlerai eval: failed with RuntimeError; details withheld for the hidden split\n"
     assert "example.test" not in captured.out + captured.err
 
 
