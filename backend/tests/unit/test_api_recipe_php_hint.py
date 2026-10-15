@@ -119,9 +119,6 @@ def test_a_paginated_hint_says_how_the_next_page_is_requested() -> None:
 
     rows = "\"$['items'][*]\""
     assert f'// Pagination: set query parameter "offset" to 0, 20, 40, ... until {rows} selects nothing.' in lines
-
-
-def test_a_hint_without_pagination_says_nothing_about_it() -> None:
     assert "Pagination" not in php_hint(_recipe())
 
 

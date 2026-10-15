@@ -185,7 +185,6 @@ def test_an_ambiguous_binding_is_bound_by_role_d_and_accepted_by_replay(stand_in
 
     learned, _ = _learn(stand_in_api, [_by_id(n) for n in range(8)], _routes(lambda n: PRODUCTS[n][0]), client)
 
-    assert learned is not None
     assert learned.report == _held_out_report(5, 6, 7)
     assert learned.recipe is not None
     assert (learned.recipe.params_from_url, learned.recipe.proof.bound_by) == (
@@ -206,7 +205,6 @@ def test_a_role_d_spec_that_reproduces_no_request_refuses_the_recipe(stand_in_ap
 
     learned, sent = _learn(stand_in_api, [_by_id(n) for n in range(8)], _routes(lambda n: PRODUCTS[n][0]), client)
 
-    assert learned is not None
     assert learned.recipe is None
     assert learned.report.held_out == []
     assert learned.report.refused is not None
