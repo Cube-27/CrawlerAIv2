@@ -13,8 +13,9 @@ started before it does not replace. A job that cannot start, its request naming 
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
-not wait on a write to the job's row (D-0346). The job's start and end are recorded as `learning_started` and
-`learning_finished` events (SPEC-10 §4.2).
+not wait on a write to the job's row (D-0346). A worker that stops after the start, during the final transaction too,
+ends the run (`SHUTDOWN`), so its job never waits for `expire_learn_runs`. The job's start and end are recorded as
+`learning_started` and `learning_finished` events (SPEC-10 §4.2).
 """
 
 import asyncio
@@ -136,19 +137,19 @@ async def run_learn_job(
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
         validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, replay)
+        async with engine.begin() as conn:
+            return await _finish(conn, run, validated)
     except LLMFailure as e:
         async with engine.begin() as conn:
             return await _fail(conn, run, e.code)
     except asyncio.CancelledError:  # the worker stops: the run ends as one that cannot finish, then the cancel goes on
         async with engine.begin() as conn:
-            await _fail(conn, run, SHUTDOWN)
+            await _stopped(conn, run)
         raise
     except Exception:  # §4.8: a run that cannot finish leaves the state as a failed run would, never `learning`
         log.exception("learn job %s failed", job_id)
         async with engine.begin() as conn:
             return await _fail(conn, run, "error")
-    async with engine.begin() as conn:
-        return await _finish(conn, run, validated)
 
 
 async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
@@ -306,6 +307,15 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
     config_id = await activate(conn, run.key, validated)
     await _end(conn, run.job_id, "completed", config_id=config_id, reason=None, report=validated.report)
     return Learned(config_id)
+
+
+async def _stopped(conn: AsyncConnection, run: _Run) -> None:
+    """End the run its stopping worker cancelled as one that cannot finish, unless it has ended: the cancel may have
+    come as its final transaction committed, or after `expire_learn_runs` ended it."""
+    # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
+    locked = select(Job.status).where(Job.id == run.job_id).with_for_update(key_share=True)
+    if (await conn.execute(locked)).scalar_one() == "running":
+        await _fail(conn, run, SHUTDOWN)
 
 
 async def _operator_since(conn: AsyncConnection, run: _Run) -> bool:

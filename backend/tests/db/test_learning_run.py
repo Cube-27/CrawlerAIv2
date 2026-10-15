@@ -26,6 +26,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.base import Candidate
+from crawlerai.config_ir import learning
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
 from crawlerai.config_ir.api_recipe.replay import Replay
@@ -626,6 +627,45 @@ async def test_a_stopping_worker_ends_the_run_in_progress_without_waiting_for_it
 
     async with site.engine.connect() as conn:
         job_id = (await conn.execute(select(Job.id).where(Job.kind == "learn"))).scalar_one()
+    assert await site.finished(job_id) == ("failed", {"config_id": None, "reason": "shutdown", "report": None})
+    state = await site.state()
+    assert (state.mode, state.learning_started_at) == ("cold", None)
+
+
+async def test_a_worker_that_stops_while_the_run_ends_still_ends_it(
+    site: LearnSite, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await site.pages(8)
+    await _forced(site)
+    ending, never = asyncio.Event(), asyncio.Event()
+
+    async def activating(*args: object, **kwargs: object) -> None:  # the run's final transaction, still open
+        ending.set()
+        await never.wait()
+
+    monkeypatch.setattr(learning, "activate", activating)
+    stop = asyncio.Event()
+    learner = asyncio.create_task(
+        run_learner(
+            site.engine,
+            site.store,
+            RoleA(PRICE_REPLY),
+            stop,
+            vocabulary=site.data.vocabulary,
+            max_chars=1000,
+            replay=None,
+        )
+    )
+    async with asyncio.timeout(30):
+        await ending.wait()
+
+    stop.set()
+    async with asyncio.timeout(5):
+        await learner
+
+    async with site.engine.connect() as conn:
+        job_id = (await conn.execute(select(Job.id).where(Job.kind == "learn"))).scalar_one()
+    # Not left `running` until `expire_learn_runs`: the run ends as one its stopping worker cancelled.
     assert await site.finished(job_id) == ("failed", {"config_id": None, "reason": "shutdown", "report": None})
     state = await site.state()
     assert (state.mode, state.learning_started_at) == ("cold", None)
