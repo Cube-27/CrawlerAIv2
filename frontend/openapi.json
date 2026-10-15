@@ -5363,6 +5363,12 @@
         "title": "_NoParams",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -5508,6 +5514,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Batch Scrape",
         "tags": [
           "batch"
@@ -5642,6 +5653,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Replay Capture",
         "tags": [
           "captures"
@@ -5736,6 +5752,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Config",
         "tags": [
           "configs"
@@ -5868,6 +5889,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Correct Config",
         "tags": [
           "configs"
@@ -5972,6 +5998,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Export Config",
         "tags": [
           "configs"
@@ -6079,6 +6110,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Crawl Site",
         "tags": [
           "crawl"
@@ -6156,6 +6192,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Capture",
         "tags": [
           "eval"
@@ -6276,6 +6317,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Pages",
         "tags": [
           "eval"
@@ -6377,6 +6423,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Page",
         "tags": [
           "eval"
@@ -6540,6 +6591,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Put Labels",
         "tags": [
           "eval"
@@ -6642,6 +6698,11 @@
             "description": "Not Implemented"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Normalize",
         "tags": [
           "eval"
@@ -6835,6 +6896,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Prefill",
         "tags": [
           "eval"
@@ -6972,6 +7038,11 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Extract Records",
         "tags": [
           "extract"
@@ -7132,6 +7203,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Jobs",
         "tags": [
           "jobs"
@@ -7241,6 +7317,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Cancel Job",
         "tags": [
           "jobs"
@@ -7333,6 +7414,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Job",
         "tags": [
           "jobs"
@@ -7459,6 +7545,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Job Events",
         "tags": [
           "jobs"
@@ -7624,6 +7715,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Job Results",
         "tags": [
           "jobs"
@@ -7701,6 +7797,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Map Urls",
         "tags": [
           "map"
@@ -7866,6 +7967,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Records",
         "tags": [
           "records"
@@ -7972,6 +8078,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Schemas",
         "tags": [
           "schemas"
@@ -8062,6 +8173,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Schema",
         "tags": [
           "schemas"
@@ -8164,6 +8280,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Retire Schema",
         "tags": [
           "schemas"
@@ -8255,6 +8376,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Schema",
         "tags": [
           "schemas"
@@ -8372,6 +8498,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Update Schema",
         "tags": [
           "schemas"
@@ -8509,6 +8640,11 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Scrape",
         "tags": [
           "scrape"
@@ -8602,6 +8738,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Site Configs",
         "tags": [
           "configs"
@@ -8720,6 +8861,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Learn Site",
         "tags": [
           "configs"
@@ -8823,6 +8969,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Llm Cost Report",
         "tags": [
           "usage"
@@ -8955,6 +9106,11 @@
             "description": "Too Many Requests"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Llm Job Costs",
         "tags": [
           "usage"

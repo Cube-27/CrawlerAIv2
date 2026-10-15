@@ -173,7 +173,7 @@ MISSING_PRICE_REPLY = {
 
 
 @dataclass
-class Site_:
+class LearnSite:
     engine: AsyncEngine
     store: FsStore
     origin: str
@@ -264,20 +264,20 @@ async def site(
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
     tmp_path: Path,
-) -> AsyncIterator[Site_]:
+) -> AsyncIterator[LearnSite]:
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
         created = insert(Site).values(project_id=project, host=own_origin.removeprefix("https://"))
         site_id = (await conn.execute(created.returning(Site.id))).scalar_one()
         schema = await registry.create(conn, _document(schema_name), "user")
-    yield Site_(engine, FsStore(tmp_path / "objects"), own_origin, site_id, schema, engine_data, fetch_result)
+    yield LearnSite(engine, FsStore(tmp_path / "objects"), own_origin, site_id, schema, engine_data, fetch_result)
     # The site's configs, which `own_origin` does not know of, go before it deletes the site.
     async with engine.begin() as conn:
         await conn.execute(delete(ProgressiveState).where(ProgressiveState.site_id == site_id))
         await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
 
 
-async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its_config(site: Site_) -> None:
+async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its_config(site: LearnSite) -> None:
     await site.pages(8)
     async with site.engine.begin() as conn:
         assert await trigger_learning(conn, batch=10) == 1
@@ -323,7 +323,7 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
     assert (extraction.mode, extraction.config_version, extraction.llm_calls, record_mode) == ("config", 1, 0, "config")
 
 
-async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_with_why(site: Site_) -> None:
+async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_with_why(site: LearnSite) -> None:
     await site.pages(8)
     await _forced(site)
 
@@ -365,7 +365,7 @@ def _replay(stand_in_api: StandInApi, products: range, sent: list[str]) -> Repla
 
 
 async def test_a_site_whose_values_come_from_an_api_is_learned_with_a_validated_recipe(
-    site: Site_, stand_in_api: StandInApi
+    site: LearnSite, stand_in_api: StandInApi
 ) -> None:
     await site.pages(8, api=True)
     await _forced(site)
@@ -393,7 +393,7 @@ async def test_a_site_whose_values_come_from_an_api_is_learned_with_a_validated_
 
 
 async def test_a_recipe_that_does_not_validate_leaves_the_config_without_one(
-    site: Site_, stand_in_api: StandInApi
+    site: LearnSite, stand_in_api: StandInApi
 ) -> None:
     await site.pages(8, api=True)
     await _forced(site)
@@ -409,12 +409,12 @@ async def test_a_recipe_that_does_not_validate_leaves_the_config_without_one(
     assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "not_reproduced: price, title")
 
 
-async def _forced(site: Site_) -> None:
+async def _forced(site: LearnSite) -> None:
     async with site.engine.begin() as conn:
         assert await request_learning(conn, site.key, force=True) is not None
 
 
-async def test_a_run_validation_refuses_fails_and_the_site_stays_cold(site: Site_) -> None:
+async def test_a_run_validation_refuses_fails_and_the_site_stays_cold(site: LearnSite) -> None:
     await site.pages(6)  # five sample pages leave one held out, fewer than 3
     await _forced(site)
 
@@ -436,7 +436,7 @@ async def test_a_run_validation_refuses_fails_and_the_site_stays_cold(site: Site
     )
 
 
-async def test_an_llm_failure_fails_the_run_and_nothing_activates(site: Site_) -> None:
+async def test_an_llm_failure_fails_the_run_and_nothing_activates(site: LearnSite) -> None:
     await site.pages(8)
     await _forced(site)
 
@@ -449,7 +449,7 @@ async def test_an_llm_failure_fails_the_run_and_nothing_activates(site: Site_) -
     )
 
 
-async def test_an_operator_config_activated_during_the_run_is_not_replaced(site: Site_) -> None:
+async def test_an_operator_config_activated_during_the_run_is_not_replaced(site: LearnSite) -> None:
     await site.pages(8)
     await _forced(site)
     operator: list[ExtractionConfigId] = []
@@ -467,7 +467,7 @@ async def test_an_operator_config_activated_during_the_run_is_not_replaced(site:
     assert (await site.finished(job_id))[0] == "failed"
 
 
-async def _operator_config(conn: AsyncConnection, site: Site_) -> ExtractionConfigId:
+async def _operator_config(conn: AsyncConnection, site: LearnSite) -> ExtractionConfigId:
     ir = {
         "ir_version": "1",
         "site": site.origin.removeprefix("https://"),
@@ -490,7 +490,7 @@ async def _operator_config(conn: AsyncConnection, site: Site_) -> ExtractionConf
     return config_id
 
 
-async def test_a_learn_job_cancelled_before_it_starts_ends_the_run(site: Site_) -> None:
+async def test_a_learn_job_cancelled_before_it_starts_ends_the_run(site: LearnSite) -> None:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
@@ -504,7 +504,7 @@ async def test_a_learn_job_cancelled_before_it_starts_ends_the_run(site: Site_) 
     assert (status, (await site.state()).learning_started_at) == ("cancelled", None)
 
 
-async def test_a_job_another_process_started_is_not_run_again(site: Site_) -> None:
+async def test_a_job_another_process_started_is_not_run_again(site: LearnSite) -> None:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
@@ -519,7 +519,7 @@ async def test_a_job_another_process_started_is_not_run_again(site: Site_) -> No
     assert learned is None
 
 
-async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: Site_, stand_in_api: StandInApi) -> None:
+async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: LearnSite, stand_in_api: StandInApi) -> None:
     await site.pages(8, api=True)
     async with site.engine.begin() as conn:
         assert await trigger_learning(conn, batch=10) == 1
@@ -551,7 +551,7 @@ async def test_the_worker_runs_a_queued_learn_job_to_its_end(site: Site_, stand_
     assert len(sent) == 8
 
 
-async def test_cancelling_a_queued_learn_job_ends_its_run(site: Site_) -> None:
+async def test_cancelling_a_queued_learn_job_ends_its_run(site: LearnSite) -> None:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
@@ -565,7 +565,7 @@ async def test_cancelling_a_queued_learn_job_ends_its_run(site: Site_) -> None:
         assert await request_learning(conn, site.key, force=True) is not None
 
 
-async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site: Site_) -> None:
+async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site: LearnSite) -> None:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
@@ -581,7 +581,7 @@ async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site:
         assert (status, await next_learn_job(conn)) == ("failed", None)
 
 
-async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: Site_) -> None:
+async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: LearnSite) -> None:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
@@ -602,7 +602,7 @@ async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: Site_) 
         assert (await conn.execute(select(Job.status).where(Job.id == recent))).scalar_one() == "running"
 
 
-async def test_a_run_that_ends_after_it_expired_writes_nothing(site: Site_) -> None:
+async def test_a_run_that_ends_after_it_expired_writes_nothing(site: LearnSite) -> None:
     await site.pages(8)
     await _forced(site)
 
@@ -620,7 +620,7 @@ async def test_a_run_that_ends_after_it_expired_writes_nothing(site: Site_) -> N
     assert (await site.finished(job_id))[0] == "failed"
 
 
-async def test_cancelling_a_running_learn_job_ends_it_through_its_run(site: Site_) -> None:
+async def test_cancelling_a_running_learn_job_ends_it_through_its_run(site: LearnSite) -> None:
     await site.pages(8)
     await _forced(site)
 

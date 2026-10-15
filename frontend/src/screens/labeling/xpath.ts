@@ -13,7 +13,9 @@ function literal(value: string): string | null {
 function unique(doc: Document, name: string, value: string): boolean {
   let n = 0;
   for (const element of doc.getElementsByTagName("*")) {
-    if (element.getAttribute(name) === value && ++n > 1) return false;
+    if (element.getAttribute(name) !== value) continue;
+    n += 1;
+    if (n > 1) return false;
   }
   return n === 1;
 }
