@@ -182,7 +182,10 @@ validity}`; `yield = matched/pages`, `validity = valid/matched`.
 ### 4.11 Exporters (§12.2)
 
 - `json`: the IR as stored.
-- `platform_draft`: per field: `{xpath, regex?, params?, post}`; listing `{row_xpath, next_xpath}`; `api_recipe` with
+- `platform_draft`: per field `{steps, manual}`, every step in IR order (the first valid step wins, §12.1): `xpath`
+  (CSS as its translation, `attr` as `@name`), `regex` or `jsonpath`/`jsonld`, post ops as in the IR; listing
+  `{row_xpath, fields, next: {steps, manual}}`; `regex_flags: "u"`; no per-field `params`, which the IR has only in
+  `api_recipe` (D-0606); `api_recipe` with
   a PHP code hint rendered from `exporters/templates/api_recipe.php.j2` (jinja2, BSD-3) — a template, not
   generated code (§18). Marked `draft: true` until OPEN_QUESTIONS #1 is answered.
 - `json_records` / `csv_records` / `markdown`: record exports for `GET /v1/jobs/{id}/results?format=` (SPEC-10

@@ -105,7 +105,8 @@ class ExtractionResult(BaseModel, frozen=True):
 ### 4.3 Locator format (defined here; §6 only names it)
 
 A string `"<scheme>:<address>"`:
-- `jsonld:<block_index>:<jsonpath>` — block = nth `application/ld+json` script; path within the expanded graph.
+- `jsonld:<block_index>:<jsonpath>` — block = nth `application/ld+json` script; path within the block as written
+  (not its expanded graph), so the locator reads back from the capture.
 - `microdata:<xpath>` — XPath 1.0 to the `itemprop` element.
 - `meta:<property>` — `<meta property|name=…>` (OpenGraph and standard meta).
 - `js_state:<script_xpath>:<jsonpath>`.
