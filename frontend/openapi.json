@@ -1737,7 +1737,7 @@
       },
       "FieldSpec-Input": {
         "additionalProperties": false,
-        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`.",
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13\n\u00a74.2): the path names the row entities, and `key` names the sub-fields that identify a row.",
         "properties": {
           "description": {
             "anyOf": [
@@ -1778,6 +1778,21 @@
               }
             ]
           },
+          "key": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
           "required": {
             "default": false,
             "title": "Required",
@@ -1786,7 +1801,7 @@
           "schema_org": {
             "anyOf": [
               {
-                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?$",
+                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?(\\|[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
                 "type": "string"
               },
               {
@@ -1846,7 +1861,7 @@
       },
       "FieldSpec-Output": {
         "additionalProperties": false,
-        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`.",
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13\n\u00a74.2): the path names the row entities, and `key` names the sub-fields that identify a row.",
         "properties": {
           "description": {
             "anyOf": [
@@ -1887,6 +1902,21 @@
               }
             ]
           },
+          "key": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
           "required": {
             "default": false,
             "title": "Required",
@@ -1895,7 +1925,7 @@
           "schema_org": {
             "anyOf": [
               {
-                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?$",
+                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?(\\|[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
                 "type": "string"
               },
               {

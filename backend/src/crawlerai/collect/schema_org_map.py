@@ -3,6 +3,8 @@ hierarchy from the pinned schema.org vocabulary file, and a schema field's `sche
 
 A path `T.p[.q][+r]` (SPEC-04 §4.2) applies to every entity of type `T` or a subtype of it (`rdfs:subClassOf`). It
 follows `p`, then `q`, through the nodes the values name; `+r` joins the last node's `r` to the value as one object.
+A path of alternatives `A|B` (SPEC-13 §4.1) reaches what each alternative reaches. A row-mapped field's sub-fields are
+read as fields of their own, named `<field>.<sub-field>` (SPEC-13 §4.2).
 """
 
 import json
@@ -125,8 +127,12 @@ class MappedPath(NamedTuple):
     joined: str | None  # `+r`: a property of the last node joined to the value
 
 
-def parse_path(path: str) -> MappedPath:
-    """A `schema_org` path, already checked by the schema document's pattern (SPEC-04 §4.2)."""
+def parse_paths(path: str) -> tuple[MappedPath, ...]:
+    """A `schema_org` path's alternatives, already checked by the schema document's pattern (SPEC-04 §4.2)."""
+    return tuple(_parse_alternative(alternative) for alternative in path.split("|"))
+
+
+def _parse_alternative(path: str) -> MappedPath:
     path, _, joined = path.partition("+")
     root, *steps = path.split(".")
     return MappedPath(root, tuple(steps), joined or None)
@@ -217,18 +223,46 @@ def field_candidates(
     source_kind: SourceKind,
     diagnostics: list[str],
 ) -> Iterator[Candidate]:
-    """A candidate per value each field's path reaches on each entity of its type."""
+    """A candidate per value each field's path reaches on each entity of its type. A row-mapped field's path names its
+    rows, which resolution finds (SPEC-13 §4.3); each of its sub-fields is read as a field of its own."""
+    for name, spec, paths in mapped_fields(schema):
+        as_list = spec.type is FieldType.LIST
+        for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
+            found = candidate(name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
+            if found is not None:
+                yield found
+
+
+def mapped_fields(schema: SchemaDef) -> Iterator[tuple[str, FieldSpec, tuple[MappedPath, ...]]]:
+    """The fields whose values a `schema_org` path reaches, by candidate field name, with the path's alternatives: each
+    field with a path, except a row-mapped one, whose path reaches rows, not values; in its place, its sub-fields with
+    a path, as `<field>.<sub-field>` (SPEC-13 §4.2; `Name` allows no `.`, so these never clash with a field's name)."""
     for name, spec in schema.fields.items():
-        if spec.schema_org is None:
-            continue
-        path = parse_path(spec.schema_org)
+        if spec.row_mapped and spec.item is not None:
+            for sub_name, sub in (spec.item.fields or {}).items():
+                if sub.schema_org is not None:
+                    yield f"{name}.{sub_name}", sub, parse_paths(sub.schema_org)
+        elif spec.schema_org is not None:
+            yield name, spec, parse_paths(spec.schema_org)
+
+
+def _selections(
+    entities: Sequence[Typed], paths: Sequence[MappedPath], vocabulary: Vocabulary, *, as_list: bool
+) -> Iterator[tuple[str, Selected]]:
+    """What each alternative reaches on each entity of its root type, by entity id. The same value of one entity that
+    two alternatives reach is one selection (SPEC-13 §4.1): its locator names it. One alternative's selections are
+    all kept, as a path's are."""
+    earlier: set[tuple[str, str]] = set()
+    for path in paths:
+        reached: set[tuple[str, str]] = set()
         for entity in entities:
             if not any(vocabulary.is_a(t, path.root) for t in entity.types):
                 continue
-            for selected in select(entity.node, path, as_list=spec.type is FieldType.LIST):
-                found = candidate(name, spec, entity.id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
-                if found is not None:
-                    yield found
+            for selected in select(entity.node, path, as_list=as_list):
+                if (entity.id, selected.locator) not in earlier:
+                    reached.add((entity.id, selected.locator))
+                    yield entity.id, selected
+        earlier |= reached
 
 
 def candidate(

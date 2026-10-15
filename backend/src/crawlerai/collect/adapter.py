@@ -19,7 +19,7 @@ from crawlerai.adapters.base import Adapter
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.json_doc import ROOT, parse, select, split_at_last_wildcard
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import candidate, canonical_urls, parse_path
+from crawlerai.collect.schema_org_map import candidate, canonical_urls, parse_paths
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import PageKind
 from crawlerai.normalize.base import Context
@@ -45,10 +45,13 @@ class AdapterCollector:
             name: spec.schema_org
             for name, spec in schema.fields.items()
             # A listing's page-scoped fields describe the page, not a row (SPEC-05 §4.7); the API's rows hold none.
-            if spec.schema_org is not None and (self._page_kind == "detail" or spec.scope == "row")
+            # A row-mapped field's path names rows, not values (SPEC-13 §4.2); an adapter reads no rows of rows.
+            if spec.schema_org is not None
+            and not spec.row_mapped
+            and (self._page_kind == "detail" or spec.scope == "row")
         }
         queries = self._adapter.map(paths, self._page_kind)
-        kinds = sorted({parse_path(paths[name]).root for name in queries})
+        kinds = sorted({path.root for name in queries for path in parse_paths(paths[name])})
         if len(kinds) != 1:
             diagnostics = (f"adapter:{adapter}: maps fields of several types {kinds}",) if kinds else ()
             return CollectResult(entities=(), candidates=(), diagnostics=diagnostics)

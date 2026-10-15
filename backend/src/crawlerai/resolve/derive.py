@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.schema_org_map import parse_path
+from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
@@ -31,11 +31,12 @@ class Derived:
 
 def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str]) -> bool:
     """Whether the field is the URL of the page's entity: on a detail page, a url field whose path is `T.url` for a
-    primary type T (schema.org Thing.url, "URL of the item"; intent's primary types, §4.6)."""
+    primary type T (schema.org Thing.url, "URL of the item"; intent's primary types, §4.6), in every alternative."""
     if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
         return False
-    path = parse_path(spec.schema_org)
-    return path.root in primary and path.steps == ("url",) and path.joined is None
+    return all(
+        path.root in primary and path.steps == ("url",) and path.joined is None for path in parse_paths(spec.schema_org)
+    )
 
 
 def fill(

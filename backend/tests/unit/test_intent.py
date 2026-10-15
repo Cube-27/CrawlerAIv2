@@ -220,3 +220,9 @@ def test_two_top_level_products_are_settled_by_the_request_url() -> None:
     assert _jsonld_target(*blocks, request_url="https://shop.example.test/p/3") == AmbiguousTarget(
         candidates=("jsonld:0:$", "jsonld:1:$")
     )
+
+
+def test_primary_types_are_the_roots_of_every_alternative() -> None:
+    schema = _schema(title=_field("ProductGroup.sku|Product.sku"), price=_field("Offer.price+priceCurrency"))
+
+    assert primary_types(schema, VOCABULARY) == frozenset({"ProductGroup", "Product"})

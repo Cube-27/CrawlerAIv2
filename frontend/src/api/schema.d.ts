@@ -1262,7 +1262,8 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`.
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13
+         *     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Input": {
             /** Description */
@@ -1272,6 +1273,8 @@ export interface components {
                 [key: string]: components["schemas"]["FieldSpec-Input"];
             } | null;
             item?: components["schemas"]["FieldSpec-Input"] | null;
+            /** Key */
+            key?: string[] | null;
             /**
              * Required
              * @default false
@@ -1296,7 +1299,8 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`.
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13
+         *     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Output": {
             /** Description */
@@ -1306,6 +1310,8 @@ export interface components {
                 [key: string]: components["schemas"]["FieldSpec-Output"];
             } | null;
             item?: components["schemas"]["FieldSpec-Output"] | null;
+            /** Key */
+            key?: string[] | null;
             /**
              * Required
              * @default false

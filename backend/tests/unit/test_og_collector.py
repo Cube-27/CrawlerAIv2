@@ -195,3 +195,15 @@ def test_a_page_without_opengraph_has_no_entity() -> None:
     page = ParsedPage('<html><head><meta name="description" content="Synthetic"></head></html>')
 
     assert OpenGraphCollector().collect(page, SCHEMA, CTX) == CollectResult(entities=(), candidates=())
+
+
+def test_alternatives_have_a_role_only_when_each_names_the_same_property_of_its_root() -> None:
+    # SPEC-13 §4.1: `ProductGroup.image|Product.image` names the object's image either way;
+    # `Product.image|Product.brand.image` may name the brand's.
+    schema = _schema(
+        image=_field(FieldType.IMAGE_URL, "ProductGroup.image|Product.image"),
+        mixed=_field(FieldType.IMAGE_URL, "Product.image|Product.brand.image"),
+    )
+
+    found = _collect(("og:image", "https://shop.example.test/a.png"), schema=schema).candidates
+    assert [c.field for c in found] == ["image"]

@@ -14,7 +14,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.collect.locator import LocatorText
-from crawlerai.collect.schema_org_map import parse_path
+from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SiteId, SourceKind
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
@@ -143,13 +143,13 @@ def assemble_listing(
 
 
 def _row_key(schema: SchemaDef, row: FieldSet) -> str | None:
-    """The row's published URL: the first row field of type url whose path is `T.url` (schema.org Thing.url, "URL of
-    the item"). Without one, the row's position on the page stands in."""
+    """The row's published URL: the first row field of type url whose path is `T.url` in every alternative (schema.org
+    Thing.url, "URL of the item"). Without one, the row's position on the page stands in."""
     for name, spec in schema.fields.items():
         if spec.scope != "row" or spec.type is not FieldType.URL or spec.schema_org is None:
             continue
-        path = parse_path(spec.schema_org)
         outcome = row.get(name)
-        if path.steps == ("url",) and path.joined is None and outcome is not None and isinstance(outcome.value, str):
+        names_item = all(path.steps == ("url",) and path.joined is None for path in parse_paths(spec.schema_org))
+        if names_item and outcome is not None and isinstance(outcome.value, str):
             return outcome.value
     return None

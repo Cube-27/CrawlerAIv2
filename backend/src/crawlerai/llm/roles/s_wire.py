@@ -4,8 +4,8 @@
 (`FieldSpec -> FieldSpec`), its fields are an object keyed by name (`patternProperties`, so not a closed object), and
 its optional parameters are nullable unions (`llm.schema_subset`). The wire form says the same without any of them:
 - fields are a list of entries, each with its `name`;
-- every parameter is present: `""` stands for a parameter the field does not have, and `item` and `fields` are lists,
-  empty when the field has none (`item` holds at most one entry);
+- every parameter is present: `""` stands for a parameter the field does not have, and `item`, `fields` and `key`
+  are lists, empty when the field has none (`item` holds at most one entry);
 - nesting is unrolled to `MAX_DEPTH` levels, the deepest level having no `item` or `fields`.
 
 `from_wire` reads a reply back as a document for `SchemaDocument` to validate; `to_wire` writes a document as JSON,
@@ -51,6 +51,7 @@ def _entry_schema(depth: int) -> dict[str, JsonValue]:
         "schema_org": {"type": "string"},
         "vocab": {"type": "string"},
         "scheme": _enum([_NONE, *get_args(IdentifierScheme)]),
+        "key": {"type": "array", "items": {"type": "string"}},
     }
     if depth < MAX_DEPTH:
         inner: JsonValue = {"type": "array", "items": {"$ref": f"#/$defs/{_level(depth + 1)}"}}
@@ -86,6 +87,9 @@ def _fields(entries: list[JsonValue], path: str) -> dict[str, JsonValue]:
 def _spec(entry: Mapping[str, JsonValue], path: str) -> dict[str, JsonValue]:
     spec: dict[str, JsonValue] = {"type": entry["type"], "required": entry["required"], "scope": entry["scope"]}
     spec |= {key: entry[key] for key in _OPTIONAL_STRINGS if entry[key] != _NONE}
+    # A reply written before `key` existed has none (SPEC-13 §4.2).
+    if row_key := entry.get("key"):
+        spec["key"] = row_key
     items = cast(list[JsonValue], entry.get("item", []))
     if len(items) > 1:
         raise ValueError(f"{path}: a list has one item, not {len(items)}")
@@ -112,6 +116,7 @@ def _entry(name: str, raw: JsonValue, depth: int) -> dict[str, JsonValue]:
     entry: dict[str, JsonValue] = {"name": name, "type": spec["type"]}
     entry |= {key: spec.get(key, FieldSpec.model_fields[key].default) for key in ("required", "scope")}
     entry |= {key: spec.get(key) or _NONE for key in _OPTIONAL_STRINGS}
+    entry["key"] = spec.get("key") or []
     if depth < MAX_DEPTH:
         item = spec.get("item")
         entry["item"] = [] if item is None else [_entry(_NONE, item, depth + 1)]
