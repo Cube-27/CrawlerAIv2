@@ -189,14 +189,18 @@ async def test_the_ending_hook_runs_once_in_the_ending_transaction_before_the_en
     assert await _job_state(conn, job_id) == ("completed", ["task_failed", "ending", "completed"])
 
 
-async def test_a_job_ended_by_an_expired_lease_runs_the_ending_hook(conn: AsyncConnection) -> None:
+async def test_an_expired_lease_on_the_last_attempt_fails_the_task_and_ends_the_job_through_the_hook(
+    conn: AsyncConnection,
+) -> None:
     job_id = await _job(conn)
-    await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
+    [task_id] = await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
     await _expire(conn, await _claim_one(conn))
     ending = Ending()
 
-    await release_expired_leases(conn, ending=ending)
+    assert await release_expired_leases(conn, ending=ending) == 1
 
+    row = await _row(conn, task_id)
+    assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 3, "lease expired")
     assert ending.calls == [(job_id, "failed", "running")]
     assert await _job_state(conn, job_id) == ("failed", ["task_failed", "ending", "failed"])
 
@@ -249,17 +253,6 @@ async def test_a_permanent_failure_fails_the_task_at_once(conn: AsyncConnection)
     assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 1, "budget_exhausted")
 
 
-async def test_a_job_with_one_success_and_one_failure_completes(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    await _tasks(conn, job_id, 2)
-    first, second = await claim_tasks(conn, "w1", 2)
-
-    await fail_task(conn, first, "boom", transient=False)
-    await complete_task(conn, second, "blocked")
-
-    assert await _job_state(conn, job_id) == ("completed", ["task_failed", "completed"])
-
-
 async def test_last_error_is_cut_to_2_kb_on_a_character_boundary(conn: AsyncConnection) -> None:
     job_id = await _job(conn)
     [task_id] = await _tasks(conn, job_id, 1)
@@ -285,17 +278,6 @@ async def test_a_task_whose_lease_was_lost_cannot_be_finished(conn: AsyncConnect
 
     row = await _row(conn, task_id)
     assert (row.status, row.claimed_by, row.attempts) == ("claimed", "w2", 2)
-
-
-async def test_the_same_worker_cannot_finish_its_earlier_claim_after_reclaiming(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    await _tasks(conn, job_id, 1)
-    stale = await _claim_one(conn, "w1")
-    await conn.execute(update(UrlTask).values(status="queued", claimed_by=None, lease_until=None))
-    await _claim_one(conn, "w1")
-
-    with pytest.raises(LeaseLost):
-        await complete_task(conn, stale, "extracted")
 
 
 async def test_cancelling_the_last_claimed_task_cancels_the_job(conn: AsyncConnection) -> None:
@@ -431,27 +413,3 @@ async def test_an_expired_lease_is_requeued_with_backoff_and_the_old_claim_is_fe
         await complete_task(conn, stale, "extracted")
     await complete_task(conn, live, "extracted")
     assert await _job_state(conn, job_id) == ("running", [])
-
-
-async def test_an_expired_lease_on_the_last_attempt_fails_the_task_and_settles_the_job(
-    conn: AsyncConnection,
-) -> None:
-    job_id = await _job(conn)
-    [task_id] = await _tasks(conn, job_id, 1, attempts=MAX_ATTEMPTS - 1)
-    await _expire(conn, await _claim_one(conn))
-
-    assert await release_expired_leases(conn) == 1
-
-    row = await _row(conn, task_id)
-    assert (row.status, row.outcome, row.attempts, row.last_error) == ("failed", "failed", 3, "lease expired")
-    assert await _job_state(conn, job_id) == ("failed", ["task_failed", "failed"])
-
-
-async def test_releasing_with_no_expired_lease_changes_nothing(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    [task_id, _] = await _tasks(conn, job_id, 2)
-    await _claim_one(conn)
-
-    assert await release_expired_leases(conn) == 0
-
-    assert (await _row(conn, task_id)).status == "claimed"

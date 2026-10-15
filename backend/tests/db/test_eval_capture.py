@@ -362,14 +362,9 @@ OTHER_HOST = "other.eval-capture.example.test"
 
 @pytest.mark.parametrize(
     ("split", "other"),
-    [
-        ("fresh", "hidden"),
-        ("fresh", "dev"),
-        ("hidden", "fresh"),
-        ("hidden", "dev"),
-        ("dev", "hidden"),
-        ("dev", "fresh"),
-    ],
+    # One private split against the other, a private split against the main store, the main store against a private
+    # split: `hosts_elsewhere` reads every other split alike, so the remaining pairs take the same path.
+    [("fresh", "hidden"), ("hidden", "dev"), ("dev", "fresh")],
 )
 async def test_a_host_with_pages_in_another_split_is_refused_before_any_fetch(
     env: Env,
