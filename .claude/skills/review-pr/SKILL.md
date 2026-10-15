@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review one complete PR (implemented, CI green) against its spec row, the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
+description: Review one complete PR (implemented and simplified by its implementor, CI green; the reviewer never runs /simplify) against its spec rows (a PR covers a batch of related rows), the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
 ---
 
 # Review a PR
@@ -13,14 +13,16 @@ pragmatically. Don't push commits to the branch; the author fixes. Adapted from 
 
 Review when the implementor hands over a finished PR: implemented, and every CI check green on the head
 commit, SonarCloud included (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`). If CI is red, don't review: tell the
-implementor and stop. Don't run builds or tests yourself; CI did. One single agent does the whole review.
+implementor and stop. Don't run builds or tests yourself; CI did. One single agent does the whole review, once per
+PR, whatever its size; don't run `/simplify` (`CLAUDE.md` §3).
 
 ## 1. Scope and intent
 
-- `gh pr view <n>` and `gh pr diff <n>`. Find the spec row the PR claims, and read that row, the spec's acceptance
-  criteria and invariants, and the ARCHITECTURE sections it cites.
-- Write the intent in one paragraph: what the PR must achieve and what it must not touch. If the PR doesn't match
-  its row, that is the first finding.
+- `gh pr view <n>` and `gh pr diff <n>`. Find the spec rows the PR claims (a batch), and read those rows, the
+  spec's acceptance criteria and invariants, and the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items
+  3-4 name, by section, never in full.
+- Write the intent in one paragraph: what the PR must achieve, row by row, and what it must not touch. If the PR
+  doesn't match its rows, that is the first finding.
 
 ## 2. Check, in this order
 
@@ -37,15 +39,16 @@ implementor and stop. Don't run builds or tests yourself; CI did. One single age
    - a customer name or secret in a public file.
 2. **Correctness.** Trace real call paths, not hypotheticals. A "what if X is None" finding counts only if a caller
    can actually pass None. Check idempotence for queue tasks, migrations and jobs.
-3. **Proof.** Every acceptance criterion maps to a test or command that ran green in CI or in the PR's
+3. **Proof.** Every acceptance criterion of every row maps to a test or command that ran green in CI or in the PR's
    Verification section. Apply the test-behaviour rule: a test that would still pass if the function returned a
    wrong value proves nothing. For extraction changes, the dev delta is present and the hidden gate passed.
-4. **Scope and simplicity.** Code outside the row's scope, speculative options, wrappers with one caller, and
+4. **Scope and simplicity.** Code outside the batch's rows, speculative options, wrappers with one caller, and
    compatibility shims.
 5. **Decisions.** Choices the spec didn't make are listed in the PR's `## Decisions` section. Anything that should
    have been escalated (`CLAUDE.md` §4) is a blocking finding.
 6. **SonarCloud and recurring findings.** Read the PR's gate (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`
-   prints it). A red gate is an Act-on item. Check the diff against `docs/plans/RECURRING.md`: a repeat of a listed mistake is an Act-on item.
+   prints it). A red gate is an Act-on item. Check the diff against `docs/plans/RECURRING.md` and ENGINEERING's
+   "Patterns the analysers flag": a repeat of a listed mistake is an Act-on item.
 7. **Frontend PRs.** The PR follows the `docs/DESIGN.md` Patterns, uses no second way to do a listed job, and has
    no styling outside `frontend/src/app/theme.css`. A deviation is an Act-on item.
 
@@ -70,8 +73,8 @@ Filter for "nitpick gravity". If all you have are nits, the code is fine; say so
 
 ## 4. Verdict
 
-Post the review as a PR comment (`gh pr review <n> --comment --body-file …`) with the intent, the buckets and one of
-these verdicts:
+Post the review as a PR comment (`gh pr comment <n> --body-file …`), never with `gh pr review`: the implementor and
+`watch_agents.sh` read comments only. The comment holds the intent, the buckets and one of these verdicts:
 - `MERGE`: no Act-on items and CI is green;
 - `MERGE AFTER FIX`: the PR merges once the listed Act-on items are fixed and CI is green again. There is no
   second review, so make each item specific enough that the fix is unambiguous;

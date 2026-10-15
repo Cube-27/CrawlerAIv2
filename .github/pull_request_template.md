@@ -2,7 +2,7 @@
 
 ## Why
 
-<!-- 1–3 sentences. Link the spec row: docs/specs/SPEC-NN-*.md §8, PR M. -->
+<!-- 1–3 sentences. Link the spec rows: docs/specs/SPEC-NN-*.md §8, PRs A-B. -->
 
 ## What changed
 
@@ -38,4 +38,4 @@ or acquire/ (C10, INV-19). Otherwise write "Not applicable".
 - [ ] No §22 candidate implemented (C13).
 - [ ] Aggregate report attached, if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/` changed: dev delta shown, hidden gate passed, no improvement claimed from hidden (C10).
 - [ ] Property or replay tests added; no test is named after a site or asserts one site's output (C9).
-- [ ] Decisions recorded in `docs/DECISIONS.md`, or listed above for the orchestrator to record.
+- [ ] Decisions listed above, and added to the decisions log (`docs/DECISIONS.md`, "Where an entry goes") in the tracker commit.

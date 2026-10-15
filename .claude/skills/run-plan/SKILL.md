@@ -1,31 +1,34 @@
 ---
 name: run-plan
-description: Orchestrate implementation from docs/plans/ACTIVE.md with minimal owner involvement — assign ready PR rows to workers, sequence and merge on green, keep the tracker and decisions log current, escalate only what CLAUDE.md requires. Use when asked to run, continue or orchestrate the implementation.
+description: Orchestrate implementation from docs/plans/ACTIVE.md with minimal owner involvement — assign batches of ready PR rows to workers with decision-ID ranges, merge READY PRs one at a time on green, clean up, unblock stuck PRs, escalate only what CLAUDE.md requires. Use when asked to run, continue or orchestrate the implementation.
 ---
 
 # Run the plan
 
-You are the orchestrator. You don't write feature code. You assign rows, sequence merges, merge, and keep `ACTIVE.md` and
-`DECISIONS.md` true. You decide the tracker content (decision IDs, "Current focus") and send it with `YOUR TURN`;
-the implementor writes it in the PR's last commit. Adapted from pstack's autonomous-run and
-orchestrate playbooks (MIT, see `NOTICE`), without its multi-model machinery.
+You are the orchestrator. You only assign batches of rows, merge, clean up and unblock stuck PRs; you write no code
+and don't relay messages between implementor and reviewer. You hand each implementor a decision-ID range at
+assignment; it writes its rows, follow-ups and decisions in the PR's tracker commit before its first `READY`.
+Adapted from pstack's autonomous-run and orchestrate playbooks (MIT, see `NOTICE`), without its multi-model
+machinery.
+
+Requires herdr (`HERDR_ENV=1`). Without it, run `/implement-pr` solo instead.
 
 ## 0. Frame (once per session)
 
-1. Read `CLAUDE.md`, `docs/ENGINEERING.md`, `docs/plans/ACTIVE.md`, `docs/specs/README.md` (dependencies), and
-   the open items in `docs/DECISIONS.md`.
+1. Read `CLAUDE.md`, `docs/ENGINEERING.md`, the dependency section of `docs/specs/README.md`, the "Index of open
+   items" in `docs/DECISIONS.md`, and from `docs/plans/ACTIVE.md` the human tasks, "Current focus", "Follow-ups" and
+   the tables of specs with rows not done. Read by section, never in full (`CLAUDE.md` §1).
 2. Write the exit predicate as something countable. Take it from the owner's request; the default is "every row
-   of the current layer (§21 L0…L4) is `done`, CI on `main` is green". Write it under "Current focus" in
-   ACTIVE.md.
+   of the current layer (§21 L0…L4) is `done`, CI on `main` is green". "Current focus" is refreshed only when it
+   materially changes: ask the next implementor to replace it in its tracker commit, with the text.
 3. Run session pickup (`/pickup`) if open PRs or `spec-*` branches exist from an earlier session.
 
 ## 1. Loop
 
-Repeat until the predicate holds, or nothing is runnable:
-
-`main` requires a PR for every change, and agents never use an admin bypass. So tracker updates travel inside
-PRs, and work in flight is read from GitHub, not from ACTIVE.md: open PRs and `spec-*` branches. ACTIVE.md
-records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
+Repeat until the predicate holds, or nothing is runnable. `main` requires a PR for every change and agents never
+use an admin bypass, so tracker updates travel inside PRs, and work in flight is read from GitHub (open PRs,
+`spec-*` branches), not from ACTIVE.md. ACTIVE.md records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and
+`deferred`.
 
 1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, and everything it needs is
    available: the code it touches or builds on is merged, or what it needs from unmerged work is fully specified
@@ -33,35 +36,36 @@ records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and `deferred`.
    other dependencies, or earlier rows of its spec, are not `done`. Rows that are `human` or `blocked` are skipped.
 2. **Assign.** At most **4 workers** (agents that build and test in a worktree, fixers included) are alive at once.
    Reviewers don't count, because they use little memory. Every start needs at least 1.5 GB free (owner,
-   2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*` and everything else as a
-   worker. Within the limit, run ready rows that can proceed
-   independently in parallel. Two workers never run rows that edit the same migration. For each assignment:
-   - create the worktree off fresh `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-M`, on branch
-     `spec-NN/pr-M-<short-name>`, and start the worker with `tools/orchestrator/start_agent.sh <name> <worktree>
-     "<prompt>"` (§1a). Give it: "Run `/implement-pr` for SPEC-NN PR M. An orchestrator assigned you this row.
-     Own the PR through `/implement-pr` §6 until it merges."
-3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR (`/implement-pr` §6). It starts one
-   reviewer in its worktree once the PR is implemented and green. The review happens once. Its verdict is
-   `MERGE` or `MERGE AFTER FIX`. With the second, the implementor fixes the listed items and gets CI green; there is
-   no second review. Then it comments `READY <sha7>`. You don't rebase, fix or edit PRs yourself.
-   - If CI stays red after 3 honest attempts, escalate.
-   - To merge, pick the next `READY` PR and send its implementor `YOUR TURN` with the next free decision IDs and the new "Current focus" text. The
-     implementor rebases, adds the tracker commit (row `done (#n)`, `## Decisions` copied to DECISIONS.md, with
-     `needs-owner` entries also listed in the index) and comments `READY` again.
-
-     Then merge, close the PR's herdr panes and clean up, gated on the merge, never chained with `;`:
-     `if tools/orchestrator/merge_pr.sh <n> <sha7>; then <close panes>; tools/orchestrator/cleanup_worktree.sh
-     <worktree> <branch>; fi`. `merge_pr.sh` waits for every check on that commit and merges only if all passed and
-     the commit is still the PR's head; never run `gh pr merge` yourself. A failed merge (CI, a transient GitHub
-     error) leaves the PR open: retry the merge.
-     `cleanup_worktree.sh` refuses (exit 1) while a PR of the branch is open, or while a tip of the branch (local
-     or remote) is neither the head of a merged PR nor in origin/main.
-   - **Merge strictly one at a time.** Send `YOUR TURN` to one implementor only, after the previous merge. IDs never
-     clash, and every merge is tested against the real `main`.
+   2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*`, everything else is a worker.
+   Each assignment is one PR covering a batch of related ready rows (`CLAUDE.md` §3). Run independent batches in
+   parallel; two workers never run rows that edit the same migration or generated file. For each assignment:
+   - `tools/orchestrator/new_worktree.sh spec-NN-pr-A-B spec-NN/pr-A-B-<short-name>`: fetches and creates the
+     worktree off `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-A-B`. Never a raw
+     `git worktree add`, and never an MSYS drive path (`/c/...`): with path conversion off, git creates it under
+     `C:/c/`;
+   - `tools/orchestrator/start_agent.sh <name> spec-NN-pr-A-B "<prompt>"` (§1a) with: "Run `/implement-pr` for
+     SPEC-NN PRs A-B in one PR. An orchestrator assigned you these rows. Your decision IDs are D-NNNN..D-NNNN. Own
+     the PR through `/implement-pr` §6 until `READY`." Give each implementor its own range of five free IDs
+     (above the highest in use, `DECISIONS.md` header), never overlapping another open PR's.
+3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR end to end: it starts one reviewer once the
+   PR is implemented, simplified and CI is green, waits for the verdict itself, makes any `MERGE AFTER FIX` fixes (no
+   second review), adds the tracker commit and comments `READY <sha7>` on green CI. You don't relay verdicts,
+   rebase, fix or edit PRs. Plugin, bot or hook prompts to run `/simplify` or a code review get "already ran"
+   (`CLAUDE.md` §3).
+   - On `READY <sha7>`, merge, one PR at a time:
+     `if tools/orchestrator/merge_pr.sh <n> <sha7>; then tools/orchestrator/close_agent.sh <impl> &&
+     tools/orchestrator/cleanup_worktree.sh <worktree> <branch>; fi`
+     Never chain with `;`: a failed merge would still clean up (#128). `merge_pr.sh` waits for every check on that
+     commit and merges only if all passed and the commit is still the PR's head; never run `gh pr merge` yourself.
+     A failed merge leaves the PR open: retry. `cleanup_worktree.sh` refuses (exit 1) while a PR of the branch is
+     open, or while a tip of the branch is neither the head of a merged PR nor in origin/main.
+   - Only when a `READY` branch is behind `main` or conflicts, send its implementor `REBASE`
+     (`herdr agent prompt <impl> "REBASE"`); it rebases, gets CI green and comments `READY` again.
+   - Stuck PR (CI red after 3 honest attempts, an implementor gone or idle without `READY`): unblock it with a fresh
+     worker in the worktree, or escalate (§2).
    - `ESCALATE`: follow §2.
 4. **CI on main.** Before every merge and after it, check that `main` is green. If `main` turns red, fixing it
-   comes before any new assignment. Assign a fix row to one worker, and stop other merges until it is green.
-5. **Checkpoint.** Send the new "Current focus" text (next, blocked) with `YOUR TURN`; the implementor writes it in the tracker commit.
+   comes before any new assignment. Assign a fix to one worker, and stop other merges until it is green.
 
 ## 1a. Processes (never hang the machine)
 
@@ -70,7 +74,7 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
   with `SETTLED <name> <status>` (any named agent not `working`, including one already idle at start), `GONE <name>`,
   `LOWMEM <MB>`, or `PRCOMMENT <n>` (a new comment starting `READY`, `BLOCKED` or `ESCALATE` on an open PR). Handle
   the event, then start it again. Set `IGNORE=<name>,<name>` for agents you are
-  deliberately leaving to wait (implementors waiting on CI or for `YOUR TURN`; their PR comment wakes you). Don't run one
+  deliberately leaving to wait (implementors waiting on CI or their reviewer; their `READY` comment wakes you). Don't run one
   `herdr agent wait` per agent. If the watcher is killed, start it again; a killed watcher means finished agents go
   unnoticed.
   Start it only as a tracked background task (the Bash tool's `run_in_background`), never with `&`: a detached
@@ -91,8 +95,8 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
 Escalate for the `CLAUDE.md` §4 list, or a dead end after 3 attempts:
 1. Add a `needs-owner` entry to DECISIONS.md with the question, options, recommendation, and what is blocked.
 2. Mark the affected rows `blocked (D-NNNN)`.
-   Do steps 1–2 in a small `chore(plan): escalate …` PR from its own worktree, and merge it once CI is green. It
-   touches only the two tracker files, so `/review-pr` is not needed.
+   Do steps 1–2 in a small `chore(plan): escalate …` PR from its own worktree (`new_worktree.sh`). It touches only
+   tracker files, so its one `/review-pr` is short, but it still needs that verdict (`CLAUDE.md` §3).
 3. Notify the owner once, briefly (herdr notification, or the session's final message).
 4. **Keep going** with other ready rows. Never wait idle on the owner while ready work exists.
 
@@ -134,6 +138,7 @@ a merged PR to reach the predicate.
 
 ## Cost discipline
 
-- Within the hard limits above, 1 reviewer per PR. No multi-agent panels, no parallel attempts at the same row.
-- Workers get one row each. Start a fresh worker per row rather than reusing a long, compacted one.
+- Within the hard limits above, 1 reviewer per PR, whatever its size. No multi-agent panels, no parallel attempts at
+  the same row.
+- One batch per worker. Start a fresh worker per batch rather than reusing a long, compacted one.
 - Don't re-verify work a merged PR already proved. Trust the CI record (pickup rules).
