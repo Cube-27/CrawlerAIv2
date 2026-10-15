@@ -698,3 +698,38 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Options: (a) a `fields` request member; the server drafts a typed schema from the names (role S); (b) the UI sends the names as a prompt where prompts are allowed; (c) chips pick fields from presets and stored schemas.
 - Recommendation: (a), one path for every run type, with the draft shown for editing; it changes the public API.
 - Blocked: SPEC-14 PR 11 only. The owner discusses it before it is built.
+
+### D-0820 — Decisions log split by spec
+- Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided
+- Decision: An entry moves verbatim to `docs/decisions/SPEC-NN.md` when its Spec/PR field names a spec; a field naming several specs puts it under the first named (D-0719–D-0727 → SPEC-06). Entries with no spec in that field (workflow, UAT, review fixes, owner), the D-0001–D-0044 spec-authoring block, and every entry whose status says `needs-owner` or `pending-owner` stay in `DECISIONS.md`. Moved files keep ID order; entries are separated by one blank line.
+- Alternatives: split by D-ID range; split by the PR's main spec, decided per entry by hand.
+- Why: Agents read only their spec's file and the index of open items (`CLAUDE.md` §1), so `DECISIONS.md` dropped from 5,582 lines to under 750. The field rule is mechanical and checkable; a one-off script checked that no entry text changed.
+- Reversible: yes — concatenate the files in ID order.
+
+### D-0821 — Lean ACTIVE.md
+- Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided
+- Decision: "Current focus" is 3-6 lines; "Done: …" bullets are deleted; fully done specs collapse to one "Done specs" line; open follow-ups from those tables and bullets move to "Follow-ups", one line each with the source PR. SPEC-03 keeps only its `human` row 7 (with the #32 and #34 notes); SPEC-14 keeps its table. Follow-ups found done were dropped (`url_task.record_id`, built as `task_record`; table notes addressed to a later row of the same spec that is now done); the rest are kept, the smaller unverified ones on two grouped lines.
+- Alternatives: keep the tables and only trim notes.
+- Why: Agents read ACTIVE.md every session; 295 lines became about 110. Git history and the decisions log keep the rest.
+- Reversible: yes — git history.
+
+### D-0822 — Batch PRs and `new_worktree.sh`
+- Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided
+- Decision: One PR covers a batch of related ready rows (30-80 files, about 1500-4000 lines), branch `spec-NN/pr-A-B-<name>`, worktree `spec-NN-pr-A-B`. `tools/orchestrator/new_worktree.sh NAME BRANCH` fetches origin and adds the worktree beside the main checkout (first entry of `git worktree list`, as `start_agent.sh` and `cleanup_worktree.sh` find it), refusing an existing path, an existing local or remote branch, a NAME that is a path, and an MSYS `/c/` path.
+- Alternatives: a `config.sh` with `WORKTREE_ROOT` as in the owner's other project; keep raw `git worktree add` in the skills.
+- Why: Fewer, larger PRs cut per-PR review and CI overhead; the script removes the `C:/c/` path mistake and branch reuse. No new config file: the other scripts already derive the root.
+- Reversible: yes.
+
+### D-0823 — The orchestrator only orchestrates; the implementor hands back a READY PR
+- Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided · Supersedes the `YOUR TURN` handshake
+- Decision: The orchestrator gives each implementor five free decision IDs at assignment, merges on `READY <sha7>` with `merge_pr.sh`, closes panes, cleans up, sends `REBASE` only when a branch is behind `main` or conflicts, and unblocks stuck PRs. The implementor starts its one reviewer, reads the verdict comment itself, fixes, adds the tracker commit (rows, follow-ups, decisions; "Current focus" only when asked) and comments `READY`. Reviewers post verdicts with `gh pr comment`. An escalation PR still needs its one review.
+- Alternatives: keep `YOUR TURN` (the orchestrator sequences each tracker commit).
+- Why: Owner request; the handshake cost a round trip per PR, and non-overlapping ID ranges remove the clash it prevented.
+- Reversible: yes — skills and `CLAUDE.md` §3.
+
+### D-0824 — `/simplify` once per PR; analyser patterns in ENGINEERING
+- Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided
+- Decision: `/implement-pr` §2a runs `/simplify` once, after the behaviour and tests, before the PR opens (restoring what #181 removed); later prompts to re-run it or a review get "already ran". ENGINEERING "Patterns the analysers flag" lists the SonarCloud rules that fired more than once in the project's issue history (218 issues), except S5655 (mypy disagrees) and S101 on the generated `schema.d.ts` (excluded since).
+- Alternatives: a SonarCloud quality profile change (needs the owner's account).
+- Why: Owner request; S5778, S9073 and the shell rules recurred across PRs.
+- Reversible: yes.
