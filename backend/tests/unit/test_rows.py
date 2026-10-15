@@ -185,6 +185,26 @@ def test_one_offer_s_url_that_repeats_the_target_url_stays_its_key() -> None:
     assert [row["url"] for row in _rows(_variants(product))] == [product_url, f"{product_url}?v=12"]
 
 
+def test_an_aggregate_offer_repeating_the_target_url_leaves_it_no_key() -> None:
+    # §4.4: the target's own URL is no key. An AggregateOffer is no offer of one item (§4.3), so its repeating that URL
+    # does not make it an Offer's URL that one row may key on.
+    product_url = "https://shop.example.test/g/1"
+    offers = [_offer("10.00", url=product_url), _offer("12.00", sku="W-12")]
+    aggregate = {"@type": "AggregateOffer", "lowPrice": "10.00", "priceCurrency": "EUR", "url": product_url}
+    product = {
+        "@type": "Product",
+        "name": "Synthetic Widget",
+        "url": product_url,
+        "offers": aggregate | {"offers": offers},
+    }
+
+    outcome = _variants(product)
+
+    assert _skus(outcome) == [_sku("W-12")]
+    assert outcome.dropped is not None
+    assert [row.reason for row in outcome.dropped] == ["no_row_key"]
+
+
 def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
     # INV-33: both rows say W-11, but name two GTINs: two variants joined, or one source wrong.
     first = _variant("W-11", "10.00", gtin="4006381333931")
