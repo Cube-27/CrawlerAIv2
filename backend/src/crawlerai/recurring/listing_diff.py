@@ -11,9 +11,10 @@ crawl found, whether or not its page was then reached.
 - each URL an earlier run of the crawl last held, and this one did not, has missed one more run, and once it missed
   `GONE_AFTER_RUNS` in a row gets `gone_at` and a `url_gone` event.
 A run that saw part of its listing only marks nothing missing: one that reached its `limit`, where the frontier stopped
-adding URLs; one with an empty listing, whose pages were not read; and one with a page no rule matched (a navigation
-page) that was not reached, as the crawl handler reads no links from a `blocked`, `shell` or failed page. A navigation
-page `not_found` is gone itself, and what only it listed is missing. A URL no listing held (one a scrape fetched) is
+adding URLs; one with an empty listing, whose pages were not read; one with a page no rule matched (a navigation
+page) that was not reached, as the crawl handler reads no links from a `blocked`, `shell` or failed page; and one whose
+sitemap reading stopped at its time cap (`SITEMAPS_TIMED_OUT`), whose sitemaps' tail was not read. A navigation page
+`not_found` is gone itself, and what only it listed is missing. A URL no listing held (one a scrape fetched) is
 never missing.
 
 The diffs of a site's runs take the site's row lock first, so two runs ending together never lock its `url_state` rows
@@ -33,13 +34,26 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Job, JobId, JobStatus, SchemaId, Site, SiteId, TaskOutcome, UrlState, UrlTask
+from crawlerai.db.models import (
+    Job,
+    JobEvent,
+    JobId,
+    JobStatus,
+    SchemaId,
+    Site,
+    SiteId,
+    TaskOutcome,
+    UrlState,
+    UrlTask,
+)
 
-__all__ = ["GONE_AFTER_RUNS", "URL_GONE", "close_run"]
+__all__ = ["GONE_AFTER_RUNS", "SITEMAPS_TIMED_OUT", "URL_GONE", "close_run"]
 
 # ARCHITECTURE §14 row 4: a URL missing from this many consecutive runs is gone.
 GONE_AFTER_RUNS: Final = 2
 URL_GONE: Final = "url_gone"
+# The event of a crawl whose sitemap reading stopped at its time cap (`crawlerai.worker.handlers.crawl`).
+SITEMAPS_TIMED_OUT: Final = "sitemaps_timed_out"
 
 # The members of a crawl request that decide which URLs its runs can find (SPEC-10 §4.5). `formats`, `fetch`, `locale`
 # and `webhook_url` change what is done with a page, not which pages are listed.
@@ -54,11 +68,11 @@ _JobRow = Row[str, SchemaId | None, dict[str, Any]]
 @dataclass(frozen=True)
 class _Listing:
     """A run's listing: its URLs a page-kind rule matched, sorted (every run locks rows in one order); how many tasks
-    the job has; and whether a page no rule matched was not reached."""
+    the job has; and whether a page no rule matched was not reached, or the sitemap reading timed out."""
 
     urls: list[str]
     tasks: int
-    unreached: bool
+    unread: bool
 
 
 async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> None:
@@ -77,7 +91,7 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     if not listing.urls:
         return
     await _seen(conn, site_id, job_id, listing.urls)
-    if listing.unreached or listing.tasks >= job.request["limit"]:
+    if listing.unread or listing.tasks >= job.request["limit"]:
         return
     for url in await _missed(conn, site_id, job_id, job):
         await record_event(conn, job_id, URL_GONE, {"url": url})
@@ -89,7 +103,8 @@ async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> _L
     tasks = (await conn.execute(query)).all()
     listed = (url for url, page_kind, _ in tasks if page_kind is not None and urlsplit(url).hostname == host)
     unreached = any(page_kind is None and outcome in _UNREACHED for _, page_kind, outcome in tasks)
-    return _Listing(sorted(listed), len(tasks), unreached)
+    timed_out = select(JobEvent.id).where(JobEvent.job_id == job_id, JobEvent.kind == SITEMAPS_TIMED_OUT).exists()
+    return _Listing(sorted(listed), len(tasks), unreached or bool((await conn.execute(select(timed_out))).scalar()))
 
 
 async def _seen(conn: AsyncConnection, site_id: SiteId, job_id: JobId, urls: Sequence[str]) -> None:

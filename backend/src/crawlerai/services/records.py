@@ -8,10 +8,10 @@ record's published value, unchanged (INV-27), and `None` for a field that did no
 """
 
 from collections.abc import Mapping
-from typing import Any, Self
+from typing import Any, Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
-from sqlalchemy import RowMapping, select
+from sqlalchemy import RowMapping, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import (
@@ -33,6 +33,9 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 
 MAX_PAGE = 200
+# The advisory lock a record's transaction holds, shared, from the moment its `created_at` is set to its commit
+# (migration 0018's `record_committed` trigger): blake2b("record_feed", digest_size=8) as a signed bigint.
+RECORD_FEED_LOCK: Final = -7838622165994782610
 _COLUMNS = (
     Record.id,
     Record.schema_id,
@@ -103,7 +106,8 @@ class RecordFilter(BaseModel):
     """The records to list: those of a job, of a site (its host), of a schema version, stored at or after a time, or
     any combination. A job's are those its pages stand for, stored by it or found unchanged (SPEC-11 §4.2, §4.4).
     Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring
-    runs (§4.4). An entity re-extracted unchanged stores no record, so `changed_since` does not list it again."""
+    runs (§4.4). An entity re-extracted unchanged stores no record, so `changed_since` does not list it again. A
+    record's `created_at` is when it committed, so a poller that asks from the time it last asked misses none."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -130,6 +134,7 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     if query.schema_id is not None:
         statement = statement.where(Record.schema_id == query.schema_id)
     if query.changed_since is not None:
+        await _committed(conn)
         statement = statement.where(Record.created_at >= query.changed_since)
     rows, next_cursor = await keyset_page(
         conn, statement, Record.id, after=query.cursor, limit=query.limit, descending=True
@@ -138,6 +143,15 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     schemas = {schema_id: await registry.get_by_id(conn, schema_id) for schema_id in {row["schema_id"] for row in page}}
     items = [_stored(row, schemas[row["schema_id"]]) for row in page]
     return RecordPage(items=items, next_cursor=next_cursor)
+
+
+async def _committed(conn: AsyncConnection) -> None:
+    """Wait until every record whose `created_at` is already set has committed. A record's transaction sets it and
+    holds `RECORD_FEED_LOCK` until its commit is visible, so once the lock is free, a record with an earlier
+    `created_at` is visible to the next statement (READ COMMITTED takes a snapshot per statement), and one set later
+    is no earlier than this call. The lock is released at once: the query that follows takes no part in it."""
+    await conn.execute(select(func.pg_advisory_lock(RECORD_FEED_LOCK)))
+    await conn.execute(select(func.pg_advisory_unlock(RECORD_FEED_LOCK)))
 
 
 def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:

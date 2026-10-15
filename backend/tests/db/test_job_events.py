@@ -31,6 +31,7 @@ from crawlerai.db.models import (
     Project,
     Record,
     Site,
+    TaskRecord,
     UrlTask,
     WebhookDelivery,
 )
@@ -65,11 +66,15 @@ async def _events(conn: AsyncConnection, job_id: JobId) -> list[tuple[str, dict[
     return [(row.kind, row.payload) for row in rows]
 
 
-async def _page(conn: AsyncConnection, job_id: JobId) -> Any:
-    """A claimed task of `job_id` whose page was fetched by the browser, extracted with 2 LLM calls into one record
-    that published `title` and abstained on `price` and `brand`; returns the task and the capture."""
+async def _page(conn: AsyncConnection, job_id: JobId, *, stored: bool = True) -> Any:
+    """A claimed task of `job_id` whose page was fetched by the browser and extracted with 2 LLM calls; the task stands
+    for one record that published `title` and abstained on `price` and `brand`. With `stored`, its extraction stored
+    the record; without, the record is unchanged: an earlier task's extraction stored it (SPEC-11 §4.4). Returns the
+    task and the capture."""
+    if not stored:
+        await _task(conn, job_id, "https://shop.example.test/earlier")
     await _task(conn, job_id)
-    [task] = await claim_tasks(conn, "w1", 1)
+    [*earlier, task] = await claim_tasks(conn, "w1", 2)
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     site = insert(Site).values(project_id=project, host="events.example.test").returning(Site.id)
     site_id = (await conn.execute(site)).scalar_one()
@@ -87,15 +92,18 @@ async def _page(conn: AsyncConnection, job_id: JobId) -> Any:
         "duration_ms": 1,
     }
     capture_id = (await conn.execute(insert(Capture).values(**capture).returning(Capture.id))).scalar_one()
-    extraction = insert(Extraction).values(url_task_id=task.id, engine_version="e", mode="config", llm_calls=2)
-    extraction_id = (await conn.execute(extraction.returning(Extraction.id))).scalar_one()
+    extraction_ids = []
+    for extracting in (*earlier, task):
+        values = {"url_task_id": extracting.id, "engine_version": "e", "mode": "config", "llm_calls": 2}
+        extraction = insert(Extraction).values(values)
+        extraction_ids.append((await conn.execute(extraction.returning(Extraction.id))).scalar_one())
     text = FieldSpec(type=FieldType.TEXT, description="d")
     fields = {"title": text, "price": text, "brand": text}
     document = SchemaDocument(name=f"synthetic_{task.id.hex}", version=1, page_kind="detail", fields=fields)
     schema = await registry.create(conn, document, "user")
     meta = {"title": {"status": "published"}, "price": {"status": "abstained"}, "brand": {"status": "abstained"}}
     record = {
-        "extraction_id": extraction_id,
+        "extraction_id": extraction_ids[0],
         "job_id": job_id,
         "site_id": site_id,
         "schema_id": schema.id,
@@ -106,7 +114,8 @@ async def _page(conn: AsyncConnection, job_id: JobId) -> Any:
         "complete": True,
         "mode": "config",
     }
-    await conn.execute(insert(Record).values(**record))
+    record_id = (await conn.execute(insert(Record).values(**record).returning(Record.id))).scalar_one()
+    await conn.execute(insert(TaskRecord).values(url_task_id=task.id, record_id=record_id))
     return task, capture_id
 
 
@@ -126,6 +135,21 @@ async def test_a_finished_task_records_its_fetch_extraction_and_abstentions_befo
         ("task_extracted", {"url": URL, "outcome": "partial", "mode": "config", "llm_calls": 2}),
         ("task_abstained", {"url": URL, "fields": ["brand", "price"]}),
         ("completed", {}),
+    ]
+
+
+async def test_a_task_whose_record_was_unchanged_records_the_abstentions_of_the_record_it_stands_for(
+    conn: AsyncConnection,
+) -> None:
+    job_id = await _job(conn)
+    task, capture_id = await _page(conn, job_id, stored=False)
+
+    await complete_task(conn, task, "partial", capture_id=capture_id)
+
+    events = [event for event in await _events(conn, job_id) if event[1].get("url") == URL]
+    assert events[1:] == [
+        ("task_extracted", {"url": URL, "outcome": "partial", "mode": "config", "llm_calls": 2}),
+        ("task_abstained", {"url": URL, "fields": ["brand", "price"]}),
     ]
 
 

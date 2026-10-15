@@ -538,6 +538,9 @@ class TaskRecord(Base):
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id, ondelete="CASCADE"), primary_key=True)
     # Indexed for the records a job lists, which join on it, and for a record's delete.
     record_id: Mapped[RecordId] = mapped_column(ForeignKey(Record.id, ondelete="CASCADE"), primary_key=True, index=True)
+    # When the task stood for the record: a page extracted after its content changed that found its record unchanged
+    # confirms the record from then on (`recurring.state.standing_record`). NULL for links made before migration 0018.
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class EvalPageColumns:
