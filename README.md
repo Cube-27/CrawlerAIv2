@@ -42,7 +42,7 @@ around a [generalization contract](docs/ARCHITECTURE.md#2-generalization-contrac
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The single design reference |
 | [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
 | [docs/specs/](docs/specs/README.md) | Implementation specs in build order, each with a PR plan |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Log of decisions made during implementation |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Log of decisions made during implementation: cross-cutting and owner items; per-spec entries in [docs/decisions/](docs/decisions/) |
 | [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md) | Current implementation state |
 | [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, and every command |
 | [docs/ENGINEERING.md](docs/ENGINEERING.md) | Engineering principles for agents |
