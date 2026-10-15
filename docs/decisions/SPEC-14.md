@@ -77,3 +77,73 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: a decorative prefix only.
 - Why: What the bar shows is what is sent.
 - Reversible: yes
+
+### D-0825 — Scrape output tabs: fetch attempts move into Usage
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.3, PR 3 (#194) · Status: decided
+- Decision: The Scrape tabs are JSON, Table, one per page format, Usage; the former Fetch tab's method, status and attempts sit under Usage, and the Draft schema tab goes (Scrape sends no prompt, D-0818).
+- Alternatives: keep a Fetch tab beside Usage.
+- Why: §4.3 lists those tabs and no Fetch tab.
+- Reversible: yes
+
+### D-0826 — Metadata in JSON is a view option for the JSON
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, PRs 3–4 (#194) · Status: decided
+- Decision: The Scrape JSON item carries `metadata` only with Metadata in JSON on, even when Metadata is a page format (that shows the Metadata tab); the run table asks `include=metadata` from the current switch, so turning it on reads the table again.
+- Alternatives: include metadata whenever the response has it.
+- Why: The JSON shows what the switch says.
+- Reversible: yes
+
+### D-0827 — Name order on the client, and the SPEC-14 clarifying edit
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, §6, PR 3 (#194; post-merge review of #190) · Status: decided
+- Decision: A clean record built on the client orders field names by code unit, the server's `sorted` order (D-0816), since schema names are ASCII (`NAME_PATTERN`). SPEC-14 §4.4 and §6 now say name order (D-0816) and `task_record` links (D-0813); no architecture change.
+- Alternatives: `localeCompare` order.
+- Why: The Scrape JSON tab and the batch drawer show the same item the export does.
+- Reversible: yes
+
+### D-0828 — Dev proxy Fetch Metadata check
+- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 1 follow-up (#194; post-merge review of #189) · Status: decided
+- Decision: The Vite dev proxy refuses requests whose `Sec-Fetch-Site` (W3C Fetch Metadata) is other than `same-origin` or `none` before the key is attached; requests without the header (curl, scripts) pass; `server.cors` is off.
+- Alternatives: an Origin allowlist.
+- Why: A page on another site can't spend the server-side key through a developer's browser.
+- Reversible: yes
+
+### D-0829 — A batch run lives in the URL
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, PR 4 (#194) · Status: decided
+- Decision: The run shows at `/batch?job=<id>`; the form stays editable (read-only requests and "Edit and re-run" are row 7).
+- Alternatives: run state in memory only.
+- Why: A reload or a shared link reopens the run.
+- Reversible: yes
+
+### D-0830 — A results row is keyed by its place in the job
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, PR 4 (#194) · Status: decided
+- Decision: `json_values` items carry no task id; a row is keyed by its place in the job (task order is fixed, oldest first), which also names the drawer and its download (`page-<n>.json`).
+- Alternatives: add a task id to `json_values` (an API change).
+- Why: Stable without changing the results format.
+- Reversible: yes
+
+### D-0831 — Results refresh at most once a second
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, PR 4 (#194) · Status: decided
+- Decision: `task_extracted` and `task_failed` read the results again at once when the last read is a second old, else once when it is; the end event reads at once and drops a pending refresh.
+- Alternatives: refresh on every event; poll.
+- Why: A large batch emits many events a second; one read a second keeps the table current without a request per event.
+- Reversible: yes
+
+### D-0832 — Activity wording
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.5, PR 5 (#194) · Status: decided
+- Decision: `task_fetched` with a block class other than `ok` adds "Block class: X." rather than "Blocked" (a `shell` page is not blocked); `learning_finished` says "Learned this site's config." with a `config_id`, else "Learning ended without a config: {reason}."; an unknown kind, or one missing the data its line needs, shows its kind name; elapsed time shows once, in the activity header.
+- Alternatives: drop events the feed can't word.
+- Why: Each line says only what the event's data says.
+- Reversible: yes
+
+### D-0833 — Cancel stays in place
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, PR 4 (#194) · Status: decided
+- Decision: On the run, Cancel is disabled, not removed, once the job can't be cancelled; `cancelState` in `api/jobs.ts` decides it for both job views.
+- Alternatives: hide Cancel when the run ends.
+- Why: The status row does not move (owner rule: no layout shift).
+- Reversible: yes
+
+### D-0834 — Sidebar order follows the mode switch
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.2, §4.8, PR 4 (#194; post-merge review of #191) · Status: decided
+- Decision: The sidebar lists modes in `MODE_GROUPS` order (Pages, then Sites), the one list D-0817 names.
+- Alternatives: a separate sidebar list.
+- Why: One list, so the two can't disagree.
+- Reversible: yes
