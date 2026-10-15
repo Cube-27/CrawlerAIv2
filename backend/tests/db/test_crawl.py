@@ -12,7 +12,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,9 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.core.settings import Settings
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Scope
+from crawlerai.db import queue
 from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
+from crawlerai.db.queue import MAX_ATTEMPTS
 from crawlerai.llm.client import LLMClient, MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.recurring.listing_diff import close_run
@@ -365,6 +367,29 @@ async def test_sitemap_urls_in_scope_are_seeds(
     assert {(task.depth, task.parent_task_id) for task in found.values()} == {(0, None)}
 
 
+async def test_a_retried_start_page_reads_the_sitemaps_once_on_its_last_attempt(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sitemap = f"{own_origin}/products.xml"
+    web.pages |= {
+        f"{own_origin}/robots.txt": robots(f"Sitemap: {sitemap}"),
+        sitemap: urlset(f"{own_origin}/p/1"),
+        f"{own_origin}/": (503, b"busy", "error"),  # a transient failure on every attempt, `blocked` at the last
+        f"{own_origin}/p/1": page(),
+    }
+    monkeypatch.setattr(queue, "retry_delay", lambda attempts: timedelta(0))
+    submitted = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/", max_depth=0), data=None)
+
+    await run(engine, fetching, None, submitted.job_id)
+
+    found = await tasks(engine, submitted.job_id)
+    start = found[f"{own_origin}/"]
+    assert (start.outcome, start.attempts) == ("blocked", MAX_ATTEMPTS)
+    assert web.fetched.count(f"{own_origin}/") == MAX_ATTEMPTS
+    assert web.fetched.count(sitemap) == 1
+    assert sorted(found) == [f"{own_origin}/", f"{own_origin}/p/1"]
+
+
 async def test_reading_sitemaps_stops_at_the_time_cap_and_is_logged(
     engine: AsyncEngine,
     fetching: Fetching,
@@ -414,13 +439,19 @@ async def test_a_target_the_guard_refuses_is_never_fetched(
 
 
 async def _cancel_while_reading_sitemaps(
-    engine: AsyncEngine, fetching: Fetching, web: Web, request: CrawlRequest, data: EngineData | None
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    request: CrawlRequest,
+    data: EngineData | None,
+    *rules: str,
 ) -> None:
     """Cancel the crawl while its start page's task reads the site's sitemap, which can take up to the sitemap time
-    cap: the cancel answers at once, and the job ends `cancelled` once that task finishes."""
+    cap: the cancel answers at once, and the job ends `cancelled` once that task finishes. `rules` go into
+    robots.txt."""
     origin = request.start.removesuffix("/")
     sitemap = f"{origin}/products.xml"
-    web.pages |= {f"{origin}/robots.txt": robots(f"Sitemap: {sitemap}"), sitemap: urlset(f"{origin}/p/1")}
+    web.pages |= {f"{origin}/robots.txt": robots(f"Sitemap: {sitemap}", *rules), sitemap: urlset(f"{origin}/p/1")}
     web.held[sitemap] = release = asyncio.Event()
     submitted = await submit_crawl(engine, fetching.connector, request, data=data)
     worker = asyncio.create_task(run(engine, fetching, data, submitted.job_id))
@@ -464,6 +495,15 @@ async def test_a_cancel_does_not_wait_for_the_sitemaps_after_a_record_was_stored
     request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/*")
 
     await _cancel_while_reading_sitemaps(engine, fetching, web, request, engine_data)
+
+
+async def test_a_cancel_does_not_wait_for_the_sitemaps_after_robots_refused_the_start_page(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    # The start page ends `blocked` without being fetched, and robots.txt's fetch counts as the job's usage.
+    request = crawl(f"{own_origin}/")
+
+    await _cancel_while_reading_sitemaps(engine, fetching, web, request, None, "Disallow: /$")
 
 
 async def _results(engine: AsyncEngine, fetching: Fetching, job_id: JobId) -> Any:

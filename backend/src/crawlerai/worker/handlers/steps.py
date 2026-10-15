@@ -2,8 +2,9 @@
 extracts with as the job pinned them (INV-28); fetching its page politely and storing the capture; the result a page
 that was not reached ends with; and extracting and storing a reached page's record.
 
-Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The fetch
-of a reached page is counted as the job's usage after its extraction (`count_fetch`, D-0346).
+Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The
+task's fetch attempts are counted as the job's usage at its end (`count_fetch`): that write locks the job's row until
+the task commits.
 """
 
 from dataclasses import dataclass
@@ -93,6 +94,16 @@ class FetchedPage:
     proxy_pool: str | None
 
 
+@dataclass(frozen=True)
+class Ended:
+    """A task that ends this run without a page to extract, with what it ends with, and the fetch attempts it made,
+    which `count_fetch` counts as the job's usage."""
+
+    task_result: TaskResult
+    attempts: tuple[AttemptRecord, ...] = ()
+    proxy_pool: str | None = None
+
+
 async def fetch_page(
     conn: AsyncConnection,
     fetching: Fetching,
@@ -102,9 +113,9 @@ async def fetch_page(
     *,
     recurring: Records | None = None,
     served: Records | None = None,
-) -> FetchedPage | TaskResult:
+) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
-    its capture, or the result the task ends this run with. The attempts count as the job's usage. A request the SSRF
+    its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
     guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
@@ -117,7 +128,7 @@ async def fetch_page(
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
-        return Failed(str(e), transient=False)
+        return Ended(Failed(str(e), transient=False))
     site = await site_row(conn, urlsplit(task.url).hostname or "")
     policy = fetch_policy(options, locale, site.proxy_pool)
     standing = None if recurring is None else await _standing(conn, task, site.id, recurring)
@@ -141,13 +152,12 @@ async def fetch_page(
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
             return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool)
         fetched = Failed(refused, transient=False)
-    await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)
         # The task stands for the record that stood for the 304 (`fetch_unless_unchanged` takes none without one).
         await link_records(conn, task.id, [] if standing is None else [standing])
-        return Finished("unchanged")
-    return fetched
+        fetched = Finished("unchanged")
+    return Ended(fetched, tuple(attempts), policy.proxy_pool)
 
 
 async def _recipe(
@@ -164,10 +174,10 @@ async def _recipe(
     return recipe_rung(fetching, recipe, host, lambda url, policy: endpoint_rules(conn, url, policy, robots))
 
 
-async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
-    """Count the page's fetch attempts as the job's usage. A handler counts them once it has extracted the page: role
-    C's client updates the job's usage on a connection of its own, and would wait on this transaction's write to the
-    job's row (D-0346)."""
+async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:
+    """Count the task's fetch attempts as the job's usage. A handler counts them at the task's end, as its last write
+    but the frontier's: the job's row stays locked from this write until the task commits, and role C's client, which
+    updates the job's usage on a connection of its own, would wait on it (D-0346), as would a cancel."""
     await record_fetch_usage(conn, task.job_id, page.attempts, page.proxy_pool)
 
 

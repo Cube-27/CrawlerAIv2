@@ -154,6 +154,11 @@ async def complete_task(
     await _finish(conn, task, "done", ending, outcome=outcome, last_error=reason, **values)
 
 
+def retried(task: ClaimedTask, *, transient: bool) -> bool:
+    """Whether a failure of `task` on this attempt is retried: a transient one, until `MAX_ATTEMPTS` (D-0006)."""
+    return transient and task.attempts < MAX_ATTEMPTS
+
+
 def retry_delay(attempts: int) -> timedelta:
     """The backoff before retrying a task that failed transiently on attempt `attempts` (1 for the first)."""
     delay: timedelta = BACKOFF_BASE * 2 ** (attempts - 1)
@@ -178,7 +183,7 @@ async def fail_task(
     values: dict[str, Any] = {"last_error": _cut(error)}
     if capture_id is not None:
         values["capture_id"] = capture_id
-    if transient and task.attempts < MAX_ATTEMPTS:
+    if retried(task, transient=transient):
         delay = retry_delay(task.attempts) if after is None else after
         await _move(conn, task, "queued", next_attempt_at=func.now() + delay, **values)
     elif exhausted == "failed":

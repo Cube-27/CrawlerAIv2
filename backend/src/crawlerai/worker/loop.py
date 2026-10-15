@@ -36,6 +36,7 @@ from crawlerai.db.queue import (
     complete_task,
     fail_task,
     release_task,
+    retried,
 )
 
 log = logging.getLogger(__name__)
@@ -75,6 +76,17 @@ class Postpone:
 
 TaskResult = Finished | Failed | Postpone
 TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]
+
+
+def ends_task(task: ClaimedTask, result: TaskResult) -> bool:
+    """Whether `result` ends `task`, rather than leaving it to run again: postponed, or failed and retried."""
+    match result:
+        case Postpone():
+            return False
+        case Failed(transient=transient):
+            return not retried(task, transient=transient)
+        case _:
+            return True
 
 
 async def run_worker(
