@@ -13,7 +13,7 @@ import {
 import type { ComponentType, SVGProps } from "react";
 import { matchPath, Outlet, useHref, useLocation, useNavigate } from "react-router";
 import { useEvalUi } from "../api/hooks/health";
-import { MODE_GROUPS } from "../screens/playground/modes";
+import { MODES } from "../screens/playground/modes";
 import { useTheme } from "./theme";
 
 interface NavEntry {
@@ -32,7 +32,7 @@ interface NavGroup {
 // at the foot of the sidebar.
 const PLAYGROUND: NavGroup = {
   title: "Playground",
-  entries: MODE_GROUPS.flatMap((group) => group.modes),
+  entries: [...MODES],
 };
 
 const DATA: NavGroup = {

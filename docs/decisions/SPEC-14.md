@@ -147,3 +147,59 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: a separate sidebar list.
 - Why: One list, so the two can't disagree.
 - Reversible: yes
+
+### D-0855 — A job's stored request has its own endpoint; summaries carry its target
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.6, §4.8, PR 7 (#198) · Status: decided
+- Decision: `GET /v1/jobs/{id}/request` returns the stored `job.request` as validated (defaults filled in); the UI reads it once (`staleTime: Infinity`). `JobSummary` gains `start_url` (the request's `url`) and `url_count` (the length of `urls`), both computed in SQL.
+- Alternatives: the whole request inside `JobSummary`, which puts up to 1,000 URLs in every list item and re-sends them on every `progress` refetch.
+- Why: §4.6 shows a run's URL or URL count, and §4.8 shows its request again. Both additions are additive.
+- Reversible: costly (public members)
+
+### D-0856 — A shown run is read-only until "Edit and re-run"
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.8, PR 7 (#198) · Status: decided
+- Decision: `?job=` fills the bar and options from the job's stored request (D-0855); inputs are disabled through disabled fieldsets (HTML §4.10.15), and tag lists drop their remove action. Options and Advanced still open. "Edit and re-run" takes the primary button's place; sending starts a new job and the URL moves to it.
+- Alternatives: per-control `isReadOnly`.
+- Why: One mechanism for every mode.
+- Reversible: yes
+
+### D-0857 — Crawl with a schema asks for records alone
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2, PR 6 (#198) · Status: decided
+- Decision: With a stored schema, Crawl sends `formats: ["records"]`, disables Format, fixes every rule's page kind to the schema's and needs at least one rule; Metadata in JSON only adds `include=metadata` to the results request.
+- Alternatives: let the server refuse the request.
+- Why: `CrawlRequest` rejects records with other formats, records without rules, and rules of another page kind (SPEC-10 §4.5).
+- Reversible: yes
+
+### D-0858 — Extract's schema source
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2, PR 7 (#198) · Status: decided
+- Decision: An options row picks Stored (the toolbar's Schema), Inline JSON or From a prompt. The page kind is the stored schema's own, or chosen for inline and prompt schemas. The bar's URL comes first in `urls`, then the "More URLs or globs" tag list.
+- Alternatives: a URL list in the bar.
+- Why: §4.2 gives Extract a URL field in the bar and a tag list in its options.
+- Reversible: yes
+
+### D-0859 — Batch and crawl requests with an inline schema show "No schema"
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2, PR 7 (#198) · Status: decided
+- Decision: A batch or crawl job whose stored request names an inline schema (sent through the API) shows without a schema, since the toolbar holds stored schemas only; Extract shows inline schemas as JSON.
+- Alternatives: an inline-JSON source in every mode.
+- Why: §4.2 gives Batch and Crawl the stored-schema select only.
+- Reversible: yes
+
+### D-0860 — A past scrape opens as a run
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.6, PR 7 (#198) · Status: decided
+- Decision: A scrape job opened from `?job=` shows the run view (results table and drawer over `json_values`), not the scrape response view, which needs the full `ScrapeResult`.
+- Alternatives: store the response.
+- Why: §4.6 says a row opens that run on the page; the JSON item shape is the same.
+- Reversible: yes
+
+### D-0861 — Selection passes to Batch in navigation state
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2, PR 8 (#198) · Status: decided
+- Decision: "Scrape as batch" navigates to `/batch` with the selected URLs in the history state, which Batch reads once as its initial list.
+- Alternatives: URLs in the query string, which is length-bound for large maps.
+- Why: Nothing persists, and back returns to the result.
+- Reversible: yes
+
+### D-0862 — Testing Library's async timeout is 5 s
+- Date: 2026-10-16 · Spec/PR: SPEC-14 PR 6 (#198) · Status: decided
+- Decision: `configure({ asyncUtilTimeout: 5000 })` in `frontend/src/test/setup.ts`.
+- Alternatives: per-call timeouts.
+- Why: A playground run is three requests deep (submit, job, results); on a busy runner that exceeds the 1 s default.
+- Reversible: yes

@@ -1,14 +1,17 @@
 import { Button } from "@heroui/react";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useApiClient } from "../../../app/auth";
 import { OutputArea, type OutputState } from "../OutputArea";
-import { PlaygroundLayout } from "../PlaygroundLayout";
 import { ScrapeOutput } from "../output/ScrapeOutput";
-import { requestUrl, UrlInput } from "../UrlInput";
-import { requestPageKind } from "../pageRequest";
+import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
+import { PlaygroundLayout } from "../PlaygroundLayout";
+import { JobRunOutput } from "../run/JobRun";
+import { RecentRuns } from "../run/RecentRuns";
+import { useShownJob } from "../run/useShownJob";
+import { requestUrl, UrlInput } from "../UrlInput";
 import { usePageForm } from "../usePageForm";
-import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM } from "./form";
+import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM, scrapeForm } from "./form";
 import { runScrape, type ScrapeRun } from "./run";
 import { ScrapeOptions } from "./ScrapeOptions";
 
@@ -33,20 +36,24 @@ function outputState(
 }
 
 /** The Scrape playground at `/` (SPEC-14 §4.2): the mode switch, the command bar with `POST /v1/scrape`'s URL, format
- * and schema, the inline options panel, then what the scrape returned. */
+ * and schema, the inline options panel, then what the scrape returned. Before any scrape, the recent scrapes; one
+ * opens as a run (`?job=`, a scrape keeps a job), its page in the results table. */
 export function ScrapePlayground() {
   const client = useApiClient();
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
     INITIAL_FORM,
     state.kind === "failed" ? state.problem : null,
+    pageKindErrors,
   );
+  const { jobId, onEdit, clear } = useShownJob(scrapeForm, setForm);
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
   const latest = useRef(0);
 
   const submit = () => {
     const request = check() ? buildRequest({ ...form, url: requestUrl(form.url) }) : null;
     if (request === null) return;
+    clear();
     const run = ++latest.current;
     setState({ kind: "pending" });
     void runScrape(client, request).then((result) => {
@@ -54,11 +61,18 @@ export function ScrapePlayground() {
     });
   };
 
+  const withMetadata = form.options.metadataInJson;
+  let output: ReactNode = <RecentRuns kind="scrape" />;
+  if (state.kind !== "idle") output = <OutputArea state={outputState(state, withMetadata)} />;
+  else if (jobId !== null)
+    output = <JobRunOutput key={jobId} jobId={jobId} withMetadata={withMetadata} />;
+
   return (
     <PlaygroundLayout
       mode="scrape"
       validationErrors={validationErrors}
       onSubmit={submit}
+      onEdit={onEdit}
       input={
         <UrlInput
           value={form.url}
@@ -67,36 +81,27 @@ export function ScrapePlayground() {
           }}
         />
       }
-      tools={
-        <PageTools
-          form={form}
-          defaults={DEFAULT_OPTIONS}
-          optionsOpen={optionsOpen}
-          onOptionsOpen={setOptionsOpen}
-          onChange={setForm}
-        />
-      }
+      optionsOpen={optionsOpen}
+      onOptionsOpen={setOptionsOpen}
+      optionsChanged={optionsChanged(form.options, DEFAULT_OPTIONS)}
+      tools={<PageTools form={form} onChange={setForm} />}
       action={
         <Button type="submit" isPending={state.kind === "pending"}>
           Scrape
         </Button>
       }
       options={
-        optionsOpen ? (
-          <ScrapeOptions
-            options={form.options}
-            hasSchema={form.schemaId !== ""}
-            schemaPageKind={requestPageKind(form)}
-            onChange={(options) => {
-              setForm({ ...form, options });
-            }}
-          />
-        ) : null
+        <ScrapeOptions
+          options={form.options}
+          hasSchema={form.schemaId !== ""}
+          schemaPageKind={requestPageKind(form)}
+          onChange={(options) => {
+            setForm({ ...form, options });
+          }}
+        />
       }
     >
-      {state.kind === "idle" ? null : (
-        <OutputArea state={outputState(state, form.options.metadataInJson)} />
-      )}
+      {output}
     </PlaygroundLayout>
   );
 }

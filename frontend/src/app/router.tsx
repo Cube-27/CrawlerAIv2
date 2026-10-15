@@ -4,6 +4,9 @@ import { JobScreen } from "../screens/jobs/JobScreen";
 import { JobsScreen } from "../screens/jobs/JobsScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
 import { BatchPlayground } from "../screens/playground/batch/BatchPlayground";
+import { CrawlPlayground } from "../screens/playground/crawl/CrawlPlayground";
+import { ExtractPlayground } from "../screens/playground/extract/ExtractPlayground";
+import { MapPlayground } from "../screens/playground/map/MapPlayground";
 import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
@@ -34,6 +37,9 @@ export const routes: RouteObject[] = [
           // The playground: `/` is its Scrape mode (SPEC-14 §4.8).
           { index: true, element: <ScrapePlayground /> },
           { path: "batch", element: <BatchPlayground /> },
+          { path: "map", element: <MapPlayground /> },
+          { path: "crawl", element: <CrawlPlayground /> },
+          { path: "extract", element: <ExtractPlayground /> },
           { path: "schemas", element: <SchemasScreen /> },
           { path: "schemas/new", element: <NewSchemaScreen /> },
           { path: "schemas/:id", element: <SchemaScreen /> },
@@ -43,6 +49,7 @@ export const routes: RouteObject[] = [
           { path: "sites/:host", element: <SiteScreen /> },
           { path: "configs/:id", element: <ConfigScreen /> },
           { path: "jobs", element: <JobsScreen /> },
+          // A job a mode runs redirects to its run there; a `learn` job keeps its page (SPEC-14 §4.8).
           { path: "jobs/:id", element: <JobScreen /> },
           // SPEC-03 §4.10: the eval API takes the same API key as everything else. The shell lists these routes
           // when `/healthz` reports `eval_ui`.

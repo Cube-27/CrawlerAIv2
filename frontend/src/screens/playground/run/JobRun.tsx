@@ -2,13 +2,15 @@ import { Typography } from "@heroui/react";
 import { useJobEvents } from "../../../api/hooks/events";
 import { useJob } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
-import { cancelState, type JobSummary } from "../../../api/jobs";
+import { cancelState, type JobKind, type JobSummary } from "../../../api/jobs";
 import { ActivityFeed } from "../../../components/ActivityFeed";
 import { CancelJobAction } from "../../../components/CancelJobAction";
 import { JobStatusLabel } from "../../../components/JobStatusLabel";
 import { OutcomeCounts } from "../../../components/OutcomeCounts";
 import { StatusLabel } from "../../../components/StatusLabel";
+import type { Problem } from "../../../api/problem";
 import { OutputArea, type OutputState } from "../OutputArea";
+import { RecentRuns } from "./RecentRuns";
 import { ResultsTable } from "./ResultsTable";
 import { RunExports } from "./RunExports";
 
@@ -43,7 +45,12 @@ function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
       <OutcomeCounts counts={job.counts} outcomes={job.outcomes} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
-          <ResultsTable jobId={job.id} withMetadata={withMetadata} />
+          {/* A crawl's pages open as a batch (SPEC-14 §2.8); a batch's or extract's are its own input. */}
+          <ResultsTable
+            jobId={job.id}
+            withMetadata={withMetadata}
+            selectable={job.kind === "crawl"}
+          />
         </div>
         <ActivityFeed job={job} activity={activity} />
       </div>
@@ -65,4 +72,25 @@ export function JobRunOutput({
     state = { kind: "done", content: <JobRunView job={job.data} withMetadata={withMetadata} /> };
   else state = { kind: "pending", label: "Loading the run" };
   return <OutputArea state={state} />;
+}
+
+/** The output of a mode that starts a job (Batch, Crawl, Extract): the start on its way (`starting`, its loading
+ * label) or refused (`problem`), the run of `jobId`, or, before any run, the recent runs of `kind`. */
+export function JobModeOutput({
+  kind,
+  starting,
+  problem,
+  jobId,
+  withMetadata,
+}: Readonly<{
+  kind: JobKind;
+  starting: string | null;
+  problem: Problem | null;
+  jobId: string | null;
+  withMetadata: boolean;
+}>) {
+  if (starting !== null) return <OutputArea state={{ kind: "pending", label: starting }} />;
+  if (problem !== null) return <OutputArea state={{ kind: "failed", problem }} />;
+  if (jobId === null) return <RecentRuns kind={kind} />;
+  return <JobRunOutput key={jobId} jobId={jobId} withMetadata={withMetadata} />;
 }

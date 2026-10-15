@@ -347,6 +347,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{job_id}/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job Request
+         * @description The request the job was submitted with, as the server validated and stored it (defaults filled in).
+         */
+        get: operations["get_job_request_v1_jobs__job_id__request_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{job_id}/results": {
         parameters: {
             query?: never;
@@ -1437,6 +1457,8 @@ export interface components {
             /** Llm Cost Usd */
             llm_cost_usd: number | null;
             outcomes: components["schemas"]["OutcomeCounts"];
+            /** Start Url */
+            start_url: string | null;
             /** Started At */
             started_at: string | null;
             /**
@@ -1444,6 +1466,8 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Url Count */
+            url_count: number | null;
             /** Usage */
             usage: {
                 [key: string]: number;
@@ -3931,6 +3955,70 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
                     "text/event-stream": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_job_request_v1_jobs__job_id__request_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

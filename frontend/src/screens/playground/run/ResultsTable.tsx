@@ -7,6 +7,7 @@ import { useCursorPages } from "../../../components/cursors";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
 import { PAGE_SIZE, PagedTable } from "../../../components/PagedTable";
 import { ItemDrawer } from "./ItemDrawer";
+import { ScrapeAsBatchBar, SelectionCheckbox, selectOnPage, type Selection } from "./scrapeAsBatch";
 
 /** A page of the job and its place in the job (from 1): tasks keep their order (oldest first), so the place is the
  * row's identity. */
@@ -20,19 +21,54 @@ function pageLabel({ id }: Row): string {
   return `JSON of page ${String(id)}`;
 }
 
+/** The selected URLs of a table that has row selection, and how they change. */
+interface UrlSelection {
+  selected: ReadonlySet<string>;
+  onSelect: (selected: Set<string>) => void;
+}
+
+/** React Aria's selection props for `rows`, whose keys are their places: a row is selected when its URL is. */
+function selectionProps(rows: readonly Row[], { selected, onSelect }: UrlSelection) {
+  return {
+    selectionMode: "multiple" as const,
+    selectedKeys: new Set(rows.filter(({ item }) => selected.has(item.url)).map(({ id }) => id)),
+    onSelectionChange: (selection: Selection) => {
+      onSelect(
+        selectOnPage(
+          selected,
+          rows.map(({ id, item }) => ({ key: id, url: item.url })),
+          selection,
+        ),
+      );
+    },
+  };
+}
+
 function PagesTable({
   rows,
+  selection,
   onOpen,
-}: Readonly<{ rows: readonly Row[]; onOpen: (row: Row) => void }>) {
+}: Readonly<{
+  rows: readonly Row[];
+  selection: UrlSelection | null;
+  onOpen: (row: Row) => void;
+}>) {
   return (
     <Table>
       <Table.ScrollContainer>
         {/* Fixed column widths: long URLs truncate rather than moving the columns. */}
-        <Table.Content aria-label="Pages" className="table-fixed">
+        <Table.Content
+          aria-label="Pages"
+          className="table-fixed"
+          {...(selection === null ? {} : selectionProps(rows, selection))}
+        >
           <Table.Header>
-            <Table.Column isRowHeader className="w-1/2">
-              URL
-            </Table.Column>
+            {selection === null ? null : (
+              <Table.Column className="w-12">
+                <SelectionCheckbox label="Select this page" />
+              </Table.Column>
+            )}
+            <Table.Column isRowHeader>URL</Table.Column>
             <Table.Column className="w-1/6">Outcome</Table.Column>
             <Table.Column className="w-1/6">Records</Table.Column>
             <Table.Column className="w-1/6">JSON</Table.Column>
@@ -45,6 +81,11 @@ function PagesTable({
           >
             {(row) => (
               <Table.Row id={row.id}>
+                {selection === null ? null : (
+                  <Table.Cell>
+                    <SelectionCheckbox label="Select" />
+                  </Table.Cell>
+                )}
                 <Table.Cell className="truncate">
                   {/* The page itself, in a new tab: it is another site, not a screen of this app. */}
                   <Link href={row.item.url} target="_blank" rel="noreferrer">
@@ -77,19 +118,25 @@ function PagesTable({
 }
 
 /** A batch's or crawl's pages (SPEC-14 §4.3), one row each in task order, from `results?format=json_values`; each
- * row's JSON opens in a drawer. The job's events read the page shown again as tasks end. */
+ * row's JSON opens in a drawer. The job's events read the page shown again as tasks end. With `selectable` (a crawl's
+ * pages), rows are selected by URL across pages, and the selected URLs open as a batch (SPEC-14 §2.8). */
 export function ResultsTable({
   jobId,
   withMetadata,
-}: Readonly<{ jobId: string; withMetadata: boolean }>) {
+  selectable,
+}: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
   const values = useJobValues(jobId, { cursor, limit: PAGE_SIZE, withMetadata });
-  const [open, setOpen] = useState<Row | null>(null);
+  // The open drawer's row, by its place: its item is read from the page shown, so a refresh updates it.
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const data = values.data;
   const first = (page - 1) * PAGE_SIZE + 1;
   const rows = (data?.items ?? []).map((item, offset) => ({ id: first + offset, item }));
+  const open = rows.find(({ id }) => id === openId);
   return (
     <>
+      {selectable ? <ScrapeAsBatchBar selected={selected} /> : null}
       <PagedTable
         problem={problemOf(values.error)}
         loading={data === undefined ? "Loading the pages" : null}
@@ -97,14 +144,20 @@ export function ResultsTable({
         onPrevious={previous}
         onNext={data === undefined ? null : nextTo(data.next_cursor)}
       >
-        <PagesTable rows={rows} onOpen={setOpen} />
+        <PagesTable
+          rows={rows}
+          selection={selectable ? { selected, onSelect: setSelected } : null}
+          onOpen={({ id }) => {
+            setOpenId(id);
+          }}
+        />
       </PagedTable>
-      {open === null ? null : (
+      {open === undefined ? null : (
         <ItemDrawer
           item={open.item}
           position={open.id}
           onClose={() => {
-            setOpen(null);
+            setOpenId(null);
           }}
         />
       )}

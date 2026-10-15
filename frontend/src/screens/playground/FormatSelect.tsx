@@ -1,7 +1,7 @@
 import { FieldError, ListBox, Select } from "@heroui/react";
 import type { Key } from "react";
 import type { ScrapeFormat } from "../../api/scrape";
-import { FORMATS, orderedFormats } from "../../components/FormatChoices";
+import { FORMATS, orderedFormats } from "../../components/formats";
 
 /** A page format: every format but `records`, which a chosen schema asks for. */
 export type PageFormat = Exclude<ScrapeFormat, "records">;
@@ -19,14 +19,20 @@ function pageFormats(keys: Key | Key[] | null): PageFormat[] {
  * is the request member a server error names. */
 export function FormatSelect({
   value,
+  isDisabled = false,
   onChange,
-}: Readonly<{ value: readonly PageFormat[]; onChange: (formats: PageFormat[]) => void }>) {
+}: Readonly<{
+  value: readonly PageFormat[];
+  isDisabled?: boolean;
+  onChange: (formats: PageFormat[]) => void;
+}>) {
   return (
     <Select
       aria-label="Format"
       name="formats"
       selectionMode="multiple"
       placeholder="No page format"
+      isDisabled={isDisabled}
       value={[...value]}
       onChange={(keys) => {
         onChange(pageFormats(keys));

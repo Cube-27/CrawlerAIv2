@@ -1,6 +1,6 @@
 import type { MethodHint, PageKind } from "../../api/scrape";
 import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
-import { SelectRow, SwitchRow, TextRow } from "./OptionsPanel";
+import { SelectRow, SwitchRow, TagListRow, TextRow } from "./OptionsPanel";
 
 /** Options rows more than one mode has (SPEC-14 §4.2), each named after its request member. */
 
@@ -79,5 +79,41 @@ export function WebhookRow({
       placeholder="None"
       onChange={onChange}
     />
+  );
+}
+
+/** `include` and `exclude`: the URL globs that scope a crawl's or a map's URLs (SPEC-10 §4.4). */
+export function ScopeRows({
+  include,
+  exclude,
+  onChange,
+}: Readonly<{
+  include: readonly string[];
+  exclude: readonly string[];
+  onChange: (scope: { include?: string[]; exclude?: string[] }) => void;
+}>) {
+  return (
+    <>
+      <TagListRow
+        label="Include"
+        help="URL globs a URL must match to be kept. None: the start URL's host."
+        name="include"
+        values={include}
+        placeholder="https://example.com/items/*"
+        onChange={(next) => {
+          onChange({ include: next });
+        }}
+      />
+      <TagListRow
+        label="Exclude"
+        help="URL globs whose URLs are left out."
+        name="exclude"
+        values={exclude}
+        placeholder="https://example.com/cart/*"
+        onChange={(next) => {
+          onChange({ exclude: next });
+        }}
+      />
+    </>
   );
 }

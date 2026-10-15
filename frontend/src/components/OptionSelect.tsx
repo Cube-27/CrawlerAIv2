@@ -13,6 +13,7 @@ export function OptionSelect<K extends string>({
   options,
   value,
   isRequired = false,
+  isDisabled = false,
   hideLabel = false,
   accepts,
   onChange,
@@ -21,6 +22,7 @@ export function OptionSelect<K extends string>({
   options: Readonly<Record<K, string>>;
   value: K | null;
   isRequired?: boolean;
+  isDisabled?: boolean;
   hideLabel?: boolean;
   accepts: (key: unknown) => key is K;
   onChange: (value: K) => void;
@@ -28,6 +30,7 @@ export function OptionSelect<K extends string>({
   return (
     <Select
       isRequired={isRequired}
+      isDisabled={isDisabled}
       value={value}
       {...(hideLabel ? { "aria-label": label } : {})}
       onChange={(key: Key | null) => {

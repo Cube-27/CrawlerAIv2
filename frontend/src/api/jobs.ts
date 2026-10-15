@@ -132,6 +132,17 @@ export function getJob(client: ApiClient, id: string): Promise<ApiResult<JobSumm
   );
 }
 
+/** The request the job was submitted with, as the server stored it (defaults filled in). */
+export function getJobRequest(
+  client: ApiClient,
+  id: string,
+): Promise<ApiResult<Readonly<Record<string, unknown>>>> {
+  return apiResult(
+    () => client.GET("/v1/jobs/{job_id}/request", { params: { path: { job_id: id } } }),
+    "Loading the job's request",
+  );
+}
+
 /** Cancels the job; the answer is its summary after the cancel. */
 export function cancelJob(client: ApiClient, id: string): Promise<ApiResult<JobSummary>> {
   return apiResult(

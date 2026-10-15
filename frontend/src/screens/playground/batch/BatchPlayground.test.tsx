@@ -5,7 +5,15 @@ import type { JobSummary, JsonValuesItem, JsonValuesPage } from "../../../api/jo
 import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
-import { openOptions, openPlayground, pick, posted, toggleFormats } from "../../../test/playground";
+import {
+  fill,
+  openOptions,
+  openPlayground,
+  optionsButton,
+  pick,
+  posted,
+  toggleFormats,
+} from "../../../test/playground";
 
 // `fetch` answers the batch, job, results and events endpoints with the shapes SPEC-10 §4.2–4.3 and SPEC-14 §4.4
 // define.
@@ -59,6 +67,7 @@ function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
       }),
     "POST /v1/batch/scrape": () => Response.json({ job_id: JOB_ID }),
     [`GET ${JOB}`]: () => Response.json(job()),
+    [`GET ${JOB}/request`]: () => Response.json({ urls: [FIRST.url], formats: ["markdown"] }),
     [`GET ${JOB}/events`]: QUIET,
     [`GET ${JOB}/results`]: () => valuesPage([FIRST, SECOND, THIRD]),
     ...replies,
@@ -66,7 +75,7 @@ function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
 }
 
 async function typeUrls(text: string) {
-  await userEvent.type(screen.getByRole("textbox", { name: "URLs" }), text);
+  await fill(screen.getByRole("textbox", { name: "URLs" }), text);
 }
 
 async function start() {
@@ -104,7 +113,7 @@ describe("batch playground: the command bar", () => {
     await openPlayground("/batch");
     expect(screen.getByText("0 URLs")).toBeInTheDocument();
 
-    await typeUrls("https://shop.test/a{Enter}{Enter}https://shop.test/b");
+    await typeUrls("https://shop.test/a\n\nhttps://shop.test/b");
 
     expect(screen.getByText("2 URLs")).toBeInTheDocument();
   });
@@ -134,7 +143,7 @@ describe("batch playground: the command bar", () => {
   it("posts the batch request SPEC-10 defines from the list, toolbar and options", async () => {
     const calls = batchApi();
     await openPlayground("/batch");
-    await typeUrls("https://shop.test/a{Enter} https://shop.test/b ");
+    await typeUrls("https://shop.test/a\n https://shop.test/b ");
     await toggleFormats("Links");
     await pick(/Schema/, "item_detail version 2");
     const options = await openOptions();
@@ -207,6 +216,7 @@ describe("batch playground: the run", () => {
     await pagesGrid();
     expect(resultQueries(calls)).toEqual(["format=json_values&limit=20"]);
 
+    await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
     const options = await openOptions();
     await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
 
@@ -227,6 +237,43 @@ describe("batch playground: the run", () => {
     expect(
       JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
     ).toEqual(FIRST);
+  });
+
+  it("updates an open drawer when the table reads its page again", async () => {
+    let push: (text: string) => void = () => undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (text) => {
+          controller.enqueue(new TextEncoder().encode(text));
+        };
+      },
+    });
+    const done: JsonValuesItem = {
+      ...THIRD,
+      outcome: "extracted",
+      records: [{ title: "Red mug" }],
+    };
+    let reads = 0;
+    batchApi({
+      [`GET ${JOB}/events`]: () =>
+        new Response(stream, { headers: { "content-type": "text/event-stream" } }),
+      [`GET ${JOB}/results`]: () => {
+        reads += 1;
+        return valuesPage([FIRST, SECOND, reads === 1 ? THIRD : done]);
+      },
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 3" }));
+    const drawer = await screen.findByRole("dialog");
+
+    push(`id: 1\nevent: task_extracted\ndata: ${JSON.stringify({ url: THIRD.url })}\n\n`);
+
+    await waitFor(() => {
+      expect(
+        JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
+      ).toEqual(done);
+    });
   });
 
   it("reads the page shown again as tasks end, at most once a second", async () => {
@@ -359,5 +406,77 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
     await pagesGrid();
 
     expect(screen.getByRole("button", { name: "Cancel job" })).toBeDisabled();
+  });
+});
+
+describe("batch playground: runs", () => {
+  const OLDER = "0192a000-0000-7000-8000-0000000000b0";
+
+  it("lists the recent batches before any run, each opening its run here", async () => {
+    const calls = batchApi({
+      "GET /v1/jobs": () =>
+        Response.json({
+          items: [
+            job({ status: "completed", start_url: "https://shop.test/a", url_count: null }),
+            job({ id: OLDER, started_at: null }),
+          ],
+          next_cursor: null,
+        }),
+    });
+    await openPlayground("/batch");
+
+    const grid = await screen.findByRole("grid", { name: "Recent runs" });
+    const rows = within(grid).getAllByRole("row").slice(1);
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "https://shop.test/a" + "completed" + "Oct 14, 2026, 09:00",
+      "3 URLs" + "running" + "—",
+    ]);
+    expect(rows[0]).toHaveAttribute("data-href", `/batch?job=${JOB_ID}`);
+    expect(calls.find(({ path }) => path === "/v1/jobs")?.query).toBe("kind=batch_scrape&limit=10");
+  });
+
+  it("shows a run's request read-only, and edit and re-run starts a new job, keeping the old one", async () => {
+    const calls = batchApi({
+      [`GET ${JOB}/request`]: () =>
+        Response.json({
+          urls: ["https://shop.test/a", "https://shop.test/b"],
+          formats: ["links", "metadata"],
+          schema: null,
+          page_kind: "listing",
+          fetch: { method_hint: "browser", respect_robots: true },
+          webhook_url: null,
+        }),
+      "POST /v1/batch/scrape": () => Response.json({ job_id: OLDER }),
+      [`GET /v1/jobs/${OLDER}`]: () => Response.json(job({ id: OLDER })),
+      [`GET /v1/jobs/${OLDER}/request`]: () => Response.json({ urls: ["https://shop.test/a"] }),
+      [`GET /v1/jobs/${OLDER}/events`]: QUIET,
+      [`GET /v1/jobs/${OLDER}/results`]: () => valuesPage([]),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    const list = screen.getByRole("textbox", { name: "URLs" });
+    await waitFor(() => {
+      expect(list).toHaveValue("https://shop.test/a\nhttps://shop.test/b");
+    });
+    expect(list).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Start batch" })).not.toBeInTheDocument();
+    expect(optionsButton()).toHaveAccessibleDescription("Settings changed");
+    const options = await openOptions();
+    expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeChecked();
+    expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
+    await fill(list, "\nhttps://shop.test/c");
+    await start();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit and re-run" })).toBeInTheDocument();
+    });
+    expect(posted(calls)).toEqual({
+      urls: ["https://shop.test/a", "https://shop.test/b", "https://shop.test/c"],
+      formats: ["links", "metadata"],
+      schema: null,
+      page_kind: "listing",
+      fetch: { method_hint: "browser" },
+    });
   });
 });

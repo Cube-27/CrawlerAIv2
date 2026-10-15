@@ -9,12 +9,16 @@ import {
   NumberField,
   Select,
   Switch,
+  Tag,
+  TagGroup,
+  TextArea,
   TextField,
   ToggleButton,
   Tooltip,
 } from "@heroui/react";
 import { ArrowRotateLeft, CircleQuestion, Sliders } from "@gravity-ui/icons";
-import { useId, type Key, type ReactNode } from "react";
+import { use, useId, useState, type Key, type ReactNode } from "react";
+import { ReadOnlyContext } from "./readOnly";
 
 /** The playground's options panel (SPEC-14 §4.2, DESIGN.md Options panel): rows of label, help icon and control, in
  * two columns from `md`, then a collapsed Advanced section and Reset settings. It is inline, never an overlay. */
@@ -217,6 +221,115 @@ export function TextRow({
   );
 }
 
+/** Free text over several lines, across the panel's width; empty leaves the member out. `name` is the request
+ * member a server error names. */
+export function TextAreaRow({
+  label,
+  help,
+  name,
+  value,
+  placeholder,
+  onChange,
+}: Readonly<{
+  label: string;
+  help: string;
+  name: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}>) {
+  return (
+    <TextField
+      className="flex flex-col gap-2 md:col-span-2"
+      name={name}
+      value={value}
+      onChange={onChange}
+    >
+      <RowLabel label={label} help={help} />
+      <TextArea rows={6} spellCheck={false} placeholder={placeholder} />
+      <FieldError />
+    </TextField>
+  );
+}
+
+/** A list of entries, each added from the text field with Add (or Enter) and removed from its tag; an entry already
+ * listed is not added again. `name` is the request member a server error names. */
+export function TagListRow({
+  label,
+  help,
+  name,
+  values,
+  placeholder,
+  onChange,
+}: Readonly<{
+  label: string;
+  help: string;
+  name: string;
+  values: readonly string[];
+  placeholder: string;
+  onChange: (values: string[]) => void;
+}>) {
+  const [draft, setDraft] = useState("");
+  // A tag's remove is a keyboard action too (Delete, Backspace), which a disabled fieldset does not block.
+  const readOnly = use(ReadOnlyContext);
+  const add = () => {
+    const entry = draft.trim();
+    if (entry === "") return;
+    onChange(values.includes(entry) ? [...values] : [...values, entry]);
+    setDraft("");
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className={ROW}>
+        <TextField
+          className="flex flex-1 flex-row items-center justify-between gap-3"
+          name={name}
+          value={draft}
+          onChange={setDraft}
+        >
+          <RowLabel label={label} help={help} />
+          <Input
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={placeholder}
+            onKeyDown={(event) => {
+              // Enter adds the entry instead of sending the form.
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              add();
+            }}
+          />
+          <FieldError />
+        </TextField>
+        <Button size="sm" variant="secondary" aria-label={`Add to ${label}`} onPress={add}>
+          Add
+        </Button>
+      </div>
+      {values.length === 0 ? null : (
+        <TagGroup
+          aria-label={label}
+          size="sm"
+          {...(readOnly
+            ? {}
+            : {
+                onRemove: (keys: Set<Key>) => {
+                  onChange(values.filter((value) => !keys.has(value)));
+                },
+              })}
+        >
+          <TagGroup.List>
+            {values.map((value) => (
+              <Tag key={value} id={value} textValue={value}>
+                {value}
+              </Tag>
+            ))}
+          </TagGroup.List>
+        </TagGroup>
+      )}
+    </div>
+  );
+}
+
 const GRID = "grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2";
 
 export function OptionsPanel({
@@ -224,13 +337,17 @@ export function OptionsPanel({
   onReset,
   children,
 }: Readonly<{ advanced: ReactNode; onReset: () => void; children: ReactNode }>) {
+  // Read-only, the settings are disabled (a disabled fieldset, HTML §4.10.15), while Advanced still opens.
+  const readOnly = use(ReadOnlyContext);
   return (
     <section
       id="playground-options"
       aria-label="Options"
       className="options-panel flex flex-col gap-4 p-4"
     >
-      <div className={GRID}>{children}</div>
+      <fieldset disabled={readOnly} className={GRID}>
+        {children}
+      </fieldset>
       <Disclosure>
         <Disclosure.Heading>
           <Button slot="trigger" variant="ghost" size="sm">
@@ -239,11 +356,15 @@ export function OptionsPanel({
           </Button>
         </Disclosure.Heading>
         <Disclosure.Content>
-          <Disclosure.Body className={`${GRID} pt-3`}>{advanced}</Disclosure.Body>
+          <Disclosure.Body>
+            <fieldset disabled={readOnly} className={`${GRID} pt-3`}>
+              {advanced}
+            </fieldset>
+          </Disclosure.Body>
         </Disclosure.Content>
       </Disclosure>
       <div className="flex justify-end">
-        <Button variant="ghost" size="sm" onPress={onReset}>
+        <Button variant="ghost" size="sm" isDisabled={readOnly} onPress={onReset}>
           <ArrowRotateLeft aria-hidden="true" />
           Reset settings
         </Button>

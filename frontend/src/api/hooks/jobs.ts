@@ -5,6 +5,7 @@ import {
   exportJobPage,
   exportJobValues,
   getJob,
+  getJobRequest,
   listJobs,
   listJobResults,
   listJobValues,
@@ -43,9 +44,25 @@ export function useJobs(page: { filters: JobFilters; cursor: string | null; limi
   });
 }
 
-export function useJob(id: string) {
+/** The job `id`; nothing is read while `id` is null. */
+export function useJob(id: string | null) {
   const client = useApiClient();
-  return useQuery({ queryKey: jobKey(id), queryFn: () => unwrap(getJob(client, id)) });
+  return useQuery({
+    queryKey: jobKey(id ?? ""),
+    queryFn: () => unwrap(getJob(client, id ?? "")),
+    enabled: id !== null,
+  });
+}
+
+/** The job's stored request; nothing is read while `id` is null. It never changes, so it is read once. */
+export function useJobRequest(id: string | null) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...JOBS, "request", id],
+    queryFn: () => unwrap(getJobRequest(client, id ?? "")),
+    enabled: id !== null,
+    staleTime: Infinity,
+  });
 }
 
 /** The job's results at `cursor`. */

@@ -1,5 +1,5 @@
 import { Typography } from "@heroui/react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import { useJob } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
 import { cancelState, type JobSummary } from "../../api/jobs";
@@ -17,6 +17,7 @@ import { UsageSummary } from "../../components/UsageSummary";
 import { formatUsd } from "../../components/usd";
 import { ExportActions } from "./ExportActions";
 import { JobResults } from "./JobResults";
+import { runPath } from "../playground/modes";
 import { KIND_LABELS } from "./kinds";
 
 function JobTimes({ job }: Readonly<{ job: JobSummary }>) {
@@ -63,12 +64,15 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
   );
 }
 
-/** One job (SPEC-12 §4.3): its status and counts, usage, live events, results with exports, and a cancel. */
+/** One job. A job a playground mode runs redirects to its run there (SPEC-14 §4.8); a `learn` job keeps this page
+ * (SPEC-12 §4.3): its status and counts, usage, live events, results with exports, and a cancel. */
 export function JobScreen() {
   const { id = "" } = useParams();
   const job = useJob(id);
   const problem = problemOf(job.error);
   if (problem !== null) return <ProblemAlert problem={problem} />;
   if (!job.isSuccess) return <LoadingView label="Loading the job" />;
+  const run = runPath(job.data.kind, job.data.id);
+  if (run !== null) return <Navigate replace to={run} />;
   return <JobView key={id} job={job.data} />;
 }

@@ -25,6 +25,8 @@ export function jobSummary(overrides: Partial<JobSummary> & Pick<JobSummary, "id
     engine_version: "0.0.0",
     webhook_url: null,
     cancel_requested: false,
+    start_url: null,
+    url_count: 3,
     ...overrides,
   };
 }

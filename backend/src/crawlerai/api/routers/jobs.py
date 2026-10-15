@@ -1,7 +1,7 @@
 """`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (SPEC-10 §4.2): the jobs a page at a
 time, a job's summary, its cancel, and its records or page outputs a page at a time."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -50,6 +50,17 @@ async def get_job(job_id: JobId, request: Request) -> JobSummary:
     async with engine.connect() as conn:
         try:
             return await jobs.get_job(conn, job_id)
+        except JobNotFound as e:
+            raise not_found(str(e)) from e
+
+
+@router.get("/{job_id}/request")
+async def get_job_request(job_id: JobId, request: Request) -> dict[str, Any]:
+    """The request the job was submitted with, as the server validated and stored it (defaults filled in)."""
+    engine = database(request)
+    async with engine.connect() as conn:
+        try:
+            return await jobs.job_request(conn, job_id)
         except JobNotFound as e:
             raise not_found(str(e)) from e
 
