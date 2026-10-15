@@ -1,5 +1,6 @@
 """Politeness (SPEC-02 §4.6): the request interval, Retry-After and per-host admission."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 
@@ -74,6 +75,21 @@ def test_the_limiter_admits_one_request_per_interval_per_host() -> None:
     # A refused request does not take the slot.
     clock.now += 0.75
     assert limiter.admit("a.example.test", second) == timedelta(0)
+
+
+def test_a_wait_in_place_past_its_bound_is_refused_and_takes_no_turn() -> None:
+    clock = Clock()
+    limiter = HostLimiter(clock)
+    minute = timedelta(minutes=1)
+    limiter.pause("a.example.test", timedelta(minutes=10))
+
+    refused = asyncio.run(limiter.wait("a.example.test", timedelta(seconds=1), minute))
+    clock.now += 600
+
+    assert refused is False
+    # The refused wait took no turn: the next request goes as the pause ends.
+    assert asyncio.run(limiter.wait("a.example.test", timedelta(seconds=1), minute)) is True
+    assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(seconds=1)
 
 
 def test_a_pause_holds_the_host_and_a_shorter_one_does_not_cut_it() -> None:

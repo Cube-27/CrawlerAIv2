@@ -19,8 +19,9 @@ BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
 
-# Waits until the site's rate admits one more request, and records it.
-Admit = Callable[[], Awaitable[None]]
+# Waits until the site's rate admits one more request, records it and answers True; answers False, recording nothing,
+# when that turn is too far off to wait for in place.
+Admit = Callable[[], Awaitable[bool]]
 
 
 def interval(crawl_delay_ms: int | None, robots_delay: timedelta | None) -> timedelta:
@@ -70,10 +71,14 @@ class HostLimiter:
         self._next[host] = now + interval.total_seconds()
         return timedelta(0)
 
-    async def wait(self, host: str, interval: timedelta) -> None:
-        """Wait in place until a request to `host` may go, recording it."""
+    async def wait(self, host: str, interval: timedelta, bound: timedelta = timedelta.max) -> bool:
+        """Wait in place until a request to `host` may go, record it and answer True; answer False at once, recording
+        nothing, when it may go only more than `bound` from now."""
         while wait := self.admit(host, interval):
+            if wait > bound:
+                return False
             await asyncio.sleep(wait.total_seconds())
+        return True
 
     def pause(self, host: str, after: timedelta) -> None:
         """Admit nothing to `host` for `after`, unless a longer wait is already due."""

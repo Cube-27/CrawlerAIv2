@@ -3,24 +3,30 @@
 The order: robots.txt (unless the job's operator override says otherwise), then the site's rate, then the fetch.
 A wait for the page's first request never sleeps in the worker: the task goes back to the queue, and the worker moves
 on to other sites. A further request the fetch makes, the browser retry, waits in place for its turn: the first
-request is spent, and postponing would send it again.
+request is spent, and postponing would send it again. A turn more than `WAIT_MAX` away is not waited for, since the
+task's claim would lapse (`LEASE`) and another worker send the first request again; the fetch keeps the outcome it
+has.
 """
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from functools import partial
+from typing import Final
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, HostLimiter, interval, retry_after
+from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, site_robots
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
-from crawlerai.db.queue import ClaimedTask, retry_delay
+from crawlerai.db.queue import LEASE, ClaimedTask, retry_delay
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
+
+# The longest wait in place for a further request's turn: half the lease leaves the other half for the requests
+# themselves (each within its policy's timeout) and the rest of the task.
+WAIT_MAX: Final = LEASE / 2
 
 # A page fetch, which answers `Unchanged` when it sent validators the page still matches (SPEC-11 §4.2), and admits
 # each request after its first with the `Admit` it is given.
@@ -47,7 +53,8 @@ async def fetch_politely(
     - a 429 or 503 to any request of the fetch, not only the one whose outcome it kept: a transient failure, retried
       after its `Retry-After` or the queue's backoff, then `blocked` once attempts run out; `blocked` at once when the
       server asks for more than the longest backoff.
-    `fetch` admits each request after its first at the site's rate, waiting in place (`HostLimiter.wait`)."""
+    `fetch` admits each request after its first at the site's rate, waiting in place (`HostLimiter.wait`) up to
+    `WAIT_MAX`."""
     site = (await conn.execute(select(Site.robots_snapshot, Site.crawl_delay_ms).where(Site.id == site_id))).one()
     robots = None
     if policy.respect_robots:
@@ -61,16 +68,14 @@ async def fetch_politely(
     if wait := limiter.admit(host, gap):
         return Postpone(wait)
 
-    result = await fetch(task.url, partial(limiter.wait, host, gap))
+    result = await fetch(task.url, partial(limiter.wait, host, gap, WAIT_MAX))
     if isinstance(result, Unchanged):
         return result
     slowed = _slowed_down(result.attempts)
     if slowed is None:
         return result
     error = f"http {slowed.status}"
-    manifest = result.bundle.manifest
-    # Only the kept outcome's headers are stored; a Retry-After on another attempt's response is not read.
-    asked = retry_after(manifest.headers.response, datetime.now(UTC)) if manifest.status_code == slowed.status else None
+    asked = slowed.retry_after
     if asked is not None and asked > BACKOFF_MAX:
         # Retrying before the server allows breaks its request; waiting longer holds the job open without bound.
         limiter.pause(host, BACKOFF_MAX)

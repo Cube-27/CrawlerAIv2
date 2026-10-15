@@ -233,12 +233,15 @@ def test_a_recipe_asked_to_slow_down_is_kept_without_a_fallback() -> None:
     assert len(stubs.http.calls) == 0
 
 
-def _acquire_admitting(http: BlockClass, recipe: BlockClass | None = None) -> tuple[list[str], FetchResult]:
-    """`acquire` in auto with an `admit_next` that logs, alongside the rungs, when it runs."""
+def _acquire_admitting(
+    http: BlockClass, recipe: BlockClass | None = None, *, admits: bool = True
+) -> tuple[list[str], FetchResult]:
+    """`acquire` in auto with an `admit_next` that logs, alongside the rungs, when it runs, and answers `admits`."""
     log: list[str] = []
 
-    async def admit_next() -> None:
+    async def admit_next() -> bool:
         log.append("admit")
+        return admits
 
     def logged(rung: Rung) -> Callable[[str, FetchPolicy], Awaitable[FetchResult]]:
         async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
@@ -270,3 +273,17 @@ def test_the_page_after_a_failed_recipe_waits_for_its_admission() -> None:
 def test_a_fetch_of_one_request_asks_no_admission(recipe: BlockClass | None) -> None:
     log, _ = _acquire_admitting("ok", recipe=recipe)
     assert log == ["api" if recipe else "http"]
+
+
+def test_a_browser_retry_not_admitted_in_time_is_skipped_and_the_http_outcome_kept() -> None:
+    log, result = _acquire_admitting("shell", admits=False)
+
+    assert log == ["http", "admit"]
+    assert (result.method, result.block_class) == ("http", "shell")
+
+
+def test_a_page_after_a_failed_recipe_not_admitted_in_time_keeps_the_recipe_outcome() -> None:
+    log, result = _acquire_admitting("ok", recipe="not_found", admits=False)
+
+    assert log == ["api", "admit"]
+    assert (result.method, result.block_class) == ("api", "not_found")

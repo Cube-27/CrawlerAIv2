@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
+from crawlerai.acquire.politeness import retry_after
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
@@ -75,7 +76,14 @@ def fetch_result(
         engine_version=engine_version,
     )
     status = exchange.status or None
-    attempt = AttemptRecord(method=method, status=status, block_class=block_class, duration_ms=duration_ms, error=error)
+    attempt = AttemptRecord(
+        method=method,
+        status=status,
+        block_class=block_class,
+        duration_ms=duration_ms,
+        error=error,
+        retry_after=retry_after(exchange.response_headers, fetched_at),
+    )
     bundle = CaptureBundle(
         manifest=manifest, body=content.body, network=tuple(data for _, data in content.network), raw_body=raw_body
     )

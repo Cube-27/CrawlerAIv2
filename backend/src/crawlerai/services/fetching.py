@@ -106,10 +106,10 @@ def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord]) ->
     return fetch
 
 
-async def admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None) -> None:
-    """Wait until the site's rate admits a request (SPEC-02 §4.6). The caller is waiting anyway, so the service waits
-    in place, within its timeout, where a worker would postpone the task."""
-    await limiter.wait(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay))
+async def admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None) -> bool:
+    """Wait until the site's rate admits a request (SPEC-02 §4.6), and answer True. The caller is waiting anyway, so
+    the service waits in place, within its timeout, where a worker would postpone the task."""
+    return await limiter.wait(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay))
 
 
 # The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy
