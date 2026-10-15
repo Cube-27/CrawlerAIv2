@@ -19,6 +19,9 @@ OFFER = "Offer"
 # not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
 # the atomic-offer rule. The variant's own values (its sku, its name) stay the variant's.
 VARIANT = "hasVariant"
+# schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant (SPEC-13
+# §4.3), so it is never a variant holder.
+AGGREGATE_OFFER = "AggregateOffer"
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,3 +66,23 @@ class EntityGraph:
             return False
         holder = self.entities[owner.parent]
         return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)
+
+    def holders(self, target: Entity) -> tuple[Entity, ...]:
+        """The target's variant holders (SPEC-13 §4.6): its `hasVariant` members and the Offers directly under it,
+        an AggregateOffer excepted."""
+        return tuple(
+            e
+            for e in self.entities.values()
+            if e.parent == target.id
+            and (e.via == VARIANT or (self.is_a(e, OFFER) and not self.is_a(e, AGGREGATE_OFFER)))
+        )
+
+    def variants(self, target: Entity) -> tuple[Entity, ...]:
+        """The target's `hasVariant` members."""
+        return tuple(e for e in self.entities.values() if e.parent == target.id and e.via == VARIANT)
+
+    def offers_of(self, holder: Entity) -> frozenset[str]:
+        """The Offers a variant holder stands for: itself when it is an Offer, else the Offers directly under it."""
+        if self.is_a(holder, OFFER):
+            return frozenset({holder.id})
+        return frozenset(e.id for e in self.entities.values() if e.parent == holder.id and self.is_a(e, OFFER))

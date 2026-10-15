@@ -183,6 +183,11 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
      the page itself is the target (cold pages without markup).
 - Ambiguous → every field is `conflict` with reason `intent_ambiguous`; the page is incomplete and handled per
   4.10 (`partial` for caller-supplied URLs, `no_match` for crawl-discovered ones).
+- `select_variant(request_url, final_url, canonical_url, graph, target) -> Entity | None` (SPEC-13 §4.6, detail
+  pages): of the target's variant holders (its `hasVariant` members and the Offers directly under it; never an
+  `AggregateOffer`, a summary of offers), the one whose own `urls` contain a page URL, when exactly one does: step
+  3's URL test applied to variants. Whole canonicalized URLs are compared; no query parameter is read (INV-13).
+  The page URL with no variant named selects none (no first or cheapest default, C7).
 
 ### 4.7 Preference (§10)
 
@@ -203,9 +208,15 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
 ### 4.8 Rules from §8.2 and §10
 
 - **Atomic offers** (INV-15): `price`, `availability` (and `currency` within money) must come from the same
-  `Offer` entity. When several Offers exist, the target's own and its variants' (§4.6), and there is no variant
-  handling in core, the field is `conflict` unless all Offers agree (the selected variant and per-variant rows:
-  SPEC-13); `AggregateOffer.lowPrice/highPrice` are never published as price (they feed `range` fields only).
+  `Offer` entity. When several Offers exist, the target's own and its variants' (§4.6), the field is `conflict`
+  (`offers_disagree`) unless all Offers agree; `AggregateOffer.lowPrice/highPrice` are never published as price
+  (they feed `range` fields only).
+- **Selected variant** (INV-36, SPEC-13 §4.6): when `select_variant` selects a holder, the Offer fields come only
+  from its Offers (the selected Offer, or the selected variant's); other holders' Offer candidates are rejected
+  `other_variant`, and INV-15 holds inside the holder.
+- **Variant fill** (SPEC-13 §4.6): a `gtin` or `sku` identifier field for which no candidate is the target's takes
+  the selected variant's own candidates; with no variant selected, its variants' only when every variant has one
+  and all agree (else it stays as it was). A value the target states is never replaced; no other field is filled.
 - **URL parameters** (INV-13): a candidate whose raw value equals a query-parameter value of the request URL is
   rejected (`url_param`) unless `visible(raw)`.
 - **Derived values** (C7, INV-07): the only derivations in core: `url` (detail) ← `<link rel=canonical>` else
