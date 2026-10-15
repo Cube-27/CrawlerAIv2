@@ -50,9 +50,9 @@ export function ScrapePlayground() {
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.
   const latest = useRef(0);
 
+  const request = buildRequest({ ...form, url: requestUrl(form.url) });
   const submit = () => {
-    const request = check() ? buildRequest({ ...form, url: requestUrl(form.url) }) : null;
-    if (request === null) return;
+    if (!check() || request === null) return;
     clear();
     const run = ++latest.current;
     setState({ kind: "pending" });
@@ -73,6 +73,7 @@ export function ScrapePlayground() {
       validationErrors={validationErrors}
       onSubmit={submit}
       onEdit={onEdit}
+      request={request}
       input={
         <UrlInput
           value={form.url}

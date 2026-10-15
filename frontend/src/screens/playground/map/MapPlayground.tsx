@@ -38,6 +38,7 @@ export function MapPlayground() {
     sendable,
   );
   const { jobId, onEdit, clear } = useShownJob(mapForm, setForm);
+  const request = buildMap({ ...form, url: requestUrl(form.url) });
 
   let state: OutputState | null = null;
   if (map.isPending) state = { kind: "pending", label: "Mapping the site" };
@@ -51,9 +52,10 @@ export function MapPlayground() {
       validationErrors={validationErrors}
       onSubmit={() => {
         clear();
-        map.mutate(buildMap({ ...form, url: requestUrl(form.url) }));
+        map.mutate(request);
       }}
       onEdit={onEdit}
+      request={request}
       input={
         <UrlInput
           value={form.url}

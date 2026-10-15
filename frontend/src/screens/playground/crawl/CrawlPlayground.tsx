@@ -24,9 +24,9 @@ export function CrawlPlayground() {
   );
   const { jobId, onEdit, show } = useShownJob(crawlForm, setForm);
 
+  const request = buildCrawl({ ...form, url: requestUrl(form.url) });
   const start = () => {
-    const request = check() ? buildCrawl({ ...form, url: requestUrl(form.url) }) : null;
-    if (request === null) return;
+    if (!check() || request === null) return;
     submit.mutate(request, { onSuccess: show });
   };
 
@@ -36,6 +36,7 @@ export function CrawlPlayground() {
       validationErrors={validationErrors}
       onSubmit={start}
       onEdit={onEdit}
+      request={request}
       input={
         <UrlInput
           value={form.url}

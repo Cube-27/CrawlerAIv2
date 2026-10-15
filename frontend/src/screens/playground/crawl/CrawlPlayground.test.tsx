@@ -1,9 +1,9 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
-import type { JsonValuesItem, JsonValuesPage } from "../../../api/jobs";
+import type { JsonValuesItem } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
-import { jobSummary } from "../../../test/jobs";
+import { runApi, SCHEMA_ID } from "../../../test/runs";
 import {
   openOptions,
   fill,
@@ -19,7 +19,6 @@ import {
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000c1";
 const JOB = `/v1/jobs/${JOB_ID}`;
-const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";
 
 const ITEM: JsonValuesItem = {
   url: "https://shop.test/items/1",
@@ -27,38 +26,17 @@ const ITEM: JsonValuesItem = {
   records: [{ title: "Blue mug" }],
 };
 
-const QUIET = () =>
-  new Response(new ReadableStream(), { headers: { "content-type": "text/event-stream" } });
-
 function crawlApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
-  return stubApi({
-    "GET /v1/schemas": () =>
-      Response.json({
-        items: [
-          {
-            id: SCHEMA_ID,
-            name: "item_detail",
-            version: 2,
-            origin: "user",
-            status: "active",
-            page_kind: "detail",
-            fields: { title: { type: "text" } },
-          },
-        ],
-      }),
-    "POST /v1/crawl": () => Response.json({ job_id: JOB_ID }, { status: 202 }),
-    [`GET ${JOB}`]: () => Response.json(jobSummary({ id: JOB_ID, kind: "crawl" })),
-    [`GET ${JOB}/request`]: () =>
-      Response.json({ url: "https://shop.test/", formats: ["markdown"] }),
-    [`GET ${JOB}/events`]: QUIET,
-    [`GET ${JOB}/results`]: () =>
-      Response.json({
-        format: "json_values",
-        items: [ITEM],
-        next_cursor: null,
-      } satisfies JsonValuesPage),
-    ...replies,
-  });
+  return runApi(
+    {
+      submit: "POST /v1/crawl",
+      jobId: JOB_ID,
+      kind: "crawl",
+      request: { url: "https://shop.test/", formats: ["markdown"] },
+      items: [ITEM],
+    },
+    replies,
+  );
 }
 
 async function typeUrl(text: string) {

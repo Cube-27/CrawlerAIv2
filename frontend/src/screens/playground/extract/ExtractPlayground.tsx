@@ -30,9 +30,9 @@ export function ExtractPlayground() {
   );
   const { jobId, onEdit, show } = useShownJob(extractForm, setForm);
 
+  const request = buildExtract({ ...form, url: requestUrl(form.url) });
   const start = () => {
-    const request = check() ? buildExtract({ ...form, url: requestUrl(form.url) }) : null;
-    if (request === null) return;
+    if (!check() || request === null) return;
     submit.mutate(request, { onSuccess: show });
   };
 
@@ -42,6 +42,7 @@ export function ExtractPlayground() {
       validationErrors={validationErrors}
       onSubmit={start}
       onEdit={onEdit}
+      request={request}
       input={
         <UrlInput
           value={form.url}

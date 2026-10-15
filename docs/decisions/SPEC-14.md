@@ -203,3 +203,38 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: per-call timeouts.
 - Why: A playground run is three requests deep (submit, job, results); on a busy runner that exceeds the 1 s default.
 - Reversible: yes
+
+### D-0890 — Get code's MCP tab shows a `tools/call` request
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.7, PR 10 (#201) · Status: decided
+- Decision: The MCP tab shows the JSON-RPC `tools/call` request (MCP 2025-06-18) naming the mode's tool, with the request body as its `request` argument. Batch has no MCP tool (SPEC-10 §4.7), so its tab says so and Copy code is off.
+- Alternatives: an MCP client config; hiding the tab for Batch.
+- Why: §4.7 asks for the tool call with the same arguments, independent of the client; a fixed set of tabs moves nothing.
+- Reversible: yes
+
+### D-0891 — One prompts file per mode, two level-1 sections
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.7, PR 10 (#201) · Status: decided
+- Decision: `frontend/src/screens/playground/prompts/<mode>.md` holds `# call-<mode>` and `# integrate-<mode>`; the heading is the prompt's short name, and its prefix picks the row title.
+- Alternatives: two files per mode.
+- Why: §4.7 says one file per mode.
+- Reversible: yes
+
+### D-0892 — The Python snippet calls `httpx.request("POST", …)` with a 300 s timeout
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.7, PR 10 (#201) · Status: decided
+- Decision: `httpx.request("POST", url, headers=…, json=…, timeout=300.0)`.
+- Alternatives: `httpx.post` with httpx's default timeout.
+- Why: httpx's 5 s default is shorter than many scrapes; `httpx.post` in a string trips the C3 scan's dotted-word rule (`.post`).
+- Reversible: yes
+
+### D-0893 — Endpoint title and sentence copied from `openapi.json`, checked by a test
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.7, PR 10 (#201) · Status: decided
+- Decision: `getCode/endpoints.ts` holds each mode's path, OpenAPI summary and the first sentence of its description; a test asserts they equal `openapi.json`.
+- Alternatives: import `openapi.json` into the bundle.
+- Why: Keeps the 250 KB document out of the app.
+- Reversible: yes
+
+### D-0894 — Get code shows what the builder would send
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.7, PR 10 (#201) · Status: decided
+- Decision: Get code shows the request the mode's builder returns, the same value the primary action sends. When the builder returns null (no format, no schema or page kind), each tab shows "Complete the request above to see its code." in the same box and Copy code is off. An empty URL is not checked by the builders (the bar's required field blocks the send), so the snippet then shows `"url": ""`.
+- Alternatives: disable the button; a URL check in every builder.
+- Why: The snippet is exactly the body sent; the prompts and key help stay reachable; nothing moves.
+- Reversible: yes

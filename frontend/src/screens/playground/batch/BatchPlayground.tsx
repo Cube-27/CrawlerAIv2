@@ -28,9 +28,9 @@ export function BatchPlayground() {
   );
   const { jobId, onEdit, show } = useShownJob(batchForm, setForm);
 
+  const request = buildBatch(form);
   const start = () => {
-    const request = check() ? buildBatch(form) : null;
-    if (request === null) return;
+    if (!check() || request === null) return;
     submit.mutate(request, { onSuccess: show });
   };
 
@@ -40,6 +40,7 @@ export function BatchPlayground() {
       validationErrors={validationErrors}
       onSubmit={start}
       onEdit={onEdit}
+      request={request}
       input={
         <UrlList
           value={form.urls}

@@ -1,10 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
-import type { JobSummary, JsonValuesItem, JsonValuesPage } from "../../../api/jobs";
+import type { JobSummary, JsonValuesItem } from "../../../api/jobs";
 import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
+import { quietEvents, runApi, SCHEMA_ID, valuesPage } from "../../../test/runs";
 import {
   fill,
   openOptions,
@@ -20,7 +21,6 @@ import {
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000b1";
 const JOB = `/v1/jobs/${JOB_ID}`;
-const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";
 const CURSOR = "0192a000-0000-7000-8000-0000000000t2";
 
 /** The batch's job: three tasks, one extracted, one blocked, one queued. */
@@ -41,37 +41,19 @@ const SECOND: JsonValuesItem = {
 };
 const THIRD: JsonValuesItem = { url: "https://shop.test/items/3", outcome: null, records: [] };
 
-function valuesPage(items: JsonValuesItem[], next_cursor: string | null = null): Response {
-  return Response.json({ format: "json_values", items, next_cursor } satisfies JsonValuesPage);
-}
-
-const QUIET = () =>
-  new Response(new ReadableStream(), { headers: { "content-type": "text/event-stream" } });
-
 /** The batch API: a POST answers the job's id, and the job's run answers `replies` over these defaults. */
 function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
-  return stubApi({
-    "GET /v1/schemas": () =>
-      Response.json({
-        items: [
-          {
-            id: SCHEMA_ID,
-            name: "item_detail",
-            version: 2,
-            origin: "user",
-            status: "active",
-            page_kind: "detail",
-            fields: { title: { type: "text" } },
-          },
-        ],
-      }),
-    "POST /v1/batch/scrape": () => Response.json({ job_id: JOB_ID }),
-    [`GET ${JOB}`]: () => Response.json(job()),
-    [`GET ${JOB}/request`]: () => Response.json({ urls: [FIRST.url], formats: ["markdown"] }),
-    [`GET ${JOB}/events`]: QUIET,
-    [`GET ${JOB}/results`]: () => valuesPage([FIRST, SECOND, THIRD]),
-    ...replies,
-  });
+  return runApi(
+    {
+      submit: "POST /v1/batch/scrape",
+      jobId: JOB_ID,
+      kind: "batch_scrape",
+      job: job(),
+      request: { urls: [FIRST.url], formats: ["markdown"] },
+      items: [FIRST, SECOND, THIRD],
+    },
+    replies,
+  );
 }
 
 async function typeUrls(text: string) {
@@ -449,7 +431,7 @@ describe("batch playground: runs", () => {
       "POST /v1/batch/scrape": () => Response.json({ job_id: OLDER }),
       [`GET /v1/jobs/${OLDER}`]: () => Response.json(job({ id: OLDER })),
       [`GET /v1/jobs/${OLDER}/request`]: () => Response.json({ urls: ["https://shop.test/a"] }),
-      [`GET /v1/jobs/${OLDER}/events`]: QUIET,
+      [`GET /v1/jobs/${OLDER}/events`]: quietEvents,
       [`GET /v1/jobs/${OLDER}/results`]: () => valuesPage([]),
     });
     await openPlayground(`/batch?job=${JOB_ID}`);

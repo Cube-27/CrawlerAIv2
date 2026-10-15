@@ -1,48 +1,17 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
-import type { JsonValuesPage } from "../../../api/jobs";
-import { stubApi, type Call } from "../../../test/api";
-import { jobSummary } from "../../../test/jobs";
+import type { Call } from "../../../test/api";
+import { runApi, SCHEMA_ID } from "../../../test/runs";
 import { fill, openOptions, openPlayground, pick, posted } from "../../../test/playground";
 
 // `fetch` answers the extract, job, results and events endpoints with the shapes SPEC-10 §4.2, §4.6 and SPEC-14 §4.4
 // define.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000e1";
-const JOB = `/v1/jobs/${JOB_ID}`;
-const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";
-
-const QUIET = () =>
-  new Response(new ReadableStream(), { headers: { "content-type": "text/event-stream" } });
 
 function extractApi(request: Record<string, unknown> = {}): Call[] {
-  return stubApi({
-    "GET /v1/schemas": () =>
-      Response.json({
-        items: [
-          {
-            id: SCHEMA_ID,
-            name: "item_detail",
-            version: 2,
-            origin: "user",
-            status: "active",
-            page_kind: "detail",
-            fields: { title: { type: "text" } },
-          },
-        ],
-      }),
-    "POST /v1/extract": () => Response.json({ job_id: JOB_ID }, { status: 202 }),
-    [`GET ${JOB}`]: () => Response.json(jobSummary({ id: JOB_ID, kind: "extract" })),
-    [`GET ${JOB}/request`]: () => Response.json(request),
-    [`GET ${JOB}/events`]: QUIET,
-    [`GET ${JOB}/results`]: () =>
-      Response.json({
-        format: "json_values",
-        items: [],
-        next_cursor: null,
-      } satisfies JsonValuesPage),
-  });
+  return runApi({ submit: "POST /v1/extract", jobId: JOB_ID, kind: "extract", request });
 }
 
 async function extract() {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -127,6 +127,27 @@ describe("theme", () => {
     await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
     expect(localStorage.getItem("crawlerai.theme")).toBe("light");
+  });
+
+  it("follows the system scheme as it changes, until the viewer chooses", async () => {
+    const setSystemDark = prefersDark(false);
+    renderApp();
+
+    act(() => {
+      setSystemDark(true);
+    });
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    act(() => {
+      setSystemDark(false);
+    });
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+    await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
+    act(() => {
+      setSystemDark(true);
+      setSystemDark(false);
+    });
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 
   it("prefers the remembered choice over the system preference", () => {

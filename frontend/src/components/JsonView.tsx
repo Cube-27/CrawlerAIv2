@@ -1,6 +1,7 @@
-import { Button, toast } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { ArrowDownToLine, Copy } from "@gravity-ui/icons";
 import { memo, useMemo } from "react";
+import { copyText } from "../app/clipboard";
 import { saveText } from "../app/download";
 import { jsonTokens, type JsonTokenKind } from "./jsonTokens";
 
@@ -30,10 +31,7 @@ export const JsonView = memo(function JsonView({
           size="sm"
           variant="secondary"
           onPress={() => {
-            void navigator.clipboard.writeText(text).then(
-              () => toast.success("Copied the JSON."),
-              () => toast.danger("The browser did not allow copying."),
-            );
+            copyText(text, "the JSON");
           }}
         >
           <Copy aria-hidden="true" />
