@@ -32,9 +32,7 @@ from crawlerai.db.models import (
     ExtractionConfig,
     Job,
     JobId,
-    Project,
     Record,
-    Site,
     SiteId,
     UrlTask,
 )
@@ -129,15 +127,6 @@ def fetching(web: Web, tmp_path: Path) -> Fetching:
     browser = SharedBrowser(web.launch, web.in_browser, lambda session: session.connected)
     rungs = Rungs(http=web.http, browser=browser.fetch)
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-
-@pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
-    """The origin's site with a short interval, so a batch of its pages runs without waiting a second per page."""
-    async with engine.begin() as conn:
-        project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        values = {"project_id": project, "host": own_origin[8:], "crawl_delay_ms": 1}
-        return (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
 
 
 @pytest.fixture

@@ -31,9 +31,7 @@ from crawlerai.db.models import (
     Job,
     JobId,
     ProgressiveState,
-    Project,
     Record,
-    Site,
     SiteId,
     TaskOutcome,
     UrlState,
@@ -113,15 +111,6 @@ def fetching(origin: Origin, tmp_path: Path) -> Fetching:
 
     rungs = Rungs(http=origin.http, browser=origin.browser, conditional=origin.conditional)
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-
-@pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
-    """The origin's site with a short interval, so a job of its pages runs without waiting a second per page."""
-    async with engine.begin() as conn:
-        project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        values = {"project_id": project, "host": own_origin[8:], "crawl_delay_ms": 1}
-        return (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
 
 
 @pytest.fixture

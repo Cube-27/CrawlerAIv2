@@ -34,9 +34,7 @@ from crawlerai.db.models import (
     Job,
     JobId,
     JobKind,
-    Project,
     Record,
-    Site,
     SiteId,
     UrlTask,
 )
@@ -113,15 +111,6 @@ async def lamp_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
     document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
-
-
-@pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
-    """The origin's site with a short interval, so its page and its endpoint go without waiting a second each."""
-    async with engine.begin() as conn:
-        project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        values = {"project_id": project, "host": own_origin.removeprefix("https://"), "crawl_delay_ms": 1}
-        return (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
 
 
 def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
