@@ -3,12 +3,13 @@ import { useJobEvents } from "../../../api/hooks/events";
 import { useJob } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { JobStatus, JobSummary } from "../../../api/jobs";
+import { ActivityFeed } from "../../../components/ActivityFeed";
 import { CancelJobAction } from "../../../components/CancelJobAction";
 import { JobStatusLabel } from "../../../components/JobStatusLabel";
 import { OutcomeCounts } from "../../../components/OutcomeCounts";
 import { StatusLabel } from "../../../components/StatusLabel";
+import { ElapsedTime } from "../../../components/ElapsedTime";
 import { OutputArea, type OutputState } from "../OutputArea";
-import { ElapsedTime } from "./ElapsedTime";
 import { ResultsTable } from "./ResultsTable";
 import { RunExports } from "./RunExports";
 
@@ -38,15 +39,21 @@ function RunHeader({ job, withMetadata }: Readonly<{ job: JobSummary; withMetada
   );
 }
 
-/** A job's run on the page (SPEC-14 §4.3): its status line, counts and results table, refreshed by its events. */
+/** A job's run on the page (SPEC-14 §4.3, §4.5): its status line and counts, then the results table with the live
+ * activity beside it from `lg` and under it below. The run's events feed the activity and read the summary and the
+ * table again. */
 function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
-  // Follows the run's events while it shows: they read the summary and the results table again.
-  useJobEvents(job.id);
+  const activity = useJobEvents(job.id);
   return (
     <>
       <RunHeader job={job} withMetadata={withMetadata} />
       <OutcomeCounts counts={job.counts} outcomes={job.outcomes} />
-      <ResultsTable jobId={job.id} withMetadata={withMetadata} />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <ResultsTable jobId={job.id} withMetadata={withMetadata} />
+        </div>
+        <ActivityFeed job={job} activity={activity} />
+      </div>
     </>
   );
 }

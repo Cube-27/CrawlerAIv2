@@ -332,6 +332,39 @@ describe("batch playground: the run", () => {
     expect(await saved[0]?.text).toBe("title\nBlue mug\n");
   });
 
+  it("shows the run's activity as plain-language lines grouped by page, newest first, with its progress", async () => {
+    batchApi({
+      [`GET ${JOB}/events`]: () =>
+        sse(
+          ["1", "task_fetched", { url: FIRST.url, method: "http", block_class: "ok" }],
+          ["2", "task_failed", { url: SECOND.url, attempts: 3, last_error: "timeout" }],
+          [
+            "3",
+            "task_extracted",
+            { url: FIRST.url, outcome: "extracted", mode: "config", llm_calls: 1 },
+          ],
+          [null, "progress", { counts: {}, outcomes: {} }],
+        ),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    const feed = screen.getByRole("list", { name: "Activity" });
+    await within(feed).findByText("Extracted: extracted (config). Used 1 LLM call.");
+    expect(
+      within(feed)
+        .getAllByRole("list")
+        .map((group) => group.getAttribute("aria-label")),
+    ).toEqual([FIRST.url, SECOND.url]);
+    expect(
+      within(within(feed).getByRole("list", { name: FIRST.url }))
+        .getAllByRole("listitem")
+        .map((line) => line.textContent),
+    ).toEqual(["Fetched over HTTP.", "Extracted: extracted (config). Used 1 LLM call."]);
+    expect(within(feed).getByText("Failed after 3 attempts: timeout")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 pages done")).toBeInTheDocument();
+  });
+
   it("keeps Cancel in place, disabled, once the run has ended", async () => {
     batchApi({ [`GET ${JOB}`]: () => Response.json(job({ status: "completed" })) });
     await openPlayground(`/batch?job=${JOB_ID}`);
