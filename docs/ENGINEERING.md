@@ -120,17 +120,17 @@ Python:
 - **S7503 needless `async`:** a function that awaits nothing is sync, unless a protocol or framework requires a
   coroutine.
 - **S1172 unused parameter:** remove it, unless a protocol defines the signature.
-- **S7519 same value for every key:** `dict.fromkeys(keys, value)`, not a comprehension.
-- **S8409 FastAPI `response_model`:** omit it when the return annotation already says the type.
+- **S7519 same value for every key (ruff `C420`):** `dict.fromkeys(keys, value)`, not a comprehension.
+- **S8409 FastAPI `response_model` (ruff `FAST001`):** omit it when the return annotation already says the type.
 - **S9100 fixture without teardown (ruff `PT022`):** `return`, not `yield`.
 - **S5713 redundant `except`:** don't catch a subclass beside its base class in one `except`.
 
 TS/TSX:
 - **S6759 read-only props:** `({ title }: Readonly<CardProps>)`, inline prop types too.
-- **S6479 list keys:** key rows by a stable id, never the array index; give editor-only rows an id at creation.
-- **S3358 nested ternary:** an `if` chain, a lookup table or a named helper.
-- **S1186 empty method:** a stub says why in a comment (`// no-op: jsdom has no layout`).
-- **S7718 catch parameter:** name it `error` (`error_` when `error` is taken).
+- **S6479 list keys (Oxlint `react/no-array-index-key`):** key rows by a stable id, never the array index; give editor-only rows an id at creation.
+- **S3358 nested ternary (Oxlint `no-nested-ternary`):** an `if` chain, a lookup table or a named helper.
+- **S1186 empty method (Oxlint `no-empty-function`):** a stub says why in a comment (`// no-op: jsdom has no layout`).
+- **S7718 catch parameter (Oxlint `unicorn/catch-error-name`):** name it `error` (`error_` when `error` is taken).
 - **S9382 `await` in a loop:** `Promise.all` when iterations are independent; a sequential loop (backoff, cursor
   pagination) is explained in the PR body.
 

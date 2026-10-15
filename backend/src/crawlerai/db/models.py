@@ -6,7 +6,7 @@ Enumerations are `text` with a CHECK constraint whose values come from the match
 
 import uuid
 from datetime import datetime
-from typing import Any, ClassVar, Literal, NewType, get_args
+from typing import Any, ClassVar, Final, Literal, NewType, get_args
 
 from sqlalchemy import (
     BigInteger,
@@ -32,7 +32,7 @@ from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 
 # SQL referential action (ISO/IEC 9075-2 §11.8): a deleted parent leaves the reference empty.
-_SET_NULL = "SET NULL"
+_SET_NULL: Final = "SET NULL"
 
 ProjectId = NewType("ProjectId", uuid.UUID)
 ApiKeyId = NewType("ApiKeyId", uuid.UUID)

@@ -749,3 +749,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: (a) an opt-in `csv_safe=true` results parameter that prefixes `'`, sent by the UI download (an API change); (b) always prefix (amends INV-27); (c) leave values unchanged and warn in the export UI.
 - Why: INV-27: exporters serialize the published value unchanged, so either fix changes the API or the invariant (review of #115).
 - Reversible: yes
+
+### D-0906 — Stock analyser rules for ENGINEERING's patterns
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Decision: Ruff `C420` (S7519) and `FAST` (S8409); Oxlint `no-nested-ternary` (S3358), `unicorn/catch-error-name` (S7718), `no-empty-function` (S1186), `react/no-array-index-key` (S6479). Not adopted: ruff `ARG` (S1172) and `RUF029` (S7503), Oxlint `no-await-in-loop` (S9382).
+- Alternatives: Adopt those too, with suppressions.
+- Why: The adopted rules flag only real cases; the others flag framework and protocol signatures and sequential loops, which ENGINEERING exempts (#192).
+- Reversible: yes

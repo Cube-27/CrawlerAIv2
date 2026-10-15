@@ -39,16 +39,20 @@ class InvalidSchema(Refusal):
 
 
 async def create(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
+    try:
+        return await registry.create(conn, _first_version(schema), "user")
+    except SchemaExists as e:
+        raise SchemaConflict(f"schema {schema.name} exists; edit its latest version instead") from e
+
+
+def _first_version(schema: NewSchema) -> SchemaDocument:
+    """`schema` as the document of a new user schema's version 1: a preset name or a broken document is refused."""
     if schema.name in _preset_names():
         raise SchemaConflict(f"{schema.name} is a preset name; presets change only through their files")
     try:
-        document = SchemaDocument.model_validate({**schema.model_dump(), "version": 1})
+        return SchemaDocument.model_validate({**schema.model_dump(), "version": 1})
     except ValidationError as e:
         raise InvalidSchema(e) from e
-    try:
-        return await registry.create(conn, document, "user")
-    except SchemaExists as e:
-        raise SchemaConflict(f"schema {schema.name} exists; edit its latest version instead") from e
 
 
 async def inline(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
@@ -57,7 +61,12 @@ async def inline(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
     stored one (§5.2): a name whose latest version differs or is retired is a `SchemaConflict`."""
     versions = await registry.list_schemas(conn, name=schema.name)
     if not versions:
-        return await create(conn, schema)
+        try:
+            return await registry.create(conn, _first_version(schema), "user")
+        except SchemaExists:
+            # Another request stored the name first: its insert committed before ours hit the unique (name, version),
+            # and READ COMMITTED lets this statement see it. The same document reuses it, as it would have.
+            versions = await registry.list_schemas(conn, name=schema.name)
     latest = versions[-1]
     if (latest.page_kind, latest.required_groups, latest.fields) != (
         schema.page_kind,

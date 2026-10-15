@@ -24,7 +24,9 @@ from urllib.parse import urlsplit
 import pytest
 
 from crawlerai import cli
+from crawlerai.acquire import cookies
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.public_suffix import PublicSuffixes
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.cli import main
@@ -312,6 +314,28 @@ def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
     assert outcome(fetch(server, server.url("/start"))) == (200, "ok", None)
 
     assert _cookie(server.requests[1][1]) == "keep=1"
+
+
+@pytest.mark.parametrize(
+    ("start_host", "set_cookie", "next_host", "sent"),
+    [
+        # RFC 6265 §5.3 step 5: a Domain that is a public suffix, set from a host under it, is ignored with its cookie.
+        ("shop.example.test", "track=1; Domain=example.test", "cdn.example.test", None),
+        # ... unless it is the setting host itself: then the cookie is host-only.
+        ("example.test", "own=1; Domain=example.test", "example.test", "own=1"),
+        ("example.test", "own=1; Domain=example.test", "cdn.example.test", None),
+    ],
+    ids=["suffix_from_a_host_under_it", "suffix_host_itself", "suffix_host_to_a_host_under_it"],
+)
+def test_a_cookie_for_a_public_suffix_follows_the_public_suffix_list(
+    server: Server, monkeypatch: pytest.MonkeyPatch, start_host: str, set_cookie: str, next_host: str, sent: str | None
+) -> None:
+    monkeypatch.setattr(cookies, "default_suffixes", lambda: PublicSuffixes.parse("example.test\n"))
+    server.route("/start", Reply(302, (("Location", server.url("/p", next_host)), ("Set-Cookie", set_cookie))))
+    server.route("/p", html(_PAGE))
+    assert outcome(fetch(server, server.url("/start", start_host))) == (200, "ok", None)
+
+    assert _cookie(server.requests[1][1]) == sent
 
 
 def _cookie(headers: list[tuple[str, str]]) -> str | None:

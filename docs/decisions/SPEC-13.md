@@ -184,3 +184,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep a per-type `equal` next to `key` (two definitions that can drift); keep row linking pairwise.
 - Why: Linking becomes linear with the same result (a property test against the pairwise reference), and each type keeps one equality (C8).
 - Reversible: yes
+
+### D-0905 — A required row-mapped field counts toward zero-touch
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Decision: A required, labeled row-mapped field holds when every sub-field judgment of its rows is TP or TN and at least one is TP, so a missing or extra row breaks zero-touch; version 1 labels leave it unscored. D-0805 still holds for optional row fields.
+- Alternatives: Fold its sub-fields into one judgment (changes the report's shape).
+- Why: SPEC-03 §4.6's required-field rule applies to it (#176).
+- Reversible: yes

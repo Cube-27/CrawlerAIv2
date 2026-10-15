@@ -48,6 +48,13 @@ SCHEMA = SchemaFields(
     fields={"title": FieldSpec.model_validate({"type": "text"}), "variants": VARIANTS},
     required=frozenset({"title"}),
 )
+# The same schema with `variants` required: zero-touch then needs its rows right (SPEC-03 §4.6).
+REQUIRED_ROWS = SCHEMA.model_copy(
+    update={
+        "fields": {**SCHEMA.fields, "variants": VARIANTS.model_copy(update={"required": True})},
+        "required": frozenset({"title", "variants"}),
+    }
+)
 TITLE = "Synthetic widget"
 PAGE_URL = "https://shop.example.test/p/1"
 
@@ -85,6 +92,7 @@ def case(
     *,
     distractor_keys: list[dict[str, Any]] = (),  # type: ignore[assignment]
     label_version: int = 2,
+    schema: SchemaFields = SCHEMA,
 ) -> EvalCase:
     doc: dict[str, Any] = {
         "label_version": label_version,
@@ -103,7 +111,7 @@ def case(
     return EvalCase(
         page_id=page_id,
         category="custom_store",
-        schema_def=SCHEMA,
+        schema_def=schema,
         labels=Labels.model_validate(doc),
         output=PageOutput(block_class="ok", mode="adhoc", fields=outputs),
     )
@@ -220,3 +228,32 @@ def test_a_hidden_aggregate_suppresses_the_new_cells() -> None:
     assert isinstance(shown.by_field_type["list.identifier"], FieldMetrics)
     assert shown.row_matching == RowMetrics(row_precision=1.0, row_recall=1.0, engine_rows=MIN_CELL, n=MIN_CELL)
     assert shown.row_matching_by_field == {}
+
+
+@pytest.mark.parametrize(
+    ("rows", "engine", "zero_touch"),
+    [
+        # Every label row matched, each sub-field TP or labeled absent and not published (TN).
+        ([label_row("W-11"), label_row("W-12", "12.00")], [engine_row("W-12", "12.00"), engine_row("W-11")], True),
+        # A matched row with a wrong price.
+        ([label_row("W-11")], [engine_row("W-11", "11.00")], False),
+        # A label row the engine missed.
+        ([label_row("W-11"), label_row("W-12")], [engine_row("W-11")], False),
+        # A row the labels don't have.
+        ([label_row("W-11")], [engine_row("W-11"), engine_row("W-13")], False),
+        # The page has no variants and the engine published none: a required field with no value (§4.6).
+        ([], [], False),
+    ],
+)
+def test_a_required_row_mapped_field_counts_toward_zero_touch(
+    rows: list[dict[str, Any]], engine: list[dict[str, FieldOutput]], zero_touch: bool
+) -> None:
+    r = report(case("p1", rows, engine, schema=REQUIRED_ROWS))
+
+    assert r.by_category["custom_store"] == ZeroTouch(zero_touch=float(zero_touch), n=1)
+
+
+def test_a_required_row_mapped_field_left_unlabeled_by_version_1_labels_is_not_scored() -> None:
+    r = report(case("p1", None, [engine_row("W-11")], label_version=1, schema=REQUIRED_ROWS))
+
+    assert r.by_category["custom_store"] == ZeroTouch(zero_touch=1.0, n=1)

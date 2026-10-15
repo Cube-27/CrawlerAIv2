@@ -346,3 +346,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Leave it in `services`.
 - Why: It reads and writes only `api_keys`, like the other table stores.
 - Reversible: yes
+
+### D-0904 — Concurrent first uses of an inline schema share one version
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Decision: When the insert of a new inline schema's version 1 loses the unique (name, version) race (`SchemaExists`), the name is read again and its latest version compared as for an existing name.
+- Alternatives: Answer 409 (#105's review).
+- Why: Two identical requests should never get a conflict.
+- Reversible: yes

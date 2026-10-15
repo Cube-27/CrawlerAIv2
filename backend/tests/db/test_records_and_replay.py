@@ -5,6 +5,7 @@ Records are made the way a page task makes them (`extract_task`) from synthetic 
 and committed, since the replay and the app read them through their own connections.
 """
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
@@ -475,6 +476,23 @@ async def test_a_record_that_commits_after_a_poll_is_listed_by_the_next_poll_fro
     assert during.items == []
     # It was stored before the first poll began, and committed after: the poll from then on lists it (SPEC-11 §4.4).
     assert [record.id for record in after.items] == [late.record_id]
+
+
+async def test_changed_since_waits_for_a_record_commit_in_progress(world: World) -> None:
+    await world.scrape("/p/1", _page("Kettle 1"))
+    async with world.engine.connect() as conn:
+        since = (await conn.execute(select(func.now()))).scalar_one()
+    async with world.engine.connect() as committing:
+        # A record's transaction holds the feed lock shared from its commit stamp until it is visible (migration
+        # 0018); here an open transaction holds it.
+        await committing.execute(select(func.pg_advisory_xact_lock_shared(records.RECORD_FEED_LOCK)))
+        poll = asyncio.create_task(_list(world.engine, schema_id=world.schema.id, changed_since=since))
+        done, _ = await asyncio.wait({poll}, timeout=1)
+        await committing.commit()
+        page = await poll
+
+    assert done == set()
+    assert page.items == []
 
 
 @pytest.mark.parametrize(

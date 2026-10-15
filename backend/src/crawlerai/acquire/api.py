@@ -17,9 +17,9 @@ from typing import Literal
 import httpx
 
 from crawlerai.acquire.classify import classify
+from crawlerai.acquire.cookies import FetchCookies
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.public_suffix import SuffixCookiePolicy, default_suffixes
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
@@ -108,11 +108,8 @@ async def _follow(
     request: JsonRequest, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
 ) -> tuple[Exchange, bytes]:
     target = await _checked(connector.check(request.url), None)
-    # Cookies live for this fetch only (INV-29), matched on each hop's host name (RFC 6265 §5.4), not by httpx's jar
-    # (`_NO_COOKIES`). Host-only cookies stay on their host (§5.3 step 6), and no cookie is set for a public suffix
-    # (§5.3 step 5).
-    # The list is parsed on the first fetch only (cached), off the event loop.
-    cookies = httpx.Cookies(CookieJar(SuffixCookiePolicy(await asyncio.to_thread(default_suffixes))))
+    # Cookies live for this fetch only (INV-29), matched on each hop's host name, not by httpx's jar (`_NO_COOKIES`).
+    cookies = await FetchCookies.new()
     # `trust_env=False` ignores proxy environment variables: a proxy resolves the host itself, which would bypass the
     # checked address.
     async with httpx.AsyncClient(
@@ -150,11 +147,9 @@ async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
 
 
 async def _send(
-    client: httpx.AsyncClient, target: Target, cookies: httpx.Cookies, json_request: JsonRequest
+    client: httpx.AsyncClient, target: Target, cookies: FetchCookies, json_request: JsonRequest
 ) -> tuple[Exchange, httpx.Response]:
     url = httpx.URL(target.url)
-    named = httpx.Request("GET", url)  # the hop as cookie matching sees it: by host name, not by address
-    cookies.set_cookie_header(named)
     # The request goes to the checked address; the Host header (RFC 9110 §7.2) and the TLS server name (RFC 6066 §3,
     # httpx's `sni_hostname` extension) keep the name, so virtual hosting and certificate checks see the real host.
     headers = httpx.Headers({"Accept": ACCEPT})
@@ -162,8 +157,8 @@ async def _send(
         if name.lower() != "cookie":  # the fetch sends only its own cookies (INV-29)
             headers[name] = value
     headers["Host"] = url.netloc.decode("ascii")  # replaces a caller's Host: the checked host's name
-    if "Cookie" in named.headers:
-        headers["Cookie"] = named.headers["Cookie"]
+    if (cookie := cookies.header(target.url)) is not None:
+        headers["Cookie"] = cookie
     request = client.build_request(
         json_request.method,
         url.copy_with(host=str(target.ip)),
@@ -175,7 +170,7 @@ async def _send(
         response = await client.send(request, stream=True)
     except httpx.HTTPError as e:
         raise _Failed(_reason(e), None) from e
-    cookies.extract_cookies(httpx.Response(response.status_code, headers=response.headers, request=named))
+    cookies.extract(target.url, response.status_code, tuple(response.headers.multi_items()))
     exchange = Exchange(
         url=target.url,
         status=response.status_code,

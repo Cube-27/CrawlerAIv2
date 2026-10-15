@@ -1,8 +1,10 @@
 """The schemas service (SPEC-07 §4.6, §4.7), without HTTP: callers create user schemas at version 1, an edit adds a
 version on top of the latest one, a delete retires one version, and presets change only through their files."""
 
+import asyncio
+
 import pytest
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaContent
@@ -28,6 +30,23 @@ async def test_create_refuses_a_preset_name_even_before_the_presets_are_synced(c
     with pytest.raises(SchemaConflict, match="preset"):
         await schemas.create(conn, preset_name)
     assert await registry.list_schemas(conn, name=preset_name.name) == []
+
+
+async def test_two_first_uses_of_an_inline_schema_at_once_share_one_version(
+    engine: AsyncEngine, schema_name: str
+) -> None:
+    inline = _new(schema_name)
+    async with engine.connect() as first, engine.connect() as second:
+        created = await schemas.inline(first, inline)
+        # The second insert waits on the first transaction's row of the same (name, version).
+        racing = asyncio.create_task(schemas.inline(second, inline))
+        _, pending = await asyncio.wait({racing}, timeout=0.5)
+        await first.commit()
+        reused = await racing
+        await second.commit()
+
+    assert pending == {racing}
+    assert (reused.id, reused.version) == (created.id, 1)
 
 
 async def test_update_replaces_the_whole_content(conn: AsyncConnection) -> None:

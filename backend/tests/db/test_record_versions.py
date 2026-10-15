@@ -68,7 +68,7 @@ class _Site:
         self.schema: SchemaDef = await registry.create(self.conn, document.model_copy(update={"name": _name()}), "user")
 
     def draft(self, data: dict[str, JsonValue], url: str = PAGE_URL) -> RecordDraft:
-        meta = {name: META for name in data}
+        meta = dict.fromkeys(data, META)
         return RecordDraft(data=data, field_meta=meta, complete=True, entity_key=entity_key(self.site_id, url))
 
     async def run(self, *drafts: RecordDraft) -> tuple[StoredRecord, ...]:

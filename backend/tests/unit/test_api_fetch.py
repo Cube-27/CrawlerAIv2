@@ -282,7 +282,7 @@ def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
             return httpx.Response(302, headers=headers)
         return json_reply()(request)
 
-    shared_address = {host: "93.184.215.14" for host in ("api.example.com", "cdn.example.com", "eu.api.example.com")}
+    shared_address = dict.fromkeys(("api.example.com", "cdn.example.com", "eu.api.example.com"), "93.184.215.14")
     assert outcome(fetch(handler, dns=shared_address)) == (200, "ok", None)
 
     assert seen[1].headers.get("Cookie") == "keep=1"

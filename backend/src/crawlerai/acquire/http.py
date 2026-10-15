@@ -21,6 +21,7 @@ from curl_cffi.requests import AsyncSession, BrowserTypeLiteral, Response
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.classify import classify
+from crawlerai.acquire.cookies import FetchCookies
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.redirects import MAX_REDIRECTS
@@ -124,11 +125,14 @@ async def _follow(
     headers: dict[str, str],
 ) -> _Response:
     target = await _checked(connector.check(url), deadline, None)
-    # One session per fetch keeps cookies set by one hop for the next, and none across fetches. `trust_env=False`
-    # stops curl_cffi reading the proxy environment variables; libcurl reads them itself, so each request also sets
-    # CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY (below): proxies come only from the pools.
-    async with _Session(impersonate=impersonate, trust_env=False) as session:
-        response = await _get(session, target, policy, proxy, deadline, headers)
+    # Cookies set by one hop go with the next, and none across fetches (INV-29). They are kept by `FetchCookies`, not
+    # libcurl's engine, which this build runs without the public-suffix list (RFC 6265 §5.3 step 5): the session
+    # discards what curl parsed, and each request clears curl's list before sending only the cookies passed in.
+    cookies = await FetchCookies.new()
+    # `trust_env=False` stops curl_cffi reading the proxy environment variables; libcurl reads them itself, so each
+    # request also sets CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY (below): proxies come only from the pools.
+    async with _Session(impersonate=impersonate, trust_env=False, discard_cookies=True) as session:
+        response = await _get(session, target, policy, proxy, deadline, headers, cookies)
         for hop in range(MAX_REDIRECTS + 1):
             location = redirect_location(response.status, response.response_headers)
             if location is None:
@@ -138,7 +142,7 @@ async def _follow(
             target = await _checked(connector.redirect(target, location), deadline, response)
             # The validators describe the URL asked for: sent past a redirect, another resource's 304 would stand
             # for it.
-            response = await _get(session, target, policy, proxy, deadline, {})
+            response = await _get(session, target, policy, proxy, deadline, {}, cookies)
     return response
 
 
@@ -169,6 +173,7 @@ async def _get(
     proxy: ProxyEndpoint | None,
     deadline: float,
     headers: dict[str, str],
+    cookies: FetchCookies,
 ) -> _Response:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -204,6 +209,8 @@ async def _get(
     }
     # curl_cffi types option values as str, but passes each to curl_easy_setopt with the option's own type.
     session.curl_options = cast(dict[CurlOpt, str], options)
+    if (cookie := cookies.header(target.url)) is not None:
+        headers = {**headers, "Cookie": cookie}
     try:
         response = await session.get(
             target.url, headers=headers, allow_redirects=False, timeout=remaining, content_callback=on_body
@@ -214,6 +221,7 @@ async def _get(
         # The exception carries what arrived before the failure: the status and headers, if any.
         partial: Response | None = e.response
         raise _Failed(error, None if partial is None else _response(target, partial, sent, b"")) from e
+    cookies.extract(target.url, response.status_code, _received(response))
     return _response(target, response, sent, body.getvalue())
 
 
@@ -249,8 +257,12 @@ def _through(proxy: ProxyEndpoint) -> dict[CurlOpt, object]:
     return options
 
 
+def _received(response: Response) -> HeaderList:
+    return tuple((name, value or "") for name, value in response.headers.multi_items())
+
+
 def _response(target: Target, response: Response, sent: list[bytes], body: bytes) -> _Response:
-    received = tuple((name, value or "") for name, value in response.headers.multi_items())
+    received = _received(response)
     return _Response(
         url=target.url,
         status=response.status_code,

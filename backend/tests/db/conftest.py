@@ -27,7 +27,7 @@ from alembic.config import Config
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.politeness import HostLimiter, retry_after
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
@@ -201,7 +201,12 @@ def fetch_result() -> Callable[..., FetchResult]:
             engine_version="test",
         )
         attempt = AttemptRecord(
-            method=method, status=status or None, block_class=block_class, duration_ms=1, error=error
+            method=method,
+            status=status or None,
+            block_class=block_class,
+            duration_ms=1,
+            error=error,
+            retry_after=retry_after(headers, manifest.fetched_at),
         )
         return FetchResult(
             bundle=CaptureBundle(manifest=manifest, body=body, network=()), duration_ms=1, attempts=(attempt,)

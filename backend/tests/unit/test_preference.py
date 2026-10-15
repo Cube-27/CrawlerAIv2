@@ -31,7 +31,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
-ORDERS = {t: ORDER for t in PRECEDENCE_TYPES}
+ORDERS = dict.fromkeys(PRECEDENCE_TYPES, ORDER)
 
 PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
 OFFER_A = Entity(id="jsonld:0:$['offers'][0]", kind="Offer", urls=(), parent=PRODUCT.id, via="offers")

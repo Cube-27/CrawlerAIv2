@@ -218,7 +218,7 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
                 details.append(_detail(case, error, None, ()))
             case PageOutput() as output:
                 judgments = _judge_case(case.schema_def, case.labels, output, row_counts)
-                zero_touch = _zero_touch(case.schema_def, judgments)
+                zero_touch = _zero_touch(case.schema_def, judgments, frozenset(case.labels.lists))
                 scored.append((case, output, judgments, zero_touch))
                 details.append(_detail(case, None, zero_touch, tuple(judgments)))
 
@@ -552,15 +552,26 @@ def _source_cells(out: FieldOutput, label: FieldLabel, spec: FieldSpec) -> dict[
     }
 
 
-def _zero_touch(schema: SchemaFields, judgments: Sequence[Judgment]) -> bool:
+def _zero_touch(schema: SchemaFields, judgments: Sequence[Judgment], labeled_lists: frozenset[str]) -> bool:
     """Every required field is TP, and every required group has a TP member and no FP member (§4.6), on each entity
-    the page has; and the engine published no row that the labels don't have. A row-mapped field is optional and holds
-    no required field, so its rows don't count (SPEC-13 §4.10)."""
+    the page has; and the engine published no row that the labels don't have. A row-mapped field's rows count only
+    when it is required and labeled (`labeled_lists`; version 1 labels leave it unscored, SPEC-13 §4.10)."""
     if any(j.entity.startswith("extra[") and not _is_sub_field(j.field) for j in judgments):
         return False
     if any(j.field in schema.required and j.cell != "TP" for j in judgments):
         return False
+    required_rows = sorted(name for name in schema.required & labeled_lists if schema.fields[name].row_mapped)
+    if not all(_rows_met(name, judgments) for name in required_rows):
+        return False
     return all(_group_met(group, judgments) for group in schema.required_groups)
+
+
+def _rows_met(name: str, judgments: Sequence[Judgment]) -> bool:
+    """A required row-mapped field holds as a required field does: a value, and no wrong one. Some sub-field is TP,
+    and every other is TP or labeled absent and not published (TN), so every label row is matched and no row the
+    labels don't have was published."""
+    cells = [j.cell for j in judgments if j.field.startswith(f"{name}.")]
+    return "TP" in cells and all(cell in ("TP", "TN") for cell in cells)
 
 
 def _group_met(group: frozenset[str], judgments: Sequence[Judgment]) -> bool:

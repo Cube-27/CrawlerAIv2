@@ -9,6 +9,7 @@ import asyncio
 import csv
 import io
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any, get_args
@@ -19,11 +20,11 @@ from pydantic import JsonValue
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.config_ir.exporters.records import RecordFormat, export_records
+from crawlerai.config_ir.exporters.records import RecordFormat
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Extraction, Job, JobId, Project, Record, SchemaDef, Site, UrlTask
 from crawlerai.recurring.versions import link_records
-from crawlerai.resolve.records import FieldMeta, RecordContent
+from crawlerai.resolve.records import FieldMeta
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 from crawlerai.schemas.types import SchemaDef as Schema
@@ -41,6 +42,10 @@ _scalars = st.booleans() | st.integers(-(2**53), 2**53) | st.floats(allow_nan=Fa
 _values: st.SearchStrategy[JsonValue] = st.recursive(
     _scalars, lambda inner: st.lists(inner, max_size=3) | st.dictionaries(_text, inner, max_size=3), max_leaves=6
 )
+# A markdown body row's tokens: an escaped character, a line break, the cell separator, or any other character.
+_MD_TOKEN = re.compile(r"\\(?P<escaped>.)|(?P<line_break><br>)|(?P<separator> \| )|.", re.DOTALL)
+# CommonMark 0.31 §2.6 line endings, all written as `<br>`.
+_LINE_ENDING = re.compile(r"\r\n|\r|\n")
 _records = st.lists(st.dictionaries(st.sampled_from(FIELDS), _values), min_size=1, max_size=4)
 
 
@@ -124,11 +129,32 @@ def _without_nulls(row: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return {name: row[name] for name in FIELDS if row[name] is not None}
 
 
+def _md_rows(content: str) -> list[list[str]]:
+    """The cells of a markdown table's body rows, read back: GFM 0.29 §4.10 rows (`| a | b |`, after a header and a
+    delimiter row), each `\\x` a literal `x` (CommonMark 0.31 §2.4) and `<br>` a line ending (a literal `<` is
+    escaped, so `<br>` is always one)."""
+    return [_md_cells(line.removeprefix("| ").removesuffix(" |")) for line in content.split("\n")[2:-1]]
+
+
+def _md_cells(row: str) -> list[str]:
+    cells: list[str] = []
+    text: list[str] = []
+    for token in _MD_TOKEN.finditer(row):
+        if token.lastgroup == "separator":
+            cells.append("".join(text))
+            text = []
+        elif token.lastgroup == "line_break":
+            text.append("\n")
+        else:
+            text.append(token["escaped"] or token[0])
+    return [*cells, "".join(text)]
+
+
 def _csv_values(content: str) -> list[dict[str, str]]:
     return [{name: row[name] for name in FIELDS} for row in csv.DictReader(io.StringIO(content, newline=""))]
 
 
-async def _compare(engine: AsyncEngine, schema: Schema, job_id: JobId) -> None:
+async def _compare(engine: AsyncEngine, job_id: JobId) -> None:
     async with engine.connect() as conn:
         stored_rows = await conn.execute(select(Record.id, Record.data).where(Record.job_id == job_id))
         stored = {row.id: row.data for row in stored_rows}
@@ -139,10 +165,9 @@ async def _compare(engine: AsyncEngine, schema: Schema, job_id: JobId) -> None:
     expected = [stored[record.id] for record in as_json.items]
     assert [_without_nulls(row) for row in json.loads(exports["json_records"])] == expected
     assert _csv_values(exports["csv_records"]) == [{n: _cell(data.get(n)) for n in FIELDS} for data in expected]
-    # Markdown escapes its cells (SPEC-08 §4.11); the exporter's own properties cover that, so here it is fed the
-    # stored values unchanged.
-    contents = [RecordContent(data=data, field_meta=_metas(data), complete=False) for data in expected]
-    assert exports["markdown"] == export_records("markdown", schema, contents)
+    # A markdown cell reads back as the value's cell text, with each line ending as `<br>` stands for it.
+    expected_md = [[_LINE_ENDING.sub("\n", _cell(data.get(n))) for n in FIELDS] for data in expected]
+    assert [row[: len(FIELDS)] for row in _md_rows(exports["markdown"])] == expected_md
 
 
 async def _check(database_url: str, records: list[dict[str, JsonValue]]) -> None:
@@ -154,7 +179,7 @@ async def _check(database_url: str, records: list[dict[str, JsonValue]]) -> None
         schema = await registry.create(conn, document, "user")
         job_id = await _store(conn, schema, records)
     try:
-        await _compare(engine, schema, job_id)
+        await _compare(engine, job_id)
     finally:
         async with engine.begin() as conn:
             await _delete(conn, job_id, name)

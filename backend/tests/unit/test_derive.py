@@ -26,7 +26,7 @@ RESOLVER = Resolver(
     graph=EntityGraph.of((PRODUCT, RELATED), VOCABULARY),
     target=PRODUCT,
     page=PageFacts.of(FINAL_URL, lambda _: False),
-    orders={t: ORDER for t in PRECEDENCE_TYPES},
+    orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER),
 )
 
 URL = FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url")

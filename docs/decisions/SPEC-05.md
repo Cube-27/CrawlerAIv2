@@ -574,3 +574,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Fail the build on any refusal.
 - Why: The GeoNames pin goes stale daily until D-0311 is answered; failing would make the image unbuildable.
 - Reversible: yes
+
+### D-0903 — The sdist carries VERSION and the data files; a build with no commit fails (completes D-0880)
+- Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
+- Decision: The build hook also runs for the sdist, which carries `VERSION` and the manifest's data files at their own paths; a wheel built from an unpacked sdist (`PKG-INFO` present) reads that `VERSION`; with no `CRAWLERAI_GIT_SHA`, sdist `VERSION` or git commit the build raises. The image builds in two stages: `core/data.py` (stdlib-only, pinned by a test) fetches the data before `src/` is copied, and the image keeps only the installed environment.
+- Alternatives: Keep `unknown` and document it.
+- Why: D-0880 intends a wheel that names its build; `uv build` failed outright on the missing manifest.
+- Reversible: yes

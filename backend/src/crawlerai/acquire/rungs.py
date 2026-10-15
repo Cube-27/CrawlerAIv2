@@ -68,7 +68,8 @@ async def acquire(
     for fewer requests, and otherwise the page is fetched as if there were no recipe (§4.10). Without a recipe, fetch
     it with `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched
     again in the browser, and the browser's outcome is kept only if it is `ok`. Each request after the first (the
-    page after a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6). The
+    page after a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and
+    is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The
     result lists every attempt, in its bundle's manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2):
     a 304 is `ok` and ends the fetch."""
     if (adapter := rungs.adapters.detect(url)) is not None:
@@ -76,10 +77,8 @@ async def acquire(
     served: FetchResult | None = None
     if recipe is not None:
         served = await recipe(url, policy)
-        if served.block_class == "ok" or slow_down(served):
+        if served.block_class == "ok" or slow_down(served) or not await _admitted(admit_next):
             return served
-        if admit_next is not None:
-            await admit_next()
     kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next)
     if served is not None:
         attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms
@@ -100,15 +99,17 @@ async def _page(
         result = await rungs.conditional(url, policy, validators=validators)
     else:
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
-    kept, attempts, duration_ms = result, result.attempts, result.duration_ms
-    if policy.method_hint == "auto" and method == "http" and _browser_may_pass(result):
-        if admit_next is not None:
-            await admit_next()
-        retry = await rungs.browser(url, policy)
-        if retry.block_class == "ok":
-            kept = retry
-        attempts, duration_ms = attempts + retry.attempts, duration_ms + retry.duration_ms
-    return kept, attempts, duration_ms
+    retried = policy.method_hint == "auto" and method == "http" and _browser_may_pass(result)
+    if not retried or not await _admitted(admit_next):
+        return result, result.attempts, result.duration_ms
+    retry = await rungs.browser(url, policy)
+    kept = retry if retry.block_class == "ok" else result
+    return kept, result.attempts + retry.attempts, result.duration_ms + retry.duration_ms
+
+
+async def _admitted(admit_next: Admit | None) -> bool:
+    """Whether a further request of the fetch may go: `admit_next` waits for its turn, or refuses one too far off."""
+    return admit_next is None or await admit_next()
 
 
 def _browser_may_pass(result: FetchResult) -> bool:

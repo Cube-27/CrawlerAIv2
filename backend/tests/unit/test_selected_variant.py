@@ -71,7 +71,7 @@ def _resolve(document: dict[str, Any], request_url: str = GROUP_URL, *, rules: b
     assert isinstance(target, Entity)
     variants = Variants(select_variant(request_url, request_url, GROUP_URL, graph, target)) if rules else None
     facts = PageFacts.of(request_url, lambda value: False)
-    resolver = Resolver(graph, target, facts, {t: ORDER for t in PRECEDENCE_TYPES}, variants=variants)
+    resolver = Resolver(graph, target, facts, dict.fromkeys(PRECEDENCE_TYPES, ORDER), variants=variants)
     return resolver.prefer(SCHEMA, collected.candidates)
 
 

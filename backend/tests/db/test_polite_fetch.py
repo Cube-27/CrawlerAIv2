@@ -20,7 +20,7 @@ from crawlerai.acquire.robots import RobotsSnapshot
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
-from crawlerai.db.queue import ClaimedTask, claim_tasks
+from crawlerai.db.queue import LEASE, ClaimedTask, claim_tasks
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult, run_worker
 from crawlerai.worker.polite import fetch_politely
@@ -325,6 +325,46 @@ async def test_a_slow_down_answering_a_request_whose_outcome_was_not_kept_backs_
 
     assert result == Failed("http 503", transient=True, after=None, exhausted="blocked")
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=30))
+
+
+async def test_a_retry_after_answering_a_request_whose_outcome_was_not_kept_is_read(
+    conn: AsyncConnection, web: Web
+) -> None:
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (403, b"", ())
+    first, second = await _tasks(conn, "/item/1", "/item/2")
+    limiter = HostLimiter(Clock())
+    asked = timedelta(seconds=120)
+    browser = AttemptRecord(method="browser", status=429, block_class="blocked", duration_ms=1, retry_after=asked)
+
+    async def retried(url: str, _admit: Admit) -> FetchResult:
+        kept = await web(url)
+        return kept.model_copy(update={"attempts": (*kept.attempts, browser)})
+
+    result = await fetch_politely(conn, first, site_id, FetchPolicy(), retried, limiter, fetch_robots=web)
+
+    assert result == Failed("http 429", transient=True, after=asked, exhausted="blocked")
+    assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(asked)
+
+
+async def test_a_further_request_whose_turn_would_outlast_the_claim_is_not_waited_for(
+    conn: AsyncConnection, web: Web
+) -> None:
+    # A robots Crawl-delay as long as the lease: waiting in place for the turn would lose the task's claim.
+    site_id = await _site(conn, crawl_delay_ms=int(LEASE.total_seconds() * 1000))
+    web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
+    [task] = await _tasks(conn, "/item/1")
+    clock = Clock()
+    answers: list[bool] = []
+
+    async def retried(url: str, admit: Admit) -> FetchResult:
+        answers.append(await admit())
+        return await web(url)
+
+    result = await fetch_politely(conn, task, site_id, FetchPolicy(), retried, HostLimiter(clock), fetch_robots=web)
+
+    assert answers == [False]
+    assert isinstance(result, FetchResult)
 
 
 @pytest.mark.parametrize("value", ["901", "99999999999999", "9" * 5000])
