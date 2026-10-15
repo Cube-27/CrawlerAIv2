@@ -360,3 +360,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: keep ESLint + Prettier; Biome.
 - Why: The owner asked for one toolchain in one PR. SPEC-00 §4.3 and DESIGN.md were edited in the same PR under that request.
 - Reversible: yes, with churn
+
+### D-0846 — The C3 scan reads schemas only from non-exempt files
+- Date: 2026-10-15 · Spec/PR: SPEC-00 §4.7 follow-up (#15, #193) · Status: decided
+- Decision: Tables (Python) and schema documents (JSON) under the exempt paths define no names the scan accepts, in full and `--staged` mode. Names of tracked files, modules and manifest extensions still come from every tracked file: they are file names, not file contents.
+- Alternatives: read every tracked file (an exempt file could excuse a host it is free to hold).
+- Why: An exempt file is not scanned, so what it defines must not exempt tokens elsewhere.
+- Reversible: yes
