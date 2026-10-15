@@ -1,0 +1,63 @@
+import { Button, toast } from "@heroui/react";
+import { ArrowDownToLine, Copy } from "@gravity-ui/icons";
+import { memo } from "react";
+import { saveText } from "../app/download";
+import { jsonTokens, type JsonTokenKind } from "./jsonTokens";
+
+// Each token kind's class in theme.css, which holds its color (DESIGN.md, Theming).
+const TOKEN_CLASSES: Readonly<Record<JsonTokenKind, string | undefined>> = {
+  key: "json-key",
+  string: "json-string",
+  number: "json-number",
+  literal: "json-literal",
+  plain: undefined,
+};
+
+/** `value` as JSON (SPEC-14 §4.3): pretty-printed with a two-space indent, colored by token, in a fixed-height box
+ * that scrolls, with Copy and Download (`filename`, a `.json` file) at its top right. Memoized: the value can be
+ * large and the form above re-renders on every keystroke. */
+export const JsonView = memo(function JsonView({
+  label,
+  value,
+  filename,
+}: Readonly<{ label: string; value: unknown; filename: string }>) {
+  const text = JSON.stringify(value, null, 2);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onPress={() => {
+            void navigator.clipboard.writeText(text).then(
+              () => toast.success("Copied the JSON."),
+              () => toast.danger("The browser did not allow copying."),
+            );
+          }}
+        >
+          <Copy aria-hidden="true" />
+          Copy
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onPress={() => {
+            saveText(filename, text, "application/json");
+          }}
+        >
+          <ArrowDownToLine aria-hidden="true" />
+          Download
+        </Button>
+      </div>
+      <section aria-label={label}>
+        <pre className="json-view h-json-view">
+          {jsonTokens(text).map((token) => (
+            <span key={token.start} className={TOKEN_CLASSES[token.kind]}>
+              {token.text}
+            </span>
+          ))}
+        </pre>
+      </section>
+    </div>
+  );
+});

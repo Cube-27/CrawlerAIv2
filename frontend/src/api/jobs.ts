@@ -26,6 +26,7 @@ export type PageOutputPage = Schemas["PageOutputPage"];
 export type ExportPage = Schemas["ExportPage"];
 export type ExportFormat = ExportPage["format"];
 export type JsonValuesPage = Schemas["JsonValuesPage"];
+export type JsonValuesItem = Schemas["JsonValuesItem"];
 export type PageKindRule = Schemas["PageKindRule"];
 export type MapResult = Schemas["MapResult"];
 

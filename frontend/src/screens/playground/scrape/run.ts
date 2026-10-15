@@ -12,24 +12,18 @@ export type ScrapeRun =
   | { kind: "done"; response: ScrapeResponse; fieldTypes: FieldTypes }
   | { kind: "failed"; problem: Problem };
 
-/** The stored schema's field types; empty when it can't be read, so the records still show. */
-async function storedSchemaTypes(client: ApiClient, schemaId: string): Promise<FieldTypes> {
-  const schema = await getSchema(client, schemaId);
-  return schema.kind === "done" ? parseFieldTypes(schema.value.fields) : {};
-}
-
-/** The field types to show the records by: the schema the server drafted, the inline one sent, or the stored one.
- * Empty when the stored schema can't be read; the values are then shown as the server sent them. */
+/** The field types to show the records by: the stored schema's, the only kind Scrape sends (D-0818). Empty when there
+ * are no records or the schema can't be read; the values are then shown as the server sent them. */
 async function fieldTypes(
   client: ApiClient,
   request: ScrapeRequest,
   response: ScrapeResponse,
 ): Promise<FieldTypes> {
-  if (response.schema !== undefined) return parseFieldTypes(response.schema.fields);
-  if (response.records === undefined || request.schema === null) return {};
-  if ("inline" in request.schema) return parseFieldTypes(request.schema.inline.fields);
-  if ("id" in request.schema) return storedSchemaTypes(client, request.schema.id);
-  return {};
+  if (response.records === undefined || request.schema === null || !("id" in request.schema)) {
+    return {};
+  }
+  const schema = await getSchema(client, request.schema.id);
+  return schema.kind === "done" ? parseFieldTypes(schema.value.fields) : {};
 }
 
 /** Runs one `POST /v1/scrape`. */

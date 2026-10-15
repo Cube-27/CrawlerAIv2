@@ -7,6 +7,7 @@ import { FormatSelect } from "../FormatSelect";
 import { OptionsToggle } from "../OptionsPanel";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { PlaygroundLayout } from "../PlaygroundLayout";
+import { ScrapeOutput } from "../output/ScrapeOutput";
 import { requestUrl, UrlInput } from "../UrlInput";
 import {
   asksForNothing,
@@ -19,7 +20,6 @@ import {
 } from "./form";
 import { runScrape, type ScrapeRun } from "./run";
 import { ScrapeOptions } from "./ScrapeOptions";
-import { ScrapeResult } from "./ScrapeResult";
 
 type ScrapeState = { kind: "idle" } | { kind: "pending" } | ScrapeRun;
 
@@ -38,12 +38,21 @@ function clientErrorsOf(form: ScrapeFormState): Readonly<Record<string, string>>
   return form.schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : NO_LISTING_RECORDS;
 }
 
-function outputState(state: Exclude<ScrapeState, { kind: "idle" }>): OutputState {
+function outputState(
+  state: Exclude<ScrapeState, { kind: "idle" }>,
+  withMetadata: boolean,
+): OutputState {
   if (state.kind === "pending") return { kind: "pending", label: "Scraping" };
   if (state.kind === "failed") return state;
   return {
     kind: "done",
-    content: <ScrapeResult response={state.response} fieldTypes={state.fieldTypes} />,
+    content: (
+      <ScrapeOutput
+        response={state.response}
+        fieldTypes={state.fieldTypes}
+        withMetadata={withMetadata}
+      />
+    ),
   };
 }
 
@@ -134,7 +143,9 @@ export function ScrapePlayground() {
         ) : null
       }
     >
-      {state.kind === "idle" ? null : <OutputArea state={outputState(state)} />}
+      {state.kind === "idle" ? null : (
+        <OutputArea state={outputState(state, form.options.metadataInJson)} />
+      )}
     </PlaygroundLayout>
   );
 }
