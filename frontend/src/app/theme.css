@@ -25,8 +25,6 @@
   /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
    * (no layout shift on paging). */
   --height-table-page: 66rem;
-  /* The overview's recent jobs: its box holds `RECENT_JOBS` rows and the header, whatever the state. */
-  --height-table-recent: 27rem;
 }
 
 /* A neutral palette with one indigo accent, borders over shadows (DESIGN.md, Reference). */
@@ -175,23 +173,7 @@
     }
   }
 
-  /* A quick action on the overview: one bordered tile that opens a screen. */
-  .action-tile {
-    @apply flex w-full items-start gap-3 rounded-xl border border-border bg-surface p-4 no-underline;
-    &:hover,
-    &[data-hovered="true"] {
-      @apply border-accent/40 bg-surface-secondary no-underline;
-    }
-  }
-
-  .action-tile-icon {
-    @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent;
-    & svg {
-      @apply size-4;
-    }
-  }
-
-  /* A headline number on the overview: large, tabular, so tiles line up. */
+  /* A headline number (DESIGN.md, Headline numbers): large, tabular, so tiles line up. */
   .stat-value {
     @apply text-2xl leading-8 font-semibold tracking-tight tabular-nums;
   }

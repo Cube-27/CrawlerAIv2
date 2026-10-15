@@ -7,11 +7,14 @@ import type {
 } from "../../api/jobs";
 import type { MethodHint, PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
 import { orderedFormats } from "../../components/FormatChoices";
-import { parseJsonObject, type SchemaSource } from "../scrape/form";
+import { parseJsonObject } from "../../api/json";
 
 /** The job forms' state and the requests they send (SPEC-10 §4.3–4.6). The server validates every request; a form
  * checks only what it must hold to be sent. An empty limit (NaN) or text is left out, so the server's default
  * applies. */
+
+/** Where a job's schema comes from: none, a stored one, inline JSON, or a draft from a prompt. */
+export type SchemaSource = "none" | "id" | "inline" | "prompt";
 
 /** A job's schema as edited. A batch or crawl offers none, a stored one or inline JSON; an extract needs one, and may
  * have it drafted from a prompt. */

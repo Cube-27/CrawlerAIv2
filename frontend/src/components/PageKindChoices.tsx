@@ -4,7 +4,7 @@ import { PAGE_KINDS } from "./requestOptions";
 
 /** The page kinds whose records the server refuses, for a scrape and a batch scrape alike: SPEC-07 §4.4 and D-0502
  * leave listing records out (`check_records`). */
-const NO_RECORDS_PAGE_KINDS: readonly PageKind[] = ["listing"];
+export const NO_RECORDS_PAGE_KINDS: readonly PageKind[] = ["listing"];
 
 /** `form` with `formats`; asking for records clears a page kind whose records the server refuses. */
 export function withFormats<

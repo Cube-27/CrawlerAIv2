@@ -1,10 +1,10 @@
 import { Tabs, Typography } from "@heroui/react";
 import { memo, type ReactNode } from "react";
-import type { FieldTypes } from "../../api/field";
-import type { ScrapeResponse } from "../../api/scrape";
-import { OutcomeLabel } from "../../components/OutcomeLabel";
-import { RecordList } from "../../components/RecordFields";
-import { Timestamp } from "../../components/Timestamp";
+import type { FieldTypes } from "../../../api/field";
+import type { ScrapeResponse } from "../../../api/scrape";
+import { OutcomeLabel } from "../../../components/OutcomeLabel";
+import { RecordList } from "../../../components/RecordFields";
+import { Timestamp } from "../../../components/Timestamp";
 import {
   DraftSchemaView,
   FetchView,

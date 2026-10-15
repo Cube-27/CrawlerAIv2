@@ -1,10 +1,9 @@
 import type { RouteObject } from "react-router";
 import { ApiQueryProvider } from "../api/hooks/query";
-import { HomeScreen } from "../screens/home/HomeScreen";
 import { JobScreen } from "../screens/jobs/JobScreen";
 import { JobsScreen } from "../screens/jobs/JobsScreen";
 import { RecordsScreen } from "../screens/records/RecordsScreen";
-import { ScrapeScreen } from "../screens/scrape/ScrapeScreen";
+import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
 import { SiteScreen } from "../screens/sites/SiteScreen";
@@ -31,8 +30,8 @@ export const routes: RouteObject[] = [
       {
         element: <RequireAccess />,
         children: [
-          { index: true, element: <HomeScreen /> },
-          { path: "scrape", element: <ScrapeScreen /> },
+          // The playground: `/` is its Scrape mode (SPEC-14 §4.8).
+          { index: true, element: <ScrapePlayground /> },
           { path: "schemas", element: <SchemasScreen /> },
           { path: "schemas/new", element: <NewSchemaScreen /> },
           { path: "schemas/:id", element: <SchemaScreen /> },

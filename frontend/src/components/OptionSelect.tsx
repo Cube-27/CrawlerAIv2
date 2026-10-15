@@ -6,12 +6,14 @@ export function isOptionOf<K extends string>(options: Readonly<Record<K, string>
   return (key: unknown): key is K => typeof key === "string" && Object.hasOwn(options, key);
 }
 
-/** A labelled HeroUI Select over a `Record` of option labels. */
+/** A labelled HeroUI Select over a `Record` of option labels. With `hideLabel`, the label is its accessible name only,
+ * for a toolbar. */
 export function OptionSelect<K extends string>({
   label,
   options,
   value,
   isRequired = false,
+  hideLabel = false,
   accepts,
   onChange,
 }: Readonly<{
@@ -19,6 +21,7 @@ export function OptionSelect<K extends string>({
   options: Readonly<Record<K, string>>;
   value: K | null;
   isRequired?: boolean;
+  hideLabel?: boolean;
   accepts: (key: unknown) => key is K;
   onChange: (value: K) => void;
 }>) {
@@ -26,11 +29,12 @@ export function OptionSelect<K extends string>({
     <Select
       isRequired={isRequired}
       value={value}
+      {...(hideLabel ? { "aria-label": label } : {})}
       onChange={(key: Key | null) => {
         if (accepts(key)) onChange(key);
       }}
     >
-      <Label>{label}</Label>
+      {hideLabel ? null : <Label>{label}</Label>}
       <Select.Trigger>
         <Select.Value />
         <Select.Indicator />

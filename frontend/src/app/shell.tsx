@@ -3,7 +3,6 @@ import {
   Database,
   Gear,
   Globe,
-  House,
   Layers,
   ListUl,
   Magnifier,
@@ -29,21 +28,17 @@ interface NavGroup {
   entries: NavEntry[];
 }
 
-// The overview comes first, above the groups; Settings come last, at the foot of the sidebar.
-const OVERVIEW: NavEntry = { href: "/", label: "Overview", icon: House };
-
-const EXTRACT: NavGroup = {
-  title: "Extract",
-  entries: [
-    { href: "/scrape", label: "Scrape", icon: Magnifier },
-    { href: "/jobs", label: "Jobs", icon: Thunderbolt },
-    { href: "/records", label: "Records", icon: Database },
-  ],
+// SPEC-14 §4.8: one entry per playground mode, then the data screens; Settings come last, at the foot of the sidebar.
+const PLAYGROUND: NavGroup = {
+  title: "Playground",
+  entries: [{ href: "/", label: "Scrape", icon: Magnifier }],
 };
 
-const CONFIGURE: NavGroup = {
-  title: "Configure",
+const DATA: NavGroup = {
+  title: "Data",
   entries: [
+    { href: "/jobs", label: "Jobs", icon: Thunderbolt },
+    { href: "/records", label: "Records", icon: Database },
     { href: "/schemas", label: "Schemas", icon: Layers },
     { href: "/sites", label: "Sites", icon: Globe },
   ],
@@ -57,10 +52,10 @@ const EVALUATE: NavGroup = {
 
 const SETTINGS: NavEntry = { href: "/settings", label: "Settings", icon: Gear };
 
-const WITHOUT_LABELING: NavGroup[] = [EXTRACT, CONFIGURE];
+const WITHOUT_LABELING: NavGroup[] = [PLAYGROUND, DATA];
 const WITH_LABELING: NavGroup[] = [...WITHOUT_LABELING, EVALUATE];
 
-/** Whether `pathname` is in the section `href` opens: the page itself or, except for the overview, a page under it. */
+/** Whether `pathname` is in the section `href` opens: the page itself or, except for `/`, a page under it. */
 function isCurrent(href: string, pathname: string): boolean {
   return matchPath({ path: href, end: href === "/" }, pathname) !== null;
 }
@@ -92,9 +87,6 @@ function MainNav() {
       aria-label="Main"
       className="flex flex-wrap gap-1 sm:flex-1 sm:flex-col sm:flex-nowrap sm:gap-0"
     >
-      <ul className="contents sm:flex sm:flex-col">
-        <NavItem entry={OVERVIEW} pathname={pathname} />
-      </ul>
       {groups.map((group) => (
         <div key={group.title} className="contents sm:block">
           <p className="nav-heading hidden sm:block">{group.title}</p>

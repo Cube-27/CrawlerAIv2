@@ -1,10 +1,10 @@
-import type { ApiClient } from "../../api/client";
-import { parseFieldTypes, type FieldTypes } from "../../api/field";
-import type { Problem } from "../../api/problem";
-import { apiResult } from "../../api/result";
-import type { components } from "../../api/schema";
-import { getSchema } from "../../api/schemas";
-import type { ScrapeRequest, ScrapeResponse } from "../../api/scrape";
+import type { ApiClient } from "../../../api/client";
+import { parseFieldTypes, type FieldTypes } from "../../../api/field";
+import type { Problem } from "../../../api/problem";
+import { apiResult } from "../../../api/result";
+import type { components } from "../../../api/schema";
+import { getSchema } from "../../../api/schemas";
+import type { ScrapeRequest, ScrapeResponse } from "../../../api/scrape";
 
 type ScrapeRequestBody = components["schemas"]["ScrapeRequest"];
 
@@ -32,7 +32,7 @@ async function fieldTypes(
   return {};
 }
 
-/** Runs one `POST /v1/scrape`. A 401 drops the key through the client's middleware (`useApiClient`). */
+/** Runs one `POST /v1/scrape`. */
 export async function runScrape(client: ApiClient, request: ScrapeRequest): Promise<ScrapeRun> {
   const answer = await apiResult(
     () => client.POST("/v1/scrape", { body: request as ScrapeRequestBody }),
