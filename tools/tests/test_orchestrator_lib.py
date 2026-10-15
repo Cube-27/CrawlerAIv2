@@ -1,23 +1,18 @@
 """Behaviour of `tools/orchestrator/lib.sh`, sourced under bash: the worktree root is beside the main checkout, from
 the main checkout and from any of its worktrees alike."""
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-from scan_repo import IDENTITY
+from scan_repo import git
 
 LIB = Path(__file__).resolve().parents[1] / "orchestrator" / "lib.sh"
 BASH = shutil.which("bash")
 GIT = shutil.which("git")
 
 pytestmark = pytest.mark.skipif(BASH is None or GIT is None, reason="needs bash and git")
-
-
-def git(cwd: Path, *args: str) -> None:
-    subprocess.run([str(GIT), *args], cwd=cwd, env={**os.environ, **IDENTITY}, check=True, capture_output=True)  # noqa: S603
 
 
 def lib(cwd: Path, call: str) -> str:

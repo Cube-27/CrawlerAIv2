@@ -6,15 +6,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scan_repo import make_repo
+
 CHECK = Path(__file__).resolve().parents[1] / "decision_ids.py"
 
 
 def run_check(root: Path, files: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """Run a copy of the check placed in `root`'s tools/, so it checks the log written under `root`."""
-    for name, content in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+    make_repo(root, dict(files))
     check = root / "tools" / CHECK.name
     check.parent.mkdir(exist_ok=True)
     shutil.copyfile(CHECK, check)

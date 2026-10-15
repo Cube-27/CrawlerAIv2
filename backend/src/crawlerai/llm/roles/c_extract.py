@@ -176,7 +176,8 @@ async def extract_listing(
     kind: PromptKind = LISTING_PROMPT_KIND,
 ) -> FilledListing:
     """Role C's rows of a listing, and the page entity's candidates for `page_fields`, from the cleaned `text`. A row
-    whose every value is null or dropped is no row."""
+    whose every value is null or dropped is no row. `row_fields` is not empty: with none there are no rows to ask
+    for, so callers ask for the page fields with `extract_detail`."""
     read, notes = _cut(text, LISTING_MAX_CHARS)
     request = listing_request(read, row_fields, page_fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
