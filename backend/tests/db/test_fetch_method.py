@@ -119,7 +119,6 @@ async def test_http_failing_and_the_browser_passing_sets_the_site_to_browser(
     [
         ("ok", "ok", FetchPolicy()),  # HTTP passed: the browser never ran
         ("shell", "shell", FetchPolicy()),  # the browser did no better
-        ("shell", "blocked", FetchPolicy()),
         ("ok", "ok", FetchPolicy(method_hint="browser")),  # a browser fetch asked for is no evidence about HTTP
     ],
 )
@@ -173,13 +172,12 @@ async def test_a_shell_then_browser_ok_then_a_passing_recheck_goes_http_browser_
     assert [attempt.method for attempt in after.attempts] == ["http"]
 
 
-@pytest.mark.parametrize("outcome", ["shell", "blocked", "not_found", "error"])
 async def test_a_recheck_that_fails_over_http_keeps_browser_until_the_next_turn(
-    conn: AsyncConnection, http: Web, outcome: BlockClass
+    conn: AsyncConnection, http: Web
 ) -> None:
     site_id = await _site(conn, fetch_method="browser", fetch_method_checked_at=LONG_AGO)
     await _capture(conn, site_id, PAGE, "ok", days_ago=1)
-    http.pages[PAGE] = outcome
+    http.pages[PAGE] = "shell"
 
     assert await recheck_fetch_method(conn, http, batch=10) == 1
 

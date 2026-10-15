@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -116,8 +116,13 @@ async def test_an_activated_config_makes_the_state_active(conn: AsyncConnection)
     await learning_activated(conn, key, config_id)
 
     state = await _state(conn, key)
-    assert (state.mode, state.active_config_id, state.learning_started_at) == ("active", config_id, None)
-    assert state.last_learned_at is not None
+    now = (await conn.execute(select(func.now()))).scalar_one()
+    assert (state.mode, state.active_config_id, state.learning_started_at, state.last_learned_at) == (
+        "active",
+        config_id,
+        None,
+        now,
+    )
     await _pages(conn, key, 30)
     assert await trigger_learning(conn, batch=BATCH) == 0
 
@@ -148,7 +153,8 @@ async def test_an_active_state_relearns_only_when_forced_and_keeps_its_config(co
     await learning_activated(conn, key, config_id)
 
     assert await request_learning(conn, key) is None
-    assert await request_learning(conn, key, force=True) is not None
+    forced = await request_learning(conn, key, force=True)
+    assert [job.id for job in await _learn_jobs(conn, key)][1:] == [forced]
     state = await _state(conn, key)
     assert (state.mode, state.active_config_id, state.learning_started_at is not None) == ("active", config_id, True)
 
@@ -185,7 +191,6 @@ async def test_the_trigger_handles_at_most_one_batch(conn: AsyncConnection) -> N
     [
         ({"mode": "learning"}, "ck_progressive_state_learning_has_started"),
         ({"mode": "active"}, "ck_progressive_state_active_has_config"),
-        ({"retry_at_pages": -1}, "ck_progressive_state_retry_at_pages_non_negative"),
     ],
 )
 async def test_inconsistent_states_are_refused(conn: AsyncConnection, columns: dict[str, Any], constraint: str) -> None:

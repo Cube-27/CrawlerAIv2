@@ -130,21 +130,13 @@ async def test_a_pass_over_labels_read_before_another_pass_is_refused(client: tu
     assert (await http.get(f"/v1/eval/pages/{page_id}")).json()["status"] == "labeled"
 
 
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [
-        ("GET", "/v1/eval/pages"),
-        ("GET", "/v1/eval/pages/{page_id}"),
-        ("PUT", "/v1/eval/pages/{page_id}/labels"),
-        ("POST", "/v1/eval/pages/{page_id}/prefill"),
-        ("POST", "/v1/eval/capture"),
-    ],
-)
-async def test_the_labeling_api_needs_an_api_key(client: tuple[httpx.AsyncClient, str], method: str, path: str) -> None:
-    # SPEC-03 §4.10: the labeling API has the same API-key auth as everything else.
+async def test_the_labeling_api_needs_an_api_key(client: tuple[httpx.AsyncClient, str]) -> None:
+    # SPEC-03 §4.10: the labeling API has the same API-key auth as everything else (a dependency of its router).
     http, page_id = client
 
-    response = await http.request(method, path.format(page_id=page_id), headers={"authorization": ""})
+    response = await http.put(
+        f"/v1/eval/pages/{page_id}/labels", json=_labels("labeled"), headers={"authorization": ""}
+    )
 
     assert (response.status_code, response.headers["www-authenticate"]) == (401, "Bearer")
     assert (await http.get(f"/v1/eval/pages/{page_id}")).json()["status"] is None

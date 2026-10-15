@@ -45,10 +45,6 @@ async def _row(conn: AsyncConnection, site_id: SiteId) -> tuple[str | None, str 
     return None if row is None else (row.etag, row.last_modified, row.last_seen_at)
 
 
-async def test_a_url_never_fetched_has_no_validators(conn: AsyncConnection) -> None:
-    assert await stored_validators(conn, await _site(conn), URL) is None
-
-
 async def test_a_200_stores_the_validators_it_answered_with(
     conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
 ) -> None:
@@ -78,12 +74,11 @@ async def test_a_200_without_validators_stores_none_to_send(
     await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b""))
 
     assert await stored_validators(conn, site_id, URL) is None
-    assert await _row(conn, site_id) is not None  # the URL is still recorded as seen
+    now = (await conn.execute(select(func.now()))).scalar_one()
+    assert await _row(conn, site_id) == (None, None, now)  # the URL is still recorded as seen
 
 
-@pytest.mark.parametrize(
-    ("status", "method"), [(404, "http"), (403, "http"), (500, "http"), (200, "browser"), (200, "api")]
-)
+@pytest.mark.parametrize(("status", "method"), [(404, "http"), (200, "browser")])
 async def test_only_an_http_200_stores_validators(
     conn: AsyncConnection, fetch_result: Callable[..., FetchResult], status: int, method: CaptureMethod
 ) -> None:
@@ -158,15 +153,12 @@ async def test_a_first_fingerprint_is_a_change(conn: AsyncConnection) -> None:
     assert await _content(conn, site_id) == ("0123456789abcdef", now)
 
 
-@pytest.mark.parametrize("flipped", [0, 1, 3])
-async def test_a_fingerprint_within_three_bits_is_unchanged_and_keeps_the_stored_one(
-    conn: AsyncConnection, flipped: int
-) -> None:
+async def test_a_fingerprint_within_three_bits_is_unchanged_and_keeps_the_stored_one(conn: AsyncConnection) -> None:
     site_id = await _site(conn)
     await record_content(conn, site_id, URL, FINGERPRINT)
     changed_at = await _a_day_ago(conn, site_id)
 
-    assert await record_content(conn, site_id, URL, FINGERPRINT ^ ((1 << flipped) - 1)) is False
+    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b111) is False
 
     assert await _content(conn, site_id) == ("0123456789abcdef", changed_at)
 

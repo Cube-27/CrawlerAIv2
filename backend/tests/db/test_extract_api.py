@@ -162,4 +162,6 @@ async def test_extract_problems(
 async def test_extract_needs_a_key(client: httpx.AsyncClient, own_origin: str) -> None:
     del client.headers["authorization"]
 
-    assert (await _post(client, [f"{own_origin}/p/1"], {"prompt": "kettles"})).status_code == 401
+    response = await _post(client, [f"{own_origin}/p/1"], {"prompt": "kettles"})
+
+    assert (response.status_code, response.json()["type"]) == (401, "unauthorized")
