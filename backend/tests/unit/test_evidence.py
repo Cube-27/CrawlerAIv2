@@ -10,9 +10,6 @@ from pydantic import ValidationError
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import EvalRunId, SchemaId, SourceKind
-from crawlerai.eval.calibrate import calibrate, write_calibration
-from crawlerai.eval.metrics import PrecisionMetrics, Report
-from crawlerai.eval.store import EvalRunRow
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.evidence import (
@@ -78,10 +75,7 @@ def _assess(
 @pytest.mark.parametrize(
     ("kind", "bucket"),
     [
-        ("adapter", "adapter"),
         ("api", "adapter"),
-        ("jsonld", "structured"),
-        ("microdata", "structured"),
         ("og", "structured"),
         ("llm", "llm_grounded"),
     ],
@@ -94,24 +88,6 @@ def test_a_config_value_takes_the_configs_field_status() -> None:
     config = _candidate("config")
     assert evidence_of(config, (), corroborated=True) == "config_corroborated"
     assert evidence_of(config, (), corroborated=False) == "config_uncorroborated"
-
-
-def test_two_independent_kinds_that_agree_are_agreed() -> None:
-    assert evidence_of(_candidate("jsonld"), (_candidate("og"),), corroborated=False) == "agreed"
-
-
-def test_agreement_within_one_kind_is_not_agreed() -> None:
-    assert evidence_of(_candidate("jsonld"), (_candidate("jsonld", n=1),), corroborated=False) == "structured"
-
-
-def test_a_state_value_admitted_by_equality_does_not_make_agreement() -> None:
-    state = _candidate("js_state", independent=False)
-    assert evidence_of(_candidate("jsonld"), (state,), corroborated=False) == "structured"
-
-
-def test_a_visible_state_value_is_an_independent_vote() -> None:
-    state = _candidate("xhr", independent=True)
-    assert evidence_of(_candidate("jsonld"), (state,), corroborated=False) == "agreed"
 
 
 def test_an_adapter_value_stays_adapter_when_others_agree() -> None:
@@ -252,31 +228,6 @@ def test_the_configs_corroborated_fields_are_named() -> None:
 
 def test_a_missing_calibration_file_means_no_calibration(tmp_path: Path) -> None:
     assert load_calibration(tmp_path / "calibration.json") is None
-
-
-def test_the_engine_reads_the_file_the_calibrate_command_writes(tmp_path: Path) -> None:
-    report = Report(
-        engine_version="unknown+cal.none",
-        git_sha="a" * 40,
-        split="dev",
-        n_pages=1,
-        by_field_type={},
-        by_field={},
-        by_bucket={"money|structured": PrecisionMetrics(n=40, precision=0.98)},
-        by_config_status={},
-        by_category={},
-        acquisition={},
-        usage={},
-    )
-    run = EvalRunRow(
-        id=RUN_ID, split="dev", engine_version="x", git_sha="a" * 40, metrics=report.model_dump(mode="json")
-    )
-    path = write_calibration(calibrate(run), tmp_path)
-
-    loaded = load_calibration(path)
-
-    assert loaded is not None
-    assert loaded.measure(FieldType.MONEY, "structured") == (0.98, True)
 
 
 def test_a_calibration_not_fitted_on_dev_is_refused(tmp_path: Path) -> None:

@@ -70,13 +70,14 @@ def test_a_version_2_document_round_trips() -> None:
     labels = parse_labels(DOC, "detail", SPECS)
 
     assert labels.model_dump(mode="json", exclude_defaults=True) == DOC | {"lists": {"variants": VARIANTS}}
-    assert len(labels.lists["variants"].rows) == 2
 
 
 def test_version_1_labels_stay_valid_and_leave_the_row_field_unlabeled() -> None:
     doc = {k: v for k, v in DOC.items() if k != "lists"} | {"label_version": 1}
 
-    assert parse_labels(doc, "detail", SPECS).lists == {}
+    labels = parse_labels(doc, "detail", SPECS)
+
+    assert (list(labels.fields), labels.lists) == (["title"], {})
 
 
 def test_version_1_labels_cannot_label_rows() -> None:
@@ -93,7 +94,7 @@ def test_a_draft_may_leave_the_row_field_and_sub_fields_unlabeled() -> None:
     partial = {"fields": {"sku": sub({"scheme": "sku", "value": "W-11"})}}
     draft = with_list({"absent": False, "rows": [partial]}, status="draft", checker=None)
 
-    assert parse_labels(draft, "detail", SPECS).status == "draft"
+    assert list(parse_labels(draft, "detail", SPECS).lists["variants"].rows[0].fields) == ["sku"]
     assert parse_labels({k: v for k, v in draft.items() if k != "lists"}, "detail", SPECS).lists == {}
 
 

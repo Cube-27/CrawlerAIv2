@@ -190,8 +190,7 @@ def test_rows_published_where_the_label_says_absent_are_fp() -> None:
 def test_version_1_labels_leave_the_row_field_unscored() -> None:
     r = report(case("p1", None, [engine_row("W-11")], label_version=1))
 
-    assert not [k for k in r.by_field_type if k.startswith("list.")]
-    assert r.row_matching is None
+    assert (list(r.by_field_type), r.row_matching) == (["text"], None)
 
 
 def test_row_fields_do_not_change_zero_touch() -> None:
