@@ -18,8 +18,9 @@ const TASK_ID = "0192a000-0000-7000-8000-000000000401";
 const SECOND_JOB_ID = "0192a000-0000-7000-8000-000000000902";
 const JOB = `/v1/jobs/${JOB_ID}`;
 
+/** A `learn` job: no playground mode runs it, so it keeps its job page (SPEC-14 §4.8). */
 function job(overrides: Partial<JobSummary> = {}): JobSummary {
-  return jobSummary({ id: JOB_ID, ...overrides });
+  return jobSummary({ id: JOB_ID, kind: "learn", ...overrides });
 }
 
 const schema: SchemaDef = {
@@ -125,7 +126,7 @@ afterEach(() => {
 describe("Job screen", () => {
   it("shows the job's status, task counts, usage, events and records", async () => {
     jobApi();
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     expect(jobStatus()).toHaveTextContent("running");
     expect(rowsOf(screen.getByRole("grid", { name: "Tasks by outcome" }))).toEqual(["extracted2"]);
@@ -155,7 +156,7 @@ describe("Job screen", () => {
         return next();
       },
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     expect(await eventLog().findByText("reconnecting")).toBeInTheDocument();
     expect(await eventLog().findByText("ended", {}, { timeout: 3000 })).toBeInTheDocument();
@@ -186,7 +187,7 @@ describe("Job screen", () => {
         return next();
       },
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     expect(await eventLog().findByText("live", {}, { timeout: 3000 })).toBeInTheDocument();
     await waitFor(() => {
@@ -198,7 +199,7 @@ describe("Job screen", () => {
     jobApi({
       [`GET ${JOB}/events`]: () => problem(404, { title: "Not found", detail: `no job ${JOB_ID}` }),
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     expect(await eventLog().findByText(`no job ${JOB_ID}`)).toBeInTheDocument();
     expect(eventLog().getByText("failed")).toBeInTheDocument();
@@ -206,7 +207,7 @@ describe("Job screen", () => {
 
   it("lists the pages of a job without a schema", async () => {
     jobApi({ [`GET ${JOB}/results`]: () => Response.json(pages) });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     const grid = await screen.findByRole("grid", { name: "Pages" });
     expect(rowsOf(grid)).toEqual([
@@ -239,7 +240,7 @@ describe("Job screen", () => {
       next_cursor: null,
     };
     jobApi({ [`GET ${JOB}/results`]: () => Response.json(failing) });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     const grid = await screen.findByRole("grid", { name: "Pages" });
     expect(within(grid).getByRole("columnheader", { name: "Reason" })).toBeInTheDocument();
@@ -263,7 +264,7 @@ describe("Job screen", () => {
     jobApi({
       [`GET ${JOB}/events`]: () => sse(["1", "task_failed", failed], ["2", "failed", {}]),
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     const data = JSON.stringify(failed);
     await waitFor(() => {
@@ -290,7 +291,7 @@ describe("Job screen", () => {
         });
       },
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
 
@@ -310,7 +311,7 @@ describe("Job screen", () => {
     const calls = jobApi({
       [`DELETE ${JOB}`]: () => Response.json(job({ status: "cancelled" })),
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     await userEvent.click(screen.getByRole("button", { name: "Cancel job" }));
     const dialog = await screen.findByRole("alertdialog");
@@ -327,7 +328,7 @@ describe("Job screen", () => {
     jobApi({
       [`DELETE ${JOB}`]: () => Response.json(job({ cancel_requested: true })),
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
     expect(jobStatus()).not.toHaveTextContent("cancel requested");
 
     await userEvent.click(screen.getByRole("button", { name: "Cancel job" }));
@@ -344,7 +345,7 @@ describe("Job screen", () => {
     jobApi({
       [`GET ${JOB}`]: () => Response.json(job({ status: "cancelled", cancel_requested: true })),
     });
-    await open(`/jobs/${JOB_ID}`, "Batch scrape job");
+    await open(`/jobs/${JOB_ID}`, "Learn job");
 
     expect(jobStatus()).toHaveTextContent("cancelled");
     expect(jobStatus()).not.toHaveTextContent("cancel requested");
@@ -352,32 +353,30 @@ describe("Job screen", () => {
 });
 
 describe("Jobs screen", () => {
-  it("queues an extract with a prompt and opens the new job", async () => {
-    const calls = jobApi({
-      "POST /v1/extract": () =>
-        Response.json(
-          { job_id: JOB_ID, schema: { ...schema, origin: "prompt_draft" } },
-          { status: 202 },
-        ),
-      [`GET ${JOB}`]: () => Response.json(job({ kind: "extract" })),
-    });
+  it("is run history: it starts no job", async () => {
+    jobApi();
     await open("/jobs", "Jobs");
 
-    await userEvent.click(screen.getByRole("button", { name: "New extract" }));
-    const dialog = within(await screen.findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText("URLs"), "https://shop.example.test/item/*");
-    await userEvent.click(dialog.getByLabelText("From a prompt"));
-    await userEvent.type(dialog.getByLabelText("Prompt"), "title and price");
-    await userEvent.click(dialog.getByLabelText("Detail"));
-    await userEvent.click(dialog.getByRole("button", { name: "Queue extract" }));
+    expect(
+      screen.getByText("Every run, newest first. A run opens in its playground mode."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /New|Map URLs/ })).not.toBeInTheDocument();
+  });
 
-    await screen.findByRole("heading", { level: 1, name: "Extract job" });
-    expect(calls.find(({ path }) => path === "/v1/extract")?.body).toEqual({
-      urls: ["https://shop.example.test/item/*"],
-      schema: { prompt: "title and price" },
-      page_kind: "detail",
-      fetch: { method_hint: "auto" },
+  it("redirects a run's job page to its run in its mode", async () => {
+    jobApi({
+      [`GET ${JOB}`]: () => Response.json(job({ kind: "batch_scrape" })),
+      [`GET ${JOB}/results`]: () =>
+        Response.json({ format: "json_values", items: [], next_cursor: null }),
+      "GET /v1/schemas": () => Response.json({ items: [] }),
     });
+    await open(`/jobs/${JOB_ID}`, "Playground");
+
+    const batch = within(screen.getByRole("navigation", { name: "Mode" })).getByRole("tab", {
+      name: "Batch",
+    });
+    expect(batch).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("grid", { name: "Pages" })).toBeInTheDocument();
   });
 });
 
@@ -399,9 +398,19 @@ describe("Jobs table", () => {
 
     const table = await screen.findByRole("grid", { name: "Jobs" });
     expect(rowsOf(table)).toEqual([
-      "Batch scrape" + "running" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00",
+      "Learn" + "running" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00",
       "Crawl" + "failed" + "4 tasks: 3 failed, 1 cancelled" + "Oct 13, 2026, 08:00",
     ]);
+  });
+
+  it("links a run's row to its playground mode, and a learn job's row to its job page", async () => {
+    jobApi({ "GET /v1/jobs": jobPage([job({ id: SECOND_JOB_ID, kind: "crawl" }), job()]) });
+    await open("/jobs", "Jobs");
+
+    const table = await screen.findByRole("grid", { name: "Jobs" });
+    const [crawl, learn] = within(table).getAllByRole("row").slice(1);
+    expect(crawl).toHaveAttribute("data-href", `/crawl?job=${SECOND_JOB_ID}`);
+    expect(learn).toHaveAttribute("data-href", `/jobs/${JOB_ID}`);
   });
 
   it("opens a job from its row", async () => {
@@ -409,11 +418,9 @@ describe("Jobs table", () => {
     await open("/jobs", "Jobs");
 
     const table = await screen.findByRole("grid", { name: "Jobs" });
-    await userEvent.click(within(table).getByText("Batch scrape"));
+    await userEvent.click(within(table).getByText("Learn"));
 
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Batch scrape job" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Learn job" })).toBeInTheDocument();
   });
 
   it("pages forward with the cursor the API returned, and back to the first page", async () => {
@@ -536,8 +543,6 @@ describe("Jobs table", () => {
     await userEvent.type(screen.getByLabelText("Job ID"), JOB_ID);
     await userEvent.click(screen.getByRole("button", { name: "Open job" }));
 
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Batch scrape job" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Learn job" })).toBeInTheDocument();
   });
 });

@@ -17,7 +17,8 @@ import {
   Tooltip,
 } from "@heroui/react";
 import { ArrowRotateLeft, CircleQuestion, Sliders } from "@gravity-ui/icons";
-import { useId, useState, type Key, type ReactNode } from "react";
+import { use, useId, useState, type Key, type ReactNode } from "react";
+import { ReadOnlyContext } from "./readOnly";
 
 /** The playground's options panel (SPEC-14 §4.2, DESIGN.md Options panel): rows of label, help icon and control, in
  * two columns from `md`, then a collapsed Advanced section and Reset settings. It is inline, never an overlay. */
@@ -238,7 +239,12 @@ export function TextAreaRow({
   onChange: (value: string) => void;
 }>) {
   return (
-    <TextField className="flex flex-col gap-2 md:col-span-2" name={name} value={value} onChange={onChange}>
+    <TextField
+      className="flex flex-col gap-2 md:col-span-2"
+      name={name}
+      value={value}
+      onChange={onChange}
+    >
       <RowLabel label={label} help={help} />
       <TextArea rows={6} spellCheck={false} placeholder={placeholder} />
       <FieldError />
@@ -325,13 +331,17 @@ export function OptionsPanel({
   onReset,
   children,
 }: Readonly<{ advanced: ReactNode; onReset: () => void; children: ReactNode }>) {
+  // Read-only, the settings are disabled (a disabled fieldset, HTML §4.10.15), while Advanced still opens.
+  const readOnly = use(ReadOnlyContext);
   return (
     <section
       id="playground-options"
       aria-label="Options"
       className="options-panel flex flex-col gap-4 p-4"
     >
-      <div className={GRID}>{children}</div>
+      <fieldset disabled={readOnly} className={GRID}>
+        {children}
+      </fieldset>
       <Disclosure>
         <Disclosure.Heading>
           <Button slot="trigger" variant="ghost" size="sm">
@@ -340,11 +350,15 @@ export function OptionsPanel({
           </Button>
         </Disclosure.Heading>
         <Disclosure.Content>
-          <Disclosure.Body className={`${GRID} pt-3`}>{advanced}</Disclosure.Body>
+          <Disclosure.Body>
+            <fieldset disabled={readOnly} className={`${GRID} pt-3`}>
+              {advanced}
+            </fieldset>
+          </Disclosure.Body>
         </Disclosure.Content>
       </Disclosure>
       <div className="flex justify-end">
-        <Button variant="ghost" size="sm" onPress={onReset}>
+        <Button variant="ghost" size="sm" isDisabled={readOnly} onPress={onReset}>
           <ArrowRotateLeft aria-hidden="true" />
           Reset settings
         </Button>

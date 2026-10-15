@@ -5,7 +5,14 @@ import type { JobSummary, JsonValuesItem, JsonValuesPage } from "../../../api/jo
 import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
-import { openOptions, openPlayground, pick, posted, toggleFormats } from "../../../test/playground";
+import {
+  openOptions,
+  openPlayground,
+  optionsButton,
+  pick,
+  posted,
+  toggleFormats,
+} from "../../../test/playground";
 
 // `fetch` answers the batch, job, results and events endpoints with the shapes SPEC-10 §4.2–4.3 and SPEC-14 §4.4
 // define.
@@ -207,6 +214,7 @@ describe("batch playground: the run", () => {
     await pagesGrid();
     expect(resultQueries(calls)).toEqual(["format=json_values&limit=20"]);
 
+    await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
     const options = await openOptions();
     await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
 
@@ -359,5 +367,80 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
     await pagesGrid();
 
     expect(screen.getByRole("button", { name: "Cancel job" })).toBeDisabled();
+  });
+});
+
+describe("batch playground: runs", () => {
+  const OLDER = "0192a000-0000-7000-8000-0000000000b0";
+
+  it("lists the recent batches before any run, each opening its run here", async () => {
+    const calls = batchApi({
+      "GET /v1/jobs": () =>
+        Response.json({
+          items: [
+            job({ status: "completed", request: { urls: ["https://shop.test/a"] } }),
+            job({ id: OLDER, started_at: null }),
+          ],
+          next_cursor: null,
+        }),
+    });
+    await openPlayground("/batch");
+
+    const grid = await screen.findByRole("grid", { name: "Recent runs" });
+    const rows = within(grid).getAllByRole("row").slice(1);
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "https://shop.test/a" + "completed" + "Oct 14, 2026, 09:00",
+      "3 URLs" + "running" + "—",
+    ]);
+    expect(rows[0]).toHaveAttribute("data-href", `/batch?job=${JOB_ID}`);
+    expect(calls.find(({ path }) => path === "/v1/jobs")?.query).toBe("kind=batch_scrape&limit=10");
+  });
+
+  it("shows a run's request read-only, and edit and re-run starts a new job, keeping the old one", async () => {
+    const calls = batchApi({
+      [`GET ${JOB}`]: () =>
+        Response.json(
+          job({
+            request: {
+              urls: ["https://shop.test/a", "https://shop.test/b"],
+              formats: ["links", "metadata"],
+              schema: null,
+              page_kind: "listing",
+              fetch: { method_hint: "browser", respect_robots: true },
+              webhook_url: null,
+            },
+          }),
+        ),
+      "POST /v1/batch/scrape": () => Response.json({ job_id: OLDER }),
+      [`GET /v1/jobs/${OLDER}`]: () => Response.json(job({ id: OLDER })),
+      [`GET /v1/jobs/${OLDER}/events`]: QUIET,
+      [`GET /v1/jobs/${OLDER}/results`]: () => valuesPage([]),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    const list = screen.getByRole("textbox", { name: "URLs" });
+    await waitFor(() => {
+      expect(list).toHaveValue("https://shop.test/a\nhttps://shop.test/b");
+    });
+    expect(list).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Start batch" })).not.toBeInTheDocument();
+    expect(optionsButton()).toHaveAccessibleDescription("Settings changed");
+    const options = await openOptions();
+    expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeChecked();
+    expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
+    await userEvent.type(list, "{Enter}https://shop.test/c");
+    await start();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit and re-run" })).toBeInTheDocument();
+    });
+    expect(posted(calls)).toEqual({
+      urls: ["https://shop.test/a", "https://shop.test/b", "https://shop.test/c"],
+      formats: ["links", "metadata"],
+      schema: null,
+      page_kind: "listing",
+      fetch: { method_hint: "browser" },
+    });
   });
 });

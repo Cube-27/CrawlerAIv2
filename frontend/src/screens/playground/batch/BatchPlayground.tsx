@@ -1,23 +1,23 @@
 import { Button } from "@heroui/react";
-import { useSearchParams } from "react-router";
 import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
+import { OptionsToggle } from "../OptionsPanel";
 import { OutputArea } from "../OutputArea";
-import { pageKindErrors, requestPageKind } from "../pageRequest";
+import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
-import { JOB } from "../run/jobParam";
 import { JobRunOutput } from "../run/JobRun";
+import { RecentRuns } from "../run/RecentRuns";
+import { useShownJob } from "../run/useShownJob";
 import { usePageForm } from "../usePageForm";
 import { BatchOptions } from "./BatchOptions";
-import { buildBatch, DEFAULT_BATCH_OPTIONS, INITIAL_BATCH } from "./form";
+import { batchForm, buildBatch, DEFAULT_BATCH_OPTIONS, INITIAL_BATCH } from "./form";
 import { UrlList } from "./UrlList";
 
 /** The Batch playground at `/batch` (SPEC-14 §4.2): a URL list, the same formats, schema and options for every URL
- * (`POST /v1/batch/scrape`), and the run on the same page as a running results table. */
+ * (`POST /v1/batch/scrape`), and the run on the same page (`?job=`) as a running results table; before any run, the
+ * recent batches. */
 export function BatchPlayground() {
-  const [params, setParams] = useSearchParams();
-  const jobId = params.get(JOB);
   const submit = useSubmitBatch();
   const problem = problemOf(submit.error);
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
@@ -25,18 +25,15 @@ export function BatchPlayground() {
     problem,
     pageKindErrors,
   );
+  const { jobId, onEdit, show } = useShownJob(batchForm, setForm);
 
   const start = () => {
     const request = check() ? buildBatch(form) : null;
     if (request === null) return;
-    submit.mutate(request, {
-      onSuccess: (id) => {
-        setParams({ [JOB]: id });
-      },
-    });
+    submit.mutate(request, { onSuccess: show });
   };
 
-  let output = null;
+  let output = <RecentRuns kind="batch_scrape" />;
   if (submit.isPending)
     output = <OutputArea state={{ kind: "pending", label: "Starting the batch" }} />;
   else if (problem !== null) output = <OutputArea state={{ kind: "failed", problem }} />;
@@ -48,6 +45,7 @@ export function BatchPlayground() {
       mode="batch"
       validationErrors={validationErrors}
       onSubmit={start}
+      onEdit={onEdit}
       input={
         <UrlList
           value={form.urls}
@@ -56,15 +54,14 @@ export function BatchPlayground() {
           }}
         />
       }
-      tools={
-        <PageTools
-          form={form}
-          defaults={DEFAULT_BATCH_OPTIONS}
-          optionsOpen={optionsOpen}
-          onOptionsOpen={setOptionsOpen}
-          onChange={setForm}
+      optionsToggle={
+        <OptionsToggle
+          isOpen={optionsOpen}
+          changed={optionsChanged(form.options, DEFAULT_BATCH_OPTIONS)}
+          onChange={setOptionsOpen}
         />
       }
+      tools={<PageTools form={form} onChange={setForm} />}
       action={
         <Button type="submit" isPending={submit.isPending}>
           Start batch

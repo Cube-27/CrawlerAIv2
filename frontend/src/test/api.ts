@@ -19,16 +19,22 @@ export function healthReply(evalUi = false): Response {
 
 const HEALTH = "GET /healthz";
 
+/** Every playground mode lists its recent runs (SPEC-14 §4.6). */
+const JOBS = "GET /v1/jobs";
+
 /** Stubs `fetch` with one reply per `METHOD /path`, which may arrive later; records every request. The shell asks
- * `GET /healthz` on every screen: unless `replies` names it, it gets `healthReply()` and is not recorded. */
+ * `GET /healthz` on every screen, and a playground mode `GET /v1/jobs`: unless `replies` names them, they get
+ * `healthReply()` and no jobs, and are not recorded. */
 export function stubApi(
   replies: Record<string, (call: Call) => Response | Promise<Response>>,
 ): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", async (request: Request) => {
     const url = new URL(request.url);
-    if (`${request.method} ${url.pathname}` === HEALTH && !(HEALTH in replies))
-      return healthReply();
+    const route = `${request.method} ${url.pathname}`;
+    if (route === HEALTH && !(HEALTH in replies)) return healthReply();
+    if (route === JOBS && !(JOBS in replies))
+      return Response.json({ items: [], next_cursor: null });
     const text = await request.text();
     const call: Call = {
       method: request.method,

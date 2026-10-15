@@ -2,6 +2,16 @@ import type { MethodHint, PageKind, ScrapeRequest } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { canSend, requestFormats, requestPageKind } from "../pageRequest";
+import {
+  count,
+  llmCalls,
+  methodHint,
+  pageFormats,
+  pageKind,
+  schemaId,
+  text,
+  type StoredRequest,
+} from "../run/storedRequest";
 
 /** The settings in the options panel (SPEC-14 §4.2): each is a `ScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format. */
@@ -56,5 +66,26 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
     ...(Number.isNaN(options.maxAge) ? {} : { max_age: options.maxAge }),
     ...(Number.isNaN(options.timeoutS) ? {} : { timeout_s: options.timeoutS }),
     ...(Number.isNaN(options.llmCalls) ? {} : { budget: { llm_calls: options.llmCalls } }),
+  };
+}
+
+/** The form that shows the stored `request` of a scrape job. A stored schema's page kind is the request's. */
+export function scrapeForm(request: StoredRequest): ScrapeFormState {
+  const { formats, metadataInJson } = pageFormats(request);
+  const id = schemaId(request);
+  const kind = pageKind(request);
+  return {
+    url: text(request, "url"),
+    formats,
+    schemaId: id,
+    schemaPageKind: id === "" ? null : kind,
+    options: {
+      pageKind: id === "" ? kind : null,
+      metadataInJson,
+      methodHint: methodHint(request),
+      maxAge: count(request, "max_age"),
+      timeoutS: count(request, "timeout_s"),
+      llmCalls: llmCalls(request),
+    },
   };
 }

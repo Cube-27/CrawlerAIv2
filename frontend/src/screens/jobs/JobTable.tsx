@@ -10,6 +10,7 @@ import { isOptionOf, OptionSelect } from "../../components/OptionSelect";
 import { TaskCountsText } from "../../components/OutcomeCounts";
 import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
 import { Timestamp } from "../../components/Timestamp";
+import { runPath } from "../playground/modes";
 import { KIND_LABELS } from "./kinds";
 import { jobPath } from "./paths";
 
@@ -70,7 +71,12 @@ function JobFilterFields({
   );
 }
 
-/** Jobs as table rows, newest first; a row opens its job. The jobs screen and the overview show them. */
+/** Where a job's row goes: its run in its playground mode, or the job page for a kind no mode runs (SPEC-14 §4.8). */
+function rowPath(job: JobSummary): string {
+  return runPath(job.kind, job.id) ?? jobPath(job.id);
+}
+
+/** Jobs as table rows, newest first; a row opens its run. */
 export function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
   return (
     <Table>
@@ -87,7 +93,7 @@ export function JobRows({ jobs }: Readonly<{ jobs: readonly JobSummary[] }>) {
           </Table.Header>
           <Table.Body items={jobs}>
             {(job) => (
-              <Table.Row id={job.id} href={jobPath(job.id)}>
+              <Table.Row id={job.id} href={rowPath(job)}>
                 <Table.Cell className="truncate">{KIND_LABELS[job.kind]}</Table.Cell>
                 <Table.Cell>
                   <JobStatusLabel status={job.status} />
@@ -119,7 +125,7 @@ function JobPageContent({
       <EmptyView title="No job matches these filters">Choose another kind or status.</EmptyView>
     );
   }
-  return <EmptyView title="No jobs yet">Start a batch, crawl or extract above.</EmptyView>;
+  return <EmptyView title="No jobs yet">Runs started in the playground are listed here.</EmptyView>;
 }
 
 /** One page of the jobs that pass `filters`. */

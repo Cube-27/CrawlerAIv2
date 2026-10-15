@@ -14,12 +14,14 @@ export function SchemaSelect({
   value,
   noneLabel,
   hideLabel = false,
+  isDisabled = false,
   onChange,
 }: Readonly<{
   label?: string;
   value: string;
   noneLabel?: string;
   hideLabel?: boolean;
+  isDisabled?: boolean;
   onChange: (schemaId: string, schema: SchemaDef | null) => void;
 }>) {
   const query = useSchemas();
@@ -39,6 +41,7 @@ export function SchemaSelect({
         value={value === "" ? empty : value}
         isRequired={noneLabel === undefined}
         hideLabel={hideLabel}
+        isDisabled={isDisabled}
         accepts={isOptionOf(options)}
         onChange={(key) => {
           const schema = schemas.find(({ id }) => id === key) ?? null;

@@ -1,0 +1,155 @@
+import type { ExtractRequest } from "../../../api/jobs";
+import { parseJsonObject } from "../../../api/json";
+import type { MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
+import type { SchemaPageKind } from "../../../api/schemas";
+import { NO_ERRORS, schemaPageKindErrors, webhook } from "../pageRequest";
+import {
+  count,
+  llmCalls,
+  member,
+  methodHint,
+  pageKind,
+  schemaId,
+  text,
+  texts,
+  webhookUrl,
+  type StoredRequest,
+} from "../run/storedRequest";
+
+/** Where an extract's schema comes from (SPEC-10 §4.6): a stored one (the toolbar's Schema), inline JSON, or a draft
+ * from a prompt. */
+export type SchemaSource = "id" | "inline" | "prompt";
+
+/** Extract's options panel (SPEC-14 §4.2): each is an `ExtractRequest` member. An empty limit (NaN) or text is left
+ * out, so the server's default applies. */
+export interface ExtractOptions {
+  /** The URLs and globs after the bar's. */
+  urls: readonly string[];
+  schemaSource: SchemaSource;
+  /** A SchemaDef as JSON text, for `inline`. */
+  inlineSchema: string;
+  prompt: string;
+  /** The page kind of an inline or prompt schema; a stored schema's is its own. */
+  pageKind: PageKind | null;
+  limit: number;
+  methodHint: MethodHint;
+  llmCalls: number;
+  /** Empty: no webhook. */
+  webhookUrl: string;
+}
+
+export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
+  urls: [],
+  schemaSource: "id",
+  inlineSchema: "",
+  prompt: "",
+  pageKind: null,
+  limit: Number.NaN,
+  // FetchPolicy's own default (SPEC-02 §4.2).
+  methodHint: "auto",
+  llmCalls: Number.NaN,
+  webhookUrl: "",
+};
+
+export interface ExtractFormState {
+  url: string;
+  schemaId: string;
+  schemaPageKind: SchemaPageKind | null;
+  options: ExtractOptions;
+}
+
+export const INITIAL_EXTRACT: ExtractFormState = {
+  url: "",
+  schemaId: "",
+  schemaPageKind: null,
+  options: DEFAULT_EXTRACT_OPTIONS,
+};
+
+const NO_SCHEMA = { schema: "Choose a stored schema in the toolbar, or another source." };
+const NOT_JSON = { inline_schema: "Enter a SchemaDef as a JSON object." };
+const NO_PROMPT = { prompt: "Describe the fields to extract." };
+const NO_PAGE_KIND = { page_kind: "Choose the page kind of the records." };
+
+/** The page kind the request names: the stored schema's, else the one chosen. */
+function extractPageKind(form: ExtractFormState): PageKind | null {
+  return form.options.schemaSource === "id" ? form.schemaPageKind : form.options.pageKind;
+}
+
+/** The request's schema, or null while it is incomplete. */
+function extractSchema(form: ExtractFormState): SchemaRef | null {
+  const { options } = form;
+  switch (options.schemaSource) {
+    case "id":
+      return form.schemaId === "" ? null : { id: form.schemaId };
+    case "prompt":
+      return options.prompt.trim() === "" ? null : { prompt: options.prompt.trim() };
+    case "inline": {
+      const inline = parseJsonObject(options.inlineSchema);
+      return inline === null ? null : { inline };
+    }
+    default: {
+      const exhaustive: never = options.schemaSource;
+      return exhaustive;
+    }
+  }
+}
+
+const SOURCE_ERRORS: Readonly<Record<SchemaSource, Readonly<Record<string, string>>>> = {
+  id: NO_SCHEMA,
+  inline: NOT_JSON,
+  prompt: NO_PROMPT,
+};
+
+/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind the server takes
+ * records of (SPEC-10 §4.6, SPEC-07 §4.4). */
+export function extractErrors(form: ExtractFormState): Readonly<Record<string, string>> {
+  if (extractSchema(form) === null) return SOURCE_ERRORS[form.options.schemaSource];
+  const kind = extractPageKind(form);
+  if (form.options.schemaSource !== "id" && kind === null) return NO_PAGE_KIND;
+  return schemaPageKindErrors(kind) ?? NO_ERRORS;
+}
+
+/** The extract request for `form`, or null when it can't be sent (`extractErrors`). The bar's URL comes first. */
+export function buildExtract(form: ExtractFormState): ExtractRequest | null {
+  const schema = extractSchema(form);
+  const kind = extractPageKind(form);
+  if (extractErrors(form) !== NO_ERRORS || schema === null || kind === null) return null;
+  const { options } = form;
+  return {
+    urls: [form.url, ...options.urls],
+    schema,
+    page_kind: kind,
+    fetch: { method_hint: options.methodHint },
+    ...(Number.isNaN(options.limit) ? {} : { limit: options.limit }),
+    ...(Number.isNaN(options.llmCalls) ? {} : { budget: { llm_calls: options.llmCalls } }),
+    ...webhook(options.webhookUrl),
+  };
+}
+
+/** The form that shows the stored `request` of an extract job. */
+export function extractForm(request: StoredRequest): ExtractFormState {
+  const [url = "", ...urls] = texts(request, "urls");
+  const schema = member(request, "schema");
+  const id = schemaId(request);
+  const inline = member(schema, "inline");
+  let schemaSource: SchemaSource = "id";
+  if ("inline" in schema) schemaSource = "inline";
+  else if ("prompt" in schema) schemaSource = "prompt";
+  const kind = pageKind(request);
+  return {
+    url,
+    schemaId: id,
+    schemaPageKind: id === "" ? null : kind,
+    options: {
+      urls,
+      schemaSource,
+      inlineSchema: schemaSource === "inline" ? JSON.stringify(inline, null, 2) : "",
+      prompt: text(schema, "prompt"),
+      pageKind: schemaSource === "id" ? null : kind,
+      limit: count(request, "limit"),
+      methodHint: methodHint(request),
+      llmCalls: llmCalls(request),
+      webhookUrl: webhookUrl(request),
+    },
+  };
+}

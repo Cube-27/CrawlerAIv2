@@ -1,6 +1,6 @@
 import type { PageKind, ScrapeFormat } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
-import { orderedFormats } from "../../components/FormatChoices";
+import { orderedFormats } from "../../components/formats";
 import type { PageFormat } from "./FormatSelect";
 
 /** The page kinds whose records the server refuses, for a scrape and a batch scrape alike: SPEC-07 §4.4 and D-0502

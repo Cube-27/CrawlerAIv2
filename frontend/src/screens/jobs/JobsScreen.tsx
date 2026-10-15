@@ -1,20 +1,18 @@
 import { useNavigate } from "react-router";
 import { LookupForm } from "../../components/LookupForm";
 import { PageHeader } from "../../components/PageHeader";
-import { ExtractDialog } from "./ExtractDialog";
 import { JobTable } from "./JobTable";
 import { jobPath } from "./paths";
 
-/** Starts crawls, extracts and maps, lists the jobs (SPEC-12 §4.3), and opens a job by its id. A new
- * job opens on its own page. */
+/** The run history (SPEC-14 §4.8, SPEC-12 §4.3): every job, newest first, a row opening its run in its playground
+ * mode; a job also opens by its id. Runs start in the playground. */
 export function JobsScreen() {
   const navigate = useNavigate();
   return (
     <section className="flex flex-col gap-6">
       <PageHeader
         title="Jobs"
-        description="Batch scrapes, crawls, maps and extracts, newest first."
-        actions={<ExtractDialog />}
+        description="Every run, newest first. A run opens in its playground mode."
       />
       <LookupForm
         label="Job ID"

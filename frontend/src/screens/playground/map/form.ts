@@ -1,4 +1,5 @@
 import type { MapRequest } from "../../../api/jobs";
+import { count, flag, text, texts, type StoredRequest } from "../run/storedRequest";
 
 /** Map's options panel (SPEC-14 §4.2): each is a `MapRequest` member. An empty limit (NaN) is left out. */
 export interface MapOptions {
@@ -34,5 +35,19 @@ export function buildMap(form: MapFormState): MapRequest {
     use_sitemaps: options.useSitemaps,
     use_links: options.useLinks,
     ...(Number.isNaN(options.limit) ? {} : { limit: options.limit }),
+  };
+}
+
+/** The form that shows the stored `request` of a map job. */
+export function mapForm(request: StoredRequest): MapFormState {
+  return {
+    url: text(request, "url"),
+    options: {
+      include: texts(request, "include"),
+      exclude: texts(request, "exclude"),
+      useSitemaps: flag(request, "use_sitemaps", DEFAULT_MAP_OPTIONS.useSitemaps),
+      useLinks: flag(request, "use_links", DEFAULT_MAP_OPTIONS.useLinks),
+      limit: count(request, "limit"),
+    },
   };
 }
