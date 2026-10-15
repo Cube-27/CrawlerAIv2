@@ -1,5 +1,6 @@
 """Record exporters (SPEC-08 §4.11): every published value and status comes back out of the CSV and JSON exports,
-and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12)."""
+and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12). A clean record (SPEC-14 §4.4)
+has exactly the schema's fields, in schema order, and no status column."""
 
 import csv
 import io
@@ -10,7 +11,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.config_ir.exporters.records import export_records
+from crawlerai.config_ir.exporters.records import clean_record, export_records
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.schemas.types import NAME_PATTERN, FieldSpec, FieldType, SchemaDocument
@@ -101,3 +102,16 @@ def test_csv_header_depends_on_the_schema_alone(
     header = export_records("csv_records", reordered, records).split("\r\n", 1)[0]
 
     assert header == ",".join([*sorted(names), *(f"_status_{name}" for name in sorted(names))])
+
+
+@given(_page())
+def test_a_clean_record_has_exactly_the_schemas_fields_in_schema_order(
+    page: tuple[SchemaDocument, list[RecordContent]],
+) -> None:
+    schema, records = page
+
+    for record in records:
+        clean = clean_record(schema, record.data)
+        assert list(clean) == list(schema.fields)
+        assert not any(name.startswith("_status_") for name in clean)
+        assert clean == {name: record.data.get(name) for name in schema.fields}

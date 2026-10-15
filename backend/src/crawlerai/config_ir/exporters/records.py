@@ -6,13 +6,16 @@ The three formats share one table: a column per schema field, holding the publis
 the order its fields were declared or stored in (JSONB does not keep key order). Schema names start with a
 lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. Values are serialized as
 published and never fixed (INV-27).
+
+A clean record (`json_values`, SPEC-14 §4.4) is a record's published values alone: the schema's fields in the order
+the schema lists them, each with its value or null, and no status.
 """
 
 import csv
 import io
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from pydantic import JsonValue
@@ -41,6 +44,11 @@ def export_records(fmt: RecordFormat, schema: SchemaDocument, records: Sequence[
     if fmt == "csv_records":
         return _csv(columns, rows)
     return _markdown(columns, rows)
+
+
+def clean_record(schema: SchemaDocument, data: Mapping[str, JsonValue]) -> _Row:
+    """A record's published values `data` as a clean record of `schema`."""
+    return {name: data.get(name) for name in schema.fields}
 
 
 def _row(fields: list[str], record: RecordContent) -> _Row:
