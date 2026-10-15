@@ -9,6 +9,7 @@ import type { SchemaDef } from "../../api/schemas";
 import { problem, sse, stubApi, type Call } from "../../test/api";
 import { catchDownloads } from "../../test/downloads";
 import { jobSummary } from "../../test/jobs";
+import { stubTextLayout } from "../../test/layout";
 import { recordField } from "../../test/records";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
@@ -216,6 +217,7 @@ describe("Job screen", () => {
   });
 
   it("shows why a page failed or was blocked, in full on hover", async () => {
+    stubTextLayout();
     const reason = `budget_exhausted:${" the job's budget ran out before this page".repeat(4)}`;
     const failing: PageOutputPage = {
       items: [
@@ -255,6 +257,7 @@ describe("Job screen", () => {
   });
 
   it("shows a task's failure in the event log, its data in full on hover", async () => {
+    stubTextLayout();
     const failed = {
       task_id: TASK_ID,
       url: "https://shop.example.test/item/1",
