@@ -1,4 +1,4 @@
-"""robots.txt (SPEC-02 §4.6, RFC 9309): fetched once per site per 24 hours, kept in `site.robots_snapshot`, and read
+"""robots.txt (SPEC-02 §4.6, RFC 9309): fetched once per origin per 24 hours, kept in `site.robots_snapshot`, and read
 with Protego: RFC 9309 matching (§2.2.2: the longest match wins, `allow` on a tie; §2.2.3: `*` and `$`), plus the
 `Crawl-delay` and `Sitemap:` extensions.
 
@@ -12,7 +12,7 @@ from typing import Final
 from urllib.parse import urlsplit, urlunsplit
 
 from protego import Protego
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, TypeAdapter, ValidationError
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -27,14 +27,19 @@ Fetch = Callable[[str], Awaitable[FetchResult]]
 
 
 class RobotsSnapshot(BaseModel):
-    """What `site.robots_snapshot` holds, as JSON: the rules in force and when they were fetched. An unavailable
-    robots.txt (RFC 9309 §2.3.1.3) is kept as an empty body, which allows everything."""
+    """One robots.txt as fetched: the rules in force and when they were fetched. An unavailable robots.txt (RFC 9309
+    §2.3.1.3) is kept as an empty body, which allows everything."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     fetched_at: AwareDatetime
     status_code: int
     body: str
+
+
+# What `site.robots_snapshot` holds, as JSON: a snapshot per robots.txt URL (`robots_url`). One site (host) may be
+# served on several origins, and each has its own robots.txt (RFC 9309 §2.3: scheme, host and port).
+_SNAPSHOTS: Final = TypeAdapter(dict[str, RobotsSnapshot])
 
 
 class Robots:
@@ -82,14 +87,30 @@ def snapshot_of(result: FetchResult) -> RobotsSnapshot | None:
 async def site_robots(
     conn: AsyncConnection, site_id: SiteId, stored: str | None, url: str, fetch: Fetch
 ) -> Robots | None:
-    """The robots rules for `url` on its site, from the site's snapshot `stored` while it is fresh; otherwise
-    fetched and stored as the new snapshot. `None` when robots.txt is unreachable; nothing is stored then."""
-    if stored is not None:
-        snapshot = RobotsSnapshot.model_validate_json(stored)
-        if datetime.now(UTC) - snapshot.fetched_at < ROBOTS_TTL:
-            return Robots(snapshot.body)
-    fetched = snapshot_of(await fetch(robots_url(url)))
+    """The robots rules for `url` on its site, from the snapshot of its origin's robots.txt in the site's `stored`
+    snapshots while it is fresh; otherwise fetched and stored beside the site's other fresh snapshots. `None` when
+    robots.txt is unreachable; nothing is stored then."""
+    now = datetime.now(UTC)
+    target = robots_url(url)
+    fresh = {
+        source: snapshot for source, snapshot in _snapshots(stored).items() if now - snapshot.fetched_at < ROBOTS_TTL
+    }
+    if (snapshot := fresh.get(target)) is not None:
+        return Robots(snapshot.body)
+    fetched = snapshot_of(await fetch(target))
     if fetched is None:
         return None
-    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=fetched.model_dump_json()))
+    kept = _SNAPSHOTS.dump_json({**fresh, target: fetched}).decode()
+    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=kept))
     return Robots(fetched.body)
+
+
+def _snapshots(stored: str | None) -> dict[str, RobotsSnapshot]:
+    """The snapshots in `stored`. A value of another shape (a single snapshot, stored before origins were kept apart)
+    holds none: its origin is unknown, so it is fetched again."""
+    if stored is None:
+        return {}
+    try:
+        return _SNAPSHOTS.validate_json(stored)
+    except ValidationError:
+        return {}

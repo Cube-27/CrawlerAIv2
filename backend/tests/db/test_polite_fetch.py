@@ -4,8 +4,9 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts; no network.
 """
 
 import asyncio
+import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -28,6 +29,7 @@ pytestmark = pytest.mark.anyio
 
 ORIGIN = "https://shop.example.test"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
+OPEN_ROBOTS = "User-agent: *\nDisallow:\n"
 PAGE = b"<html><body><h1>Item</h1></body></html>"
 DEFAULT_PROJECT = select(Project.id).where(Project.name == "default").scalar_subquery()
 OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
@@ -89,9 +91,15 @@ async def _polite(
     return await fetch_politely(conn, task, site_id, policy, web, limiter, fetch_robots=web)
 
 
-async def _snapshot(conn: AsyncConnection, site_id: SiteId) -> RobotsSnapshot | None:
+def _stored(snapshots: dict[str, RobotsSnapshot]) -> str:
+    """`site.robots_snapshot` holding `snapshots`, by the URL of the robots.txt each was fetched from."""
+    return json.dumps({url: snapshot.model_dump(mode="json") for url, snapshot in snapshots.items()})
+
+
+async def _snapshot(conn: AsyncConnection, site_id: SiteId, origin: str = ORIGIN) -> RobotsSnapshot | None:
     stored = (await conn.execute(select(Site.robots_snapshot).where(Site.id == site_id))).scalar_one()
-    return None if stored is None else RobotsSnapshot.model_validate_json(stored)
+    snapshot = None if stored is None else json.loads(stored).get(f"{origin}/robots.txt")
+    return None if snapshot is None else RobotsSnapshot.model_validate(snapshot)
 
 
 async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(conn: AsyncConnection, web: Web) -> None:
@@ -147,7 +155,7 @@ async def test_the_override_fetches_a_disallowed_page_without_reading_robots(con
 
 async def test_a_fresh_snapshot_is_used_and_a_stale_one_refetched(conn: AsyncConnection, web: Web) -> None:
     fresh = RobotsSnapshot(fetched_at=datetime.now(UTC) - timedelta(hours=23), status_code=200, body="")
-    site_id = await _site(conn, robots_snapshot=fresh.model_dump_json())
+    site_id = await _site(conn, robots_snapshot=_stored({f"{ORIGIN}/robots.txt": fresh}))
     first, second = await _tasks(conn, "/private/a", "/private/b")
 
     # The fresh snapshot allows everything: no robots fetch, the page is fetched.
@@ -155,11 +163,43 @@ async def test_a_fresh_snapshot_is_used_and_a_stale_one_refetched(conn: AsyncCon
     assert web.fetched == [f"{ORIGIN}/private/a"]
 
     stale = fresh.model_copy(update={"fetched_at": datetime.now(UTC) - timedelta(hours=25)})
-    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=stale.model_dump_json()))
+    stored = _stored({f"{ORIGIN}/robots.txt": stale})
+    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=stored))
     result = await _polite(conn, second, site_id, FetchPolicy(), web, HostLimiter())
 
     assert result == Finished("blocked", reason="robots")
     assert web.fetched[1:] == [f"{ORIGIN}/robots.txt"]
+    snapshot = await _snapshot(conn, site_id)
+    assert snapshot is not None
+    assert snapshot.body == ROBOTS
+
+
+async def test_each_origin_of_the_site_is_governed_by_its_own_robots_file(conn: AsyncConnection, web: Web) -> None:
+    # RFC 9309 §2.3: robots.txt governs its scheme, host and port only.
+    other = "http://shop.example.test:8080"
+    web.pages[f"{other}/robots.txt"] = (200, OPEN_ROBOTS.encode(), ())
+    web.pages[f"{other}/private/a"] = (200, PAGE, ())
+    site_id = await _site(conn)
+    [task] = await _tasks(conn, "/private/a")
+
+    assert await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter()) == Finished("blocked", reason="robots")
+    other_task = replace(task, url=f"{other}/private/a")
+    assert isinstance(await _polite(conn, other_task, site_id, FetchPolicy(), web, HostLimiter()), FetchResult)
+
+    assert web.fetched == [f"{ORIGIN}/robots.txt", f"{other}/robots.txt", f"{other}/private/a"]
+    snapshots = [await _snapshot(conn, site_id, origin) for origin in (ORIGIN, other)]
+    assert [None if snapshot is None else snapshot.body for snapshot in snapshots] == [ROBOTS, OPEN_ROBOTS]
+
+
+async def test_a_snapshot_stored_before_origins_were_kept_apart_is_fetched_again(
+    conn: AsyncConnection, web: Web
+) -> None:
+    unkeyed = RobotsSnapshot(fetched_at=datetime.now(UTC), status_code=200, body="")
+    site_id = await _site(conn, robots_snapshot=unkeyed.model_dump_json())
+    [task] = await _tasks(conn, "/private/a")
+
+    assert await _polite(conn, task, site_id, FetchPolicy(), web, HostLimiter()) == Finished("blocked", reason="robots")
+    assert web.fetched == [f"{ORIGIN}/robots.txt"]
     snapshot = await _snapshot(conn, site_id)
     assert snapshot is not None
     assert snapshot.body == ROBOTS
