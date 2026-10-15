@@ -57,7 +57,14 @@ async def inline(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
     stored one (§5.2): a name whose latest version differs or is retired is a `SchemaConflict`."""
     versions = await registry.list_schemas(conn, name=schema.name)
     if not versions:
-        return await create(conn, schema)
+        try:
+            return await create(conn, schema)
+        except SchemaConflict:
+            # Another request stored the name first: its insert committed before ours hit the unique (name, version),
+            # and READ COMMITTED lets this statement see it. The same document reuses it, as it would have.
+            versions = await registry.list_schemas(conn, name=schema.name)
+            if not versions:
+                raise
     latest = versions[-1]
     if (latest.page_kind, latest.required_groups, latest.fields) != (
         schema.page_kind,
