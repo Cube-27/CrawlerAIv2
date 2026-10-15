@@ -302,7 +302,7 @@ async def test_a_running_job_is_cancelled_once_its_claimed_task_finishes(world: 
     job_id = await world.job()
     await world.tasks(job_id, [("queued", None)])
     async with world.engine.begin() as conn:
-        url = f"{world.origin}/p/running"
+        url = f"{world.origin}/p/claimed"
         running = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
         await start_jobs(conn, [job_id])
 
@@ -400,14 +400,14 @@ async def test_json_values_has_one_item_per_task_oldest_first_with_its_clean_rec
 
     page = await _json_values(world.engine, job_id)
 
-    # A clean record has the schema's fields in its order, null where none published, and no status.
+    # A clean record has the schema's fields in name order, null where none published, and no status.
     assert [(item.url, item.outcome, item.records) for item in page.items[:4]] == [
-        (detail, "partial", [{"title": None, "colour": "blue"}]),
+        (detail, "partial", [{"colour": "blue", "title": None}]),
         (failed, "failed", []),
-        (listing, "extracted", [{"title": "Kettle", "colour": "red"}, {"title": "Mug", "colour": None}]),
+        (listing, "extracted", [{"colour": "red", "title": "Kettle"}, {"colour": None, "title": "Mug"}]),
         (blocked, "blocked", []),
     ]
-    assert [list(record) for record in page.items[2].records] == [list(world.schema.fields)] * 2
+    assert [list(record) for record in page.items[2].records] == [["colour", "title"]] * 2
     assert (len(page.items), page.items[4].outcome, page.items[4].records) == (5, None, [])
     assert (page.format, page.next_cursor) == ("json_values", None)
 
@@ -425,6 +425,20 @@ async def test_an_unchanged_page_shows_the_latest_record_of_its_entity(world: Wo
     assert [(item.url, item.outcome, item.records) for item in page.items] == [
         (url, "unchanged", [{"title": "Kettle 0", "colour": None}])
     ]
+
+
+async def test_a_task_read_before_it_ends_has_no_records(world: World) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="running")
+    [stored] = await world.records(job_id, 1)
+    url = f"{world.origin}/p/claimed"
+    async with world.engine.begin() as conn:
+        values = {"job_id": job_id, "url": url, "canonical_url": url, "status": "claimed", "outcome": None}
+        running = (await conn.execute(insert(UrlTask).values(**values).returning(UrlTask.id))).scalar_one()
+        await link_records(conn, running, [stored])
+
+    page = await _json_values(world.engine, job_id)
+
+    assert (page.items[-1].url, page.items[-1].outcome, page.items[-1].records) == (url, None, [])
 
 
 async def test_json_values_of_a_job_without_a_schema_lists_its_tasks_with_no_records(world: World) -> None:

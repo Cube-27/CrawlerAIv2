@@ -76,9 +76,9 @@ async def job_results(
     `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
     tasks, oldest first, each with the content formats the job asked for once its page was reached. Any job answers
     `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the schema's
-    fields, each its published value or null); `include=metadata`, accepted with `json_values` only, adds a reached
-    page's metadata while its capture is kept. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an
-    export other than `json_values` of a job without a schema."""
+    fields in name order, each its published value or null); `include=metadata`, accepted with `json_values` only,
+    adds a reached page's metadata while its capture is kept. Pass a page's `next_cursor` as `cursor` for the page
+    after it. 409: an export other than `json_values` of a job without a schema."""
     engine: AsyncEngine = request.app.state.database
     fetching: Fetching = request.app.state.fetching
     async with engine.connect() as conn:

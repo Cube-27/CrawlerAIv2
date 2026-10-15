@@ -47,8 +47,8 @@ def export_records(fmt: RecordFormat, schema: SchemaDocument, records: Sequence[
 
 
 def clean_record(schema: SchemaDocument, data: Mapping[str, JsonValue]) -> _Row:
-    """A record's published values `data` as a clean record of `schema`."""
-    return {name: data.get(name) for name in schema.fields}
+    """A record's published values `data` as a clean record of `schema`, its fields in name order as the columns."""
+    return {name: data.get(name) for name in sorted(schema.fields)}
 
 
 def _row(fields: list[str], record: RecordContent) -> _Row:

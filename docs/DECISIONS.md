@@ -5549,3 +5549,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: no discriminator; clients tell the union's pages apart by their members.
 - Why: the results endpoint answers a union; the member lets clients narrow it without inspecting items.
 - Reversible: yes
+
+### D-0816 — A clean record's fields are in name order, as the export columns
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, PR 9 (#190) · Status: decided
+- Decision: A clean record lists the schema's fields sorted by name, the column order of `json_records` and `csv_records`.
+- Alternatives: declaration order (SPEC-14 §4.4 "schema order"); the registry's stored key order.
+- Why: `schema_def.fields` is JSONB, which keeps no declaration order (it orders keys by length, then bytes), so "schema order" is not recoverable from the registry; name order is stable and matches the other exports.
+- Reversible: yes; keeping declaration order needs it stored.

@@ -1,6 +1,6 @@
 """Record exporters (SPEC-08 §4.11): every published value and status comes back out of the CSV and JSON exports,
 and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12). A clean record (SPEC-14 §4.4)
-has exactly the schema's fields, in schema order, and no status column."""
+has exactly the schema's fields, in the columns' name order, and no status column."""
 
 import csv
 import io
@@ -104,14 +104,17 @@ def test_csv_header_depends_on_the_schema_alone(
     assert header == ",".join([*sorted(names), *(f"_status_{name}" for name in sorted(names))])
 
 
-@given(_page())
-def test_a_clean_record_has_exactly_the_schemas_fields_in_schema_order(
-    page: tuple[SchemaDocument, list[RecordContent]],
+@given(_page(), st.randoms())
+def test_a_clean_record_has_exactly_the_schemas_fields_in_name_order_whatever_their_declaration(
+    page: tuple[SchemaDocument, list[RecordContent]], rng: random.Random
 ) -> None:
     schema, records = page
+    names = list(schema.fields)
+    rng.shuffle(names)
+    reordered = schema.model_copy(update={"fields": {name: schema.fields[name] for name in names}})
 
     for record in records:
-        clean = clean_record(schema, record.data)
-        assert list(clean) == list(schema.fields)
+        clean = clean_record(reordered, record.data)
+        assert list(clean) == sorted(names)
         assert not any(name.startswith("_status_") for name in clean)
         assert clean == {name: record.data.get(name) for name in schema.fields}

@@ -413,7 +413,8 @@ async def _json_values(
 ) -> JsonValuesPage:
     rows = await _task_rows(conn, job_id, query)
     page = rows[: query.limit]
-    records = await _clean_records(conn, schema_id, [row.id for row in page])
+    # A task's records are linked when it ends, so one read before its outcome shows none.
+    records = await _clean_records(conn, schema_id, [row.id for row in page if row.outcome is not None])
     items = [
         await _json_values_item(store, row, records.get(row.id, []), metadata=query.include == "metadata")
         for row in page

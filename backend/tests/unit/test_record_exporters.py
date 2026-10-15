@@ -106,10 +106,10 @@ def test_a_record_of_another_schema_is_refused() -> None:
         export_records("csv_records", SCHEMA, records)
 
 
-def test_a_clean_record_has_the_schemas_fields_in_its_order_with_null_where_none_published() -> None:
+def test_a_clean_record_has_the_schemas_fields_in_name_order_with_null_where_none_published() -> None:
     record = clean_record(SCHEMA, {"price": {"amount": "9.50", "currency": "EUR"}})
 
-    assert list(record.items()) == [("title", None), ("price", {"amount": "9.50", "currency": "EUR"})]
+    assert list(record.items()) == [("price", {"amount": "9.50", "currency": "EUR"}), ("title", None)]
 
 
 def test_a_clean_record_leaves_out_a_value_of_no_schema_field() -> None:
