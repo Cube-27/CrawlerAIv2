@@ -7,7 +7,7 @@ binding on every change, and breaking it is a defect even when it fixes a site.
 ## Before you start
 
 - What is in progress and what is next: `docs/plans/ACTIVE.md`.
-- Work is one row of a spec's PR plan (`docs/specs/`): one branch, one PR.
+- One PR covers a batch of related rows of a spec's PR plan (`docs/specs/`): one branch, one PR (`CLAUDE.md` §3).
 - How to write code here: `docs/ENGINEERING.md`. The invariants your change must keep: `docs/INVARIANTS.md`.
   Frontend conventions: `docs/DESIGN.md`.
 

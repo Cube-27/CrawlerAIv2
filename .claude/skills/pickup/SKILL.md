@@ -14,26 +14,28 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
 1. **Locate the trail.**
    - In-flight work lives in GitHub, not ACTIVE.md: `gh pr list --state open`, remote `spec-*` branches,
      `git worktree list`, `git log origin/main..<branch>`.
-   - `docs/plans/ACTIVE.md`: rows that are `todo` but have one of these branches.
+   - `docs/plans/ACTIVE.md`: rows that are `todo` but have one of these branches (grep, don't read it in full;
+     `CLAUDE.md` §1).
    - A resume note at `<main>/../CrawlerAIv2-worktrees/<name>/RESUME.md` (`<main>` = the main checkout, first in `git worktree list`), if the earlier agent paused.
-2. **Rebuild the state** for each in-flight row:
+2. **Rebuild the state** for each in-flight branch (one PR, a batch of rows, `spec-NN/pr-A-B-<name>`):
    - what is committed on the branch;
    - whether a PR is open and what CI says;
    - what review verdicts exist.
-3. **Diff done against pending.** Name the resume point for each row:
+3. **Diff done against pending.** Name the resume point for each branch:
 
    | Situation | Action |
    |---|---|
    | Open PR, CI green, no review | Its implementor starts one reviewer (`/implement-pr` §6.1); if the implementor is gone, start a fresh one in the worktree to do it |
-| Open PR with a latest `READY <sha7>` comment matching the head | Queue it for `YOUR TURN` (`/run-plan` §1.3) |
+   | Open PR with a latest `READY <sha7>` comment matching the head | Merge it (`/run-plan` §1.3), or send `REBASE` if it is behind `main` or conflicts |
    | Open PR with a `MERGE AFTER FIX` (or older `FIX`) verdict | Its implementor makes the listed fixes, gets CI green and comments `READY`; no second review |
    | Branch with commits, no PR | A worker continues `/implement-pr` from §3 Verify |
-   | Branch with no commits, or abandoned for more than 7 days with no PR | Remove the worktree and delete the branch; the row is `todo` again |
+   | Branch with no commits, or abandoned for more than 7 days with no PR | Remove the worktree and delete the branch; its rows are `todo` again |
 
    Don't re-run checks that already passed in CI on the same head SHA.
 4. **Verify inherited claims against the real thing.** Check the PR's CI status on its current head SHA, not a
    self-report in a note.
-5. Continue with `/run-plan` or `/implement-pr`. ACTIVE.md changes only in the implementor's tracker commit on `YOUR TURN` (`/run-plan` §1.3).
+5. Continue with `/run-plan` or `/implement-pr`. ACTIVE.md changes only in the implementor's tracker commit, before
+   its `READY` (`/implement-pr` §6.4).
 
 **Report:** where the earlier agent stopped, what you inherited, what you reset, and the resume point.
 
