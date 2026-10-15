@@ -6,8 +6,10 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Annotated
 
-from fastapi import Request
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.forwarded import Network, client_address
@@ -79,7 +81,14 @@ def _bucket_key(request: Request, token: str | None) -> str:
     return "client:" + client_address(peer, request.headers.items(), proxies)
 
 
-async def require_api_key(request: Request) -> ApiKeyId:
+# Declares the bearer scheme (RFC 6750) in the OpenAPI document of every route that depends on `require_api_key`. It
+# never refuses a request (`auto_error=False`): `require_api_key` parses the header and answers with its problems.
+_DECLARED_BEARER = HTTPBearer(auto_error=False)
+
+
+async def require_api_key(
+    request: Request, _declared: Annotated[HTTPAuthorizationCredentials | None, Depends(_DECLARED_BEARER)] = None
+) -> ApiKeyId:
     """The dependency of every authenticated route: the id of the request's API key."""
     token = _bearer_token(request)
     limiter: RateLimiter = request.app.state.rate_limiter

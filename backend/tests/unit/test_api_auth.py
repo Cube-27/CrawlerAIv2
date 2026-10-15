@@ -126,6 +126,20 @@ def test_a_trusted_proxy_forwards_each_client_to_its_own_bucket(monkeypatch: pyt
     assert [response.status_code for response in responses] == [401, 401, 429]
 
 
+def test_the_openapi_document_declares_the_bearer_key_on_every_operation_but_healthz() -> None:
+    # RFC 6750 bearer API key (SPEC-07 §4.2): clients and scanners read the requirement from the document.
+    document = create_app(eval_ui=True).openapi()
+    security = {
+        (method, path): operation.get("security")
+        for path, item in document["paths"].items()
+        for method, operation in item.items()
+    }
+
+    assert document["components"]["securitySchemes"] == {"HTTPBearer": {"type": "http", "scheme": "bearer"}}
+    assert security.pop(("get", "/healthz")) is None
+    assert {k: v for k, v in security.items() if v != [{"HTTPBearer": []}]} == {}
+
+
 def test_every_api_operation_but_healthz_refuses_a_request_without_a_key() -> None:
     # SPEC-07 §4.2, SPEC-03 §4.10: every route takes the API key, which also rate-limits it; `/healthz` alone is public
     # (ARCHITECTURE §18). A router added without the key dependency fails here.

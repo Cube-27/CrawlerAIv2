@@ -170,7 +170,9 @@ describe("followEvents", () => {
       async start(controller) {
         for (let beat = 0; beat < 4; beat += 1) {
           controller.enqueue(encoder.encode(": ping\n\n"));
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+          });
         }
         controller.enqueue(encoder.encode("id: 1\nevent: completed\ndata: {}\n\n"));
         controller.close();

@@ -92,7 +92,7 @@ function MainNav() {
     // with Settings at the foot.
     <nav
       aria-label="Main"
-      className="flex flex-row flex-wrap gap-1 sm:flex-1 sm:flex-col sm:flex-nowrap sm:gap-0"
+      className="flex flex-wrap gap-1 sm:flex-1 sm:flex-col sm:flex-nowrap sm:gap-0"
     >
       <ul className="contents sm:flex sm:flex-col">
         <NavItem entry={OVERVIEW} pathname={pathname} />
