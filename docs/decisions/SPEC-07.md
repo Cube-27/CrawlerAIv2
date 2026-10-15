@@ -332,3 +332,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: `Depends(database)` in every endpoint signature; a neutral home for `from_pydantic` used by every 422 (a follow-up: it changes every 422's wording).
 - Why: One error format for labels and schemas, one schema content model, one place the engine is read.
 - Reversible: yes
+
+### D-0885 — One wording for every validation error
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: `core.validation.field_error` formats labels, schema documents, replays and the API's 422s: a dotted path with list indexes in brackets (`urls[0]`), and a validator's own message without pydantic's `Value error, ` prefix. The response shape is unchanged.
+- Alternatives: Keep the 422 handler's own dotted form.
+- Why: One wording across the engine (#193).
+- Reversible: yes
+
+### D-0886 — The API key store is in `db/`
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: `services/keys.py` moves to `db/keys.py`; the CLI's write-once commands share one `_transaction()` helper. `Forwarded`/XFF precedence was already done (D-0381).
+- Alternatives: Leave it in `services`.
+- Why: It reads and writes only `api_keys`, like the other table stores.
+- Reversible: yes

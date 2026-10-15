@@ -442,3 +442,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep `brand` required (role C asked on every page of a site that never shows a brand).
 - Why: Owner, 2026-10-14: "brand is not that important." In the UAT re-run, brand was absent from the pages of 4 sites, so those records were never complete and role C ran on every page.
 - Reversible: yes (a later preset version)
+
+### D-0882 — A `schema:` enum reads member text through its type vocabularies
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: A string that is neither a member name nor an absolute IRI (RFC 3987) is matched as the `type:` path does against every type vocabulary whose codes are all members of the enumeration (today `type:availability` for `ItemAvailability`); two members are `Ambiguous`, none is `Invalid("not_a_member")`. Takes, for text only, the alternative D-0274 set aside.
+- Alternatives: Switch the preset to `type:availability` (loses IRIs); an explicit enumeration-to-vocabulary map.
+- Why: SPEC-04 §4.4 builds `type:availability` from the `ItemAvailability` members, so codes ⊆ members is the structural link (C2); DOM availability text otherwise never normalizes.
+- Reversible: yes
+
+### D-0883 — Range word separators are a type vocabulary
+- Date: 2026-10-16 · Spec/PR: follow-up (#200) · Status: decided
+- Decision: `type:range_to` (en: "to") holds the words that separate a range's bounds, read in the page's languages only; hyphen-minus and en dash stay in code.
+- Alternatives: Keep "to" in `range.py` for every page.
+- Why: C4, and period words already work this way (D-0328).
+- Reversible: yes
