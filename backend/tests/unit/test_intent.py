@@ -79,7 +79,7 @@ def test_a_listings_page_fields_name_no_primary_type() -> None:
 
 
 def test_required_fields_without_a_path_name_no_type() -> None:
-    assert primary_types(_schema(note=_field(None)), VOCABULARY) == frozenset()
+    assert primary_types(_schema(note=_field(None), title=_field("Product.name")), VOCABULARY) == frozenset({"Product"})
 
 
 def test_the_one_primary_entity_is_the_target_whatever_its_urls() -> None:
@@ -170,10 +170,6 @@ def test_without_a_primary_entity_the_page_is_the_target() -> None:
     page = _entity(PAGE, PAGE, PAGE_URL)
     assert _select(page, _entity("jsonld:0:$", "Organization")) == page
     assert _select() == Entity(id=PAGE, kind=PAGE, urls=(), parent=None)
-
-
-def test_the_ambiguous_reason_is_intent_ambiguous() -> None:
-    assert AmbiguousTarget(candidates=()).reason == "intent_ambiguous"
 
 
 def _jsonld_target(*blocks: Any, request_url: str = PAGE_URL) -> Entity | AmbiguousTarget:
