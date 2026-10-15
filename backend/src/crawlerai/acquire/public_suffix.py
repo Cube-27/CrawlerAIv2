@@ -75,19 +75,20 @@ class SuffixCookiePolicy(DefaultCookiePolicy):
         self._suffixes = suffixes
 
     def set_ok_domain(self, cookie: Cookie, request: Request) -> bool:
-        if cookie.domain_specified:
-            try:
-                domain = _ascii(cookie.domain.strip(".").lower())
-            except UnicodeError:
-                return False  # no IDNA name (RFC 5890 §2.3.2.1), so it names no host
-            host = urlsplit(request.get_full_url()).hostname or ""
-            if self._suffixes.is_public_suffix(domain):
-                if domain != host:
-                    return False
-                # Host-only, as `http.cookiejar` keeps a cookie without a Domain: under the effective host name (RFC
-                # 2965 §1: a name without a dot gets `.local`), which `DomainStrictNonDomain` matches exactly.
-                cookie.domain = host if "." in host else f"{host}.local"
-                cookie.domain_specified = cookie.domain_initial_dot = False
+        if not cookie.domain_specified:
+            return super().set_ok_domain(cookie, request)
+        try:
+            domain = _ascii(cookie.domain.strip(".").lower())
+        except UnicodeError:
+            return False  # no IDNA name (RFC 5890 §2.3.2.1), so it names no host
+        host = urlsplit(request.get_full_url()).hostname or ""
+        if self._suffixes.is_public_suffix(domain):
+            if domain != host:
+                return False
+            # Host-only, as `http.cookiejar` keeps a cookie without a Domain: under the effective host name (RFC 2965
+            # §1: a name without a dot gets `.local`), which `DomainStrictNonDomain` matches exactly.
+            cookie.domain = host if "." in host else f"{host}.local"
+            cookie.domain_specified = cookie.domain_initial_dot = False
         return super().set_ok_domain(cookie, request)
 
 

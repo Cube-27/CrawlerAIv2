@@ -570,7 +570,7 @@ def _rows_met(name: str, judgments: Sequence[Judgment]) -> bool:
     """A required row-mapped field holds as a required field does: a value, and no wrong one. Some sub-field is TP,
     and every other is TP or labeled absent and not published (TN), so every label row is matched and no row the
     labels don't have was published."""
-    cells = [j.cell for j in judgments if j.field.partition(".")[0] == name and _is_sub_field(j.field)]
+    cells = [j.cell for j in judgments if j.field.startswith(f"{name}.")]
     return "TP" in cells and all(cell in ("TP", "TN") for cell in cells)
 
 

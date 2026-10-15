@@ -43,9 +43,7 @@ _values: st.SearchStrategy[JsonValue] = st.recursive(
     _scalars, lambda inner: st.lists(inner, max_size=3) | st.dictionaries(_text, inner, max_size=3), max_leaves=6
 )
 # A markdown body row's tokens: an escaped character, a line break, the cell separator, or any other character.
-_MD_SEPARATOR = " | "
-_MD_TOKEN = re.compile(r"\\(.)|<br>| \| |.", re.DOTALL)
-_LINE_BREAK = "<br>"
+_MD_TOKEN = re.compile(r"\\(?P<escaped>.)|(?P<line_break><br>)|(?P<separator> \| )|.", re.DOTALL)
 # CommonMark 0.31 §2.6 line endings, all written as `<br>`.
 _LINE_ENDING = re.compile(r"\r\n|\r|\n")
 _records = st.lists(st.dictionaries(st.sampled_from(FIELDS), _values), min_size=1, max_size=4)
@@ -142,14 +140,13 @@ def _md_cells(row: str) -> list[str]:
     cells: list[str] = []
     text: list[str] = []
     for token in _MD_TOKEN.finditer(row):
-        piece = token.group(0)
-        if piece == _MD_SEPARATOR:
+        if token.lastgroup == "separator":
             cells.append("".join(text))
             text = []
-        elif piece == _LINE_BREAK:
+        elif token.lastgroup == "line_break":
             text.append("\n")
         else:
-            text.append(token.group(1) or piece)
+            text.append(token["escaped"] or token[0])
     return [*cells, "".join(text)]
 
 

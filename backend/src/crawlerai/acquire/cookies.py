@@ -26,6 +26,8 @@ class FetchCookies:
 
     def header(self, url: str) -> str | None:
         """The `Cookie` header a request to `url` carries, if any."""
+        if not self._jar:
+            return None
         request = httpx.Request("GET", url)
         self._jar.set_cookie_header(request)
         cookie: str | None = request.headers.get("Cookie")

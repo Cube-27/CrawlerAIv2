@@ -1,14 +1,17 @@
 """`crawlerai data fetch` (SPEC-04 §4.6, INV-05): the manifest's fetched entries are downloaded, checked against their
 pinned sha256 and written under the data directory; nothing else is written."""
 
+import ast
 import hashlib
 import json
+import sys
 from collections.abc import Callable
 from http.client import IncompleteRead
 from pathlib import Path
 
 import pytest
 
+from crawlerai.core import data
 from crawlerai.core.data import DataReport, fetch_data
 
 CONTENT = b"geonameid\tname\n"
@@ -146,3 +149,12 @@ def test_only_https_urls_are_fetched(tmp_path: Path) -> None:
 
     assert report.refused == ["cities.txt: http://data.example.org/cities.txt is not an https URL"]
     assert calls == []
+
+
+def test_the_fetch_imports_the_standard_library_only() -> None:
+    # The image runs it on its own, before the project is installed (infra/Dockerfile).
+    tree = ast.parse(Path(data.__file__).read_text(encoding="utf-8"))
+    modules = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    modules |= {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+
+    assert {name.partition(".")[0] for name in modules} - sys.stdlib_module_names == set()

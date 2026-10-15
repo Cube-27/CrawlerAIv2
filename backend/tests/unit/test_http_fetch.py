@@ -413,7 +413,6 @@ import asyncio, sys
 from asyncio import run
 from ipaddress import IPv4Address
 from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.public_suffix import PublicSuffixes
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 
