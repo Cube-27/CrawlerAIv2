@@ -290,6 +290,6 @@ the protected eval job stays a `no_baseline` placeholder, and tests run against 
 | 6 | Crawl and Map modes inline | todo | Needs 5. |
 | 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | todo | Needs 6. |
 | 8 | Batch from results | todo | Needs 6. |
-| 9 | `json_values` results format (backend) | todo | Ready now. |
+| 9 | `json_values` results format (backend) | done (#190) | Records from `task_record` links (D-0813); `include` with `json_values` only (D-0814); `format` discriminator (D-0815); fields in name order (D-0816). |
 | 10 | Get code drawer | todo | Needs 7. Owner's reference shared 2026-10-15. |
 | 11 | Additional fields (chips) | blocked | D-0810. |

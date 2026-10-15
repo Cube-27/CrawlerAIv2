@@ -4,20 +4,22 @@ status tools answer with these.
 
 The results of a job with a schema are its records. Those of a job without one are its page outputs: each task's
 content formats, made from its capture when they are read. A format is a function of the capture alone (ARCHITECTURE
-§15), so nothing else is stored, and a page's outputs go when its capture expires.
+§15), so nothing else is stored, and a page's outputs go when its capture expires. Either kind of job also answers
+`json_values` (SPEC-14 §4.4): each task with the clean records its page stands for.
 """
 
 import asyncio
 import uuid
+from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal, NamedTuple, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from sqlalchemy import RowMapping, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.config_ir.exporters.records import RecordFormat, export_records
+from crawlerai.config_ir.exporters.records import RecordFormat, clean_record, export_records
 from crawlerai.config_ir.progressive import StateKey, learning_failed
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
@@ -30,8 +32,11 @@ from crawlerai.db.models import (
     JobId,
     JobKind,
     JobStatus,
+    Record,
     RecordId,
+    SchemaId,
     TaskOutcome,
+    TaskRecord,
     TaskStatus,
     UrlTask,
     UrlTaskId,
@@ -46,7 +51,9 @@ from crawlerai.services.scrape_steps import Formats, PageFormat, format_member, 
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
-ResultFormat = Literal["json", RecordFormat]
+ResultFormat = Literal["json", "json_values", RecordFormat]
+# The outcomes of a page that was reached and extracted, so its capture has metadata to show (`json_values`).
+_EXTRACTED: frozenset[TaskOutcome | None] = frozenset({"extracted", "partial"})
 
 
 class JobNotFound(LookupError):
@@ -171,12 +178,42 @@ class PageOutputPage(BaseModel):
     next_cursor: UrlTaskId | None
 
 
+class JsonValuesItem(BaseModel):
+    """A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
+    its page stands for, and, when asked for, its page's metadata. `records` is empty for a task with no record (failed,
+    blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or partial page
+    whose capture is still kept."""
+
+    url: str
+    outcome: TaskOutcome | None
+    records: list[dict[str, JsonValue]]
+    metadata: PageMetadata | None = format_member()
+
+
+class JsonValuesPage(BaseModel):
+    """One page of a job's tasks in `json_values`, oldest first; `next_cursor` is the `cursor` of the page after it,
+    None on the last."""
+
+    model_config = ConfigDict(frozen=True)
+
+    format: Literal["json_values"]
+    items: list[JsonValuesItem]
+    next_cursor: UrlTaskId | None
+
+
 class ResultsQuery(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    cursor: uuid.UUID | None = None  # a record's id; a task's for page outputs
+    cursor: uuid.UUID | None = None  # a record's id; a task's for page outputs and `json_values`
     limit: int = Field(default=50, ge=1, le=MAX_PAGE)
     format: ResultFormat = "json"
+    include: Literal["metadata"] | None = None  # `json_values` only
+
+    @model_validator(mode="after")
+    def _include_with_json_values(self) -> "ResultsQuery":
+        if self.include is not None and self.format != "json_values":
+            raise ValueError("`include` is accepted only with format=json_values")
+        return self
 
 
 _JOB_COLUMNS = (
@@ -281,13 +318,16 @@ async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
 
 async def job_results(
     conn: AsyncConnection, job_id: JobId, query: ResultsQuery, *, store: ObjectStore
-) -> RecordPage | ExportPage | PageOutputPage:
+) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     """The job's records after `query.cursor`, newest first, in the field shape of `/v1/records` (`json`) or exported
     in the schema's columns. Values are the stored published values, unchanged (INV-27). A job without a schema
-    answers `json` with its page outputs, made from the captures in `store`, and has nothing to export."""
+    answers `json` with its page outputs, made from the captures in `store`, and has nothing to export. Any job
+    answers `json_values` with its tasks after `query.cursor`, oldest first."""
     job = (await conn.execute(select(Job.schema_id, Job.request).where(Job.id == job_id))).one_or_none()
     if job is None:
         raise JobNotFound(f"no job {job_id}")
+    if query.format == "json_values":
+        return await _json_values(conn, store, job_id, job.schema_id, query)
     if job.schema_id is None:
         if query.format != "json":
             raise NotExportable(f"job {job_id} has no schema, so it has no records to export")
@@ -316,9 +356,8 @@ class _TaskRow(NamedTuple):
     object_key: str | None
 
 
-async def _page_outputs(
-    conn: AsyncConnection, store: ObjectStore, job_id: JobId, formats: list[PageFormat], query: ResultsQuery
-) -> PageOutputPage:
+async def _task_rows(conn: AsyncConnection, job_id: JobId, query: ResultsQuery) -> list[_TaskRow]:
+    """The job's tasks after `query.cursor`, oldest first, one more than `query.limit` when there are more."""
     after = () if query.cursor is None else (UrlTask.id > query.cursor,)
     columns = (
         UrlTask.id,
@@ -339,7 +378,13 @@ async def _page_outputs(
         .order_by(UrlTask.id)
         .limit(query.limit + 1)
     )
-    rows = [_TaskRow(**row._mapping) for row in await conn.execute(statement)]
+    return [_TaskRow(**row._mapping) for row in await conn.execute(statement)]
+
+
+async def _page_outputs(
+    conn: AsyncConnection, store: ObjectStore, job_id: JobId, formats: list[PageFormat], query: ResultsQuery
+) -> PageOutputPage:
+    rows = await _task_rows(conn, job_id, query)
     items = [await _page_output(store, row, formats) for row in rows[: query.limit]]
     return PageOutputPage(items=items, next_cursor=items[-1].task_id if len(rows) > query.limit else None)
 
@@ -361,6 +406,51 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
         return output
     made = await asyncio.to_thread(_formats_of, store, row.object_key, row.final_url, formats)
     return output if made is None else output.model_copy(update=made)
+
+
+async def _json_values(
+    conn: AsyncConnection, store: ObjectStore, job_id: JobId, schema_id: SchemaId | None, query: ResultsQuery
+) -> JsonValuesPage:
+    rows = await _task_rows(conn, job_id, query)
+    page = rows[: query.limit]
+    # A task's records are linked when it ends, so one read before its outcome shows none.
+    records = await _clean_records(conn, schema_id, [row.id for row in page if row.outcome is not None])
+    items = [
+        await _json_values_item(store, row, records.get(row.id, []), metadata=query.include == "metadata")
+        for row in page
+    ]
+    next_cursor = page[-1].id if len(rows) > query.limit else None
+    return JsonValuesPage(format="json_values", items=items, next_cursor=next_cursor)
+
+
+async def _clean_records(
+    conn: AsyncConnection, schema_id: SchemaId | None, task_ids: list[UrlTaskId]
+) -> dict[UrlTaskId, list[dict[str, JsonValue]]]:
+    """The clean records each task's page stands for, oldest first: those it stored, or the latest versions of its
+    entities when it found them unchanged (`task_record`, SPEC-11 §4.2, §4.4)."""
+    if schema_id is None or not task_ids:
+        return {}
+    schema = await registry.get_by_id(conn, schema_id)
+    statement = (
+        select(TaskRecord.url_task_id, Record.data)
+        .join(Record, Record.id == TaskRecord.record_id)
+        .where(TaskRecord.url_task_id.in_(task_ids))
+        .order_by(Record.id)
+    )
+    records: defaultdict[UrlTaskId, list[dict[str, JsonValue]]] = defaultdict(list)
+    for row in await conn.execute(statement):
+        records[row.url_task_id].append(clean_record(schema, row.data))
+    return records
+
+
+async def _json_values_item(
+    store: ObjectStore, row: _TaskRow, records: list[dict[str, JsonValue]], *, metadata: bool
+) -> JsonValuesItem:
+    item = JsonValuesItem(url=row.url, outcome=row.outcome, records=records)
+    if not metadata or row.outcome not in _EXTRACTED or row.object_key is None or row.final_url is None:
+        return item
+    made = await asyncio.to_thread(_formats_of, store, row.object_key, row.final_url, ["metadata"])
+    return item if made is None else item.model_copy(update=made)
 
 
 def _formats_of(store: ObjectStore, object_key: str, final_url: str, formats: list[PageFormat]) -> Formats | None:

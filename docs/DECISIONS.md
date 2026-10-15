@@ -5528,4 +5528,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The API client's middleware sets one `rejected` flag on any 401; the route element then shows the §4.1 `EmptyView` in place of the screen, the sidebar kept, until the page is reloaded.
 - Alternatives: each screen shows its own 401 problem; clear the flag on the next successful call.
 - Why: Only editing `.env` and restarting `pnpm dev` changes the key; per-screen errors would hide that fix.
+
+### D-0813 — `json_values` records come from a task's `task_record` links
+- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 9 (#190) · Status: decided
+- Decision: A task's clean records are the records its `task_record` rows link (stored by it, or its entities' latest versions found unchanged), not only its last extraction's. Within a task they are ordered by record id: `task_record` keeps no row position.
+- Alternatives: the records of the task's last extraction (SPEC-14 §4.4 wording).
+- Why: an unchanged page in a recurring run stores no record (SPEC-11 §4.2, §4.4), so its last extraction has none; the link still shows its entity's latest record, as `format=json` lists it.
 - Reversible: yes
+
+### D-0814 — `include` only with `json_values`; `metadata` absent rather than null
+- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 9 (#190) · Status: decided
+- Decision: `include=metadata` is accepted only with `format=json_values` (422 otherwise). `metadata` is a member only for an `extracted` or `partial` task whose capture is still kept; it is never null.
+- Alternatives: ignore `include` for other formats; answer `metadata: null` when there is none.
+- Why: an ignored parameter hides caller mistakes; an absent member follows the page-format members (`format_member`), present only when asked for and available.
+- Reversible: yes
+
+### D-0815 — The `json_values` page carries a `format` discriminator
+- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 9 (#190) · Status: decided
+- Decision: `JsonValuesPage` has `format: "json_values"`, as `ExportPage` has its format.
+- Alternatives: no discriminator; clients tell the union's pages apart by their members.
+- Why: the results endpoint answers a union; the member lets clients narrow it without inspecting items.
+- Reversible: yes
+
+### D-0816 — A clean record's fields are in name order, as the export columns
+- Date: 2026-10-15 · Spec/PR: SPEC-14 §4.4, PR 9 (#190) · Status: decided
+- Decision: A clean record lists the schema's fields sorted by name, the column order of `json_records` and `csv_records`.
+- Alternatives: declaration order (SPEC-14 §4.4 "schema order"); the registry's stored key order.
+- Why: `schema_def.fields` is JSONB, which keeps no declaration order (it orders keys by length, then bytes), so "schema order" is not recoverable from the registry; name order is stable and matches the other exports.
+- Reversible: yes; keeping declaration order needs it stored.

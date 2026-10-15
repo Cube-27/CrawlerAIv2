@@ -1,4 +1,5 @@
-"""Record exporters (SPEC-08 §4.11, PR 12): `json_records`, `csv_records` and `markdown` over a page of records."""
+"""Record exporters (SPEC-08 §4.11, PR 12): `json_records`, `csv_records` and `markdown` over a page of records, and
+the clean records of `json_values` (SPEC-14 §4.4)."""
 
 import csv
 import io
@@ -7,7 +8,7 @@ import json
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.config_ir.exporters.records import export_records
+from crawlerai.config_ir.exporters.records import clean_record, export_records
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
@@ -103,3 +104,13 @@ def test_a_record_of_another_schema_is_refused() -> None:
 
     with pytest.raises(ValueError, match="schema"):
         export_records("csv_records", SCHEMA, records)
+
+
+def test_a_clean_record_has_the_schemas_fields_in_name_order_with_null_where_none_published() -> None:
+    record = clean_record(SCHEMA, {"price": {"amount": "9.50", "currency": "EUR"}})
+
+    assert list(record.items()) == [("price", {"amount": "9.50", "currency": "EUR"}), ("title", None)]
+
+
+def test_a_clean_record_leaves_out_a_value_of_no_schema_field() -> None:
+    assert clean_record(SCHEMA, {"title": "Lamp", "colour": "blue"}) == {"title": "Lamp", "price": None}

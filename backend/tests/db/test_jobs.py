@@ -1,5 +1,6 @@
-"""Jobs (SPEC-10 §4.2): a job's summary, its cancel and its results, through the jobs service and then over HTTP
-(`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`).
+"""Jobs (SPEC-10 §4.2): a job's summary, its cancel and its results, including the clean `json_values` items (SPEC-14
+§4.4), through the jobs service and then over HTTP (`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`,
+`GET /v1/jobs/{id}/results`).
 
 Jobs, tasks and records are written directly, as the queue and the page tasks would leave them, and committed,
 since the app reads them through its own connections. Hosts are RFC 2606 names.
@@ -8,7 +9,7 @@ since the app reads them through its own connections. Hosts are RFC 2606 names.
 import csv
 import io
 import json
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,11 +19,15 @@ import pytest
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.persist import store_capture
+from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7
 from crawlerai.db.jobs import start_jobs
 from crawlerai.db.models import (
     ApiKey,
+    Capture,
+    CaptureId,
     Extraction,
     Job,
     JobEvent,
@@ -36,6 +41,7 @@ from crawlerai.db.models import (
     TaskOutcome,
     TaskStatus,
     UrlTask,
+    UrlTaskId,
 )
 from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.recurring.versions import link_records
@@ -46,6 +52,7 @@ from crawlerai.services.jobs import (
     ExportPage,
     JobListQuery,
     JobPage,
+    JsonValuesPage,
     PageOutputPage,
     ResultsQuery,
 )
@@ -112,35 +119,69 @@ class World:
     async def record(self, job_id: JobId, data: Mapping[str, Any], field_meta: Mapping[str, Any]) -> RecordId:
         """A record of the world's schema, stored as a page task stores it."""
         async with self.engine.begin() as conn:
-            url = f"{self.origin}/p/{uuid7().hex}"
-            task = await conn.execute(
-                insert(UrlTask)
-                .values(job_id=job_id, url=url, canonical_url=url, status="done", outcome="extracted")
-                .returning(UrlTask.id)
-            )
-            task_id = task.scalar_one()
-            extraction = await conn.execute(
-                insert(Extraction)
-                .values(url_task_id=task_id, engine_version="e", mode="adhoc")
-                .returning(Extraction.id)
-            )
+            task_id, url = await self._task(conn, job_id, "extracted", None)
+            [record_id] = await self._store(conn, job_id, task_id, [(url, data, field_meta)])
+        return record_id
+
+    async def page(
+        self,
+        job_id: JobId,
+        outcome: TaskOutcome,
+        rows: Sequence[Mapping[str, Any]] = (),
+        *,
+        capture_id: CaptureId | None = None,
+    ) -> tuple[UrlTaskId, str]:
+        """A finished task whose page stored one record per entry of `rows` (a listing's rows), each publishing the
+        fields it names, from the capture `capture_id` if given; its id and URL."""
+        async with self.engine.begin() as conn:
+            task_id, url = await self._task(conn, job_id, outcome, capture_id)
+            records = [
+                (f"{url}#{i}", data, {n: meta(_status(n, data)) for n in self.schema.fields})
+                for i, data in enumerate(rows)
+            ]
+            await self._store(conn, job_id, task_id, records)
+        return task_id, url
+
+    async def _task(
+        self, conn: AsyncConnection, job_id: JobId, outcome: TaskOutcome, capture_id: CaptureId | None
+    ) -> tuple[UrlTaskId, str]:
+        url = f"{self.origin}/p/{uuid7().hex}"
+        status = "failed" if outcome == "failed" else "done"
+        values = {"job_id": job_id, "url": url, "canonical_url": url, "status": status, "outcome": outcome}
+        task = await conn.execute(insert(UrlTask).values(**values, capture_id=capture_id).returning(UrlTask.id))
+        return task.scalar_one(), url
+
+    async def _store(
+        self,
+        conn: AsyncConnection,
+        job_id: JobId,
+        task_id: UrlTaskId,
+        records: Sequence[tuple[str, Mapping[str, Any], Mapping[str, Any]]],
+    ) -> list[RecordId]:
+        """Store `records` (entity key, data, field meta) as the task's page's, in order, and link them to it."""
+        if not records:
+            return []
+        extraction = await conn.execute(
+            insert(Extraction).values(url_task_id=task_id, engine_version="e", mode="adhoc").returning(Extraction.id)
+        )
+        extraction_id = extraction.scalar_one()
+        made: list[RecordId] = []
+        for entity_key, data, field_meta in records:
             values = {
-                "extraction_id": extraction.scalar_one(),
+                "extraction_id": extraction_id,
                 "job_id": job_id,
                 "site_id": self.site_id,
                 "schema_id": self.schema.id,
                 "schema_version": self.schema.version,
-                "entity_key": url,
+                "entity_key": entity_key,
                 "data": dict(data),
                 "field_meta": dict(field_meta),
                 "complete": "title" in data,
                 "mode": "adhoc",
             }
-            record_id: RecordId = (
-                await conn.execute(insert(Record).values(**values).returning(Record.id))
-            ).scalar_one()
-            await link_records(conn, task_id, [record_id])
-        return record_id
+            made.append((await conn.execute(insert(Record).values(**values).returning(Record.id))).scalar_one())
+        await link_records(conn, task_id, made)
+        return made
 
     async def records(self, job_id: JobId, n: int) -> list[RecordId]:
         """`n` records, oldest first, the even ones without a colour."""
@@ -150,6 +191,10 @@ class World:
             field_meta = {"title": meta("published"), "colour": meta("published" if i % 2 else "missing")}
             made.append(await self.record(job_id, data, field_meta))
         return made
+
+
+def _status(name: str, data: Mapping[str, Any]) -> str:
+    return "published" if name in data else "missing"
 
 
 @pytest.fixture
@@ -177,7 +222,9 @@ async def _cancel(engine: AsyncEngine, job_id: JobId) -> jobs.JobSummary:
         return await jobs.cancel_job(conn, job_id)
 
 
-async def _results(engine: AsyncEngine, job_id: JobId, **query: Any) -> RecordPage | ExportPage | PageOutputPage:
+async def _results(
+    engine: AsyncEngine, job_id: JobId, **query: Any
+) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     async with engine.connect() as conn:
         # These jobs have no captures: the store is never read.
         return await jobs.job_results(conn, job_id, ResultsQuery(**query), store=FsStore(Path("unused")))
@@ -255,7 +302,7 @@ async def test_a_running_job_is_cancelled_once_its_claimed_task_finishes(world: 
     job_id = await world.job()
     await world.tasks(job_id, [("queued", None)])
     async with world.engine.begin() as conn:
-        url = f"{world.origin}/p/running"
+        url = f"{world.origin}/p/claimed"
         running = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
         await start_jobs(conn, [job_id])
 
@@ -333,6 +380,86 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
     ]
     assert rest.next_cursor is None
     assert markdown.content.count("\n") == 4  # header, delimiter, two records
+
+
+async def _json_values(engine: AsyncEngine, job_id: JobId, **query: Any) -> JsonValuesPage:
+    page = await _results(engine, job_id, format="json_values", **query)
+    assert isinstance(page, JsonValuesPage)
+    return page
+
+
+async def test_json_values_has_one_item_per_task_oldest_first_with_its_clean_records(world: World) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+    _, detail = await world.page(job_id, "partial", [{"colour": "blue"}])
+    _, failed = await world.page(job_id, "failed")
+    _, listing = await world.page(job_id, "extracted", [{"title": "Kettle", "colour": "red"}, {"title": "Mug"}])
+    _, blocked = await world.page(job_id, "blocked")
+    await world.tasks(job_id, [("queued", None)])
+    other = await world.job(schema_id=world.schema.id, status="completed")
+    await world.page(other, "extracted", [{"title": "Lamp"}])
+
+    page = await _json_values(world.engine, job_id)
+
+    # A clean record has the schema's fields in name order, null where none published, and no status.
+    assert [(item.url, item.outcome, item.records) for item in page.items[:4]] == [
+        (detail, "partial", [{"colour": "blue", "title": None}]),
+        (failed, "failed", []),
+        (listing, "extracted", [{"colour": "red", "title": "Kettle"}, {"colour": None, "title": "Mug"}]),
+        (blocked, "blocked", []),
+    ]
+    assert [list(record) for record in page.items[2].records] == [["colour", "title"]] * 2
+    assert (len(page.items), page.items[4].outcome, page.items[4].records) == (5, None, [])
+    assert (page.format, page.next_cursor) == ("json_values", None)
+
+
+async def test_an_unchanged_page_shows_the_latest_record_of_its_entity(world: World) -> None:
+    first = await world.job(schema_id=world.schema.id, status="completed")
+    [stored] = await world.records(first, 1)
+    rerun = await world.job(schema_id=world.schema.id, status="completed")
+    unchanged, url = await world.page(rerun, "unchanged")
+    async with world.engine.begin() as conn:
+        await link_records(conn, unchanged, [stored])
+
+    page = await _json_values(world.engine, rerun)
+
+    assert [(item.url, item.outcome, item.records) for item in page.items] == [
+        (url, "unchanged", [{"title": "Kettle 0", "colour": None}])
+    ]
+
+
+async def test_a_task_read_before_it_ends_has_no_records(world: World) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="running")
+    [stored] = await world.records(job_id, 1)
+    url = f"{world.origin}/p/claimed"
+    async with world.engine.begin() as conn:
+        values = {"job_id": job_id, "url": url, "canonical_url": url, "status": "claimed", "outcome": None}
+        running = (await conn.execute(insert(UrlTask).values(**values).returning(UrlTask.id))).scalar_one()
+        await link_records(conn, running, [stored])
+
+    page = await _json_values(world.engine, job_id)
+
+    assert (page.items[-1].url, page.items[-1].outcome, page.items[-1].records) == (url, None, [])
+
+
+async def test_json_values_of_a_job_without_a_schema_lists_its_tasks_with_no_records(world: World) -> None:
+    job_id = await world.job(status="completed")
+    await world.tasks(job_id, [("done", "extracted"), ("failed", "failed")])
+
+    page = await _json_values(world.engine, job_id)
+
+    assert [(item.outcome, item.records) for item in page.items] == [("extracted", []), ("failed", [])]
+
+
+async def test_json_values_pages_with_the_task_id_as_cursor(world: World) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+    made = [await world.page(job_id, "extracted", [{"title": f"Kettle {i}"}]) for i in range(3)]
+
+    first = await _json_values(world.engine, job_id, limit=2)
+    second = await _json_values(world.engine, job_id, limit=2, cursor=first.next_cursor)
+
+    assert first.next_cursor == made[1][0]
+    assert [item.url for item in first.items + second.items] == [url for _, url in made]
+    assert second.next_cursor is None
 
 
 # Over HTTP.
@@ -490,6 +617,61 @@ async def test_page_outputs_are_served_with_each_tasks_last_error(client: httpx.
         ("done", "blocked", "robots"),
         ("done", "not_found", None),
     ]
+
+
+async def test_json_values_carry_metadata_only_when_asked_and_the_capture_is_kept(
+    client: httpx.AsyncClient, world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
+) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+    store = FsStore(tmp_path / "objects")
+    body = b"<html lang='en'><head><title>Kettle</title></head><body><h1>Kettle</h1></body></html>"
+    async with world.engine.begin() as conn:
+        captures = [
+            await store_capture(conn, store, fetch_result(f"{world.origin}/c/{i}", body=body), world.site_id)
+            for i in range(4)
+        ]
+        expired = (await conn.execute(select(Capture.object_key).where(Capture.id == captures[3]))).scalar_one()
+    store.delete(expired)
+    await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=captures[0])
+    await world.page(job_id, "partial", [{"colour": "blue"}], capture_id=captures[1])
+    await world.page(job_id, "not_found", capture_id=captures[2])
+    await world.page(job_id, "extracted", [{"title": "Mug"}], capture_id=captures[3])
+    await world.page(job_id, "failed")
+
+    plain = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values"})
+    asked = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values", "include": "metadata"})
+
+    assert plain.status_code == 200, plain.text
+    assert [set(item) for item in plain.json()["items"]] == [{"url", "outcome", "records"}] * 5
+    assert asked.status_code == 200, asked.text
+    items = asked.json()["items"]
+    # Only an extracted or partial page whose capture is still kept has metadata; it is never null.
+    assert ["metadata" in item for item in items] == [True, True, False, False, False]
+    assert (items[0]["metadata"]["title"], items[0]["metadata"]["language"]) == ("Kettle", "en")
+    assert (items[0]["records"], asked.json()["format"]) == ([{"title": "Kettle", "colour": None}], "json_values")
+
+
+async def test_json_values_are_served_for_a_job_without_a_schema(client: httpx.AsyncClient, world: World) -> None:
+    job_id = await world.job(status="completed")
+    await world.tasks(job_id, [("done", "extracted")])
+
+    response = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values", "limit": 1})
+
+    assert response.status_code == 200, response.text
+    [item] = response.json()["items"]
+    assert (item["outcome"], item["records"], response.json()["next_cursor"]) == ("extracted", [], None)
+
+
+async def test_include_is_refused_without_json_values(client: httpx.AsyncClient, world: World) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+
+    responses = [
+        await client.get(f"/v1/jobs/{job_id}/results", params={"include": "metadata"}),
+        await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records", "include": "metadata"}),
+        await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values", "include": "markdown"}),
+    ]
+
+    assert [(r.status_code, r.json()["type"]) for r in responses] == [(422, "validation")] * 3
 
 
 async def test_jobs_need_a_key(client: httpx.AsyncClient, world: World) -> None:
