@@ -10,8 +10,8 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncEngine
 
+from crawlerai.api.database import database
 from crawlerai.api.forwarded import Network, client_address
 from crawlerai.api.problems import ProblemError
 from crawlerai.db.models import ApiKeyId
@@ -99,7 +99,7 @@ async def require_api_key(
         raise ProblemError(429, "rate_limited", "Too many requests", "the rate limit is exceeded", headers=retry_after)
     if token is None:
         raise _unauthorized("the request has no bearer API key")
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     async with engine.begin() as conn:
         key_id = await authenticate(conn, hash_key(token))
     if key_id is None:

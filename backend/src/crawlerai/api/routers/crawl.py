@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId
@@ -33,4 +34,4 @@ async def crawl_site(
     fetching: Fetching = request.app.state.fetching
     data: EngineData | None = request.app.state.engine_data
     with submission_problems():
-        return await crawl.submit_crawl(request.app.state.database, fetching.connector, body, data=data, api_key_id=key)
+        return await crawl.submit_crawl(database(request), fetching.connector, body, data=data, api_key_id=key)

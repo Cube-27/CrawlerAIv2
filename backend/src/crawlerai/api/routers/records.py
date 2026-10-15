@@ -3,9 +3,9 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.services import records
 from crawlerai.services.records import RecordFilter, RecordPage
@@ -22,6 +22,6 @@ router = APIRouter(
 async def list_records(query: Annotated[RecordFilter, Query()], request: Request) -> RecordPage:
     """Records newest first, narrowed by job, site (host) and schema version. Pass a page's `next_cursor` as `cursor`
     for the page after it."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     async with engine.connect() as conn:
         return await records.list_records(conn, query)

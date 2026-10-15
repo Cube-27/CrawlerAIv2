@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE, ConfigList, LearnStarted
 from crawlerai.api.problems import conflict, invalid, not_found, records_unavailable
 from crawlerai.config_ir.corrections import Correction, InvalidCorrection
@@ -41,7 +42,7 @@ _CHANGES: dict[int | str, dict[str, Any]] = {404: PROBLEM_RESPONSE, 409: PROBLEM
 @asynccontextmanager
 async def _transaction(request: Request) -> AsyncIterator[AsyncConnection]:
     """One transaction for the request, with the service's errors answered as problems."""
-    engine: AsyncEngine = request.app.state.database
+    engine = database(request)
     try:
         async with engine.begin() as conn:
             yield conn

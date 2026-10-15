@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 
 from crawlerai.api.auth import require_api_key
+from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError, invalid, llm_problem, target_refused
 from crawlerai.api.submissions import submission_problems
@@ -48,9 +49,7 @@ async def extract_records(
     data: EngineData | None = request.app.state.engine_data
     with submission_problems():
         try:
-            return await extract.submit_extract(
-                request.app.state.database, fetching, body, llm=llm, data=data, api_key_id=key
-            )
+            return await extract.submit_extract(database(request), fetching, body, llm=llm, data=data, api_key_id=key)
         except TargetRejected as e:
             raise target_refused(e.reason) from e
         except (NothingToExtract, NoSamplePage) as e:
