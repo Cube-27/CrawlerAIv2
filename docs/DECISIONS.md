@@ -59,6 +59,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner |
 | D-0810 | Additional fields: how typed field names become an extraction | needs-owner |
+| D-0879 | CSV formula injection in `csv_records` downloads | needs-owner |
 
 ---
 
@@ -740,4 +741,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The verdict is a comment that starts with `## Review` and has a line `**Verdict: MERGE**` or `**Verdict: MERGE AFTER FIX**` (`/review-pr` §4 fixes the form); `READY <sha7>` starts a comment's first line, for the head being merged. Like `merge_guard.py`, it guards against mistakes, not a forged review. Duplicate `### D-NNNN` IDs fail `tools/decision_ids.py` in CI's `site-literals` job.
 - Alternatives: a login check; a verdict anywhere in any comment (an implementor's READY note "Verdict MERGE" would pass).
 - Why: The only signal that separates the reviewer's comment from the implementor's on one account.
+- Reversible: yes
+
+### D-0879 — CSV formula injection in `csv_records` downloads
+- Date: 2026-10-16 · Spec/PR: SPEC-08 §4.11, SPEC-10 follow-ups (#199) · Status: needs-owner
+- Decision: Open. Should `csv_records` neutralise cells starting with `=`, `+`, `-`, `@`, tab or CR (OWASP CSV Injection), now that the UI's Export CSV saves them as a file? Recommendation: (a). Blocks only the #115 follow-up.
+- Alternatives: (a) an opt-in `csv_safe=true` results parameter that prefixes `'`, sent by the UI download (an API change); (b) always prefix (amends INV-27); (c) leave values unchanged and warn in the export UI.
+- Why: INV-27: exporters serialize the published value unchanged, so either fix changes the API or the invariant (review of #115).
 - Reversible: yes

@@ -14,6 +14,7 @@ from pydantic import JsonValue
 from crawlerai.llm.client import (
     LLMRequest,
     LLMResponse,
+    OutputInvalid,
     ProviderCall,
     ProviderError,
     ProviderReply,
@@ -40,7 +41,8 @@ class FakeProvider:
 
 class ScriptedClient:
     """Answers each call with the next scripted reply, or raises the next scripted failure; keeps the requests. Like the
-    real client, it validates every reply against the request's output schema."""
+    real client, it validates every reply against the request's output schema, and a reply the role's check refuses
+    takes the one retry, with the next scripted reply, then raises `OutputInvalid` (SPEC-06 §4.7)."""
 
     def __init__(self, *script: Mapping[str, JsonValue] | Exception, model: str = "fake-fast") -> None:
         self._script = list(script)
@@ -48,13 +50,13 @@ class ScriptedClient:
         self.requests: list[LLMRequest] = []
 
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
-        self.requests.append(req)
-        step = self._script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        Draft202012Validator(req.output_schema).validate(step)
+        reply = self._next(req)
+        if check is not None and check(reply) is not None:
+            reply = self._next(req)
+            if (refusal := check(reply)) is not None:
+                raise OutputInvalid(refusal)
         return LLMResponse(
-            data=dict(step),
+            data=reply,
             provider="fake",
             model=self._model,
             tokens_in=10,
@@ -62,3 +64,11 @@ class ScriptedClient:
             latency_ms=1,
             request_hash=request_hash(req),
         )
+
+    def _next(self, req: LLMRequest) -> dict[str, JsonValue]:
+        self.requests.append(req)
+        step = self._script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        Draft202012Validator(req.output_schema).validate(step)
+        return dict(step)

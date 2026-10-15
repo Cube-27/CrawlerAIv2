@@ -31,9 +31,7 @@ from crawlerai.db.models import (
     Job,
     JobId,
     ProgressiveState,
-    Project,
     Record,
-    Site,
     SiteId,
     TaskOutcome,
     UrlState,
@@ -113,15 +111,6 @@ def fetching(origin: Origin, tmp_path: Path) -> Fetching:
 
     rungs = Rungs(http=origin.http, browser=origin.browser, conditional=origin.conditional)
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-
-@pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
-    """The origin's site with a short interval, so a job of its pages runs without waiting a second per page."""
-    async with engine.begin() as conn:
-        project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        values = {"project_id": project, "host": own_origin[8:], "crawl_delay_ms": 1}
-        return (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
 
 
 @pytest.fixture
@@ -238,6 +227,28 @@ async def test_a_page_extracted_again_with_equal_values_lists_its_standing_recor
     assert both.tasks == {url: ("extracted", True) for url in urls}
     assert await _count(engine, Record) == records + 1
     assert sorted(await _results(engine, both)) == [("Blue kettle", 1, []), ("Red kettle", 1, [])]
+
+
+async def test_a_page_whose_text_moved_but_whose_record_did_not_is_unchanged_on_the_next_run(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    origin.pages = {url: _page("Blue kettle")}
+    await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
+    origin.pages = {url: _page("Blue kettle", OTHER_PROSE)}
+    moved = await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
+
+    again = await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
+
+    assert moved == Run({url: ("extracted", True)}, extractions=1)
+    # The record the moved text was extracted into again stands for the page, though it was stored before the move.
+    assert again == Run({url: ("unchanged", True)}, extractions=0)
+    assert await _results(engine, again) == [("Blue kettle", 1, [])]
 
 
 async def test_a_new_version_is_listed_by_the_job_that_stored_it_with_its_changed_fields(

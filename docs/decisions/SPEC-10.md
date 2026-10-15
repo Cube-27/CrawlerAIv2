@@ -380,3 +380,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: A hand-kept tuple of exception classes in the MCP server.
 - Why: One marker keeps the interfaces from drifting apart when a service adds a refusal.
 - Reversible: yes
+
+### D-0875 — A `ValidationError` raised inside an MCP tool is unexpected
+- Date: 2026-10-16 · Spec/PR: SPEC-10 follow-ups (#199) · Status: decided
+- Decision: `_REFUSALS` drops `ValidationError`; `crawl_status` parses its cursor itself and refuses a bad one as `not a results cursor`.
+- Alternatives: Type the tool argument as a UUID (changes its input schema).
+- Why: FastMCP validates arguments before a tool runs; any other `ValidationError` is a service's parse of stored rows, which REST answers 500 `UNEXPECTED` (review of #195).
+- Reversible: yes

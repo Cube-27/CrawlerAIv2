@@ -35,7 +35,7 @@ from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Proje
 from crawlerai.db.queue import MAX_ATTEMPTS
 from crawlerai.llm.client import LLMClient, MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
-from crawlerai.recurring.listing_diff import close_run
+from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT, close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
@@ -415,6 +415,11 @@ async def test_reading_sitemaps_stops_at_the_time_cap_and_is_logged(
     assert sorted(await tasks(engine, submitted.job_id)) == [f"{own_origin}/", f"{own_origin}/p/1"]
     lines = [r.getMessage().split(": ", 1)[1] for r in caplog.records if r.name.endswith(".crawl")]
     assert lines == [f"sitemaps of job {submitted.job_id}: 1 seeds; stopped at the 0.5 s time cap"]
+    # The run saw part of its listing only, which the listing diff reads (SPEC-11 §4.5).
+    async with engine.connect() as conn:
+        query = select(JobEvent.payload).where(JobEvent.job_id == submitted.job_id, JobEvent.kind == SITEMAPS_TIMED_OUT)
+        payloads: list[dict[str, Any]] = list((await conn.execute(query)).scalars())
+    assert payloads == [{"url": f"{own_origin}/", "seeds": 1}]
 
 
 async def test_a_target_the_guard_refuses_is_never_fetched(

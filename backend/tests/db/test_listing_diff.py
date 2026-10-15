@@ -9,8 +9,9 @@ import pytest
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.db.jobs import record_event
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, SchemaId, Site, SiteId, UrlState, UrlTask
-from crawlerai.recurring.listing_diff import close_run
+from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT, close_run
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDocument
 from crawlerai.services.crawl import CrawlRequest
@@ -43,9 +44,10 @@ class Shop:
         schema: bool = True,
         status: JobStatus = "completed",
         extra: tuple[dict[str, Any], ...] = (),
+        events: tuple[str, ...] = (),
     ) -> JobId:
         """A run whose tasks are the start page, `paths` (each matched the crawl's rule) and `extra` tasks (their
-        `url_task` columns); ended in `status`."""
+        `url_task` columns), that recorded `events`; ended in `status`."""
         default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
         job = {
             "project_id": default_project,
@@ -58,6 +60,8 @@ class Shop:
         job_id: JobId = (await self.conn.execute(insert(Job).values(job).returning(Job.id))).scalar_one()
         tasks = [self.task(""), *extra, *(self.task(path, page_kind="detail") for path in paths)]
         await self.conn.execute(insert(UrlTask), [{"job_id": job_id} | task for task in tasks])
+        for kind in events:
+            await record_event(self.conn, job_id, kind, {"url": self.url("")})
         await close_run(self.conn, job_id, status)
         return job_id
 
@@ -162,6 +166,16 @@ async def test_a_run_with_an_unreached_navigation_page_marks_nothing_missing(sho
     # The category page that listed p/b added no links: p/b may still be listed.
     for _ in range(2):
         await shop.run("p/a", extra=(shop.task("c/1", outcome="blocked"),))
+
+    assert await shop.state() == {"p/a": (0, False), "p/b": (0, False)}
+
+
+async def test_a_run_whose_sitemap_reading_timed_out_marks_nothing_missing(shop: Shop) -> None:
+    await shop.run("p/a", "p/b")
+
+    # The sitemaps' tail was not read: p/b may be listed there still.
+    for _ in range(2):
+        await shop.run("p/a", events=(SITEMAPS_TIMED_OUT,))
 
     assert await shop.state() == {"p/a": (0, False), "p/b": (0, False)}
 

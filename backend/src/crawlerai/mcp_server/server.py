@@ -49,8 +49,10 @@ _STATUS_RESULTS: Final = 10  # results on a status tool's first page; `cursor` p
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 _FETCHES = ToolAnnotations(readOnlyHint=False, openWorldHint=True)
 _WRITES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
-# What a tool answers with its message: a service's `Refusal`, the client's own invalid input, and a refused key.
-_REFUSALS: Final = (Refusal, ToolError, ValidationError, InvalidCursor)
+# What a tool answers with its message: a service's `Refusal`, the client's own invalid input, and a refused key. The
+# client's arguments are validated before a tool runs, and a tool validates what it parses of them itself, so a
+# `ValidationError` raised inside a tool is a service's parse of stored data: unexpected, as REST answers it.
+_REFUSALS: Final = (Refusal, ToolError, InvalidCursor)
 
 AnyContext = Context[Any, Any, Any]
 
@@ -139,7 +141,10 @@ class _Tools:
     async def status(self, ctx: AnyContext, job_id: JobId, cursor: str | None = None) -> CallToolResult:
         """The job's summary and a page of its results: records, or page outputs for a job without a schema."""
         runtime = (await self._bind(ctx)).runtime
-        query = ResultsQuery.model_validate({"cursor": cursor, "limit": _STATUS_RESULTS})
+        try:
+            query = ResultsQuery.model_validate({"cursor": cursor, "limit": _STATUS_RESULTS})
+        except ValidationError as e:
+            raise ToolError(f"not a results cursor: {cursor!r}") from e
         async with runtime.database.connect() as conn:
             summary = await jobs.get_job(conn, job_id)
             results = await jobs.job_results(conn, job_id, query, store=runtime.fetching.store)

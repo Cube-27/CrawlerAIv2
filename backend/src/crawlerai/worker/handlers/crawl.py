@@ -6,7 +6,8 @@ A reached page contributes its links and next-page candidates at its depth plus 
 the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else `/sitemap.xml`) and adds their
 URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that ends the task: an attempt that
 is postponed or retried leaves them to the next, so they are read once. Sitemaps are fetched over HTTP, politely: the
-worker waits for the site's rate in place, within `SITEMAP_TIMEOUT_S`, past which the seeds read so far are kept; a
+worker waits for the site's rate in place, within `SITEMAP_TIMEOUT_S`, past which the seeds read so far are kept and
+the job records `sitemaps_timed_out`, so that the listing diff counts the run as partial (SPEC-11 §4.5); a
 sitemap the SSRF guard refused ends the reading the same way (INV-16: it is never fetched).
 
 A page whose URL matched a page-kind rule (`url_task.page_kind`) is extracted: its formats, or its record, as a
@@ -29,8 +30,10 @@ from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.content.page import ParsedPage
 from crawlerai.crawl.frontier import Frontier, discovered
 from crawlerai.crawl.sitemaps import SitemapReader, roots
+from crawlerai.db.jobs import record_event
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
+from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, recording
@@ -152,6 +155,8 @@ async def _sitemap_seeds(conn: AsyncConnection, fetching: Fetching, crawl: _Craw
     except TargetRejected:
         pass  # a refused sitemap ends the reading: it is never fetched (INV-16)
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
+    if capped:  # the run saw part of its listing only (SPEC-11 §4.5)
+        await record_event(conn, task.job_id, SITEMAPS_TIMED_OUT, {"url": task.url, "seeds": len(seeds)})
     # The task's id and job, never a URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
     stop = f"; stopped at the {SITEMAP_TIMEOUT_S:g} s time cap" if capped else ""
     log.info("url_task %s: sitemaps of job %s: %d seeds%s", task.id, task.job_id, len(seeds), stop)

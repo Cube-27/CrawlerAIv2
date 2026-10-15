@@ -310,3 +310,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep `None` and leave `api_recipe` out of the report.
 - Why: D-0583: the report says why; a forced learn on an API-backed site said nothing.
 - Reversible: yes
+
+### D-0877 — A config without a recipe does not run on an `api` capture
+- Date: 2026-10-16 · Spec/PR: SPEC-09 follow-ups (#199) · Status: decided
+- Decision: `ActiveConfig.for_capture` returns None for an `api` capture no adapter detects when the config has no `api` executor; a replay then extracts it cold.
+- Alternatives: Refuse to replay it; run the page steps on the JSON (before).
+- Why: Page steps read a page, not the JSON an earlier config's recipe fetched (review of #150). Live paths only see `api` captures of the current config's recipe (#195).
+- Reversible: yes

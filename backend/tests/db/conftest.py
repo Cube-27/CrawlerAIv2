@@ -24,7 +24,7 @@ import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -43,6 +43,7 @@ from crawlerai.db.models import (
     Job,
     JobEvent,
     ProgressiveState,
+    Project,
     Record,
     SchemaDef,
     Site,
@@ -207,6 +208,17 @@ def fetch_result() -> Callable[..., FetchResult]:
         )
 
     return make
+
+
+@pytest.fixture
+async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
+    """The site of `own_origin` with a short interval, so a job of its pages, or a page and its API endpoint, run
+    without waiting a second per request."""
+    async with engine.begin() as conn:
+        project = select(Project.id).where(Project.name == "default").scalar_subquery()
+        values = {"project_id": project, "host": own_origin.removeprefix("https://"), "crawl_delay_ms": 1}
+        site_id: SiteId = (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
+    return site_id
 
 
 @pytest.fixture

@@ -47,7 +47,8 @@ Out of scope (§22):
   `If-Modified-Since: <last_modified>` (HTTP rung only; the browser rung ignores validators).
 - 304 → task outcome `unchanged`; no capture is stored; `url_state.last_seen_at` updated; the previous record
   is referenced by the task (`url_task.capture_id` stays null; results for the task point at the latest record
-  version — plumbing: `url_task.record_id`).
+  version — plumbing: `task_record`, a row per record the task stands for, as a listing page stands for one record
+  per row; D-0762).
 - 200 → store the new `etag`/`last_modified`.
 
 ### 4.3 Content fingerprint (§14 row 2)
@@ -67,14 +68,18 @@ Out of scope (§22):
 
 - `record_fingerprint = sha256(canonical_json({field: normalized value for required fields and groups}))`
   (sorted keys, Decimal as string, lists in order).
-- On extraction, compare with `url_state.record_fingerprint` for the same (site, entity_key, schema):
+- On extraction, compare with the fingerprint of the entity's latest record, the `record` row of the same (site,
+  entity_key, schema) with the highest `version` (`record.fingerprint`; D-0666):
   - equal → the new record row is not inserted; the task references the existing latest record (`version`
-    unchanged);
+    unchanged), which from then on stands for the page's current content (§4.3: the next run's unchanged page is not
+    extracted again);
   - different → insert with `version = prev.version + 1`, `supersedes_record_id = prev.id`, `changed_fields =
-    [fields whose normalized values differ, including fields that became published or abstained]`;
-    `url_state.record_fingerprint` and `last_changed_at` updated.
+    [fields whose normalized values differ, including fields that became published or abstained]`. `url_state` is
+    not written: it is per URL, and its `last_changed_at` is when the page's content changed (§4.3), which one schema
+    version's record must not move for the others (D-0667).
 - `GET /v1/records?site&schema_id&changed_since=<ts>` returns records with `version > 1` or new entities since
-  the timestamp, each with `changed_fields`; job results include `changed_fields` on each record.
+  the timestamp, each with `changed_fields`; job results include `changed_fields` on each record. A record's time is
+  when it committed, so a poller that passes the time it last asked misses no record that committed late.
 
 ### 4.5 Listing diff (§14 row 4)
 
@@ -88,7 +93,8 @@ Out of scope (§22):
   = the job (plumbing). For the site's rows with `gone_at IS NULL` last seen by an earlier run of the same crawl:
   `missing_runs += 1`; `missing_runs >= 2` → `gone_at = now` and a `job_event(kind='url_gone', url)`.
 - A run that saw part of its listing only counts no misses: one that reached its `limit`, one with an empty
-  listing, and one with a page no rule matched that ended `blocked`, `shell` or `failed` (its links were not read).
+  listing, one with a page no rule matched that ended `blocked`, `shell` or `failed` (its links were not read), and
+  one whose sitemap reading stopped at its time cap (a `sitemaps_timed_out` job event; the tail was not read).
   A navigation page that is `not_found` still counts.
 - New URLs are queued as tasks by the SPEC-10 frontier, which takes every URL a run finds in scope.
 - A URL seen again after `gone_at` was set gets `gone_at = NULL` and `missing_runs = 0`.
@@ -100,8 +106,10 @@ Fingerprint computation errors fall through to normal extraction (never skip on 
 
 ## 5. Invariants
 
-INV-10 (fingerprint functions are pure; property-tested), INV-22, INV-11 (unchanged pages carry no new
-records). No new C-rule exposure; `recurring/` contains no site literals (INV-03).
+This spec's own properties, which `INVARIANTS.md` does not number: the fingerprint functions are pure
+(property-tested), and an unchanged page carries no new record. It keeps INV-22 (published fields carry their
+evidence) and INV-10 (replay does not consult `url_state`). No new C-rule exposure; `recurring/` contains no site
+literals (INV-03).
 
 ## 6. Testing strategy
 
@@ -138,6 +146,6 @@ records). No new C-rule exposure; `recurring/` contains no site literals (INV-03
   storage".
 - **Review finding (`gone` and record versions lack columns in §6).** Resolved in ARCHITECTURE rev 5 §6
   (`url_state.missing_runs`, `gone_at`; `record.version`, `changed_fields`). `supersedes_record_id`,
-  `url_task.record_id` and `url_state.last_seen_job_id` remain plumbing.
+  `task_record` (§4.2) and `url_state.last_seen_job_id` remain plumbing.
 - **Nonce stripping rule** (≥ 16-char opaque tokens) is structural but unmeasured; confirm on dev that
   boilerplate-only changes are skipped.

@@ -55,15 +55,15 @@ class ActiveConfig:
     # Whether a page `executor` ran on joins the config's drift window (SPEC-08 §4.9), which measures its page steps.
     drifts: bool = True
 
-    def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig":
-        """The config as it runs on the capture `manifest` describes. An `api` capture no active adapter detects holds
-        the JSON the config's recipe fetched (`acquire` tries adapters first): the recipe's executor reads it, and as
-        the page steps did not run, the page joins no drift window."""
-        if self.api is None or manifest.method != "api":
+    def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig | None":
+        """The config as it runs on the capture `manifest` describes; None when it does not run on it. An `api`
+        capture no active adapter detects holds the JSON an API recipe fetched (`acquire` tries adapters first): the
+        config's recipe executor reads it, and as the page steps did not run, the page joins no drift window. A config
+        without a recipe does not run on it: an earlier config's recipe fetched it (a replay), and page steps read a
+        page, not JSON."""
+        if manifest.method != "api" or (adapters is not None and adapters.detect(manifest.url) is not None):
             return self
-        if adapters is not None and adapters.detect(manifest.url) is not None:
-            return self
-        return replace(self, executor=self.api, api=None, drifts=False)
+        return None if self.api is None else replace(self, executor=self.api, api=None, drifts=False)
 
 
 @dataclass(frozen=True, slots=True)

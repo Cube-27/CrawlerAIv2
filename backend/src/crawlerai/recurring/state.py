@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import FetchResult, Validators
-from crawlerai.db.models import Extraction, ExtractionMode, Record, RecordId, SchemaId, SiteId, UrlState
+from crawlerai.db.models import Extraction, ExtractionMode, Record, RecordId, SchemaId, SiteId, TaskRecord, UrlState
 from crawlerai.recurring.conditional import Unchanged, received
 from crawlerai.recurring.simhash import hamming
 from crawlerai.resolve.records import entity_key
@@ -57,22 +57,29 @@ async def standing_record(
     config_version: int | None,
 ) -> RecordId | None:
     """The record that stands for the page when it has not changed: the newest of its entity (`entity_key`) under the
-    schema version, extracted the way it would be now (by config `config_version`, or `adhoc` for None), and made no
-    earlier than the page's content last changed (`record_content`). None when there is none: the page must be
-    extracted. A record made before the page last changed describes content it no longer has, whichever task saw the
-    change."""
+    schema version that a task extracting the way it would be now (by config `config_version`, or `adhoc` for None)
+    stood for since the page's content last changed (`record_content`); None when the page must be extracted. A task
+    that extracted the changed content and found its record unchanged stands for that record too (SPEC-11 §4.4), so
+    the next run does not extract the page again."""
     mode: ExtractionMode = "adhoc" if config_version is None else "config"
     changed = select(UrlState.last_changed_at).where(*_url(site_id, canonical_url)).scalar_subquery()
+    extracted_since = (
+        select(TaskRecord.record_id)
+        .join(Extraction, Extraction.url_task_id == TaskRecord.url_task_id)
+        .where(
+            TaskRecord.record_id == Record.id,
+            Extraction.mode == mode,
+            Extraction.config_version.is_not_distinct_from(config_version),
+            changed.is_(None) | (TaskRecord.created_at >= changed),
+        )
+    )
     query = (
         select(Record.id)
-        .join(Extraction, Extraction.id == Record.extraction_id)
         .where(
             Record.site_id == site_id,
             Record.entity_key == entity_key(site_id, canonical_url),
             Record.schema_id == schema_id,
-            Extraction.mode == mode,
-            Extraction.config_version.is_not_distinct_from(config_version),
-            changed.is_(None) | (Record.created_at >= changed),
+            extracted_since.exists(),
         )
         .order_by(Record.id.desc())
         .limit(1)

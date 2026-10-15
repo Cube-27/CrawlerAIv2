@@ -29,7 +29,7 @@ _INDEXED_JSONPATH = re.compile(rf"{_INDEX}:{_JSONPATH}", re.DOTALL)
 _NAMED_JSONPATH = re.compile(rf"{_ASSIGNED_NAME}:{_JSONPATH}", re.DOTALL)
 
 _ADDRESS: dict[str, re.Pattern[str]] = {
-    # The nth `application/ld+json` block, then a path in its expanded graph.
+    # The nth `application/ld+json` block, then a path in the block as written (SPEC-05 §4.3).
     "jsonld": _INDEXED_JSONPATH,
     # The element carrying the `itemprop`.
     "microdata": re.compile(_XPATH, re.DOTALL),

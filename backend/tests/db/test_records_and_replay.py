@@ -6,8 +6,9 @@ and committed, since the replay and the app read them through their own connecti
 """
 
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -100,8 +101,16 @@ class World:
     data: EngineData
     fetch_result: Callable[..., FetchResult]
 
-    async def scrape(self, path: str, body: bytes, *, extract: bool = True) -> Made:
-        """A page fetched and stored as a capture; with `extract`, a `scrape` job's record made from it."""
+    async def scrape(
+        self,
+        path: str,
+        body: bytes,
+        *,
+        extract: bool = True,
+        before_commit: Callable[[], Awaitable[None]] | None = None,
+    ) -> Made:
+        """A page fetched and stored as a capture; with `extract`, a `scrape` job's record made from it. `before_commit`
+        runs once the record is stored, before its transaction commits."""
         url = f"{self.origin}{path}"
         fetched = self.fetch_result(url, 200, body, (("Content-Type", "text/html"),))
         async with self.engine.begin() as conn:
@@ -125,6 +134,8 @@ class World:
                 caller_supplied=True,
                 write_records=store_records,
             )
+            if before_commit is not None:
+                await before_commit()
         return Made(job_id, capture_id, stored.records[0].id if stored.records else None)
 
 
@@ -447,6 +458,23 @@ async def test_changed_since_lists_the_new_versions_and_new_entities_stored_from
         (str(new.record_id), 1, []),
         (str(changed.record_id), 2, ["price"]),
     ]
+
+
+async def test_a_record_that_commits_after_a_poll_is_listed_by_the_next_poll_from_then(world: World) -> None:
+    polls: list[tuple[datetime, records.RecordPage]] = []
+
+    async def poll() -> None:  # while the record's transaction is still open
+        async with world.engine.connect() as conn:
+            since = (await conn.execute(select(func.now()))).scalar_one()
+        polls.append((since, await _list(world.engine, schema_id=world.schema.id, changed_since=since)))
+
+    late = await world.scrape("/p/1", _page("Kettle 1"), before_commit=poll)
+    [(since, during)] = polls
+    after = await _list(world.engine, schema_id=world.schema.id, changed_since=since)
+
+    assert during.items == []
+    # It was stored before the first poll began, and committed after: the poll from then on lists it (SPEC-11 §4.4).
+    assert [record.id for record in after.items] == [late.record_id]
 
 
 @pytest.mark.parametrize(

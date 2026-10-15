@@ -146,3 +146,38 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Let Postgres abort one of two deadlocked runs and let the task retry.
 - Why: `_seen` locks rows in sorted order, but the `_missed` UPDATE locks them in scan order, so two runs of a site ending together could deadlock.
 - Reversible: yes
+
+### D-0870 — A record found unchanged after a content change stands for the page
+- Date: 2026-10-16 · Spec/PR: SPEC-11 follow-ups (#199) · Status: decided
+- Decision: `standing_record` takes the entity's newest record a task linked (`task_record.created_at`, migration 0018; existing links backfilled from their record) at or after `url_state.last_changed_at`, by a task whose extraction has the job's mode and config version.
+- Alternatives: Write `last_changed_at` back on an equal record fingerprint (moves it for every schema version, D-0667).
+- Why: §4.4: an equal fingerprint references the latest record, which then describes the current content; otherwise every run re-extracts the page.
+- Reversible: yes
+
+### D-0871 — `task_abstained` reads the records the task stands for
+- Date: 2026-10-16 · Spec/PR: SPEC-11 follow-ups (#199) · Status: decided
+- Decision: The event reads `field_meta` of the task's `task_record` records, when the task has an extraction.
+- Alternatives: The extraction's own records only, which leaves out an unchanged re-extraction.
+- Why: The task resolved those abstentions again; an `unchanged` task has no extraction and records no extraction events.
+- Reversible: yes
+
+### D-0872 — `record.created_at` is the commit time; `changed_since` waits for in-flight commits
+- Date: 2026-10-16 · Spec/PR: SPEC-11 follow-ups (#199) · Status: decided
+- Decision: A deferred constraint trigger (migration 0018) restamps a transaction's records with `clock_timestamp()` once at commit, holding `pg_advisory_xact_lock_shared(RECORD_FEED_LOCK)`; `list_records` with `changed_since` takes that lock exclusively and releases it before it queries. Indexed on `record (created_at)`.
+- Alternatives: A sleep or overlap window; an xid watermark (needs a response cursor, a public API change); `track_commit_timestamp` (a server setting).
+- Why: A record that commits after a poll began is visible with a later time, so the next poll from then lists it. Cost: one UPDATE per committing transaction; polls briefly wait on commits in progress.
+- Reversible: yes
+
+### D-0873 — A timed-out sitemap reading makes a run partial (`sitemaps_timed_out`)
+- Date: 2026-10-16 · Spec/PR: SPEC-11 follow-ups (#199) · Status: decided
+- Decision: The crawl handler records the job event `sitemaps_timed_out` `{url, seeds}` when its sitemap reading hits `SITEMAP_TIMEOUT_S`; `close_run` then counts no misses. A new event kind, as `url_gone` is.
+- Alternatives: A `url_task` or `job` column (a schema change); every run whose start page read sitemaps is partial.
+- Why: The sitemaps' tail was not read, so URLs only it lists may still be listed (D-0691's reasoning, review of #142).
+- Reversible: yes
+
+### D-0874 — Clarifying spec edits: SPEC-11 §4.2/§4.4/§4.5/§5, SPEC-05 §4.3, SPEC-08 §4.11
+- Date: 2026-10-16 · Spec/PR: SPEC-11 follow-ups (#199) · Status: decided
+- Decision: The specs now say what the code does: `task_record` (D-0762); compare with `record.fingerprint`, `url_state` not written (D-0666, D-0667); commit time (D-0872); timed-out sitemaps (D-0873); §5 no longer cites INV-10/INV-11 for properties they do not state; JSON-LD locators address the block as written (#78); `platform_draft` is `{steps, manual}` with no per-field `params` (D-0606).
+- Alternatives: None: the text was wrong.
+- Why: CLAUDE.md §6 clarifying edits; no architecture change.
+- Reversible: yes

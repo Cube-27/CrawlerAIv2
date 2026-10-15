@@ -8,10 +8,10 @@ record's published value, unchanged (INV-27), and `None` for a field that did no
 """
 
 from collections.abc import Mapping
-from typing import Any, Self
+from typing import Any, Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
-from sqlalchemy import RowMapping, select
+from sqlalchemy import RowMapping, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import (
@@ -33,6 +33,9 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 
 MAX_PAGE = 200
+# The advisory lock of the change feed (`_committed`, migration 0018): blake2b("record_feed", digest_size=8) as a
+# signed bigint.
+RECORD_FEED_LOCK: Final = -7838622165994782610
 _COLUMNS = (
     Record.id,
     Record.schema_id,
@@ -130,6 +133,7 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     if query.schema_id is not None:
         statement = statement.where(Record.schema_id == query.schema_id)
     if query.changed_since is not None:
+        await _committed(conn)
         statement = statement.where(Record.created_at >= query.changed_since)
     rows, next_cursor = await keyset_page(
         conn, statement, Record.id, after=query.cursor, limit=query.limit, descending=True
@@ -138,6 +142,16 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     schemas = {schema_id: await registry.get_by_id(conn, schema_id) for schema_id in {row["schema_id"] for row in page}}
     items = [_stored(row, schemas[row["schema_id"]]) for row in page]
     return RecordPage(items=items, next_cursor=next_cursor)
+
+
+async def _committed(conn: AsyncConnection) -> None:
+    """Wait until every record whose commit time is already set has committed, so that a poller that asks from the
+    time it last asked misses no record that committed late. A record's `created_at` is set again as its transaction
+    commits, which holds `RECORD_FEED_LOCK` shared until the commit is visible (migration 0018). Once the lock is free,
+    a record stamped earlier is visible to the next statement (READ COMMITTED takes a snapshot per statement), and one
+    stamped later is no earlier than this call. The lock is released at once."""
+    # The select list is evaluated in order: the lock is taken, then released.
+    await conn.execute(select(func.pg_advisory_lock(RECORD_FEED_LOCK), func.pg_advisory_unlock(RECORD_FEED_LOCK)))
 
 
 def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:

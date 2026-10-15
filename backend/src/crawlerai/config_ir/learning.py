@@ -13,8 +13,9 @@ started before it does not replace. A job that cannot start, its request naming 
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
-not wait on a write to the job's row (D-0346). The job's start and end are recorded as `learning_started` and
-`learning_finished` events (SPEC-10 §4.2).
+not wait on a write to the job's row (D-0346). A worker that stops after the start, during the final transaction too,
+ends the run (`SHUTDOWN`), so its job never waits for `expire_learn_runs`. The job's start and end are recorded as
+`learning_started` and `learning_finished` events (SPEC-10 §4.2).
 """
 
 import asyncio
@@ -47,7 +48,7 @@ from crawlerai.config_ir.progressive import (
 from crawlerai.config_ir.synthesis import synthesize
 from crawlerai.config_ir.validation import Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.db.jobs import record_event, transition_job
+from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
 from crawlerai.db.models import (
     ConfigOrigin,
     ExtractionConfig,
@@ -136,19 +137,19 @@ async def run_learn_job(
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
         validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, replay)
+        async with engine.begin() as conn:
+            return await _finish(conn, run, validated)
     except LLMFailure as e:
         async with engine.begin() as conn:
             return await _fail(conn, run, e.code)
     except asyncio.CancelledError:  # the worker stops: the run ends as one that cannot finish, then the cancel goes on
         async with engine.begin() as conn:
-            await _fail(conn, run, SHUTDOWN)
+            await _abandon(conn, job_id, SHUTDOWN)
         raise
     except Exception:  # §4.8: a run that cannot finish leaves the state as a failed run would, never `learning`
         log.exception("learn job %s failed", job_id)
         async with engine.begin() as conn:
             return await _fail(conn, run, "error")
-    async with engine.begin() as conn:
-        return await _finish(conn, run, validated)
 
 
 async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
@@ -191,10 +192,13 @@ async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
 
 
 async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
-    """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`."""
+    """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`. A run that
+    ended meanwhile is left as it ended: a stopping worker's cancel can come as the run's final transaction commits."""
     # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
     locked = select(Job.status, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
     job = (await conn.execute(locked)).one()
+    if not JOB_TRANSITIONS[job.status]:
+        return Learned(None, reason)
     if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
         await transition_job(conn, job_id, "running")
     # The state may have moved on already (an operator's config, a cancel), and then there is no run to end; a request

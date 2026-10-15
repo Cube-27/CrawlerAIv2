@@ -502,8 +502,11 @@ class Record(Base):
         _schema_version_fk(),
         CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
         version_positive(),
-        # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4).
-        Index(None, "site_id", "entity_key", "schema_id"),
+        # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4), and find the newest record that
+        # stands for a page, by id (`recurring.state.standing_record`).
+        Index(None, "site_id", "entity_key", "schema_id", "id"),
+        # The change feed (`changed_since`), and the commit stamp of migration 0018's trigger.
+        Index(None, "created_at"),
         # `GET /v1/records` by job or by schema, newest first by id (SPEC-07 §4.6), and a capture's records for replay.
         Index(None, "job_id", "id"),
         Index(None, "schema_id", "id"),
@@ -538,6 +541,9 @@ class TaskRecord(Base):
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id, ondelete="CASCADE"), primary_key=True)
     # Indexed for the records a job lists, which join on it, and for a record's delete.
     record_id: Mapped[RecordId] = mapped_column(ForeignKey(Record.id, ondelete="CASCADE"), primary_key=True, index=True)
+    # When the task stood for the record (`recurring.state.standing_record`); links made before migration 0018 have
+    # their record's time.
+    created_at: Mapped[datetime] = created_at_column()
 
 
 class EvalPageColumns:
