@@ -295,6 +295,19 @@ describe("scrape playground: the request", () => {
     expect(posted(calls)).toMatchObject({ formats: ["markdown", "metadata"] });
   });
 
+  it("sends nothing and marks Format when no format, Metadata in JSON or schema is chosen", async () => {
+    const calls = stubScrape({});
+    await openScrape();
+    await typeUrl();
+    await toggleFormats("Markdown");
+
+    await submit();
+
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+    expect(selectTrigger(/Format/).closest("[data-invalid]")).not.toBeNull();
+    expect(screen.getByText("Choose a format, Metadata in JSON or a schema.")).toBeInTheDocument();
+  });
+
   it("sends a URL typed without a scheme with the https:// the bar shows", async () => {
     const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
     await openScrape();

@@ -11,6 +11,7 @@ import { FormatSelect } from "../FormatSelect";
 import { ModeSwitch } from "../ModeSwitch";
 import { OptionsToggle } from "../OptionsPanel";
 import {
+  asksForNothing,
   buildRequest,
   INITIAL_FORM,
   optionsChanged,
@@ -24,6 +25,8 @@ import { ScrapeResult } from "./ScrapeResult";
 type ScrapeState = { kind: "idle" } | { kind: "pending" } | ScrapeRun;
 
 const NO_ERRORS: Readonly<Record<string, string>> = {};
+
+const NO_FORMAT = "Choose a format, Metadata in JSON or a schema.";
 
 /** RFC 3986 §3.1: a URI starts with its scheme and `:`. The bar shows `https://`, so text typed without a scheme
  * gets it. */
@@ -64,12 +67,18 @@ export function ScrapePlayground() {
   const [form, setForm] = useState<ScrapeFormState>(INITIAL_FORM);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [state, setState] = useState<ScrapeState>({ kind: "idle" });
-  const serverErrors = useMemo(
-    () => (state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS),
-    [state],
-  );
+  const [noFormat, setNoFormat] = useState(false);
+  const validationErrors = useMemo(() => {
+    const errors = state.kind === "failed" ? fieldErrors(state.problem) : NO_ERRORS;
+    return noFormat ? { ...errors, formats: NO_FORMAT } : errors;
+  }, [state, noFormat]);
 
   const submit = () => {
+    if (asksForNothing(form)) {
+      setNoFormat(true);
+      return;
+    }
+    setNoFormat(false);
     const request = buildRequest({ ...form, url: requestUrl(form.url) });
     // A schema's records need a page kind, which is set in the options panel.
     if (request === null) {
@@ -86,7 +95,7 @@ export function ScrapePlayground() {
       <ModeSwitch current="scrape" />
       <Form
         className="flex flex-col gap-4"
-        validationErrors={serverErrors}
+        validationErrors={validationErrors}
         onSubmit={(event) => {
           event.preventDefault();
           submit();

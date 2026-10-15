@@ -72,11 +72,16 @@ function requestFormats(form: ScrapeFormState): ScrapeFormat[] {
   ]);
 }
 
-/** The request for `form`, or null when it has a schema but no page kind, which records need (SPEC-07 §4.4). Empty
- * limits are left out, so the server's defaults apply. */
+/** Whether `form` asks for no format at all, which the server refuses (SPEC-07 §4.4). */
+export function asksForNothing(form: ScrapeFormState): boolean {
+  return requestFormats(form).length === 0;
+}
+
+/** The request for `form`, or null when it asks for no format, or has a schema but no page kind, which records need
+ * (SPEC-07 §4.4). Empty limits are left out, so the server's defaults apply. */
 export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   const { options } = form;
-  if (form.schemaId !== "" && options.pageKind === null) return null;
+  if (asksForNothing(form) || (form.schemaId !== "" && options.pageKind === null)) return null;
   return {
     url: form.url.trim(),
     formats: requestFormats(form),

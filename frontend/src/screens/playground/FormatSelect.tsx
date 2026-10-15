@@ -1,4 +1,4 @@
-import { ListBox, Select } from "@heroui/react";
+import { FieldError, ListBox, Select } from "@heroui/react";
 import type { Key } from "react";
 import type { ScrapeFormat } from "../../api/scrape";
 import { FORMATS, orderedFormats } from "../../components/FormatChoices";
@@ -46,6 +46,7 @@ export function FormatSelect({
           ))}
         </ListBox>
       </Select.Popover>
+      <FieldError />
     </Select>
   );
 }
