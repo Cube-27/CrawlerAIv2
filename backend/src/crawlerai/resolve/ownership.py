@@ -2,8 +2,8 @@
 DOM subtree holds it, and the page's entities form a tree under their parents.
 
 A candidate is the target's when the target holds it, when the page holds it (page-level values describe what the
-page is about), or when an Offer of the target holds it (atomic offers, §4.8). Any other candidate is not owned and
-never publishes.
+page is about), or when an Offer of the target or of one of its variants holds it (atomic offers, §4.8). Any other
+candidate is not owned and never publishes.
 """
 
 from collections.abc import Iterable, Iterator, Mapping
@@ -15,6 +15,10 @@ from crawlerai.collect.schema_org_map import Vocabulary
 # schema.org: an Offer is the offer of an item (`offers` / `itemOffered`), so its price and availability are the
 # item's (§4.5: Offer values are owned by the Offer whose parent is the Product).
 OFFER = "Offer"
+# schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
+# not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
+# the atomic-offer rule. The variant's own values (its sku, its name) stay the variant's.
+VARIANT = "hasVariant"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,4 +59,7 @@ class EntityGraph:
         owner = self.owner_of(candidate)
         if owner.id == target.id or (page_values and owner.id == PAGE):
             return True
-        return owner.parent == target.id and self.is_a(owner, OFFER)
+        if owner.parent is None or not self.is_a(owner, OFFER):
+            return False
+        holder = self.entities[owner.parent]
+        return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)

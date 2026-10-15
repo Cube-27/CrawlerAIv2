@@ -5307,3 +5307,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep asking role C on every page for a required field the site never shows; make more fields optional per preset (as `brand`, D-0781).
 - Why: Evidence: with `brand` and `url` absent on several UAT sites, role C ran once per page on every page, in config mode too. Blocked: nothing; the gap rule is unchanged.
 - Reversible: yes
+
+### D-0785 — What a product group owns of its variants
+- Date: 2026-10-15 · Spec/PR: SPEC-05 §4.6, §4.8; ARCHITECTURE §8.2 rule 3, Appendix A #36 (#168) · Status: decided
+- Decision: Under a primary entity, `hasVariant` children are excluded from target candidates; an Offer whose parent is such a variant is owned by the target and joins the atomic-offer rule. The variant's own values (sku, name, gtin, image) are not owned. Only `hasVariant` makes a member; an Offer of a product nested under any other property stays its own.
+- Alternatives: Own the variants' values too (a variant sku would be published as the group's, the error the Shopify baseline saw as F7); treat `isVariantOf` from a top-level variant the same way (not in the baseline shapes; left for SPEC-13).
+- Why: Owner approval of the variants proposal step A; schema.org `hasVariant` "indicates a Product that is a member of this ProductGroup".
+- Reversible: yes
