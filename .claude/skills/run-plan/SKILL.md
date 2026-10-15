@@ -37,9 +37,7 @@ use an admin bypass, so tracker updates travel inside PRs, and work in flight is
 2. **Assign.** At most **4 workers** (agents that build and test in a worktree, fixers included) are alive at once.
    Reviewers don't count, because they use little memory. Every start needs at least 1.5 GB free (owner,
    2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*`, everything else is a worker.
-   Each assignment is one PR covering a batch of related ready rows, normally all ready rows of one spec, or of
-   adjacent specs touching the same code. Target 30-80 changed files or about 1500-4000 changed lines; split only
-   when a row waits on a human task or on unmerged code, or the PR would pass ~4000 lines. Run independent batches in
+   Each assignment is one PR covering a batch of related ready rows (`CLAUDE.md` §3). Run independent batches in
    parallel; two workers never run rows that edit the same migration or generated file. For each assignment:
    - `tools/orchestrator/new_worktree.sh spec-NN-pr-A-B spec-NN/pr-A-B-<short-name>`: fetches and creates the
      worktree off `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-A-B`. Never a raw
@@ -52,9 +50,8 @@ use an admin bypass, so tracker updates travel inside PRs, and work in flight is
 3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR end to end: it starts one reviewer once the
    PR is implemented, simplified and CI is green, waits for the verdict itself, makes any `MERGE AFTER FIX` fixes (no
    second review), adds the tracker commit and comments `READY <sha7>` on green CI. You don't relay verdicts,
-   rebase, fix or edit PRs. **Plugin, bot or hook prompts** to run `/simplify` or a code review that land in your
-   session are answered "already ran", never run here: `/simplify` runs once, by the implementor; code review runs
-   once, by the reviewer.
+   rebase, fix or edit PRs. Plugin, bot or hook prompts to run `/simplify` or a code review get "already ran"
+   (`CLAUDE.md` §3).
    - On `READY <sha7>`, merge, one PR at a time:
      `if tools/orchestrator/merge_pr.sh <n> <sha7>; then tools/orchestrator/close_agent.sh <impl> &&
      tools/orchestrator/cleanup_worktree.sh <worktree> <branch>; fi`

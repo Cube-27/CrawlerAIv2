@@ -59,10 +59,10 @@ def advance_origin(repo: Repo, tmp_path: Path) -> str:
     return git(other, "rev-parse", "HEAD")
 
 
-def run(repo: Repo, *args: str) -> subprocess.CompletedProcess[str]:
+def run(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603
         [str(BASH), NEW_WORKTREE.as_posix(), *args],
-        cwd=repo.main,
+        cwd=cwd,
         env={**os.environ, **IDENTITY},
         capture_output=True,
         text=True,
@@ -74,7 +74,7 @@ def run(repo: Repo, *args: str) -> subprocess.CompletedProcess[str]:
 def test_creates_the_worktree_beside_main_off_fresh_origin_main(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     newest = advance_origin(repo, tmp_path)
-    result = run(repo, NAME, BRANCH)
+    result = run(repo.main, NAME, BRANCH)
     assert result.returncode == 0, result.stderr
     assert Path(result.stdout.strip()) == repo.worktree
     assert git(repo.worktree, "rev-parse", "HEAD") == newest
@@ -84,7 +84,7 @@ def test_creates_the_worktree_beside_main_off_fresh_origin_main(tmp_path: Path) 
 def test_existing_path_is_refused(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     repo.worktree.mkdir(parents=True)
-    result = run(repo, NAME, BRANCH)
+    result = run(repo.main, NAME, BRANCH)
     assert result.returncode == 1
     assert result.stderr.strip() == f"ERROR {repo.worktree.as_posix()} already exists"
     assert git(repo.main, "branch", "--list", BRANCH) == ""
@@ -93,7 +93,7 @@ def test_existing_path_is_refused(tmp_path: Path) -> None:
 def test_existing_local_branch_is_refused(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     git(repo.main, "branch", BRANCH)
-    result = run(repo, NAME, BRANCH)
+    result = run(repo.main, NAME, BRANCH)
     assert result.returncode == 1
     assert result.stderr.strip() == f"ERROR branch {BRANCH} already exists"
     assert not repo.worktree.exists()
@@ -102,7 +102,7 @@ def test_existing_local_branch_is_refused(tmp_path: Path) -> None:
 def test_existing_remote_branch_is_refused(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     git(repo.main, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
-    result = run(repo, NAME, BRANCH)
+    result = run(repo.main, NAME, BRANCH)
     assert result.returncode == 1
     assert result.stderr.strip() == f"ERROR branch {BRANCH} already exists on origin"
     assert not repo.worktree.exists()
@@ -110,14 +110,12 @@ def test_existing_remote_branch_is_refused(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("name", ["a/b", "..", ""])
 def test_a_name_that_is_a_path_is_refused(tmp_path: Path, name: str) -> None:
-    repo = make_repo(tmp_path)
-    result = run(repo, name, BRANCH)
+    result = run(tmp_path, name, BRANCH)
     assert result.returncode == 2
     assert result.stderr.strip() == f"ERROR NAME must be a directory name, not a path: '{name}'"
 
 
 def test_wrong_argument_count_prints_usage(tmp_path: Path) -> None:
-    repo = make_repo(tmp_path)
-    result = run(repo, NAME)
+    result = run(tmp_path, NAME)
     assert result.returncode == 2
     assert result.stderr.strip() == "usage: new_worktree.sh NAME BRANCH"

@@ -98,9 +98,9 @@ Project skills in `.claude/skills/` hold the procedures:
 
 **The orchestrator only orchestrates.** It never relays verdicts, edits, fixes or rebases PRs; it sends `REBASE` only
 when a branch is behind `main` or conflicts. **The implementor owns its PR to `READY`**: it starts its own reviewer,
-reads the verdict, makes the fixes, and adds the tracker commit: its rows `done (#n)` and follow-ups in `ACTIVE.md`,
-its `## Decisions` in the decisions log under the ID range it was given ("Current focus" only when the orchestrator
-asks). Then it comments `READY <sha7>` on green CI. A solo agent with no orchestrator uses the next free IDs.
+reads the verdict, makes the fixes, adds the tracker commit (`/implement-pr` §6.4) under the decision-ID range it was
+given at assignment, and comments `READY <sha7>` on green CI. Workers put decisions in the PR body (`## Decisions`)
+until then.
 
 `main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
 `spec-*` branches, not from ACTIVE.md. Never use an admin bypass of the branch rules. Never merge without a `MERGE` or

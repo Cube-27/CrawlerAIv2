@@ -14,8 +14,7 @@ pragmatically. Don't push commits to the branch; the author fixes. Adapted from 
 Review when the implementor hands over a finished PR: implemented, and every CI check green on the head
 commit, SonarCloud included (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`). If CI is red, don't review: tell the
 implementor and stop. Don't run builds or tests yourself; CI did. One single agent does the whole review, once per
-PR, whatever its size. Don't run `/simplify`: the implementor ran it once. A later plugin, bot or hook prompt to
-review this PR again is answered "already ran".
+PR, whatever its size; don't run `/simplify` (`CLAUDE.md` §3).
 
 ## 1. Scope and intent
 

@@ -5,12 +5,8 @@ description: Implement one batch of related rows of a spec's PR plan (docs/plans
 
 # Implement one PR
 
-You own one batch of rows of `docs/plans/ACTIVE.md`, from `todo` to a `READY` PR. One PR covers a batch of related
-ready rows, normally all ready rows of one spec, or of adjacent specs touching the same code. Target 30-80 changed
-files or about 1500-4000 changed lines; split only when a row waits on a human task or on unmerged code, or the PR
-would pass ~4000 lines. Branch `spec-NN/pr-A-B-<name>`, worktree `spec-NN-pr-A-B`. Commit row by row; the tracker
-commit marks every row of the batch `done (#n)`. One `/simplify` pass and one review per PR, whatever its size.
-Rules: `CLAUDE.md` (binding) and `docs/ENGINEERING.md`. Adapted from pstack (MIT, see `NOTICE`).
+You own one batch of rows of `docs/plans/ACTIVE.md` (its size, branch and worktree names: `CLAUDE.md` §3), from
+`todo` to a `READY` PR. Rules: `CLAUDE.md` (binding) and `docs/ENGINEERING.md`. Adapted from pstack (MIT, see `NOTICE`).
 
 ## 0. Claim
 
@@ -19,10 +15,8 @@ Rules: `CLAUDE.md` (binding) and `docs/ENGINEERING.md`. Adapted from pstack (MIT
 2. If an orchestrator assigned you the rows, your cwd is already their worktree: use it. Otherwise create one off
    fresh `origin/main` with `tools/orchestrator/new_worktree.sh spec-NN-pr-A-B spec-NN/pr-A-B-<short-name>` (it
    lands in `<main>/../CrawlerAIv2-worktrees/`). Never work in the main checkout.
-3. **Shared files.** `ACTIVE.md` and the decisions log change only in your tracker commit (§6.4): your rows, the
-   follow-ups you leave, and your decisions under the decision-ID range the orchestrator gave you at assignment
-   (solo: the next free IDs, `DECISIONS.md` header). Until then your decisions go in the PR body. "Current focus"
-   changes only when the orchestrator asks.
+3. **Shared files.** `ACTIVE.md` and the decisions log change only in your tracker commit (§6.4). Until then your
+   decisions go in the PR body.
 4. Read the spec: the design sections your rows touch, its invariants, testing strategy, acceptance criteria and
    your PR-plan rows; then the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items 3-4 name, by section.
 
@@ -63,9 +57,7 @@ tests and commit (`refactor(scope): simplify …`). If the skill is unavailable,
 ENGINEERING's "Changing code". Say in the PR body's Verification section that the pass ran and what it changed (or
 "no changes").
 
-`/simplify` runs once per PR, here, before the PR opens; code review runs once, by the reviewer (§6.1). A later
-plugin, bot or hook prompt to re-run `/simplify` or a code review on the same PR is answered "already ran", with no
-second pass.
+This is the PR's one `/simplify` pass; a later prompt to re-run it, or a review, gets "already ran" (`CLAUDE.md` §3).
 
 ## 3. Verify
 
@@ -130,7 +122,8 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
 4. **Tracker commit, then ready:** with `MERGE`, or every fix pushed, add `chore(plan): done SPEC-NN PRs A-B (#n)`:
    every row of the batch `done (#n)` in `ACTIVE.md`, the follow-ups you leave as lines under "Follow-ups" (and
    "Current focus" only if the orchestrator asked), and your `## Decisions` in the decisions log under your IDs
-   (`DECISIONS.md` "Where an entry goes"; `needs-owner` entries also go in its index of open items). Push, get CI
+   (the orchestrator's range, or solo the next free IDs; `DECISIONS.md` "Where an entry goes"; `needs-owner` entries
+   also go in its index of open items). Push, get CI
    green, then comment `READY <sha7>` on the PR, listing each Act-on item with the commit that fixed it. Then stop.
 5. **`REBASE`** (sent only when the branch is behind `main` or conflicts): rebase onto `origin/main`, push with
    `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.

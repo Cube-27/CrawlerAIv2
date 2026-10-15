@@ -715,7 +715,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 
 ### D-0822 — Batch PRs and `new_worktree.sh`
 - Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided
-- Decision: One PR covers a batch of related ready rows (30-80 files, about 1500-4000 lines), branch `spec-NN/pr-A-B-<name>`, worktree `spec-NN-pr-A-B`. `tools/orchestrator/new_worktree.sh NAME BRANCH` fetches origin and adds the worktree beside the main checkout (first entry of `git worktree list`, as `start_agent.sh` and `cleanup_worktree.sh` find it), refusing an existing path, an existing local or remote branch, a NAME that is a path, and an MSYS `/c/` path.
+- Decision: One PR covers a batch of related ready rows (30-80 files, about 1500-4000 lines), branch `spec-NN/pr-A-B-<name>`, worktree `spec-NN-pr-A-B`. `tools/orchestrator/new_worktree.sh NAME BRANCH` fetches origin and adds the worktree beside the main checkout (first entry of `git worktree list`, as `start_agent.sh` and `cleanup_worktree.sh` find it), refusing an existing path, an existing local or remote branch, or a NAME that is a path; the local checks run before any network call.
 - Alternatives: a `config.sh` with `WORKTREE_ROOT` as in the owner's other project; keep raw `git worktree add` in the skills.
 - Why: Fewer, larger PRs cut per-PR review and CI overhead; the script removes the `C:/c/` path mistake and branch reuse. No new config file: the other scripts already derive the root.
 - Reversible: yes.

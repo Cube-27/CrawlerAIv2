@@ -2,7 +2,7 @@
 
 ## Why
 
-<!-- 1–3 sentences. Link the spec row: docs/specs/SPEC-NN-*.md §8, PR M. -->
+<!-- 1–3 sentences. Link the spec rows: docs/specs/SPEC-NN-*.md §8, PRs A-B. -->
 
 ## What changed
 

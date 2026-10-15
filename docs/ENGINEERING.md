@@ -112,8 +112,8 @@ the right pattern first. A finding that misreads the code (a protocol method tha
 parameter) is explained in the PR body, never suppressed.
 
 Python:
-- **S5778 one call in `pytest.raises`:** build arguments before the `with`; the block holds only the raising call.
-- **S9073 one fact per `assert`:** `assert a == 1` and `assert b == 2`, not `assert a == 1 and b == 2`.
+- **S5778 one call in `pytest.raises` (ruff `PT012` sees statements, not nested calls):** build arguments before the `with`; the block holds only the raising call.
+- **S9073 one fact per `assert` (ruff `PT018`):** `assert a == 1` and `assert b == 2`, not `assert a == 1 and b == 2`.
 - **S3776 cognitive complexity ≤ 15:** extract named steps (complexipy enforces it, C11).
 - **S6353 concise regex classes:** `\d`, `\w`, not `[0-9]`, `[A-Za-z0-9_]`.
 - **S1192 repeated literal:** a literal used three or more times becomes a named constant that cites its standard.
@@ -122,7 +122,7 @@ Python:
 - **S1172 unused parameter:** remove it, unless a protocol defines the signature.
 - **S7519 same value for every key:** `dict.fromkeys(keys, value)`, not a comprehension.
 - **S8409 FastAPI `response_model`:** omit it when the return annotation already says the type.
-- **S9100 fixture without teardown:** `return`, not `yield`.
+- **S9100 fixture without teardown (ruff `PT022`):** `return`, not `yield`.
 - **S5713 redundant `except`:** don't catch a subclass beside its base class in one `except`.
 
 TS/TSX:
