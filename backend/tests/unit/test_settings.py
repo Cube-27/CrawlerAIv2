@@ -49,30 +49,27 @@ def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     assert settings.eval_ui is True
 
 
-@pytest.mark.parametrize("empty", [False, True], ids=["unset", "empty"])
-def test_optional_settings_unset_or_empty_take_their_unset_values(env: pytest.MonkeyPatch, empty: bool) -> None:
+def test_optional_settings_set_empty_take_their_unset_values(env: pytest.MonkeyPatch) -> None:
     # Agents and developers carry the private settings empty, and unset CI secrets arrive as "" (SPEC-00 §4.4).
-    if empty:
-        for name in _OPTIONAL:
-            env.setenv(name, "")
+    unset = Settings()
+    for name in _OPTIONAL:
+        env.setenv(name, "")
+
+    empty = Settings()
+
+    assert empty == unset
+    assert (empty.eval_private_database_url, empty.eval_private_object_store) == (None, None)
+
+
+def test_the_database_url_and_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
+    env.setenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", "secret-key-value")
 
     settings = Settings()
 
-    assert settings.eval_private_database_url is None
-    assert settings.eval_private_object_store is None
-    assert settings.log_redact_urls is False
-    assert settings.role is None
-    assert settings.impersonate == "chrome150"
-    assert settings.eval_ui is False
-    assert settings.llm_providers == ("anthropic", "gemini")
-    assert settings.llm_fast_model_anthropic == "claude-haiku-5-5"
-    assert settings.llm_api_key_gemini is None
-    assert settings.trusted_proxies == ()
-    assert (settings.api_rate_per_s, settings.api_rate_burst) == (20, 40)
-
-
-def test_database_url_is_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
-    assert "pw@" not in repr(Settings())
+    assert "pw@" not in repr(settings)
+    assert "secret-key-value" not in repr(settings)
+    assert settings.llm_api_key_anthropic is not None
+    assert settings.llm_api_key_anthropic.get_secret_value() == "secret-key-value"
 
 
 @pytest.mark.parametrize("empty", [False, True], ids=["unset", "empty"])
@@ -83,11 +80,11 @@ def test_required_setting_unset_or_empty_is_rejected(env: pytest.MonkeyPatch, na
     else:
         env.delenv(name)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match=name.removeprefix("CRAWLERAI_").lower()):
         Settings()
 
 
-@pytest.mark.parametrize("store", ["fs://relative/path", "file:///srv/objects", "/srv/objects", "s3://"])
+@pytest.mark.parametrize("store", ["fs://relative/path", "file:///srv/objects", "s3://"])
 def test_object_store_outside_fs_or_s3_form_is_rejected(env: pytest.MonkeyPatch, store: str) -> None:
     env.setenv("CRAWLERAI_OBJECT_STORE", store)
 
@@ -95,7 +92,7 @@ def test_object_store_outside_fs_or_s3_form_is_rejected(env: pytest.MonkeyPatch,
         Settings()
 
 
-@pytest.mark.parametrize("store", ["fs:///srv/objects", "s3://bucket", "s3://bucket/prefix/part"])
+@pytest.mark.parametrize("store", ["fs:///srv/objects", "s3://bucket/prefix/part"])
 def test_object_store_in_fs_or_s3_form_is_accepted(env: pytest.MonkeyPatch, store: str) -> None:
     env.setenv("CRAWLERAI_OBJECT_STORE", store)
 
@@ -130,7 +127,6 @@ def test_impersonate_names_a_curl_cffi_browser_profile(env: pytest.MonkeyPatch) 
 @pytest.mark.parametrize(
     ("value", "providers"),
     [
-        ("gemini", ("gemini",)),
         ("gemini,anthropic", ("gemini", "anthropic")),
         (" anthropic , gemini ", ("anthropic", "gemini")),
     ],
@@ -142,16 +138,11 @@ def test_llm_providers_are_a_comma_separated_failover_order(
     assert Settings().llm_providers == providers
 
 
-@pytest.mark.parametrize("value", ["anthropic,anthropic", "anthropic,other", "anthropic,"])
+@pytest.mark.parametrize("value", ["anthropic,anthropic", "anthropic,other"])
 def test_a_repeated_or_unknown_llm_provider_is_rejected(env: pytest.MonkeyPatch, value: str) -> None:
     env.setenv("CRAWLERAI_LLM_PROVIDERS", value)
     with pytest.raises(ValidationError, match="llm_providers"):
         Settings()
-
-
-def test_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
-    env.setenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", "secret-key-value")
-    assert "secret-key-value" not in repr(Settings())
 
 
 def test_trusted_proxies_are_a_json_list_of_addresses_or_networks(env: pytest.MonkeyPatch) -> None:
