@@ -49,16 +49,18 @@ export function optionsChanged(options: ScrapeOptions): boolean {
 }
 
 /** `form` with the stored schema `schemaId`. A schema's records need the page kind it is for (SPEC-07 §4.4), so a
- * chosen schema sets it, unless the server refuses that kind's records. */
+ * chosen schema sets it; when the schema has none, or one whose records the server refuses, the page kind is cleared
+ * so the request waits for one. */
 export function withSchema(
   form: ScrapeFormState,
   schemaId: string,
   schemaPageKind: SchemaPageKind | null,
 ): ScrapeFormState {
-  if (schemaPageKind === null || NO_RECORDS_PAGE_KINDS.includes(schemaPageKind)) {
-    return { ...form, schemaId };
-  }
-  return { ...form, schemaId, options: { ...form.options, pageKind: schemaPageKind } };
+  const pageKind =
+    schemaPageKind === null || NO_RECORDS_PAGE_KINDS.includes(schemaPageKind)
+      ? null
+      : schemaPageKind;
+  return { ...form, schemaId, options: { ...form.options, pageKind } };
 }
 
 /** The request's formats: the page formats chosen, `metadata` for Metadata in JSON, and `records` with a schema. */

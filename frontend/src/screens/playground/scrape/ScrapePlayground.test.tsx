@@ -322,6 +322,30 @@ describe("scrape playground: the request", () => {
       "true",
     );
   });
+  it("drops the page kind a previous schema set when the next one has none for its records", async () => {
+    const listing = {
+      ...itemSchema,
+      id: "0f9e8d7c-6b5a-4f3e-9d2c-1b0a9f8e7d6c",
+      name: "item_listing",
+      version: 1,
+      status: "active",
+      page_kind: "listing",
+    };
+    const calls = stubScrape({
+      "GET /v1/schemas": () =>
+        Response.json({
+          items: [{ ...itemSchema, status: "active", page_kind: "detail" }, listing],
+        }),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+    await pick(/Schema/, "item_listing version 1");
+
+    await submit();
+
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+    expect(screen.getByRole("region", { name: "Options" })).toBeInTheDocument();
+  });
 });
 
 describe("scrape playground: records", () => {
