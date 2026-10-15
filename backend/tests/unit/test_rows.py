@@ -27,7 +27,7 @@ from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Hea
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
-DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
+DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
 PAGE_URL = "https://shop.example.test/p/1"
 _PRESET = next(p for p in load_presets() if p.name == "commerce_detail")
 SCHEMA = SchemaDef(**_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")

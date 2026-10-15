@@ -200,6 +200,8 @@ export default defineConfig({
           "typescript/unified-signatures": "error",
           "typescript/use-unknown-in-catch-callback-variable": "error",
           "react/rules-of-hooks": "error",
+          // SonarCloud S6479: list keys by a stable id, never the array index (docs/ENGINEERING.md).
+          "react/no-array-index-key": "error",
           "react/exhaustive-deps": "warn",
           "react/static-components": "error",
           "react/use-memo": "error",
@@ -288,6 +290,11 @@ export default defineConfig({
       "vite-plus/prefer-vite-plus-imports": "error",
       // C11: cognitive complexity of at most 15 per function, the SonarCloud threshold (S3776).
       "crawlerai/cognitive-complexity": ["error", { max: 15 }],
+      // docs/ENGINEERING.md "Patterns the analysers flag": SonarCloud S3358 (nested ternary), S7718 (catch
+      // parameter `error`) and S1186 (an empty function says why in a comment, which ESLint's rule allows).
+      "no-nested-ternary": "error",
+      "unicorn/catch-error-name": "error",
+      "no-empty-function": "error",
     },
   },
   fmt: {

@@ -197,9 +197,9 @@ async def test_a_rerun_over_unchanged_pages_is_unchanged_and_extracts_nothing(
 
     again = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
 
-    assert first == Run({url: ("extracted", True) for url in urls}, extractions=2)
+    assert first == Run(dict.fromkeys(urls, ("extracted", True)), extractions=2)
     # A 304 downloads no page, so it keeps no capture; a page fetched whole keeps its capture for replay (§4.3).
-    assert again == Run({url: ("unchanged", not etags) for url in urls}, extractions=0)
+    assert again == Run(dict.fromkeys(urls, ("unchanged", not etags)), extractions=0)
     assert await _count(engine, Record) == records
     assert await _count(engine, Capture) == captures + (0 if etags else 2)
     # The rerun's results are the records that stand for its pages, as stored by the first run (§4.2, §4.4).
@@ -224,7 +224,7 @@ async def test_a_page_extracted_again_with_equal_values_lists_its_standing_recor
 
     both = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
 
-    assert both.tasks == {url: ("extracted", True) for url in urls}
+    assert both.tasks == dict.fromkeys(urls, ("extracted", True))
     assert await _count(engine, Record) == records + 1
     assert sorted(await _results(engine, both)) == [("Blue kettle", 1, []), ("Red kettle", 1, [])]
 
@@ -288,7 +288,7 @@ async def test_a_page_whose_text_changed_is_extracted_again(
     assert again == Run({urls[0]: ("unchanged", True), urls[1]: ("extracted", True)}, extractions=1)
     # And the next run finds the changed page unchanged against its new fingerprint.
     third = await _run_job(engine, fetching, engine_data, urls, _records(kettle_schema))
-    assert third.tasks == {url: ("unchanged", True) for url in urls}
+    assert third.tasks == dict.fromkeys(urls, ("unchanged", True))
 
 
 async def _counted(engine: AsyncEngine, site_id: SiteId) -> tuple[dict[str, Any], int]:
@@ -334,7 +334,7 @@ async def test_unchanged_pages_join_no_drift_window_and_count_no_extracted_page(
 
     assert first == ({"title": [[True, True]] * 2}, 2)
     assert unchanged == first
-    assert again.tasks == {url: ("unchanged", not etags) for url in urls}
+    assert again.tasks == dict.fromkeys(urls, ("unchanged", not etags))
     # The one page that changed is extracted with the config, so it joins the window and counts.
     assert changed == ({"title": [[True, True]] * 3}, 3)
 

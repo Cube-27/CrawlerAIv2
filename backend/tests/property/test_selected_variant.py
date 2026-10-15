@@ -64,7 +64,7 @@ def _price(variants: list[tuple[str, str]], request_url: str) -> Chosen | Unpubl
     target = select_target(request_url, request_url, GROUP_URL, graph, primary_types(SCHEMA, VOCABULARY))
     assert isinstance(target, Entity)
     variant_rules = Variants(select_variant(request_url, request_url, GROUP_URL, graph, target))
-    orders: Orders = {t: ("jsonld",) for t in PRECEDENCE_TYPES}
+    orders: Orders = dict.fromkeys(PRECEDENCE_TYPES, ("jsonld",))
     resolver = Resolver(graph, target, PageFacts.of(request_url, lambda _: False), orders, variants=variant_rules)
     return resolver.prefer(SCHEMA, collected.candidates)["price"]
 

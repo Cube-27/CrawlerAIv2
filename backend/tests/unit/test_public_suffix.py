@@ -50,7 +50,7 @@ def _fetch_with(suffixes: PublicSuffixes, set_cookie: str, monkeypatch: pytest.M
             return httpx.Response(302, headers=headers)
         return json_reply()(request)
 
-    hosts = {host: "93.184.215.14" for host in ("api.shared.test", "cdn.shared.test")}
+    hosts = dict.fromkeys(("api.shared.test", "cdn.shared.test"), "93.184.215.14")
     fetch(handler, FetchPolicy(), dns=hosts, url="https://api.shared.test/v1/all")
     cookie: str | None = seen[1].headers.get("Cookie")
     return cookie

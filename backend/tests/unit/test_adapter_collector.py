@@ -230,7 +230,7 @@ class _TwoTypes:
         raise AssertionError("collecting fetches nothing")
 
     def map(self, schema_org: Mapping[str, str], page_kind: PageKind) -> dict[str, str]:
-        return {field: "$['name']" for field in schema_org}
+        return dict.fromkeys(schema_org, "$['name']")
 
 
 def test_a_map_over_several_types_is_skipped_with_a_diagnostic() -> None:

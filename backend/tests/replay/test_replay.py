@@ -60,7 +60,7 @@ SCHEMA = SchemaDef(
 )
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
-DATA = EngineData(vocabulary=VOCABULARY, orders={t: ORDER for t in PRECEDENCE_TYPES}, calibration=None)
+DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
 
 
 class MemoryStore:
