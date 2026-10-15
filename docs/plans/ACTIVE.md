@@ -28,8 +28,8 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 
 ## Current focus
 
-- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1–5 and 9 merged (3–5 in #194);
-  next PR 6, then 7, 8 and 10, as batches. PR 11 (additional fields) is blocked on D-0810.
+- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): PRs 1–9 merged (6–8 in #198);
+  next PR 10 (Get code). PR 11 (additional fields) is blocked on D-0810.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0311 (GeoNames pin), D-0355 (derived `url` provenance), D-0576 (`drift_margins.json`), D-0656
@@ -59,7 +59,7 @@ Full rows are in git history.
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
 - Packaging: an installed wheel has no `backend/data`, `VERSION` or `calibration.json` (`ENGINE_VERSION = unknown+cal.none`, empty pricing); one PR decides where `EngineData.load` gets its directory and makes the build write `VERSION` (D-0492) [#100, #148].
-- Playground: the batch JSON drawer shows a snapshot of its row and does not follow table refreshes; `screens/jobs/form.ts` imports from `playground/pageRequest` until rows 6–7 remove it [#194].
+- Playground: the recent-runs table and the Jobs table could share one row component; the mode tests could share their API-stub fixtures [#198].
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
@@ -95,9 +95,9 @@ Rows 1–6 and 8–12 done (#28, #27, #30, #33, #29, #32, #35, #42, #34, #39, #4
 | 3 | Single-page output with JSON default | done (#194) | D-0825–D-0827. |
 | 4 | Batch mode + running results table + JSON drawer + CSV upload + export buttons | done (#194) | D-0828–D-0831, D-0833, D-0834. |
 | 5 | Live activity feed | done (#194) | D-0832. |
-| 6 | Crawl and Map modes inline | todo | Needs 5. |
-| 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | todo | Needs 6. |
-| 8 | Batch from results | todo | Needs 6. |
+| 6 | Crawl and Map modes inline | done (#198) | D-0857, D-0862. |
+| 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | done (#198) | D-0855, D-0856, D-0858–D-0860. |
+| 8 | Batch from results | done (#198) | D-0861. |
 | 9 | `json_values` results format (backend) | done (#190) | D-0813–D-0816. |
 | 10 | Get code drawer | todo | Needs 7. Owner's reference shared 2026-10-15. |
 | 11 | Additional fields (chips) | blocked (D-0810) | |
