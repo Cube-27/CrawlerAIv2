@@ -11,7 +11,7 @@ from lxml import html as lxml_html
 from selectolax import lexbor
 
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.config import ConfigExecutor, Executed
+from crawlerai.collect.config import Executed
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.executor import ConfigMismatch, EngineExecutor
@@ -93,16 +93,14 @@ def _config(field: str, raw: Any, normalized: Any, locator: str, entity_id: str 
     )
 
 
-def test_engine_executor_is_the_config_executor_the_pipeline_takes() -> None:
-    executor: ConfigExecutor = _ir({"title": [{"xpath": "//h1"}]})
-    assert dict(executor.field_status) == {"title": "uncorroborated"}
-
-
 def test_an_xpath_step_proposes_the_node_string_value_owned_by_the_page() -> None:
-    result = _run(_ir({"title": [{"xpath": "//h1"}]}), "<h1>Blue <b>mug</b></h1>", _schema(title=TEXT))
+    executor = _ir({"title": [{"xpath": "//h1"}]})
+    result = _run(executor, "<h1>Blue <b>mug</b></h1>", _schema(title=TEXT))
     assert result == Executed(
         rows=(), candidates=(_config("title", "Blue mug", Ok("Blue mug"), "config:title:0://h1"),)
     )
+    # No match gives no candidate.
+    assert _run(executor, "<p>x</p>", _schema(title=TEXT)) == Executed(rows=(), candidates=())
 
 
 def test_the_first_step_with_a_valid_value_wins() -> None:
@@ -124,14 +122,7 @@ def test_without_a_valid_value_the_first_match_is_proposed_with_its_decline() ->
     steps = [{"xpath": "//h2"}, {"xpath": "//p"}, {"xpath": "//span"}]
     candidate = _only(_run(_ir({"price": steps}), "<p>soon</p><span>later</span>", _schema(price=MONEY)))
     assert candidate.locator == "config:price:1://p"
-    assert candidate.raw == "soon"
-    assert not isinstance(candidate.normalized, Ok)
-
-
-def test_no_match_gives_no_candidate() -> None:
-    assert _run(_ir({"title": [{"xpath": "//h1"}]}), "<p>x</p>", _schema(title=TEXT)) == Executed(
-        rows=(), candidates=()
-    )
+    assert (candidate.raw, candidate.normalized) == ("soon", Invalid("no_amount"))
 
 
 def test_a_list_field_takes_every_match_in_document_order() -> None:
@@ -294,14 +285,18 @@ def test_page_wide_steps_do_not_run_in_a_row() -> None:
     listing = {"row": {"css": "li.r"}, "fields": {"title": {"steps": [{"regex": "(A)"}], "status": "uncorroborated"}}}
     result = _run(_ir({}, page_kind="listing", listing=listing), LISTING_HTML, _listing_schema())
     assert result.candidates == ()
-    assert len(result.diagnostics) == 2  # one per row
+    # One per row.
+    assert (
+        result.diagnostics
+        == ("config:title:0: not relative to a row: regex, jsonld and jsonpath steps read the whole page",) * 2
+    )
 
 
 def test_a_row_step_selects_elements() -> None:
     listing = {"row": {"jsonld": "$['itemListElement'][*]"}, "fields": {}}
     result = _run(_ir({}, page_kind="listing", listing=listing), LISTING_HTML, _listing_schema())
     assert result.rows == ()
-    assert len(result.diagnostics) == 1
+    assert result.diagnostics == ("config:row: a row step selects elements, so it is an xpath or css step",)
 
 
 def test_steps_read_the_parsed_page_and_never_parse_the_body_again(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -335,7 +330,8 @@ def test_steps_read_the_parsed_page_and_never_parse_the_body_again(monkeypatch: 
     )
     schema = _schema("detail", **dict.fromkeys(fields, TEXT))
     result = _run(_ir(fields), html, schema)
-    assert len(result.candidates) == 6  # every step but the js_state one, which finds no state
+    # Every step but the js_state one, which finds no state.
+    assert [c.field for c in result.candidates] == ["a", "b", "c", "d", "e", "g"]
     assert calls == {"lxml": 1, "selectolax": 1}
 
 

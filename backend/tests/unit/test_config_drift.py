@@ -133,9 +133,9 @@ def test_fewer_than_three_pages_are_never_drift() -> None:
 
 
 def test_a_field_without_a_validated_yield_or_validity_is_not_compared_on_it() -> None:
-    ir = _ir(title=_field(yield_=None, validity=None), price=_field("//b", validity=None))
-    window = _window(("title", [MISS] * 5), ("price", [DECLINED] * 5))
-    assert drifted(ir, window, MARGINS) == []
+    ir = _ir(title=_field(yield_=None, validity=None), price=_field("//b", validity=None), brand=_field("//i"))
+    window = _window(("title", [MISS] * 5), ("price", [DECLINED] * 5), ("brand", [MISS] * 5))
+    assert [d.field for d in drifted(ir, window, MARGINS)] == ["brand"]
 
 
 def test_with_no_matched_page_validity_is_unmeasured_and_only_yield_is_compared() -> None:
@@ -180,5 +180,5 @@ def test_margins_are_read_from_their_dev_stamped_file(tmp_path: Path) -> None:
 def test_margins_fitted_on_another_split_are_refused(tmp_path: Path) -> None:
     path = tmp_path / "drift_margins.json"
     path.write_text(json.dumps({"yield": 0.2, "validity": 0.1, "source_split": "hidden"}), encoding="utf-8")
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="source_split"):
         load_margins(path)
