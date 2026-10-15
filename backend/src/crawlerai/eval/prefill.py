@@ -36,12 +36,14 @@ async def prefill(
     text = page.cleaned_text.text
     ctx = with_stated_currencies(page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at), page)
     rows: tuple[str, ...] = ()
-    if page_kind == "detail":
+    row_fields = {name: spec for name, spec in fields.items() if spec.scope == "row"}
+    if page_kind == "detail" or not row_fields:
+        # A detail page's fields are its one entity's; a listing schema without row fields has only the page's,
+        # so role C is asked for no rows.
         filled = await c_extract.extract_detail(
             llm, text, fields, ctx, owner=PAGE, job_id=None, kind=c_extract.PREFILL_PROMPT_KIND
         )
     else:
-        row_fields = {name: spec for name, spec in fields.items() if spec.scope == "row"}
         page_fields = {name: spec for name, spec in fields.items() if spec.scope == "page"}
         filled = await c_extract.extract_listing(
             llm, text, row_fields, page_fields, ctx, job_id=None, kind=c_extract.PREFILL_PROMPT_KIND
