@@ -26,6 +26,7 @@ from crawlerai.db.models import (
     TaskRecord,
     UrlTask,
 )
+from crawlerai.db.paging import keyset_page
 from crawlerai.resolve.records import FieldMeta, RecordContent, record_confidence
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas import registry
@@ -118,12 +119,7 @@ class RecordFilter(BaseModel):
 async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage:
     """The page of records after `query.cursor` (the first page without one) that match its filters. Records are
     ordered by id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
-    statement = (
-        select(*_COLUMNS)
-        .join(Extraction, Extraction.id == Record.extraction_id)
-        .order_by(Record.id.desc())
-        .limit(query.limit + 1)
-    )
+    statement = select(*_COLUMNS).join(Extraction, Extraction.id == Record.extraction_id)
     if query.job_id is not None:
         # A job's records are those its tasks stand for: each stored, or found unchanged (SPEC-11 §4.2, §4.4).
         of_job = select(TaskRecord.record_id).join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
@@ -135,13 +131,13 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
         statement = statement.where(Record.schema_id == query.schema_id)
     if query.changed_since is not None:
         statement = statement.where(Record.created_at >= query.changed_since)
-    if query.cursor is not None:
-        statement = statement.where(Record.id < query.cursor)
-    rows = (await conn.execute(statement)).mappings().all()
-    page = rows[: query.limit]
+    rows, next_cursor = await keyset_page(
+        conn, statement, Record.id, after=query.cursor, limit=query.limit, descending=True
+    )
+    page = [row._mapping for row in rows]
     schemas = {schema_id: await registry.get_by_id(conn, schema_id) for schema_id in {row["schema_id"] for row in page}}
     items = [_stored(row, schemas[row["schema_id"]]) for row in page]
-    return RecordPage(items=items, next_cursor=items[-1].id if len(rows) > query.limit else None)
+    return RecordPage(items=items, next_cursor=next_cursor)
 
 
 def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
