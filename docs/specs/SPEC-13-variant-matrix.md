@@ -230,6 +230,7 @@ Version 2 plus one optional field. The required fields and `required_groups` are
 
 | Sub-field | Type | `schema_org` |
 |---|---|---|
+| `variant_id` | identifier (custom; Appendix A #42) | `Product.productID` |
 | `sku` | identifier (sku) | `Product.sku\|Offer.sku` |
 | `gtin` | identifier (gtin) | `Product.gtin\|Offer.gtin` |
 | `price` | money | `Offer.price+priceCurrency` |
@@ -255,6 +256,9 @@ Version 2 plus one optional field. The required fields and `required_groups` are
   (`Offer.inventoryLevel`) at the top level and in each row, and the row description names it ("…, price,
   availability and stock quantity"). A row's stock quantity comes from the row's own Offer, as its price and
   availability do; a variant whose Offer states none has none. Required fields are unchanged.
+- `variant_id` (owner, 2026-10-16; ARCHITECTURE Appendix A #42, edited in place) is the `productID` a variant
+  states, in its own scheme. It is not a key: `key` stays `["gtin", "sku", "url"]`. A variant that states none has
+  none.
 
 ### 4.8 Records and API (SPEC-07)
 

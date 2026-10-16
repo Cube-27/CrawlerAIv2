@@ -96,7 +96,14 @@ Presets (§5.3), exactly these core fields, each with `schema_org` mapping:
   `required_groups: [["sku","gtin"]]`. Version 2: `brand` optional (ARCHITECTURE Appendix A #35); version 1 had
   it required. Version 3: the optional row-mapped `variants` (SPEC-13 §4.7). Version 4: the optional
   `stock_quantity` (count, `Offer.inventoryLevel`), also a sub-field of each `variants` row (Appendix A #39,
-  D-0782).
+  D-0782). Edited in place (Appendix A #42, greenfield): optional fields the page states, each with its schema.org
+  path: description (long_text, `Product.description`), additional_images (list<image_url>, `Product.image`), color
+  (text, `Product.color`), material (text, `Product.material.name`), gender (text,
+  `Product.audience.suggestedGender`), condition (enum OfferItemCondition, `Offer.itemCondition|Product.itemCondition`),
+  rating (number, `Product.aggregateRating.ratingValue`), review_count (count,
+  `Product.aggregateRating.reviewCount`), mpn (identifier mpn, `Product.mpn`), product_id (identifier custom,
+  `Product.productID`); `variant_id` (identifier, `Product.productID`) in each `variants` row (SPEC-13 §4.7). No
+  derived values (no counts of variants or images).
 - `commerce_listing`: row: title (req), url (req), price; page: next_page_url (url).
 - `job_detail`: title (req), company (text, req, `JobPosting.hiringOrganization.name`), locations (list<location>,
   req), description (long_text, req), apply_url (url, req, `JobPosting.url` — see Open issues), date_posted
@@ -217,6 +224,14 @@ structural property.
 - Fraction, negative, a range (`minValue`/`maxValue`), another unit → `Invalid`. Not a checkable type (SPEC-05
   §4.5): any number normalizes, so an embedded-state count admits by equality only.
 
+**number** → a decimal as the page states it (Appendix A #42; a rating value, schema.org `Rating.ratingValue`).
+- JSON number; text: the one number in it, read as count reads one (`normalize.numbers`): "Rated 4.5 stars" → `4.5`.
+  The value is the decimal in fixed-point notation as a string, digits as written (`4.50` stays `4.50`); equality
+  compares decimals.
+- No number → `Invalid`; two numbers ("4.5 out of 5") → `Invalid("several_numbers")`; a minus sign set apart from
+  the digits (possibly a dash) → `Invalid("sign")`; a number the locales read differently → `Ambiguous`. Nothing is
+  rescaled (C7). Not a checkable type (SPEC-05 §4.5).
+
 **list<T>**: normalize each item; `Ok` if ≥ 1 item `Ok`; items that decline are dropped and reported in
 `reasons`. **object{…}**: normalize each sub-field; `Ok` if all required sub-fields `Ok`.
 
@@ -290,6 +305,7 @@ CI gates: `backend` job (property tests run with a fixed Hypothesis profile, `ma
 | 9 | `equal` per type + list/object recursion | `normalize/base` | property | Eval and resolver can import. |
 | 10 | Availability from text: first-clause rule, member names in any case (D-0782) | `normalize/enum` | property, replay | "Not in stock" never gives `InStock`; "In stock (5 available)" and "instock" give `InStock`. |
 | 11 | `count` type, shared CLDR number reading, `commerce_detail` v4 `stock_quantity` (also per variant) | `normalize/count`, `normalize/numbers`, `schemas/types`, preset, SPEC-13 §4.7 | property, unit, replay | `inventoryLevel` and "In stock (5 available)" give 5; a fraction, a negative or another unit declines. |
+| 12 | `number` type; `commerce_detail` optional fields the page states, `variant_id` per variant (Appendix A #42) | `normalize/number`, `normalize/numbers`, `schemas/types`, preset, vocab `OfferItemCondition` | property, unit, replay | A page stating rating, review count, condition, color, mpn and productID publishes each; one stating none publishes none of them. |
 
 ## 9. Open issues
 
