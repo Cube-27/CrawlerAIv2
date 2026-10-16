@@ -79,7 +79,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Listing items (`acquire.items`): the largest same-shape linked group wins, so a bare tag cloud or pager outside `nav` can outrank a small grid in markdown. Measure on dev first (D-0934, D-0993) [#206, #213].
 - Markdown: trafilatura drops the space after an inline element whose parent is a `div`, `td` or `li` (`**Warning!**This`); fix upstream, or rewrap such runs before extraction with dev evidence (D-0994) [#213].
 - Markdown: a listing page with no repeated items keeps only what trafilatura's `favor_precision` keeps (a UAT listing kept only its FAQ); compare recall mode on dev listings before changing it [#213].
-- Crawl: each task that adds URLs looks up the start task's capture for the site's host (D-0991); store the host on the job if the query shows in profiles [#213].
+- Crawl: each task that adds URLs looks up the start task's capture for the site's host (D-0991); store the host on the job if the query shows in profiles. A redirected start page is usually linked from itself, so its target is fetched again as a task [#213].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
 - Collect: identifier widening (D-0965) also applies to a field mapped to `T.identifier` itself, pooling every scheme; stop at `identifier` or keep sub-properties of the field's `scheme` [#209].
 - Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows; one eval page shows it, see SPEC-13 §9 (D-0966) [#209].

@@ -154,19 +154,25 @@ async def own_origin(database_url: str) -> AsyncIterator[str]:
     """An https origin on a host no other test uses, for tests that commit a site for it. The site, its captures, and
     its records, progressive state and url_state are deleted afterwards (a task or extraction that named a capture
     keeps a NULL, SPEC-01 §4.2)."""
-    async for origin in _origin(database_url):
+    async for origin in _origin(database_url, f"shop-{uuid7().hex[-12:]}.example.test"):
+        yield origin
+
+
+@pytest.fixture
+async def www_origin(database_url: str, own_origin: str) -> AsyncIterator[str]:
+    """`own_origin` on its `www.` subdomain, cleaned up as `own_origin` is: a site that redirects one to the other."""
+    async for origin in _origin(database_url, f"www.{own_origin.removeprefix('https://')}"):
         yield origin
 
 
 @pytest.fixture
 async def other_origin(database_url: str) -> AsyncIterator[str]:
-    """A second origin as `own_origin`, for a test of two sites (a redirect from one host to another)."""
-    async for origin in _origin(database_url):
+    """A second origin as `own_origin`, on an unrelated host."""
+    async for origin in _origin(database_url, f"shop-{uuid7().hex[-12:]}.example.test"):
         yield origin
 
 
-async def _origin(database_url: str) -> AsyncIterator[str]:
-    host = f"shop-{uuid7().hex[-12:]}.example.test"
+async def _origin(database_url: str, host: str) -> AsyncIterator[str]:
     yield f"https://{host}"
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:

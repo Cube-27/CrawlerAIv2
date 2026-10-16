@@ -57,14 +57,25 @@ class Scope:
         return urlsplit(url).hostname == self.host
 
 
+def on_site(url: str, host: str) -> bool:
+    """Whether `url` is on `host` or one of its subdomains."""
+    # RFC 1034 §3.1: a domain name's subdomains are the names that end with its labels, so with "." + the name.
+    found = urlsplit(url).hostname
+    return found is not None and (found == host or found.endswith(f".{host}"))
+
+
 def located(start: str, capture: tuple[str, str] | None) -> str:
     """Where the start page of a map or crawl is, in canonical form, from its capture's (method, final URL): the URL
     the site's redirects of `start` ended at, which the request's scope follows (RFC 9110 §15.4: a redirect names the
-    resource's location; D-0991). `start` itself without a capture, or for an API recipe's (method `api`), whose final
-    URL is its endpoint, not the page."""
-    if capture is None or capture[0] == "api":
+    resource's location; D-0991), when it is on the start URL's site: its host, a subdomain of it, or a domain it is
+    a subdomain of (`www.` and back). Otherwise `start` itself (D-0672: never a site the caller did not name), as
+    without a capture, or for an API recipe's (method `api`), whose final URL is its endpoint, not the page."""
+    final = None if capture is None or capture[0] == "api" else canonicalize(capture[1])
+    start_host = urlsplit(start).hostname or ""
+    final_host = "" if final is None else urlsplit(final).hostname or ""
+    if final is None or not (on_site(final, start_host) or on_site(start, final_host)):
         return start
-    return canonicalize(capture[1]) or start
+    return final
 
 
 def _any_match(url: str, patterns: tuple[str, ...]) -> bool:

@@ -127,10 +127,30 @@ def test_a_glob_matches_the_canonical_urls_of_its_host_only() -> None:
         # RFC 9110 §15.4: the site's redirect names where the start page is; that URL is taken in canonical form.
         (("http", "HTTPS://www.Example.test/home#top"), "https://www.example.test/home"),
         (("browser", "https://www.example.test/"), "https://www.example.test/"),
-        # No capture, or an API recipe's, whose final URL is its endpoint: the start URL.
+        (("http", "https://example.test/en/"), "https://example.test/en/"),
+        # Off the start URL's site (a sibling or an unrelated host, D-0672), no capture, or an API recipe's, whose
+        # final URL is its endpoint: the start URL.
+        (("http", "https://shop.test/"), "https://example.test/"),
+        (("http", "https://login.idp.test/"), "https://example.test/"),
         (None, "https://example.test/"),
         (("api", "https://api.example.test/v1/items"), "https://example.test/"),
     ],
 )
-def test_the_start_page_is_where_its_capture_s_redirects_ended(capture: tuple[str, str] | None, expected: str) -> None:
+def test_the_start_page_is_where_its_capture_s_redirects_ended_on_its_site(
+    capture: tuple[str, str] | None, expected: str
+) -> None:
     assert located("https://example.test/", capture) == expected
+
+
+@pytest.mark.parametrize(
+    ("start", "final", "expected"),
+    [
+        # `www.` to the bare domain is the same site; one subdomain to another is a site the caller did not name.
+        ("https://www.example.test/", "https://example.test/", "https://example.test/"),
+        ("https://shop.example.test/", "https://www.example.test/", "https://shop.example.test/"),
+    ],
+)
+def test_a_redirect_to_the_parent_domain_is_followed_and_to_a_sibling_is_not(
+    start: str, final: str, expected: str
+) -> None:
+    assert located(start, ("http", final)) == expected

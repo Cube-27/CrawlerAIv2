@@ -2,8 +2,9 @@
 (`crawlerai.worker.handlers.steps`), settle it, and add the URLs it leads to to the frontier
 (`crawlerai.crawl.frontier`).
 
-A reached page contributes its links and next-page candidates at its depth plus one. The scope is on the host the
-start page is on: when the site redirects the start URL to another host, the crawl follows it there (D-0991).
+A reached page contributes its links and next-page candidates at its depth plus one. The scope is on the host the start
+page is on: when the site redirects the start URL to another host of the same site (its `www.` subdomain, or back), the
+crawl follows it there (D-0991).
 
 The start URL's task also reads the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else
 `/sitemap.xml`) and adds their URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that

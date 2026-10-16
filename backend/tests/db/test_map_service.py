@@ -225,45 +225,62 @@ async def test_sources_can_be_turned_off(engine: AsyncEngine, fetching: Fetching
 
 
 async def test_the_scope_follows_the_start_page_s_redirect_to_another_host(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, other_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, www_origin: str
 ) -> None:
-    # The start URL's host redirects every URL to `own_origin` (RFC 9110 §15.4: the redirect names where the resource
-    # is): the site's links and sitemaps are on that host, read under its own robots.txt.
-    web.redirects |= {f"{other_origin}/": f"{own_origin}/", f"{other_origin}/robots.txt": f"{own_origin}/robots.txt"}
+    # The start URL's host redirects every URL to its `www.` subdomain (RFC 9110 §15.4: the redirect names where the
+    # resource is): the site's links and sitemaps are on that host, read under its own robots.txt.
+    web.redirects |= {f"{own_origin}/": f"{www_origin}/", f"{own_origin}/robots.txt": f"{www_origin}/robots.txt"}
     web.pages |= {
-        f"{own_origin}/robots.txt": robots(f"Sitemap: {own_origin}/products.xml"),
-        f"{own_origin}/products.xml": (200, urlset(f"{own_origin}/p/1", f"{other_origin}/p/9"), "ok", None),
-        f"{own_origin}/": (200, page("/c/1", f"{own_origin}/c/2", f"{other_origin}/c/3"), "ok", None),
+        f"{www_origin}/robots.txt": robots(f"Sitemap: {www_origin}/products.xml"),
+        f"{www_origin}/products.xml": (200, urlset(f"{www_origin}/p/1", f"{own_origin}/p/9"), "ok", None),
+        f"{www_origin}/": (200, page("/c/1", f"{www_origin}/c/2", f"{own_origin}/c/3"), "ok", None),
     }
 
-    result = await map_urls(engine, fetching, request(f"{other_origin}/"))
+    result = await map_urls(engine, fetching, request(f"{own_origin}/"))
 
-    assert result.urls == [f"{own_origin}/p/1", f"{own_origin}/c/1", f"{own_origin}/c/2"]
+    assert result.urls == [f"{www_origin}/p/1", f"{www_origin}/c/1", f"{www_origin}/c/2"]
     assert web.urls() == [
-        f"{other_origin}/robots.txt",
-        f"{other_origin}/",
         f"{own_origin}/robots.txt",
-        f"{own_origin}/products.xml",
+        f"{own_origin}/",
+        f"{www_origin}/robots.txt",
+        f"{www_origin}/products.xml",
     ]
 
 
 async def test_the_redirect_target_s_robots_txt_decides_what_is_fetched_there(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, other_origin: str
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, www_origin: str
 ) -> None:
-    web.redirects[f"{other_origin}/"] = f"{own_origin}/"
+    web.redirects[f"{own_origin}/"] = f"{www_origin}/"
     web.pages |= {
-        f"{other_origin}/robots.txt": robots(),
-        f"{other_origin}/sitemap.xml": (200, urlset(f"{own_origin}/p/1"), "ok", None),
-        f"{own_origin}/robots.txt": robots("Disallow: /sitemap.xml"),
-        f"{own_origin}/sitemap.xml": (200, urlset(f"{own_origin}/p/2"), "ok", None),
-        f"{own_origin}/": (200, page("/c/1"), "ok", None),
+        f"{own_origin}/robots.txt": robots(),
+        f"{own_origin}/sitemap.xml": (200, urlset(f"{www_origin}/p/1"), "ok", None),
+        f"{www_origin}/robots.txt": robots("Disallow: /sitemap.xml"),
+        f"{www_origin}/sitemap.xml": (200, urlset(f"{www_origin}/p/2"), "ok", None),
+        f"{www_origin}/": (200, page("/c/1"), "ok", None),
     }
 
-    result = await map_urls(engine, fetching, request(f"{other_origin}/"))
+    result = await map_urls(engine, fetching, request(f"{own_origin}/"))
 
-    assert result.urls == [f"{own_origin}/c/1"]
+    assert result.urls == [f"{www_origin}/c/1"]
+    assert f"{www_origin}/sitemap.xml" not in web.urls()
     assert f"{own_origin}/sitemap.xml" not in web.urls()
-    assert f"{other_origin}/sitemap.xml" not in web.urls()
+
+
+async def test_a_redirect_to_an_unrelated_host_leaves_the_scope_on_the_start_host(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, other_origin: str
+) -> None:
+    # D-0672: the scope never moves to a site the caller did not name, wherever the start page redirects.
+    web.redirects[f"{own_origin}/"] = f"{other_origin}/login"
+    web.pages |= {
+        f"{own_origin}/robots.txt": robots(),
+        f"{own_origin}/sitemap.xml": (200, urlset(f"{own_origin}/p/1", f"{other_origin}/p/2"), "ok", None),
+        f"{other_origin}/login": (200, page("/account", f"{own_origin}/c/1"), "ok", None),
+    }
+
+    result = await map_urls(engine, fetching, request(f"{own_origin}/"))
+
+    assert result.urls == [f"{own_origin}/p/1", f"{own_origin}/c/1"]
+    assert f"{other_origin}/robots.txt" not in web.urls()
 
 
 async def test_fetches_over_http_only_and_takes_no_links_from_a_page_not_reached(

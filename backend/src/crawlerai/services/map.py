@@ -5,11 +5,12 @@ The start page is fetched over HTTP only, and its links are read only when it wa
 read through `crawl.sitemaps`. Every fetch goes through robots.txt and the site's rate (SPEC-02 §4.6), and robots.txt
 that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`) and kept by the
 request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude` globs. The
-start page's host is where the site's own redirects took it (RFC 9110 §15.4; D-0991): a start URL whose host redirects
-to another is mapped on that one, under its robots.txt and rate.
+start page's host is where the site's own redirects took it, on the same site (RFC 9110 §15.4; D-0991): a start URL
+whose host redirects to its `www.` subdomain, or back, is mapped on that host, under its robots.txt and rate; a
+redirect to an unrelated host leaves the start URL's (D-0672).
 
-Sitemap URLs come first, in the order read, then the other links; `sources` counts the returned URLs by source, and
-a URL both found counts as a sitemap's. `truncated` says that more URLs were found than `limit`, or that a cap or the
+Sitemap URLs come first, in the order read, then the other links; `sources` counts the returned URLs by source, and a
+URL both found counts as a sitemap's. `truncated` says that more URLs were found than `limit`, or that a cap or the
 timeout stopped reading: past `TIMEOUT_S`, the URLs found so far are returned.
 
 Nothing found is stored: a `job` of kind `map` records the request and its usage (§4.4). A target the SSRF guard
@@ -164,8 +165,8 @@ async def _discover(
 ) -> None:
     """Add to `found` the links of the start page, then the URLs of the sitemaps: the one fetch of the start page comes
     before the sitemaps, which can take the rest of the timeout. The start page is fetched even when its links are not
-    taken, for where it is: when the site redirects it to another host, the scope, robots.txt and the sitemaps are
-    that host's (RFC 9110 §15.4: a redirect names the resource's location)."""
+    taken, for where it is: when the site redirects it to another host of the site (`crawl.rules.located`), the scope,
+    robots.txt and the sitemaps are that host's."""
     polite = await _polite(engine, fetching, site, found.scope.host, request.url, attempts)
     if polite is None:
         return
