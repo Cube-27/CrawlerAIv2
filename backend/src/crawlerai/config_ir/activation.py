@@ -35,7 +35,7 @@ class NotValidated(ValueError):
 async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -> ExtractionConfigId:
     """Store `validated`'s config for `key` as active and end `key`'s learning run with it; its id. Raises
     `NotValidated` when validation refused the config, `ConfigMismatch` when the config was learned for another site,
-    schema version or page kind, and `NotLearning` when no learning run is in flight for `key`."""
+    schema or page kind, and `NotLearning` when no learning run is in flight for `key`."""
     ir = validated.ir
     if ir is None:
         raise NotValidated(f"progressive_state {key}: validation refused the config ({validated.report.refused})")

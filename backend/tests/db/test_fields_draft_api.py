@@ -144,9 +144,8 @@ async def test_names_are_drafted_into_a_stored_schema_with_exactly_those_fields(
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert (body["name"], body["version"], body["origin"], body["page_kind"]) == (
+    assert (body["name"], body["origin"], body["page_kind"]) == (
         fields_name(names, "detail"),
-        1,
         "prompt_draft",
         "detail",
     )

@@ -20,7 +20,7 @@ router = APIRouter(
 
 @router.get("")
 async def list_records(query: Annotated[RecordFilter, Query()], request: Request) -> RecordPage:
-    """Records newest first, narrowed by job, site (host) and schema version. Pass a page's `next_cursor` as `cursor`
+    """Records newest first, narrowed by job, site (host) and schema. Pass a page's `next_cursor` as `cursor`
     for the page after it."""
     engine = database(request)
     async with engine.connect() as conn:

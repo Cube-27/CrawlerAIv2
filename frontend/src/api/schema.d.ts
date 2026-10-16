@@ -53,7 +53,7 @@ export interface paths {
         put?: never;
         /**
          * Replay Capture
-         * @description The records the current engine makes from the capture, against the schema versions of the records stored from
+         * @description The records the current engine makes from the capture, against the schemas of the records stored from
          *     it. 404: no such capture, or its bundle expired; 409: no record was made from it.
          */
         post: operations["replay_capture_v1_captures__capture_id__replay_post"];
@@ -79,7 +79,7 @@ export interface paths {
          * Correct Config
          * @description Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.
          *     It is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be
-         *     the latest version of its site, schema version and page kind; otherwise 409.
+         *     the latest version of its site, schema and page kind; otherwise 409.
          */
         put: operations["correct_config_v1_configs__config_id__put"];
         post?: never;
@@ -427,7 +427,7 @@ export interface paths {
         };
         /**
          * List Records
-         * @description Records newest first, narrowed by job, site (host) and schema version. Pass a page's `next_cursor` as `cursor`
+         * @description Records newest first, narrowed by job, site (host) and schema. Pass a page's `next_cursor` as `cursor`
          *     for the page after it.
          */
         get: operations["list_records_v1_records_get"];
@@ -525,8 +525,8 @@ export interface paths {
          * Scrape
          * @description Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only
          *     those are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`
-         *     holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to its
-         *     name's latest version, and one that differs from that version is a 409.
+         *     holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to the
+         *     stored schema of its name, and one that differs from it is a 409.
          */
         post: operations["scrape_v1_scrape_post"];
         delete?: never;
@@ -544,7 +544,7 @@ export interface paths {
         };
         /**
          * List Site Configs
-         * @description Every version of the site's configs, with status, field status and validation report, by schema version, page
+         * @description Every version of the site's configs, with status, field status and validation report, by schema, page
          *     kind and version.
          */
         get: operations["list_site_configs_v1_sites__host__configs_get"];
@@ -567,7 +567,7 @@ export interface paths {
         put?: never;
         /**
          * Learn Site
-         * @description Starts learning the site's config for a schema version; 409 while a run is in flight, or when the site has an
+         * @description Starts learning the site's config for a schema; 409 while a run is in flight, or when the site has an
          *     active config and `force` is not set.
          */
         post: operations["learn_site_v1_sites__host__learn_post"];
@@ -2568,7 +2568,7 @@ export interface components {
         /**
          * StoredRecord
          * @description A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
-         *     the schema version its fields follow, its own version and the fields whose published value differs from the
+         *     the schema its fields follow, its own version and the fields whose published value differs from the
          *     version it supersedes, empty for an entity's first (§14, SPEC-11 §4.4).
          */
         StoredRecord: {

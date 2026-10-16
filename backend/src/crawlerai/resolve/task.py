@@ -44,7 +44,7 @@ from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
 @dataclass(frozen=True, slots=True)
 class ActiveConfig:
-    """A site's active config for one schema version and page kind (ARCHITECTURE §8.4): its row, its version, which
+    """A site's active config for one schema and page kind (ARCHITECTURE §8.4): its row, its version, which
     the extraction records, and its executor (`collect.config`, bound by `config_ir.active`)."""
 
     id: ExtractionConfigId
@@ -123,7 +123,7 @@ async def extract_task(
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
     crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
 
-    `config` is the site's active config for the schema version and page kind (`config` mode, ARCHITECTURE §8.4).
+    `config` is the site's active config for the schema and page kind (`config` mode, ARCHITECTURE §8.4).
     `role_c` calls the LLM client before this step writes anything, and the client commits usage on its own
     connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row. `write_records`
     stores the page's records."""

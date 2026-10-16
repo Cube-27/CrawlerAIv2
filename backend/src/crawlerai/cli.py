@@ -341,9 +341,9 @@ def _parser() -> argparse.ArgumentParser:
     schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
         dest="schemas_command", required=True
     )
-    schemas.add_parser(
-        "sync", help="insert the preset schema versions the database lacks (after migrating)"
-    ).set_defaults(handler=_run_schemas)
+    schemas.add_parser("sync", help="insert or update the preset schemas in place (after migrating)").set_defaults(
+        handler=_run_schemas
+    )
     data = commands.add_parser("data", help="the pinned data files of backend/data/manifest.json").add_subparsers(
         dest="data_command", required=True
     )

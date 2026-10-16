@@ -91,7 +91,7 @@ class Learned:
 
 @dataclass(frozen=True, slots=True)
 class _Run:
-    """A started run: its job and state, the schema version and site it learns, the config the state served when it
+    """A started run: its job and state, the schema and site it learns, the config the state served when it
     started, and the pages it reads."""
 
     job_id: JobId

@@ -177,7 +177,7 @@ async def extract_page(
     parsed: ParsedPage | None = None,
 ) -> ExtractionResult:
     """The page's outcome, fields and candidates: in `config` mode with `config`, the site's active config for the
-    schema version and page kind, else `adhoc` (cold). `extracted` when every required field and group publishes (on a
+    schema and page kind, else `adhoc` (cold). `extracted` when every required field and group publishes (on a
     listing: in each of at least one row), else `partial`: whether an incomplete page or row keeps its record is the
     caller's (`resolve.records.assemble`, `assemble_listing`). `parsed` is the bundle's parse when the caller already
     has one (a `scrape` shares it with its formats, INV-26)."""

@@ -1,10 +1,10 @@
 """Active mode (SPEC-08 §4.8, §4.9; ARCHITECTURE §8.4): the config a page of a site is extracted with, and the drift
 record of each page it ran on.
 
-A (site, schema version, page kind) with an active config extracts its pages in `config` mode with that config. The
-config row is the authority: `extraction_config` holds at most one active config per site, schema and page kind
-(ARCHITECTURE §6), and one learned for another schema version than the page's does not run (a new version starts
-cold, §5.2). Each page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
+A (site, schema, page kind) with an active config extracts its pages in `config` mode with that config. The config
+row is the authority: `extraction_config` holds at most one active config per site, schema and page kind
+(ARCHITECTURE §6); a schema edit suspends the schema's active configs, so its pages start cold again (§5.2). Each
+page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
 """
 
 from sqlalchemy import select

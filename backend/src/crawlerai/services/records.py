@@ -84,7 +84,7 @@ class ScrapedRecord(ExtractedRecord):
 
 class StoredRecord(ScrapedRecord):
     """A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
-    the schema version its fields follow, its own version and the fields whose published value differs from the
+    the schema its fields follow, its own version and the fields whose published value differs from the
     version it supersedes, empty for an entity's first (§14, SPEC-11 §4.4)."""
 
     capture_id: CaptureId | None
@@ -103,7 +103,7 @@ class RecordPage(BaseModel):
 
 
 class RecordFilter(BaseModel):
-    """The records to list: those of a job, of a site (its host), of a schema version, stored at or after a time, or
+    """The records to list: those of a job, of a site (its host), of a schema, stored at or after a time, or
     any combination. A job's are those its pages stand for, stored by it or found unchanged (SPEC-11 §4.2, §4.4).
     Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring
     runs (§4.4). An entity re-extracted unchanged stores no record, so `changed_since` does not list it again."""

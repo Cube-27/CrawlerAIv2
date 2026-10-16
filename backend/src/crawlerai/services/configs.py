@@ -1,7 +1,7 @@
 """The configs service (SPEC-08 §4.10, ARCHITECTURE §13.1, C5): a site's configs, operator corrections, forced
 learning and exports, over a connection.
 
-A correction is applied to the latest version of its (site, schema version, page kind), so an edit never silently
+A correction is applied to the latest version of its (site, schema, page kind), so an edit never silently
 drops a version someone else added, and the result is always stored as the next version: validated on the site's
 held-out pages (§4.7) and active when validation keeps it, else a `draft` whose report says why not.
 

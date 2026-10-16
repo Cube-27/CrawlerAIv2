@@ -310,7 +310,7 @@ LISTING_FIELDS: dict[str, Any] = {
 
 async def listing_schema(engine: AsyncEngine, name: str) -> schema_types.SchemaDef:
     """A stored listing schema of `LISTING_FIELDS`, named `name`."""
-    document = {"name": name, "version": 1, "page_kind": "listing", "fields": LISTING_FIELDS}
+    document = {"name": name, "page_kind": "listing", "fields": LISTING_FIELDS}
     async with engine.begin() as conn:
         return await registry.create(conn, schema_types.SchemaDocument.model_validate(document), "user")
 

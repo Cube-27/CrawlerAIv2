@@ -31,7 +31,7 @@ from crawlerai.llm.client import LLMClient, LLMRequest, ReplyCheck
 from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS
 from crawlerai.llm.roles.s_wire import from_wire, to_wire, wire_schema
 from crawlerai.schemas import registry
-from crawlerai.schemas.registry import SchemaExists, SchemaNotFound
+from crawlerai.schemas.registry import SchemaExists
 from crawlerai.schemas.types import FieldType, Name, SchemaDef, SchemaDocument
 from crawlerai.storage.capture_bundle import sha256_hex
 

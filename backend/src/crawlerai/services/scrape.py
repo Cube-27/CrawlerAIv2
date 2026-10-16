@@ -14,7 +14,7 @@ from. A draft the LLM could not give (no provider, no budget, an invalid reply) 
 `records` extracts the page with `extract_page` (SPEC-05) against the schema named by id, given inline, or drafted, and
 stores the extraction and the records (`resolve.task`: a listing has one per row). A scrape URL is caller-supplied, so a
 page whose required fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE
-§10). A site with an active config for the schema version extracts in `config` mode (SPEC-08 §4.8), and the page joins
+§10). A site with an active config for the schema extracts in `config` mode (SPEC-08 §4.8), and the page joins
 the config's drift window (§4.9). A scrape that asks for the record only is served by the config's API recipe when it
 has one (SPEC-09 §4.8): a JSON body has no markdown, links or metadata of the page, so other formats fetch the page. The
 formats, the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same

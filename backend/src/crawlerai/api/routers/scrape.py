@@ -36,8 +36,8 @@ router = APIRouter(
 async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
     """Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only
     those are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`
-    holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to its
-    name's latest version, and one that differs from that version is a 409."""
+    holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to the
+    stored schema of its name, and one that differs from it is a 409."""
     engine = database(request)
     fetching: Fetching = request.app.state.fetching
     llm: LLMClient = request.app.state.llm

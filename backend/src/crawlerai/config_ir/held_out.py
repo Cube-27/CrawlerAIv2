@@ -1,4 +1,4 @@
-"""Held-out pages from storage (SPEC-08 §4.4, §4.7): the stored captures of a (site, schema version) that a config is
+"""Held-out pages from storage (SPEC-08 §4.4, §4.7): the stored captures of a (site, schema) that a config is
 validated on, each parsed with its context and with the facts the engine stored for it.
 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
