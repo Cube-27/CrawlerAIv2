@@ -34,7 +34,24 @@
    * switching tabs moves nothing. */
   --height-code-view: 28rem;
   /* The live activity feed's box: new lines scroll inside it (SPEC-14 §4.5). */
-  --height-activity-feed: 40rem;
+  --height-activity-feed: 24rem;
+  /* A side drawer's width (DESIGN.md, Side drawer): wide enough for a code block or a page's JSON without clipping. */
+  --width-drawer: 44rem;
+
+  /* Spacing (DESIGN.md, Spacing): the few distances the screens repeat, so padding is set once here. Each is a
+   * Tailwind spacing variable, used through the utilities it generates (`gap-stack`, `p-panel`). */
+  /* The content area's gutters from `sm` (at phone width they stay 16px, DESIGN.md Layout). */
+  --spacing-gutter-x: 2.5rem;
+  --spacing-gutter-y: 2.25rem;
+  /* Between a screen's parts: header, command bar, sections. */
+  --spacing-stack: 2rem;
+  /* Inside a surface: cards, panels, drawers. */
+  --spacing-panel: 1.5rem;
+  /* Inside a table cell, across and down. */
+  --spacing-cell-x: 1.25rem;
+  --spacing-cell-y: 0.875rem;
+  /* Inside an empty state's box. */
+  --spacing-empty: 2.5rem;
 }
 
 /* A neutral palette with one indigo accent, borders over shadows (DESIGN.md, Reference). */
@@ -156,10 +173,39 @@
     @apply mt-2 border-t border-separator pt-5;
   }
 
-  /* Surfaces are outlined, not raised. */
+  /* Surfaces are outlined, not raised, with room inside (DESIGN.md, Spacing). */
   .card {
-    @apply border border-border shadow-none;
+    @apply border border-border p-panel shadow-none;
     border-radius: calc(var(--radius) * 1.5);
+  }
+
+  /* Table cells keep clear of the table's edges and of each other (DESIGN.md, Spacing). */
+  .table__column {
+    @apply px-cell-x;
+  }
+  .table__cell {
+    @apply px-cell-x py-cell-y;
+  }
+
+  /* A side drawer (DESIGN.md, Side drawer): wide enough for its content, with the panel's padding. At phone width it
+   * takes the whole width. */
+  .drawer__dialog {
+    @apply p-panel;
+    &[data-placement="right"] {
+      @apply w-drawer max-w-full;
+    }
+  }
+  .drawer__header {
+    @apply gap-1 pe-10;
+  }
+  .drawer__header + .drawer__body {
+    @apply mt-6;
+  }
+
+  /* An empty state (DESIGN.md, Empty state): centred in a dashed box, so "nothing here" reads as a state, not as a
+   * missing part of the page. */
+  .empty-state {
+    @apply flex flex-col items-center gap-1 rounded-xl border border-dashed border-border p-empty text-center;
   }
 
   /* The app shell: the sidebar on the page background, the content on a panel beside it. */
@@ -196,13 +242,13 @@
 
   /* The playground's options panel (DESIGN.md, Playground options): an outlined region under the command bar. */
   .options-panel {
-    @apply rounded-xl border border-border;
+    @apply rounded-xl border border-border p-panel;
   }
 
   /* A JSON view (SPEC-14 §4.3) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */
   .json-view,
   .code-view {
-    @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-3 font-mono text-[0.8125rem] leading-5;
+    @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 font-mono text-[0.8125rem] leading-5;
   }
   .json-key {
     color: var(--json-key);

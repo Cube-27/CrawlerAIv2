@@ -76,7 +76,7 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
   const learnProblem = problemOf(learning.learn.error);
   const schemaLabel = useSchemaLabel();
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title={config.site} actions={<LearnButtons {...learning} />}>
         <Chip>v{config.version}</Chip>
         <Chip>{config.origin}</Chip>

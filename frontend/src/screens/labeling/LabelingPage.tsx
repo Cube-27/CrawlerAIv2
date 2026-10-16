@@ -397,7 +397,7 @@ function PageEditor({
   }
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-stack">
       <LabelingHeader
         page={page}
         actions={
@@ -410,7 +410,7 @@ function PageEditor({
         }
       />
       <EditorAlerts saver={saver} prefiller={prefiller} />
-      <div className="flex flex-col gap-4 lg:flex-row">
+      <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 lg:w-1/2">
           <PageView html={page.bundle_html} onPick={edit.pick} />
         </div>

@@ -9,7 +9,7 @@ import { sitePath } from "./paths";
 export function SitesScreen() {
   const navigate = useNavigate();
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader
         title="Sites"
         description="Each site keeps its learned configs: review them, correct a field, or learn again."

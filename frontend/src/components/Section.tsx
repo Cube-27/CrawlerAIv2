@@ -9,7 +9,7 @@ export function Section({
   children,
 }: Readonly<{ title: string; action?: ReactNode; children: ReactNode }>) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <Typography.Heading level={2}>{title}</Typography.Heading>
         {action}

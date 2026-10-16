@@ -354,7 +354,7 @@ export function OptionsPanel({
     <section
       id="playground-options"
       aria-label="Options"
-      className="options-panel flex flex-col gap-4 p-4"
+      className="options-panel flex flex-col gap-4"
     >
       <fieldset disabled={readOnly} className={GRID}>
         {children}

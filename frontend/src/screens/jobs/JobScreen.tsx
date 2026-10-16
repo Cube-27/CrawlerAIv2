@@ -34,7 +34,7 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
   // A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2), which a dead worker's lease delays.
   const cancel = cancelState(job);
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader
         title={`${KIND_LABELS[job.kind]} job`}
         actions={cancel === "cancellable" ? <CancelJobAction id={job.id} /> : undefined}

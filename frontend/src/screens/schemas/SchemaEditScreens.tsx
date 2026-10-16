@@ -52,7 +52,7 @@ function SchemaEditor({
   const navigate = useNavigate();
   const [form, setForm] = useState(() => (initial === null ? EMPTY_FORM : formOf(initial)));
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title={title} description={description} />
       <SchemaForm
         form={form}

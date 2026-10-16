@@ -9,7 +9,7 @@ import { jobPath } from "./paths";
 export function JobsScreen() {
   const navigate = useNavigate();
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader
         title="Jobs"
         description="Every run, newest first. A run opens in its playground mode."

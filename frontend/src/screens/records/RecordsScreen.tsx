@@ -70,7 +70,7 @@ export function RecordsScreen() {
   const filters = filtersOf(params);
   const key = new URLSearchParams(activeFilters(filters)).toString();
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title="Records" />
       <RecordFiltersForm
         key={key}
