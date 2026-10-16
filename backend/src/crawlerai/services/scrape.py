@@ -326,7 +326,7 @@ async def _run(
         if request.max_age:
             row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age, api=recipe is not None)
     recent = None if row is None else await _reread(fetching.store, row)
-    policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
+    policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, request.page_kind)
     attempts: list[AttemptRecord] = []
     if recent is None:
         page = await polite_fetch(engine, fetching, request.url, host, policy, site, attempts, recipe=recipe)

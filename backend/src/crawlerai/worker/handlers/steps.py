@@ -135,7 +135,7 @@ async def fetch_page(
     except SsrfRejected as e:
         return Ended(Failed(str(e), transient=False))
     site = await site_row(conn, urlsplit(task.url).hostname or "")
-    policy = fetch_policy(options, locale, site.proxy_pool)
+    policy = fetch_policy(options, locale, site.proxy_pool, task.page_kind)
     standing = None if recurring is None else await _standing(conn, task, site.id, recurring)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6).
     validators = None if standing is None else await stored_validators(conn, site.id, task.canonical_url)

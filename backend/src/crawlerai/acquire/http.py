@@ -95,7 +95,9 @@ async def fetch_http(
         headers = _conditional(validators)
         final = await _follow(url, policy, impersonate, connector or SafeConnector(), proxy, deadline, headers)
         # classify parses HTML synchronously; a thread keeps the event loop free.
-        block_class: BlockClass = await asyncio.to_thread(classify, final.status, final.response_headers, final.body)
+        block_class: BlockClass = await asyncio.to_thread(
+            classify, final.status, final.response_headers, final.body, policy.page_kind
+        )
         last: _Response | None = final
     except _Failed as failed:
         error, block_class, last = failed.error, "error", failed.last

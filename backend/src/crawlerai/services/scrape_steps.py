@@ -228,8 +228,11 @@ async def site_row(conn: AsyncConnection, host: str) -> SiteRow:
     return (await conn.execute(select(*columns).where(Site.host == host))).one()
 
 
-def fetch_policy(options: FetchOptions, locale: str | None, site_pool: str | None) -> FetchPolicy:
+def fetch_policy(
+    options: FetchOptions, locale: str | None, site_pool: str | None, page_kind: PageKind | None
+) -> FetchPolicy:
     return FetchPolicy(
+        page_kind=page_kind,
         method_hint=options.method_hint,
         proxy_pool=options.proxy_pool or site_pool,
         respect_robots=options.respect_robots,

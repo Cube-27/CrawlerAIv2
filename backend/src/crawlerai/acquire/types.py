@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveFloat, PositiveInt, model_validator
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 __all__ = [
@@ -40,6 +41,7 @@ class FetchPolicy(_Frozen):
     max_decompressed_bytes: PositiveInt = 50_000_000
     capture_network_json: bool = True  # browser only
     locale_hint: str | None = None  # request locale, for the normalizers' context
+    page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> "FetchPolicy":

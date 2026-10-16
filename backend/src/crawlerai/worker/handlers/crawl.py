@@ -129,7 +129,7 @@ async def _sitemap_seeds(conn: AsyncConnection, fetching: Fetching, crawl: _Craw
     the job's usage."""
     task, frontier = crawl.task, crawl.frontier
     site = await site_row(conn, frontier.scope.host)
-    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool)
+    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool, None)
     attempts: list[AttemptRecord] = []
     robots = None
     if policy.respect_robots:

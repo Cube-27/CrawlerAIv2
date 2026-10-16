@@ -128,7 +128,9 @@ async def fetch_browser(
             )
         # classify parses HTML synchronously; a thread keeps the event loop free.
         headers = exchange.response_headers
-        block_class: BlockClass = await asyncio.to_thread(classify, exchange.status, headers, content.body)
+        block_class: BlockClass = await asyncio.to_thread(
+            classify, exchange.status, headers, content.body, policy.page_kind
+        )
     except _Failed as failed:
         error, block_class, exchange = failed.error, "error", failed.exchange
     except UnknownProxyPool as unknown:
