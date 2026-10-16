@@ -85,3 +85,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Shopify adapter: a product page of a shop with several presentment currencies sends one API request, then falls back, every time; remember it per host if such shops are common (D-1114) [#221].
 - Shopify adapter: `Shopify._transient` (429, 5xx) and `llm.client.is_transient` (adds 408) are two transient-status rules; share one in `acquire/politeness` if a third appears [#221].
 - Adapters: a host's decline (D-1078) lives in each process for 24 hours; store it on the site row if the probe traffic shows in logs. An adapter request on the page's host re-reads that host's robots rules, already checked by the caller [#219].
+- Jobs: INV-28 says a job pins its LLM settings, but `JobPins` holds only the schema, engine data and configs (D-0631 left LLM settings out when batch had no role C; batch runs role C since D-1006); pin them or amend INV-28 [#223].
+- Schemas: SPEC-04 §4.2 says `schema_org` paths and `vocab` refs are validated against the pinned schema.org file; only their syntax is checked (D-0240) [#223].
+- API: the `fetch_failed` problem type (SPEC-07 §4.3) is listed but nothing raises it, since fetch errors are outcomes; drop it from the spec or use it [#223].
+- API recipes: the paged executor (`RecipeRung.pages`) has no caller; recipe pagination comes only from an operator correction [#223].
+- Recurring: `worker/handlers/scrape.py` docstring still says "within a few SimHash bits"; only Hamming 0 means unchanged (D-0665) [#223].
+

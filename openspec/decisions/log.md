@@ -858,6 +858,47 @@ Entries up to D-1135 were written when this file was `docs/DECISIONS.md`; their 
 - Why: The owner's option (a), read conservatively: every value role C grounded must sit in the block, and a card linking to two documents says nothing about which is the item's.
 - Reversible: yes
 
+### D-1136 — Documentation in the OpenSpec layout
+- Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided (owner asked for the layout, 2026-10-16)
+- Decision: `openspec/` holds `project.md` (context, contract C1–C13 verbatim), `specs/<capability>/spec.md` (20 capabilities, current behaviour as requirements; INV-NN kept in their requirements), `changes/` (in-flight work; `archive/` holds SPEC-00…SPEC-15 as-is with their logs), `design/` (ARCHITECTURE.md split by section, numbers kept, with a §→file index), `decisions/`, `conventions/` (ENGINEERING, DESIGN, RECURRING), `backlog.md` (was ACTIVE.md) and `OPEN_QUESTIONS.md`. `CLAUDE.md` stays the agent entry point.
+- Alternatives: keep ARCHITECTURE.md whole as an overview (over 1000 lines, read by default); move project.md's role into CLAUDE.md; rewrite code comments that cite `ARCHITECTURE §N`, `SPEC-NN §x` (about 800 files).
+- Why: an agent reads by default only CLAUDE.md, project.md, the capability specs it touches and its change folder; code citations keep resolving through `design/README.md` and `changes/archive/README.md`, so no code changes.
+- Reversible: yes — a docs move.
+
+### D-1137 — SPEC-03 and SPEC-15 archived; row 7 becomes a change
+- Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided
+- Decision: SPEC-15 (all rows done) and SPEC-03 (rows 1–6, 8–12 done) are archived; SPEC-03 row 7 and human tasks H1, H2, H3, H6 become `openspec/changes/wire-protected-eval-job/` with a MODIFIED delta of the evaluation requirement INV-19; H4, H5, H7, H8 and the follow-ups go to `backlog.md`.
+- Alternatives: keep SPEC-03 active until row 7 lands (it waits on milestone M tasks).
+- Why: the archive is history; the one open row is the only in-flight work, and OpenSpec models it as a change.
+- Reversible: yes
+
+### D-1138 — Where decisions live after the conversion
+- Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided
+- Decision: a change's decisions go in its `design.md` under `## Decisions` and move with it on archive; cross-cutting ones, those of PRs without a change and every `needs-owner` entry go in `openspec/decisions/log.md`; the open owner items index moves to `project.md`. `tools/decision_ids.py` checks every `### D-NNNN` heading under `openspec/`.
+- Alternatives: one central log for everything (the old model); per-capability logs.
+- Why: OpenSpec keeps a change's rationale with the change; one ID sequence and one duplicate check stay.
+- Reversible: yes
+
+### D-1139 — The site-literal scan exempts openspec/
+- Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided
+- Decision: `openspec/` joins `docs/` in `EXEMPT_DIRS` of `tools/site_literal_scan.py`; the protected hidden-host scan still covers it.
+- Alternatives: scan the docs (archived logs and the adapter capability name platforms and real hosts).
+- Why: same reason as D-0004; the documentation moved.
+- Reversible: yes
+
+### D-1140 — Branches, tracker commit and archiving under OpenSpec
+- Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided
+- Decision: a PR implements a batch of tasks of one change on branch `change/<change-id>` (worktree `<change-id>`); new work starts by writing the change folder as the PR's first commit; the tracker commit checks the tasks `(#n)`, updates `backlog.md`, logs decisions and, when the change's last task is done, applies the deltas to `openspec/specs/` and moves the folder to `changes/archive/<date>-<change-id>/`. A fix that restores stated behaviour needs no change folder.
+- Alternatives: archive in a separate follow-up PR (an extra docs-only CI run per change).
+- Why: one PR per batch stays the rule (CLAUDE.md §3); the reviewer checks the delta application with the code.
+- Reversible: yes
+
+### D-1141 — One normalization capability, not one per field type
+- Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided
+- Decision: `openspec/specs/normalization/spec.md` holds one requirement group per field type; C8's one module per type stays a code rule (INV-08).
+- Alternatives: `normalization-money/`, `normalization-enum/` … (11 folders of 20–40 lines).
+- Why: the shared contract (Ok/Ambiguous/Invalid, context, no defaults) is stated once, and the file stays under 300 lines.
+
 ### D-1151 — A detail page's related items and its product's group do not make its intent ambiguous
 - Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.6 (#225) · Status: decided
 - Decision: `resolve.intent`: when the page URLs settle no single candidate, the page's own candidates are those that are not another page's item: not one whose every URL names another document (scheme, host and path, RFC 3986 §3; the query is left out, as it may select a variant of the same page), and not one of three or more microdata items whose element paths differ only in positions (sibling elements of one shape: a carousel, a comparison table). One own candidate is the target; of several, the one naming a page URL; of several of those, the one product group with variants (`hasVariant`). The group a product `isVariantOf` is not a candidate. Otherwise the page stays ambiguous.
