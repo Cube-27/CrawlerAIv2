@@ -258,7 +258,7 @@ async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
     assert (result.outcome, len(provider.calls), result.usage.llm_calls) == ("partial", 1, 0)
     assert result.records is not None
     fields = result.records[0].fields
-    assert (fields["price"].status, fields["price"].reason) == ("missing", "llm_unavailable")
+    assert (fields["price"].status, fields["price"].reason) == ("missing", "llm_refused")
     assert fields["title"].status == "published"
 
 

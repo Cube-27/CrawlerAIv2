@@ -403,7 +403,7 @@ def test_a_refusal_is_logged_once_per_provider_model_and_status(
 
 def test_a_refusal_states_its_cause_for_the_page() -> None:
     refused = ProviderRefused("fake", "fast-model", 404, "model not found")
-    assert (refused.field_reason, refused.cause()) == ("llm_unavailable", "fake: HTTP 404: model not found")
+    assert (refused.field_reason, refused.cause()) == ("llm_refused", "fake: HTTP 404: model not found")
 
 
 def test_a_secret_is_redacted_from_a_message() -> None:
