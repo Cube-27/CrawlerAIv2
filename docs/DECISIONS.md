@@ -53,6 +53,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
+| D-1024 | Listing rows without structured data take no item URL | needs-owner |
 
 ---
 
@@ -848,4 +849,33 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: `ProviderRefused` has its own code `llm_refused`: the field reason, the task's `last_error` and the problem type (502 "LLM refused the request"). It subclasses `LLMFailure` directly, no longer `ProviderUnavailable`; nothing caught it as the latter. The OpenAPI document is unchanged (502 was already declared, problem types are strings); the UI shows the problem's title and raw reasons, so it needs no label map.
 - Alternatives: (b) keep `llm_unavailable` and add the cause to the learn job's end event; (c) leave as is.
 - Why: owner, 2026-10-16, deferring to the recommendation: a refusal is the request's fault (Appendix A #44; OPEN_QUESTIONS #31).
+- Reversible: yes
+
+### D-1021 — Role C gives the page text first and the fields asked after it
+- Date: 2026-10-16 · Spec/PR: reference eval round 2, SPEC-06 §4.4 (#217) · Status: decided
+- Decision: Role C's user message is the URL line, the page text, then the fields asked (a listing: row fields, then page fields). The wire form (D-0765, D-1008) is unchanged. SPEC-06 §4.4 states the order. Roles A, D and S keep theirs.
+- Alternatives: a list of claims naming only the fields found (also answered with the old order in most probes, but reopens D-0765's bound); fewer fields per call (more calls per page); default effort (did not help: 1 of 3 probes answered).
+- Why: Round 2 found role C answering every field empty on pages that show some (15 fields asked since #208 grew the preset). Live probes with `claude-haiku-5-5` on the same captured page, 15 fields: old order 1 of 7 replies with a value (`$defs` form) and 0 of 2 (claim written under each field); new order 6 of 6 and 5 of 5, and the branch's code 8 of 8. Another page's brand: 0 of 3 before, 3 of 3 after. So the `$defs` form of #215 was not the cause. Anthropic's long-context guidance puts long documents first and the query last.
+- Reversible: yes
+
+### D-1022 — An http(s) URL with an empty authority is declined
+- Date: 2026-10-16 · Spec/PR: reference eval round 2, SPEC-04 §4.4 (#217) · Status: decided
+- Decision: `https:////host/path` stays `Invalid("no_host")`; the rule and its standard are stated in `normalize/url.py` and SPEC-04 §4.4, and tested.
+- Alternatives: the WHATWG parser's slash skipping (`https://host/path`), which also turns `https:///path` into host `path`.
+- Why: RFC 3986 §3.2 reads the authority as empty and RFC 9110 §4.2.1 has a recipient reject an http(s) URI with an empty host; the next segment is the host only when the slashes were a mistake, which the URL does not say (C7). Precision first.
+- Reversible: yes
+
+### D-1023 — The main image is not taken from a dialog or from what the page does not show
+- Date: 2026-10-16 · Spec/PR: reference eval round 2, SPEC-05 §4.5 (#217) · Status: decided
+- Decision: The DOM collector's main image skips images inside a dialog (`dialog`, roles `dialog` and `alertdialog`) as it skips tangential content, and images the cleaned text's rules do not show (hidden subtrees, `aria-hidden`, `display: none`, inherited `visibility`), through one `content.text.shown`.
+- Alternatives: rank `dom` images below `og` only (keeps the badge whenever `og:image` declines); a size or file-name test (a list, C4).
+- Why: Round 2 published a certification badge from an off-canvas drawer (`role="dialog"`, `aria-hidden="true"`) inside `main` while `og:image` declined; the text already treated that drawer as not shown. HTML Standard §4.11.4 and WAI-ARIA 1.2 §5.4 define a dialog as a window apart from the page.
+- Reversible: yes
+
+### D-1024 — Listing rows without structured data take no item URL
+- Date: 2026-10-16 · Spec/PR: reference eval round 2 (#217) · Status: needs-owner
+- Question: Role C reads the cleaned text, which holds no link targets, so its listing rows carry no `url`: in round 2, 13 of the 15 listing pages with rows had no row URL (the 2 with URLs came from JSON-LD `ItemList`). The repeated item blocks `acquire.items` finds (#213, D-0993) hold each item's own link. Taking a row's URL from them is extraction from repeated structure, which ARCHITECTURE §22 lists as not admitted (C13), and §8.6 names only structured data and role C as row sources.
+- Options: (a) admit repeated structure for row URLs only: a role C row whose grounded title is the visible text of exactly one repeated item block takes that block's link (its own target, HTML Standard §4.6) as a `dom` candidate; (b) give role C the link targets (anchors marked in its input text) and ground a URL claim against the page's links (changes SPEC-05 §4.4's cleaned text); (c) leave rows without URLs until labels measure it.
+- Recommendation: (a): it uses the structure the engine already finds for map and crawl, publishes only a link the page attaches to that item, and declines when the title matches no block or several.
+- Blocked: listing row URLs on pages without structured data; nothing else.
 - Reversible: yes
