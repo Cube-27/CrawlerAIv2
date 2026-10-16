@@ -35,6 +35,8 @@
       "@type": "rdf:Property",
       "rdfs:subPropertyOf": [{ "@id": "schema:gtin" }, { "@id": "schema:identifier" }]
     },
+    { "@id": "schema:image", "@type": "rdf:Property", "schema:domainIncludes": { "@id": "schema:Thing" } },
+    { "@id": "schema:logo", "@type": "rdf:Property", "rdfs:subPropertyOf": { "@id": "schema:image" } },
     { "@id": "schema:mpn", "@type": "rdf:Property", "schema:domainIncludes": { "@id": "schema:Product" } },
     { "@id": "schema:InStock", "@type": "schema:ItemAvailability" }
   ]
