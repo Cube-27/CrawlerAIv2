@@ -14,6 +14,7 @@ handle, or GraphQL `errors`, is `NOT_SERVED`. Either way the page falls back to 
 import json
 import re
 from collections.abc import Mapping
+from http import HTTPStatus
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -181,11 +182,18 @@ def _handles(*segments: str) -> bool:
     return all(_HANDLE.fullmatch(segment) for segment in segments)
 
 
+def _transient(status: int) -> bool:
+    """A status that says the server cannot answer now rather than what it is (RFC 6585 §4: 429, too many requests;
+    RFC 9110 §15.6: a 5xx server error). An edge in front of a shop answers these without the API's header."""
+    return status == HTTPStatus.TOO_MANY_REQUESTS or status >= HTTPStatus.INTERNAL_SERVER_ERROR
+
+
 def _verdict(result: FetchResult, member: str) -> FetchResult:
-    """`result`, or why it does not serve the page: no response arrived (kept as it is), an answer without the
-    platform's signal (`NOT_PLATFORM`), or the platform's answer holding errors or no `member` (`NOT_SERVED`)."""
+    """`result`, or why it does not serve the page. No response, a slow-down or a server error is kept as it is: it
+    says nothing of the platform, and the page falls back. An answer without the platform's signal is `NOT_PLATFORM`;
+    the platform's answer holding errors or no `member` is `NOT_SERVED`."""
     manifest = result.bundle.manifest
-    if manifest.status_code == 0:
+    if manifest.status_code == 0 or _transient(manifest.status_code):
         return result
     if not any(name.lower() == SIGNAL for name, _ in manifest.headers.response):
         return as_error(result, NOT_PLATFORM)

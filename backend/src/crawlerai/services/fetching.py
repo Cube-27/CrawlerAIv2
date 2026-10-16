@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.politeness import HostLimiter, interval
+from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
@@ -222,7 +222,8 @@ async def _polite_json(
     take_turn: Callable[[str], bool],
 ) -> FetchResult:
     """`request` sent where its host's robots.txt allows it, at that host's rate unless `take_turn` says the caller's
-    admitted turn there goes to it; else a `blocked` result that sent nothing."""
+    admitted turn there goes to it; else a `blocked` result that sent nothing. A slow-down's `Retry-After` pauses the
+    host (at most `BACKOFF_MAX`, SPEC-02 §4.6), so the next request there, the page's fallback too, waits it out."""
     allowed = await rules(request.url, policy)
     if isinstance(allowed, str):
         # As a page robots.txt keeps from being fetched: `blocked`.
@@ -230,7 +231,11 @@ async def _polite_json(
     host = urlsplit(request.url).hostname or ""
     if not take_turn(host):
         await admitted(limiter, host, *allowed)
-    return await json(request, policy)
+    result = await json(request, policy)
+    last = result.attempts[-1]
+    if last.status in SLOW_DOWN and last.retry_after is not None:
+        limiter.pause(host, min(last.retry_after, BACKOFF_MAX))
+    return result
 
 
 @dataclass(frozen=True)

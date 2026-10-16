@@ -69,6 +69,7 @@ class Web:
     pages: dict[str, bytes] = field(default_factory=dict)
     answer: dict[str, Any] = field(default_factory=lambda: ANSWER)
     platform: bool = True
+    status: int = 200
     fetched: list[str] = field(default_factory=list)
     requested: list[str] = field(default_factory=list)
 
@@ -84,6 +85,10 @@ class Web:
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request.url)
         headers = (("X-Shopify-API-Version", API_VERSION),) if self.platform else ()
+        if self.status != 200:
+            return self.fetch_result(
+                request.page_url, self.status, b"", block_class="blocked", method="api", final_url=request.url
+            )
         body = json.dumps(self.answer).encode()
         return self.fetch_result(request.page_url, 200, body, headers, method="api", final_url=request.url)
 
@@ -155,6 +160,35 @@ async def test_a_page_of_a_host_that_is_not_the_platform_is_fetched_as_a_page_an
     assert (first.fetch.method, second.fetch.method) == ("http", "http")
     assert (len(web.requested), web.page_fetches()) == (1, [url, url])
     assert [(a.method, a.error) for a in first.fetch.attempts] == [("api", "not_platform"), ("http", None)]
+
+
+@pytest.mark.parametrize("status", [429, 502])
+async def test_an_endpoint_that_cannot_answer_now_leaves_the_page_to_the_page_rungs_and_declines_no_host(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    lamp_schema: SchemaDef,
+    data: EngineData,
+    status: int,
+) -> None:
+    # SPEC-15 §4.9: a slow-down or a server error says nothing of the platform; the page falls back on its turn.
+    url = f"{own_origin}/products/desk-lamp"
+    web.pages[url] = PAGE
+    web.status = status
+
+    first = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+    second = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+
+    assert first.fetch is not None
+    assert (first.outcome, first.fetch.method, first.fetch.block_class) == (
+        "partial",
+        "http",
+        "ok",
+    )  # no price on the page
+    assert [(a.method, a.status, a.error) for a in first.fetch.attempts] == [("api", status, None), ("http", 200, None)]
+    assert (len(web.requested), web.page_fetches()) == (2, [url, url])
+    assert second.fetch is not None
 
 
 async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is_fetched(

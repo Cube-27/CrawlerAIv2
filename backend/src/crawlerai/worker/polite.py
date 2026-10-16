@@ -50,9 +50,10 @@ async def fetch_politely(
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
     - the site not admitted yet: postponed until it is;
-    - a 429 or 503 to any request of the fetch, not only the one whose outcome it kept: a transient failure, retried
-      after its `Retry-After` or the queue's backoff, then `blocked` once attempts run out; `blocked` at once when the
-      server asks for more than the longest backoff.
+    - a 429 or 503 to any request of the fetch, not only the one whose outcome it kept, unless the outcome kept is
+      `ok` (the page an adapter's endpoint fell back to, SPEC-15 §4.9): a transient failure, retried after its
+      `Retry-After` or the queue's backoff, then `blocked` once attempts run out; `blocked` at once when the server
+      asks for more than the longest backoff.
     `fetch` admits each request after its first at the site's rate, waiting in place (`HostLimiter.wait`) up to
     `WAIT_MAX`."""
     site = (await conn.execute(select(Site.robots_snapshot, Site.crawl_delay_ms).where(Site.id == site_id))).one()
@@ -69,7 +70,7 @@ async def fetch_politely(
         return Postpone(wait)
 
     result = await fetch(task.url, partial(limiter.wait, host, gap, WAIT_MAX))
-    if isinstance(result, Unchanged):
+    if isinstance(result, Unchanged) or result.block_class == "ok":
         return result
     slowed = _slowed_down(result.attempts)
     if slowed is None:

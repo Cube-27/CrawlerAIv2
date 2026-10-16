@@ -15,6 +15,7 @@ import pytest
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
+from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, Shape
@@ -188,14 +189,38 @@ def test_a_page_its_adapter_does_not_serve_is_fetched_by_the_page_rungs(answer: 
     ]
 
 
-def test_an_adapter_answer_asking_for_fewer_requests_is_kept() -> None:
+def _admit(answer: bool, asked: list[bool]) -> Admit:
+    async def admit_next() -> bool:
+        asked.append(answer)
+        return answer
+
+    return admit_next
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_an_adapter_answer_asking_for_fewer_requests_falls_back_to_the_page_on_its_turn(status: int) -> None:
+    # The endpoint asked for fewer requests; the page is a request of its own, sent when the site's rate (which holds
+    # the pause the endpoint asked for) admits it.
+    adapter = StubAdapter("board", "board.example.test", Rung("api", status=status, block_class="blocked"))
+    http = Rung("http")
+    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
+    asked: list[bool] = []
+
+    result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(True, asked)))
+
+    assert (result.method, result.block_class, http.calls, asked) == ("http", "ok", [BOARD], [True])
+    assert [(a.method, a.status) for a in result.attempts] == [("api", status), ("http", 200)]
+
+
+def test_an_adapter_answer_asking_for_fewer_requests_is_kept_when_the_page_is_not_admitted() -> None:
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=429, block_class="blocked"))
     http = Rung("http")
     rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
+    asked: list[bool] = []
 
-    result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs, send=_send))
+    result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, asked)))
 
-    assert (result.method, result.block_class, http.calls) == ("api", "blocked", [])
+    assert (result.method, result.block_class, http.calls, asked) == ("api", "blocked", [], [False])
 
 
 def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window() -> None:

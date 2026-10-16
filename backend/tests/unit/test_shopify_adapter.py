@@ -22,6 +22,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, AdapterMatch
+from crawlerai.adapters.registry import Registry
 from crawlerai.adapters.shopify import API_VERSION, Shopify
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -167,6 +168,33 @@ def test_a_platform_status_failure_is_kept_as_it_is() -> None:
     result = _fetch(f"https://{SHOP}/products/widget", _platform({}, status=429))
 
     assert (result.block_class, result.attempts[-1].error, result.bundle.manifest.status_code) == ("blocked", None, 429)
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503])
+def test_a_slow_down_or_server_error_without_the_signal_says_nothing_about_the_platform(status: int) -> None:
+    # An edge in front of the shop answers these for the whole host, without the API's version header.
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, headers={"Retry-After": "2"})
+
+    result = _fetch(f"https://{SHOP}/products/widget", handler)
+
+    assert (result.attempts[-1].error, result.bundle.manifest.status_code) == (None, status)
+    assert result.block_class != "ok"
+
+
+def test_a_host_answering_a_slow_down_is_not_declined() -> None:
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        return httpx.Response(429)
+
+    registry = Registry([ADAPTER], active={"shopify"})
+    send = _send(handler)
+    for _ in range(2):
+        asyncio.run(registry.serve(f"https://{SHOP}/products/widget", FetchPolicy(), send))
+
+    assert sent == [f"/api/{API_VERSION}/graphql.json"] * 2
 
 
 def test_a_fetch_with_no_response_says_nothing_about_the_platform() -> None:

@@ -73,19 +73,24 @@ async def acquire(
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
     without it); a page an adapter does not serve skips the recipe (SPEC-15 §4.6). Otherwise through `recipe`, the
-    active config's API recipe bound to its fetch (SPEC-09 §4.8), when the site has one. The adapter's or the recipe's
-    result is kept when it is `ok` or asks for fewer requests, and otherwise the page is fetched as if there were
-    neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered` method.
-    In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if it is
-    `ok`. Each request after the first (the page after an adapter or a recipe, the browser retry) waits for `admit_next`
-    to admit it at the site's rate (SPEC-02 §4.6), and is not sent when `admit_next` refuses it: the fetch keeps the
-    outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with the HTTP rung
-    only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
+    active config's API recipe bound to its fetch (SPEC-09 §4.8), when the site has one. The adapter's result is kept
+    when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
+    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered`
+    method. In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if
+    it is `ok`. Each request after the first (the page after an adapter or a recipe, the browser retry) waits for
+    `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and is not sent when `admit_next` refuses it: the fetch
+    keeps the outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with the
+    HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
-    if served is None and recipe is not None:
+    if served is not None:
+        # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the
+        # host's rate, which `admit_next` waits out (SPEC-15 §4.9).
+        if served.block_class == "ok" or not await _admitted(admit_next):
+            return served
+    elif recipe is not None:
         served = await recipe(url, policy)
-    if served is not None and (served.block_class == "ok" or slow_down(served) or not await _admitted(admit_next)):
-        return served
+        if served.block_class == "ok" or slow_down(served) or not await _admitted(admit_next):
+            return served
     kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next)
     if served is not None:
         attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms
