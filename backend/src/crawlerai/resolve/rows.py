@@ -174,8 +174,8 @@ def _scope_row(graph: EntityGraph, entity: Entity, row_ids: set[str]) -> str | N
 def _variants(
     row_field: RowField, rows: Sequence[Entity], candidates: Sequence[Candidate], row_of: RowOf
 ) -> tuple[list[_Variant], list[DroppedRow], list[str]]:
-    """§4.4: rows linked by a shared key value, as variants in order of their first row; rows with no key value and
-    variants whose key sub-fields disagree are dropped."""
+    """§4.4: rows linked by a shared key value (`linked`), as variants in order of their first row; rows with no key
+    value and variants whose key sub-fields disagree are dropped."""
     if not rows:
         return [], [], ["no_rows"]
     keys = _key_values(row_field, candidates, row_of)
@@ -183,7 +183,8 @@ def _variants(
     dropped = [DroppedRow(locators=(row.id,), reason="no_row_key") for row in rows if not keys.get(row.id)]
     reasons = ["no_row_key"] * len(dropped)
     variants: list[_Variant] = []
-    for group in linked(row_field.sub_fields, keyed, keys):
+    key_fields = {sub: row_field.sub_fields[sub] for sub in row_field.key}
+    for group in linked(key_fields, keyed, keys):
         variant = _Variant(group, _merged_keys(group, keys))
         if _conflicting(row_field, variant):
             dropped.append(DroppedRow(locators=tuple(row.id for row in group), reason="row_key_conflict"))
@@ -257,10 +258,12 @@ def _without(keys: _Keys, urls: frozenset[str], url_subs: frozenset[str]) -> _Ke
 
 
 def linked(
-    sub_fields: Mapping[str, FieldSpec], rows: Sequence[Entity], keys: Mapping[str, Mapping[str, list[JsonValue]]]
+    key_fields: Mapping[str, FieldSpec], rows: Sequence[Entity], keys: Mapping[str, Mapping[str, list[JsonValue]]]
 ) -> list[list[Entity]]:
-    """Connected components of rows that share a value of some key sub-field (§4.4); order-independent, each in
-    collector order, ordered by its first row."""
+    """Connected components of rows that share a value of a key sub-field and state no different value of a key
+    sub-field listed before it (§4.4, INV-33): `key_fields` runs from the most specific key to the least (the preset's
+    `key`: a GTIN names one trade item, a seller's SKU may name its sizes together, a URL its colours).
+    Order-independent, each in collector order, ordered by its first row."""
     parent = {row.id: row.id for row in rows}
 
     def root(row_id: str) -> str:
@@ -269,10 +272,13 @@ def linked(
             row_id = parent[row_id]
         return row_id
 
-    for sub, spec in sub_fields.items():
+    earlier: dict[str, FieldSpec] = {}
+    for sub, spec in key_fields.items():
         values = [(row.id, v) for row in rows for v in keys[row.id].get(sub, ())]
         for a, b in _sharing(values, spec):
-            parent[root(b)] = root(a)
+            if not _told_apart(keys[a], keys[b], earlier):
+                parent[root(b)] = root(a)
+        earlier[sub] = spec
     groups: dict[str, list[Entity]] = {}
     for row in rows:
         groups.setdefault(root(row.id), []).append(row)
@@ -280,16 +286,23 @@ def linked(
 
 
 def _sharing(values: Sequence[tuple[str, JsonValue]], spec: FieldSpec) -> Iterator[tuple[str, str]]:
-    """Pairs of rows whose values of one sub-field are equal, enough to connect every such pair: values meet by their
-    equality key in one pass; only a value with no key (its type's equality is not transitive) is compared with the
-    sub-field's earlier values."""
-    first: dict[Hashable, str] = {}
+    """Every pair of rows whose values of one sub-field are equal: values meet by their equality key in one pass; only
+    a value with no key (its type's equality is not transitive) is compared with the sub-field's earlier values."""
+    seen: dict[Hashable, list[str]] = {}
     for i, (row_id, value) in enumerate(values):
         key = equality_key(value, spec)
         if key is not None:
-            yield first.setdefault(key, row_id), row_id
+            yield from ((other_id, row_id) for other_id in seen.setdefault(key, []))
+            seen[key].append(row_id)
             continue
         yield from ((other_id, row_id) for other_id, other in values[:i] if equal(value, other, spec))
+
+
+def _told_apart(
+    a: Mapping[str, list[JsonValue]], b: Mapping[str, list[JsonValue]], earlier: Mapping[str, FieldSpec]
+) -> bool:
+    """Whether two rows state different values of one of the `earlier`, more specific, key sub-fields."""
+    return any(not equal(x, y, spec) for sub, spec in earlier.items() for x in a.get(sub, ()) for y in b.get(sub, ()))
 
 
 def _merged_keys(rows: Sequence[Entity], keys: Mapping[str, _Keys]) -> _Keys:

@@ -250,13 +250,32 @@ def test_an_aggregate_offer_repeating_the_target_url_leaves_it_no_key() -> None:
 
 
 def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
-    # INV-33: both rows say W-11, but name two GTINs: two variants joined, or one source wrong.
+    # INV-33: both rows name one GTIN, but say W-11 and W-12: two variants joined, or one source wrong.
     first = _variant("W-11", "10.00", gtin="4006381333931")
-    second = _variant("W-11", "10.00", gtin="9780306406157")
+    second = _variant("W-12", "10.00", gtin="4006381333931")
 
     outcome = _variants(_group(first, second))
 
     assert (outcome.status, outcome.reason) == ("missing", "row_key_conflict")
+
+
+def test_rows_of_one_sku_with_their_own_gtins_are_two_variants() -> None:
+    # INV-33: the gtin, before the sku in the preset's key, tells the two sizes of one sku apart.
+    first = _variant("W-11", "10.00", gtin="4006381333931")
+    second = _variant("W-11", "12.00", gtin="9780306406157")
+
+    outcome = _variants(_group(first, second))
+
+    assert outcome.status == "published"
+    assert outcome.value == [
+        {
+            "sku": {"scheme": "sku", "value": "W-11"},
+            "gtin": {"scheme": "gtin", "value": gtin},
+            "price": {"amount": price, "currency": "EUR"},
+            "availability": "InStock",
+        }
+        for gtin, price in (("4006381333931", "10.00"), ("9780306406157", "12.00"))
+    ]
 
 
 def test_variants_that_state_only_a_gtin_sub_property_are_keyed_by_it() -> None:
