@@ -8,6 +8,10 @@ in it, not only their own, which is why they never use `CRAWLERAI_DATABASE_URL`.
 (`alembic -n private`), for the private eval store's tests. It is never the private eval database itself (C1), and
 without it those tests are skipped.
 
+Under pytest-xdist (CI: `pytest -n`) each worker gets databases of its own, the names suffixed with the worker id
+(`crawlerai_gw0`, ...): the tests above delete and claim every row, so two workers never share one. CI creates them;
+a serial run (`uv run pytest`) uses the databases as named.
+
 The database is migrated to head once per session. Each test runs in a transaction that is rolled back (`conn`),
 or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
 """
@@ -26,6 +30,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import delete, insert, select, update
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.politeness import HostLimiter, retry_after
@@ -76,6 +81,21 @@ TEST_PRIVATE_DATABASE_URL = "CRAWLERAI_TEST_PRIVATE_DATABASE_URL"
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
+def worker_database_url(url: str, worker: str | None) -> str:
+    """`url` with the database name suffixed with the xdist `worker` id (`gw0`, ...), or `url` itself without one."""
+    if worker is None:
+        return url
+    parsed = make_url(url)
+    return parsed.set(database=f"{parsed.database}_{worker}").render_as_string(hide_password=False)
+
+
+def _test_database_url(variable: str) -> str:
+    url = os.environ.get(variable)
+    if not url:
+        pytest.skip(f"{variable} is not set")
+    return worker_database_url(url, os.environ.get("PYTEST_XDIST_WORKER"))
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
@@ -83,9 +103,7 @@ def anyio_backend() -> str:
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    url = os.environ.get(TEST_DATABASE_URL)
-    if not url:
-        pytest.skip(f"{TEST_DATABASE_URL} is not set")
+    url = _test_database_url(TEST_DATABASE_URL)
     config = Config(ALEMBIC_INI)
     config.attributes["database_url"] = url
     command.upgrade(config, "head")
@@ -94,9 +112,7 @@ def database_url() -> str:
 
 @pytest.fixture(scope="session")
 def private_database_url() -> str:
-    url = os.environ.get(TEST_PRIVATE_DATABASE_URL)
-    if not url:
-        pytest.skip(f"{TEST_PRIVATE_DATABASE_URL} is not set")
+    url = _test_database_url(TEST_PRIVATE_DATABASE_URL)
     config = Config(ALEMBIC_INI, ini_section="private")
     config.attributes["database_url"] = url
     command.upgrade(config, "head")

@@ -47,6 +47,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-24.04
+    env:
+      # pytest-xdist workers: one per vCPU of the runner (ubuntu-24.04 on a public repository has 4).
+      PYTEST_WORKERS: 4
     services:
       postgres:
         image: postgres:16
@@ -79,9 +82,7 @@ jobs:
       - run: uv run --no-sync --no-build patchright install --with-deps --only-shell chromium
       - name: Create databases and roles
         working-directory: .
-        run: |
-          psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql
-          psql -v ON_ERROR_STOP=1 -h localhost -U postgres -c 'CREATE DATABASE crawlerai_private_test OWNER app'
+        run: psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql
         env:
           PGPASSWORD: postgres
       - name: Alembic upgrade, downgrade, upgrade
@@ -91,10 +92,23 @@ jobs:
           uv run --no-sync --no-build alembic upgrade head
         env:
           CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
+      # A main and a private test database per pytest worker. The main ones are copies of the migrated `crawlerai`
+      # (TEMPLATE), so the workers' upgrade to head finds nothing to do.
+      - name: Create the test databases
+        run: |
+          args=()
+          for ((i = 0; i < PYTEST_WORKERS; i++)); do
+            args+=(-c "CREATE DATABASE crawlerai_gw$i TEMPLATE crawlerai OWNER app")
+            args+=(-c "CREATE DATABASE crawlerai_private_test_gw$i OWNER app")
+          done
+          psql -v ON_ERROR_STOP=1 -q -h localhost -U postgres "${args[@]}"
+        env:
+          PGPASSWORD: postgres
       # tests/db own the database they run against (tests/db/conftest.py); they are skipped only where no test
-      # database URL is set. This job's service is throwaway, so they reuse the migrated database. The private eval
-      # store's tests get a throwaway database of their own, never `crawlerai_eval_private` (C1).
-      - run: uv run --no-sync --no-build pytest
+      # database URL is set. Each xdist worker suffixes the names below with its id (`_gw0`, ...). The private eval
+      # store's tests get throwaway databases of their own, never `crawlerai_eval_private` (C1). `--durations=20`
+      # lists the slowest tests in the log.
+      - run: uv run --no-sync --no-build pytest -n "$PYTEST_WORKERS" --durations=20
         env:
           CRAWLERAI_TEST_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
           CRAWLERAI_TEST_PRIVATE_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai_private_test

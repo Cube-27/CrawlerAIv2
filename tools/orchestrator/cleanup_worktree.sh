@@ -1,6 +1,7 @@
 #!/bin/bash
-# cleanup_worktree.sh WORKTREE BRANCH — after a merge: remove the worktree's throwaway Postgres containers,
-# the worktree (retrying while a closing pane still holds it), and the remote and local branch.
+# cleanup_worktree.sh WORKTREE BRANCH — after a merge: remove the worktree's Postgres containers and its databases in
+# the shared test Postgres, the worktree (retrying while a closing pane still holds it), and the remote and local
+# branch.
 # It first checks that the work is merged, and removes nothing unless no PR of the branch is OPEN and each tip of
 # the branch (local and remote) is the head of a MERGED PR or an ancestor of origin/main. Deleting the remote branch of an open PR makes GitHub close that PR
 # (#128: a failed merge chained with `;`). On refusal, or when GitHub can't be read, it exits 1 with an ERROR on
@@ -45,6 +46,7 @@ require_merged
 for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^crawlerai-($wt|$short)(-|$)"); do
   docker rm -f -v "$c" >/dev/null && echo "removed container $c and its volumes"
 done
+"$(dirname "${BASH_SOURCE[0]}")/test_db.sh" drop "$wt" || echo "warning: could not drop the test databases of $wt" >&2
 for _ in 1 2 3 4 5 6; do git -C "$main" worktree remove --force "$dir" 2>/dev/null && break; sleep 5; done
 git -C "$main" push -q origin --delete "$branch" 2>/dev/null
 git -C "$main" branch -D "$branch" 2>/dev/null

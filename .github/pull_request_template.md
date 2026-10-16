@@ -29,7 +29,7 @@ or acquire/ (C10, INV-19). Otherwise write "Not applicable".
 
 ## Decisions
 
-<!-- Each decision in the docs/DECISIONS.md template's fields (no ID), marked `decided` or `needs-owner`; or "None". -->
+<!-- The ID of each decision the tracker commit logs, with its status (`decided` or `needs-owner`); or "None". -->
 
 ## Checklist
 

@@ -3,8 +3,8 @@
 Agents log the decisions they make while writing specs and implementing them. Owner decisions belong in
 ARCHITECTURE Appendix A; open owner questions belong in OPEN_QUESTIONS.md. What goes here and when to escalate:
 `CLAUDE.md` §4–§5.
-While an orchestrator runs, workers put decisions in their PR body and the implementor copies them into this log in
-its tracker commit before `READY`, under the decision-ID range the orchestrator gave at assignment (`CLAUDE.md` §3).
+While an orchestrator runs, the implementor writes its decisions into this log in its tracker commit, the last commit
+before it opens the PR, under the decision-ID range the orchestrator gave at assignment (`CLAUDE.md` §3).
 
 **Where an entry goes:**
 - A decision that belongs to one spec goes at the end of that spec's file, `docs/decisions/SPEC-NN.md` (on a spec's
@@ -772,3 +772,31 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: See options.
 - Why: SimHash flips a bit only where a vote total was near zero, so it is not a bound (D-0665's evidence); changing §14 is the owner's call. Copied to OPEN_QUESTIONS #30.
 - Reversible: yes — one function and the stored fingerprint format.
+
+### D-0968 — `REBASE` only on a conflict
+- Date: 2026-10-16 · Spec/PR: workflow (owner request, #212) · Status: decided · Supersedes D-0823's "behind `main`" trigger
+- Decision: The orchestrator sends `REBASE`, and an implementor rebases, only when GitHub reports the PR `CONFLICTING` (`gh pr view <n> --json mergeable`; `UNKNOWN` is asked again). A branch only behind `main` merges as it is. Implementors branch from current `main` and check for a conflict with `git merge-tree --write-tree origin/main HEAD` before opening.
+- Alternatives: keep rebasing when behind (the rulesets would then have to require up-to-date branches to make it mean anything).
+- Why: The rulesets don't require an up-to-date branch (`strict` off), and every rebase reran the ~8.5-minute backend job; #197–#210 had 2–6 CI runs each.
+- Reversible: yes — skills and `CLAUDE.md` §3.
+
+### D-0969 — The tracker commit is in the PR from its opening
+- Date: 2026-10-16 · Spec/PR: workflow (owner request, #212) · Status: decided
+- Decision: The implementor's tracker commit (`ACTIVE.md` rows `done (#n)`, follow-ups, decisions-log entries) is the last commit before `gh pr create`; `#n` is the next issue number (`gh api .../issues?state=all&per_page=1`), amended at once if GitHub hands out another. The reviewer reviews the tracker lines. After the verdict the implementor pushes only the Act-on fixes, in one push, adjusting tracker lines in that push; with `MERGE` nothing is pushed and `READY` names the green head. The PR body's `## Decisions` lists the logged IDs instead of repeating the entries.
+- Alternatives: open the PR, then push the tracker commit with the real number (one more CI run); a tracker commit after review (the old flow: one docs-only push, yet the `changes` filter diffs the whole PR, so backend reran).
+- Why: Removes one full CI run per PR and puts the tracker lines under review.
+- Reversible: yes.
+
+### D-0970 — CI runs pytest on 4 xdist workers, each with its own databases
+- Date: 2026-10-16 · Spec/PR: workflow (owner request, #212) · Status: decided
+- Decision: `pytest-xdist` (MIT) in the dev group; the backend job runs `pytest -n 4 --durations=20` (`PYTEST_WORKERS`, one per vCPU of the 4-vCPU runner). `tests/db/conftest.py` suffixes both test database names with `PYTEST_XDIST_WORKER` (`crawlerai_gw0`, ...); CI creates them owned by `app` after its migration round trip, the main ones as copies of the migrated `crawlerai` (`TEMPLATE`), so the workers' upgrade to head is a no-op. A serial `uv run pytest` uses the names as given; `-n` is not in `addopts`.
+- Alternatives: `-n auto` (same count on this runner, less explicit for the DB step); let the fixture create the databases (`app` has no `CREATEDB`, and an admin URL would be a new variable); empty worker databases each migrated by its worker (8 upgrades per run).
+- Why: pytest was 411 s of the ~8.5-minute job (3,838 tests, serial) on every push.
+- Reversible: yes — drop `-n`.
+
+### D-0971 — One shared local test Postgres
+- Date: 2026-10-16 · Spec/PR: workflow (owner request, #212) · Status: decided · Replaces the per-worktree throwaway container
+- Decision: `tools/orchestrator/test_db.sh up|drop [NAME]` keeps one container, `crawlerai-test-pg` (postgres:16, `127.0.0.1:55432`, the roles of `infra/postgres/init.sql`), and gives each worktree `crawlerai_test_<name>` and `..._private`, recreated empty on `up`; `cleanup_worktree.sh` drops them. Local runs are one changed test file at a time, never `pytest -n`, vitest with one worker.
+- Alternatives: keep a container per worktree (one Postgres start and ~100 MB per agent); share the dev compose database (its data must survive).
+- Why: Owner request: agents started a container each, and local runs competed for memory with up to four workers.
+- Reversible: yes.
