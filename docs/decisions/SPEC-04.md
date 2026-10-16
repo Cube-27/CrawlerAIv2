@@ -456,3 +456,38 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep "to" in `range.py` for every page.
 - Why: C4, and period words already work this way (D-0328).
 - Reversible: yes
+
+### D-0920 — Enum text is read by its whole first clause
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 10 (#203) · Status: decided
+- Decision: Text states an enum member only when its first clause (Unicode L, M, Zs, Pd, Pc up to the first other character; a leading digit leaves it empty) equals one of the member's phrases or, for `schema:` enums, the member name in token form (`instock`); another member's phrase later in the text is `Ambiguous` (`vocab.stated_codes`, INV-37). Members stay the shipped transcription of the standard; "available" has no versioned source and declines.
+- Alternatives: D-0782 option (b), the leading token run ("In stock soon" would give `InStock`); a negation word list (C4); reading the fetched schema.org file at normalize time (not fetched in CI).
+- Why: the structural rule that never turns "Not in stock" into `InStock` (C7); replaces D-0882's anywhere match.
+- Reversible: yes
+
+### D-0921 — The `count` field type
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 11 (#203) · Status: decided
+- Decision: A non-negative whole number from a JSON number, a schema.org `QuantitativeValue` with no unit or `unitCode` `C62` (UN/CEFACT Rec. 20 "one"), or the one number in a text read by the page's CLDR locales. Fractions, negatives, ranges, other units and two numbers decline; not a checkable type.
+- Alternatives: `range` with min = max; `text`; accepting any `unitText`.
+- Why: ARCHITECTURE §5.1 adds a type with its own module (C8); units are not guessed (C7).
+- Reversible: yes
+
+### D-0922 — CLDR number reading lives in `normalize.numbers`
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 11 (#203) · Status: decided
+- Decision: Money's locale set, number readings, JSON-number decimal and minus rule moved unchanged to `normalize.numbers`, in the `vocab` layer of the import contract; money and count both use them.
+- Alternatives: count imports money (breaks the independence contract); a second copy (C8).
+- Why: one way to read a number (C8).
+- Reversible: yes
+
+### D-0923 — `commerce_detail` version 4: `stock_quantity`
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 11 (#203) · Status: decided
+- Decision: Optional count `stock_quantity` (`Offer.inventoryLevel`) at the top level and in each `variants` row; required fields, completeness and `record_fingerprint` unchanged. As an Offer field it follows the atomic-offer rule.
+- Alternatives: rows only; a new preset.
+- Why: owner answer to D-0782 (per variant when stated so, else the page's value).
+- Reversible: costly (a later version)
+
+### D-0924 — The frontend lists the `count` type
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 11 (#203) · Status: decided
+- Decision: The regenerated `FieldType` adds `count` to the frontend registries it must appear in (`schemaDocument.ts` label, `field.ts` scalar list); its value renders as a plain number.
+- Alternatives: none; `Record<FieldType, …>` fails the build without it.
+- Why: generated types are the authority (ENGINEERING "Type-system discipline").
+- Reversible: yes

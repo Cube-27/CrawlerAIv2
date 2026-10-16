@@ -55,7 +55,8 @@ Out of scope:
 - Rows from `js_state`, `xhr`, Open Graph, configs, role C or adapters.
 - Top-level variants linked only by `isVariantOf` (§9).
 - A top-level `object` field mapped by sub-field paths (it keeps reading literal JSON keys, SPEC-04 §4.4).
-- Stock quantities (`inventoryLevel`), availability read from page text (D-0782), currency conversion.
+- Currency conversion. Stock quantities (`inventoryLevel`) and availability read from page text are SPEC-04's
+  (rows 10–11, D-0782); version 4 adds `stock_quantity` to each row (§4.7).
 - The labeling screen's row editor and a variants table in the records screen (§9).
 - Any default variant other than the one the URLs name. schema.org has no "default variant" property.
 
@@ -233,6 +234,7 @@ Version 2 plus one optional field. The required fields and `required_groups` are
 | `gtin` | identifier (gtin) | `Product.gtin\|Offer.gtin` |
 | `price` | money | `Offer.price+priceCurrency` |
 | `availability` | enum `schema:ItemAvailability` | `Offer.availability` |
+| `stock_quantity` | count (version 4, D-0782) | `Offer.inventoryLevel` |
 | `url` | url | `Product.url\|Offer.url` |
 | `name` | text | `Product.name\|Offer.name` |
 | `size` | text | `Product.size.name` |
@@ -249,6 +251,10 @@ Version 2 plus one optional field. The required fields and `required_groups` are
   `variesBy` itself is not read: a property it names outside these four reaches the record only through `name`
   (§9).
 - Each sub-field carries a description (SPEC-04 §4.2). `sync_presets` inserts version 3; version 2 rows stay.
+- Version 4 (owner, 2026-10-16, D-0782; ARCHITECTURE Appendix A #39) adds the optional count `stock_quantity`
+  (`Offer.inventoryLevel`) at the top level and in each row, and the row description names it ("…, price,
+  availability and stock quantity"). A row's stock quantity comes from the row's own Offer, as its price and
+  availability do; a variant whose Offer states none has none. Required fields are unchanged.
 
 ### 4.8 Records and API (SPEC-07)
 

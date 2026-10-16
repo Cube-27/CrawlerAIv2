@@ -194,6 +194,7 @@ A **schema** is a row in the database. Code knows about field **types**, never a
 | `date`, `datetime` | ISO 8601 |
 | `location` | {locality, region, country ISO 3166, remote_flag} |
 | `range` | {min, max, currency or unit, period}; covers salary |
+| `count` | non-negative integer, such as a stock quantity (Appendix A #39) |
 | `list<T>`, `object{…}` | nesting, depth ≤ 3 |
 
 Types not in this table are added when a schema needs them, each with its one normalizer (C8).
@@ -240,7 +241,8 @@ Types not in this table are added when a schema needs them, each with its one no
 
 "When shown" fields are optional fields in the preset: `required` can't express a condition.
 `commerce_detail` version 3 adds the optional `variants` list, one row per variant with its sku, gtin, price,
-availability, url, name and distinguishing attributes (Appendix A #37, SPEC-13).
+availability, url, name and distinguishing attributes (Appendix A #37, SPEC-13). Version 4 adds the optional
+`stock_quantity` (count), at the top level and in each variant row (Appendix A #39).
 Optional fields are added when a user needs them (OPEN_QUESTIONS #3). The presets map onto Google Merchant Center
 and Google-for-Jobs `JobPosting` required properties **[verified]**. `apply_url` has no direct schema.org property;
 its mapping is chosen in SPEC-04.
@@ -467,10 +469,11 @@ hint. Never host tables (C7).
 | Type | Source | Declines when |
 |---|---|---|
 | money | Unicode CLDR via Babel **[verified: BSD-3]**; `price-parser` (BSD-3) to locate the number | The symbol maps to several currencies (`$` → USD, CAD, AUD, MXN, ARS, …) and context doesn't settle it. The decimal separator is ambiguous. The value isn't positive. |
-| enum | schema.org enumerations; language-tagged type vocabularies (C4) | No match. Matching is token-level, never by substring order. |
+| enum | schema.org enumerations; language-tagged type vocabularies (C4) | No match. Matching is token-level, never by substring order. Text states a member only when its whole first clause is the member's phrase or name ("Not in stock" declines). |
 | date | ISO 8601; `dateparser` (BSD-3) with the page language | Day and month order is ambiguous for the locale. A relative date arrives without a capture time. |
 | location | GeoNames (CC BY 4.0), ISO 3166 | No match, or several equally likely matches. Remote only from `jobLocationType=TELECOMMUTE` or an explicit remote phrase. |
 | range | schema.org `MonetaryAmount` / `QuantitativeValue`; parsed text | Period or currency unresolved. Min > max. |
+| count | JSON numbers; schema.org `QuantitativeValue` (`inventoryLevel`); the one number in a text, read by CLDR number symbols | A fraction, a negative number, a range, a unit other than one, no number or two numbers in the text. |
 | identifier | GS1 check digit (GTIN-8/12/13/14), ISBN; `sku`/`custom` stay opaque | Checksum fails. |
 | text | Entity and whitespace normalization; trafilatura for long text | Empty, out of length bounds, or a template placeholder (`{{ … }}`). |
 | url | WHATWG URL parsing, absolutization | Unparseable, or not http(s). |
@@ -939,6 +942,7 @@ implementation go in `DECISIONS.md`, not here.
 | 36 | Variants are members (2026-10-15) | A primary entity's `hasVariant` variants are members of it, not candidates for the target, and their Offers are the target's under the atomic-offer rule (§8.2 rule 3, §10). Step A of the variants proposal; variant-matrix handling itself (§22) is admitted separately and specified in SPEC-13. |
 | 37 | Variant matrix (2026-10-15) | Variant-matrix handling (§22) is admitted now, ahead of labels. `commerce_detail` version 3 adds an optional `variants` list from structured data; sub-fields of a `list` of `object` map by their own `schema_org` paths; the single price, availability, sku and gtin follow the variant the page URL names, else the all-agree rule. No platform JSON adapter. Variant labels and their scoring are specified, not built (SPEC-13). |
 | 38 | Playground UI (2026-10-15) | The UI is one playground: a mode switch (Scrape, Batch, Crawl, Map, Extract), a command bar with the primary action at the top, settings in an inline options panel with Advanced collapsed, and output on the same page. No pop-up windows for runs. Clean JSON is the main output: schema fields only, metadata only when asked for. Batch and crawl show a running table with each page's JSON in a side drawer, and plain-language live activity. The UI never asks for an API key; the server that serves it attaches one (§18). `/` opens the playground. SPEC-14. |
+| 39 | Availability and stock quantity (2026-10-16) | Availability and stock quantity are separate fields. Availability stated in words or codes ("in stock", "instock", "In stock (5 available)") normalizes to the schema.org `ItemAvailability` member, the one availability convention in the repo; the stock quantity is its own `count` field (5). `commerce_detail` version 4 adds the optional `stock_quantity`; variants carry availability and stock quantity when the page states them per variant, otherwise the page's values publish. D-0782. |
 
 ---
 
@@ -1023,3 +1027,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 15 | 2026-10-15 | **Variants are members** (owner approval, variants proposal step A; Appendix A #36). §8.2 rule 3: `hasVariant` variants are excluded from target candidates and their Offers are owned by the target; §10 atomic offers count them. SPEC-05 §4.6 and §4.8 updated. |
 | 16 | 2026-10-15 | **Variant matrix** (owner admission; Appendix A #37). §5.2: `\|` alternatives in `schema_org`, row-mapped `list` of `object` fields with `key`. §5.3: `commerce_detail` version 3 adds optional `variants`. §10: selected variant by URL identity, variant fill, per-row resolution. §22: the candidate is marked admitted. SPEC-13 added; SPEC-04 and SPEC-05 point to it. INV-33–INV-36. |
 | 17 | 2026-10-15 | **Playground UI and server-side key** (owner; Appendix A #38). §18: the UI never holds an API key; the server that serves it attaches one. §12.2: `json_values` record export. SPEC-14 added; SPEC-12 points to it for the Connect screen, job dialogs, Overview and Scrape layout. |
+| 18 | 2026-10-16 | **Availability and stock quantity** (owner approval, D-0782; Appendix A #39). §5.1: a `count` field type. §5.3: `commerce_detail` version 4 adds optional `stock_quantity`, also per variant. §9: a `count` row; enum text states a member only through its whole first clause. SPEC-04 and SPEC-13 updated. |

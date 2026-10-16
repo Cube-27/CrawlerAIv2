@@ -55,7 +55,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
 | D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
 | D-0355 | Derived `url` values (canonical link, final URL) have no provenance under INV-22 | needs-owner |
-| D-0782 | Investigate: variants, availability and stock | needs-owner |
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner |
 | D-0810 | Additional fields: how typed field names become an extraction | needs-owner |
@@ -673,11 +672,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0782 — Investigate: variants, availability and stock
-- Date: 2026-10-15 · Spec/PR: accuracy Q3 (#167) · Status: needs-owner (area to investigate, not a decision)
+- Date: 2026-10-15 · Spec/PR: accuracy Q3 (#167) · Status: confirmed (2026-10-16)
 - Decision: Question: how should availability and stock stated in words ("In stock (N available)") be read, given they belong to the selected variant? Options from the classification: (a) `schema:` enums also match their members' de-camel-cased names as a token run, derived from the pinned schema.org file; (b) as (a), but only as the leading token run of the text; (c) keep exact matching. Owner direction: availability and stock belong with **variants**, which are not built (ARCHITECTURE §22, D-0440); variants change the architecture and are hard to get right, so enum matching does not change now.
 - Alternatives: See options.
 - Why: Evidence: the UAT re-run declined availability as `invalid` on every page without structured availability (13/13 on one site, 13/19 on another); a repro showed the `type:availability` vocabulary maps "Not in stock" to `InStock`, a wrong value. A Shopify baseline (10 stores, 49 variant pages) found 44/49 pages carrying several offers or `hasVariant`. Blocked: nothing; availability from text stays declined.
 - Reversible: yes
+- Owner answer: 2026-10-16, "build it": availability and stock quantity are separate fields; availability in words or codes ("in stock", "instock", "available", "In stock (5 available)") normalizes to schema.org `ItemAvailability`, one convention in the repo; stock quantity is its own field (5); variants carry them when the page states them per variant, otherwise publish what the page shows. Built in #203 (D-0920–D-0924, ARCHITECTURE Appendix A #39).
 
 ### D-0783 — Investigate: approving a learned config before it becomes a reusable recipe
 - Date: 2026-10-15 · Spec/PR: accuracy Q4 (#167) · Status: needs-owner (area to investigate, not a decision)

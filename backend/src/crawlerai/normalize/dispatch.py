@@ -11,7 +11,7 @@ from functools import partial
 
 from pydantic import JsonValue
 
-from crawlerai.normalize import date, enum, identifier, location, money, text, url
+from crawlerai.normalize import count, date, enum, identifier, location, money, text, url
 from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import (
     Ambiguous,
@@ -50,6 +50,7 @@ _TYPES: dict[FieldType, tuple[Normalizer, EqualityKey]] = {
     FieldType.DATE: (date.normalize, date.key),
     FieldType.DATETIME: (date.normalize, date.key),
     FieldType.RANGE: (partial(range_.normalize, money=_money), range_.key),
+    FieldType.COUNT: (count.normalize, count.key),
 }
 _COMPARED: dict[FieldType, tuple[Normalizer, Equality]] = {FieldType.LOCATION: (location.normalize, location.equal)}
 

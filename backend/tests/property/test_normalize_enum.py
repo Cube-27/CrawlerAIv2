@@ -3,6 +3,7 @@ name, language-tagged type vocabularies by token sequence (never substring order
 members, and empty input (INV-06)."""
 
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,6 +40,8 @@ _members = st.sampled_from(MEMBERS)
 _whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 # Words that are no availability phrase and hold no part of one, so they cannot complete or split an entry.
 _filler = st.lists(st.sampled_from(["the", "item", "is", "now", "very", "red", "size"]), max_size=4).map(" ".join)
+# What may follow a member phrase without joining its first clause: punctuation, a digit, a line break.
+_rest = st.sampled_from(["", ".", " (5 available)", "\nShips today", ": 3", " 7", "!"])
 
 
 def _phrase(member: str) -> str:
@@ -61,22 +64,59 @@ def test_a_json_ld_node_reference_to_a_member_matches(member: str) -> None:
 
 @pytest.mark.parametrize(
     "raw",
-    ["https://schema.org/Instock", "instock", "https://schema.org/Product", "https://example.test/InStock", "red"],
+    ["https://schema.org/Instock", "https://schema.org/Product", "https://example.test/InStock", "red", "available"],
 )
 def test_a_name_that_is_no_member_is_invalid(raw: str) -> None:
     assert enum.normalize(raw, SCHEMA, CTX) == Invalid("not_a_member")
 
 
-@given(_members, _filler, _filler)
-def test_text_stating_a_member_matches_through_the_vocabulary_of_its_members(
-    member: str, before: str, after: str
+@given(_members, _whitespace, _rest)
+def test_text_opening_with_a_member_phrase_matches_through_the_vocabulary_of_its_members(
+    member: str, pad: str, rest: str
 ) -> None:
-    # Page text ("In stock") names no member, but `type:availability` maps phrases to ItemAvailability members.
-    assert enum.normalize(f"{before} {_phrase(member)} {after}", SCHEMA, CTX) == Ok(member)
+    # Page text ("In stock") names no member, but `type:availability` maps phrases to ItemAvailability members. The
+    # phrase is the text's whole first clause; what follows a punctuation mark, a digit or a line break is not read.
+    assert enum.normalize(f"{pad}{_phrase(member).title()}{rest}", SCHEMA, CTX) == Ok(member)
+
+
+@given(_members, st.sampled_from([str, str.upper, str.lower]))
+def test_a_member_name_written_in_any_case_matches(member: str, case: Callable[[str], str]) -> None:
+    # schema.org member names, case folded, as the Open Graph `product:availability` values write them ("instock").
+    assert enum.normalize(case(member), SCHEMA, CTX) == Ok(member)
 
 
 def test_text_stating_two_members_is_ambiguous() -> None:
     assert enum.normalize("in stock, sold out", SCHEMA, CTX) == Ambiguous("several_members", ("InStock", "SoldOut"))
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Not in stock",
+        "not in stock",
+        "Currently in stock",
+        "In stock soon",
+        "Out of stock online",
+        "5 in stock",
+        "0 in stock",
+        "Available",
+        "in-stock-ish",
+    ],
+)
+def test_a_phrase_that_does_not_make_up_the_first_clause_is_no_member(raw: str) -> None:
+    # A word before or inside the clause qualifies or negates the phrase; no word list can tell which, so it declines.
+    assert enum.normalize(raw, SCHEMA, CTX) == Invalid("not_a_member")
+    assert enum.normalize(raw, TYPE, CTX) == Invalid("no_match")
+
+
+@given(_members, _members, _filler)
+def test_text_stating_another_member_after_the_first_clause_is_ambiguous(a: str, b: str, middle: str) -> None:
+    assume(a != b)
+    assume(not set(_phrase(a).split()) & set(_phrase(b).split()))
+
+    result = enum.normalize(f"{_phrase(a)}. {middle} {_phrase(b)}", SCHEMA, CTX)
+
+    assert result == Ambiguous("several_members", tuple(sorted((a, b))))
 
 
 def test_text_on_a_page_in_a_language_without_phrases_is_no_member() -> None:
@@ -97,15 +137,15 @@ def test_a_schema_value_that_is_neither_a_string_nor_a_node_reference_is_invalid
 # Type vocabularies
 
 
-@given(_members, _filler, _filler)
-def test_each_availability_phrase_matches_its_member_inside_other_words(member: str, before: str, after: str) -> None:
-    raw = f"{before} {_phrase(member).upper()} {after}"
+@given(_members, _rest)
+def test_each_availability_phrase_matches_its_member_as_the_first_clause(member: str, rest: str) -> None:
+    raw = f"{_phrase(member).upper()}{rest}"
 
     assert enum.normalize(raw, TYPE, CTX) == Ok(member)
 
 
-@given(_members, st.sampled_from(["-", "_", "  ", "\n", ". ", "/", "3"]))
-def test_any_run_of_non_letters_separates_tokens(member: str, separator: str) -> None:
+@given(_members, st.sampled_from(["-", "_", "  ", "\u00a0", "\u2013"]))
+def test_spaces_dashes_and_connectors_separate_the_tokens_of_one_clause(member: str, separator: str) -> None:
     raw = separator.join(_phrase(member).split())
 
     assert enum.normalize(raw, TYPE, CTX) == Ok(member)
@@ -124,14 +164,14 @@ def test_two_members_in_one_input_are_ambiguous(a: str, b: str, middle: str) -> 
     assume(a != b)
     assume(not set(_phrase(a).split()) & set(_phrase(b).split()))
 
-    result = enum.normalize(f"{_phrase(a)} {middle} {_phrase(b)}", TYPE, CTX)
+    result = enum.normalize(f"{_phrase(a)}, {middle} {_phrase(b)}", TYPE, CTX)
 
     assert result == Ambiguous("several_members", tuple(sorted((a, b))))
 
 
 @given(_members, _filler)
 def test_a_member_repeated_is_one_member(member: str, middle: str) -> None:
-    assert enum.normalize(f"{_phrase(member)} {middle} {_phrase(member)}", TYPE, CTX) == Ok(member)
+    assert enum.normalize(f"{_phrase(member)}; {middle} {_phrase(member)}", TYPE, CTX) == Ok(member)
 
 
 @given(_whitespace)

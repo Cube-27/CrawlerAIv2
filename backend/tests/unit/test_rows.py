@@ -1,6 +1,6 @@
 """Row-mapped fields on a detail page (SPEC-13 §4.3 to §4.5, INV-33 to INV-35): each structured-data shape of a
 variant set publishes one row per variant, matched by key and never by position, with per-sub-field outcomes. Pages
-are synthetic (`example.test`) and the schema is preset `commerce_detail` version 3 (C3, C9)."""
+are synthetic (`example.test`) and the schema is preset `commerce_detail` version 4 (C3, C9)."""
 
 import asyncio
 import json
@@ -116,6 +116,23 @@ def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
     price = outcome.items[0].fields["price"]
     assert (price.evidence, price.source_kind) == ("structured", "jsonld")
     assert outcome.locator == "jsonld:0:$['hasVariant'][0]"
+
+
+def test_each_variant_carries_the_stock_quantity_its_offer_states() -> None:
+    # D-0782: schema.org `Offer.inventoryLevel` is a QuantitativeValue; a variant without one has no stock quantity.
+    first = _variant("W-11", "10.00")
+    first["offers"]["inventoryLevel"] = {"@type": "QuantitativeValue", "value": 5}
+    second = _variant("W-12", "12.00")
+    second["offers"] |= {"inventoryLevel": 0, "availability": "https://schema.org/OutOfStock"}
+    third = _variant("W-13", "14.00")
+
+    rows = _rows(_variants(_group(first, second, third)))
+
+    assert [(row["sku"], row["availability"], row.get("stock_quantity")) for row in rows] == [
+        (_sku("W-11"), "InStock", 5),
+        (_sku("W-12"), "OutOfStock", 0),
+        (_sku("W-13"), "InStock", None),
+    ]
 
 
 def test_a_product_with_one_offer_per_variant_has_a_row_per_offer() -> None:

@@ -2,17 +2,18 @@
 
 - `schema:<Enumeration>`: the input is a string or a JSON-LD node reference (`{"@id": …}`) naming a member by IRI
   (`https://schema.org/InStock`, `http://schema.org/InStock`), compact IRI (`schema:InStock`) or name (`InStock`).
-  The value is the member name. Other text, not an IRI, is matched as the `type:` path does against each type
-  vocabulary whose codes are all members of the enumeration (`type:availability` for `ItemAvailability`), so a page
-  that states "In stock" in its text gives `InStock`.
-- `type:<name>`: the input is a string; a phrase of the vocabulary matches when its tokens are a contiguous run of
-  the input's tokens (`crawlerai.normalize.vocab`). The value is the phrase's code.
+  The value is the member name. Other text, not an IRI, is read as the `type:` path reads it, against each type
+  vocabulary whose codes are all members of the enumeration (`type:availability` for `ItemAvailability`), and a
+  member name in any case also counts (`instock`), so a page that states "In stock (5 available)" gives `InStock`.
+- `type:<name>`: the input is a string; it states a code when the tokens of its first clause are exactly one of the
+  code's phrases (`crawlerai.normalize.vocab`), and no other code's phrase appears later in it. "Not in stock" states
+  nothing (D-0782).
 
 No match is `Invalid`; two members in one input are `Ambiguous`.
 """
 
 import re
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
 
 from pydantic import JsonValue
 
@@ -62,11 +63,11 @@ def _schema_member(raw: Raw, enumeration: str, ctx: Context) -> NormalizeResult:
 
 
 def _stated_member(text: str, members: frozenset[str], ctx: Context) -> NormalizeResult:
-    """The member that `text` states through the type vocabularies whose codes are all `members`: their phrases
-    name members of this enumeration and nothing else (the structural property the match rests on)."""
-    words = vocab.tokens(text)
-    found = [vocab.find_codes(v, words, ctx) for v in vocab.type_vocabularies_within(members)]
-    return _one_code(frozenset().union(*(c for c in found if c is not None)), "not_a_member")
+    """The member that `text` states through the type vocabularies whose codes are all `members` (their phrases name
+    members of this enumeration and nothing else, the structural property the match rests on), or by a member name
+    in any case: `instock`, as Open Graph `product:availability` writes it."""
+    entries = [e for v in vocab.type_vocabularies_within(members) for e in _page_entries(v, ctx)]
+    return _one_code(vocab.stated_codes(text, [*entries, vocab.name_entries(members)]), "not_a_member")
 
 
 def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
@@ -77,13 +78,16 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
         return Invalid("not_a_string")
     if has_surrogate(raw):
         return Invalid("surrogate")
-    words = vocab.tokens(raw)
-    if not words:
+    if not vocab.tokens(raw):
         return Invalid("empty")
-    codes = vocab.find_codes(by_language, words, ctx)
-    if codes is None:
+    entries = _page_entries(by_language, ctx)
+    if not entries:
         return Invalid("no_vocabulary_for_language")
-    return _one_code(codes, "no_match")
+    return _one_code(vocab.stated_codes(raw, entries), "no_match")
+
+
+def _page_entries(by_language: Mapping[str, vocab.Entries], ctx: Context) -> list[vocab.Entries]:
+    return vocab.entries_for(by_language, vocab.context_languages(ctx))
 
 
 def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
