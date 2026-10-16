@@ -62,7 +62,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.storage.base import ObjectStore
 
 log = logging.getLogger(__name__)
@@ -71,6 +71,8 @@ log = logging.getLogger(__name__)
 SAMPLE_PAGES: Final = 5
 LEARNING_STARTED: Final = "learning_started"
 LEARNING_FINISHED: Final = "learning_finished"
+# The reason a run ends with when its schema was edited while it ran (SPEC-04 §4.1).
+SCHEMA_EDITED: Final = "schema_edited"
 # A run makes a few role A calls, each at most `llm.client.TIMEOUT_S["strong"]` per provider, plus a retry; a run still
 # `running` an hour after it started has lost its process.
 LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
@@ -301,6 +303,8 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
     job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == run.job_id))).one()
     if job.status != "running":  # `expire_learn_runs` gave the run up and ended it
         return Learned(None, EXPIRED)
+    if await _schema_edited(conn, run):
+        return await _edited(conn, run, validated.report)
     if job.cancel_requested:
         return await _fail(conn, run, "cancelled", validated.report, status="cancelled")
     if validated.ir is None:
@@ -324,6 +328,19 @@ async def _operator_since(conn: AsyncConnection, run: _Run) -> bool:
     return (await conn.execute(query)).scalar_one_or_none() == "operator"
 
 
+async def _schema_edited(conn: AsyncConnection, run: _Run) -> bool:
+    """Whether the schema was edited since the run started: what it learned is for another document, and the edit
+    already sent the state back to `cold` (`progressive.relearn_schema`), where a later run may now be in flight."""
+    current = await registry.get_by_id(conn, run.key.schema_id)
+    return document_digest(current) != document_digest(run.schema)
+
+
+async def _edited(conn: AsyncConnection, run: _Run, report: ValidationReport | None) -> Learned:
+    """End a run its schema's edit overtook, leaving the state, and any run started since, as they are."""
+    await _end(conn, run.job_id, "failed", config_id=None, reason=SCHEMA_EDITED, report=report)
+    return Learned(None, SCHEMA_EDITED)
+
+
 async def _fail(
     conn: AsyncConnection,
     run: _Run,
@@ -332,6 +349,9 @@ async def _fail(
     *,
     status: JobStatus = "failed",
 ) -> Learned:
+    await lock_state(conn, run.key)
+    if await _schema_edited(conn, run):
+        return await _edited(conn, run, report)
     await learning_failed(conn, run.key)
     await _end(conn, run.job_id, status, config_id=None, reason=reason, report=report)
     return Learned(None, reason)

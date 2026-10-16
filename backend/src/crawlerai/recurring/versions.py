@@ -23,10 +23,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Record, RecordId, SiteId, TaskRecord, UrlTaskId
-from crawlerai.recurring.record_fp import changed_fields, document_digest, record_fingerprint
+from crawlerai.recurring.record_fp import changed_fields, record_fingerprint
 from crawlerai.resolve.records import FieldMeta, RecordDraft
 from crawlerai.resolve.task import RecordSource, StoredRecord
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import SchemaDef, document_digest
 
 __all__ = ["link_records", "store_records"]
 

@@ -37,9 +37,8 @@ from crawlerai.db.models import (
     WebhookDelivery,
 )
 from crawlerai.db.queue import cancel_task, claim_tasks, complete_task, fail_task
-from crawlerai.recurring.record_fp import document_digest
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument, document_digest
 from crawlerai.services import events, jobs
 from crawlerai.services.events import StreamEvent
 

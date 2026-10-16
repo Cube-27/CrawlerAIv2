@@ -23,11 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.config_ir.exporters.records import RecordFormat
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Extraction, Job, JobId, Project, Record, SchemaDef, Site, UrlTask
-from crawlerai.recurring.record_fp import document_digest
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.records import FieldMeta
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument, document_digest
 from crawlerai.schemas.types import SchemaDef as Schema
 from crawlerai.services import jobs
 from crawlerai.services.jobs import ExportPage, ResultsQuery

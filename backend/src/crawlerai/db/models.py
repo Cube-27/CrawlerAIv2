@@ -514,7 +514,7 @@ class Record(Base):
     changed_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     fingerprint: Mapped[str | None] = mapped_column(Text)
-    # The digest of the schema document the record was extracted with (`recurring.record_fp.document_digest`): a
+    # The digest of the schema document the record was extracted with (`schemas.types.document_digest`): a
     # schema is edited in place (ARCHITECTURE §5.2), so a record follows the current document only when it is equal.
     schema_digest: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()

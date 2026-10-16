@@ -4,6 +4,8 @@ A schema is data, so these models are the boundary every schema crosses, whether
 API or a role S draft: a document that validates here is one the normalizers and the resolver can run.
 """
 
+import hashlib
+import json
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
@@ -182,6 +184,15 @@ class SchemaDef(SchemaDocument):
     id: SchemaId
     origin: SchemaOrigin
     status: SchemaStatus
+
+
+def document_digest(schema: SchemaDocument) -> str:
+    """sha256, hex, of the schema's document as canonical JSON (RFC 8259 text, sorted keys, no insignificant
+    whitespace): what a record was extracted, or a config learned, with. A schema is edited in place (ARCHITECTURE
+    §5.2), so equal digests are the same document."""
+    document = schema.model_dump(mode="json", include=set(SchemaDocument.model_fields), exclude_none=True)
+    canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 class SchemaChanges(_Model):

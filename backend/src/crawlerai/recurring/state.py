@@ -18,10 +18,9 @@ from crawlerai.db.models import (
     UrlState,
 )
 from crawlerai.recurring.conditional import Unchanged, received
-from crawlerai.recurring.record_fp import document_digest
 from crawlerai.recurring.simhash import hamming
 from crawlerai.resolve.records import entity_key
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import SchemaDef, document_digest
 
 __all__ = ["UNCHANGED_BITS", "record_content", "record_fetch", "standing_record", "stored_validators"]
 

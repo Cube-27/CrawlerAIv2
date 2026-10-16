@@ -45,10 +45,9 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.db.queue import complete_task, insert_claimed
-from crawlerai.recurring.record_fp import document_digest
 from crawlerai.recurring.versions import link_records
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import jobs
 from crawlerai.services.jobs import (
     ExportPage,
