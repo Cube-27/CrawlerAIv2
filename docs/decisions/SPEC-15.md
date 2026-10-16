@@ -36,7 +36,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-1080 — A variant's availability from its two documented booleans
-- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5, PR 2 (#219) · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5, PR 2 (#219) · Status: decided; superseded by D-1118 (product pages take the page path)
 - Context: `ProductVariant` states `availableForSale` and `currentlyNotInStock` ("out of stock but still available for purchase (used for backorders)").
 - Decision: false → `OutOfStock`; true and `currentlyNotInStock` true → `BackOrder`; true and false → `InStock`; anything else states nothing.
 - Alternatives: `InStock` for every purchasable variant.
@@ -68,7 +68,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-1084 — `CRAWLERAI_ADAPTERS` names the adapters that run; adapter requests are polite
-- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.8, PR 3 (#219) · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.8, PR 3 (#219) · Status: decided; superseded in part by D-1119 (adapters on by default)
 - Context: Adapters were never wired into scrape or the worker, and C6 requires measurement before an adapter is active.
 - Decision: A comma-separated setting, empty by default (none run); an unknown or repeated name is refused at startup. Scrape and the worker's page step send adapter requests through `services/fetching.adapter_send`: the endpoint host's robots.txt, its rate, and the first request on the caller's admitted turn.
 - Alternatives: a per-site flag in the database.
@@ -76,7 +76,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-1085 — The placeholder variant title is no name
-- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5, PR 2 (#219) · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5, PR 2 (#219) · Status: decided; superseded by D-1118 (product pages take the page path)
 - Context: A product without options has one variant titled `Default Title`, documented by the platform as the placeholder.
 - Decision: That variant has no `name`.
 - Alternatives: publish it as the variant's name.
@@ -124,7 +124,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-1113 — A storefront product's `vendor` is its schema.org `brand`
-- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5 (#221); supersedes the "Brand" out-of-scope line of SPEC-15 §2 · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5 (#221); supersedes the "Brand" out-of-scope line of SPEC-15 §2 · Status: decided; superseded by D-1118 (product pages take the page path)
 - Context: Round-3 eval: brand lost on 4/9 detail pages. The Help Center describes Vendor as "The manufacturer, wholesaler, or other vendor for the product"; the platform's Liquid `structured_data` filter, its own schema.org output, gives the example shop's vendor as the product's brand.
 - Decision: `ProductGroup.brand` ← `vendor` on detail answers.
 - Alternatives: leave brand to the page (the generic path reads the same value from the theme's JSON-LD); `manufacturer`.
@@ -140,7 +140,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-1115 — `Shape.every`: a list field reads every value, other fields the stated main one
-- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.4, §4.5 (#221) · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.4, §4.5 (#221) · Status: decided; superseded by D-1118 (product pages take the page path)
 - Context: Mapping every image to `image` made `image_url` a conflict (several values of one entity, D-0944); SPEC-15 §9 kept the featured image only.
 - Decision: `Shape.every` names, for a property whose `properties` members hold the platform's stated main value, the members holding all its values. Schema.org nodes gain `every_value(prop)` (JSON-LD and microdata: `values`); `select` reads it for a list field. Shopify: `image` ← `featuredImage.url`, `every` `image` ← `images(first: 250)` in shop order.
 - Alternatives: a first-value-is-main rule for every source (JSON-LD arrays are unordered, JSON-LD 1.1 §4.3.1).
@@ -148,7 +148,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-1116 — Top-level sku and gtin of a multi-variant product stay unpublished
-- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5 (#221) · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5 (#221) · Status: decided; superseded by D-1118 (product pages take the page path)
 - Context: Round-3 eval: sku and gtin lost on one page. The variants' `sku` and `barcode` were already mapped; the page's JSON-LD stated one variant's sku at the top level, which the adapter does not choose (no default variant, Appendix A #44, D-1057).
 - Decision: No change: each variant row carries its sku and gtin; a barcode is a gtin only with a valid GS1 check digit (the gtin normalizer declines otherwise; replay test added).
 - Alternatives: fill the top level from the first variant (a default variant).
@@ -161,4 +161,26 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Decision: Listings: generic 0 rows on 5/5; adapter 509 rows, 509 with a URL, 352 with a price (none on the two multi-currency shops, by D-1114). Detail, one-currency shops (9 pages): brand agrees 9/9, price agrees 6/6 (3 pages neither), url 8/9; adapter-only product_id 9, gtin 2; generic-only sku 6 (a theme's default variant), condition 6, rating 3, review count 3; additional images: adapter more on 4. Detail, multi-currency shops (6 pages): `not_served`, so the page path's result. The adapter stays off by default; a listing-only default is the owner's call (recommendation in the PR).
 - Alternatives: none.
 - Why: C6 evidence for the changed adapter.
+- Reversible: yes
+
+### D-1118 — Shopify product pages take the page path
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.2, §4.5 (#224) · Status: decided
+- Context: Owner: adapters on by default, but turning Shopify on must not lose the fields only a product page states (D-1117: default-variant sku, condition, rating, review count); preferably the adapter's candidates join the page's collectors, else detail stays on the page path.
+- Decision: The adapter detects collection pages only; a product page is fetched and read as a page. The product query, its shapes, the availability table and `Shape.stated`/`Shape.every` (used only by them) are removed.
+- Alternatives: join the answer to the page's collectors (a capture holding both bodies, two requests per product page, and cross-source conflicts on price, sku and the main entity unmeasured; open issue in SPEC-15 §9); keep the detail code unused.
+- Why: The simplest design that loses nothing: the page path is what a product page got before activation.
+- Reversible: yes (git history holds the detail shapes)
+
+### D-1119 — Every adapter runs unless `CRAWLERAI_DISABLED_ADAPTERS` names it
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.8 (#224) · Status: decided; supersedes D-1084's "empty by default"
+- Decision: `CRAWLERAI_ADAPTERS` becomes `CRAWLERAI_DISABLED_ADAPTERS`, a comma-separated opt-out list, empty by default; an unknown or repeated name is refused at startup.
+- Alternatives: keep `CRAWLERAI_ADAPTERS` with empty meaning all (no way to disable every adapter, and an empty value would change meaning).
+- Why: Owner: adapters on by default; a list to disable says what it does.
+- Reversible: yes
+
+### D-1120 — A collection URL with a query is served when the page's canonical drops only the query
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.2 (#224) · Status: decided
+- Decision: In `acquire`, a page no adapter detected, fetched `ok`, whose URL has a query, is served by the adapter that detects its URL without the query when the page's first `link rel=canonical` (resolved against the document base URL) is that URL (same scheme, host, port, path, no query). The adapter's request waits for `admit_next`; its `ok` answer is kept, recorded under the canonical URL, with every attempt listed; otherwise the page is kept.
+- Alternatives: a list of tracking parameter names (C4); detecting any query (a filtered or later page would get the first page's rows).
+- Why: RFC 6596: the page names the URL without the query as its own, so the dropped parameters do not identify it. Costs one page request first, which the fallback path made anyway.
 - Reversible: yes

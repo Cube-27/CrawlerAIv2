@@ -53,7 +53,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
-| D-1024 | Listing rows without structured data take no item URL | needs-owner |
 
 ---
 
@@ -873,7 +872,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-1024 — Listing rows without structured data take no item URL
-- Date: 2026-10-16 · Spec/PR: reference eval round 2 (#217) · Status: needs-owner
+- Date: 2026-10-16 · Spec/PR: reference eval round 2 (#217) · Status: confirmed (owner 2026-10-16: option (a); D-1122)
 - Question: Role C reads the cleaned text, which holds no link targets, so its listing rows carry no `url`: in round 2, 13 of the 15 listing pages with rows had no row URL (the 2 with URLs came from JSON-LD `ItemList`). The repeated item blocks `acquire.items` finds (#213, D-0993) hold each item's own link. Taking a row's URL from them is extraction from repeated structure, which ARCHITECTURE §22 lists as not admitted (C13), and §8.6 names only structured data and role C as row sources.
 - Options: (a) admit repeated structure for row URLs only: a role C row whose grounded title is the visible text of exactly one repeated item block takes that block's link (its own target, HTML Standard §4.6) as a `dom` candidate; (b) give role C the link targets (anchors marked in its input text) and ground a URL claim against the page's links (changes SPEC-05 §4.4's cleaned text); (c) leave rows without URLs until labels measure it.
 - Recommendation: (a): it uses the structure the engine already finds for map and crawl, publishes only a link the page attaches to that item, and declines when the title matches no block or several.
@@ -892,4 +891,19 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Decision: The claim form is `{shown: bool, value, start, end}`, `shown` first; the prompt has the model decide `shown` field by field. A claim gives a candidate only when `shown` is true and the value is not empty. Effort stays `low`.
 - Alternatives: `medium` effort (same 68 values, 3x output tokens, max 3545 of the 4096 cap); a nullable value (a union, outside both providers' subsets); unchanged.
 - Why: The empty span was every field's easiest valid claim. Live probes, `claude-haiku-5-5`, six eval pages' recorded gap requests (5 to 17 fields), 3 runs each: grounded values 55 (old) vs 68 (flag); pages whose count varied across runs 5 vs 1; mean output tokens 687 vs 718. The shipped prompt measured 67, 2 pages varying, 645 tokens. A 55-field request is accepted (D-1008). No all-empty reply in 72 calls, so the round-3 all-empty page is not reproduced from its captures.
+- Reversible: yes
+
+### D-1121 — No LLM call cap by default; a project-level cap for requests without a budget
+- Date: 2026-10-16 · Spec/PR: owner answers (#224) · Status: decided
+- Context: Owner: "there is no cap, but we can put a setting in settings to allow the user to put a cap". Scrape and extract defaulted `budget.llm_calls` to 10; batch and crawl had none (D-1006, D-1044).
+- Decision: No request kind has a default budget (`budget` is optional; `budget.llm_calls` is required inside it). `project.llm_call_cap` (nullable, baseline migration) bounds every job whose request sets no `budget.llm_calls`, crawl included; `db.usage.budget_remaining` reads it when the job checks, so a change applies to running jobs. `GET/PATCH /v1/project/settings`; Settings shows "LLM call limit per run"; the playground's empty limit means the project setting.
+- Alternatives: copy the cap into `job.request` at submission (a snapshot per job; four call sites and the recurring and learning jobs).
+- Why: One place covers every job kind; the job's own budget still wins.
+- Reversible: yes
+
+### D-1122 — A role C listing row takes the item URL of its one repeated item block
+- Date: 2026-10-16 · Spec/PR: ARCHITECTURE §8.6, D-1024 option (a) (#224) · Status: decided
+- Decision: `collect.item_links.row_links`: a role C row whose grounded text values (its `text` fields' spans, white space dropped) all lie in exactly one block of `acquire.items.item_blocks`, a block no other row is in, takes that block's link as a `dom` candidate for each row field of type `url` whose `schema_org` path is `<Type>.url`, when the block's hyperlinks lead to exactly one document other than the page (`canonical_url`). Otherwise no candidate.
+- Alternatives: the title field only (needs a list of title properties, `name`/`title`); the block's first link (a brand or review link in a card would win).
+- Why: The owner's option (a), read conservatively: every value role C grounded must sit in the block, and a card linking to two documents says nothing about which is the item's.
 - Reversible: yes
