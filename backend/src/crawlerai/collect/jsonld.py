@@ -1,6 +1,7 @@
 """The JSON-LD collector (SPEC-05 §4.5, ARCHITECTURE §8.1): schema.org nodes in `application/ld+json` blocks.
 
-Each block is parsed as JSON (an invalid block is skipped with a diagnostic, never repaired). Every JSON object in it
+Each block is parsed as JSON, accepting raw control characters inside strings (RFC 8259 §9; `json_doc.parse`); a
+block that is still invalid is skipped with a diagnostic, never repaired. Every JSON object in it
 is a node; `@graph` and nesting need no special case, since the walk visits every object in document order. A node
 whose `@type` is a schema.org type in the vocabulary is an entity. A node reference (an object holding only `@id`,
 JSON-LD 1.1 §9.5) stands for the node defined with that `@id` anywhere on the page.
@@ -291,7 +292,7 @@ def blocks(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[int, Json
     """Each `application/ld+json` block's JSON with its index; an invalid block is skipped with a diagnostic."""
     for index, script in enumerate(s for s in page.scripts if s.type == MEDIA_TYPE):
         try:
-            yield index, parse(script.text)
+            yield index, parse(script.text, lenient=True)
         except ValueError as e:
             diagnostics.append(f"jsonld:{index}: invalid JSON ({e})")
 
