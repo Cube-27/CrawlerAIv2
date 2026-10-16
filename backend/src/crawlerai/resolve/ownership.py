@@ -67,12 +67,10 @@ class EntityGraph:
         holder = self.entities[owner.parent]
         return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)
 
-    def holders(self, target: Entity) -> tuple[Entity, ...]:
-        """The target's variant holders (SPEC-13 §4.6): its `hasVariant` members and the Offers directly under it,
-        an AggregateOffer excepted."""
-        return tuple(
-            e for e in self.entities.values() if e.parent == target.id and (e.via == VARIANT or self._single_offer(e))
-        )
+    def offers(self, target: Entity) -> tuple[Entity, ...]:
+        """The Offers directly under the target, an AggregateOffer excepted: it summarizes several offers, not an offer
+        of one item (SPEC-13 §4.3)."""
+        return tuple(e for e in self.entities.values() if e.parent == target.id and self._single_offer(e))
 
     def variants(self, target: Entity) -> tuple[Entity, ...]:
         """The target's `hasVariant` members."""
