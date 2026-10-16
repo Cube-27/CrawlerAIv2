@@ -140,7 +140,9 @@ an empty result with a diagnostic).
   is repaired (no trailing commas, no structure guessed), and a block that still fails is skipped with a diagnostic. Expand `@graph`, resolve `@id` references within the page, normalize
   `http://schema.org` ↔ `https://schema.org`. Entities = nodes with `@type` in the schema.org vocabulary file.
   For each schema field with `schema_org = "T.p[.q]"`, for each entity of type T (or subtype per the vocabulary
-  file's `subClassOf`), the value at the path is a candidate owned by that entity. `+` paths produce one dict
+  file's `subClassOf`), the value at the path is a candidate owned by that entity. For an `identifier` field,
+  the path's last property also reaches its sub-properties per the vocabulary file's `subPropertyOf` (RDF Schema
+  1.1 §3.5: `gtin13` is a `gtin`); other field types read only the property named. `+` paths produce one dict
   raw value. `Offer` values are owned by the Offer entity whose parent is the Product (atomic offers, 4.8).
 - **microdata**: `itemscope`/`itemtype`/`itemprop` per the HTML standard; the same schema.org mapping; nested
   scopes nest entities. RDFa Lite (`typeof`/`property`) is handled by the same module (HTML standard); keep it
