@@ -1,6 +1,8 @@
 import { Button } from "@heroui/react";
 import { useSubmitCrawl } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
+import type { CrawlRequest } from "../../../api/jobs";
+import { useFieldsReview } from "../fields/useFieldsReview";
 import { optionsChanged } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
@@ -9,7 +11,14 @@ import { useShownJob } from "../run/useShownJob";
 import { requestUrl, UrlInput } from "../UrlInput";
 import { usePageForm } from "../usePageForm";
 import { CrawlOptions } from "./CrawlOptions";
-import { buildCrawl, crawlErrors, crawlForm, DEFAULT_CRAWL_OPTIONS, INITIAL_CRAWL } from "./form";
+import {
+  buildCrawl,
+  crawlErrors,
+  crawlForm,
+  DEFAULT_CRAWL_OPTIONS,
+  INITIAL_CRAWL,
+  rulesPageKind,
+} from "./form";
 
 /** The Crawl playground at `/crawl` (SPEC-14 §4.2): a start URL, the formats and schema of every page it extracts
  * (`POST /v1/crawl`), its scope and rules in the options, and the run on the page (`?job=`) as Batch's results table;
@@ -25,9 +34,12 @@ export function CrawlPlayground() {
   const { jobId, onEdit, show } = useShownJob(crawlForm, setForm);
 
   const request = buildCrawl({ ...form, url: requestUrl(form.url) });
+  const review = useFieldsReview((sent: CrawlRequest) => {
+    submit.mutate(sent, { onSuccess: show });
+  });
   const start = () => {
     if (!check() || request === null) return;
-    submit.mutate(request, { onSuccess: show });
+    review.start(request, rulesPageKind(form.options.rules));
   };
 
   return (
@@ -72,6 +84,7 @@ export function CrawlPlayground() {
         jobId={jobId}
         withMetadata={form.options.metadataInJson}
       />
+      {review.drawer}
     </PlaygroundLayout>
   );
 }

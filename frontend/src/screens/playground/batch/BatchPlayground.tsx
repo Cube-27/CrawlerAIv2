@@ -2,6 +2,8 @@ import { Button } from "@heroui/react";
 import { useLocation } from "react-router";
 import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
+import type { BatchRequest } from "../../../api/jobs";
+import { useFieldsReview } from "../fields/useFieldsReview";
 import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
@@ -29,9 +31,12 @@ export function BatchPlayground() {
   const { jobId, onEdit, show } = useShownJob(batchForm, setForm);
 
   const request = buildBatch(form);
+  const review = useFieldsReview((sent: BatchRequest) => {
+    submit.mutate(sent, { onSuccess: show });
+  });
   const start = () => {
     if (!check() || request === null) return;
-    submit.mutate(request, { onSuccess: show });
+    review.start(request, request.page_kind ?? null);
   };
 
   return (
@@ -76,6 +81,7 @@ export function BatchPlayground() {
         jobId={jobId}
         withMetadata={form.options.metadataInJson}
       />
+      {review.drawer}
     </PlaygroundLayout>
   );
 }

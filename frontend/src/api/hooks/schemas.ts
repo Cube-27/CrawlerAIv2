@@ -3,12 +3,14 @@ import { useApiClient } from "../../app/auth";
 import type { ApiClient } from "../client";
 import {
   createSchema,
+  draftSchema,
   getSchema,
   listSchemas,
   retireSchema,
   updateSchema,
   type NewSchema,
   type SchemaContent,
+  type SchemaPageKind,
 } from "../schemas";
 import { unwrap } from "./query";
 
@@ -72,5 +74,18 @@ export function useRetireSchema() {
   return useMutation({
     mutationFn: (id: string) => unwrap(retireSchema(client, id)),
     onSuccess: invalidate,
+  });
+}
+
+/** The draft of `fields` for `pageKind` pages (SPEC-14 §4.10). Drafting the same names again returns the same stored
+ * draft, so it is read as a query: once per names and page kind, without retries (a failed draft is a problem to
+ * show, and each attempt may be an LLM call). */
+export function useFieldsDraft(fields: readonly string[], pageKind: SchemaPageKind) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...SCHEMAS, "draft", pageKind, ...fields],
+    queryFn: () => unwrap(draftSchema(client, { fields: [...fields], page_kind: pageKind })),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
   });
 }

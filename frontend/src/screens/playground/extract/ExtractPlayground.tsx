@@ -1,6 +1,8 @@
 import { Button } from "@heroui/react";
 import { useSubmitExtract } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
+import type { ExtractRequest } from "../../../api/jobs";
+import { useFieldsReview } from "../fields/useFieldsReview";
 import { SchemaSelect } from "../../../components/SchemaSelect";
 import { optionsChanged, withSchema } from "../pageRequest";
 import { PlaygroundLayout } from "../PlaygroundLayout";
@@ -31,9 +33,12 @@ export function ExtractPlayground() {
   const { jobId, onEdit, show } = useShownJob(extractForm, setForm);
 
   const request = buildExtract({ ...form, url: requestUrl(form.url) });
+  const review = useFieldsReview((sent: ExtractRequest) => {
+    submit.mutate(sent, { onSuccess: show });
+  });
   const start = () => {
     if (!check() || request === null) return;
-    submit.mutate(request, { onSuccess: show });
+    review.start(request, request.page_kind);
   };
 
   return (
@@ -87,6 +92,7 @@ export function ExtractPlayground() {
         jobId={jobId}
         withMetadata={false}
       />
+      {review.drawer}
     </PlaygroundLayout>
   );
 }
