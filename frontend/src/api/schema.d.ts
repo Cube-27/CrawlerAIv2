@@ -2191,7 +2191,7 @@ export interface components {
             /** Dropped */
             dropped?: components["schemas"]["DroppedRowMeta"][] | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Items */
             items?: components["schemas"]["RowMeta"][] | null;
             /** Locator */
@@ -2199,7 +2199,7 @@ export interface components {
             /** Reason */
             reason: string | null;
             /** Source Kind */
-            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm") | null;
+            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm" | "derived") | null;
             /**
              * Status
              * @enum {string}
@@ -2565,13 +2565,13 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Locator */
             locator: string | null;
             /** Reason */
             reason: string | null;
             /** Source Kind */
-            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm") | null;
+            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm" | "derived") | null;
             /**
              * Status
              * @enum {string}

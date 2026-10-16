@@ -22,7 +22,7 @@ from crawlerai.resolve.evidence import (
     required_fields,
 )
 from crawlerai.resolve.preference import Chosen, Unpublished
-from crawlerai.resolve.types import FieldOutcome
+from crawlerai.resolve.types import Derivation, FieldOutcome
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 ENTITY = "jsonld:0:$"
@@ -182,9 +182,35 @@ def test_an_absolutized_value_publishes_with_its_source_candidates_provenance() 
     assert (outcome.evidence, outcome.source_kind, outcome.locator) == ("structured", "jsonld", source.locator)
 
 
-def test_a_page_url_derivation_without_a_candidate_does_not_publish() -> None:
-    outcome = _assess(Derived("https://shop.example.test/p/1", "final_url", None), type_=FieldType.URL)
-    assert (outcome.status, outcome.reason, outcome.value) == ("missing", "no_provenance", None)
+@pytest.mark.parametrize("derived_by", ["canonical_link", "final_url"])
+def test_a_page_url_derivation_publishes_in_the_derived_bucket(derived_by: Derivation) -> None:
+    outcome = _assess(Derived("https://shop.example.test/p/1", derived_by, None), type_=FieldType.URL)
+    assert (outcome.status, outcome.value, outcome.derived_by, outcome.chosen) == (
+        "published",
+        "https://shop.example.test/p/1",
+        derived_by,
+        None,
+    )
+    assert (outcome.evidence, outcome.source_kind, outcome.locator) == ("derived", "derived", f"derived:{derived_by}")
+    assert (outcome.confidence, outcome.calibrated) == (None, False)
+
+
+def test_a_page_url_derivation_is_measured_in_its_own_bucket() -> None:
+    derived = Derived("https://shop.example.test/p/1", "canonical_link", None)
+    outcome = _assess(derived, _calibration(url__derived=(40, 0.99)), type_=FieldType.URL)
+    assert (outcome.status, outcome.evidence, outcome.confidence, outcome.calibrated) == (
+        "published",
+        "derived",
+        0.99,
+        True,
+    )
+
+
+def test_a_page_url_derivation_in_a_bucket_below_tau_abstains() -> None:
+    calibration = _calibration(url__derived=(40, 0.9))
+    outcome = _assess(Derived("https://shop.example.test/p/1", "final_url", None), calibration, type_=FieldType.URL)
+    assert (outcome.status, outcome.reason, outcome.value) == ("abstained", "below_tau", None)
+    assert (outcome.evidence, outcome.confidence, outcome.calibrated) == ("derived", 0.9, True)
 
 
 # A page's fields

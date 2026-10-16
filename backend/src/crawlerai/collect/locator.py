@@ -14,7 +14,7 @@ from pydantic import AfterValidator
 
 from crawlerai.schemas.types import NAME_PATTERN
 
-Scheme = Literal["jsonld", "microdata", "meta", "js_state", "xhr", "adapter", "api", "config", "text"]
+Scheme = Literal["jsonld", "microdata", "meta", "js_state", "xhr", "adapter", "api", "config", "text", "derived"]
 
 # An index into a list the capture holds (script blocks, network bodies, config steps): ASCII digits without a leading
 # zero, so that each index has one spelling.
@@ -44,6 +44,9 @@ _ADDRESS: dict[str, re.Pattern[str]] = {
     "config": re.compile(rf"({NAME_PATTERN}):{_INDEX}:(.+)", re.DOTALL),
     # `[start, end)` character offsets into the cleaned text.
     "text": re.compile(rf"{_INDEX}-{_INDEX}"),
+    # A page-URL derivation (SPEC-05 §4.8, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
+    # (RFC 9110 §15.4). An absolutized value keeps its source candidate's locator instead.
+    "derived": re.compile(r"(canonical_link|final_url)"),
 }
 
 

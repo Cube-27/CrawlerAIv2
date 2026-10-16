@@ -12,6 +12,7 @@ from typing import Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.base import Candidate
+from crawlerai.collect.locator import format_locator
 from crawlerai.db.models import EvalRunId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
@@ -125,8 +126,7 @@ def assess(
     derived_by: Derivation | None = None
     if isinstance(decision, Derived):
         if decision.source is None:
-            # D-0355: a page-URL derivation has no candidate, source kind or bucket, which INV-22 requires.
-            return _unpublished("missing", "no_provenance", ())
+            return _assess_page_url(type_, decision, calibration, tau=tau, row=row)
         value, derived_by = decision.value, decision.derived_by
         # The source is another field's candidate: none of this field's passed screening.
         decision = Chosen(decision.source, (), (), kept=())
@@ -162,6 +162,29 @@ def assess(
         chosen=chosen,
         kept=decision.kept,
         rejected=rejected,
+    )
+
+
+def _assess_page_url(
+    type_: FieldType, decision: Derived, calibration: Calibration | None, *, tau: float, row: bool
+) -> FieldOutcome:
+    """A page-URL derivation (D-0355): no candidate states it, so it carries the `derived` source kind and bucket and a
+    `derived:` locator naming the derivation; its bucket is measured and held to τ like any other (INV-22)."""
+    confidence, calibrated = calibration.measure(type_, "derived", row=row) if calibration else (None, False)
+    if calibrated and confidence is not None and confidence < tau:
+        return _unpublished("abstained", "below_tau", (), evidence="derived", confidence=confidence, calibrated=True)
+    return FieldOutcome(
+        status="published",
+        reason=None,
+        value=decision.value,
+        evidence="derived",
+        confidence=confidence,
+        calibrated=calibrated,
+        source_kind="derived",
+        locator=format_locator("derived", decision.derived_by),
+        derived_by=decision.derived_by,
+        chosen=None,
+        rejected=(),
     )
 
 

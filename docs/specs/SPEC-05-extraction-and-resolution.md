@@ -115,6 +115,8 @@ A string `"<scheme>:<address>"`:
 - `api:<recipe_id>:<jsonpath>` (SPEC-09).
 - `config:<field>:<step_index>:<selector>` (SPEC-08).
 - `text:<start>-<end>` — char offsets into `cleaned_text` (role C, SPEC-06).
+- `derived:canonical_link` | `derived:final_url` — a page-URL derivation (§4.8): the capture's `<link
+  rel=canonical>` or its final URL. An absolutized value keeps its source candidate's locator.
 
 Induction (SPEC-08) reads these; the `jsonld`/`microdata`/`meta` forms are already site-stable or generalizable.
 
@@ -227,7 +229,9 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
   rejected (`url_param`) unless `visible(raw)`.
 - **Derived values** (C7, INV-07): the only derivations in core: `url` (detail) ← `<link rel=canonical>` else
   `final_url` with `derived_by = "canonical_link" | "final_url"`; relative `image_url`/`url` absolutized with
-  `derived_by = "absolutize"` — only when the field has no published candidate. Each derivation is a named
+  `derived_by = "absolutize"` — only when the field has no published candidate. A page-URL derivation publishes
+  with `source_kind = "derived"`, the `derived:<derived_by>` locator (§4.3) and the `derived` bucket (§4.9); an
+  absolutized value keeps its source candidate's kind, locator and bucket (ARCHITECTURE Appendix A #39, D-0355). Each derivation is a named
   function in `resolve/derive.py` with a standards justification; adding one is a C2/C13 review item.
 - **Blocked/shell** (INV-11): `extract_page` returns `outcome = block_class` with no candidates when
   `block_class != ok`.
@@ -241,7 +245,9 @@ Bucket of a published field:
 - `structured` if one structured kind (jsonld/microdata/og);
 - `config_corroborated` / `config_uncorroborated` from the config's field status (SPEC-08; for `operator` fields
   see SPEC-08 Open issues);
-- `llm_grounded` for role C values.
+- `llm_grounded` for role C values;
+- `derived` for a page-URL derivation (§4.8); its `url|derived` bucket is measured, calibrated and held to τ like
+  any other.
 
 `backend/data/calibration.json`:
 ```jsonc
@@ -357,7 +363,7 @@ sets a value; records storage only serializes).
   deliberate trade-off for progressive cold mode. Implemented as written.
 - **`location` as exact-match.** Resolved in ARCHITECTURE rev 5 §10, which lists `location` among the exact-match
   types. Region-spelling disagreement becomes `conflict`; measured on dev.
-- **Derived `url` field.** C7 names derived values but the architecture lists none. The canonical-link
-  derivation is the only one here; confirm it is wanted.
+- **Derived `url` field.** Resolved 2026-10-16 (ARCHITECTURE Appendix A #39, D-0355): the canonical-link and
+  final-URL derivations publish in the `derived` bucket.
 - **Required fields in commerce_detail** (image_url) will make `no_match`/incomplete common on real pages; this is
   measured, not fixed here. `brand` is optional from preset version 2 (ARCHITECTURE Appendix A #35).

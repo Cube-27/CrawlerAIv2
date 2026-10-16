@@ -4196,7 +4196,8 @@
                   "agreed",
                   "config_corroborated",
                   "config_uncorroborated",
-                  "llm_grounded"
+                  "llm_grounded",
+                  "derived"
                 ],
                 "type": "string"
               },
@@ -4254,7 +4255,8 @@
                   "js_state",
                   "xhr",
                   "config",
-                  "llm"
+                  "llm",
+                  "derived"
                 ],
                 "type": "string"
               },
@@ -5187,7 +5189,8 @@
                   "agreed",
                   "config_corroborated",
                   "config_uncorroborated",
-                  "llm_grounded"
+                  "llm_grounded",
+                  "derived"
                 ],
                 "type": "string"
               },
@@ -5231,7 +5234,8 @@
                   "js_state",
                   "xhr",
                   "config",
-                  "llm"
+                  "llm",
+                  "derived"
                 ],
                 "type": "string"
               },
