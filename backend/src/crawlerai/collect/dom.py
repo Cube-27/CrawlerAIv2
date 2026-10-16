@@ -27,16 +27,18 @@ import mimetypes
 import re
 import unicodedata
 from collections.abc import Iterator, Mapping, Sequence
-from urllib.parse import urldefrag, urljoin, urlsplit
+from urllib.parse import urlsplit
 
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, CollectResult
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, named_property, parse_paths
+from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, shown
 from crawlerai.normalize.base import Context
+from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
@@ -51,12 +53,9 @@ _DIALOG_ROLES = frozenset({"dialog", "alertdialog"})
 _MEDIA = frozenset({"video", "audio", "object", "canvas"})
 # WAI-ARIA 1.2 §5.4: roles `none` and `presentation` remove an element's meaning; for an image, it is decorative.
 _PRESENTATIONAL = frozenset({"none", "presentation"})
-# RFC 9110 §4.2: the schemes whose URIs identify documents a hyperlink leads to.
-_WEB_SCHEMES = frozenset({"http", "https"})
 # RFC 6838 top-level type `image`, by the standard library's built-in extension map (no system registry, so every
 # platform reads the same table).
 _MEDIA_TYPES = mimetypes.MimeTypes()
-_IMAGE_TYPE = "image/"
 # schema.org `Thing.image`: the property an image field's path names.
 _IMAGE = "image"
 # RFC 2397: a `data:` URL carries its content inline; it addresses no image resource.
@@ -185,6 +184,8 @@ def _main_region(page: ParsedPage) -> LexborNode | None:
 
 
 def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | None:
+    here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
+    base = ctx.base_url or ctx.page_url
     for image in region.css("img"):
         source = _source(image)
         if (
@@ -192,7 +193,7 @@ def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | No
             and shown(image)
             and not _decorative(image)
             and not _set_apart(image, region)
-            and not _link_card(image, region, ctx)
+            and not _link_card(image, region, here, base)
         ):
             return image, source
     return None
@@ -230,39 +231,34 @@ def _is_dialog(node: LexborNode) -> bool:
 
 def _roles(node: LexborNode) -> list[str]:
     # WAI-ARIA 1.2 §4.1: `role` is a list of space-separated tokens.
-    return (node.attributes.get("role") or "").split()
+    return tokens(node.attributes.get("role"))
 
 
-def _link_card(image: LexborNode, region: LexborNode, ctx: Context) -> bool:
+def _link_card(image: LexborNode, region: LexborNode, here: str | None, base: str | None) -> bool:
     """Whether the nearest block around the image that holds a hyperlink to another document holds no other image and
     leads to one document only: the card of that document, whose image is the document's, not this page's entity."""
     node: LexborNode | None = image.parent
     while node is not None and node != region:
         if len(node.css("img")) > 1:
             return False
-        targets = _link_targets(node, ctx)
+        targets = _link_targets(node, here, base)
         if targets:
             return len(targets) == 1
         node = node.parent
     return False
 
 
-def _link_targets(block: LexborNode, ctx: Context) -> set[str]:
-    """The other documents the block's hyperlinks (HTML Standard §4.6.1: an `a` with `href`) lead to: web URLs,
-    without their fragment (RFC 3986 §3.5), other than this page and other than images (a larger copy of one)."""
+def _link_targets(block: LexborNode, here: str | None, base: str | None) -> set[str]:
+    """The other documents the block's hyperlinks (HTML Standard §4.6.1: an `a` with `href`) lead to, canonical
+    (`canonical_url`: http(s), without the fragment), other than this page and other than images (a larger copy)."""
     anchors = block.css("a[href]")
     if block.tag == "a" and "href" in block.attributes:
         anchors.append(block)
-    base = ctx.base_url or ctx.page_url or ""
-    here = urldefrag(ctx.page_url or "").url
-    targets: set[str] = set()
-    for anchor in anchors:
-        target = urldefrag(urljoin(base, (anchor.attributes.get("href") or "").strip())).url
-        if urlsplit(target).scheme in _WEB_SCHEMES and target != here and not _is_image(target):
-            targets.add(target)
-    return targets
+    targets = {canonical_url(anchor.attributes.get("href") or "", base) for anchor in anchors}
+    return {t for t in targets if t is not None and t != here and not _is_image(t)}
 
 
 def _is_image(url: str) -> bool:
+    # RFC 6838: the top-level type `image`.
     media_type, _ = _MEDIA_TYPES.guess_type(urlsplit(url).path)
-    return media_type is not None and media_type.startswith(_IMAGE_TYPE)
+    return media_type is not None and media_type.startswith("image/")
