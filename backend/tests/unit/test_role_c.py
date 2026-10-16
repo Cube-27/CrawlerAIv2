@@ -71,7 +71,7 @@ OWNER = "jsonld:0:$"
 
 
 def span(value: str, start: int, end: int | None = None) -> dict[str, JsonValue]:
-    return {"value": value, "start": start, "end": start + len(value) if end is None else end}
+    return {"shown": True, "value": value, "start": start, "end": start + len(value) if end is None else end}
 
 
 def specs(*names: str) -> dict[str, FieldSpec]:
@@ -83,7 +83,7 @@ def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"
 
 
 # The claim of a field the page does not show.
-ABSENT: dict[str, JsonValue] = {"value": "", "start": 0, "end": 0}
+ABSENT: dict[str, JsonValue] = {"shown": False, "value": "", "start": 0, "end": 0}
 
 
 def claims(fields: Mapping[str, dict[str, JsonValue] | None]) -> dict[str, JsonValue]:
@@ -131,7 +131,8 @@ def test_the_output_schema_takes_one_span_of_each_requested_field() -> None:
     assert validator.is_valid(reply(title=None, released=None))  # a page that shows none of them
     assert not validator.is_valid(reply(title=span("Widget One", 0)))  # every field is claimed
     assert not validator.is_valid(reply(title=None, released=None, sku=span("W-1", 0)))  # no other field
-    assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0}, released=None))
+    assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0, "end": 10}, released=None))
+    assert not validator.is_valid(reply(title={"shown": True, "value": "Widget One", "start": 0}, released=None))
     assert not validator.is_valid(reply(title={**span("Widget One", 0), "note": "x"}, released=None))
     assert not validator.is_valid({"fields": [span("Widget One", 0)]})  # no list of claims
     assert not validator.is_valid({**reply(title=None, released=None), "note": "x"})
@@ -165,6 +166,20 @@ def test_a_grounded_value_becomes_an_llm_candidate_owned_by_the_target() -> None
         ),
     )
     assert filled.diagnostics == ()
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        # D-1097: the model says the page does not show the field; a value it gives anyway is not taken (C7).
+        {"shown": False, "value": "Widget One", "start": 0, "end": 10},
+        {"shown": True, "value": "", "start": 0, "end": 0},  # shown, but no span: nothing to ground
+    ],
+)
+def test_a_claim_not_shown_or_without_a_value_gives_no_candidate(claim: dict[str, JsonValue]) -> None:
+    filled = extract(ScriptedClient(reply(title=claim, released=None)))
+
+    assert (filled.candidates, filled.diagnostics) == ((), ())
 
 
 def test_wrong_offsets_are_corrected_to_where_the_value_is() -> None:
