@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, slowed_down
+from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, refuse, slowed_down
 from crawlerai.acquire.robots import Fetch, site_robots
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
@@ -42,11 +42,14 @@ async def fetch_politely(
     limiter: HostLimiter,
     *,
     fetch_robots: Fetch,
+    by_adapter: bool = False,
 ) -> FetchResult | Unchanged | TaskResult:
     """The page as `fetch` fetched it, `Unchanged` included, or the result the task ends this run with. robots.txt is
     fetched with `fetch_robots`, a plain HTTP rung: through `acquire`, a robots.txt would classify as a shell and be
     fetched again in the browser. The task ends this run with:
-    - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page;
+    - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page; or, `by_adapter` (an active
+      adapter serves the URL first, SPEC-15 §4.6, from an API whose own robots.txt its requests go by), the adapter's
+      answer when it is `ok`, else `blocked`, reason `robots`, with no fallback to the page rungs admitted;
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
     - the site not admitted yet: postponed until it is;
@@ -60,18 +63,27 @@ async def fetch_politely(
     robots = None
     if policy.respect_robots:
         robots = await site_robots(conn, site_id, site.robots_snapshot, task.url, fetch_robots)
-        if robots is None:
-            return Failed("robots_unreachable", transient=True, exhausted="blocked")
-        if not robots.allows(task.url):
-            return Finished("blocked", reason="robots")
+    if policy.respect_robots and robots is None:
+        return Failed("robots_unreachable", transient=True, exhausted="blocked")
+    disallowed = robots is not None and not robots.allows(task.url)
+    if disallowed and not by_adapter:
+        return Finished("blocked", reason="robots")
     host = urlsplit(task.url).hostname or ""
     gap = interval(site.crawl_delay_ms, None if robots is None else robots.crawl_delay)
     if wait := limiter.admit(host, gap):
         return Postpone(wait)
 
-    result = await fetch(task.url, partial(limiter.wait, host, gap, WAIT_MAX))
+    result = await fetch(task.url, refuse if disallowed else partial(limiter.wait, host, gap, WAIT_MAX))
     if isinstance(result, Unchanged) or result.block_class == "ok":
         return result
+    if disallowed:
+        return Finished("blocked", reason="robots")
+    return _backed_off(result, limiter, host, task)
+
+
+def _backed_off(result: FetchResult, limiter: HostLimiter, host: str, task: ClaimedTask) -> FetchResult | TaskResult:
+    """A fetch that kept no `ok` page: the result, or, after a 429 or 503 to any of its requests, the host paused and
+    the task retried after the server's `Retry-After` or the queue's backoff (`fetch_politely`)."""
     slowed = slowed_down(result.attempts)
     if slowed is None:
         return result

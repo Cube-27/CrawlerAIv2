@@ -228,6 +228,25 @@ async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is
     assert (result.fetch.method, web.requested, web.page_fetches()) == ("http", [], [url])
 
 
+async def test_a_page_robots_txt_disallows_is_served_by_its_adapter_and_never_fetched(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
+) -> None:
+    # SPEC-15 §4.6: the adapter requests its endpoint, which robots.txt allows; the page itself is not requested, and
+    # when the endpoint does not serve it, the page rungs are not admitted either.
+    url = f"{own_origin}/collections/lamps"
+    web.pages[url] = PAGE
+    web.pages[f"{own_origin}/robots.txt"] = b"User-agent: *\nDisallow: /collections/\n"
+
+    served = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+    web.platform = False
+    unserved = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+
+    assert served.fetch is not None
+    assert (served.outcome, served.fetch.method) == ("extracted", "api")
+    assert (unserved.outcome, unserved.fetch) == ("blocked", None)
+    assert (len(web.requested), web.page_fetches()) == (2, [])
+
+
 async def _run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, job_id: JobId) -> None:
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")

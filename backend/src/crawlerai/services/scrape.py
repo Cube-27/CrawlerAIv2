@@ -35,6 +35,7 @@ from sqlalchemy import Row, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.politeness import refuse
 from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.rungs import acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
@@ -481,12 +482,15 @@ async def polite_fetch(
         # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing.
         if robots is None:
             return "robots_unreachable"
-        if not robots.allows(url):
-            return "robots"
+    # SPEC-15 §4.6: an adapter that serves the URL requests its API, whose own robots.txt `send` reads; the page's
+    # governs only the page rungs it would fall back to, which a disallow then admits none of.
+    disallowed = robots is not None and not robots.allows(url)
+    if disallowed and not fetching.rungs.adapters.would_serve(url):
+        return "robots"
     await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
     rules = engine_rules(engine, fetching.rungs.http, attempts)
     rung = None if recipe is None else recipe_rung(fetching, recipe, host, rules)
-    admit_next = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
+    admit_next = refuse if disallowed else partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
     send = adapter_send(fetching, host, rules)
     result = await acquire(
         url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_next=admit_next, send=send
@@ -494,7 +498,7 @@ async def polite_fetch(
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)
-    return result
+    return "robots" if disallowed and result.block_class != "ok" else result
 
 
 async def _finish(

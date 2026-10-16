@@ -454,3 +454,30 @@ async def test_through_the_worker_retry_after_sets_the_next_attempt_and_robots_e
             await conn.execute(delete(UrlTask))
             await conn.execute(delete(Job))
             await conn.execute(delete(Site).where(Site.id == site_id))
+
+
+async def test_a_page_an_adapter_serves_first_is_fetched_with_no_fallback_robots_disallows(
+    conn: AsyncConnection, web: Web
+) -> None:
+    # SPEC-15 §4.6: the adapter requests its API, whose own robots.txt `send` reads; the page's robots.txt governs only
+    # the page rungs the fetch would fall back to, which it then admits none of.
+    site_id = await _site(conn)
+    [task] = await _tasks(conn, "/private/a")
+    admitted: list[bool] = []
+
+    async def adapter_first(url: str, admit: Admit) -> FetchResult:
+        admitted.append(await admit())
+        return await web(url)
+
+    web.pages[f"{ORIGIN}/private/a"] = (200, PAGE, ())
+    served = await fetch_politely(
+        conn, task, site_id, FetchPolicy(), adapter_first, HostLimiter(), fetch_robots=web, by_adapter=True
+    )
+    assert isinstance(served, FetchResult)
+    assert admitted == [False]
+
+    web.pages[f"{ORIGIN}/private/a"] = (503, b"", ())
+    unserved = await fetch_politely(
+        conn, task, site_id, FetchPolicy(), adapter_first, HostLimiter(), fetch_robots=web, by_adapter=True
+    )
+    assert unserved == Finished("blocked", reason="robots")
