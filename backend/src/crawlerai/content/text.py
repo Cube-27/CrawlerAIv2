@@ -177,6 +177,13 @@ def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:
     return children
 
 
+def not_rendered(node: LexborNode) -> bool:
+    """Whether the element is not rendered, with its whole subtree, by the rule that leaves it out of the cleaned
+    text."""
+    attributes = node.attributes
+    return _hidden(node.tag or "", attributes, _declarations(attributes))
+
+
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.

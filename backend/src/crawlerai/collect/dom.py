@@ -11,8 +11,9 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   in those words match.
 - **The main image.** The first image of the page's main region (the `main` element, else the one `role="main"`
   landmark, WAI-ARIA 1.2; else the document's one `article`, §4.3.2), outside the region's tangential content
-  (`nav`, `header`, `footer`, `aside`, §4.3), whose source is not inline `data:` (RFC 2397). It fills an
-  `image_url` field whose path names schema.org `image`.
+  (`nav`, `header`, `footer`, `aside`, §4.3) and its dialogs (`dialog`, roles `dialog` and `alertdialog`), and
+  rendered by the cleaned text's rule, whose source is not inline `data:` (RFC 2397). It fills an `image_url` field
+  whose path names schema.org `image`.
 
 A value must be shown on the page (`VisibleIndex`). Every candidate is the page's, like an Open Graph value, and
 independent; it goes through normalization and resolution like any other (no trust of its own). Listing schemas are
@@ -29,13 +30,17 @@ from crawlerai.collect.base import PAGE, CollectResult
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, named_property, parse_paths
 from crawlerai.content.page import ParsedPage, node_xpath
-from crawlerai.content.text import CELLS
+from crawlerai.content.text import CELLS, not_rendered
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
 # content tangential to it).
 _TANGENTIAL = frozenset({"nav", "header", "footer", "aside"})
+# HTML Standard §4.11.4 (`dialog`) and WAI-ARIA 1.2 §5.4 (roles `dialog`, `alertdialog`): a window apart from the
+# page's content, such as a drawer or a modal, whose images are its own, not the main content's.
+_DIALOG_TAG = "dialog"
+_DIALOG_ROLES = frozenset({"dialog", "alertdialog"})
 # schema.org `Thing.image`: the property an image field's path names.
 _IMAGE = "image"
 # RFC 2397: a `data:` URL carries its content inline; it addresses no image resource.
@@ -145,7 +150,7 @@ def _image_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
         n for n, spec in schema.fields.items() if spec.type is FieldType.IMAGE_URL and _IMAGE in _properties(spec)
     ]
     region = _main_region(page) if fields else None
-    found = _main_image(region) if region is not None else None
+    found = _main_image(region) if region is not None and _rendered(region) else None
     if found is None:
         return
     image, source = found
@@ -166,7 +171,7 @@ def _main_region(page: ParsedPage) -> LexborNode | None:
 def _main_image(region: LexborNode) -> tuple[LexborNode, str] | None:
     for image in region.css("img"):
         source = _source(image)
-        if source is not None and not _tangential(image, region):
+        if source is not None and not _set_apart(image, region):
             return image, source
     return None
 
@@ -182,10 +187,27 @@ def _source(image: LexborNode) -> str | None:
     return None
 
 
-def _tangential(node: LexborNode, region: LexborNode) -> bool:
-    ancestor = node.parent
-    while ancestor is not None and ancestor != region:
-        if ancestor.tag in _TANGENTIAL:
+def _set_apart(image: LexborNode, region: LexborNode) -> bool:
+    """Whether the image, or an element between it and the region, is not rendered (the cleaned text's rule, SPEC-05
+    §4.4), is the region's tangential content, or is a dialog."""
+    node: LexborNode | None = image
+    while node is not None and node != region:
+        if not_rendered(node) or node.tag in _TANGENTIAL or _is_dialog(node):
             return True
-        ancestor = ancestor.parent
+        node = node.parent
     return False
+
+
+def _is_dialog(node: LexborNode) -> bool:
+    # WAI-ARIA 1.2 §4.1: `role` is a list of space-separated tokens.
+    return node.tag == _DIALOG_TAG or not _DIALOG_ROLES.isdisjoint((node.attributes.get("role") or "").split())
+
+
+def _rendered(region: LexborNode) -> bool:
+    """Whether the region and every element around it are rendered."""
+    node: LexborNode | None = region
+    while node is not None and node.is_element_node:
+        if not_rendered(node):
+            return False
+        node = node.parent
+    return True
