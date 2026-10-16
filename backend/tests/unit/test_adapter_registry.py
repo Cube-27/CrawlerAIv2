@@ -1,6 +1,6 @@
 """The adapter registry and the adapter rung (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.6): only active adapters answer
 (C6), a URL an active adapter detects is fetched by it first, a page it does not serve falls back to the page rungs
-(INV-39), and a host whose answer lacks the platform's signal is declined for a while.
+(INV-40), and a host whose answer lacks the platform's signal is declined for a while.
 
 The adapters are stubs that detect one synthetic host; no network.
 """
@@ -126,7 +126,7 @@ def test_every_platform_adapter_has_its_own_name() -> None:
 
 
 def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_endpoint() -> None:
-    # INV-38.
+    # INV-39.
     board = StubAdapter("board", "board.example.test")
     registry = Registry([board], active={"board"})
 
@@ -167,7 +167,7 @@ def test_no_adapter_runs_without_a_json_fetch() -> None:
     ],
 )
 def test_a_page_its_adapter_does_not_serve_is_fetched_by_the_page_rungs(answer: Rung) -> None:
-    # INV-39: the fallback goes after its own turn at the site's rate, and the result lists both attempts.
+    # INV-40: the fallback goes after its own turn at the site's rate, and the result lists both attempts.
     adapter = StubAdapter("board", "board.example.test", answer)
     http = Rung("http")
     rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
@@ -197,7 +197,7 @@ def test_an_adapter_answer_asking_for_fewer_requests_is_kept() -> None:
 
 
 def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window() -> None:
-    # INV-39: one request per host per window, and after the window the host is tried again.
+    # INV-40: one request per host per window, and after the window the host is tried again.
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
     clock = Clock()
     registry = Registry([adapter], active={"board"}, clock=clock)

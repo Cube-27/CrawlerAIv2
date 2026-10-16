@@ -75,7 +75,7 @@ async def acquire(
     without it); a page an adapter does not serve skips the recipe (SPEC-15 §4.6). Otherwise through `recipe`, the
     active config's API recipe bound to its fetch (SPEC-09 §4.8), when the site has one. The adapter's or the recipe's
     result is kept when it is `ok` or asks for fewer requests, and otherwise the page is fetched as if there were
-    neither (§4.10, INV-39). Without either, fetch it with `policy.method_hint`, or else the site's `remembered` method.
+    neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered` method.
     In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if it is
     `ok`. Each request after the first (the page after an adapter or a recipe, the browser retry) waits for `admit_next`
     to admit it at the site's rate (SPEC-02 §4.6), and is not sent when `admit_next` refuses it: the fetch keeps the

@@ -173,7 +173,7 @@ an empty result with a diagnostic).
   `visible`. Candidates: `source_kind='dom'`, entity `page`, `independent=True`, locator `dom:<xpath>`; no
   precedence over structured kinds (it ranks after `og` in the initial precedence).
 - **adapter**: `source_kind='adapter'`, entity from the adapter's JSON object, locator `adapter:…`, using the
-  adapter's `map(schema)`.
+  adapter's schema.org `shapes` through the schema.org mapping (SPEC-15 §4.4); a listing's shapes give rows.
 - **config**: `ConfigExecutor` protocol (`crawlerai.collect.config`), bound to its IR because `config_ir` sits above
   `collect` and `resolve`: `execute(page, schema, ctx) -> Executed` (listing row entities, candidates, diagnostics) and
   `field_status`; candidates have `source_kind='config'` and `independent=False`; injected when a config is active

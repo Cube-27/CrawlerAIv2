@@ -142,7 +142,7 @@ async def test_a_scrape_of_a_storefront_product_is_served_over_the_platform_api(
 async def test_a_page_of_a_host_that_is_not_the_platform_is_fetched_as_a_page_and_the_host_declined(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
-    # INV-39.
+    # INV-40.
     url = f"{own_origin}/products/desk-lamp"
     web.pages[url] = PAGE
     web.platform = False

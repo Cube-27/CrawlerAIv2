@@ -466,7 +466,7 @@ def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> Non
 
 
 def test_an_api_capture_from_another_endpoint_of_a_detected_page_is_not_the_adapters() -> None:
-    # INV-38: an API recipe's capture of a page URL the adapter detects is the recipe's, not the adapter's.
+    # INV-39: an API recipe's capture of a page URL the adapter detects is the recipe's, not the adapter's.
     data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=["synthetic"]))
     bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url="https://data.example.test/1")
     result = _extract(bundle, JOB, data=data)

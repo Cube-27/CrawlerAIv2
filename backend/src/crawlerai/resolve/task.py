@@ -57,7 +57,7 @@ class ActiveConfig:
 
     def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig | None":
         """The config as it runs on the capture `manifest` describes; None when it does not run on it. An `api`
-        capture no active adapter reads (INV-38) holds the JSON an API recipe fetched: the config's recipe executor
+        capture no active adapter reads (INV-39) holds the JSON an API recipe fetched: the config's recipe executor
         reads it, and as the page steps did not run, the page joins no drift window. A config
         without a recipe does not run on it: an earlier config's recipe fetched it (a replay), and page steps read a
         page, not JSON."""

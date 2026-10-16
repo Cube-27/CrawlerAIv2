@@ -1,7 +1,7 @@
 # SPEC-15 — Shopify adapter: storefront pages through the Storefront API
 
 Layer: admitted candidate (ARCHITECTURE §22 "More platform adapters", admitted for Shopify by the owner 2026-10-16,
-Appendix A #44); builds on SPEC-02 §4.4 and §4.9 (adapters), SPEC-05 §4.5 (adapter collector), SPEC-13 (variant
+Appendix A #45); builds on SPEC-02 §4.4 and §4.9 (adapters), SPEC-05 §4.5 (adapter collector), SPEC-13 (variant
 rows). Architecture refs: §7.1, §8.1, §8.2, §8.6, §10, C2, C3, C6, C7, C9.
 
 ## 1. Summary
@@ -25,7 +25,7 @@ Nothing outside `backend/src/crawlerai/adapters/` names the platform (C3).
 
 ## 2. Scope
 
-Core (admitted by the owner, Appendix A #44):
+Core (admitted by the owner, Appendix A #45):
 - Detection of product and collection pages by the platform's documented URL routes, confirmed per response by the
   platform's documented API version header (§4.2).
 - Detail: one product with its featured image and up to 250 variants. Listing: the first 250 products of a collection.
@@ -140,8 +140,8 @@ certain well-described ways"); each variant a `Product` under `hasVariant` (`nam
 `description`, `url` (`onlineStoreUrl`), `productID` and `image` (the featured image only: every image would be
 several values of one property, and a single image field publishes only when its values agree).
 
-What publishes follows the existing rules unchanged: top-level `price` and `availability` publish only when every
-variant's Offer agrees, or from the variant the page URL selects (SPEC-13 §4.6); `sku`/`gtin` fill from the variants
+What publishes follows the existing rules unchanged (INV-38, Appendix A #44): top-level `price` and `availability`
+publish only when every variant's Offer agrees, and no variant is a default; `sku`/`gtin` fill from the variants
 only when they all agree; `variants` publishes one row per variant keyed by `sku`/`gtin` (a variant with neither
 is dropped `no_row_key`). The adapter chooses no default variant.
 
@@ -198,14 +198,14 @@ measured on at least three tenants not used to build it; the measurement goes in
 ## 5. Invariants
 
 New (appended to `docs/INVARIANTS.md`):
-- **INV-38**: An `api` capture is read by an adapter only when that adapter detects the capture's page URL and its
+- **INV-39**: An `api` capture is read by an adapter only when that adapter detects the capture's page URL and its
   final URL is one of the adapter's endpoints.
-- **INV-39**: A page an adapter does not serve (an outcome other than `ok` that does not ask for fewer requests) is
+- **INV-40**: A page an adapter does not serve (an outcome other than `ok` that does not ask for fewer requests) is
   fetched by the page rungs, and its result lists every attempt; a host whose answer lacks the platform's signal is
   not sent to that adapter again within the decline window.
 
 Existing invariants that apply: INV-11, INV-13, INV-14, INV-15, INV-16, INV-22, INV-23, INV-29, INV-30, INV-33,
-INV-35, INV-36.
+INV-35, INV-38.
 
 ## 6. Testing strategy
 
@@ -230,7 +230,7 @@ documented shapes (C3, C9). Tests name the adapter, a platform, never a shop.
 - On a synthetic collection answer, every product is a row with `title` and `url`; `price` publishes only for rows
   whose bounds agree.
 - A non-platform answer falls back to the page rungs; the host is not tried again within the window.
-- INV-38 and INV-39 each have a test that fails when the rule is removed.
+- INV-39 and INV-40 each have a test that fails when the rule is removed.
 - C6: measured on at least three shops not used to build the adapter (counts of rows per listing and field coverage
   on detail pages, adapter vs the generic path), aggregate only, in the PR.
 
@@ -238,10 +238,10 @@ documented shapes (C3, C9). Tests name the adapter, a platform, never a shop.
 
 | # | Title | Scope | Checks | Done when |
 |---|---|---|---|---|
-| 1 | Shapes for adapters; fallback; attribution | `adapters/base` (`Shape`, protocol `fetch(url, policy, send)`, `shapes`, `serves`), `adapters/registry` (`reader`, declines), Greenhouse and Lever as shapes, `collect/adapter` (shapes), `collect/run`, `resolve/task`, `acquire/rungs` (fallback), SPEC-02/05/13 text | unit, property | Greenhouse/Lever candidates unchanged; INV-38, INV-39 tests pass. |
+| 1 | Shapes for adapters; fallback; attribution | `adapters/base` (`Shape`, protocol `fetch(url, policy, send)`, `shapes`, `serves`), `adapters/registry` (`reader`, declines), Greenhouse and Lever as shapes, `collect/adapter` (shapes), `collect/run`, `resolve/task`, `acquire/rungs` (fallback), SPEC-02/05/13 text | unit, property | Greenhouse/Lever candidates unchanged; INV-39, INV-40 tests pass. |
 | 2 | Shopify adapter | `adapters/shopify` (detection, queries, shapes, availability), registry | unit, property, replay | §7 detail and listing criteria pass on synthetic answers. |
 | 3 | Activation and polite sending | `core/settings` (`adapters`), `acquire` registry builder, `services/fetching.adapter_send`, scrape and worker call sites, `EngineData` registry | unit | A configured adapter runs in scrape and the worker, through robots.txt and the host's rate. |
-| 4 | C6 measurement and activation note | PR evaluation section; Appendix A #44 note | eval (local, aggregate only) | ≥ 3 unseen shops measured. |
+| 4 | C6 measurement and activation note | PR evaluation section; Appendix A #45 note | eval (local, aggregate only) | ≥ 3 unseen shops measured. |
 
 Rows 1–3 depend on each other in order; row 4 needs row 3.
 
@@ -252,8 +252,6 @@ Rows 1–3 depend on each other in order; row 4 needs row 3.
   how often a collection is larger before adding cursor paging.
 - **Locale-prefixed URLs.** The API serves a locale through `@inContext`; mapping a URL prefix to a language and
   country is left out until a dev page needs it.
-- **Selected variant.** A `?variant=` page URL selects nothing through the adapter, since the API states no variant
-  URL; the top-level offer fields then publish only when all variants agree.
 - **Brand.** `vendor` is not mapped (§2). If dev labels show it equals the brand on most shops, map it with
   evidence.
 - **More images.** `additional_images` holds the featured image only (§4.5). Reading every image needs a way to

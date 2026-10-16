@@ -84,7 +84,7 @@ def collect_page(
 def _adapter_collector(
     manifest: CaptureManifest, adapters: Adapters | None, vocabulary: Vocabulary, diagnostics: list[str]
 ) -> AdapterCollector | None:
-    """D-0445, INV-38: an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
+    """D-0445, INV-39: an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
     fetches from its final URL."""
     if manifest.method != "api":
         return None

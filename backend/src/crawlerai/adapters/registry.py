@@ -52,7 +52,7 @@ class Registry:
 
     def reader(self, url: str, endpoint: str) -> Adapter | None:
         """The active adapter that reads an `api` capture of the page at `url` whose final URL is `endpoint`: one that
-        detects the page and fetches from that endpoint (INV-38). Declines do not matter: the capture is the answer."""
+        detects the page and fetches from that endpoint (INV-39). Declines do not matter: the capture is the answer."""
         return next((a for a in self._active if a.detect(url) is not None and a.serves(endpoint)), None)
 
     async def serve(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult | None:
