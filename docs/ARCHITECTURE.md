@@ -663,7 +663,7 @@ record carries `mode` and `complete`.
 | Mechanism | Effect |
 |---|---|
 | Conditional GET (`ETag` / `Last-Modified`). A 304 means `unchanged`. | No download on unchanged pages. |
-| Content fingerprint: SimHash-64 of visible text, with scripts, styles and nonces stripped. Only an equal fingerprint (Hamming 0) means unchanged; extraction is skipped. | Skips pages whose visible text did not change, ignoring nonces and whitespace. A one-token change, such as a new price, runs extraction (Appendix A #39). |
+| Content fingerprint: SimHash-64 of visible text, with scripts, styles and nonces stripped. Only an equal fingerprint (Hamming 0) means unchanged; extraction is skipped. | Skips pages whose visible text did not change, ignoring nonces and whitespace. A one-token change, such as a new price, runs extraction (Appendix A #40). |
 | Record fingerprint over normalized required fields. A change creates a new record `version` with `changed_fields`. | Change feed. |
 | Listing diff. New URLs are queued; URLs missing for 2 runs get `gone_at`. | Catalog adds and removes. |
 

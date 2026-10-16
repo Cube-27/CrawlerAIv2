@@ -59,7 +59,7 @@ Out of scope (§22):
 - SimHash-64 over word 3-gram shingles hashed with a fixed 64-bit hash (e.g. `blake2b(digest_size=8)`).
 - If `hamming(new, url_state.content_fingerprint) == 0` (`UNCHANGED_BITS = 0`) → outcome `unchanged`, extraction
   skipped, the capture is still stored (replayability; it expires normally). Only nonces and whitespace are ignored,
-  structurally; any other change, such as a new price, runs extraction (ARCHITECTURE §14, Appendix A #39, D-0665).
+  structurally; any other change, such as a new price, runs extraction (ARCHITECTURE §14, Appendix A #40, D-0665).
 - Otherwise extraction runs; `content_fingerprint` and `last_changed_at` are updated.
 - Unchanged pages do not count toward drift windows (SPEC-08 4.9) or `pages_extracted` (§8.3 counts only
   `extracted` and `partial`).

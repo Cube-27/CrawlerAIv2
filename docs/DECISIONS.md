@@ -246,7 +246,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: See options.
 - Why: Every published value keeps its provenance and is calibrated like any other bucket.
 - Reversible: yes
-- Owner answer: confirmed 2026-10-16, option (a): a `derived` source kind and evidence bucket with locators for the canonical link and the final URL (ARCHITECTURE Appendix A #39). Implemented in #204 (D-0910, D-0911).
+- Owner answer: confirmed 2026-10-16, option (a): a `derived` source kind and evidence bucket with locators for the canonical link and the final URL (ARCHITECTURE Appendix A #40). Implemented in #204 (D-0910, D-0911).
 
 ### D-0356 — Theme-only check as a Python tool with an import allow-list
 - Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided

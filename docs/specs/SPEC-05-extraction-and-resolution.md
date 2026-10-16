@@ -231,7 +231,7 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
   `final_url` with `derived_by = "canonical_link" | "final_url"`; relative `image_url`/`url` absolutized with
   `derived_by = "absolutize"` — only when the field has no published candidate. A page-URL derivation publishes
   with `source_kind = "derived"`, the `derived:<derived_by>` locator (§4.3) and the `derived` bucket (§4.9); an
-  absolutized value keeps its source candidate's kind, locator and bucket (ARCHITECTURE Appendix A #39, D-0355). Each derivation is a named
+  absolutized value keeps its source candidate's kind, locator and bucket (ARCHITECTURE Appendix A #40, D-0355). Each derivation is a named
   function in `resolve/derive.py` with a standards justification; adding one is a C2/C13 review item.
 - **Blocked/shell** (INV-11): `extract_page` returns `outcome = block_class` with no candidates when
   `block_class != ok`.
@@ -363,7 +363,7 @@ sets a value; records storage only serializes).
   deliberate trade-off for progressive cold mode. Implemented as written.
 - **`location` as exact-match.** Resolved in ARCHITECTURE rev 5 §10, which lists `location` among the exact-match
   types. Region-spelling disagreement becomes `conflict`; measured on dev.
-- **Derived `url` field.** Resolved 2026-10-16 (ARCHITECTURE Appendix A #39, D-0355): the canonical-link and
+- **Derived `url` field.** Resolved 2026-10-16 (ARCHITECTURE Appendix A #40, D-0355): the canonical-link and
   final-URL derivations publish in the `derived` bucket.
 - **Required fields in commerce_detail** (image_url) will make `no_match`/incomplete common on real pages; this is
   measured, not fixed here. `brand` is optional from preset version 2 (ARCHITECTURE Appendix A #35).
