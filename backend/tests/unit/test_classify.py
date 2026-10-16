@@ -50,7 +50,7 @@ def test_status_decides_before_the_body(status: int, expected: BlockClass) -> No
         (b"", "shell"),
         (_page(199, 4), "shell"),
         (_page(200, 1), "ok"),
-        # Enough text, but nothing else: a terminal document (`test_a_small_terminal_document_with_a_message_...`).
+        # Enough text, but no hyperlink (`test_a_document_that_links_nowhere_is_blocked_whatever_else_it_holds`).
         (_page(200, 0), "blocked"),
         (_page(0, 5), "ok"),
         # Text inside script, style, noscript and template is not visible.
@@ -105,22 +105,26 @@ def test_a_small_terminal_document_with_a_message_is_blocked(message_chars: int)
     assert classify(200, _HTML, _terminal(message_chars)) == "blocked"
 
 
+def test_a_document_with_a_hyperlink_is_not_blocked() -> None:
+    assert classify(200, _HTML, _terminal(250, '<a href="/">home</a>')) == "ok"
+
+
 @pytest.mark.parametrize(
     "extra",
     [
-        '<a href="/">home</a>',
         '<script src="/app.js"></script>',
         "<script>start()</script>",
         '<link rel="stylesheet" href="/s.css">',
         '<img src="/i.png" alt="">',
         '<iframe src="/f"></iframe>',
         '<form action="/q"><input name="q"></form>',
-        # Past the size bound a document is not an error stub, whatever it holds.
-        "<p>" + "w " * 1000 + "</p>",
+        pytest.param("<p>" + "w " * 1000 + "</p>", id="long-text"),
     ],
 )
-def test_a_document_that_links_loads_runs_or_holds_more_is_not_blocked(extra: str) -> None:
-    assert classify(200, _HTML, _terminal(250, extra)) == "ok"
+def test_a_document_that_links_nowhere_is_blocked_whatever_else_it_holds(extra: str) -> None:
+    # A challenge or error page rendered by scripts, with images and a form, but no hyperlink (HTML Standard §4.6):
+    # a site's pages link to one another, a page that links nowhere is not one of them.
+    assert classify(200, _HTML, _terminal(250, extra)) == "blocked"
 
 
 def test_a_small_terminal_document_without_enough_text_stays_a_shell() -> None:

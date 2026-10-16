@@ -1,9 +1,10 @@
 """Block classification from HTTP status and document structure only (SPEC-02 §4.3, ARCHITECTURE §7.1, INV-24).
 
 No body text is ever compared with a string: challenge pages served with 200 are not detected by content (that
-would need vendor strings, C3/C4). They mostly present as shells and get a browser retry. An error page served with
-200 that has text enough not to be a shell is told by its shape instead (a terminal document): a small document with
-a message and nothing that links, loads, runs or embeds anything, which no site's page is.
+would need vendor strings, C3/C4). They mostly present as shells and get a browser retry. An error or challenge page
+served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A site's pages
+are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms it holds,
+is not one of them.
 
 A page fetched as a listing is a shell too when nothing on it lists items (`_lists_items`): its grid loads by script
 after the page (an XHR), so the browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
@@ -32,12 +33,8 @@ _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 # Shell thresholds: unmeasured starting points, to be confirmed on dev (SPEC-02 §4.3, D-0008).
 _SHELL_MAX_TEXT_CHARS = 200
 _SHELL_MAX_LINKS = 5
-# What a page of a site carries and an error stub does not (HTML Standard): hyperlinks (§4.6, `a`/`area` with `href`),
-# scripts (§4.12.1), external resources and style sheets (`link`, §4.2.4), embedded content (§4.8) and forms (§4.10).
-_PAGE_PARTS = "a[href], area[href], script, link, img, picture, video, audio, iframe, embed, object, svg, canvas, form"
-# A terminal document is at most this many bytes: an unmeasured starting point like the shell thresholds, to be
-# confirmed on dev (SPEC-02 §4.3, D-0008).
-TERMINAL_MAX_BYTES = 1024
+# HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
+_HYPERLINKS = "a[href], area[href]"
 # Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): microdata items (HTML Standard
 # §5.2), and JSON-LD script data blocks (W3C JSON-LD 1.1 §7.3) whose media type, before parameters and in any case
 # (RFC 9110 §8.3.1), is `_JSON_LD`.
@@ -59,12 +56,12 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
     if not 200 <= status < 300 or not _is_html(headers):
         return "ok"
     tree = LexborHTMLParser(body)
-    # Read before the shell rule strips scripts from the tree.
-    terminal = len(body) <= TERMINAL_MAX_BYTES and tree.css_first(_PAGE_PARTS) is None
+    # Read before the shell rule strips script data blocks from the tree.
     structured = page_kind == "listing" and _has_structured_data(tree)
     if _is_shell(tree):
         return "shell"
-    if terminal:
+    # After the shell rule: hyperlinks inside a `template` are not in the document, and the rule strips them.
+    if tree.css_first(_HYPERLINKS) is None:
         return "blocked"
     if page_kind == "listing" and not structured and not _lists_items(body):
         return "shell"
