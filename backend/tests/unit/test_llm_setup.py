@@ -1,5 +1,5 @@
 """The LLM setup check (SPEC-06 §4.2): a listed provider without its key, or a configured model its provider does not
-know, makes the setup `unavailable` and is logged at ERROR, rather than surfacing only as `llm_unavailable` on every
+know, makes the setup `unavailable` and is logged at ERROR, rather than surfacing only as `llm_refused` on every
 record. Providers answer through a fake HTTP transport: none is called in CI."""
 
 import asyncio

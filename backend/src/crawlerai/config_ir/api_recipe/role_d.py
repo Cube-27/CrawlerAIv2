@@ -11,7 +11,7 @@ A spec is accepted only by replay. It must first reproduce the captured endpoint
 `fetch_json`'s SSRF guard (INV-16). Then header minimization replays it, and its answers must reproduce the published
 values. A spec that does not reproduce the requests gets one repair round with the diagnostics; after that the site has
 no recipe and stays on the browser rung. Model output is data, never executed (INV-17). An LLM failure
-(`BudgetExhausted`, `ProviderUnavailable`, `OutputInvalid`) propagates to the learning job, as role A's does.
+(`LLMFailure`: budget, unavailable, refused or invalid output) propagates to the learning job, as role A's does.
 """
 
 import json
