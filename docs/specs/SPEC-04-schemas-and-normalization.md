@@ -44,11 +44,13 @@ Out of scope:
 - `crawlerai.schemas.presets/*.json`.
 - `crawlerai.normalize.base` — `NormalizeResult`, `Context`, `Normalizer` protocol, `normalize(raw, spec, ctx)`
   dispatcher, `equal(a, b, spec)` dispatcher.
-- `crawlerai.normalize.{text,money,enum,url,identifier,date,location,range}` — one module each (C8). `long_text`
+- `crawlerai.normalize.{text,money,enum,url,identifier,date,location,range,count}` — one module each (C8). `long_text`
   is handled by `text` (same module, flag `long=True`); `image_url` by `url` (flag `image=True`); `datetime` by
   `date`. `list` and `object` are handled in `base` by recursion, not by their own modules (they have no values
   of their own).
 - `crawlerai.normalize.vocab/` — language-tagged vocabularies with a `JUSTIFICATION.md` per file (C4).
+- `crawlerai.normalize.numbers` — numbers as pages write them: the page's CLDR locale set and the values a written
+  number has under its number symbols. Shared by `money` and `count`, so both read numbers one way (D-0782).
 
 ### 4.2 Schema document
 
@@ -92,7 +94,9 @@ Presets (§5.3), exactly these core fields, each with `schema_org` mapping:
 - `commerce_detail`: title (text, req), price (money, req), availability (enum ItemAvailability, req), url (url,
   req), image_url (image_url, req), brand (text), sku (identifier sku), gtin (identifier gtin);
   `required_groups: [["sku","gtin"]]`. Version 2: `brand` optional (ARCHITECTURE Appendix A #35); version 1 had
-  it required.
+  it required. Version 3: the optional row-mapped `variants` (SPEC-13 §4.7). Version 4: the optional
+  `stock_quantity` (count, `Offer.inventoryLevel`), also a sub-field of each `variants` row (Appendix A #39,
+  D-0782).
 - `commerce_listing`: row: title (req), url (req), price; page: next_page_url (url).
 - `job_detail`: title (req), company (text, req, `JobPosting.hiringOrganization.name`), locations (list<location>,
   req), description (long_text, req), apply_url (url, req, `JobPosting.url` — see Open issues), date_posted
@@ -141,10 +145,19 @@ structural property.
 
 **enum** → member code.
 - `schema:` vocab: match the input as a schema.org IRI or member name (`https://schema.org/InStock`,
-  `http://schema.org/InStock`, `InStock`, `schema:InStock`) — standard.
-- `type:` vocab: tokenize input (NFKC, casefold, split on non-letters); a vocabulary entry matches when its token
-  sequence equals a contiguous token subsequence of the input; the longest match wins; two different members
-  matching → `Ambiguous`; no match → `Invalid`. Never substring order (§9).
+  `http://schema.org/InStock`, `InStock`, `schema:InStock`) — standard. Other text that is no IRI is read as the
+  `type:` rule below reads it, against each type vocabulary whose codes are all members of the enumeration
+  (`type:availability` for `ItemAvailability`), and a member name in any case also counts as the clause (`instock`,
+  as Open Graph `product:availability` writes it) (D-0782).
+- `type:` vocab: tokenize input (NFKC, casefold, split on non-letters). The input states a code when the tokens of
+  its **first clause** equal one of the code's phrases exactly. The first clause runs from the first letter through
+  letters, marks, spaces, dashes and connectors (Unicode categories L, M, Zs, Pd, Pc) to the first other character
+  (punctuation, symbol, digit, line break); leading spaces, punctuation and symbols are skipped, a leading digit is
+  not. A different code whose phrase appears anywhere later (token run, longest match wins) → `Ambiguous`; no
+  clause match → `Invalid`. So "In stock (5 available)" → `InStock`; "Not in stock", "In stock soon",
+  "5 in stock" → `Invalid`: a word in the clause may negate or qualify the phrase, and no standard lists which
+  (C4, C7). "available" is no member name or phrase of the pinned schema.org vocabulary, so it declines. Never
+  substring order (§9).
 - Initial `type:availability` vocabulary (language `en`) is the de-camel-cased schema.org `ItemAvailability`
   member names only ("in stock", "out of stock", "pre order", "back order", "sold out", "discontinued", "limited
   availability", "in store only", "online only", "pre sale", "reserved", "made to order"), justification:
@@ -195,12 +208,21 @@ structural property.
   without a fetch, so the only check is "not a data: URL and not the page URL itself"; nothing else (no extension
   list; C4).
 
+**count** → non-negative integer (D-0782; a stock quantity).
+- JSON number with no fraction; schema.org `QuantitativeValue` (the range of `Offer.inventoryLevel`): its `value`,
+  with no unit or `unitCode` `C62` (UN/CEFACT Rec. 20 "one") — standard.
+- Text: the one number in it, located as money locates an amount and read by the CLDR number symbols of the same
+  locale set (`normalize.numbers`): "In stock (5 available)" → 5. No number → `Invalid`; two numbers →
+  `Invalid("several_numbers")`; a number the locales read differently → `Ambiguous`.
+- Fraction, negative, a range (`minValue`/`maxValue`), another unit → `Invalid`. Not a checkable type (SPEC-05
+  §4.5): any number normalizes, so an embedded-state count admits by equality only.
+
 **list<T>**: normalize each item; `Ok` if ≥ 1 item `Ok`; items that decline are dropped and reported in
 `reasons`. **object{…}**: normalize each sub-field; `Ok` if all required sub-fields `Ok`.
 
 ### 4.5 Equality (`equal`)
 
-money: `amount` equal as Decimal (no rounding) and `currency` equal. enum/identifier/date: exact. text: equal
+money: `amount` equal as Decimal (no rounding) and `currency` equal. enum/identifier/date/count: exact. text: equal
 after the text normalization (case-sensitive). url: equal after canonicalization. location: `country` equal and
 `casefold(locality)` equal (region ignored unless both present). range: all four parts equal. list: multiset of
 item equality. These functions are used by the resolver's agreement rule (SPEC-05) and by eval (SPEC-03).
@@ -220,7 +242,8 @@ cannot crash a job.
 
 ## 5. Invariants
 
-INV-05, INV-06, INV-08 (`.importlinter` contracts updated: each new module in the independence list), INV-09.
+INV-05, INV-06, INV-08 (`.importlinter` contracts updated: each new module in the independence list), INV-09,
+INV-37 (an enum read from text: only a whole first clause states a member; D-0782).
 Property tests are the enforcement for INV-06.
 
 ## 6. Testing strategy
@@ -232,7 +255,9 @@ Hypothesis property tests per type (`tests/property/test_normalize_<type>.py`), 
   single `page_currencies` code valid for the symbol → `Ok` with that code; never `Ok` with a currency not in the
   locale set or `page_currencies`; amount ≤ 0 → `Invalid`.
 - enum: substring order never matters (generate inputs where a shorter member is a substring of a longer phrase:
-  "unavailable" must not match "available"); two members in one input → `Ambiguous`.
+  "unavailable" must not match "available"); two members in one input → `Ambiguous`; a phrase with another word
+  in its first clause ("not in stock") → `Invalid`, never the member.
+- count: whole numbers round-trip; a fraction, a negative number or two numbers in a text → `Invalid`.
 - date: numeric `a/b/c` with both orders valid and no locale → `Ambiguous`; ISO round-trips.
 - identifier: random 13-digit strings with a correct check digit → `Ok`; one digit perturbed → `Invalid`.
 - location: a generated city with homonyms in two countries and no country → `Ambiguous`.
@@ -247,7 +272,7 @@ CI gates: `backend` job (property tests run with a fixed Hypothesis profile, `ma
 
 - All four presets load; `GET` through the registry returns them with every field described.
 - Every §9 "declines when" row has a passing property test.
-- `lint-imports` passes with all eight normalizer modules in the independence contract.
+- `lint-imports` passes with all nine normalizer modules in the independence contract.
 - `crawlerai data fetch` populates GeoNames and schema.org files; `data_manifest_check` passes.
 
 ## 8. PR plan
@@ -263,6 +288,8 @@ CI gates: `backend` job (property tests run with a fixed Hypothesis profile, `ma
 | 7 | Data manifest + GeoNames fetch + location | `data/manifest.json`, `normalize/location` | property, data-manifest job | Homonym tests pass. |
 | 8 | range | `normalize/range` | property | Period/currency decline tests pass. |
 | 9 | `equal` per type + list/object recursion | `normalize/base` | property | Eval and resolver can import. |
+| 10 | Availability from text: first-clause rule, member names in any case (D-0782) | `normalize/enum` | property, replay | "Not in stock" never gives `InStock`; "In stock (5 available)" and "instock" give `InStock`. |
+| 11 | `count` type, shared CLDR number reading, `commerce_detail` v4 `stock_quantity` (also per variant) | `normalize/count`, `normalize/numbers`, `schemas/types`, preset, SPEC-13 §4.7 | property, unit, replay | `inventoryLevel` and "In stock (5 available)" give 5; a fraction, a negative or another unit declines. |
 
 ## 9. Open issues
 
