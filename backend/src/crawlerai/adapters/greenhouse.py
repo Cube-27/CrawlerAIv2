@@ -79,8 +79,8 @@ class Greenhouse:
         endpoint += "?content=true" if match.item is None else f"/{match.item}"
         return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
-    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
-        return _SHAPES[page_kind]
+    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+        return _SHAPES[match.page_kind]
 
 
 def _hosted(segments: list[str]) -> AdapterMatch | None:

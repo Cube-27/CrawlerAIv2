@@ -29,7 +29,6 @@ from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.robots import at_origin
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, NOT_PLATFORM, NOT_SERVED, AdapterMatch, Members, Shape
-from crawlerai.db.models import PageKind
 
 API_VERSION: Final = "2026-10"
 # The Storefront API's endpoint path of any version: versions are named `YYYY-MM` (API versioning documentation).
@@ -107,7 +106,7 @@ class Shopify:
         )
         return _verdict(await send(request, policy))
 
-    def shapes(self, page_kind: PageKind, answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, _match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
         return (_LISTING if _one_currency(answer) else _UNPRICED_LISTING,)
 
 

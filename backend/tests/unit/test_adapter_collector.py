@@ -63,7 +63,8 @@ def _fixture(name: str) -> str:
 
 
 def _collect(adapter: Adapter, page_kind: PageKind, body: str, schema: SchemaDef) -> CollectResult:
-    return AdapterCollector(adapter, page_kind, VOCABULARY).collect(ParsedPage(body), schema, CTX)
+    collector = AdapterCollector(adapter, AdapterMatch("tenant", page_kind), VOCABULARY)
+    return collector.collect(ParsedPage(body), schema, CTX)
 
 
 def _values(result: CollectResult) -> dict[tuple[str, str], tuple[JsonValue, str]]:
@@ -247,7 +248,7 @@ class _StandIn:
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         raise AssertionError("collecting fetches nothing")
 
-    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return self._shapes
 
 
@@ -337,3 +338,39 @@ def test_an_anchored_node_is_an_entity_of_its_own_on_its_enclosing_object() -> N
         {"price": "9.50", "priceCurrency": "EUR"},
         "adapter:stand-in:$['amount']",
     )
+
+
+def test_a_property_read_from_several_members_holds_the_first_members_values_then_the_others() -> None:
+    job = Shape(
+        type="JobPosting",
+        properties={"jobLocation": ("primary",)},
+        also={"jobLocation": (("others", ALL),)},
+    )
+    body = json.dumps({"primary": "North", "others": ["South", None, "East"]})
+
+    result = _collect(_StandIn(job), "detail", body, _schema("detail", offices=_OFFICES))
+
+    assert _values(result)[("adapter:stand-in:$", "offices")] == (
+        ["North", "South", "East"],
+        "adapter:stand-in:$['primary']",
+    )
+
+
+def test_a_prefixed_property_reads_each_string_value_after_its_prefix() -> None:
+    rows = Shape(
+        type="JobPosting", at=("jobs", ALL), properties={"url": ("path",)}, prefixes={"url": "https://a.test/s"}
+    )
+    listing = Shape(type="ItemList", nodes={"itemListElement": (rows,)})
+    body = json.dumps({"jobs": [{"path": "/job/1"}, {"path": 7}]})
+
+    result = _collect(_StandIn(listing), "listing", body, _schema("listing", url=_url("JobPosting.url")))
+
+    assert [(c.entity_id, c.raw) for c in result.candidates] == [
+        ("adapter:stand-in:$['jobs'][0]", "https://a.test/s/job/1"),
+        ("adapter:stand-in:$['jobs'][1]", 7),
+    ]
+    assert result.entities[1].urls == ("https://a.test/s/job/1",)
+
+
+def _url(path: str) -> FieldSpec:
+    return FieldSpec.model_validate({"type": "url", "description": "d", "scope": "row", "schema_org": path})

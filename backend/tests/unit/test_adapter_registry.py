@@ -22,7 +22,6 @@ from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, Shape
 from crawlerai.adapters.registry import DECLINE_SECONDS, MAX_DECLINED, Registry, platform_adapters
 from crawlerai.core.capture import CaptureMethod
-from crawlerai.db.models import PageKind
 
 BOARD = "https://board.example.test/tenant"
 
@@ -76,7 +75,7 @@ class StubAdapter:
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         return await self.rung(url, policy)
 
-    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return ()
 
 
@@ -123,7 +122,7 @@ def test_every_platform_adapter_has_its_own_name() -> None:
     adapters: tuple[Adapter, ...] = platform_adapters()
 
     names = [adapter.name for adapter in adapters]
-    assert set(names) == {"greenhouse", "lever", "shopify"}
+    assert set(names) == {"greenhouse", "lever", "shopify", "workday", "oracle_recruiting"}
     Registry(adapters, active=names)  # refuses repeated names
 
 

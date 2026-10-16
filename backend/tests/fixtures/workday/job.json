@@ -1,0 +1,21 @@
+{
+  "jobPostingInfo": {
+    "id": "00000000000000000000000000000001",
+    "title": "Example Support Analyst",
+    "jobDescription": "<p>Answer synthetic questions.</p><ul><li>Two years of example experience.</li></ul>",
+    "location": "Southville",
+    "additionalLocations": ["Eastport"],
+    "postedOn": "Posted 3 Days Ago",
+    "startDate": "2026-09-28",
+    "timeType": "Full time",
+    "jobReqId": "R-0002",
+    "jobPostingId": "Example-Support-Analyst_R-0002",
+    "jobPostingSiteId": "External",
+    "canApply": true,
+    "posted": true,
+    "externalUrl": "https://jobs.example.com/External/job/Southville/Example-Support-Analyst_R-0002"
+  },
+  "hiringOrganization": { "name": "Example Org Ltd", "url": "" },
+  "similarJobs": [],
+  "userAuthenticated": false
+}

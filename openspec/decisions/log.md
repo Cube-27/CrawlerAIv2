@@ -954,3 +954,28 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Alternatives: keep JSON script state as rows (it exempted 4 tough-run listings that had none; the browser renders the grid from it when it has them).
 - Why: 8 tough-run listings with no rows at HTTP were `ok` because of such data; replayed, all 8 are now `shell` (browser retry). One of them had 58 role C rows at HTTP: if its browser retry fails, the HTTP shell is kept and those rows are lost (follow-up).
 - Reversible: yes
+
+### D-1176 — Adapter shapes see the page's match; a property may read several members and a root prefix
+- Date: 2026-10-16 · Change/PR: ats-adapters (#226) · Status: decided
+- Decision: `Adapter.shapes` takes the `AdapterMatch` (not only the page kind). `Shape.also` names further members a property reads after its own, in order; `Shape.prefixes` puts a text before each string value of a property. The adapter collector applies both; locators stay the JSON paths.
+- Alternatives: rewrite the answer body in `fetch` (the capture would no longer be the platform's answer, breaking replay); resolve `externalPath` against the endpoint URL (RFC 3986 drops the site segment for an absolute path).
+- Why: Workday states a listed job's path relative to its career site and Oracle a requisition's id only; both keep a primary location apart from the others.
+- Reversible: yes
+
+### D-1177 — Workday through its career sites' CXS endpoints
+- Date: 2026-10-16 · Change/PR: ats-adapters (#226) · Status: decided
+- Decision: Workday has no public documentation for these endpoints; the adapter calls exactly what the career site's page calls, unauthenticated: `POST /wday/cxs/{tenant}/{site}/jobs` with the page's own first-page body (20 rows) and `GET .../job/{location}/{slug}`. The match's tenant is the site's root without the locale (what `externalUrl` starts with); the locale goes in `Accept-Language`. `startDate` maps to `datePosted` (the job page's JSON-LD states the same value). A list row's `locationsText` is kept as written, including "N Locations" (owner: location text as written; telling a count from a place would need a phrase list, C4).
+- Why: the list page is rendered in the browser; its HTTP fetch is a shell with no rows.
+- Reversible: yes
+
+### D-1178 — Oracle Recruiting Cloud through the Candidate Experience REST resources
+- Date: 2026-10-16 · Change/PR: ats-adapters (#226) · Status: decided
+- Decision: The site segment goes into the finder as written (site numbers and site codes both answer); first page of 25 with `expand=requisitionList`; the job's URL is the site URL + `/job/{Id}`. `ExternalDescriptionStr` is the description (responsibilities and qualifications stay out); `LegalEmployer`, when stated, is the hiring organization. An `ok` answer with no items is `not_served`, so the page falls back.
+- Why: the resources are documented (REST API for Oracle Fusion Cloud HCM) and are what the site's page calls.
+- Reversible: yes
+
+### D-1179 — No iCIMS adapter
+- Date: 2026-10-16 · Change/PR: ats-adapters (#226) · Status: decided
+- Decision: iCIMS gets no adapter. Its career portals are server-rendered HTML and call no public JSON; the vendor's REST API needs customer OAuth credentials, which adapters never use.
+- Why: an adapter reads a platform's public, unauthenticated JSON; the page path already reads the portals' HTML.
+- Reversible: yes
