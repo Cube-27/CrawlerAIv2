@@ -24,6 +24,7 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import (
@@ -37,6 +38,8 @@ from crawlerai.db.models import (
     UrlTask,
 )
 from crawlerai.db.queue import MAX_ATTEMPTS
+from crawlerai.llm.client import NO_LLM, LLMClient, MeteredClient, ProviderReply
+from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import UNRANKED, EngineData
 from crawlerai.schemas import registry
@@ -48,7 +51,7 @@ from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.browser import SharedBrowser
-from crawlerai.worker.handlers.scrape import scrape_handler
+from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
 from tests.db.conftest import listing_page, listing_schema
 
@@ -145,14 +148,14 @@ def _records(urls: list[str], schema: SchemaDef) -> BatchScrapeRequest:
     return _batch(urls, "records", schema={"id": str(schema.id)}, page_kind="detail")
 
 
-async def _run(engine: AsyncEngine, fetching: Fetching, data: EngineData | None, *job_ids: JobId) -> None:
-    """Run a worker loop until every one of the jobs has ended."""
+async def _run(
+    engine: AsyncEngine, fetching: Fetching, data: EngineData | None, *job_ids: JobId, llm: LLMClient = NO_LLM
+) -> None:
+    """Run a worker loop with the worker's handlers until every one of the jobs has ended; role C runs on `llm`."""
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    loop = asyncio.create_task(
-        run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None, llm=None)}, stop)
-    )
+    loop = asyncio.create_task(run_worker(settings, task_handlers(fetching, data, None, llm=llm), stop))
     async with asyncio.timeout(60):
         while not await _ended(engine, job_ids):
             await asyncio.sleep(0.1)
@@ -318,6 +321,66 @@ async def test_records_are_stored_per_page_and_an_incomplete_page_is_partial(
     assert second.next_cursor is None
     titles = sorted((r.fields["title"].value, r.complete) for r in records)
     assert titles == [("Blue kettle", True), ("Plain kettle", False), ("Red kettle", True)]
+
+
+def _price_reply(fetch_result: Callable[..., FetchResult], url: str, body: bytes) -> ProviderReply:
+    """Role C's claim of the price the page shows only in its text (SPEC-06 §4.4)."""
+    text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
+    start = text.index("19.90 EUR")
+    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    return ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
+
+
+async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text_as_a_scrape_does(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # SPEC-10 §4.3: a batch's handler is the scrape's steps, role C included (D-1006), charged to the batch's job.
+    url = f"{own_origin}/kettles/blue"
+    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    web.pages[url] = (200, body)
+    llm = MeteredClient([FakeProvider([_price_reply(fetch_result, url, body)])], engine)
+    submitted = await submit_batch(engine, fetching.connector, _records([url], kettle_schema), data=engine_data)
+
+    await _run(engine, fetching, engine_data, submitted.job_id, llm=llm)
+
+    summary = await _summary(engine, submitted.job_id)
+    async with engine.connect() as conn:
+        record = (await conn.execute(select(Record.complete, Record.data))).one()
+    assert (summary.outcomes.extracted, summary.usage["llm_calls"]) == (1, 1)
+    assert (record.complete, record.data["price"]) == (True, {"amount": "19.90", "currency": "EUR"})
+
+
+async def test_a_batch_budget_of_no_llm_calls_leaves_the_field_missing(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # SPEC-10 §4.3 `budget`: the job's `llm_calls` bound role C as a scrape's do (SPEC-06 §4.2).
+    url = f"{own_origin}/kettles/blue"
+    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    web.pages[url] = (200, body)
+    provider = FakeProvider([_price_reply(fetch_result, url, body)])
+    request = _batch(
+        [url], "records", schema={"id": str(kettle_schema.id)}, page_kind="detail", budget={"llm_calls": 0}
+    )
+    submitted = await submit_batch(engine, fetching.connector, request, data=engine_data)
+
+    await _run(engine, fetching, engine_data, submitted.job_id, llm=MeteredClient([provider], engine))
+
+    page = await _results(engine, fetching, submitted.job_id)
+    assert isinstance(page, RecordPage)
+    price = page.items[0].fields["price"]
+    assert (price.status, price.reason, len(provider.calls)) == ("missing", "llm_budget", 0)
 
 
 async def test_a_listing_page_keeps_a_record_per_row_and_one_without_rows_is_partial(

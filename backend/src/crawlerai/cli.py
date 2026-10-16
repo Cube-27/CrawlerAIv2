@@ -30,7 +30,7 @@ from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
-from crawlerai.db.models import EvalCategory, EvalRunId, JobKind, PageKind, Split
+from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
 from crawlerai.eval import calibrate, promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
 from crawlerai.eval.store import (
@@ -50,10 +50,9 @@ from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.browser import SharedBrowser
-from crawlerai.worker.handlers.crawl import crawl_handler
-from crawlerai.worker.handlers.scrape import scrape_handler
+from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.learn import run_learner
-from crawlerai.worker.loop import TaskHandler, run_worker
+from crawlerai.worker.loop import run_worker
 
 
 def _print_openapi() -> None:
@@ -100,11 +99,7 @@ async def _work() -> None:
             fetching = Fetching(rungs, connector, store, HostLimiter())
             llm, setup = llm_from_settings(settings, engine)
             data, margins = load_engine_data(), load_drift_margins()
-            handlers: dict[JobKind, TaskHandler] = {
-                "batch_scrape": scrape_handler(fetching, data, margins, llm=None),  # a batch binds no role C (D-0631)
-                "crawl": crawl_handler(fetching, data, margins, llm=llm),
-                "extract": scrape_handler(fetching, data, margins, llm=llm),
-            }
+            handlers = task_handlers(fetching, data, margins, llm=llm)
             stop = _stop_on_signals()
             # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
             work = [run_worker(settings, handlers, stop, ending=close_run), setup.verify()]
