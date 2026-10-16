@@ -83,7 +83,7 @@ def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(mon
     vocabulary = object()
     monkeypatch.setattr(cli, "run_worker", run)
     monkeypatch.setattr(cli, "run_learner", learn)
-    monkeypatch.setattr(cli, "load_engine_data", lambda: SimpleNamespace(vocabulary=vocabulary))
+    monkeypatch.setattr(cli, "load_engine_data", lambda _adapters: SimpleNamespace(vocabulary=vocabulary))
     monkeypatch.setenv("CRAWLERAI_LLM_A_MAX_CHARS", "5000")
 
     main(["worker"])

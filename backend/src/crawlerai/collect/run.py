@@ -88,11 +88,11 @@ def _adapter_collector(
     fetches from its final URL."""
     if manifest.method != "api":
         return None
-    adapter = None if adapters is None else adapters.reader(manifest.url, manifest.final_url)
-    match = None if adapter is None else adapter.detect(manifest.url)
-    if adapter is None or match is None:
+    found = None if adapters is None else adapters.reader(manifest.url, manifest.final_url)
+    if found is None:
         diagnostics.append("adapter: no active adapter reads this api capture")
         return None
+    adapter, match = found
     return AdapterCollector(adapter, match.page_kind, vocabulary)
 
 

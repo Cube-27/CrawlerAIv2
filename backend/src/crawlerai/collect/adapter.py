@@ -12,6 +12,7 @@ normalizer is the only filter (C7).
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cache
 
 from pydantic import JsonValue
 
@@ -136,6 +137,7 @@ def _select(members: Members, data: JsonValue, path: str) -> list[tuple[str, Jso
     return select(ROOT + _segments(members), data, path)
 
 
+@cache  # shapes are module constants: a few distinct member tuples, looked up per node
 def _segments(members: Members) -> str:
     """`members` as RFC 9535 segments: a name segment each, a wildcard segment for `ALL`."""
     return "".join("[*]" if name == ALL else member("", name) for name in members)

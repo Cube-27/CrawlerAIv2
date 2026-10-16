@@ -18,7 +18,7 @@ from crawlerai.storage.capture_bundle import (
     sha256_hex,
 )
 
-__all__ = ["Content", "Exchange", "fetch_result", "unserved"]
+__all__ = ["Content", "Exchange", "as_error", "fetch_result"]
 
 
 @dataclass(frozen=True)
@@ -90,7 +90,7 @@ def fetch_result(
     return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=(attempt,))
 
 
-def unserved(result: FetchResult, reason: str) -> FetchResult:
+def as_error(result: FetchResult, reason: str) -> FetchResult:
     """`result` as an `error` outcome for `reason`: an answer that arrived but is not the content the fetch asked for
     (an adapter's answer that does not serve its page, SPEC-15 §4.2). As every error, it keeps no body."""
     manifest = result.bundle.manifest.model_copy(update={"block_class": "error", "html_sha256": sha256_hex(b"")})

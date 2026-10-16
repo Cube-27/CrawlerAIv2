@@ -20,7 +20,8 @@ from urllib.parse import urlsplit
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.outcome import unserved
+from crawlerai.acquire.outcome import as_error
+from crawlerai.acquire.robots import at_origin
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, NOT_PLATFORM, NOT_SERVED, AdapterMatch, Members, Shape
 from crawlerai.db.models import PageKind
@@ -162,10 +163,8 @@ class Shopify:
         if match is None:
             raise ValueError("not a storefront URL this adapter detects")
         query, member = _QUERIES[match.page_kind]
-        parts = urlsplit(url)
         request = JsonRequest(
-            # The page's own host and port (RFC 3986 §3.2), without any user information.
-            url=f"{parts.scheme.lower()}://{parts.netloc.rpartition('@')[2]}/api/{API_VERSION}/graphql.json",
+            url=at_origin(url, f"/api/{API_VERSION}/graphql.json"),
             page_url=url,
             method="POST",
             headers=(("Content-Type", "application/json"),),
@@ -189,12 +188,12 @@ def _verdict(result: FetchResult, member: str) -> FetchResult:
     if manifest.status_code == 0:
         return result
     if not any(name.lower() == SIGNAL for name, _ in manifest.headers.response):
-        return unserved(result, NOT_PLATFORM)
+        return as_error(result, NOT_PLATFORM)
     if result.block_class != "ok":
         return result
     # `fetch_json` checked that an `ok` body is JSON (RFC 8259); GraphQL answers with an object.
     answer = json.loads(result.bundle.body)
     if not isinstance(answer, dict) or answer.get("errors"):
-        return unserved(result, NOT_SERVED)
+        return as_error(result, NOT_SERVED)
     data = answer.get("data")
-    return result if isinstance(data, dict) and isinstance(data.get(member), dict) else unserved(result, NOT_SERVED)
+    return result if isinstance(data, dict) and isinstance(data.get(member), dict) else as_error(result, NOT_SERVED)

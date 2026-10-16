@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_PLATFORM, Adapter
+from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 from crawlerai.adapters.shopify import Shopify
@@ -46,23 +46,27 @@ class Registry:
         self._declined: OrderedDict[tuple[str, str], float] = OrderedDict()  # (adapter, host) -> until
 
     def detect(self, url: str) -> Adapter | None:
-        """The active adapter that detects `url`, unless it declined the URL's host."""
-        host = urlsplit(url).hostname or ""
-        return next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
+        """The active adapter that detects `url`."""
+        return next((a for a in self._active if a.detect(url) is not None), None)
 
-    def reader(self, url: str, endpoint: str) -> Adapter | None:
-        """The active adapter that reads an `api` capture of the page at `url` whose final URL is `endpoint`: one that
-        detects the page and fetches from that endpoint (INV-39). Declines do not matter: the capture is the answer."""
-        return next((a for a in self._active if a.detect(url) is not None and a.serves(endpoint)), None)
+    def reader(self, url: str, endpoint: str) -> tuple[Adapter, AdapterMatch] | None:
+        """The active adapter that reads an `api` capture of the page at `url` whose final URL is `endpoint`, with its
+        match: one that detects the page and fetches from that endpoint (INV-39)."""
+        for adapter in self._active:
+            if (match := adapter.detect(url)) is not None and adapter.serves(endpoint):
+                return adapter, match
+        return None
 
     async def serve(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult | None:
-        """The answer of the adapter `detect` names for `url`, requested with `send`; None when there is none."""
-        adapter = self.detect(url)
+        """The answer of the active adapter that detects `url` and has not declined its host, requested with `send`;
+        None when there is none."""
+        host = urlsplit(url).hostname or ""
+        adapter = next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
         if adapter is None:
             return None
         result = await adapter.fetch(url, policy, send)
         if result.attempts[-1].error == NOT_PLATFORM:
-            self._decline(adapter, urlsplit(url).hostname or "")
+            self._decline(adapter, host)
         return result
 
     def _is_declined(self, adapter: Adapter, host: str) -> bool:
@@ -76,7 +80,7 @@ class Registry:
 
     def _decline(self, adapter: Adapter, host: str) -> None:
         key = (adapter.name, host)
-        self._declined.pop(key, None)
         self._declined[key] = self._clock() + DECLINE_SECONDS
+        self._declined.move_to_end(key)
         while len(self._declined) > MAX_DECLINED:
             self._declined.popitem(last=False)

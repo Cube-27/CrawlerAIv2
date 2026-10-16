@@ -61,12 +61,17 @@ class Robots:
 
 def robots_url(url: str) -> str:
     """The robots.txt that governs `url`: `/robots.txt` at its scheme, host and port (RFC 9309 §2.3)."""
+    return at_origin(url, "/robots.txt")
+
+
+def at_origin(url: str, path: str) -> str:
+    """`path` at `url`'s scheme, host and port, without its user information (RFC 3986 §3.2)."""
     parts = urlsplit(url)
     host = parts.hostname or ""
     netloc = f"[{host}]" if ":" in host else host
     if parts.port is not None:
         netloc += f":{parts.port}"
-    return urlunsplit((parts.scheme, netloc, "/robots.txt", "", ""))
+    return urlunsplit((parts.scheme, netloc, path, "", ""))
 
 
 def snapshot_of(result: FetchResult) -> RobotsSnapshot | None:

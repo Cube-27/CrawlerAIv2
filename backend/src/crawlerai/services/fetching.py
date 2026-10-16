@@ -172,10 +172,7 @@ def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: Si
         turn.host = None  # the page is the first request: its host's turn is the one the caller took
         return await http(url, policy)
 
-    async def endpoint(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
-        return await _polite_json(fetching.limiter, json, rules, request, policy, turn.take)
-
-    return RecipeRung(recipe, endpoint, page, ENGINE_VERSION)
+    return RecipeRung(recipe, _polite_send(fetching, json, rules, turn), page, ENGINE_VERSION)
 
 
 def adapter_send(fetching: Fetching, page_host: str, rules: SiteRules) -> JsonFetcher | None:
@@ -187,8 +184,10 @@ def adapter_send(fetching: Fetching, page_host: str, rules: SiteRules) -> JsonFe
     json = fetching.rungs.json
     if json is None:
         return None
-    turn = _Turn(page_host)
+    return _polite_send(fetching, json, rules, _Turn(page_host))
 
+
+def _polite_send(fetching: Fetching, json: JsonFetcher, rules: SiteRules, turn: _Turn) -> JsonFetcher:
     async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         return await _polite_json(fetching.limiter, json, rules, request, policy, turn.take)
 

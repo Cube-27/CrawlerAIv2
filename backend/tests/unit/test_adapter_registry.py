@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result, unserved
+from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, Shape
@@ -47,13 +47,13 @@ class Rung:
     method: CaptureMethod
     status: int = 200
     block_class: BlockClass = "ok"
-    reason: str | None = None  # an adapter answer that does not serve the page (`unserved`)
+    reason: str | None = None  # an adapter answer that does not serve the page (`as_error`)
     calls: list[str] = field(default_factory=list)
 
     async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.calls.append(url)
         result = _result(url, self.method, self.status, self.block_class)
-        return result if self.reason is None else unserved(result, self.reason)
+        return result if self.reason is None else as_error(result, self.reason)
 
 
 @dataclass
@@ -130,7 +130,9 @@ def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_e
     board = StubAdapter("board", "board.example.test")
     registry = Registry([board], active={"board"})
 
-    assert registry.reader(BOARD, "https://board.example.test/api/list") is board
+    found = registry.reader(BOARD, "https://board.example.test/api/list")
+    assert found is not None
+    assert found[0] is board
     assert registry.reader(BOARD, "https://data.example.test/list") is None
     assert registry.reader("https://shop.example.test/api/x", "https://shop.example.test/api/x") is None
 
@@ -216,8 +218,9 @@ def test_an_answer_the_platform_gives_for_another_page_declines_no_host() -> Non
     registry = Registry([adapter], active={"board"})
 
     asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
+    again = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
 
-    assert registry.detect(BOARD) is adapter
+    assert (again is not None, len(adapter.rung.calls)) == (True, 2)
 
 
 def test_declined_hosts_are_bounded_and_the_oldest_is_forgotten_first() -> None:
@@ -231,6 +234,9 @@ def test_declined_hosts_are_bounded_and_the_oldest_is_forgotten_first() -> None:
 
     asyncio.run(serve_all())
 
-    assert registry.detect(urls[0]) is adapter
-    assert registry.detect(urls[1]) is None
-    assert registry.detect(urls[-1]) is None
+    async def served(url: str) -> bool:
+        return await registry.serve(url, FetchPolicy(), _send) is not None
+
+    assert asyncio.run(served(urls[1])) is False
+    assert asyncio.run(served(urls[-1])) is False
+    assert asyncio.run(served(urls[0])) is True

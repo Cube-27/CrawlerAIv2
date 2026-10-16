@@ -80,7 +80,7 @@ _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
 DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
 
 
-def load_engine_data(adapters: Adapters | None = None) -> EngineData | None:
+def load_engine_data(adapters: Adapters) -> EngineData | None:
     """The engine's data files from the engine directory's `data/`, with the process's active `adapters` to read their
     captures, for `records` and replays; None where they are not there (no engine directory, or a tree without
     `crawlerai data fetch`): `records` and replays are then unavailable, and the other formats work."""
