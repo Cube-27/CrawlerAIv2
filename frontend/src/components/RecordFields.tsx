@@ -36,23 +36,31 @@ export function RecordFieldsTable({
   return (
     <Table>
       <Table.ScrollContainer>
-        <Table.Content aria-label={label}>
+        {/* Fixed column widths: a long value or locator truncates rather than pushing Evidence off the table. */}
+        <Table.Content aria-label={label} className="table-fixed">
           <Table.Header>
-            <Table.Column isRowHeader>Field</Table.Column>
-            <Table.Column>Value</Table.Column>
-            <Table.Column>Status</Table.Column>
-            <Table.Column>Confidence</Table.Column>
-            <Table.Column>Evidence</Table.Column>
-            <Table.Column>Source</Table.Column>
-            <Table.Column>Locator</Table.Column>
-            <Table.Column>Derived by</Table.Column>
+            <Table.Column isRowHeader className="w-1/8">
+              Field
+            </Table.Column>
+            <Table.Column className="w-1/4">Value</Table.Column>
+            <Table.Column className="w-1/8">Status</Table.Column>
+            <Table.Column className="w-1/8">Confidence</Table.Column>
+            <Table.Column className="w-1/8">Evidence</Table.Column>
+            <Table.Column className="w-1/12">Source</Table.Column>
+            <Table.Column className="w-1/12">Locator</Table.Column>
+            <Table.Column className="w-1/12">Derived by</Table.Column>
           </Table.Header>
           <Table.Body items={fields}>
             {(field) => (
               <Table.Row id={field.name}>
-                <Table.Cell>{field.name}</Table.Cell>
-                <Table.Cell>
-                  <FieldValue field={field} spec={fieldTypes[field.name] ?? null} />
+                <Table.Cell className="truncate">{field.name}</Table.Cell>
+                <Table.Cell className="truncate">
+                  {/* The status has its own column. */}
+                  <FieldValue
+                    field={field}
+                    spec={fieldTypes[field.name] ?? null}
+                    withStatus={false}
+                  />
                 </Table.Cell>
                 <Table.Cell>
                   <FieldStatusBadge status={field.status} />
@@ -60,12 +68,12 @@ export function RecordFieldsTable({
                 <Table.Cell>
                   <ConfidenceCell confidence={field.confidence} calibrated={field.calibrated} />
                 </Table.Cell>
-                <Table.Cell>{field.evidence ?? "—"}</Table.Cell>
-                <Table.Cell>{field.source_kind ?? "—"}</Table.Cell>
-                <Table.Cell>
+                <Table.Cell className="truncate">{field.evidence ?? "—"}</Table.Cell>
+                <Table.Cell className="truncate">{field.source_kind ?? "—"}</Table.Cell>
+                <Table.Cell className="truncate">
                   <LocatorText locator={field.locator} />
                 </Table.Cell>
-                <Table.Cell>{field.derived_by ?? "—"}</Table.Cell>
+                <Table.Cell className="truncate">{field.derived_by ?? "—"}</Table.Cell>
               </Table.Row>
             )}
           </Table.Body>
