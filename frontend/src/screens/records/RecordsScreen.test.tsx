@@ -176,7 +176,12 @@ describe("records screen: the list", () => {
         names.map((name) => [
           name,
           name === "tags"
-            ? { type: "list", item: { type: "text" }, required: false, scope: "row" }
+            ? {
+                type: "list",
+                item: { type: "text", required: false, scope: "row" },
+                required: false,
+                scope: "row",
+              }
             : { type: "text", required: false, scope: "row" },
         ]),
       ),
