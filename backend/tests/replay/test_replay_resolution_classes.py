@@ -157,3 +157,12 @@ def test_og_image_selects_one_image_of_a_json_ld_gallery() -> None:
 
     assert _outcomes(named, "image_url") == {"image_url": ("published", None, gallery[1])}
     assert _outcomes(unnamed, "image_url") == {"image_url": ("conflict", "disagree", None)}
+
+
+def test_a_page_without_canonical_or_og_url_publishes_its_final_url_as_derived() -> None:
+    # Round-1 class 9, fixed by D-0355's derivation: a static page with no structured data and no canonical link.
+    result = _extract("<title>Widget One</title>", "<h1>Widget One</h1>")
+
+    assert result.entity is not None
+    url = result.entity["url"]
+    assert (url.status, url.value, url.evidence, url.derived_by) == ("published", PAGE_URL, "derived", "final_url")
