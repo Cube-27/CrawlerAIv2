@@ -64,8 +64,9 @@ class CollectResult(_Model):
             if entity.parent is not None and entity.parent not in ids:
                 raise ValueError(f"entity {entity.id!r} has unknown parent {entity.parent!r}")
         _check_tree(self.entities)
+        # The page entity is always present (`EntityGraph.of` adds it), so a page-level candidate needs no entity here.
         for candidate in self.candidates:
-            if candidate.entity_id not in ids:
+            if candidate.entity_id != PAGE and candidate.entity_id not in ids:
                 raise ValueError(f"candidate for {candidate.field!r} names unknown entity {candidate.entity_id!r}")
         return self
 

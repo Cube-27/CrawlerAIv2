@@ -2,9 +2,8 @@
 and diagnostics as one result.
 
 The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
-others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). The structural DOM
-collector's values are the page's, so it adds candidates and no entities. Then js_state and xhr admit their values
-against the candidates of the other kinds (D-0418).
+others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). Then js_state and xhr
+admit their values against the candidates of the other kinds (D-0418).
 """
 
 import logging
@@ -50,7 +49,12 @@ def collect_page(
     vocabulary: Vocabulary,
     adapters: Adapters | None,
 ) -> Collected:
-    collectors: list[Collector] = [JsonLdCollector(vocabulary), MicrodataCollector(vocabulary), OpenGraphCollector()]
+    collectors: list[Collector] = [
+        JsonLdCollector(vocabulary),
+        MicrodataCollector(vocabulary),
+        OpenGraphCollector(),
+        DomCollector(),
+    ]
     diagnostics: list[str] = []
     adapter = _adapter_collector(manifest, adapters, diagnostics)
     if adapter is not None:
@@ -59,9 +63,7 @@ def collect_page(
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
     entities = tuple(entity for result in results for entity in result.entities)
-    dom = DomCollector()
-    structural = _isolated(dom, partial(dom.collect, page, schema, ctx), diagnostics) or ()
-    others = (*(candidate for result in results for candidate in result.candidates), *structural)
+    others = tuple(candidate for result in results for candidate in result.candidates)
     admitting: Sequence[AdmittingCollector] = (JsStateCollector(), XhrCollector())
     admitted = [
         a

@@ -25,16 +25,14 @@ from collections.abc import Iterator, Mapping, Sequence
 
 from selectolax.lexbor import LexborNode
 
-from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.base import PAGE, CollectResult
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import named_property, parse_paths
+from crawlerai.collect.schema_org_map import candidate, named_property, parse_paths
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.content.text import CELLS
 from crawlerai.normalize.base import Context
-from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# HTML Standard §4.9.9-10: the cells of a table row.
-_CELLS = frozenset({"th", "td"})
 # HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
 # content tangential to it).
 _TANGENTIAL = frozenset({"nav", "header", "footer", "aside"})
@@ -51,11 +49,17 @@ Words = tuple[str, ...]
 
 
 class DomCollector:
-    def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> tuple[Candidate, ...]:
+    def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         if schema.page_kind != "detail":
-            return ()
-        pairs = _pair_candidates(page, _labels(schema), schema, ctx)
-        return (*pairs, *_image_candidates(page, schema, ctx))
+            return CollectResult(entities=(), candidates=())
+        diagnostics: list[str] = []
+        candidates = []
+        for name, raw, xpath in (*_pairs_found(page, schema), *_image_found(page, schema)):
+            locator = format_locator("dom", xpath)
+            found = candidate(name, schema.fields[name], PAGE, "dom", raw, locator, ctx, diagnostics)
+            if found is not None:
+                candidates.append(found)
+        return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
 def _labels(schema: SchemaDef) -> dict[Words, list[str]]:
@@ -64,10 +68,14 @@ def _labels(schema: SchemaDef) -> dict[Words, list[str]]:
     for name, spec in schema.fields.items():
         if spec.type in (FieldType.LIST, FieldType.OBJECT):
             continue
-        paths = parse_paths(spec.schema_org) if spec.schema_org is not None else ()
-        for form in dict.fromkeys([words(name), *(words(named_property(p)) for p in paths)]):
+        for form in dict.fromkeys([words(name), *map(words, _properties(spec))]):
             labels.setdefault(form, []).append(name)
     return labels
+
+
+def _properties(spec: FieldSpec) -> list[str]:
+    """The schema.org properties a field's paths name (`named_property`)."""
+    return [named_property(p) for p in parse_paths(spec.schema_org)] if spec.schema_org is not None else []
 
 
 def words(text: str) -> Words:
@@ -77,27 +85,31 @@ def words(text: str) -> Words:
     return tuple(word.casefold() for word in _WORD.findall(spaced))
 
 
-def _pair_candidates(
-    page: ParsedPage, labels: Mapping[Words, Sequence[str]], schema: SchemaDef, ctx: Context
-) -> Iterator[Candidate]:
+Found = tuple[str, str, str]  # a field, the raw value, the XPath of the element it came from
+
+
+def _pairs_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
+    labels: Mapping[Words, Sequence[str]] = _labels(schema)
     seen: set[tuple[str, str]] = set()
     for label, value in _pairs(page):
         fields = labels.get(words(label.text(deep=True, separator=" ")))
-        raw = value.text(deep=True, separator=" ").strip() if fields else ""
+        if not fields:
+            continue
+        raw = value.text(deep=True, separator=" ").strip()
         if not raw or not page.visible_values.visible(raw):
             continue
         xpath = node_xpath(value)
-        for name in fields or ():
+        for name in fields:
             if (name, xpath) not in seen:
                 seen.add((name, xpath))
-                yield _candidate(name, schema.fields[name], raw, xpath, ctx)
+                yield name, raw, xpath
 
 
 def _pairs(page: ParsedPage) -> Iterator[tuple[LexborNode, LexborNode]]:
     """Each label with its value: table rows of two cells, then description list groups, in document order."""
     for row in page.tree.css("tr"):
         cells = _children(row)
-        if len(cells) == 2 and all(cell.tag in _CELLS for cell in cells):
+        if len(cells) == 2 and all(cell.tag in CELLS for cell in cells):
             yield cells[0], cells[1]
     for described in page.tree.css("dl"):
         yield from _groups(described)
@@ -128,19 +140,18 @@ def _children(node: LexborNode) -> list[LexborNode]:
     return [child for child in node.iter(include_text=False) if child.is_element_node]
 
 
-def _image_candidates(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[Candidate]:
-    fields = [name for name, spec in schema.fields.items() if _names_image(spec)]
+def _image_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
+    fields = [
+        n for n, spec in schema.fields.items() if spec.type is FieldType.IMAGE_URL and _IMAGE in _properties(spec)
+    ]
     region = _main_region(page) if fields else None
-    found = None if region is None else _main_image(region)
-    if found is not None:
-        image, source = found
-        for name in fields:
-            yield _candidate(name, schema.fields[name], source, node_xpath(image), ctx)
-
-
-def _names_image(spec: FieldSpec) -> bool:
-    paths = parse_paths(spec.schema_org) if spec.schema_org is not None else ()
-    return spec.type is FieldType.IMAGE_URL and any(named_property(p) == _IMAGE for p in paths)
+    found = _main_image(region) if region is not None else None
+    if found is None:
+        return
+    image, source = found
+    xpath = node_xpath(image)
+    for name in fields:
+        yield name, source, xpath
 
 
 def _main_region(page: ParsedPage) -> LexborNode | None:
@@ -178,15 +189,3 @@ def _tangential(node: LexborNode, region: LexborNode) -> bool:
             return True
         ancestor = ancestor.parent
     return False
-
-
-def _candidate(name: str, spec: FieldSpec, raw: str, xpath: str, ctx: Context) -> Candidate:
-    return Candidate(
-        field=name,
-        entity_id=PAGE,
-        source_kind="dom",
-        raw=raw,
-        normalized=normalize(raw, spec, ctx),
-        locator=format_locator("dom", xpath),
-        independent=True,
-    )

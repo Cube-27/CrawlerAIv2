@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.collect.base import Candidate, CollectResult, Entity
+from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 
@@ -73,7 +73,7 @@ def test_a_candidate_without_a_valid_locator_is_refused(locator: str) -> None:
 
 def test_a_candidate_source_kind_comes_from_the_section_6_enum() -> None:
     with pytest.raises(ValidationError, match="source_kind"):
-        _candidate(source_kind="dom")
+        _candidate(source_kind="css")
 
 
 # Collect results
@@ -83,6 +83,11 @@ def test_a_candidate_of_an_unknown_entity_is_refused() -> None:
     orphan_offer, product_name = OFFER.model_copy(update={"parent": None}), _candidate()
     with pytest.raises(ValidationError, match="unknown entity"):
         CollectResult(entities=(orphan_offer,), candidates=(product_name,))
+
+
+def test_a_page_level_candidate_needs_no_page_entity_in_its_result() -> None:
+    title = _candidate(entity_id=PAGE)
+    assert CollectResult(entities=(), candidates=(title,)).candidates == (title,)
 
 
 def test_an_entity_whose_parent_is_unknown_is_refused() -> None:

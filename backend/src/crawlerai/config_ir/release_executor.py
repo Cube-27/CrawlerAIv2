@@ -301,7 +301,9 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
     before it."""
     if source == "jsonld":
         if media_type == _JSONLD:
-            yield from _loads(text)
+            # As the jsonld collector reads it (SPEC-05 §4.5): raw control characters inside strings, which RFC 8259
+            # §7 requires escaped and §9 lets a parser accept, read as their escaped form (`strict=False`).
+            yield from _loads(text, strict=False)
         return
     if media_type == _JSON:
         yield from _loads(text)
@@ -318,9 +320,9 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
             yield value
 
 
-def _loads(text: str) -> Iterator[Value]:
+def _loads(text: str, *, strict: bool = True) -> Iterator[Value]:
     try:
-        yield json.loads(text)
+        yield json.loads(text, strict=strict)
     except ValueError:
         return
 

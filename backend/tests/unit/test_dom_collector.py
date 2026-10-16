@@ -51,7 +51,7 @@ SCHEMA = _schema("detail", **FIELDS)
 
 
 def _collect(body: str, schema: SchemaDef = SCHEMA) -> dict[str, list[tuple[object, str]]]:
-    candidates = DomCollector().collect(ParsedPage(f"<html><body>{body}</body></html>"), schema, CTX)
+    candidates = DomCollector().collect(ParsedPage(f"<html><body>{body}</body></html>"), schema, CTX).candidates
     found: dict[str, list[tuple[object, str]]] = {}
     for c in candidates:
         assert (c.entity_id, c.source_kind, c.independent) == (PAGE, "dom", True)
@@ -152,9 +152,13 @@ def test_without_one_main_region_image_there_is_no_main_image(body: str) -> None
 
 
 def test_locators_parse_as_dom_xpaths() -> None:
-    candidates = DomCollector().collect(
-        ParsedPage('<html><body><main><img src="/p.jpg"></main><dl><dt>SKU</dt><dd>W-1</dd></dl></body></html>'),
-        SCHEMA,
-        CTX,
+    candidates = (
+        DomCollector()
+        .collect(
+            ParsedPage('<html><body><main><img src="/p.jpg"></main><dl><dt>SKU</dt><dd>W-1</dd></dl></body></html>'),
+            SCHEMA,
+            CTX,
+        )
+        .candidates
     )
     assert [parse_locator(c.locator).scheme for c in candidates] == ["dom", "dom"]

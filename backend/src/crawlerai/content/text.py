@@ -39,7 +39,7 @@ _LINE_BOXES = frozenset(
     }
 )
 # `display: table-cell`: adjacent cells are separate boxes, so their texts are separated (by a tab in `innerText`).
-_CELLS = frozenset({"td", "th"})
+CELLS = frozenset({"td", "th"})
 # HTML attributes whose values the page shows or announces for a visible element (SPEC-05 §4.4).
 _SHOWN_ATTRIBUTES = ("alt", "title", "value", "content")
 # Namespaces in XML 1.0, NCName: a name without a colon, starting with a letter or `_` (`[^\W\d]`), then letters,
@@ -148,7 +148,7 @@ def _separator(tag: str) -> str:
     # HTML Standard, Rendering: `br` is a forced line break.
     if tag in _LINE_BOXES or tag == "br":
         return "\n"
-    return " " if tag in _CELLS else ""
+    return " " if tag in CELLS else ""
 
 
 def xpath_step(tag: str, index: int) -> str:

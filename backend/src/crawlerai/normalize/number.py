@@ -14,6 +14,7 @@ number the page's locales read as different values is `Ambiguous`.
 """
 
 from collections.abc import Hashable
+from contextlib import suppress
 from decimal import Decimal, InvalidOperation
 
 from pydantic import JsonValue
@@ -40,10 +41,10 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     if isinstance(found, str):
         return Invalid(found)
     # CLDR number patterns write the minus sign against the digits; one set apart from them may be a dash.
-    sign = next((m for m in numbers.MINUS if found.before.endswith(m)), None)
-    if numbers.negative(found.before.removesuffix(sign or "")):
+    signed = found.before.endswith(numbers.MINUS)  # each minus sign is one character
+    if numbers.negative(found.before[:-1] if signed else found.before):
         return Invalid("sign")
-    values = [-v if sign else v for v in numbers.readings(found.written, numbers.locale_set(ctx))]
+    values = [-v if signed else v for v in numbers.readings(found.written, numbers.locale_set(ctx))]
     if not values:
         return Invalid("not_a_number")  # a run no CLDR convention parses strictly ("1,2,3")
     if len(values) == 1:
@@ -58,8 +59,6 @@ def _written(value: Decimal) -> str:
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
     """Equality as a key (SPEC-04 §4.5): equal as decimals, so `4.5` equals `4.50`."""
     if isinstance(value, str):
-        try:
+        with suppress(InvalidOperation):
             return Decimal(value)
-        except InvalidOperation:
-            return raw_key(value)
     return raw_key(value)
