@@ -102,3 +102,47 @@ def test_an_og_title_publishes_without_its_site_segment() -> None:
     result = _extract(_og(("og:title", "Widget One | green | Example Store")))
 
     assert _outcomes(result, "title") == {"title": ("published", None, "Widget One | green")}
+
+
+def _product(**properties: Any) -> dict[str, Any]:
+    return {"@context": "https://schema.org", "@type": "Product", **properties}
+
+
+def _offer(price: str, availability: str, **properties: Any) -> dict[str, Any]:
+    return {"@type": "Offer", "price": price, "priceCurrency": "EUR", "availability": availability, **properties}
+
+
+def test_two_blocks_of_one_node_id_publish_as_one_product() -> None:
+    # One block writes the page's URL relative; both name one @id, so they are one product and its values agree.
+    head = _jsonld(
+        _product(
+            **{"@id": "/p/1#product"},
+            url=PAGE_URL,
+            name="Widget One",
+            sku="W-1",
+            offers=_offer("14.00", "https://schema.org/InStock"),
+        ),
+        _product(**{"@id": "/p/1#product"}, url="/p/1", name="Widget One", offers=_offer("14.0", "InStock")),
+    )
+
+    assert _outcomes(_extract(head), "title", "price", "availability", "sku") == {
+        "title": ("published", None, "Widget One"),
+        "price": ("published", None, {"amount": "14.00", "currency": "EUR"}),
+        "availability": ("published", None, "InStock"),
+        "sku": ("published", None, {"scheme": "sku", "value": "W-1"}),
+    }
+
+
+def test_two_blocks_of_one_sku_that_disagree_on_the_offer_are_a_conflict() -> None:
+    # The second block has no @id or url, only the sku that identifies the product: its Offer is the product's too,
+    # so the two Offers disagree and neither publishes.
+    head = _jsonld(
+        _product(url=PAGE_URL, name="Widget One", sku="W-1", offers=_offer("199.95", "https://schema.org/OutOfStock")),
+        _product(name="Widget One", sku="W-1", offers=_offer("179.95", "https://schema.org/InStock", sku="W-1")),
+    )
+
+    assert _outcomes(_extract(head), "title", "price", "availability") == {
+        "title": ("published", None, "Widget One"),
+        "price": ("conflict", "offers_disagree", None),
+        "availability": ("conflict", "offers_disagree", None),
+    }

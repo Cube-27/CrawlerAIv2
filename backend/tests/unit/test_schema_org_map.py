@@ -58,6 +58,11 @@ def test_types_are_the_classes_of_the_file(vocabulary: Vocabulary) -> None:
     assert "InStock" not in vocabulary  # an enumeration member
 
 
+def test_identifiers_are_identifier_and_its_sub_properties(vocabulary: Vocabulary) -> None:
+    # schema.org `rdfs:subPropertyOf`, transitively: gtin13 is a gtin, a gtin an identifier. mpn is not declared one.
+    assert vocabulary.identifiers == frozenset({"identifier", "sku", "gtin", "gtin13"})
+
+
 def test_a_missing_file_says_how_to_fetch_it(tmp_path: Path) -> None:
     with pytest.raises(VocabularyMissing, match="crawlerai data fetch"):
         Vocabulary.read(tmp_path / "absent.jsonld")

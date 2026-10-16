@@ -27,6 +27,15 @@
     { "@id": "schema:DataType", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "rdfs:Class" } },
     { "@id": "schema:Text", "@type": ["rdfs:Class", "schema:DataType"] },
     { "@id": "schema:name", "@type": "rdf:Property", "schema:domainIncludes": { "@id": "schema:Thing" } },
+    { "@id": "schema:identifier", "@type": "rdf:Property", "schema:domainIncludes": { "@id": "schema:Thing" } },
+    { "@id": "schema:sku", "@type": "rdf:Property", "rdfs:subPropertyOf": { "@id": "schema:identifier" } },
+    { "@id": "schema:gtin", "@type": "rdf:Property", "rdfs:subPropertyOf": { "@id": "schema:identifier" } },
+    {
+      "@id": "schema:gtin13",
+      "@type": "rdf:Property",
+      "rdfs:subPropertyOf": [{ "@id": "schema:gtin" }, { "@id": "schema:identifier" }]
+    },
+    { "@id": "schema:mpn", "@type": "rdf:Property", "schema:domainIncludes": { "@id": "schema:Product" } },
     { "@id": "schema:InStock", "@type": "schema:ItemAvailability" }
   ]
 }
