@@ -31,7 +31,9 @@ throwaway databases.
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
 - ce1 extraction (#227): `js_state` admission stores thousands of duplicate price candidates on a page with a large state blob (6,561 on one); deduplicating them needs a provenance decision (which locator stays).
-- Tough-site run (#225): the browser's network-idle wait reached its 40.5 s cap on 8 of 33 browser fetches (idle never comes on pages with tracking traffic); a content-stable exit is a SPEC-02 §4.8 change, measure first.
+- Browser waits (#228): a client-rendered detail page is rendered on every fetch (HTTP stays `ok`, so the site's
+  remembered method stays `http`); remembering it needs a decision. Pages behind a challenge that does not clear
+  itself headless stay `blocked` (§22).
 - Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
 - Tough-site run (#225): listings whose category or chrome-like tiles pass `acquire.items` stay `ok` at HTTP with no rows (about 7 pages); and a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
 - Tough-site run (#225): 429 and 503 at HTTP are not retried in the browser (SPEC-02 §4.6 backoff, `rungs.slow_down`): kept as designed.

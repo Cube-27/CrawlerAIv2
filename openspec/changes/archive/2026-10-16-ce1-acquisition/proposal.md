@@ -22,7 +22,7 @@ answer OQ2, 2026-10-16).
 
 ## Impact
 
-- Capability: [acquisition](../../specs/acquisition/spec.md) (delta in `specs/acquisition/spec.md`).
+- Capability: [acquisition](../../../specs/acquisition/spec.md) (delta in `specs/acquisition/spec.md`).
 - Files: `backend/src/crawlerai/acquire/browser.py`, `acquire/rungs.py`, `resolve/pipeline.py` (the offer-data
   check), `services/scrape.py`, `worker/handlers/steps.py`.
-- Owner answers OQ2 and OQ5 (2026-10-16), recorded as `owner-decisions.md` #48.
+- Owner answers OQ2 and OQ5 (2026-10-16), recorded as `owner-decisions.md` #49.
