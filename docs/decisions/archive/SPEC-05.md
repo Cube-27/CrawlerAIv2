@@ -1,7 +1,7 @@
 # SPEC-05 decisions
 
-Decisions for [SPEC-05 — Structured extraction, ownership, resolution and confidence](../specs/SPEC-05-extraction-and-resolution.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-05 — Structured extraction, ownership, resolution and confidence](../../specs/archive/SPEC-05-extraction-and-resolution.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0334 — Page text is rendered from the tree; `ParsedPage` caches it
 - Date: 2026-10-13 · Spec/PR: SPEC-05 PR 1 (#67) · Status: decided

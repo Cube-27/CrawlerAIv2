@@ -1,7 +1,7 @@
 # SPEC-09 decisions
 
-Decisions for [SPEC-09 — API-backed pages: discovery, recipe binding (role D), validation, execution](../specs/SPEC-09-api-backed-pages.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-09 — API-backed pages: discovery, recipe binding (role D), validation, execution](../../specs/archive/SPEC-09-api-backed-pages.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0493 — Recipe splits into `RequestSpec` and `ApiRecipe`
 - Date: 2026-10-13 · Spec/PR: SPEC-09 PR 1 (#102) · Status: decided

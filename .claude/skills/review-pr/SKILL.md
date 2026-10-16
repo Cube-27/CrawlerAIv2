@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review one complete PR (implemented and simplified by its implementor, CI green; the reviewer never runs /simplify) against its spec rows (a PR covers a batch of related rows), the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
+description: Review one complete PR (implemented by its implementor, CI green) as one single agent that also does the simplification review against its spec rows (a PR covers a batch of related rows), the generalization contract and the engineering principles, and return a merge verdict. Use before merging any PR, or when asked to review a branch or PR.
 ---
 
 # Review a PR
@@ -14,13 +14,13 @@ pragmatically. Don't push commits to the branch; the author fixes. Adapted from 
 Review when the implementor hands over a finished PR: implemented, and every CI check green on the head
 commit, SonarCloud included (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`). If CI is red, don't review: tell the
 implementor and stop. Don't run builds or tests yourself; CI did. One single agent does the whole review, once per
-PR, whatever its size; don't run `/simplify` (`CLAUDE.md` §3).
+PR, whatever its size: no sub-agents, no `/simplify`, no `/code-review` (`CLAUDE.md` §3).
 
 ## 1. Scope and intent
 
-- `gh pr view <n>` and `gh pr diff <n>`. Find the spec rows the PR claims (a batch), and read those rows, the
-  spec's acceptance criteria and invariants, and the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items
-  3-4 name, by section, never in full.
+- `gh pr view <n>` and `gh pr diff <n>`. Find the rows or findings the PR claims, and read only those rows, their
+  acceptance criteria, and the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items 3-4 name, by section.
+  Don't read archived specs unless the diff changes the design of their code.
 - Write the intent in one paragraph: what the PR must achieve, row by row, and what it must not touch. If the PR
   doesn't match its rows, that is the first finding.
 
@@ -42,18 +42,26 @@ PR, whatever its size; don't run `/simplify` (`CLAUDE.md` §3).
 3. **Proof.** Every acceptance criterion of every row maps to a test or command that ran green in CI or in the PR's
    Verification section. Apply the test-behaviour rule: a test that would still pass if the function returned a
    wrong value proves nothing. For extraction changes, the dev delta is present and the hidden gate passed.
-4. **Scope and simplicity.** Code outside the batch's rows, speculative options, wrappers with one caller, and
-   compatibility shims.
-5. **Decisions and tracker lines.** Choices the spec didn't make are logged in the PR's tracker commit (decisions
+4. **Scope.** Code outside the batch's rows, speculative options, and compatibility shims.
+5. **Simplification** (this replaces `/simplify`). Read the diff once more for these; each is an Act-on item when it
+   is clear and cheap to fix, else Consider:
+   - **Reuse:** new code that duplicates an existing helper, normalizer or module (`grep` for it), or the same logic
+     written twice in the diff (C8);
+   - **Simpler:** wrappers or classes with one caller, needless indirection or configuration, unreachable branches,
+     code that the standard library or an existing call already does;
+   - **Efficiency:** repeated work in a loop (re-parsing, re-querying, re-compiling), N+1 queries, quadratic scans
+     over inputs that can be large;
+   - **Altitude:** logic in the wrong layer or module for its field type or stage (ENGINEERING structure rules).
+6. **Decisions and tracker lines.** Choices the spec didn't make are logged in the PR's tracker commit (decisions
    log entries under the implementor's ID range, listed in `## Decisions`). Anything that should have been escalated
    (`CLAUDE.md` §4) is a blocking finding. The tracker commit is part of the PR (`/implement-pr` §5): check that
    every row of the batch, and only those, is `done (#<n>)` with this PR's number in `ACTIVE.md`; that each
    follow-up is one factual line for work the PR really leaves; and that each decision entry matches the code and
    uses an ID in the range. A wrong or missing tracker line is an Act-on item.
-6. **SonarCloud and recurring findings.** Read the PR's gate (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`
+7. **SonarCloud and recurring findings.** Read the PR's gate (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`
    prints it). A red gate is an Act-on item. Check the diff against `docs/plans/RECURRING.md` and ENGINEERING's
    "Patterns the analysers flag": a repeat of a listed mistake is an Act-on item.
-7. **Frontend PRs.** The PR follows the `docs/DESIGN.md` Patterns, uses no second way to do a listed job, and has
+8. **Frontend PRs.** The PR follows the `docs/DESIGN.md` Patterns, uses no second way to do a listed job, and has
    no styling outside `frontend/src/app/theme.css`. A deviation is an Act-on item.
 
 ## 3. Judge
@@ -88,10 +96,10 @@ verdicts:
 - `ESCALATE`: needs the owner (`CLAUDE.md` §4); name the question.
 
 Never approve with an Act-on item open, and never approve on red CI. Link each Act-on item to the code at the head
-commit (`https://github.com/<owner>/<repo>/blob/<full-sha>/<path>#L<a>-L<b>`). Send the verdict and the Act-on list
-to the implementor with `herdr agent prompt <implementor> "…"`. Then close your own pane:
-`herdr pane close "$HERDR_PANE_ID"`. An idle reviewer pane holds about 400 MB, and idle reviewers caused low-memory
-reaping. There is no re-review (owner, 2026-10-13).
+commit (`https://github.com/<owner>/<repo>/blob/<full-sha>/<path>#L<a>-L<b>`). The comment's first line is the `## Review` heading,
+with nothing before it. In a herdr pane, send the verdict and the Act-on list to the implementor with
+`herdr agent prompt <implementor> "…"`, then close your pane: `herdr pane close "$HERDR_PANE_ID"` (an idle reviewer
+pane holds about 400 MB). As a subagent, return the verdict and the Act-on list as your result. There is no re-review (owner, 2026-10-13).
 
 End the comment with one line naming the category of each Act-on item, for example
 `Categories: path-traversal, sonar-gate`. The orchestrator tallies these lines to spot recurring mistakes.

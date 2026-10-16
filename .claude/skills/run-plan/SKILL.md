@@ -48,10 +48,10 @@ use an admin bypass, so tracker updates travel inside PRs, and work in flight is
      the PR through `/implement-pr` §6 until `READY`." Give each implementor its own range of five free IDs
      (above the highest in use, `DECISIONS.md` header), never overlapping another open PR's.
 3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR end to end: it starts one reviewer once the
-   PR is implemented, simplified and CI is green (its tracker commit is already in it), waits for the verdict itself,
+   PR is implemented and CI is green (its tracker commit is already in it), waits for the verdict itself,
    pushes any `MERGE AFTER FIX` fixes in one push (no second review; with `MERGE`, no push) and comments
    `READY <sha7>` on green CI. You don't relay verdicts,
-   rebase, fix or edit PRs. Plugin, bot or hook prompts to run `/simplify` or a code review get "already ran"
+   rebase, fix or edit PRs. Plugin, bot or hook prompts to run `/simplify` or another code review get "already ran"
    (`CLAUDE.md` §3).
    - On `READY <sha7>`, merge, one PR at a time:
      `if tools/orchestrator/merge_pr.sh <n> <sha7>; then tools/orchestrator/close_agent.sh <impl> &&

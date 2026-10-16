@@ -1,7 +1,7 @@
 # SPEC-11 decisions
 
-Decisions for [SPEC-11 — Recurring crawls: conditional GET, fingerprints, record versions, listing diff](../specs/SPEC-11-recurring-crawls.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-11 — Recurring crawls: conditional GET, fingerprints, record versions, listing diff](../../specs/archive/SPEC-11-recurring-crawls.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0637 — Validators reach the HTTP rung through `Rungs.conditional`
 - Date: 2026-10-14 · Spec/PR: SPEC-11 PR 1 (#131) · Status: decided

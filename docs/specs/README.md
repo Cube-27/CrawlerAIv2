@@ -15,21 +15,21 @@ marked "Owner to confirm" are agent decisions pending owner confirmation; they a
 
 | # | Spec | Architecture sections | Depends on | Layer |
 |---|---|---|---|---|
-| 00 | [Project setup and engineering foundations](SPEC-00-project-setup.md) | §2 (C1–C13), §4, §18, §19, §21 | — | L0 |
-| 01 | [Persistence, job queue and capture storage](SPEC-01-persistence-queue-storage.md) | §4, §6, §15, §17, §19 | 00 | L0 |
-| 02 | [Acquisition: HTTP, browser, adapters, politeness, SSRF, captures](SPEC-02-acquisition.md) | §7.1, §7.2 (capture), §15, §18, C3, C6 | 01 | L0 (HTTP) / L1 (browser, adapters) |
+| 00 | [Project setup and engineering foundations](archive/SPEC-00-project-setup.md) | §2 (C1–C13), §4, §18, §19, §21 | — | L0 |
+| 01 | [Persistence, job queue and capture storage](archive/SPEC-01-persistence-queue-storage.md) | §4, §6, §15, §17, §19 | 00 | L0 |
+| 02 | [Acquisition: HTTP, browser, adapters, politeness, SSRF, captures](archive/SPEC-02-acquisition.md) | §7.1, §7.2 (capture), §15, §18, C3, C6 | 01 | L0 (HTTP) / L1 (browser, adapters) |
 | 03 | [Evaluation and measurement](SPEC-03-evaluation-and-measurement.md) | §16, §15, §6 (eval tables), C1, C9, C10, C13, §21 L0 | 00, 01, 02 (PRs 1–3) | L0 |
-| 04 | [Schemas as data and type normalization](SPEC-04-schemas-and-normalization.md) | §5, §9, §6 (`schema_def`), C2, C4, C7, C8 | 01 | L1 |
-| 05 | [Structured extraction, ownership, resolution and confidence](SPEC-05-extraction-and-resolution.md) | §8.1, §8.2, §8.6, §10, §6, §15, §16.3 | 01, 02, 03, 04 | L1 |
-| 06 | [LLM layer: client, grounding, roles C and S](SPEC-06-llm-layer.md) | §11, §8.4, §5.4, §17, §18 | 01, 04, 05 | L1 |
-| 07 | [API foundation, auth, content formats and `scrape`](SPEC-07-api-foundation-and-scrape.md) | §13.1 (scrape, schemas, records, replay), §8.5, §18, §3 | 01, 02, 04, 05, 06 | L1 |
-| 08 | [Config IR, executor, learning, progressive mode, drift, exporters](SPEC-08-config-ir-learning-progressive.md) | §8.3, §8.4, §12, §13.1 (configs), C5 | 01, 04, 05, 06, 07 | L2 |
-| 09 | [API-backed pages: discovery, role D, validation, execution](SPEC-09-api-backed-pages.md) | §7.2, §8.6, §11 (D), §12 | 02, 04, 05, 06, 08 | L2 |
-| 10 | [Async jobs, map, crawl frontier, extract, SSE, webhooks, MCP](SPEC-10-jobs-crawl-extract-mcp.md) | §13 (all), §17, §23 | 01, 02, 05, 06, 07, 08 | L3 |
-| 11 | [Recurring crawls](SPEC-11-recurring-crawls.md) | §14, §6 (`url_state`, `record`) | 01, 02, 05, 08, 10 | L4 |
-| 12 | [Frontend application screens](SPEC-12-frontend-application.md) | §1, §3, §13.1, §5.4, §18, C5 | 00, 03, 07, 08, 10, 11 | L1–L4 |
-| 13 | [Variant matrix: per-variant rows from structured data](SPEC-13-variant-matrix.md) | §5.1–§5.3, §8.2 r3, §10, §16, §22 (admitted, Appendix A #37) | 03, 04, 05, 06, 07, 08 | admitted candidate |
-| 14 | [Playground workspace: one screen per run, clean JSON, server-side key](SPEC-14-playground-workspace.md) | §1, §3, §12.2, §13.1, §18 (rev 17), Appendix A #38 | 07, 08, 10, 12 | L1–L3 |
+| 04 | [Schemas as data and type normalization](archive/SPEC-04-schemas-and-normalization.md) | §5, §9, §6 (`schema_def`), C2, C4, C7, C8 | 01 | L1 |
+| 05 | [Structured extraction, ownership, resolution and confidence](archive/SPEC-05-extraction-and-resolution.md) | §8.1, §8.2, §8.6, §10, §6, §15, §16.3 | 01, 02, 03, 04 | L1 |
+| 06 | [LLM layer: client, grounding, roles C and S](archive/SPEC-06-llm-layer.md) | §11, §8.4, §5.4, §17, §18 | 01, 04, 05 | L1 |
+| 07 | [API foundation, auth, content formats and `scrape`](archive/SPEC-07-api-foundation-and-scrape.md) | §13.1 (scrape, schemas, records, replay), §8.5, §18, §3 | 01, 02, 04, 05, 06 | L1 |
+| 08 | [Config IR, executor, learning, progressive mode, drift, exporters](archive/SPEC-08-config-ir-learning-progressive.md) | §8.3, §8.4, §12, §13.1 (configs), C5 | 01, 04, 05, 06, 07 | L2 |
+| 09 | [API-backed pages: discovery, role D, validation, execution](archive/SPEC-09-api-backed-pages.md) | §7.2, §8.6, §11 (D), §12 | 02, 04, 05, 06, 08 | L2 |
+| 10 | [Async jobs, map, crawl frontier, extract, SSE, webhooks, MCP](archive/SPEC-10-jobs-crawl-extract-mcp.md) | §13 (all), §17, §23 | 01, 02, 05, 06, 07, 08 | L3 |
+| 11 | [Recurring crawls](archive/SPEC-11-recurring-crawls.md) | §14, §6 (`url_state`, `record`) | 01, 02, 05, 08, 10 | L4 |
+| 12 | [Frontend application screens](archive/SPEC-12-frontend-application.md) | §1, §3, §13.1, §5.4, §18, C5 | 00, 03, 07, 08, 10, 11 | L1–L4 |
+| 13 | [Variant matrix: per-variant rows from structured data](archive/SPEC-13-variant-matrix.md) | §5.1–§5.3, §8.2 r3, §10, §16, §22 (admitted, Appendix A #37) | 03, 04, 05, 06, 07, 08 | admitted candidate |
+| 14 | [Playground workspace: one screen per run, clean JSON, server-side key](archive/SPEC-14-playground-workspace.md) | §1, §3, §12.2, §13.1, §18 (rev 17), Appendix A #38 | 07, 08, 10, 12 | L1–L3 |
 | 15 | [Shopify adapter: storefront pages through the Storefront API](SPEC-15-shopify-adapter.md) | §7.1, §22 (admitted, Appendix A #46), C6 | 02, 05, 13 | admitted candidate |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because

@@ -1,7 +1,7 @@
 # SPEC-07 decisions
 
-Decisions for [SPEC-07 — API foundation, authentication, page content formats and `scrape`](../specs/SPEC-07-api-foundation-and-scrape.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-07 — API foundation, authentication, page content formats and `scrape`](../../specs/archive/SPEC-07-api-foundation-and-scrape.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0361 — `create_app` keeps `eval_ui` and reads settings at startup
 - Date: 2026-10-13 · Spec/PR: SPEC-07 PR 1 (#70) · Status: decided

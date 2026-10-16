@@ -1,7 +1,7 @@
 # SPEC-00 decisions
 
-Decisions for [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-00 — Project setup and engineering foundations](../../specs/archive/SPEC-00-project-setup.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0046 — CLI uses stdlib `argparse`
 - Date: 2026-10-12 · Spec/PR: SPEC-00 PR 1 (#1) · Status: decided

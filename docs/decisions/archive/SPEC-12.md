@@ -1,7 +1,7 @@
 # SPEC-12 decisions
 
-Decisions for [SPEC-12 — Frontend application screens](../specs/SPEC-12-frontend-application.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-12 — Frontend application screens](../../specs/archive/SPEC-12-frontend-application.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0342 — Connect accepts the key without a probe request
 - Date: 2026-10-13 · Spec/PR: SPEC-12 PR 1 (#68) · Status: decided

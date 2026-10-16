@@ -3,7 +3,7 @@
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
 
-> **Status: early implementation.** The project foundations ([SPEC-00](docs/specs/SPEC-00-project-setup.md)) are
+> **Status: early implementation.** The project foundations ([SPEC-00](docs/specs/archive/SPEC-00-project-setup.md)) are
 > in place: toolchains, CI, a database baseline, an API with only `GET /healthz`, and a frontend shell. Nothing
 > extracts anything yet. Progress is tracked in [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md).
 
@@ -93,7 +93,7 @@ docs/                   architecture, open questions, specs, decisions, tracker,
 
 The backend packages follow the pipeline: `acquire`, `collect`, `normalize`, `resolve`, `llm`, `config_ir`,
 `content`, `crawl`, `recurring`, `eval`, `api`, `mcp_server`, `worker`, `scheduler`, on top of `core`, `db`,
-`storage` and `schemas`. Most are still empty; [SPEC-00 §4.1](docs/specs/SPEC-00-project-setup.md#41-repo-layout)
+`storage` and `schemas`. Most are still empty; [SPEC-00 §4.1](docs/specs/archive/SPEC-00-project-setup.md#41-repo-layout)
 describes each.
 
 ## License

@@ -1,7 +1,7 @@
 # SPEC-10 decisions
 
-Decisions for [SPEC-10 — Async jobs, map, crawl frontier, extract, batch, SSE, webhooks and the MCP server](../specs/SPEC-10-jobs-crawl-extract-mcp.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-10 — Async jobs, map, crawl frontier, extract, batch, SSE, webhooks and the MCP server](../../specs/archive/SPEC-10-jobs-crawl-extract-mcp.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0577 — Job results: records as `RecordPage`, exports as a JSON envelope
 - Date: 2026-10-14 · Spec/PR: SPEC-10 PR 1 (#120) · Status: decided

@@ -1,7 +1,7 @@
 # SPEC-04 decisions
 
-Decisions for [SPEC-04 — Schemas as data and type normalization](../specs/SPEC-04-schemas-and-normalization.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-04 — Schemas as data and type normalization](../../specs/archive/SPEC-04-schemas-and-normalization.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0240 — `schema_org` and `vocab` are checked for syntax only until the schema.org file is in the manifest
 - Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
