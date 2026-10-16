@@ -31,6 +31,11 @@ VOCABULARY_FILE = Path("schemaorg") / "schemaorg-all-https.jsonld"
 _SCHEMA_PREFIX = "schema:"
 _RDFS_CLASS = "rdfs:Class"
 _SUB_CLASS_OF = "rdfs:subClassOf"
+# RDF Schema: `rdf:Property` is the class of properties, `rdfs:subPropertyOf` relates a property to a broader one.
+_RDF_PROPERTY = "rdf:Property"
+_SUB_PROPERTY_OF = "rdfs:subPropertyOf"
+# schema.org `identifier`: "The identifier property represents any kind of identifier for any kind of Thing".
+_IDENTIFIER = "identifier"
 # schema.org namespaces: https is current, http the earlier one; the vocabulary treats both as the same terms.
 NAMESPACES = ("https://schema.org/", "http://schema.org/")
 _URL = FieldSpec(type=FieldType.URL)
@@ -47,9 +52,11 @@ class VocabularyMissing(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class Vocabulary:
-    """The schema.org types, each with itself and every type it is a subclass of, transitively."""
+    """The schema.org types, each with itself and every type it is a subclass of, transitively; and the properties
+    that identify a thing: `identifier` and its sub-properties, transitively (`sku`, `gtin13`)."""
 
     supertypes: Mapping[str, frozenset[str]]
+    identifiers: frozenset[str] = frozenset()
 
     @classmethod
     def read(cls, path: Path) -> "Vocabulary":
@@ -65,10 +72,16 @@ class Vocabulary:
         if not isinstance(document, dict) or not isinstance(graph := document.get("@graph"), list):
             raise ValueError("a schema.org vocabulary file is a JSON-LD document with a @graph")
         parents: dict[str, frozenset[str]] = {}
+        broader: dict[str, frozenset[str]] = {}
         for node in graph:
-            if isinstance(node, dict) and (name := _class_name(node)) is not None:
+            if not isinstance(node, dict):
+                continue
+            if (name := _term_name(node, _RDFS_CLASS)) is not None:
                 parents[name] = frozenset(_schema_names(node.get(_SUB_CLASS_OF)))
-        return cls({name: _ancestors(name, parents) for name in parents})
+            elif (name := _term_name(node, _RDF_PROPERTY)) is not None:
+                broader[name] = frozenset(_schema_names(node.get(_SUB_PROPERTY_OF)))
+        identifiers = frozenset(name for name in broader if _IDENTIFIER in _ancestors(name, broader))
+        return cls({name: _ancestors(name, parents) for name in parents}, identifiers)
 
     def __contains__(self, type_: object) -> bool:
         return type_ in self.supertypes
@@ -92,11 +105,12 @@ def default_vocabulary() -> Vocabulary:
     return Vocabulary.read(data / VOCABULARY_FILE)
 
 
-def _class_name(node: Mapping[str, JsonValue]) -> str | None:
+def _term_name(node: Mapping[str, JsonValue], kind: str) -> str | None:
+    """The schema.org term a vocabulary node defines when it is typed `kind` (`rdfs:Class`, `rdf:Property`)."""
     types = node.get("@type")
-    is_class = types == _RDFS_CLASS or (isinstance(types, list) and _RDFS_CLASS in types)
+    is_kind = types == kind or (isinstance(types, list) and kind in types)
     node_id = node.get("@id")
-    if is_class and isinstance(node_id, str) and node_id.startswith(_SCHEMA_PREFIX):
+    if is_kind and isinstance(node_id, str) and node_id.startswith(_SCHEMA_PREFIX):
         return node_id.removeprefix(_SCHEMA_PREFIX)
     return None
 
@@ -294,15 +308,28 @@ def candidate(
 
 
 def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
-    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its `url` and its own IRI, its
-    `mainEntityOfPage`, and its offers' `url`."""
+    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its own (`item_urls`) and its offers'
+    (`offer_urls`)."""
+    return tuple(dict.fromkeys((*item_urls(node, ctx), *offer_urls(node, ctx))))
+
+
+def offer_urls(node: Node, ctx: Context) -> tuple[str, ...]:
+    """The canonical `url` values of the entity's offers."""
+    return canonical_urls(
+        (v.raw for value in node.values("offers") if value.node is not None for v in value.node.values("url")), ctx
+    )
+
+
+def item_urls(node: Node, ctx: Context) -> tuple[str, ...]:
+    """The canonical URLs that name the item itself: its `url` and its own IRI, and its `mainEntityOfPage`."""
+    return canonical_urls(_item_names(node), ctx)
+
+
+def _item_names(node: Node) -> list[JsonValue]:
     written: list[JsonValue] = _page_names(node)
     for value in node.values("mainEntityOfPage"):
         written.extend(_page_names(value.node) if value.node is not None else [value.raw])
-    for value in node.values("offers"):
-        if value.node is not None:
-            written.extend(v.raw for v in value.node.values("url"))
-    return canonical_urls(written, ctx)
+    return written
 
 
 def canonical_urls(written: Iterable[JsonValue], ctx: Context) -> tuple[str, ...]:

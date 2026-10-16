@@ -28,7 +28,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
-from crawlerai.normalize.dispatch import equal
+from crawlerai.normalize.dispatch import equal, resource_key
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -248,10 +248,9 @@ class Resolver:
         kind = next((k for k in order if any(c.source_kind == k for c in choosable)), None)
         if kind is None:
             return _all_rejected("missing", "unranked", kept, rejected)
-        # Two values from the winning kind leave the order nothing to decide between (C7: decline, never guess).
-        if not _all_agree([c for c in kept if c.source_kind == kind], spec):
+        chosen = _winner(spec, kind, kept, choosable)
+        if chosen is None:
             return _all_rejected("conflict", "disagree", kept, rejected)
-        chosen = next(c for c in choosable if c.source_kind == kind)
         agreeing: list[Candidate] = []
         lower: list[Rejection] = []
         for c in kept:
@@ -279,6 +278,38 @@ def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rej
     if not _all_agree(kept, spec):
         return _all_rejected("conflict", "disagree", kept, rejected)
     return Chosen(chosen, tuple(c for c in kept if c is not chosen), tuple(rejected), tuple(kept))
+
+
+def _winner(spec: FieldSpec, kind: SourceKind, kept: list[Candidate], choosable: list[Candidate]) -> Candidate | None:
+    """The candidate of the winning kind that publishes. Two values from that kind leave the order nothing to decide
+    between (C7: decline, never guess), unless they are one entity's values and another kind names one of them."""
+    winners = [c for c in kept if c.source_kind == kind]
+    if _all_agree(winners, spec):
+        return next(c for c in choosable if c.source_kind == kind)
+    named = _named_member(spec, winners, kept)
+    return named if named is not None and any(c is named for c in choosable) else None
+
+
+def _named_member(spec: FieldSpec, members: list[Candidate], kept: list[Candidate]) -> Candidate | None:
+    """The one of an entity's several values for a field that an independent candidate of another source kind names.
+
+    A property written with several values (JSON-LD 1.1 §4.3.1: an array is a set of values, in no significant
+    order; HTML microdata: a repeated itemprop) gives a single-valued field several candidates of one entity, and
+    no order among them says which is meant. When the values that independent candidates of other kinds equal
+    (Open Graph's `og:image`, a field's one value) are one value, it is the one the page means; a namer equal to
+    none of them is then rejected by precedence as usual. With no equal one, an image_url value may name one by its
+    file (`resource_key`: the same image in another rendition). Anything else stays a conflict. Admitted state
+    values are never independent, so they never select (§8.1)."""
+    if len({c.entity_id for c in members}) != 1:
+        return None
+    namers = [o for o in kept if o.independent and o.source_kind != members[0].source_kind]
+    named = [m for m in members if any(_equal(o, m, spec) for o in namers)] or _same_resource(spec, members, namers)
+    return named[0] if named and _all_agree(named, spec) else None
+
+
+def _same_resource(spec: FieldSpec, members: list[Candidate], namers: list[Candidate]) -> list[Candidate]:
+    keys = {resource_key(_value(o), spec) for o in namers} - {None}
+    return [m for m in members if resource_key(_value(m), spec) in keys]
 
 
 def _without(candidates: list[Candidate], removed: list[Candidate]) -> list[Candidate]:

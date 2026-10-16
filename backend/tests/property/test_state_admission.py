@@ -139,3 +139,60 @@ def test_xhr_admits_exactly_by_equality_or_visibility(
 
     _check(admitted, "xhr", candidates, page)
     assert len(admitted) == sum(_expected_count(d, "xhr", candidates, page) for d in documents)
+
+
+# Forms of a few URLs that the url type's equality (SPEC-04 §4.5, RFC 3986 §6.2 normalization) holds equal or apart.
+_URL_FORMS = st.sampled_from(
+    [
+        "https://example.test/a",
+        "HTTPS://EXAMPLE.test/a",
+        "https://example.test:443/a",
+        "https://example.test/%61",
+        "https://example.test/b",
+        "/a",
+        "not a url",
+    ]
+)
+URL = FieldSpec(type=FieldType.URL, description="d", schema_org="Product.url")
+URL_SCHEMA = SCHEMA.model_copy(update={"fields": {"name": NAME, "url": URL}})
+_URL_OTHER = st.tuples(st.sampled_from(["jsonld", "og"]), st.sampled_from(["page", "jsonld:0:$", "jsonld:1:$"]))
+
+
+def _url_other(source_kind: str, entity_id: str, raw: str) -> Candidate:
+    return Candidate.model_validate(
+        {
+            "field": "url",
+            "entity_id": entity_id,
+            "source_kind": source_kind,
+            "raw": raw,
+            "normalized": normalize(raw, URL, CTX),
+            "locator": _LOCATORS[source_kind],
+            "independent": True,
+        }
+    )
+
+
+def _pairwise_owners(raw: str, others: list[Candidate]) -> list[str]:
+    """The rule read pairwise, as admission was first written: each owner of an equal anchor once, in `others`
+    order."""
+    value = normalize(raw, URL, CTX)
+    if not isinstance(value, Ok):
+        return []
+    equals = [
+        o.entity_id for o in others if isinstance(o.normalized, Ok) and equal(value.value, o.normalized.value, URL)
+    ]
+    return list(dict.fromkeys(equals))
+
+
+@given(st.lists(_URL_FORMS, max_size=6), st.lists(st.tuples(_URL_OTHER, _URL_FORMS), min_size=1, max_size=6))
+def test_admission_by_equality_owns_as_the_pairwise_rule(
+    values: list[str], others: list[tuple[tuple[str, str], str]]
+) -> None:
+    candidates = [_url_other(kind, owner, raw) for (kind, owner), raw in others]
+    page = ParsedPage(f"<html><head><script>var s = {json.dumps(values)};</script></head><body></body></html>")
+
+    admitted = JsStateCollector().collect(page, URL_SCHEMA, CTX, candidates).candidates
+
+    expected = [(raw, owner) for raw in values for owner in _pairwise_owners(raw, candidates)]
+    assert [(c.raw, c.entity_id) for c in admitted if c.field == "url"] == expected
+    assert all(not c.independent for c in admitted)

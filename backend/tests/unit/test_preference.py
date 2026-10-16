@@ -217,6 +217,74 @@ def test_candidates_of_the_winning_kind_that_disagree_are_a_conflict() -> None:
     )
 
 
+IMAGE = FieldSpec(type=FieldType.IMAGE_URL, description="d", schema_org="Product.image")
+_GALLERY = ("https://shop.example.test/a.jpg", "https://shop.example.test/b.jpg", "https://shop.example.test/c.jpg")
+
+
+def test_an_independent_lower_kind_selects_one_value_of_an_entity_s_several() -> None:
+    # Product.image with three values gives a scalar image field three candidates of one entity; og:image names the
+    # second, so that one publishes, agreed by the og value.
+    gallery = [_candidate("image", url, n=i) for i, url in enumerate(_GALLERY)]
+    og = _candidate("image", _GALLERY[1], PAGE, "og")
+
+    result = _prefer(_schema(image=IMAGE), *gallery, og)
+
+    assert result["image"] == Chosen(
+        gallery[1], (og,), ((gallery[0], "precedence"), (gallery[2], "precedence")), (*gallery, og)
+    )
+
+
+@pytest.mark.parametrize(
+    ("members", "og", "published"),
+    [
+        pytest.param(("a.jpg?w=1000", "b.jpg?w=1000"), "a.jpg?w=1200&h=630", "a.jpg?w=1000", id="another-rendition"),
+        pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=2", "a.jpg?w=2", id="equal-before-rendition"),
+        pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=3", None, id="two-renditions-named"),
+    ],
+)
+def test_a_value_naming_the_same_resource_selects_it_when_none_is_equal(
+    members: tuple[str, ...], og: str, published: str | None
+) -> None:
+    # `og:image` is often another rendition (size, crop) of one of the JSON-LD images: same path, another query.
+    base = "https://cdn.example.test/i/"
+    gallery = [_candidate("image", base + m, n=i) for i, m in enumerate(members)]
+
+    result = _prefer(_schema(image=IMAGE), *gallery, _candidate("image", base + og, PAGE, "og"))["image"]
+
+    if published is None:
+        assert isinstance(result, Unpublished)
+    else:
+        assert isinstance(result, Chosen)
+        assert result.candidate.normalized == Ok(base + published)
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        pytest.param([_candidate("image", "https://shop.example.test/z.jpg", PAGE, "og")], id="names-none"),
+        pytest.param(
+            [_candidate("image", _GALLERY[0], PAGE, "og"), _candidate("image", _GALLERY[1], PAGE, "og", n=1)],
+            id="names-two",
+        ),
+        pytest.param(
+            [_candidate("image", _GALLERY[0], PAGE, "js_state").model_copy(update={"independent": False})],
+            id="not-independent",
+        ),
+        pytest.param(
+            [_candidate("image", _GALLERY[2], OFFER_A, n=9), _candidate("image", _GALLERY[0], PAGE, "og")],
+            id="two-entities",
+        ),
+    ],
+)
+def test_several_values_stay_a_conflict_unless_one_independent_value_names_one(others: list[Candidate]) -> None:
+    gallery = [_candidate("image", url, n=i) for i, url in enumerate(_GALLERY[:2])]
+
+    result = _prefer(_schema(image=IMAGE), *gallery, *others)
+
+    assert isinstance(result["image"], Unpublished)
+    assert (result["image"].status, result["image"].reason) == ("conflict", "disagree")
+
+
 def test_a_source_kind_outside_the_order_never_wins() -> None:
     state = _candidate("title", "Lamp", PAGE, "js_state")
 

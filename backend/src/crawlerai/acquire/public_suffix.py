@@ -59,6 +59,18 @@ class PublicSuffixes:
         parent = name.partition(".")[2]
         return name in self.rules or parent in self.wildcards or not parent
 
+    def registrable_domain(self, host: str) -> str | None:
+        """The list's "registrable domain" of `host`: its public suffix plus one more label (an exception rule's name
+        is one), or `None` when `host` is itself a public suffix. The first match from the left is the longest."""
+        labels = host.strip(".").lower().split(".")
+        for i in range(len(labels)):
+            name = ".".join(labels[i:])
+            if _ascii(name) in self.exceptions:  # an exception rule names a registrable domain itself
+                return name
+            if self.is_public_suffix(name):
+                return ".".join(labels[i - 1 :]) if i else None
+        return None
+
 
 def _ascii(name: str) -> str:
     """A domain as the cookie header carries it: IDNA A-labels (RFC 5890 §2.3.2.1), lowercase."""

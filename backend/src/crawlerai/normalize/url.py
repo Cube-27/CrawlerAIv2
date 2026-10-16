@@ -65,6 +65,18 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
     return ("url", url.value, url.reasons) if isinstance(url, Ok) else raw_key(value)
 
 
+def resource_key(value: JsonValue) -> Hashable | None:
+    """The stored resource an absolute URL names: its canonical scheme, authority and path (RFC 3986 §3.3: the path
+    identifies the resource within the authority), without the query (§3.4), which may vary only how it is served,
+    such as an image's size or crop. Not an equality (two queries can name two resources): it only tells which of one
+    entity's own values another source names (SPEC-05 §4.7). `None` for anything that is no absolute URL."""
+    url = canonical(value, None) if isinstance(value, str) else None
+    if not isinstance(url, Ok) or not isinstance(url.value, str):
+        return None
+    parts = urlsplit(url.value)
+    return ("resource", parts.scheme, parts.netloc, parts.path)
+
+
 def is_absolute(raw: Raw) -> bool:
     """Whether `raw` is an absolute http(s) URL (RFC 3986 §4.3) that canonicalizes with no base to resolve against."""
     return isinstance(raw, str) and isinstance(canonical(raw, None), Ok)

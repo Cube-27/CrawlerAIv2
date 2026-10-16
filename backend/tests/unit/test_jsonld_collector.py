@@ -355,3 +355,87 @@ def test_a_node_referenced_under_two_properties_of_its_parent_names_neither() ->
         }
     )
     assert [(e.parent, e.via) for e in result.entities] == [(None, None), ("jsonld:0:$['@graph'][0]", None)]
+
+
+def _product(**properties: Any) -> dict[str, Any]:
+    return {"@context": SCHEMA_ORG, "@type": "Product", **properties}
+
+
+def test_two_definitions_of_one_node_id_are_one_entity() -> None:
+    # JSON-LD 1.1 (node map generation): node objects with the same @id, resolved against the document base
+    # (RFC 3986 §5), describe one node; the second block's values, and its Offer, are that entity's.
+    first = _product(**{"@id": "/p/1#product"}, url=PAGE_URL, name="Widget One")
+    second = _product(
+        **{"@id": "https://shop.example.test/p/1#product"},
+        url="/p/1",
+        name="Widget One",
+        offers={"@type": "Offer", "price": "10.00", "priceCurrency": "EUR"},
+    )
+
+    result = _collect(first, second)
+
+    assert [(e.id, e.kind, e.urls, e.parent) for e in result.entities] == [
+        ("jsonld:0:$", "Product", (PAGE_URL,), None),
+        ("jsonld:1:$['offers']", "Offer", (), "jsonld:0:$"),
+    ]
+    assert [(c.field, c.entity_id, c.locator) for c in result.candidates] == [
+        ("title", "jsonld:0:$", "jsonld:0:$['name']"),
+        ("title", "jsonld:0:$", "jsonld:1:$['name']"),
+        ("price", "jsonld:1:$['offers']", "jsonld:1:$['offers']['price']"),
+    ]
+
+
+def test_root_nodes_of_one_type_with_one_identifier_value_are_one_entity() -> None:
+    # schema.org: `sku` is a sub-property of `identifier`, which identifies the item. Two root Products stating one
+    # sku are one product, whether or not either has an @id.
+    first = _product(**{"@id": PAGE_URL}, sku="W-1", name="Widget One")
+    second = _product(
+        sku="W-1",
+        name="Widget One",
+        gtin13="4006381333931",
+        offers={"@type": "Offer", "url": f"{PAGE_URL}?variant=2", "price": "9.00", "priceCurrency": "EUR"},
+    )
+
+    result = _collect(first, second)
+
+    # The Offer's URL names a variant's page, not another item.
+    assert [(e.id, e.parent) for e in result.entities] == [("jsonld:0:$", None), ("jsonld:1:$['offers']", "jsonld:0:$")]
+    assert {c.entity_id for c in result.candidates} == {"jsonld:0:$", "jsonld:1:$['offers']"}
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        (_product(sku="W-1", name="One"), _product(sku="W-2", name="Two")),  # different identifiers
+        (_product(mpn="M-1", name="One"), _product(mpn="M-1", name="Two")),  # mpn is not an identifier property
+        (_product(name="One"), _product(name="One")),  # nothing identifies either
+        (
+            _product(sku="W-1", url="https://shop.example.test/p/1"),
+            _product(sku="W-1", url="https://shop.example.test/p/2"),
+        ),  # one sku on two items whose URLs name different pages
+        (_product(**{"@id": "_:b0"}, name="One"), _product(**{"@id": "_:b0"}, name="Two")),  # a blank node per block
+        (
+            _product(**{"@id": PAGE_URL}, name="One"),
+            {"@context": SCHEMA_ORG, "@type": "Organization", "@id": PAGE_URL, "name": "Two"},
+        ),  # another type
+    ],
+)
+def test_root_nodes_without_a_shared_identity_stay_apart(first: dict[str, Any], second: dict[str, Any]) -> None:
+    assert [e.id for e in _collect(first, second).entities] == ["jsonld:0:$", "jsonld:1:$"]
+
+
+def test_nested_nodes_are_not_merged_by_identifier() -> None:
+    # A variant or an Offer nested in another node is that node's part, even when it repeats the holder's sku.
+    group = _product(
+        sku="W-1",
+        offers=[
+            {"@type": "Offer", "sku": "W-1", "price": "10.00", "priceCurrency": "EUR"},
+            {"@type": "Offer", "sku": "W-1", "price": "12.00", "priceCurrency": "EUR"},
+        ],
+    )
+
+    assert [e.id for e in _collect(group).entities] == [
+        "jsonld:0:$",
+        "jsonld:0:$['offers'][0]",
+        "jsonld:0:$['offers'][1]",
+    ]

@@ -595,3 +595,45 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: An outcome-only source-kind type, with no migration.
 - Why: The owner's answer to D-0355 puts the source kind in §6 with a migration.
 - Reversible: costly — a migration.
+
+### D-0940 — An og:title naming the site is not the entity's; nor is the og:image beside it
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.5, round-1 eval class 1 (#207) · Status: decided
+- Decision: `og:title` names the site when, folded (NFKC, casefold, letters and digits), it equals `og:site_name` or a separator run of it, or the first label of the host's registrable domain (PSL, `PublicSuffixes.registrable_domain`); then `og:title` and `og:image` are not read (a diagnostic says so), `og:url` is.
+- Alternatives: The same og value across a host's pages (cross-page state); JSON-LD `WebSite.name`; an `og:url` test (on the failing pages og:url names the product).
+- Why: Client-rendered pages publish the site's default og block as the product's (OGP basic metadata describes one object).
+- Reversible: yes
+
+### D-0941 — og:title is normalized without trailing segments that name the site
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.5, round-1 class 8 (#207) · Status: decided
+- Decision: A separator is one P*/S* character between spaces. Trailing segments are dropped while one is a site name (D-0940) or its first whole words spell the host's label ("Example.com", not "Exampleton"); the first segment always stays, leading segments are kept, and `raw` stays verbatim.
+- Alternatives: A prefix match on the label (review #207: strips real text); stripping leading segments too.
+- Why: The presets ask for titles without the store name; the rule uses only the page's own site name and its host (C2, C4).
+- Reversible: yes
+
+### D-0942 — JSON-LD root nodes of one identity are one entity
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.5–§4.6, round-1 class 2 (#207) · Status: decided
+- Decision: In the JSON-LD collector, root nodes of one most specific type that share a resolved `@id` (always; JSON-LD node map merge, RFC 3986 §5) or a value of a schema.org identifier property (`identifier` and its `rdfs:subPropertyOf` descendants, from the vocabulary) are merged into the first, the latter only when their own URLs (`url`, `@id`, `mainEntityOfPage`, not Offer URLs) don't name different items. Resolution's rules then apply: Offers that disagree are `offers_disagree`.
+- Alternatives: A cross-collector merge in `EntityGraph` (follow-up); merging by name.
+- Why: Duplicate theme blocks left pages `intent_ambiguous` or silently ignored a contradicting Offer.
+- Reversible: yes
+
+### D-0943 — JS-state admission indexes anchors by equality key
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.5, round-1 class 3 (#207) · Status: decided
+- Decision: Each field's anchors are indexed by `equality_key` once; a value looks up its key once, and a value repeated across documents is read once. A field whose equality has no key (location) compares pairwise.
+- Alternatives: Caching `url.canonical` only.
+- Why: Admission was O(scalars × anchors) with uncached canonicalization (67.8 s → 1.8 s on the round-1 capture, same fields).
+- Reversible: yes
+
+### D-0944 — An independent value selects one of an entity's several values
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.7 (ARCHITECTURE §10 reading), round-1 class 4 (#207) · Status: decided
+- Decision: When the top-ranked kind's candidates disagree but are one entity's values (a JSON-LD array, a repeated itemprop), the one value that independent candidates of other kinds equal publishes; failing equality, an image_url value naming the same file (scheme, authority, path; query aside, `resource_key`) selects it. Otherwise conflict.
+- Alternatives: First member (JSON-LD arrays are unordered sets, §4.3.1); rendition parameter lists (C4); applying the file key to page URLs (a query can name a variant).
+- Why: `Product.image` arrays left image_url a conflict on gallery pages; precedence alone cannot decide inside one kind.
+- Reversible: yes
+
+### D-0946 — Round-1 classes 10, 11 and 13 are not built in core
+- Date: 2026-10-16 · Spec/PR: round-1 eval (#207) · Status: decided
+- Decision: Class 10 (image_url from the DOM) and class 13 (an external apply link) need generic DOM heuristics, which ARCHITECTURE §8.1 excludes from core (structural collectors are a §22 candidate, C13); class 11 (location macro-regions and an "or" split) needs a new location representation (SPEC-04 / ARCHITECTURE §9 design).
+- Alternatives: Build them here.
+- Why: Out of this batch's authority; recorded as follow-ups with the eval evidence.
+- Reversible: yes
