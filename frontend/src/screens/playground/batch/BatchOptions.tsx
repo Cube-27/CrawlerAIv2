@@ -44,12 +44,7 @@ export function BatchOptions({
           onChange({ ...options, metadataInJson });
         }}
       />
-      <FieldsRow
-        values={options.fields}
-        onChange={(fields) => {
-          onChange({ ...options, fields });
-        }}
-      />
+      <FieldsRow options={options} onChange={onChange} />
       <WebhookRow
         value={options.webhookUrl}
         onChange={(webhookUrl) => {

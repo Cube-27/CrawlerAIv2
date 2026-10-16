@@ -292,7 +292,7 @@ export function TagListRow({
           className="flex flex-1 flex-row items-center justify-between gap-3"
           name={name}
           value={draft}
-          {...(refused === null ? {} : { isInvalid: true })}
+          isInvalid={refused !== null}
           onChange={(text) => {
             setDraft(text);
             setRefused(null);

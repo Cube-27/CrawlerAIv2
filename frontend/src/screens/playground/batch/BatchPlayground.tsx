@@ -36,7 +36,7 @@ export function BatchPlayground() {
   });
   const start = () => {
     if (!check() || request === null) return;
-    review.start(request, request.page_kind ?? null);
+    review.start(request);
   };
 
   return (

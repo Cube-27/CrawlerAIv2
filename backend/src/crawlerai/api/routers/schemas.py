@@ -16,12 +16,11 @@ from crawlerai.api.problems import conflict, invalid, not_found
 from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import PageKind, SchemaId, SchemaStatus
 from crawlerai.llm.client import LLMClient
-from crawlerai.llm.roles.s_schema import draft_fields
 from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.schemas.types import Name, SchemaContent, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
-from crawlerai.services.scrape_steps import SchemaFields, check_usable
+from crawlerai.services.scrape_steps import SchemaFields, fields_schema
 
 router = APIRouter(
     prefix="/v1/schemas",
@@ -71,9 +70,7 @@ async def draft_schema(body: FieldsDraft, request: Request) -> SchemaDef:
     problem typed with the LLM failure (502, 503); a retired draft is a 422."""
     llm: LLMClient = request.app.state.llm
     with submission_problems():
-        drafted = await draft_fields(database(request), llm, fields=body.fields, page_kind=body.page_kind)
-        check_usable(drafted, body.page_kind)
-    return drafted
+        return await fields_schema(database(request), llm, body.fields, body.page_kind)
 
 
 @router.get("")

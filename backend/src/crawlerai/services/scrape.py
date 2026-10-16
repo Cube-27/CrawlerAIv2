@@ -50,7 +50,7 @@ from crawlerai.core.errors import Refusal
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
-from crawlerai.llm.client import LLMClient, LLMFailure
+from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
 from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
@@ -71,7 +71,6 @@ from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
-    NO_LLM,
     FetchOptions,
     Formats,
     Input,

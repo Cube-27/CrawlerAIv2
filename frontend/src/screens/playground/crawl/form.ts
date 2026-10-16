@@ -6,6 +6,7 @@ import type { PageFormat } from "../FormatSelect";
 import {
   asksForNothing,
   fieldsPageKindErrors,
+  hasSchema,
   NO_ERRORS,
   NO_FORMAT,
   optionalNumber,
@@ -93,18 +94,12 @@ const MIXED_RULES = {
   page_kind_rules: "Fields are drafted for one page kind: give every rule the same page kind.",
 };
 
-/** The one page kind of the rules that are sent, for field names; null without rules or with rules of two kinds. */
-export function rulesPageKind(rules: readonly RuleRow[]): PageKind | null {
-  const kinds = new Set(setRules(rules).map((rule) => rule.pageKind));
-  return kinds.size === 1 ? ([...kinds][0] ?? null) : null;
-}
-
 /** Why field names can't be sent: they need rules, of one page kind the server takes records of. */
 function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string>> {
-  const set = setRules(rules);
-  if (set.length === 0) return NO_RULES;
-  const kind = rulesPageKind(set);
-  return kind === null ? MIXED_RULES : (fieldsPageKindErrors(kind) ?? NO_ERRORS);
+  const kinds = new Set(setRules(rules).map((rule) => rule.pageKind));
+  if (kinds.size === 0) return NO_RULES;
+  const [kind] = kinds;
+  return kinds.size > 1 ? MIXED_RULES : (fieldsPageKindErrors(kind ?? null) ?? NO_ERRORS);
 }
 
 /** Why `form` can't be sent, by field. A crawl's results are records or page outputs (SPEC-10 §4.5): with a schema
@@ -124,7 +119,7 @@ export function crawlErrors(form: CrawlFormState): Readonly<Record<string, strin
 /** The crawl's formats: `records` alone with a schema or field names (SPEC-10 §4.5), else the page formats and
  * `metadata`. Metadata in JSON still asks the results for each page's metadata, which they read from its capture. */
 function crawlFormats(form: CrawlFormState): ScrapeFormat[] {
-  return requestSchema(form) === null ? requestFormats(form) : ["records"];
+  return hasSchema(form) ? ["records"] : requestFormats(form);
 }
 
 /** The crawl request for `form`, or null when it can't be sent (`crawlErrors`). With a schema, every rule is for its

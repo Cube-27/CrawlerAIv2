@@ -61,6 +61,11 @@ export function requestSchema(
   return fields.length === 0 ? null : { fields: [...fields] };
 }
 
+/** Whether the request names a schema: a stored one or field names. */
+export function hasSchema(form: FormatForm): boolean {
+  return form.schemaId !== "" || form.options.fields.length > 0;
+}
+
 /** `form` with the stored schema `schemaId`, for `schemaPageKind` pages. */
 export function withSchema<F extends Pick<FormatForm, "schemaId" | "schemaPageKind">>(
   form: F,
@@ -76,7 +81,7 @@ export function requestFormats(form: FormatForm): ScrapeFormat[] {
   return orderedFormats([
     ...form.formats,
     ...(form.options.metadataInJson ? ["metadata"] : []),
-    ...(requestSchema(form) === null ? [] : ["records"]),
+    ...(hasSchema(form) ? ["records"] : []),
   ]);
 }
 
@@ -114,8 +119,7 @@ export function schemaPageKindErrors(
 export function fieldsPageKindErrors(
   pageKind: PageKind | null,
 ): Readonly<Record<string, string>> | null {
-  if (pageKind === null) return NO_FIELDS_PAGE_KIND;
-  return NO_RECORDS_PAGE_KINDS.has(pageKind) ? NO_LISTING_RECORDS : null;
+  return pageKind === null ? NO_FIELDS_PAGE_KIND : schemaPageKindErrors(pageKind);
 }
 
 /** Why `form` can't be sent, by field: it asks for no format; it names a stored schema and fields; its schema's
@@ -125,9 +129,10 @@ export function fieldsPageKindErrors(
 export function pageKindErrors(form: PageKindForm): Readonly<Record<string, string>> {
   if (asksForNothing(form)) return NO_FORMAT;
   const hasFields = form.options.fields.length > 0;
-  if (form.schemaId !== "")
-    return hasFields ? SCHEMA_AND_FIELDS : (schemaPageKindErrors(form.schemaPageKind) ?? NO_ERRORS);
-  return hasFields ? (fieldsPageKindErrors(form.options.pageKind) ?? NO_ERRORS) : NO_ERRORS;
+  if (form.schemaId !== "" && hasFields) return SCHEMA_AND_FIELDS;
+  if (hasFields) return fieldsPageKindErrors(form.options.pageKind) ?? NO_ERRORS;
+  if (form.schemaId === "") return NO_ERRORS;
+  return schemaPageKindErrors(form.schemaPageKind) ?? NO_ERRORS;
 }
 
 /** Whether `form` can be sent: `pageKindErrors` finds nothing. */

@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, Request, status
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
-from crawlerai.api.problems import ProblemError, invalid, llm_problem, target_refused
+from crawlerai.api.problems import ProblemError, invalid, target_refused
 from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId
-from crawlerai.llm.client import LLMClient, LLMFailure
+from crawlerai.llm.client import LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import extract
 from crawlerai.services.extract import (
@@ -56,5 +56,3 @@ async def extract_records(
             raise invalid(str(e), [("urls", str(e))]) from e
         except DraftTimedOut as e:
             raise ProblemError(504, "timeout", "Timed out", str(e)) from e
-        except LLMFailure as e:
-            raise llm_problem(e) from e

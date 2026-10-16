@@ -38,7 +38,7 @@ export function ExtractPlayground() {
   });
   const start = () => {
     if (!check() || request === null) return;
-    review.start(request, request.page_kind);
+    review.start(request);
   };
 
   return (

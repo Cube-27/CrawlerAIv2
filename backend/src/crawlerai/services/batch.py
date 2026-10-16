@@ -33,14 +33,13 @@ from crawlerai.db.models import (
     Site,
     UrlTask,
 )
-from crawlerai.llm.client import LLMClient
+from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
-    NO_LLM,
     FetchOptions,
     Input,
     PageFormat,

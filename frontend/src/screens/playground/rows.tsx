@@ -122,24 +122,26 @@ export function ScopeRows({
 // refuses any other, so a name is checked as it is added.
 const FIELD_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 
-/** `schema.fields`: the names the server drafts a schema from (SPEC-14 §4.10), as chips. */
-export function FieldsRow({
-  values,
+/** `schema.fields`: the names the server drafts a schema from (SPEC-14 §4.10), as chips, held in a mode's options. */
+export function FieldsRow<O extends { fields: readonly string[] }>({
+  options,
   onChange,
-}: Readonly<{ values: readonly string[]; onChange: (fields: string[]) => void }>) {
+}: Readonly<{ options: O; onChange: (options: O) => void }>) {
   return (
     <TagListRow
       label="Fields"
       help="Names of the fields to extract. The server drafts a schema with these fields; you review it before the run."
       name="fields"
-      values={values}
+      values={options.fields}
       placeholder="price"
       refuse={(entry) =>
         FIELD_NAME.test(entry)
           ? null
           : "Use lowercase letters, digits and _, starting with a letter."
       }
-      onChange={onChange}
+      onChange={(fields) => {
+        onChange({ ...options, fields });
+      }}
     />
   );
 }

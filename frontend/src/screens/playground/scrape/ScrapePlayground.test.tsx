@@ -275,7 +275,9 @@ describe("scrape playground: the request", () => {
 
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
     expect(selectTrigger(/Format/).closest("[data-invalid]")).not.toBeNull();
-    expect(screen.getByText("Choose a format, Metadata in JSON, a schema or fields.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Choose a format, Metadata in JSON, a schema or fields."),
+    ).toBeInTheDocument();
   });
 
   it("shows the latest scrape's reply when an earlier one returns after it", async () => {

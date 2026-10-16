@@ -24,13 +24,12 @@ from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.db.models import ApiKeyId, JobId, UrlTask
-from crawlerai.llm.client import LLMClient
+from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.batch import insert_job, records_schema
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape_steps import (
-    NO_LLM,
     FetchOptions,
     Input,
     PageFormat,

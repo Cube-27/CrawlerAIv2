@@ -45,7 +45,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.db.usage import record_usage
-from crawlerai.llm.client import LLMClient, Unconfigured
+from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normalize_prompt
 from crawlerai.normalize.url import canonical_url
 from crawlerai.recurring.versions import store_records
@@ -74,8 +74,6 @@ BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
 }
 # The usage a fetch attempt counts (SPEC-02 §4.7, §4.8): a request per HTTP or API attempt, the seconds of a browser's.
 _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
-# The LLM client of a caller that gives none: field names and prompts can then be drafted only when stored before.
-NO_LLM: Final = Unconfigured("no LLM provider is configured")
 # Jobs and sites belong to the project migrations create (single tenant, ARCHITECTURE §1).
 DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
 
@@ -180,6 +178,14 @@ class SchemaUnusable(Refusal):
     """The request's `schema` is one `records` cannot use: no such id, a retired version, or another page kind."""
 
 
+async def fields_schema(engine: AsyncEngine, llm: LLMClient, fields: list[Name], page_kind: PageKind) -> SchemaDef:
+    """Role S's draft of `fields` for `page_kind` pages, checked usable for them (SPEC-14 §4.10). Raises the LLM
+    client's `LLMFailure`, and `SchemaUnusable` for a retired draft."""
+    drafted = await draft_fields(engine, llm, fields=fields, page_kind=page_kind)
+    check_usable(drafted, page_kind)
+    return drafted
+
+
 async def named_schema(
     engine: AsyncEngine, schema: SchemaRequest | None, page_kind: PageKind | None, llm: LLMClient
 ) -> SchemaDef | None:
@@ -190,9 +196,7 @@ async def named_schema(
         case SchemaFields(fields=fields):
             if page_kind is None:
                 raise SchemaUnusable("field names need a page_kind to draft a schema for")
-            drafted = await draft_fields(engine, llm, fields=fields, page_kind=page_kind)
-            check_usable(drafted, page_kind)
-            return drafted
+            return await fields_schema(engine, llm, fields, page_kind)
         case SchemaById(id=schema_id):
             async with engine.connect() as conn:
                 try:

@@ -83,7 +83,8 @@ export function useRetireSchema() {
 export function useFieldsDraft(fields: readonly string[], pageKind: SchemaPageKind) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...SCHEMAS, "draft", pageKind, ...fields],
+    // The server drafts the sorted names (SPEC-06 §4.5), so the names in any order share one draft.
+    queryKey: [...SCHEMAS, "draft", pageKind, ...[...fields].sort()],
     queryFn: () => unwrap(draftSchema(client, { fields: [...fields], page_kind: pageKind })),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,

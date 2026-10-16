@@ -52,7 +52,8 @@ async function scrapeWithFields(...names: string[]) {
   await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/items/1");
   const options = await openOptions();
   await pick(/Page kind/, "Detail");
-  for (const name of names) await fill(options.getByRole("textbox", { name: "Fields" }), name, true);
+  for (const name of names)
+    await fill(options.getByRole("textbox", { name: "Fields" }), name, true);
   return options;
 }
 
@@ -167,6 +168,32 @@ describe("additional fields: the draft review", () => {
       schema: { fields: ["price"] },
       page_kind: "detail",
       fetch: { method_hint: "auto" },
+    });
+  });
+
+  it("crawl: drafts the names for its rules' page kind and posts them as schema.fields", async () => {
+    const calls = runApi(
+      { submit: "POST /v1/crawl", jobId: JOB_ID, kind: "crawl" },
+      { "POST /v1/schemas/draft": draftReply },
+    );
+    await openPlayground("/crawl");
+    await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/");
+    const options = await openOptions();
+    await fill(options.getByRole("textbox", { name: "Fields" }), "price", true);
+    await userEvent.click(options.getByRole("button", { name: "Add rule" }));
+    await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
+    await pick(/Page kind 1/, "Detail");
+
+    await userEvent.click(screen.getByRole("button", { name: "Start crawl" }));
+    await userEvent.click((await review()).getByRole("button", { name: "Run" }));
+
+    expect(posts(calls, "/v1/schemas/draft").map(({ body }) => body)).toEqual([
+      { fields: ["price"], page_kind: "detail" },
+    ]);
+    expect(posts(calls, "/v1/crawl")[0]?.body).toMatchObject({
+      formats: ["records"],
+      schema: { fields: ["price"] },
+      page_kind_rules: [{ pattern: "https://shop.test/items/*", page_kind: "detail" }],
     });
   });
 });

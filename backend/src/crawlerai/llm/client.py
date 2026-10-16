@@ -251,6 +251,10 @@ class Unconfigured:
         raise ProviderUnavailable(self._reason)
 
 
+# The client of a caller that gives none: field names and prompts can then be drafted only when stored before.
+NO_LLM: Final = Unconfigured("no LLM provider is configured")
+
+
 @dataclass(frozen=True)
 class _Invalid:
     error: str

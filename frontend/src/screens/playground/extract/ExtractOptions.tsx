@@ -53,15 +53,7 @@ function AdvancedRows({ options, onChange }: Readonly<{ options: Options; onChan
 
 /** The inline schema's JSON, the prompt or the field names, for the source that has one. */
 function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange: Change }>) {
-  if (options.schemaSource === "fields")
-    return (
-      <FieldsRow
-        values={options.fields}
-        onChange={(fields) => {
-          onChange({ ...options, fields });
-        }}
-      />
-    );
+  if (options.schemaSource === "fields") return <FieldsRow options={options} onChange={onChange} />;
   if (options.schemaSource === "inline")
     return (
       <TextAreaRow

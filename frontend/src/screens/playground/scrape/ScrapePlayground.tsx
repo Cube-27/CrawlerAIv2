@@ -65,7 +65,7 @@ export function ScrapePlayground() {
   const review = useFieldsReview(send);
   const submit = () => {
     if (!check() || request === null) return;
-    review.start(request, request.page_kind);
+    review.start(request);
   };
 
   const withMetadata = form.options.metadataInJson;

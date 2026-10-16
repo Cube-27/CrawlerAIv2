@@ -79,12 +79,7 @@ export function CrawlOptions({
           onChange({ ...options, metadataInJson });
         }}
       />
-      <FieldsRow
-        values={options.fields}
-        onChange={(fields) => {
-          onChange({ ...options, fields });
-        }}
-      />
+      <FieldsRow options={options} onChange={onChange} />
       <RuleRows
         rules={options.rules}
         fixed={schemaPageKind}

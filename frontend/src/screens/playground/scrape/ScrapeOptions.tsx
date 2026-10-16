@@ -85,12 +85,7 @@ export function ScrapeOptions({
           onChange({ ...options, metadataInJson });
         }}
       />
-      <FieldsRow
-        values={options.fields}
-        onChange={(fields) => {
-          onChange({ ...options, fields });
-        }}
-      />
+      <FieldsRow options={options} onChange={onChange} />
     </OptionsPanel>
   );
 }
