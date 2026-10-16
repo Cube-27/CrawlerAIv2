@@ -1,7 +1,7 @@
 """The configs service (SPEC-08 §4.10, ARCHITECTURE §13.1, C5): a site's configs, operator corrections, forced
 learning and exports, over a connection.
 
-A correction is applied to the latest version of its (site, schema version, page kind), so an edit never silently
+A correction is applied to the latest version of its (site, schema, page kind), so an edit never silently
 drops a version someone else added, and the result is always stored as the next version: validated on the site's
 held-out pages (§4.7) and active when validation keeps it, else a `draft` whose report says why not.
 
@@ -48,12 +48,11 @@ class _Out(BaseModel):
 
 
 class ConfigSummary(_Out):
-    """One version of a site's config for one schema version and page kind, without its IR."""
+    """One version of a site's config for one schema and page kind, without its IR."""
 
     id: ExtractionConfigId
     site: str
     schema_id: SchemaId
-    schema_version: int
     page_kind: PageKind
     version: int
     status: ConfigStatus
@@ -67,7 +66,7 @@ class ConfigDetail(ConfigSummary):
 
 
 class LearnRequest(_Out):
-    """`schema_id` names the schema version, and so the page kind, to learn for; `force` re-learns an active one."""
+    """`schema_id` names the schema, and so the page kind, to learn for; `force` re-learns an active one."""
 
     schema_id: SchemaId
     force: bool = False
@@ -94,7 +93,6 @@ _COLUMNS = (
     Site.host,
     ExtractionConfig.site_id,
     ExtractionConfig.schema_id,
-    ExtractionConfig.schema_version,
     ExtractionConfig.page_kind,
     ExtractionConfig.version,
     ExtractionConfig.status,
@@ -112,7 +110,7 @@ def _model[M: ConfigSummary](model: type[M], row: RowMapping) -> M:
 
 
 async def list_for_host(conn: AsyncConnection, host: str) -> list[ConfigSummary]:
-    """Every version of every config of the site, by schema version, page kind, then version."""
+    """Every version of every config of the site, by schema, page kind, then version."""
     site_id = await _site_id(conn, host)
     query = _SUMMARIES.where(ExtractionConfig.site_id == site_id).order_by(
         ExtractionConfig.schema_id, ExtractionConfig.page_kind, ExtractionConfig.version
@@ -135,7 +133,7 @@ async def correct(
     the site's held-out pages and store it as the next version; the new version. Raises `InvalidCorrection` when the
     correction does not fit the config."""
     row = await _row(conn, config_id)
-    key = StateKey(row["site_id"], row["schema_id"], row["schema_version"], row["page_kind"])
+    key = StateKey(row["site_id"], row["schema_id"], row["page_kind"])
     await lock_state(conn, key)
     latest = await _latest_version(conn, key)
     if row["version"] != latest:
@@ -163,14 +161,14 @@ async def export(
 
 
 async def learn(conn: AsyncConnection, host: str, request: LearnRequest) -> JobId:
-    """Start a learning run for the site and schema version, and return its `learn` job."""
+    """Start a learning run for the site and schema, and return its `learn` job."""
     site_id = await _site_id(conn, host)
     schema = await registry.get_by_id(conn, request.schema_id)
-    key = StateKey(site_id, schema.id, schema.version, schema.page_kind)
+    key = StateKey(site_id, schema.id, schema.page_kind)
     job_id = await request_learning(conn, key, force=request.force)
     if job_id is None:
         raise ConfigConflict(
-            f"{host}, schema {schema.name} version {schema.version}: a learning run is in flight, or the site has an "
+            f"{host}, schema {schema.name}: a learning run is in flight, or the site has an "
             "active config and force is not set"
         )
     return job_id

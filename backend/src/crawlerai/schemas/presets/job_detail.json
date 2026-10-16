@@ -1,6 +1,5 @@
 {
   "name": "job_detail",
-  "version": 1,
   "page_kind": "detail",
   "fields": {
     "title": {

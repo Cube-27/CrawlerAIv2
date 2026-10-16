@@ -60,7 +60,7 @@ def row_id(n: int) -> str:
 
 
 class ConfigMismatch(ValueError):
-    """The config was learned for another schema version or page kind than the page is extracted with."""
+    """The config was learned for another schema or page kind than the page is extracted with."""
 
 
 class _Refused(Exception):
@@ -104,12 +104,11 @@ class EngineExecutor:
         return Executed(rows=tuple(rows), candidates=tuple(candidates), diagnostics=tuple(run.diagnostics))
 
     def _check(self, schema: SchemaDef) -> None:
-        # Configs are per schema version (ARCHITECTURE §5.2, §6): a config never runs against another one.
+        # Configs are per schema (ARCHITECTURE §6): a config never runs against another one.
         ref = self.ir.schema_
-        if (ref.name, ref.version, self.ir.page_kind) != (schema.name, schema.version, schema.page_kind):
+        if (ref.name, self.ir.page_kind) != (schema.name, schema.page_kind):
             raise ConfigMismatch(
-                f"config for {ref.name} v{ref.version} ({self.ir.page_kind}) run with {schema.name} v{schema.version} "
-                f"({schema.page_kind})"
+                f"config for {ref.name} ({self.ir.page_kind}) run with {schema.name} ({schema.page_kind})"
             )
 
 

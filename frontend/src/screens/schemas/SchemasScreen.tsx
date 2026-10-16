@@ -29,7 +29,6 @@ function SchemaTable({ schemas }: Readonly<{ schemas: readonly SchemaDef[] }>) {
         <Table.Content aria-label="Schemas">
           <Table.Header>
             <Table.Column isRowHeader>Name</Table.Column>
-            <Table.Column>Version</Table.Column>
             <Table.Column>Origin</Table.Column>
             <Table.Column>Status</Table.Column>
             <Table.Column>Page kind</Table.Column>
@@ -38,7 +37,6 @@ function SchemaTable({ schemas }: Readonly<{ schemas: readonly SchemaDef[] }>) {
             {(schema) => (
               <Table.Row id={schema.id} href={schemaPath(schema.id)}>
                 <Table.Cell>{schema.name}</Table.Cell>
-                <Table.Cell>{schema.version}</Table.Cell>
                 <Table.Cell>{schema.origin}</Table.Cell>
                 <Table.Cell>
                   <SchemaStatusLabel status={schema.status} />
@@ -53,7 +51,7 @@ function SchemaTable({ schemas }: Readonly<{ schemas: readonly SchemaDef[] }>) {
   );
 }
 
-/** Every version of every schema (SPEC-12 §4.3), as the API lists them. */
+/** Every schema, one row per name (SPEC-12 §4.3), as the API lists them. */
 export function SchemasScreen() {
   const query = useSchemas();
   const problem = problemOf(query.error);

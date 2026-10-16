@@ -167,7 +167,7 @@ def fetching(server: Server, site: str, tmp_path: Path) -> Fetching:
 
 @pytest.fixture
 async def schema_id(engine: AsyncEngine, schema_name: str) -> str:
-    document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE}}
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE}}
     async with engine.begin() as conn:
         return str((await registry.create(conn, SchemaDocument.model_validate(document), "user")).id)
 

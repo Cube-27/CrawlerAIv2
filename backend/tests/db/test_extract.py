@@ -69,7 +69,7 @@ NO_LLM = Unconfigured("no provider")
 
 
 def _draft_reply(page_kind: str = "detail") -> ProviderReply:
-    """A role S reply: a draft schema document without name and version (SPEC-06 §4.5)."""
+    """A role S reply: a draft schema document without a name (SPEC-06 §4.5)."""
     document: dict[str, JsonValue] = {"page_kind": page_kind, "fields": {"title": TITLE, "price": PRICE}}
     return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
@@ -135,7 +135,7 @@ def fetching(web: Web, tmp_path: Path) -> Fetching:
 
 @pytest.fixture
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 

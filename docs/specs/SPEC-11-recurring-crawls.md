@@ -69,7 +69,9 @@ Out of scope (§22):
 - `record_fingerprint = sha256(canonical_json({field: normalized value for required fields and groups}))`
   (sorted keys, Decimal as string, lists in order).
 - On extraction, compare with the fingerprint of the entity's latest record, the `record` row of the same (site,
-  entity_key, schema) with the highest `version` (`record.fingerprint`; D-0666):
+  entity_key, schema) with the highest `version` (`record.fingerprint`; D-0666). A record extracted with
+  another document of the schema (`record.schema_digest` differs from the job's pinned document) counts as
+  different, and does not stand for an `unchanged` page (ARCHITECTURE Appendix A #43):
   - equal → the new record row is not inserted; the task references the existing latest record (`version`
     unchanged), which from then on stands for the page's current content (§4.3: the next run's unchanged page is not
     extracted again);

@@ -27,11 +27,11 @@ async def _key(conn: AsyncConnection) -> StateKey:
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     host = f"shop-{uuid.uuid4().hex[:12]}.example.test"
     site_id = (await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))).scalar_one()
-    values = {"name": f"s_{uuid.uuid4().hex[:12]}", "version": 1, "page_kind": "detail", "fields": {}}
+    values = {"name": f"s_{uuid.uuid4().hex[:12]}", "page_kind": "detail", "fields": {}}
     schema_id = (
         await conn.execute(insert(SchemaDef).values(**values, origin="user", status="active").returning(SchemaDef.id))
     ).scalar_one()
-    return StateKey(site_id=site_id, schema_id=schema_id, schema_version=1, page_kind="detail")
+    return StateKey(site_id=site_id, schema_id=schema_id, page_kind="detail")
 
 
 async def _pages(conn: AsyncConnection, key: StateKey, pages: int) -> None:
@@ -85,7 +85,6 @@ async def test_eight_extracted_pages_start_one_learn_job(conn: AsyncConnection) 
     assert job.request == {
         "site_id": str(key.site_id),
         "schema_id": str(key.schema_id),
-        "schema_version": 1,
         "page_kind": "detail",
         "force": False,
     }

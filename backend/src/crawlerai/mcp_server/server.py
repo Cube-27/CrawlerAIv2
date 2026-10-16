@@ -200,10 +200,10 @@ _TOOLS: Final = {
     "extract_status": ("status", _STATUS, _READ_ONLY),
     "list_schemas": (
         "list_schemas",
-        "Every version of every schema; only those of `name` and in `status` when given.",
+        "Every schema, by name; only `name` and those in `status` when given.",
         _READ_ONLY,
     ),
-    "create_schema": ("create_schema", "Create a `user` schema at version 1, as `POST /v1/schemas` does.", _WRITES),
+    "create_schema": ("create_schema", "Create a `user` schema, as `POST /v1/schemas` does.", _WRITES),
     "get_site_config": (
         "get_site_config",
         "Every version of the site's extraction configs, with status, field status and validation report.",

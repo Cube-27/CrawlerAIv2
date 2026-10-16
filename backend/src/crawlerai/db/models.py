@@ -187,31 +187,21 @@ class Site(Base):
 class SchemaDef(Base):
     __tablename__ = "schema_def"
     __table_args__ = (
-        UniqueConstraint("name", "version"),
-        # The target of the (`schema_id`, `schema_version`) foreign keys below: a row naming a schema version names
-        # the version that `schema_id` is (ARCHITECTURE §5.2).
-        UniqueConstraint("id", "version"),
         # The target of `eval_page`'s (`schema_id`, `schema_name`) foreign key.
         UniqueConstraint("id", "name"),
-        version_positive(),
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("origin", SchemaOrigin), name="origin"),
         CheckConstraint(one_of("status", SchemaStatus), name="status"),
     )
 
     id: Mapped[SchemaId] = mapped_column(primary_key=True, default=uuid7)
-    name: Mapped[str] = mapped_column(Text)
-    version: Mapped[int] = mapped_column(Integer)
+    # One row per schema, edited in place (ARCHITECTURE §5.2).
+    name: Mapped[str] = mapped_column(Text, unique=True)
     page_kind: Mapped[PageKind] = mapped_column(Text)
     fields: Mapped[dict[str, Any]] = mapped_column(JSONB)
     required_groups: Mapped[list[list[str]]] = mapped_column(JSONB, server_default=empty_array_default())
     origin: Mapped[SchemaOrigin] = mapped_column(Text)
     status: Mapped[SchemaStatus] = mapped_column(Text)
-
-
-def _schema_version_fk() -> ForeignKeyConstraint:
-    """(`schema_id`, `schema_version`) names an existing schema_def row and its version (ARCHITECTURE §5.2)."""
-    return ForeignKeyConstraint(["schema_id", "schema_version"], [SchemaDef.id, SchemaDef.version])
 
 
 class Capture(Base):
@@ -249,7 +239,6 @@ class Capture(Base):
 class ExtractionConfig(Base):
     __tablename__ = "extraction_config"
     __table_args__ = (
-        _schema_version_fk(),
         UniqueConstraint("site_id", "schema_id", "page_kind", "version"),
         version_positive(),
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
@@ -268,8 +257,7 @@ class ExtractionConfig(Base):
 
     id: Mapped[ExtractionConfigId] = mapped_column(primary_key=True, default=uuid7)
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id))
-    schema_id: Mapped[SchemaId] = mapped_column()
-    schema_version: Mapped[int] = mapped_column(Integer)
+    schema_id: Mapped[SchemaId] = mapped_column(ForeignKey(SchemaDef.id))
     page_kind: Mapped[PageKind] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer)
     status: Mapped[ConfigStatus] = mapped_column(Text, server_default=text("'draft'"))
@@ -282,11 +270,10 @@ class ExtractionConfig(Base):
 
 
 class ProgressiveState(Base):
-    """How far a (site, schema version, page kind) is on the way to an active config (ARCHITECTURE §8.4)."""
+    """How far a (site, schema, page kind) is on the way to an active config (ARCHITECTURE §8.4)."""
 
     __tablename__ = "progressive_state"
     __table_args__ = (
-        _schema_version_fk(),
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("mode", ProgressiveMode), name="mode"),
         CheckConstraint("pages_extracted >= 0", name="pages_extracted_non_negative"),
@@ -296,8 +283,7 @@ class ProgressiveState(Base):
     )
 
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
-    schema_id: Mapped[SchemaId] = mapped_column(primary_key=True)
-    schema_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schema_id: Mapped[SchemaId] = mapped_column(ForeignKey(SchemaDef.id), primary_key=True)
     page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
     mode: Mapped[ProgressiveMode] = mapped_column(Text, server_default=text("'cold'"))
     pages_extracted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
@@ -502,13 +488,12 @@ class Record(Base):
 
     __tablename__ = "record"
     __table_args__ = (
-        _schema_version_fk(),
         CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
         version_positive(),
         # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4), and find the newest record that
         # stands for a page, by id (`recurring.state.standing_record`).
         Index(None, "site_id", "entity_key", "schema_id", "id"),
-        # The change feed (`changed_since`), and the commit stamp of migration 0018's trigger.
+        # The change feed (`changed_since`), and the commit stamp of the baseline migration's trigger.
         Index(None, "created_at"),
         # `GET /v1/records` by job or by schema, newest first by id (SPEC-07 §4.6), and a capture's records for replay.
         Index(None, "job_id", "id"),
@@ -520,8 +505,7 @@ class Record(Base):
     extraction_id: Mapped[ExtractionId] = mapped_column(ForeignKey(Extraction.id))
     job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id))
-    schema_id: Mapped[SchemaId] = mapped_column()
-    schema_version: Mapped[int] = mapped_column(Integer)
+    schema_id: Mapped[SchemaId] = mapped_column(ForeignKey(SchemaDef.id))
     entity_key: Mapped[str] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
@@ -530,6 +514,9 @@ class Record(Base):
     changed_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     fingerprint: Mapped[str | None] = mapped_column(Text)
+    # The digest of the schema document the record was extracted with (`schemas.types.document_digest`): a
+    # schema is edited in place (ARCHITECTURE §5.2), so a record follows the current document only when it is equal.
+    schema_digest: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     supersedes_record_id: Mapped[RecordId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
 
@@ -544,8 +531,7 @@ class TaskRecord(Base):
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id, ondelete="CASCADE"), primary_key=True)
     # Indexed for the records a job lists, which join on it, and for a record's delete.
     record_id: Mapped[RecordId] = mapped_column(ForeignKey(Record.id, ondelete="CASCADE"), primary_key=True, index=True)
-    # When the task stood for the record (`recurring.state.standing_record`); links made before migration 0018 have
-    # their record's time.
+    # When the task stood for the record (`recurring.state.standing_record`).
     created_at: Mapped[datetime] = created_at_column()
 
 

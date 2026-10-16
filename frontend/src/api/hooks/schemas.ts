@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "../../app/auth";
-import type { ApiClient } from "../client";
 import {
   createSchema,
   draftSchema,
@@ -17,24 +16,13 @@ import { unwrap } from "./query";
 /** `/v1/schemas` as TanStack Query hooks. Every key starts with `schemas`, so one change invalidates them all. */
 const SCHEMAS = ["schemas"] as const;
 
-function listQuery(client: ApiClient, name?: string) {
-  return {
-    queryKey: [...SCHEMAS, "list", name ?? null],
-    queryFn: () => unwrap(listSchemas(client, name)),
-  };
-}
-
-/** Every version of every schema. */
+/** Every schema, one per name. */
 export function useSchemas() {
-  return useQuery(listQuery(useApiClient()));
+  const client = useApiClient();
+  return useQuery({ queryKey: [...SCHEMAS, "list"], queryFn: () => unwrap(listSchemas(client)) });
 }
 
-/** Every version of the schema named `name`; waits while the name is not known yet. */
-export function useSchemaVersions(name: string | undefined) {
-  return useQuery({ ...listQuery(useApiClient(), name), enabled: name !== undefined });
-}
-
-/** One schema version; with a null `id`, nothing is read. */
+/** One schema; with a null `id`, nothing is read. */
 export function useSchema(id: string | null) {
   const client = useApiClient();
   return useQuery({

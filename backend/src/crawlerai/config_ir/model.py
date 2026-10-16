@@ -249,7 +249,6 @@ class ListingSpec(_Model):
 
 class SchemaRef(_Model):
     name: Name
-    version: int = Field(ge=1)
 
 
 class Fetch(_Model):

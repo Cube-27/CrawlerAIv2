@@ -43,7 +43,7 @@ def _meta(status: FieldStatus) -> FieldMeta:
 @st.composite
 def _page(draw: st.DrawFn) -> tuple[SchemaDocument, list[RecordContent]]:
     names = draw(_names)
-    schema = SchemaDocument(name="thing", version=1, page_kind="detail", fields=dict.fromkeys(names, _TEXT))
+    schema = SchemaDocument(name="thing", page_kind="detail", fields=dict.fromkeys(names, _TEXT))
     records = []
     for _ in range(draw(st.integers(0, 3))):
         statuses = {name: draw(_statuses) for name in names}

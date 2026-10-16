@@ -23,7 +23,6 @@ def _schema(page_kind: str = "detail") -> SchemaDef:
             "origin": "user",
             "status": "active",
             "name": "synthetic",
-            "version": 1,
             "page_kind": page_kind,
             "fields": {"title": {"type": "text", "description": "d"}},
         }

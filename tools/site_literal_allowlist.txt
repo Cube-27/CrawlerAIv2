@@ -9,7 +9,6 @@ schema.org  # schema.org vocabulary, used by the structured-data collectors
 www.w3.org  # W3C specifications and namespaces
 .iana.org  # IANA registries, including the root-zone TLD list this scan uses
 .unicode.org  # Unicode and CLDR
-.geonames.org  # GeoNames, the location vocabulary (ARCHITECTURE §9)
 .sitemaps.org  # the Sitemaps protocol and its XML namespace (SPEC-10 §4.4)
 
 # Tooling hosts.

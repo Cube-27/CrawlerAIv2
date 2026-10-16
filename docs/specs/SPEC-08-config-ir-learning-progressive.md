@@ -264,8 +264,10 @@ none), INV-22, INV-27 (exporters serialize published values; they never fix a va
 - **Review finding (small held-out set).** Resolved in ARCHITECTURE rev 5 §8.3 step 4 and §12.3: every held-out
   page while fewer than 10, ≥ 90% (corroboration) / ≥ 95% (release check) from 10 on (4.7, 4.12).
 - **`learn` job kind.** Resolved in ARCHITECTURE rev 5 §6 (`job.kind` includes `learn`).
-- **Config ↔ schema version.** Configs per schema version are resolved in ARCHITECTURE rev 5 §5.2/§6. `progressive_state`
-  carries `schema_version` and a new version starts in `cold` (resolved in ARCHITECTURE rev 5 §6).
+- **Config ↔ schema.** Schemas have no versions (ARCHITECTURE rev 22, Appendix A #43): configs and
+  `progressive_state` reference `schema_id`, and the IR names its schema by `name`. A schema edit suspends the
+  schema's active configs and sends its states to `cold` with no run in flight, so a run started before the
+  edit can neither activate nor fail them (SPEC-04 §4.1).
 - **Corroboration floor.** §8.3 step 4 says "(where those exist)" and does not say what happens when no held-out
   page has a structured or adapter value. Resolved in ARCHITECTURE rev 5 §8.3: at least 3 comparable pages,
   otherwise `uncorroborated`.

@@ -56,7 +56,7 @@ async def _transaction(request: Request) -> AsyncIterator[AsyncConnection]:
 
 @router.get("/sites/{host}/configs", responses=_NOT_FOUND)
 async def list_site_configs(host: str, request: Request) -> ConfigList:
-    """Every version of the site's configs, with status, field status and validation report, by schema version, page
+    """Every version of the site's configs, with status, field status and validation report, by schema, page
     kind and version."""
     async with _transaction(request) as conn:
         return ConfigList(items=await configs.list_for_host(conn, host))
@@ -73,7 +73,7 @@ async def get_config(config_id: ExtractionConfigId, request: Request) -> ConfigD
 async def correct_config(config_id: ExtractionConfigId, body: Correction, request: Request) -> ConfigDetail:
     """Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.
     It is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be
-    the latest version of its site, schema version and page kind; otherwise 409."""
+    the latest version of its site, schema and page kind; otherwise 409."""
     data: EngineData | None = request.app.state.engine_data
     if data is None:
         raise records_unavailable("the engine's data files are not installed, so no config can be validated")
@@ -95,7 +95,7 @@ async def export_config(config_id: ExtractionConfigId, body: ExportRequest, requ
 
 @router.post("/sites/{host}/learn", status_code=202, responses=_CHANGES)
 async def learn_site(host: str, body: LearnRequest, request: Request) -> LearnStarted:
-    """Starts learning the site's config for a schema version; 409 while a run is in flight, or when the site has an
+    """Starts learning the site's config for a schema; 409 while a run is in flight, or when the site has an
     active config and `force` is not set."""
     async with _transaction(request) as conn:
         return LearnStarted(job_id=await configs.learn(conn, host, body))

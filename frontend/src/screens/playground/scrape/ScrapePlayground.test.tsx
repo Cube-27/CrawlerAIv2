@@ -36,7 +36,6 @@ function field(overrides: Partial<RecordField>): RecordField {
 const itemSchema = {
   id: SCHEMA_ID,
   name: "item_detail",
-  version: 2,
   origin: "user",
   fields: {
     title: { type: "text" },
@@ -123,7 +122,7 @@ function stubScrape(replies: Parameters<typeof stubApi>[0]) {
 
 async function fillRecordsByIdForm() {
   await typeUrl("https://store.test/items/1");
-  await pick(/Schema/, "item_detail version 2");
+  await pick(/Schema/, "item_detail");
 }
 
 async function submit() {
@@ -380,7 +379,6 @@ describe("scrape playground: the request", () => {
       ...itemSchema,
       id: "0f9e8d7c-6b5a-4f3e-9d2c-1b0a9f8e7d6c",
       name: "item_listing",
-      version: 1,
       status: "active",
       page_kind: "listing",
     };
@@ -392,7 +390,7 @@ describe("scrape playground: the request", () => {
     });
     await openScrape();
     await fillRecordsByIdForm();
-    await pick(/Schema/, "item_listing version 1");
+    await pick(/Schema/, "item_listing");
 
     await submit();
 

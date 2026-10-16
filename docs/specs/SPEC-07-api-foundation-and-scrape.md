@@ -129,9 +129,9 @@ Behaviour:
 ### 4.6 Other endpoints
 
 - `/v1/schemas`: `POST` (inline SchemaDef → `origin=user`), `GET /v1/schemas`, `GET /v1/schemas/{id}`,
-  `PUT /v1/schemas/{id}` (creates version+1; schemas are immutable per version; a retired latest version may be
-  edited too, and the new version is active while the old ones stay retired, D-0395 owner answer 2026-10-16),
-  `DELETE` (sets `status=retired`; rows referenced by records are never deleted).
+  `PUT /v1/schemas/{id}` (replaces the document in place and answers the schema; its active site configs are
+  suspended and its sites learn again; a retired schema or a preset is 409; ARCHITECTURE Appendix A #43),
+  `DELETE` (retires the schema, `status=retired`; rows referenced by records are never deleted).
 - `GET /v1/records?job_id|site|schema_id&cursor&limit` → records with full `field_meta` in the field shape above.
 - `POST /v1/captures/{id}/replay` → runs `replay_page` with the current engine and the site's active config and
   returns the `records` array (not persisted; for debugging — §13.1). `max_age` and replay never call the LLM
@@ -189,7 +189,7 @@ published values unchanged), INV-32 (trusted-proxy headers; no key creation at s
 | 4 | Service layer + `POST /v1/scrape` (formats only) | `services/scrape`, router | router tests | Sync scrape works. |
 | 5 | `records` format with schema id/inline + `max_age` | same | router + replay, parser-count test | Field shape complete; INV-26 across formats + records. |
 | 6 | `schema.prompt` via role S | same | unit | Draft returned and reused. |
-| 7 | `/v1/schemas` CRUD | `services/schemas`, router | unit | Versioning rules enforced. |
+| 7 | `/v1/schemas` CRUD | `services/schemas`, router | unit | Edit and retire rules enforced. |
 | 8 | `/v1/records`, `/v1/captures/{id}/replay` | `services/records,captures` | unit | Replay returns records. |
 
 ## 9. Open issues

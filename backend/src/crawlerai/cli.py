@@ -43,7 +43,8 @@ from crawlerai.eval.store import (
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
-from crawlerai.schemas.registry import PresetConflict, sync_presets
+from crawlerai.schemas.registry import PresetConflict
+from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetching import Fetching, learning_replay
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
@@ -198,10 +199,10 @@ async def _transaction() -> AsyncIterator[AsyncConnection]:
 
 async def _sync_presets() -> None:
     async with _transaction() as conn:
-        inserted = await sync_presets(conn)
-    for schema in inserted:
-        print(f"inserted preset {schema.name} version {schema.version}")
-    print(f"{len(inserted)} preset version(s) inserted")
+        written = await schemas_service.sync_presets(conn)
+    for schema in written:
+        print(f"wrote preset {schema.name}")
+    print(f"{len(written)} preset(s) inserted or updated")
 
 
 async def _apikey_create(label: str) -> None:
@@ -340,15 +341,15 @@ def _parser() -> argparse.ArgumentParser:
     schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
         dest="schemas_command", required=True
     )
-    schemas.add_parser(
-        "sync", help="insert the preset schema versions the database lacks (after migrating)"
-    ).set_defaults(handler=_run_schemas)
+    schemas.add_parser("sync", help="insert or update the preset schemas in place (after migrating)").set_defaults(
+        handler=_run_schemas
+    )
     data = commands.add_parser("data", help="the pinned data files of backend/data/manifest.json").add_subparsers(
         dest="data_command", required=True
     )
-    data.add_parser(
-        "fetch", help="download the fetched entries (GeoNames, schema.org) and check their sha256"
-    ).set_defaults(handler=_run_data)
+    data.add_parser("fetch", help="download the fetched entries (schema.org) and check their sha256").set_defaults(
+        handler=_run_data
+    )
     apikey = commands.add_parser("apikey", help="API keys; the API never creates one (INV-32)").add_subparsers(
         dest="apikey_command", required=True
     )

@@ -23,7 +23,7 @@ Build an integration on the CrawlerAI scrape endpoint (`POST /v1/scrape`).
 - Wrap the call in one function that takes the URL, the formats and an optional schema and returns a typed result.
   Generate the types from the OpenAPI document at `/v1/openapi.json` rather than writing them by hand.
 - Treat a field with no value as unknown, not as empty: keep its status and reason next to the value.
-- Handle problems by status: 422 (fix the request), 409 (the inline schema differs from its stored version), 429 and
+- Handle problems by status: 422 (fix the request), 409 (the inline schema differs from the stored schema of its name), 429 and
   503 (retry with backoff, honouring `Retry-After`), 502 and 504 (the page could not be fetched in time).
 - Send a stored schema by id for repeated scrapes of the same kind of page, so every result has one shape.
 - Set `max_age` when a recent capture is good enough; it saves a fetch.

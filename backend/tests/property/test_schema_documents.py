@@ -92,7 +92,6 @@ def _row_mapped() -> st.SearchStrategy[dict[str, Any]]:
 _documents = st.fixed_dictionaries(
     {
         "name": _names,
-        "version": st.integers(min_value=1, max_value=10_000),
         "page_kind": st.just("detail"),
         "fields": st.dictionaries(_names, _spec(1, described=True) | _row_mapped(), min_size=1, max_size=4),
     }
@@ -108,12 +107,10 @@ def test_valid_documents_round_trip_through_json_and_the_role_s_wire_form(raw: d
         **raw,
         "fields": _without_defaults(raw["fields"]),
     }
-    wire = to_wire(document.model_dump(mode="json", exclude={"name", "version"}, exclude_none=True))
+    wire = to_wire(document.model_dump(mode="json", exclude={"name"}, exclude_none=True))
 
     assert list(Draft202012Validator(wire_schema()).iter_errors(wire)) == []
-    assert (
-        SchemaDocument.model_validate({**from_wire(wire), "name": raw["name"], "version": raw["version"]}) == document
-    )
+    assert SchemaDocument.model_validate({**from_wire(wire), "name": raw["name"]}) == document
 
 
 def _without_defaults(fields: dict[str, Any]) -> dict[str, Any]:
@@ -181,7 +178,6 @@ def _document(**fields: dict[str, Any]) -> dict[str, Any]:
     """A valid document with one plain field and `fields`."""
     return {
         "name": "doc",
-        "version": 1,
         "page_kind": "detail",
         "fields": {"title": {"type": "text", "description": "d"}, **fields},
     }

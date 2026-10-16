@@ -1,8 +1,8 @@
 """The schema registry (SPEC-04 §4.1): `schema_def` rows read and written as validated documents.
 
-Rows are immutable per (name, version) (ARCHITECTURE §5.2): nothing here updates a row's document; a change is
-`new_version`. Only a row's lifecycle changes in place (`retire`). Every document is validated as a `SchemaDocument`
-before it is written, so a stored row always parses.
+One row per schema name, edited in place (ARCHITECTURE §5.2). An edit's callers send the site configs learned for the
+old document back to learning (`config_ir.progressive.relearn_schema`).
+Every document is validated as a `SchemaDocument` before it is written, so a stored row always parses.
 """
 
 import json
@@ -25,27 +25,16 @@ class SchemaNotFound(Refusal):
 
 
 class SchemaExists(Exception):
-    """`create` was given a name that already has a schema, or two writers raced for the same version."""
-
-
-class NotLatest(Exception):
-    """`new_version` was asked to build on a version that is no longer the latest one: someone else added a version
-    since it was read."""
-
-    def __init__(self, latest: SchemaDef) -> None:
-        super().__init__(f"schema {latest.name} is at version {latest.version}")
-        self.latest = latest
+    """`create` was given a name that already has a schema, or two writers raced for the same name."""
 
 
 class PresetConflict(Exception):
-    """A preset file disagrees with the database: its stored version has other contents, or it is older than a
-    stored preset version. A changed preset needs a version bump (§4.2)."""
+    """A preset file names a schema stored under that name by a caller, not as a preset."""
 
 
 _COLUMNS = (
     SchemaRow.id,
     SchemaRow.name,
-    SchemaRow.version,
     SchemaRow.page_kind,
     SchemaRow.fields,
     SchemaRow.required_groups,
@@ -58,13 +47,16 @@ def _from_row(row: Row[Any]) -> SchemaDef:
     return SchemaDef.model_validate(row._asdict())
 
 
-async def get(conn: AsyncConnection, name: str, version: int) -> SchemaDef:
-    row = (
-        await conn.execute(select(*_COLUMNS).where(SchemaRow.name == name, SchemaRow.version == version))
-    ).one_or_none()
-    if row is None:
-        raise SchemaNotFound(f"no schema {name} version {version}")
-    return _from_row(row)
+async def find(conn: AsyncConnection, name: str) -> SchemaDef | None:
+    row = (await conn.execute(select(*_COLUMNS).where(SchemaRow.name == name))).one_or_none()
+    return None if row is None else _from_row(row)
+
+
+async def get(conn: AsyncConnection, name: str) -> SchemaDef:
+    found = await find(conn, name)
+    if found is None:
+        raise SchemaNotFound(f"no schema {name}")
+    return found
 
 
 async def get_by_id(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
@@ -77,8 +69,8 @@ async def get_by_id(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
 async def list_schemas(
     conn: AsyncConnection, *, name: str | None = None, status: SchemaStatus | None = None
 ) -> list[SchemaDef]:
-    """Every version of every schema, by name then version; only those of `name` and in `status` when given."""
-    query = select(*_COLUMNS).order_by(SchemaRow.name, SchemaRow.version)
+    """Every schema, by name; only `name` and those in `status` when given."""
+    query = select(*_COLUMNS).order_by(SchemaRow.name)
     if name is not None:
         query = query.where(SchemaRow.name == name)
     if status is not None:
@@ -87,54 +79,8 @@ async def list_schemas(
 
 
 async def create(conn: AsyncConnection, document: SchemaDocument, origin: SchemaOrigin) -> SchemaDef:
-    """Insert a new schema at version 1. A name that already has a schema raises `SchemaExists`: changing a schema
-    is `new_version`."""
-    if document.version != 1:
-        raise ValueError(f"a new schema starts at version 1, not {document.version}")
-    if await _latest(conn, document.name) is not None:
-        raise SchemaExists(f"schema {document.name} exists; add a version instead")
-    return await _insert(conn, document, origin)
-
-
-async def new_version(
-    conn: AsyncConnection, name: str, changes: SchemaChanges, origin: SchemaOrigin, *, base_version: int | None = None
-) -> SchemaDef:
-    """Insert version latest + 1 of `name`: the latest version's document with `changes` applied, validated as a
-    whole. Earlier versions stay as they are, since records and configs reference them (§5.2).
-
-    `base_version` is the version the caller's changes were made to; when another version has been added since,
-    `NotLatest`. Two writers racing from the same base both read it as latest, and the second insert is
-    `SchemaExists`."""
-    latest = await _latest(conn, name)
-    if latest is None:
-        raise SchemaNotFound(f"no schema {name}")
-    if base_version is not None and latest.version != base_version:
-        raise NotLatest(latest)
-    document = SchemaDocument.model_validate(
-        {**_document(latest), "version": latest.version + 1, **changes.model_dump(exclude_none=True)}
-    )
-    return await _insert(conn, document, origin)
-
-
-async def retire(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
-    """Set one version's status to `retired`. The row stays: records and configs reference it (§5.2)."""
-    row = (
-        await conn.execute(
-            update(SchemaRow).where(SchemaRow.id == schema_id).values(status="retired").returning(*_COLUMNS)
-        )
-    ).one_or_none()
-    if row is None:
-        raise SchemaNotFound(f"no schema with id {schema_id}")
-    return _from_row(row)
-
-
-async def _latest(conn: AsyncConnection, name: str) -> SchemaDef | None:
-    query = select(*_COLUMNS).where(SchemaRow.name == name).order_by(SchemaRow.version.desc()).limit(1)
-    row = (await conn.execute(query)).one_or_none()
-    return None if row is None else _from_row(row)
-
-
-async def _insert(conn: AsyncConnection, document: SchemaDocument, origin: SchemaOrigin) -> SchemaDef:
+    """Insert a new, active schema. A name that already has a schema raises `SchemaExists`: changing a schema is
+    `update`."""
     values = document.model_dump(mode="json", exclude_none=True)
     try:
         # A savepoint, so a lost race leaves the caller's transaction usable.
@@ -145,8 +91,36 @@ async def _insert(conn: AsyncConnection, document: SchemaDocument, origin: Schem
                 )
             ).one()
     except IntegrityError as e:
-        raise SchemaExists(f"schema {document.name} version {document.version} exists") from e
+        raise SchemaExists(f"schema {document.name} exists") from e
     return _from_row(row)
+
+
+async def update_schema(conn: AsyncConnection, current: SchemaDef, changes: SchemaChanges) -> SchemaDef:
+    """Apply `changes` to the stored schema `current` in place, validated as a whole document; `current` itself when
+    the document stays the same. Raises pydantic's `ValidationError` for a document that breaks a schema rule. What
+    was learned for the old document is the caller's to send back to learning (`progressive.relearn_schema`)."""
+    document = SchemaDocument.model_validate({**_document(current), **changes.model_dump(exclude_none=True)})
+    return await _write_if_changed(conn, current, document)
+
+
+async def retire(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
+    """Set the schema's status to `retired`. The row stays: records and configs reference it."""
+    row = (
+        await conn.execute(
+            update(SchemaRow).where(SchemaRow.id == schema_id).values(status="retired").returning(*_COLUMNS)
+        )
+    ).one_or_none()
+    if row is None:
+        raise SchemaNotFound(f"no schema with id {schema_id}")
+    return _from_row(row)
+
+
+async def _write_if_changed(conn: AsyncConnection, current: SchemaDef, document: SchemaDocument) -> SchemaDef:
+    if document.model_dump(exclude_none=True) == _document(current):
+        return current
+    values = document.model_dump(mode="json", exclude_none=True, exclude={"name"})
+    query = update(SchemaRow).where(SchemaRow.id == current.id).values(**values).returning(*_COLUMNS)
+    return _from_row((await conn.execute(query)).one())
 
 
 def load_presets() -> list[SchemaDocument]:
@@ -164,32 +138,22 @@ def load_presets() -> list[SchemaDocument]:
 
 
 async def sync_presets(conn: AsyncConnection, presets: Sequence[SchemaDocument] | None = None) -> list[SchemaDef]:
-    """Insert each preset whose (name, version) is not stored yet, and return the rows inserted.
-
-    A preset already stored must be stored as written, and must not be older than a stored preset version of its
-    name; otherwise `PresetConflict`, and nothing is inserted. That is the version-bump rule (§4.2): a preset file
-    changes only together with its version.
-    """
+    """Upsert each preset file's document (§4.2), and return the rows inserted or changed. A changed preset is edited
+    in place like any schema (`update_schema`), and is the caller's to relearn. A preset name a caller's schema holds
+    is `PresetConflict`, and nothing is written."""
     presets = load_presets() if presets is None else presets
     query = select(*_COLUMNS).where(SchemaRow.name.in_({preset.name for preset in presets}))
-    stored: dict[tuple[str, int], SchemaDef] = {
-        (row.name, row.version): _from_row(row) for row in (await conn.execute(query)).all()
-    }
-    pending = []
+    stored = {row.name: _from_row(row) for row in (await conn.execute(query)).all()}
+    if taken := sorted(name for name, row in stored.items() if row.origin != "preset"):
+        raise PresetConflict(f"preset names {taken} are stored as other schemas")
+    written = []
     for preset in presets:
-        newest = max(
-            (v for (name, v), row in stored.items() if name == preset.name and row.origin == "preset"), default=0
-        )
-        if preset.version < newest:
-            raise PresetConflict(f"preset {preset.name} is version {preset.version}; version {newest} is stored")
-        row = stored.get((preset.name, preset.version))
+        row = stored.get(preset.name)
         if row is None:
-            pending.append(preset)
-        elif row.origin != "preset" or _document(row) != preset.model_dump(exclude_none=True):
-            raise PresetConflict(
-                f"{preset.name} version {preset.version} is stored with other contents; bump the preset's version"
-            )
-    return [await _insert(conn, preset, "preset") for preset in pending]
+            written.append(await create(conn, preset, "preset"))
+        elif (edited := await _write_if_changed(conn, row, preset)) != row:
+            written.append(edited)
+    return written
 
 
 def _document(schema: SchemaDef) -> dict[str, Any]:

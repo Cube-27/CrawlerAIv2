@@ -45,8 +45,8 @@ async def _site(conn: AsyncConnection, host: str = "example.test") -> SiteId:
     return site_id
 
 
-async def _schema(conn: AsyncConnection, version: int = 1) -> SchemaId:
-    values = {"name": "s", "version": version, "page_kind": "detail", "fields": {}, "origin": "user"}
+async def _schema(conn: AsyncConnection) -> SchemaId:
+    values = {"name": "s", "page_kind": "detail", "fields": {}, "origin": "user"}
     schema_id: SchemaId = (
         await conn.execute(insert(SchemaDef).values(**values, status="active").returning(SchemaDef.id))
     ).scalar_one()
@@ -114,14 +114,13 @@ def _candidate_values(extraction_id: ExtractionId, /, **columns: Any) -> dict[st
 
 
 def _progressive_values(site_id: SiteId, schema_id: SchemaId, /, **columns: Any) -> dict[str, Any]:
-    return {"site_id": site_id, "schema_id": schema_id, "schema_version": 1, "page_kind": "detail", **columns}
+    return {"site_id": site_id, "schema_id": schema_id, "page_kind": "detail", **columns}
 
 
 def _config_values(site_id: SiteId, schema_id: SchemaId, /, **columns: Any) -> dict[str, Any]:
     values = {
         "site_id": site_id,
         "schema_id": schema_id,
-        "schema_version": 1,
         "page_kind": "detail",
         "version": 1,
         "ir": {},

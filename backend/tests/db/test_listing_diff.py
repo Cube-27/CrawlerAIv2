@@ -90,7 +90,7 @@ async def shop(conn: AsyncConnection) -> Shop:
     default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
     insert_site = insert(Site).values(project_id=default_project, host=host).returning(Site.id)
     site_id: SiteId = (await conn.execute(insert_site)).scalar_one()
-    document = {"name": f"synthetic_{uuid.uuid4().hex[:12]}", "version": 1, "page_kind": "detail"}
+    document = {"name": f"synthetic_{uuid.uuid4().hex[:12]}", "page_kind": "detail"}
     schema = await registry.create(conn, SchemaDocument.model_validate(document | {"fields": {"title": TITLE}}), "user")
     return Shop(conn, site_id, host, schema.id)
 

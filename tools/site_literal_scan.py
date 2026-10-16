@@ -13,7 +13,7 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
   Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
 - a token that is, as written, a schema.org property path some tracked schema document maps a field to is that path.
-  A schema document is a JSON object with a `name`, an integer `version`, a `page_kind` and a `fields` object
+  A schema document is a JSON object with a `name`, a `page_kind` and a `fields` object
   (SPEC-04 §4.2); the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
   up to any `+`, that follow schema.org naming. The paths are read from the documents, as columns are read from the
   schema.
@@ -202,7 +202,6 @@ def schema_org_paths(file: Path) -> Iterator[str]:
     if not (
         isinstance(document, dict)
         and isinstance(document.get("name"), str)
-        and type(document.get("version")) is int
         and isinstance(document.get("page_kind"), str)
         and isinstance(document.get("fields"), dict)
     ):

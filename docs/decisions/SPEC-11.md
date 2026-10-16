@@ -181,3 +181,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: None: the text was wrong.
 - Why: CLAUDE.md §6 clarifying edits; no architecture change.
 - Reversible: yes
+
+### D-0952 — A record carries the digest of the document it was extracted with
+- Date: 2026-10-16 · Spec/PR: greenfield (#210) · Status: decided
+- Decision: `record.schema_digest` = sha256 of the canonical document (`recurring.record_fp.document_digest`). An equal fingerprint stores no new version only when the digests are equal too, and `standing_record` requires the current digest, so the first job after an edit stores new versions and no page is `unchanged` against an old-document record.
+- Alternatives: `schema_def.updated_at` compared with `job.created_at` (clock order, two joins on the recurring path).
+- Why: A schema is edited in place (D-0950); the job's pinned document (D-0951) is what its records follow.
+- Reversible: yes

@@ -1,6 +1,5 @@
 {
   "name": "commerce_detail",
-  "version": 4,
   "page_kind": "detail",
   "required_groups": [["sku", "gtin"]],
   "fields": {

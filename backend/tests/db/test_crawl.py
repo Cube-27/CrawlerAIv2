@@ -124,7 +124,7 @@ def fetching(web: Web, tmp_path: Path) -> Fetching:
 
 @pytest.fixture
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 

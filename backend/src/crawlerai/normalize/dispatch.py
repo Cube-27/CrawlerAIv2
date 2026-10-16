@@ -120,11 +120,9 @@ def _list_key(items: list[JsonValue], item: FieldSpec) -> Hashable | None:
 
 
 # The types whose normalizer accepts only a grammar or a vocabulary, so arbitrary text declines: money (ISO 4217 and
-# CLDR amounts), enum (a versioned vocabulary), date and datetime (ISO 8601, CLDR patterns), location (gazetteer place
-# names) and range (amounts or quantities). Text accepts any string; an object's sub-fields say nothing of one leaf.
-_CHECKABLE = frozenset(
-    {FieldType.MONEY, FieldType.ENUM, FieldType.DATE, FieldType.DATETIME, FieldType.LOCATION, FieldType.RANGE}
-)
+# CLDR amounts), enum (a versioned vocabulary), date and datetime (ISO 8601, CLDR patterns) and range (amounts or
+# quantities). Text and location accept any string; an object's sub-fields say nothing of one leaf.
+_CHECKABLE = frozenset({FieldType.MONEY, FieldType.ENUM, FieldType.DATE, FieldType.DATETIME, FieldType.RANGE})
 
 
 def checkable(raw: Raw, spec: FieldSpec) -> bool:

@@ -6,18 +6,16 @@ import { routes } from "../../app/router";
 import type { SchemaDef } from "../../api/schemas";
 import { problem, stubApi } from "../../test/api";
 
-const V1_ID = "0192a000-0000-7000-8000-000000000101";
-const V2_ID = "0192a000-0000-7000-8000-000000000102";
-const V3_ID = "0192a000-0000-7000-8000-000000000103";
+const RETIRED_ID = "0192a000-0000-7000-8000-000000000101";
+const SCHEMA_ID = "0192a000-0000-7000-8000-000000000102";
 const PRESET_ID = "0192a000-0000-7000-8000-000000000201";
 const DRAFT_ID = "0192a000-0000-7000-8000-000000000301";
 const ADOPTED_ID = "0192a000-0000-7000-8000-000000000401";
 
 function schemaDef(overrides: Partial<SchemaDef> = {}): SchemaDef {
   return {
-    id: V2_ID,
+    id: SCHEMA_ID,
     name: "item_detail",
-    version: 2,
     origin: "user",
     status: "active",
     page_kind: "detail",
@@ -30,13 +28,12 @@ function schemaDef(overrides: Partial<SchemaDef> = {}): SchemaDef {
   };
 }
 
-const v1 = schemaDef({ id: V1_ID, version: 1, status: "retired" });
-const v2 = schemaDef();
-const preset = schemaDef({ id: PRESET_ID, name: "product", version: 1, origin: "preset" });
+const retired = schemaDef({ id: RETIRED_ID, name: "event_detail", status: "retired" });
+const schema = schemaDef();
+const preset = schemaDef({ id: PRESET_ID, name: "product", origin: "preset" });
 const draft = schemaDef({
   id: DRAFT_ID,
   name: "draft_9f2c",
-  version: 1,
   origin: "prompt_draft",
   page_kind: "listing",
   required_groups: [],
@@ -75,19 +72,19 @@ describe("schemas screen: the list", () => {
     ).toHaveAttribute("href", "/schemas");
   });
 
-  it("shows every version's name, version, origin, status and page kind, and opens one by its row", async () => {
-    const calls = stubApi({ "GET /v1/schemas": list(v1, v2, preset, draft) });
+  it("shows every schema's name, origin, status and page kind, and opens one by its row", async () => {
+    const calls = stubApi({ "GET /v1/schemas": list(retired, schema, preset, draft) });
     await open("/schemas", "Schemas");
 
     const table = await screen.findByRole("grid", { name: "Schemas" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.map((row) => row.textContent)).toEqual([
-      "item_detail1userretireddetail",
-      "item_detail2useractivedetail",
-      "product1presetactivedetail",
-      "draft_9f2c1prompt_draftactivelisting",
+      "event_detailuserretireddetail",
+      "item_detailuseractivedetail",
+      "productpresetactivedetail",
+      "draft_9f2cprompt_draftactivelisting",
     ]);
-    expect(rows[1]).toHaveAttribute("data-href", `/schemas/${V2_ID}`);
+    expect(rows[1]).toHaveAttribute("data-href", `/schemas/${SCHEMA_ID}`);
     expect(calls[0]).toMatchObject({
       path: "/v1/schemas",
       query: "",
@@ -117,12 +114,15 @@ describe("schemas screen: the list", () => {
 });
 
 describe("schemas screen: one schema", () => {
-  it("shows its fields, its JSON and its versions", async () => {
-    const calls = stubApi({
-      [`GET /v1/schemas/${V2_ID}`]: one(v2),
-      "GET /v1/schemas": list(v1, v2),
-    });
-    await open(`/schemas/${V2_ID}`, "item_detail");
+  it("shows its fields and its JSON", async () => {
+    stubApi({ [`GET /v1/schemas/${SCHEMA_ID}`]: one(schema) });
+    await open(`/schemas/${SCHEMA_ID}`, "item_detail");
+
+    expect(
+      within(await screen.findByRole("tablist", { name: "Schema" }))
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Fields", "JSON"]);
 
     const fields = await openTab("Fields");
     expect(
@@ -136,17 +136,12 @@ describe("schemas screen: one schema", () => {
       name: "item_detail",
       page_kind: "detail",
       required_groups: [["title"]],
-      fields: v2.fields,
+      fields: schema.fields,
     });
-    const versions = await openTab("Versions");
-    const rows = versions.getAllByRole("row").slice(1);
-    expect(rows.map((row) => row.textContent)).toEqual(["1userretired", "2useractive"]);
-    expect(rows[0]).toHaveAttribute("data-href", `/schemas/${V1_ID}`);
-    expect(calls.find((call) => call.path === "/v1/schemas")?.query).toBe("name=item_detail");
   });
 
   it("offers no edit or retire for a preset", async () => {
-    stubApi({ [`GET /v1/schemas/${PRESET_ID}`]: one(preset), "GET /v1/schemas": list(preset) });
+    stubApi({ [`GET /v1/schemas/${PRESET_ID}`]: one(preset) });
     await open(`/schemas/${PRESET_ID}`, "product");
 
     await screen.findByRole("tab", { name: "Fields" });
@@ -154,35 +149,33 @@ describe("schemas screen: one schema", () => {
     expect(screen.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
   });
 
-  it("offers edit only on the latest version", async () => {
-    stubApi({
-      [`GET /v1/schemas/${V1_ID}`]: one(schemaDef({ ...v1, status: "active" })),
-      "GET /v1/schemas": list(v1, v2),
-    });
-    await open(`/schemas/${V1_ID}`, "item_detail");
+  it("offers no edit or retire for a retired schema", async () => {
+    stubApi({ [`GET /v1/schemas/${RETIRED_ID}`]: one(retired) });
+    await open(`/schemas/${RETIRED_ID}`, "event_detail");
 
     await screen.findByRole("tab", { name: "Fields" });
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
   });
 
-  it("retires the version after a confirmation, then shows it retired", async () => {
-    let current = v2;
+  it("retires the schema after a confirmation, then shows it retired", async () => {
+    let current = schema;
     const calls = stubApi({
-      [`GET /v1/schemas/${V2_ID}`]: () => Response.json(current),
-      "GET /v1/schemas": () => Response.json({ items: [v1, current] }),
-      [`DELETE /v1/schemas/${V2_ID}`]: () => {
-        current = { ...v2, status: "retired" };
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(current),
+      [`DELETE /v1/schemas/${SCHEMA_ID}`]: () => {
+        current = { ...schema, status: "retired" };
         return new Response(null, { status: 204 });
       },
     });
-    await open(`/schemas/${V2_ID}`, "item_detail");
+    await open(`/schemas/${SCHEMA_ID}`, "item_detail");
 
     await userEvent.click(await screen.findByRole("button", { name: "Retire" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Retire item_detail?");
     await userEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Retire" }),
     );
 
+    expect(await screen.findByText("Retired item_detail.")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
     });
@@ -192,12 +185,11 @@ describe("schemas screen: one schema", () => {
 
   it("shows a refused retire as a problem", async () => {
     stubApi({
-      [`GET /v1/schemas/${V2_ID}`]: one(v2),
-      "GET /v1/schemas": list(v1, v2),
-      [`DELETE /v1/schemas/${V2_ID}`]: () =>
+      [`GET /v1/schemas/${SCHEMA_ID}`]: one(schema),
+      [`DELETE /v1/schemas/${SCHEMA_ID}`]: () =>
         problem(409, { title: "Conflict", detail: "schema item_detail is a preset" }),
     });
-    await open(`/schemas/${V2_ID}`, "item_detail");
+    await open(`/schemas/${SCHEMA_ID}`, "item_detail");
 
     await userEvent.click(await screen.findByRole("button", { name: "Retire" }));
     await userEvent.click(
@@ -221,7 +213,7 @@ describe("schemas screen: adopting a prompt draft", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Adopt as user schema" }));
     await screen.findByRole("heading", { level: 1, name: "New schema" });
-    // The draft's own name is taken by its versions (UAT F32): the form starts without one.
+    // The draft's own name is taken by the draft (UAT F32): the form starts without one.
     const name = await screen.findByRole("textbox", { name: "Name" });
     expect(name).toHaveValue("");
     expect(name).toHaveAccessibleDescription(/A name no other schema has/);
@@ -251,7 +243,7 @@ describe("schemas screen: adopting a prompt draft", () => {
 
 describe("schemas screen: creating and editing", () => {
   it("creates a schema from the form", async () => {
-    const created = schemaDef({ id: ADOPTED_ID, name: "event", version: 1 });
+    const created = schemaDef({ id: ADOPTED_ID, name: "event" });
     const calls = stubApi({
       "POST /v1/schemas": () => Response.json(created, { status: 201 }),
       [`GET /v1/schemas/${ADOPTED_ID}`]: one(created),
@@ -322,7 +314,7 @@ describe("schemas screen: creating and editing", () => {
   });
 
   it("creates a schema from the JSON tab", async () => {
-    const created = schemaDef({ id: ADOPTED_ID, name: "event", version: 1 });
+    const created = schemaDef({ id: ADOPTED_ID, name: "event" });
     const calls = stubApi({
       "POST /v1/schemas": () => Response.json(created, { status: 201 }),
       [`GET /v1/schemas/${ADOPTED_ID}`]: one(created),
@@ -415,25 +407,45 @@ describe("schemas screen: creating and editing", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("saves an edit as the next version, with the whole document and no name", async () => {
-    const v3 = schemaDef({ id: V3_ID, version: 3 });
-    const calls = stubApi({
-      [`GET /v1/schemas/${V2_ID}`]: one(v2),
-      [`GET /v1/schemas/${V3_ID}`]: one(v3),
-      "GET /v1/schemas": list(v1, v2),
-      [`PUT /v1/schemas/${V2_ID}`]: () => Response.json(v3),
+  it("saves an edit in place, with the whole document and no name", async () => {
+    const edited = schemaDef({
+      fields: {
+        price: { type: "money", required: false, scope: "row", description: "Asking price" },
+      },
     });
-    await open(`/schemas/${V2_ID}`, "item_detail");
+    let current = schema;
+    const calls = stubApi({
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(current),
+      [`PUT /v1/schemas/${SCHEMA_ID}`]: () => {
+        current = edited;
+        return Response.json(edited);
+      },
+    });
+    await open(`/schemas/${SCHEMA_ID}`, "item_detail");
 
     await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
     await screen.findByRole("heading", { level: 1, name: "Edit item_detail" });
+    expect(
+      screen.getByText(
+        "Saving updates this schema in place. Its learned site configs go back to learning.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
     const price = within(await screen.findByRole("group", { name: "Field 2" }));
     await userEvent.type(price.getByRole("textbox", { name: "Description" }), "Asking price");
     await userEvent.click(screen.getByRole("button", { name: "Remove field 1" }));
     await save();
 
-    await screen.findByText("v3");
+    expect(
+      await screen.findByText("Saved item_detail. Its site configs are learning again."),
+    ).toBeInTheDocument();
+    await screen.findByRole("heading", { level: 1, name: "item_detail" });
+    expect(
+      (await openTab("Fields"))
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.textContent),
+    ).toEqual(["priceMoneyNorowAsking price"]);
     expect(calls.find((call) => call.method === "PUT")?.body).toEqual({
       page_kind: "detail",
       required_groups: [["title"]],

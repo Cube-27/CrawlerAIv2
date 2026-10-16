@@ -105,7 +105,7 @@ def _field_problem(
     ir: ExtractionConfigIR, schema: SchemaDef, name: str, *, removing: bool, configured: set[str]
 ) -> str | None:
     if name not in schema.fields:
-        return f"not a field of schema {schema.name} version {schema.version}"
+        return f"not a field of schema {schema.name}"
     if removing:
         return None if name in configured else "the config has no steps to remove"
     if _is_row_field(schema, name) and ir.listing is None:

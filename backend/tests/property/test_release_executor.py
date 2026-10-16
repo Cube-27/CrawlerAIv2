@@ -66,7 +66,7 @@ _row_steps = st.lists(st.sampled_from(_ROW_STEPS), min_size=1, max_size=3)
 
 
 def _schema(page_kind: str, fields: dict[str, FieldSpec]) -> SchemaDef:
-    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic", "version": 1}
+    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic"}
     return SchemaDef.model_validate({**document, "page_kind": page_kind, "fields": fields})
 
 
@@ -75,7 +75,7 @@ def _ir(page_kind: str, fields: dict[str, Any], listing: dict[str, Any] | None =
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": page_kind,
             "fetch": {"method": "http"},
             "fields": {name: {"steps": steps, "status": "uncorroborated"} for name, steps in fields.items()},

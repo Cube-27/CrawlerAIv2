@@ -61,7 +61,7 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue  kettle</title>
 </main></body></html>"""
 
 
-# A role S reply: a draft schema document without name and version (SPEC-06 §4.5).
+# A role S reply: a draft schema document without a name (SPEC-06 §4.5).
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
@@ -408,11 +408,7 @@ async def test_a_prompt_is_drafted_from_the_page_and_returned(
     )
 
     assert result.schema_ is not None
-    assert (result.schema_.name, result.schema_.version, result.schema_.origin) == (
-        draft_name(prompt),
-        1,
-        "prompt_draft",
-    )
+    assert (result.schema_.name, result.schema_.origin) == (draft_name(prompt), "prompt_draft")
     assert list(result.schema_.fields) == ["title"]
     # The sample is the page's cleaned text (SPEC-06 §4.5), not its HTML.
     (call,) = provider.calls

@@ -183,7 +183,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0311 — GeoNames has no versioned download URL
-- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: confirmed
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: superseded by D-0953
 - Decision: Needed: a stable source for the four pinned GeoNames files (SPEC-04 §4.6). `download.geonames.org/export/dump/*` is rewritten daily, so the pinned sha256 (the 2026-10-13 snapshot) stops matching and `crawlerai data fetch` refuses ("the entry needs re-pinning").
 - Alternatives: (a) re-pin in a PR whenever a fetch is needed; (b) mirror the pinned snapshot as a release asset of this repo (CC BY 4.0 allows it with attribution) and point `url` at it; (c) an owner-run object-store mirror.
 - Why: Recommendation (b), a one-time owner action. Blocked: SPEC-05's first real run; tests use a synthetic gazetteer and CI never fetches.
@@ -760,7 +760,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0914 — GeoNames re-pinned to the 2026-10-15 snapshot at this repo's release assets
-- Date: 2026-10-16 · Spec/PR: owner answers (#204) · Status: decided
+- Date: 2026-10-16 · Spec/PR: owner answers (#204) · Status: superseded by D-0953
 - Decision: The three GeoNames entries point at the release `data-geonames-2026-10-15` of this repo and pin the export dump of 2026-10-15; `retrieved` is 2026-10-16.
 - Alternatives: Pin the 2026-10-13 snapshot named in D-0311.
 - Why: Upstream rewrote two of the 2026-10-13 files (`cities15000.zip`, `countryInfo.txt`), so no copy of that snapshot was available to mirror.

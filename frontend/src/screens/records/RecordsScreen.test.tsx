@@ -19,7 +19,6 @@ const REPLAY = `POST /v1/captures/${CAPTURE_ID}/replay`;
 const schema: SchemaDef = {
   id: SCHEMA_ID,
   name: "item_detail",
-  version: 2,
   origin: "user",
   status: "active",
   page_kind: "detail",
@@ -30,7 +29,7 @@ const schema: SchemaDef = {
   },
 };
 
-const otherSchema: SchemaDef = { ...schema, id: OTHER_SCHEMA_ID, name: "event_detail", version: 1 };
+const otherSchema: SchemaDef = { ...schema, id: OTHER_SCHEMA_ID, name: "event_detail" };
 
 const conflictPrice = recordField({
   value: null,
@@ -123,7 +122,7 @@ describe("records screen: the list", () => {
     await open("/records");
 
     await userEvent.click(screen.getByRole("button", { name: /Schema/ }));
-    await userEvent.click(await screen.findByRole("option", { name: "item_detail version 2" }));
+    await userEvent.click(await screen.findByRole("option", { name: "item_detail" }));
     await userEvent.type(screen.getByLabelText("Site"), "shop.example.test");
     await userEvent.click(screen.getByRole("button", { name: "Show records" }));
 

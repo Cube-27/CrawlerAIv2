@@ -67,14 +67,14 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-0394 — `PUT /v1/schemas/{id}` must name the latest version
-- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: superseded by D-0950
 - Decision: The body is the whole new document without name and version (`SchemaContent`). It becomes version latest+1 with `origin=user`, and the answer is 200 with the new row. If `{id}` is not the latest version, or is retired, the answer is 409 `conflict`, and the detail names the latest version's id. A concurrent insert of the same version is also 409. The registry's `new_version` takes `base_version` and raises `NotLatest`.
 - Alternatives: Build silently on whatever is latest; PATCH-style partial changes.
 - Why: An edit made to an old version would otherwise drop the versions added since without anyone noticing. PUT replaces the whole document (RFC 9110 §9.3.4).
 - Reversible: yes
 
 ### D-0395 — `DELETE /v1/schemas/{id}` retires that one version
-- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided
+- Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: superseded by D-0950
 - Decision: The answer is 204, and a repeated DELETE is also 204. Other versions keep their status. `PUT` doesn't retire the version it builds on. Retiring the latest version freezes the name; that is a follow-up (ACTIVE, from the #81 review).
 - Alternatives: Retire every version of the name; retire the previous version on PUT.
 - Why: The id names a version, and records and configs reference versions (§5.2, D-0029, D-0243).

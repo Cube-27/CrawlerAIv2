@@ -54,7 +54,7 @@ ABOUT = {"xpath": "normalize-space(//p)", "post": []}
 def _document(name: str) -> SchemaDocument:
     title = FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name")
     about = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.description")
-    return SchemaDocument(name=name, version=1, page_kind="detail", fields={"title": title, "about": about})
+    return SchemaDocument(name=name, page_kind="detail", fields={"title": title, "about": about})
 
 
 def _page(name: str) -> bytes:
@@ -69,7 +69,7 @@ def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, An
     return {
         "ir_version": "1",
         "site": host,
-        "schema": {"name": schema.name, "version": schema.version},
+        "schema": {"name": schema.name},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {
@@ -143,7 +143,7 @@ class World:
     async def active_config(self, step: dict[str, Any], **more: dict[str, Any]) -> ExtractionConfigId:
         """Version 1 of the site's config, active, with `step` for `title` (and `more` steps by field), and the state
         active on it."""
-        key = {"site_id": self.site_id, "schema_id": self.schema.id, "schema_version": 1, "page_kind": "detail"}
+        key = {"site_id": self.site_id, "schema_id": self.schema.id, "page_kind": "detail"}
         async with self.engine.begin() as conn:
             config = insert(ExtractionConfig).values(
                 **key,
@@ -250,7 +250,6 @@ async def test_a_sites_configs_are_listed_with_their_status_and_one_config_has_i
                 "id": str(config_id),
                 "site": world.host,
                 "schema_id": str(world.schema.id),
-                "schema_version": 1,
                 "page_kind": "detail",
                 "version": 1,
                 "status": "active",
@@ -440,7 +439,7 @@ async def _learn(client: httpx.AsyncClient, world: World, **body: Any) -> httpx.
     return await client.post(f"/v1/sites/{world.host}/learn", json={"schema_id": str(world.schema.id), **body})
 
 
-async def test_learn_starts_a_learn_job_for_the_schema_version(client: httpx.AsyncClient, world: World) -> None:
+async def test_learn_starts_a_learn_job_for_the_schema(client: httpx.AsyncClient, world: World) -> None:
     response = await _learn(client, world)
 
     assert response.status_code == 202

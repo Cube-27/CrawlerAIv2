@@ -24,7 +24,6 @@ pytestmark = pytest.mark.anyio
 PAGE_URL = "https://shop.example.test/p/1"
 DOCUMENT = SchemaDocument(
     name="synthetic_versioned_product",
-    version=1,
     page_kind="detail",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True),
@@ -34,7 +33,6 @@ DOCUMENT = SchemaDocument(
 )
 LISTING = SchemaDocument(
     name="synthetic_versioned_listing",
-    version=1,
     page_kind="listing",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True),

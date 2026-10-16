@@ -130,7 +130,7 @@ export function newSchemaOf(form: SchemaFormState): NewSchema | null {
   };
 }
 
-/** The `PUT` body for `form`: the whole document without the name, which a version keeps. */
+/** The `PUT` body for `form`: the whole document without the name, which an edit keeps. */
 export function contentOf(form: SchemaFormState): SchemaContent | null {
   const schema = newSchemaOf(form);
   if (schema === null) return null;

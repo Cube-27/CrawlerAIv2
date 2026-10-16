@@ -14,7 +14,7 @@ PAGE_TEXT = FieldSpec(type=FieldType.TEXT, description="d", scope="page")
 
 
 def _schema(page_kind: str, **fields: FieldSpec) -> SchemaDef:
-    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic", "version": 1}
+    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic"}
     return SchemaDef.model_validate({**document, "page_kind": page_kind, "fields": fields})
 
 

@@ -22,7 +22,6 @@ SCHEMA = SchemaDef(
     origin="user",
     status="active",
     name="synthetic",
-    version=1,
     page_kind="detail",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.name"),

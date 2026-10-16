@@ -44,7 +44,15 @@ DETAIL: dict[str, Any] = {
         },
         "brand": {"value": None, "absent": True, "locator": None, "distractors": []},
         "locations": {
-            "value": [{"locality": "Springfield", "region": None, "country": "DE", "remote_flag": False}],
+            "value": [
+                {
+                    "text": "Springfield, DE",
+                    "locality": "Springfield",
+                    "region": None,
+                    "country": "DE",
+                    "remote_flag": False,
+                }
+            ],
             "absent": False,
             "locator": "jsonld:/jobLocation",
             "distractors": [],

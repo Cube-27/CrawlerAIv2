@@ -38,7 +38,7 @@ _amounts = st.decimals(min_value=Decimal("0.01"), max_value=Decimal(10**9), plac
 
 
 def _place(locality: str | None, region: str | None, country: str | None, remote: bool = False) -> JsonValue:
-    return {"locality": locality, "region": region, "country": country, "remote_flag": remote}
+    return {"text": None, "locality": locality, "region": region, "country": country, "remote_flag": remote}
 
 
 @given(st.sampled_from(list(FieldType)), _json, _json)

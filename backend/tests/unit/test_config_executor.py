@@ -43,7 +43,6 @@ def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
             "origin": "user",
             "status": "active",
             "name": "synthetic",
-            "version": 1,
             "page_kind": page_kind,
             "fields": fields,
         }
@@ -54,7 +53,7 @@ def _ir(fields: dict[str, Any], *, page_kind: str = "detail", listing: dict[str,
     document = {
         "ir_version": "1",
         "site": "shop.example.test",
-        "schema": {"name": "synthetic", "version": 1},
+        "schema": {"name": "synthetic"},
         "page_kind": page_kind,
         "fetch": {"method": "http"},
         "fields": {
@@ -229,9 +228,9 @@ def test_suspended_fields_do_not_run() -> None:
     assert [c.field for c in result.candidates] == ["sku"]
 
 
-def test_a_config_for_another_schema_version_does_not_run() -> None:
+def test_a_config_for_another_schema_does_not_run() -> None:
     executor = _ir({"title": [{"xpath": "//h1"}]})
-    schema = _schema(title=TEXT).model_copy(update={"version": 2})
+    schema = _schema(title=TEXT).model_copy(update={"name": "another"})
     page = ParsedPage("<h1>x</h1>")
     with pytest.raises(ConfigMismatch):
         executor.execute(page, schema, CTX)

@@ -43,7 +43,7 @@ async def client(
         schema_id = (
             await conn.execute(
                 insert(SchemaDef)
-                .values(name=SCHEMA, version=1, page_kind="detail", fields=FIELDS, origin="user", status="active")
+                .values(name=SCHEMA, page_kind="detail", fields=FIELDS, origin="user", status="active")
                 .returning(SchemaDef.id)
             )
         ).scalar_one()

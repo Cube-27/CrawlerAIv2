@@ -190,7 +190,7 @@ async def record_run(
         validated = {name: steps for name, steps, _ in _running(ir)}
         for measured in found:
             await record_event(conn, job_id, DRIFT_SUSPENDED, _event(config_id, measured, validated[measured.field]))
-        key = StateKey(config.site_id, config.schema_id, config.schema_version, config.page_kind)
+        key = StateKey(config.site_id, config.schema_id, config.page_kind)
         await request_learning(conn, key, force=True)
     return found
 

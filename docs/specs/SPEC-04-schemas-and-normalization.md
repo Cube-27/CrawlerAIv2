@@ -15,11 +15,11 @@ by the resolver and the eval metrics, and the versioned external data they depen
 Core:
 - Field type registry for the §5.1 types: `text`, `long_text`, `money`, `enum`, `url`, `image_url`,
   `identifier`, `date`, `datetime`, `location`, `range`, `list<T>`, `object{…}`.
-- `SchemaDef` document model, validation, versioning, `origin`, `status`.
+- `SchemaDef` document model, validation, in-place edits, `origin`, `status`.
 - Presets `commerce_detail`, `commerce_listing`, `job_detail`, `job_listing` (§5.3) as JSON files + sync command.
 - Normalizers per type with `Context`, declines per §9, property tests.
 - `equal(a, b)` per type.
-- Data manifest entries: GeoNames snapshot; CLDR via Babel package (no file).
+- Data manifest entries: the schema.org vocabulary; CLDR via Babel package (no file).
 
 Out of scope:
 - Types not in §5.1 (quantity, rating, duration) until a schema needs them (§5.1), each a new module + contract
@@ -39,7 +39,7 @@ Out of scope:
 ### 4.1 Modules
 
 - `crawlerai.schemas.types` — `FieldType` enum, `FieldSpec`, `SchemaDef` pydantic models.
-- `crawlerai.schemas.registry` — `get(name, version)`, `get_by_id`, `create`, `new_version`, `list`,
+- `crawlerai.schemas.registry` — `get(name)`, `find(name)`, `get_by_id`, `create`, `update_schema`, `retire`, `list_schemas`,
   `sync_presets()`.
 - `crawlerai.schemas.presets/*.json`.
 - `crawlerai.normalize.base` — `NormalizeResult`, `Context`, `Normalizer` protocol, `normalize(raw, spec, ctx)`
@@ -86,19 +86,22 @@ Rules:
 - `identifier.scheme` ∈ {`gtin`, `isbn`, `mpn`, `sku`, `custom`}.
 - `list.item` and `object.fields` nest; depth ≤ 3.
 - `description` is required for every field (role C reads it; §5.2). Presets carry descriptions.
-- Versioning: `schema_def` rows are immutable per (name, version). `new_version(name, changes)` inserts
-  version+1; records and configs reference (schema_id, schema_version).
+- No versions (ARCHITECTURE Appendix A #43): one `schema_def` row per name. `update_schema(schema, changes)`
+  rewrites its document in place; when the document changed, the edit's caller (`services.schemas`, the preset
+  sync) runs `progressive.relearn_schema`: its active configs become `suspended` and its progressive states `cold`
+  with no run in flight, so its sites learn again. Records and configs reference `schema_id`; a record carries the
+  digest of the document it was extracted with (`record.schema_digest`), and counts for the current document only
+  when the digests are equal (SPEC-11 record versions and unchanged pages).
 - `origin` ∈ {`preset`, `user`, `prompt_draft`}; `status` ∈ {`active`, `retired`}.
 
 Presets (§5.3), exactly these core fields, each with `schema_org` mapping:
 - `commerce_detail`: title (text, req), price (money, req), availability (enum ItemAvailability, req), url (url,
   req), image_url (image_url, req), brand (text), sku (identifier sku), gtin (identifier gtin);
-  `required_groups: [["sku","gtin"]]`. Version 2: `brand` optional (ARCHITECTURE Appendix A #35); version 1 had
-  it required. Version 3: the optional row-mapped `variants` (SPEC-13 §4.7). Version 4: the optional
-  `stock_quantity` (count, `Offer.inventoryLevel`), also a sub-field of each `variants` row (Appendix A #39,
-  D-0782). Edited in place (Appendix A #42, greenfield): optional fields the page states, each with its schema.org
-  path: description (long_text, `Product.description`), additional_images (list<image_url>, `Product.image`), color
-  (text, `Product.color`), material (text, `Product.material.name`), gender (text,
+  `required_groups: [["sku","gtin"]]`. `brand` is optional (ARCHITECTURE Appendix A #35); the optional
+  row-mapped `variants` (SPEC-13 §4.7); the optional `stock_quantity` (count, `Offer.inventoryLevel`), also a
+  sub-field of each `variants` row (Appendix A #39, D-0782). Optional fields the page states (Appendix A #42),
+  each with its schema.org path: description (long_text, `Product.description`), additional_images
+  (list<image_url>, `Product.image`), color (text, `Product.color`), material (text, `Product.material.name`), gender (text,
   `Product.audience.suggestedGender`), condition (enum OfferItemCondition, `Offer.itemCondition|Product.itemCondition`),
   rating (number, `Product.aggregateRating.ratingValue`), review_count (count,
   `Product.aggregateRating.reviewCount`), mpn (identifier mpn, `Product.mpn`), product_id (identifier custom,
@@ -110,8 +113,8 @@ Presets (§5.3), exactly these core fields, each with `schema_org` mapping:
   (date, req).
 - `job_listing`: row: title (req), url (req), location; page: next_page_url.
 
-`sync_presets()` inserts missing (name, version) rows at startup/migration; changing a preset file requires a
-version bump (test: file version == max DB version or file is new).
+`sync_presets()` (`crawlerai schemas sync`) inserts a missing preset and updates a changed one in place, as an
+edit (§4.1); a preset name held by a caller's schema is refused. Preset files carry no version.
 
 ### 4.3 Normalizer interface
 
@@ -178,13 +181,14 @@ structural property.
   `Ambiguous`. Relative dates ("2 days ago") need `ctx.captured_at`; otherwise `Invalid`.
 - Years outside 1970–2100 → `Invalid`.
 
-**location** → `{locality, region, country, remote_flag}`.
-- Structured (`Place`/`PostalAddress`): `addressCountry` to ISO 3166-1 alpha-2 (names via Babel territory
-  names + codes), `addressRegion`, `addressLocality` as given.
-- Text: tokenized match against GeoNames `cities15000` + `admin1` + `countryInfo` (pinned snapshot in manifest,
-  CC BY 4.0, attribution in `NOTICE`): country name/code match sets `country`; a city name that exists in exactly
-  one country among the matched/implied ones → `Ok`; the same city name in several countries with no country
-  given → `Ambiguous(options)`; nothing → `Invalid`.
+**location** → `{text, locality, region, country, remote_flag}`: what the page states, nothing looked up or
+inferred (ARCHITECTURE Appendix A #43).
+- Text (a string, or a `Place` with only a `name`): `text` as written (NFC, trimmed); the other parts `None`.
+- Structured (`Place`/`PostalAddress`): `addressLocality`, `addressRegion` as written; `country` only when
+  `addressCountry` (text, or a `Country`'s `identifier` or `name`) is an ISO 3166-1 alpha-2 code, as CLDR lists
+  them (via Babel) less ISO 3166-1's user-assigned ranges; two other letters → `Invalid("unknown_country")`; a
+  country written as a name gets no code. `text` joins the stated parts as written (locality, region, country).
+- Nothing stated and not remote → `Invalid("no_match")`.
 - `remote_flag` only from `jobLocationType == TELECOMMUTE` or the `type:remote` vocabulary (`en`: "remote",
   justification: the schema.org `TELECOMMUTE` definition text) — never inferred from a missing location.
 
@@ -238,15 +242,16 @@ structural property.
 ### 4.5 Equality (`equal`)
 
 money: `amount` equal as Decimal (no rounding) and `currency` equal. enum/identifier/date/count: exact. text: equal
-after the text normalization (case-sensitive). url: equal after canonicalization. location: `country` equal and
-`casefold(locality)` equal (region ignored unless both present). range: all four parts equal. list: multiset of
+after the text normalization (case-sensitive). url: equal after canonicalization. location: `remote_flag` and
+`country` equal, `casefold(locality)` equal; region (casefolded) and text (by tokens) count only when both are
+present. range: all four parts equal. list: multiset of
 item equality. These functions are used by the resolver's agreement rule (SPEC-05) and by eval (SPEC-03).
 
 ### 4.6 Data (C4, INV-05)
 
 `backend/data/manifest.json` entries: `schemaorg-all-https.jsonld` (schema.org release, CC BY-SA 3.0 — used as
-a vocabulary file only; attribution in NOTICE), `cities15000.zip`, `admin1CodesASCII.txt`, `countryInfo.txt`
-(GeoNames, CC BY 4.0), IANA TLD list (SPEC-00). `crawlerai data fetch` downloads and verifies sha256; the files
+a vocabulary file only; attribution in NOTICE), IANA TLD list (SPEC-00). GeoNames is not used (Appendix A #43,
+D-0311 superseded). `crawlerai data fetch` downloads and verifies sha256; the files
 are not committed. CLDR comes with Babel (BSD-3), no file.
 
 ### 4.7 Error handling
@@ -275,7 +280,8 @@ Hypothesis property tests per type (`tests/property/test_normalize_<type>.py`), 
 - count: whole numbers round-trip; a fraction, a negative number or two numbers in a text → `Invalid`.
 - date: numeric `a/b/c` with both orders valid and no locale → `Ambiguous`; ISO round-trips.
 - identifier: random 13-digit strings with a correct check digit → `Ok`; one digit perturbed → `Invalid`.
-- location: a generated city with homonyms in two countries and no country → `Ambiguous`.
+- location: generated text publishes as written with no part inferred; a stated alpha-2 code publishes, two
+  letters that are no code → `Invalid`; a country name gets no code.
 - url: any output starts with `http(s)://` and has no fragment.
 - Context purity: `normalize` called twice with the same input and context returns the same result (no I/O).
 - Schema: generated schema documents round-trip through the model; invalid `schema_org` paths rejected.
@@ -288,7 +294,7 @@ CI gates: `backend` job (property tests run with a fixed Hypothesis profile, `ma
 - All four presets load; `GET` through the registry returns them with every field described.
 - Every §9 "declines when" row has a passing property test.
 - `lint-imports` passes with all nine normalizer modules in the independence contract.
-- `crawlerai data fetch` populates GeoNames and schema.org files; `data_manifest_check` passes.
+- `crawlerai data fetch` populates the schema.org file; `data_manifest_check` passes.
 
 ## 8. PR plan
 

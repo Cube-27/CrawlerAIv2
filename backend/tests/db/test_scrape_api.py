@@ -209,9 +209,8 @@ async def test_a_prompt_returns_its_draft_and_reuses_it(
 
     assert (first.status_code, second.status_code) == (200, 200), first.text
     schema = first.json()["schema"]
-    assert {k: schema[k] for k in ("name", "version", "origin", "status", "page_kind")} == {
+    assert {k: schema[k] for k in ("name", "origin", "status", "page_kind")} == {
         "name": draft_name(prompt),
-        "version": 1,
         "origin": "prompt_draft",
         "status": "active",
         "page_kind": "detail",
@@ -318,7 +317,7 @@ def _product_page(url: str) -> bytes:
 @pytest.fixture
 async def kettle_schema(database: AsyncEngine, schema_name: str) -> SchemaDef:
     document = SchemaDocument.model_validate(
-        {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+        {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     )
     async with database.begin() as conn:
         return await registry.create(conn, document, "user")

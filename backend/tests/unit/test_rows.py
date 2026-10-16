@@ -1,6 +1,6 @@
 """Row-mapped fields on a detail page (SPEC-13 §4.3 to §4.5, INV-33 to INV-35): each structured-data shape of a
 variant set publishes one row per variant, matched by key and never by position, with per-sub-field outcomes. Pages
-are synthetic (`example.test`) and the schema is preset `commerce_detail` version 4 (C3, C9)."""
+are synthetic (`example.test`) and the schema is preset `commerce_detail` (C3, C9)."""
 
 import asyncio
 import json
@@ -357,7 +357,7 @@ def test_learning_gives_a_row_mapped_field_no_steps_and_says_why() -> None:
 
     assert reasons == {"variants": "row_field"}
     assert list(schema.fields) == [name for name in SCHEMA.fields if name != "variants"]
-    assert (schema.name, schema.version) == (SCHEMA.name, SCHEMA.version)
+    assert schema.name == SCHEMA.name
 
 
 def _missing() -> FieldOutcome:

@@ -24,7 +24,7 @@ CELL = {"xpath": "normalize-space(.//td)"}
 
 
 def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
-    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic", "version": 1}
+    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic"}
     return SchemaDef.model_validate({**document, "page_kind": page_kind, "fields": fields})
 
 
@@ -33,7 +33,7 @@ def _ir(fields: dict[str, Any], listing: dict[str, Any] | None = None) -> Extrac
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": "detail" if listing is None else "listing",
             "fetch": {"method": "http"},
             "fields": fields,
@@ -116,7 +116,7 @@ def test_a_listing_routes_row_fields_to_its_rows_and_page_fields_to_the_page() -
     ("body", "error"),
     [
         ({}, ("", "a correction changes or confirms at least one field")),
-        ({"fields": {"price": {"steps": [H1]}}}, ("fields.price", "not a field of schema synthetic version 1")),
+        ({"fields": {"price": {"steps": [H1]}}}, ("fields.price", "not a field of schema synthetic")),
         ({"confirm": ["subtitle"]}, ("confirm.subtitle", "the config has no steps to confirm")),
         ({"fields": {"subtitle": None}}, ("fields.subtitle", "the config has no steps to remove")),
         ({"fields": {"brand": None}, "confirm": ["brand"]}, ("confirm.brand", "the field is also corrected")),

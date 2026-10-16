@@ -547,10 +547,6 @@
             "title": "Schema Id",
             "type": "string"
           },
-          "schema_version": {
-            "title": "Schema Version",
-            "type": "integer"
-          },
           "site": {
             "title": "Site",
             "type": "string"
@@ -583,7 +579,6 @@
           "id",
           "site",
           "schema_id",
-          "schema_version",
           "page_kind",
           "version",
           "status",
@@ -649,7 +644,7 @@
       },
       "ConfigSummary": {
         "additionalProperties": false,
-        "description": "One version of a site's config for one schema version and page kind, without its IR.",
+        "description": "One version of a site's config for one schema and page kind, without its IR.",
         "properties": {
           "field_status": {
             "additionalProperties": {
@@ -692,10 +687,6 @@
             "title": "Schema Id",
             "type": "string"
           },
-          "schema_version": {
-            "title": "Schema Version",
-            "type": "integer"
-          },
           "site": {
             "title": "Site",
             "type": "string"
@@ -728,7 +719,6 @@
           "id",
           "site",
           "schema_id",
-          "schema_version",
           "page_kind",
           "version",
           "status",
@@ -2896,7 +2886,7 @@
       },
       "LearnRequest": {
         "additionalProperties": false,
-        "description": "`schema_id` names the schema version, and so the page kind, to learn for; `force` re-learns an active one.",
+        "description": "`schema_id` names the schema, and so the page kind, to learn for; `force` re-learns an active one.",
         "properties": {
           "force": {
             "default": false,
@@ -4649,7 +4639,7 @@
       },
       "SchemaContent": {
         "additionalProperties": false,
-        "description": "A schema document as a caller writes it, without the name and version the registry assigns.",
+        "description": "A schema document as a caller writes it, without its name.",
         "properties": {
           "fields": {
             "minProperties": 1,
@@ -4691,7 +4681,7 @@
       },
       "SchemaDef": {
         "additionalProperties": false,
-        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. Rows are\nimmutable per (name, version); a change is a new version.",
+        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. One row per\nname, edited in place.",
         "properties": {
           "fields": {
             "minProperties": 1,
@@ -4749,18 +4739,12 @@
             ],
             "title": "Status",
             "type": "string"
-          },
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
           "page_kind",
           "fields",
           "name",
-          "version",
           "id",
           "origin",
           "status"
@@ -4840,16 +4824,10 @@
             "pattern": "^[a-z][a-z0-9_]{0,63}$",
             "title": "Name",
             "type": "string"
-          },
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
-          "name",
-          "version"
+          "name"
         ],
         "title": "SchemaRef",
         "type": "object"
@@ -5153,7 +5131,7 @@
         "type": "object"
       },
       "StoredRecord": {
-        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE \u00a715),\nthe schema version its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first (\u00a714, SPEC-11 \u00a74.4).",
+        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE \u00a715),\nthe schema its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first (\u00a714, SPEC-11 \u00a74.4).",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -5740,7 +5718,7 @@
     },
     "/v1/captures/{capture_id}/replay": {
       "post": {
-        "description": "The records the current engine makes from the capture, against the schema versions of the records stored from\nit. 404: no such capture, or its bundle expired; 409: no record was made from it.",
+        "description": "The records the current engine makes from the capture, against the schemas of the records stored from\nit. 404: no such capture, or its bundle expired; 409: no record was made from it.",
         "operationId": "replay_capture_v1_captures__capture_id__replay_post",
         "parameters": [
           {
@@ -5976,7 +5954,7 @@
         ]
       },
       "put": {
-        "description": "Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.\nIt is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be\nthe latest version of its site, schema version and page kind; otherwise 409.",
+        "description": "Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.\nIt is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be\nthe latest version of its site, schema and page kind; otherwise 409.",
         "operationId": "correct_config_v1_configs__config_id__put",
         "parameters": [
           {
@@ -8170,7 +8148,7 @@
     },
     "/v1/records": {
       "get": {
-        "description": "Records newest first, narrowed by job, site (host) and schema version. Pass a page's `next_cursor` as `cursor`\nfor the page after it.",
+        "description": "Records newest first, narrowed by job, site (host) and schema. Pass a page's `next_cursor` as `cursor`\nfor the page after it.",
         "operationId": "list_records_v1_records_get",
         "parameters": [
           {
@@ -8340,7 +8318,7 @@
     },
     "/v1/schemas": {
       "get": {
-        "description": "Every version of every schema; only those of `name` and in `status` when given.",
+        "description": "Every schema, by name; only `name` and those in `status` when given.",
         "operationId": "list_schemas_v1_schemas_get",
         "parameters": [
           {
@@ -8449,7 +8427,7 @@
         ]
       },
       "post": {
-        "description": "A `user` schema at version 1.",
+        "description": "A new `user` schema.",
         "operationId": "create_schema_v1_schemas_post",
         "requestBody": {
           "content": {
@@ -8658,7 +8636,7 @@
     },
     "/v1/schemas/{schema_id}": {
       "delete": {
-        "description": "Retires this version. The row stays, since records and configs reference it; a preset is refused (409).",
+        "description": "Retires the schema. The row stays, since records and configs reference it; a preset is refused (409).",
         "operationId": "retire_schema_v1_schemas__schema_id__delete",
         "parameters": [
           {
@@ -8859,7 +8837,7 @@
         ]
       },
       "put": {
-        "description": "Adds the next version with `body` as its whole document and returns it. `schema_id` must be the latest\nversion, active and not a preset; otherwise 409.",
+        "description": "Replaces the schema's document with `body`, in place, and returns it. Its active site configs are suspended\nand its sites learn again. A retired schema or a preset is refused (409).",
         "operationId": "update_schema_v1_schemas__schema_id__put",
         "parameters": [
           {
@@ -8983,7 +8961,7 @@
     },
     "/v1/scrape": {
       "post": {
-        "description": "Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only\nthose are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`\nholds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to its\nname's latest version, and one that differs from that version is a 409.",
+        "description": "Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only\nthose are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`\nholds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to the\nstored schema of its name, and one that differs from it is a 409.",
         "operationId": "scrape_v1_scrape_post",
         "requestBody": {
           "content": {
@@ -9125,7 +9103,7 @@
     },
     "/v1/sites/{host}/configs": {
       "get": {
-        "description": "Every version of the site's configs, with status, field status and validation report, by schema version, page\nkind and version.",
+        "description": "Every version of the site's configs, with status, field status and validation report, by schema, page\nkind and version.",
         "operationId": "list_site_configs_v1_sites__host__configs_get",
         "parameters": [
           {
@@ -9223,7 +9201,7 @@
     },
     "/v1/sites/{host}/learn": {
       "post": {
-        "description": "Starts learning the site's config for a schema version; 409 while a run is in flight, or when the site has an\nactive config and `force` is not set.",
+        "description": "Starts learning the site's config for a schema; 409 while a run is in flight, or when the site has an\nactive config and `force` is not set.",
         "operationId": "learn_site_v1_sites__host__learn_post",
         "parameters": [
           {

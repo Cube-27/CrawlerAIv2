@@ -48,7 +48,6 @@ def _schema(page_kind: str = "detail") -> SchemaDef:
             "origin": "user",
             "status": "active",
             "name": "synthetic",
-            "version": 1,
             "page_kind": page_kind,
             "fields": {
                 "title": FieldSpec(type=FieldType.TEXT, description="d", required=True),

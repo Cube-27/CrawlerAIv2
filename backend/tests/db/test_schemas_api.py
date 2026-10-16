@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
 from crawlerai.db.keys import create_key
-from crawlerai.db.models import ApiKey
+from crawlerai.db.models import ApiKey, ExtractionConfig, ProgressiveState, SchemaId, Site
 from crawlerai.db.models import SchemaDef as SchemaRow
+from crawlerai.schemas import registry
+from tests.db.conftest import learned_site
 
 pytestmark = pytest.mark.anyio
 
@@ -25,7 +27,8 @@ EVENT = {"name": "event_detail", "page_kind": "detail", "fields": {"title": TITL
 
 @pytest.fixture
 async def database(database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncIterator[AsyncEngine]:
-    """The app's settings pointed at the test database, with every key and schema a test added deleted afterwards."""
+    """The app's settings pointed at the test database, with every key, site and schema a test added deleted
+    afterwards."""
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
@@ -33,8 +36,12 @@ async def database(database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path:
     async with engine.connect() as conn:
         keys = set((await conn.execute(select(ApiKey.id))).scalars())
         schemas = set((await conn.execute(select(SchemaRow.id))).scalars())
+        sites = set((await conn.execute(select(Site.id))).scalars())
     yield engine
     async with engine.begin() as conn:
+        await conn.execute(delete(ProgressiveState).where(ProgressiveState.schema_id.not_in(schemas)))
+        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.schema_id.not_in(schemas)))
+        await conn.execute(delete(Site).where(Site.id.not_in(sites)))
         await conn.execute(delete(SchemaRow).where(SchemaRow.id.not_in(schemas)))
         await conn.execute(delete(ApiKey).where(ApiKey.id.not_in(keys)))
     await engine.dispose()
@@ -63,15 +70,14 @@ async def _created(client: httpx.AsyncClient, body: dict[str, Any] = EVENT) -> d
     return created
 
 
-async def test_post_creates_a_user_schema_at_version_1(client: httpx.AsyncClient) -> None:
+async def test_post_creates_a_user_schema(client: httpx.AsyncClient) -> None:
     response = await client.post("/v1/schemas", json=EVENT)
 
     created = response.json()
     assert response.status_code == 201
     assert response.headers["location"] == f"/v1/schemas/{created['id']}"
-    assert {k: created[k] for k in ("name", "version", "page_kind", "origin", "status", "required_groups")} == {
+    assert {k: created[k] for k in ("name", "page_kind", "origin", "status", "required_groups")} == {
         "name": "event_detail",
-        "version": 1,
         "page_kind": "detail",
         "origin": "user",
         "status": "active",
@@ -81,26 +87,31 @@ async def test_post_creates_a_user_schema_at_version_1(client: httpx.AsyncClient
     assert (await client.get(f"/v1/schemas/{created['id']}")).json() == created
 
 
-async def test_put_adds_a_version_and_an_edit_of_the_old_one_conflicts(client: httpx.AsyncClient) -> None:
+async def test_put_edits_the_schema_in_place_and_sends_its_site_configs_back_to_learning(
+    client: httpx.AsyncClient, database: AsyncEngine
+) -> None:
     first = await _created(client)
+    async with database.begin() as conn:
+        key = await learned_site(conn, await registry.get_by_id(conn, SchemaId(uuid.UUID(first["id"]))), ["active"])
     edit = {"page_kind": "detail", "fields": {"title": TITLE, "starts": STARTS}}
 
     response = await client.put(f"/v1/schemas/{first['id']}", json=edit)
-    stale = await client.put(f"/v1/schemas/{first['id']}", json=edit)
 
-    second = response.json()
-    assert response.status_code == 200
-    assert (second["name"], second["version"], sorted(second["fields"])) == ("event_detail", 2, ["starts", "title"])
-    assert second["id"] != first["id"]
-    assert stale.status_code == 409
-    assert stale.headers["content-type"] == "application/problem+json"
-    assert stale.json()["type"] == "conflict"
-    assert f"latest version is 2 ({second['id']})" in stale.json()["detail"]
-    listed = (await client.get("/v1/schemas", params={"name": "event_detail"})).json()
-    assert [s["version"] for s in listed["items"]] == [1, 2]
+    assert response.status_code == 200, response.text
+    edited = response.json()
+    assert (edited["id"], sorted(edited["fields"]), edited["fields"]["title"]) == (
+        first["id"],
+        ["starts", "title"],
+        first["fields"]["title"],
+    )
+    assert (await client.get("/v1/schemas", params={"name": "event_detail"})).json() == {"items": [edited]}
+    async with database.connect() as conn:
+        status = (await conn.execute(select(ExtractionConfig.status).where(*key.config_scope()))).one()
+        state = select(ProgressiveState.mode, ProgressiveState.active_config_id).where(*key.where())
+        assert (status, (await conn.execute(state)).one()) == (("suspended",), ("cold", None))
 
 
-async def test_delete_retires_the_version_and_keeps_it_readable(client: httpx.AsyncClient) -> None:
+async def test_delete_retires_the_schema_and_keeps_it_readable(client: httpx.AsyncClient) -> None:
     created = await _created(client)
 
     response = await client.delete(f"/v1/schemas/{created['id']}")
@@ -113,15 +124,15 @@ async def test_delete_retires_the_version_and_keeps_it_readable(client: httpx.As
     assert [s["id"] for s in retired["items"]] == [created["id"]]
 
 
-async def test_put_on_a_retired_latest_version_builds_the_next_version(client: httpx.AsyncClient) -> None:
+async def test_put_on_a_retired_schema_conflicts(client: httpx.AsyncClient) -> None:
     first = await _created(client)
     await client.delete(f"/v1/schemas/{first['id']}")
 
     response = await client.put(f"/v1/schemas/{first['id']}", json={"page_kind": "detail", "fields": {"title": TITLE}})
 
-    assert response.status_code == 200, response.text
-    assert (response.json()["version"], response.json()["status"]) == (2, "active")
-    assert (await client.get(f"/v1/schemas/{first['id']}")).json()["status"] == "retired"
+    assert response.status_code == 409
+    assert response.headers["content-type"] == "application/problem+json"
+    assert (response.json()["type"], response.json()["detail"]) == ("conflict", "schema event_detail is retired")
 
 
 async def test_a_taken_name_conflicts(client: httpx.AsyncClient) -> None:
@@ -132,7 +143,7 @@ async def test_a_taken_name_conflicts(client: httpx.AsyncClient) -> None:
     assert response.status_code == 409
     assert (response.json()["type"], response.json()["detail"]) == (
         "conflict",
-        "schema event_detail exists; edit its latest version instead",
+        "schema event_detail exists; edit it instead",
     )
 
 

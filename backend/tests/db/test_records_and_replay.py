@@ -56,7 +56,6 @@ ATTRIBUTES |= {"derived_by"}
 def _document(name: str) -> SchemaDocument:
     return SchemaDocument(
         name=name,
-        version=1,
         page_kind="detail",
         fields={
             "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
@@ -286,13 +285,13 @@ async def test_a_replay_extracts_the_capture_again_rather_than_reading_the_store
     )
 
 
-async def test_a_schema_version_with_an_active_config_replays_with_it(world: World) -> None:
+async def test_a_schema_with_an_active_config_replays_with_it(world: World) -> None:
     # SPEC-08 §4.8: the page is extracted as one fetched now would be, in `config` mode.
     made = await world.scrape("/p/1", _page("Blue kettle"))
     ir = {
         "ir_version": "1",
         "site": world.origin.removeprefix("https://"),
-        "schema": {"name": world.schema.name, "version": 1},
+        "schema": {"name": world.schema.name},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"jsonld": "$['name']", "when_type": "Product"}], "status": "operator"}},
@@ -306,7 +305,6 @@ async def test_a_schema_version_with_an_active_config_replays_with_it(world: Wor
     config = insert(ExtractionConfig).values(
         site_id=world.site_id,
         schema_id=world.schema.id,
-        schema_version=1,
         page_kind="detail",
         version=1,
         status="active",
@@ -359,7 +357,7 @@ async def test_a_listing_replays_one_record_per_row_as_the_page_task_stored_them
     url = FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url")
     listed = SchemaChanges(page_kind="listing", fields={**world.schema.fields, "url": url})
     async with world.engine.begin() as conn:
-        world.schema = await registry.new_version(conn, world.schema.name, listed, "user")
+        world.schema = await registry.update_schema(conn, world.schema, listed)
     rows = [_product(f"Kettle {n}") | {"url": f"{world.origin}/p/{n}"} for n in (1, 2)]
     items = [{"@type": "ListItem", "position": n, "item": row} for n, row in enumerate(rows, start=1)]
     made = await world.scrape(

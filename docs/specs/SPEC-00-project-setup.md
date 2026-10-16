@@ -62,7 +62,7 @@ Out of scope:
   backend/
     pyproject.toml  uv.lock  .importlinter  mypy.ini (or [tool.mypy] in pyproject)
     alembic.ini  migrations/
-    data/manifest.json          # pinned external data (CLDR via Babel is a package; GeoNames snapshot is listed here)
+    data/manifest.json          # pinned external data (CLDR via Babel is a package; the schema.org file is listed here)
     src/crawlerai/
       core/        settings, ids, errors, engine_version, logging (redaction)
       db/          SQLAlchemy models, session, queue claim queries
@@ -223,7 +223,7 @@ Coverage gates and ratchets stay forbidden.
   `package.json`, `pyproject.toml`, `.github/**`, `LICENSE`, `NOTICE`, `backend/data/manifest.json`.
 - Exemptions by host: a short allowlist in `tools/site_literal_allowlist.txt`, one host per line with a
   justification, limited to standards bodies and tooling hosts (`schema.org`, `www.w3.org`, `iana.org`,
-  `unicode.org`, `geonames.org`, `github.com`, `pypi.org`, `registry.npmjs.org`, and the reserved names of RFC 2606 /
+  `unicode.org`, `github.com`, `pypi.org`, `registry.npmjs.org`, and the reserved names of RFC 2606 /
   RFC 6761: `example.com/.net/.org`, `.test`, `.invalid`, `.localhost`, `localhost`). Adding a commercial site, a
   retailer or a job board to the allowlist is a C3 violation; the PR template says so.
 - `--public` mode: fails on any match not exempted. Tests are **not** exempt (C9).
@@ -290,7 +290,7 @@ Initial list (later specs may add, never remove):
 | INV-05 | Every external data file under `backend/data/` comes from a pinned external source listed in the manifest; the two dev-fitted files, `source_precedence.yaml` and `calibration.json`, are not pinned and carry the stamp `source_split: dev` instead (D-0444). | C4 | `tools/data_manifest_check.py`. |
 | INV-06 | A normalizer never returns `Ok` for empty input, never maps an ambiguous symbol without context, never reads a host table. | C7, §9 | Hypothesis property tests per type (SPEC-04). |
 | INV-07 | Derived values fill only empty fields and carry `derived_by`. | C7 | Resolver tests (SPEC-05). |
-| INV-08 | Exactly one module handles each field type; only `normalize.*` imports Babel, price-parser, dateparser, GeoNames data. | C8 | import-linter contracts (`.importlinter`). |
+| INV-08 | Exactly one module handles each field type; only `normalize.*` imports Babel, price-parser, dateparser. | C8 | import-linter contracts (`.importlinter`). |
 | INV-09 | No test file, test name or fixture contains a hostname or retailer name. | C9 | INV-03 scan covers `tests/`. |
 | INV-10 | Replay is deterministic: the same (bundle, schema, config, calibration) yields byte-identical records, with LLM calls replayed from recorded responses. | G7, §15 | Replay tests run twice and diff (SPEC-03). |
 | INV-11 | Blocked and shell captures yield zero candidates and zero records. | §7.1, §8.2 | Unit tests on the pipeline entry (SPEC-05). |

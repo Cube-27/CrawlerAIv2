@@ -1,82 +1,71 @@
 import { Button, Chip, Tabs, toast } from "@heroui/react";
 import { useNavigate, useParams } from "react-router";
 import { problemOf } from "../../api/hooks/query";
-import { useRetireSchema, useSchema, useSchemaVersions } from "../../api/hooks/schemas";
-import { schemaVersionLabel, type SchemaDef } from "../../api/schemas";
+import { useRetireSchema, useSchema } from "../../api/hooks/schemas";
+import type { SchemaDef } from "../../api/schemas";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { SchemaStatusLabel } from "../../components/SchemaStatusLabel";
 import { adoptSchemaPath, editSchemaPath } from "./paths";
-import { FieldsTable, SchemaJson, VersionsTable } from "./SchemaViews";
+import { FieldsTable, SchemaJson } from "./SchemaViews";
 
-interface SchemaDetail {
-  schema: SchemaDef;
-  /** Every version of the schema's name. */
-  versions: SchemaDef[];
-}
-
-/** The changes the server accepts for this version (SPEC-07 §4.6): a preset changes only through its files, an edit
- * goes on the latest version, and only an active version is edited or retired. A refusal is still shown (409). */
-function allowedActions({ schema, versions }: SchemaDetail) {
+/** The changes the server accepts for this schema (SPEC-07 §4.6): a preset changes only through its files, and only an
+ * active schema is edited or retired. A refusal is still shown (409). */
+function allowedActions(schema: SchemaDef) {
   const changeable = schema.origin !== "preset" && schema.status === "active";
-  const latest = Math.max(schema.version, ...versions.map((version) => version.version));
   return {
-    edit: changeable && schema.version === latest,
+    edit: changeable,
     retire: changeable,
     adopt: schema.origin === "prompt_draft",
   };
 }
 
 function DetailActions({
-  detail,
+  schema,
   onRetire,
-}: Readonly<{ detail: SchemaDetail; onRetire: () => void }>) {
+}: Readonly<{ schema: SchemaDef; onRetire: () => void }>) {
   const navigate = useNavigate();
-  const { schema } = detail;
-  const allowed = allowedActions(detail);
+  const allowed = allowedActions(schema);
+  const { id, name } = schema;
   return (
     <>
       {allowed.retire ? (
         <ConfirmDialog
           trigger={<Button variant="danger-soft">Retire</Button>}
-          title={`Retire ${schemaVersionLabel(schema)}?`}
+          title={`Retire ${name}?`}
           confirmLabel="Retire"
           onConfirm={onRetire}
         >
-          A retired version stays readable, since records and configs refer to it, but it can no
+          A retired schema stays readable, since records and configs refer to it, but it can no
           longer be edited.
         </ConfirmDialog>
       ) : null}
       {allowed.edit ? (
-        <Button variant="secondary" onPress={() => void navigate(editSchemaPath(schema.id))}>
+        <Button variant="secondary" onPress={() => void navigate(editSchemaPath(id))}>
           Edit
         </Button>
       ) : null}
       {allowed.adopt ? (
-        <Button onPress={() => void navigate(adoptSchemaPath(schema.id))}>
-          Adopt as user schema
-        </Button>
+        <Button onPress={() => void navigate(adoptSchemaPath(id))}>Adopt as user schema</Button>
       ) : null}
     </>
   );
 }
 
-const TABS = ["Fields", "JSON", "Versions"] as const;
+const TABS = ["Fields", "JSON"] as const;
 
 function SchemaDetailView({
-  detail,
+  schema,
   onRetire,
-}: Readonly<{ detail: SchemaDetail; onRetire: () => void }>) {
-  const { schema, versions } = detail;
+}: Readonly<{ schema: SchemaDef; onRetire: () => void }>) {
   return (
     <>
       <PageHeader
         title={schema.name}
-        actions={<DetailActions detail={detail} onRetire={onRetire} />}
+        actions={<DetailActions schema={schema} onRetire={onRetire} />}
       >
-        <Chip>v{schema.version}</Chip>
         <Chip>{schema.origin}</Chip>
         <SchemaStatusLabel status={schema.status} />
       </PageHeader>
@@ -97,46 +86,33 @@ function SchemaDetailView({
         <Tabs.Panel id="JSON">
           <SchemaJson schema={schema} />
         </Tabs.Panel>
-        <Tabs.Panel id="Versions">
-          <VersionsTable versions={versions} />
-        </Tabs.Panel>
       </Tabs>
     </>
   );
 }
 
-/** One schema version: its fields, its document as JSON and its other versions, with the changes the server allows
- * for it (SPEC-12 §4.3). */
+/** One schema: its fields and its document as JSON, with the changes the server allows for it (SPEC-12 §4.3). */
 export function SchemaScreen() {
   const { id = "" } = useParams();
   const schema = useSchema(id);
-  const versions = useSchemaVersions(schema.data?.name);
   const retire = useRetireSchema();
-  const loadProblem = problemOf(schema.error ?? versions.error);
+  const loadProblem = problemOf(schema.error);
   const retireProblem = problemOf(retire.error);
 
-  const onRetire = (version: SchemaDef) => {
-    retire.mutate(version.id, {
+  if (loadProblem !== null) return <ProblemAlert problem={loadProblem} />;
+  if (schema.data === undefined) return <LoadingView label="Loading the schema" />;
+  const { name } = schema.data;
+  const onRetire = () => {
+    retire.mutate(id, {
       onSuccess: () => {
-        toast.success(`Retired ${schemaVersionLabel(version)}.`);
+        toast.success(`Retired ${name}.`);
       },
     });
   };
-
-  if (loadProblem !== null) return <ProblemAlert problem={loadProblem} />;
-  if (schema.data === undefined || versions.data === undefined) {
-    return <LoadingView label="Loading the schema" />;
-  }
-  const detail = { schema: schema.data, versions: versions.data };
   return (
     <section className="flex flex-col gap-6">
       {retireProblem === null ? null : <ProblemAlert problem={retireProblem} />}
-      <SchemaDetailView
-        detail={detail}
-        onRetire={() => {
-          onRetire(detail.schema);
-        }}
-      />
+      <SchemaDetailView schema={schema.data} onRetire={onRetire} />
     </section>
   );
 }

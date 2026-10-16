@@ -6,7 +6,6 @@ import { reviewOf } from "./review";
 const draft: SchemaDef = {
   id: "0192a000-0000-7000-8000-0000000000d1",
   name: "draft_0a1b2c3d4e5f",
-  version: 1,
   origin: "prompt_draft",
   status: "active",
   page_kind: "detail",

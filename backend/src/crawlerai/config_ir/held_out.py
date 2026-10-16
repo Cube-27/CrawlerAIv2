@@ -1,4 +1,4 @@
-"""Held-out pages from storage (SPEC-08 §4.4, §4.7): the stored captures of a (site, schema version) that a config is
+"""Held-out pages from storage (SPEC-08 §4.4, §4.7): the stored captures of a (site, schema) that a config is
 validated on, each parsed with its context and with the facts the engine stored for it.
 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
@@ -210,14 +210,12 @@ async def _extractions(
 
 
 def _latest(schema: SchemaDef) -> Select[CaptureId, str, ExtractionId]:
-    """Each capture's latest extraction with a record of `schema`'s version (ids are UUIDv7, so the greatest is the
-    latest)."""
+    """Each capture's latest extraction with a record of `schema` (ids are UUIDv7, so the greatest is the latest)."""
     has_record = (
         select(Record.id)
         .where(
             Record.extraction_id == Extraction.id,
             Record.schema_id == schema.id,
-            Record.schema_version == schema.version,
         )
         .exists()
     )
@@ -235,7 +233,7 @@ async def _records(
 ) -> dict[ExtractionId, list[StoredRecord]]:
     query = (
         select(Record.extraction_id, Record.data, Record.field_meta)
-        .where(Record.extraction_id.in_(ids), Record.schema_id == schema.id, Record.schema_version == schema.version)
+        .where(Record.extraction_id.in_(ids), Record.schema_id == schema.id)
         .order_by(Record.id)  # ids are UUIDv7, so this is the order the records were stored in
     )
     found: dict[ExtractionId, list[StoredRecord]] = defaultdict(list)

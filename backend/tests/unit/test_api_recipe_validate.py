@@ -34,7 +34,6 @@ SCHEMA = SchemaDef.model_validate(
         "origin": "user",
         "status": "active",
         "name": "synthetic",
-        "version": 1,
         "page_kind": "detail",
         "fields": {name: FieldSpec(type=type_, description="d", required=True) for name, type_ in TYPES.items()},
     }
@@ -211,7 +210,7 @@ IR = ExtractionConfigIR.model_validate(
     {
         "ir_version": "1",
         "site": "shop.example.test",
-        "schema": {"name": "synthetic", "version": 1},
+        "schema": {"name": "synthetic"},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"jsonld": "$.name"}], "status": "uncorroborated"}},

@@ -214,7 +214,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-0136 — (`schema_id`, `schema_version`) is a composite FK to `schema_def (id, version)`
-- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: decided
+- Date: 2026-10-13 · Spec/PR: SPEC-01 PR 6 (#20) · Status: superseded by D-0954
 - Decision: `record`, `extraction_config` and `progressive_state` reference `schema_def (id, version)`, which gets `UNIQUE (id, version)`; no separate FK on `schema_id` alone.
 - Alternatives: An FK on `schema_id` alone, with `schema_version` unchecked.
 - Why: A `schema_def` row is one version, so the pair could otherwise disagree (§5.2).
@@ -331,3 +331,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: No limit.
 - Why: When many workers die at once, one transaction would lock every expired task and its job.
 - Reversible: yes
+
+### D-0954 — One baseline migration, edited in place
+- Date: 2026-10-16 · Spec/PR: greenfield (#210) · Status: decided
+- Decision: `0001_baseline` holds the whole schema (with the deferred `record_committed` trigger) and is edited when the models change; revisions 0001–0020 are gone and databases are recreated. `test_baseline_migration.py` checks constraint names and downgrades to base and upgrades again on the test database, since the app role cannot create databases in CI.
+- Alternatives: keep the chain and add a revision.
+- Why: Appendix A #43, CLAUDE.md §2 Greenfield.
+- Reversible: yes — start a chain from the baseline when data must be kept.

@@ -76,13 +76,31 @@ describe("FieldValue", () => {
     [
       "location",
       { type: "location" },
-      { locality: "Springfield", region: null, country: "ZZ", remote_flag: false },
+      {
+        text: "Springfield Central",
+        locality: "Springfield",
+        region: null,
+        country: "ZZ",
+        remote_flag: false,
+      },
+      "Springfield Central",
+    ],
+    [
+      "location without its text",
+      { type: "location" },
+      { text: null, locality: "Springfield", region: null, country: "ZZ", remote_flag: false },
       "Springfield, ZZ",
     ],
     [
       "remote location",
       { type: "location" },
-      { locality: null, region: null, country: null, remote_flag: true },
+      { text: "Springfield", locality: null, region: null, country: null, remote_flag: true },
+      "Springfield, remote",
+    ],
+    [
+      "remote location without a place",
+      { type: "location" },
+      { text: null, locality: null, region: null, country: null, remote_flag: true },
       "remote",
     ],
     ["date", { type: "date" }, "2026-03-04", "2026-03-04"],

@@ -4,6 +4,8 @@ A schema is data, so these models are the boundary every schema crosses, whether
 API or a role S draft: a document that validates here is one the normalizers and the resolver can run.
 """
 
+import hashlib
+import json
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
@@ -133,7 +135,7 @@ _PARAMETER_OWNER = {
 
 
 class SchemaContent(_Model):
-    """A schema document as a caller writes it, without the name and version the registry assigns."""
+    """A schema document as a caller writes it, without its name."""
 
     page_kind: PageKind
     required_groups: list[list[Name]] = []
@@ -149,7 +151,6 @@ class SchemaDocument(SchemaContent):
     """
 
     name: Name
-    version: int = Field(ge=1)
 
     @model_validator(mode="after")
     def _rules(self) -> Self:
@@ -177,16 +178,25 @@ def _check_field(path: str, spec: FieldSpec, *, depth: int, described: bool) -> 
 
 
 class SchemaDef(SchemaDocument):
-    """A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. Rows are
-    immutable per (name, version); a change is a new version."""
+    """A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
+    name, edited in place."""
 
     id: SchemaId
     origin: SchemaOrigin
     status: SchemaStatus
 
 
+def document_digest(schema: SchemaDocument) -> str:
+    """sha256, hex, of the schema's document as canonical JSON (RFC 8259 text, sorted keys, no insignificant
+    whitespace): what a record was extracted, or a config learned, with. A schema is edited in place (ARCHITECTURE
+    §5.2), so equal digests are the same document."""
+    document = schema.model_dump(mode="json", include=set(SchemaDocument.model_fields), exclude_none=True)
+    canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 class SchemaChanges(_Model):
-    """What the registry's `new_version` changes; anything left `None` is carried over from the latest version."""
+    """What the registry's `update_schema` changes; anything left `None` is kept as stored."""
 
     page_kind: PageKind | None = None
     fields: dict[Name, FieldSpec] | None = None

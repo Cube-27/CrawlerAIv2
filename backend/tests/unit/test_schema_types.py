@@ -10,7 +10,7 @@ from crawlerai.schemas.types import FieldType, SchemaDocument
 
 
 def _document(fields: dict[str, Any], **top: Any) -> dict[str, Any]:
-    return {"name": "s", "version": 1, "page_kind": "detail", "fields": fields, **top}
+    return {"name": "s", "page_kind": "detail", "fields": fields, **top}
 
 
 def _text(**spec: Any) -> dict[str, Any]:
@@ -116,14 +116,6 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
     presets = {preset.name: preset for preset in load_presets()}
 
     assert sorted(presets) == ["commerce_detail", "commerce_listing", "job_detail", "job_listing"]
-    # commerce_detail 2: `brand` optional (owner, Appendix A #35); 3: the optional row-mapped `variants` (SPEC-13 §4.7);
-    # 4: the optional `stock_quantity`, also per variant (D-0782).
-    assert {name: preset.version for name, preset in presets.items()} == {
-        "commerce_detail": 4,
-        "commerce_listing": 1,
-        "job_detail": 1,
-        "job_listing": 1,
-    }
     assert _core(presets["commerce_detail"]) == {
         "title": "text",
         "price": "money",

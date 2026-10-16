@@ -1,10 +1,10 @@
 """Active mode (SPEC-08 §4.8, §4.9; ARCHITECTURE §8.4): the config a page of a site is extracted with, and the drift
 record of each page it ran on.
 
-A (site, schema version, page kind) with an active config extracts its pages in `config` mode with that config. The
-config row is the authority: `extraction_config` holds at most one active config per site, schema and page kind
-(ARCHITECTURE §6), and one learned for another schema version than the page's does not run (a new version starts
-cold, §5.2). Each page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
+A (site, schema, page kind) with an active config extracts its pages in `config` mode with that config. The config
+row is the authority: `extraction_config` holds at most one active config per site, schema and page kind
+(ARCHITECTURE §6); a schema edit suspends the schema's active configs, so its pages start cold again (§5.2). Each
+page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
 """
 
 from sqlalchemy import select
@@ -26,10 +26,10 @@ from crawlerai.schemas.types import SchemaDef
 async def active_config(
     conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, vocabulary: Vocabulary
 ) -> ActiveConfig | None:
-    """The active config of `site_id` for `schema`'s version and page kind, bound to its executor; None in cold mode."""
+    """The active config of `site_id` for `schema` and its page kind, bound to its executor; None in cold mode."""
     configs = ExtractionConfig
-    key = StateKey(site_id, schema.id, schema.version, schema.page_kind)
-    active = (*key.config_scope(), configs.schema_version == schema.version, configs.status == "active")
+    key = StateKey(site_id, schema.id, schema.page_kind)
+    active = (*key.config_scope(), configs.status == "active")
     row = (await conn.execute(select(configs.id, configs.version, configs.ir).where(*active))).one_or_none()
     if row is None:
         return None

@@ -1,11 +1,10 @@
 """The captures service (SPEC-07 §4.6, §4.7, ARCHITECTURE §13.1): replay a stored capture with the current engine,
 for debugging, and read a stored capture's markdown again. Nothing either makes is stored.
 
-A capture carries no schema of its own, so it replays against each schema version its stored records follow, the
-version the records were made with (schemas are immutable per version, §5.2), so a replayed record compares with
-the stored one. A schema version the site has an active config for replays with that config (`config` mode, SPEC-08
-§4.8), as a page fetched now would extract; nothing joins its drift window. No replay calls an LLM: `extract_page`
-gets no role C.
+A capture carries no schema of its own, so it replays against each schema its stored records follow, with the
+schema's current document (a schema is edited in place, §5.2). A schema the site has an active config for replays
+with that config (`config` mode, SPEC-08 §4.8), as a page fetched now would extract; nothing joins its drift
+window. No replay calls an LLM: `extract_page` gets no role C.
 """
 
 import asyncio
@@ -48,7 +47,7 @@ class NotReplayable(Exception):
 async def replay(
     engine: AsyncEngine, store: ObjectStore, data: EngineData, capture_id: CaptureId
 ) -> list[ExtractedRecord]:
-    """The records the current engine makes from the capture, one schema version after another (by id). A page that
+    """The records the current engine makes from the capture, one schema after another (by id). A page that
     resolves nothing (blocked, an error) adds none; an incomplete one adds its record with `complete=false`, as for
     any caller-supplied URL (§10)."""
     async with engine.connect() as conn:

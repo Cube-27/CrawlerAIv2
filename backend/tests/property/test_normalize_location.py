@@ -1,13 +1,10 @@
-"""The location normalizer (SPEC-04 §4.4, ARCHITECTURE §9) over a small synthetic gazetteer in the GeoNames file
-formats: country names and codes, regions and cities by token sequence; homonyms in several countries with no country
-given decline as `Ambiguous`; no match is `Invalid`; `remote_flag` only from `TELECOMMUTE` or a `type:remote` phrase.
+"""The location normalizer (SPEC-04 §4.4, ARCHITECTURE §9): a location publishes what the page states. Text stays
+text, a `PostalAddress`'s parts stay as written, a country code only when the page states a valid ISO 3166-1 alpha-2
+code, and `remote_flag` only from `TELECOMMUTE` or a `type:remote` phrase.
 
-Country codes are ISO 3166-1 codes (the standard); every country, region and city name is made up."""
+Place names are made up; country codes are ISO 3166-1 codes (the standard)."""
 
-import io
-import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -15,234 +12,101 @@ from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.normalize import location
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok
+from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 SPEC = FieldSpec(type=FieldType.LOCATION)
 
-# countryInfo.txt: ISO, ISO3, ISO-Numeric, fips, Country, ...; comment lines start with `#`.
-COUNTRY_INFO = """# ISO	ISO3	ISO-Numeric	fips	Country	Capital
-AA	AAA	900	AA	Northland	Alderton
-QM	QMM	901	QM	Southmark	Brookfield
-QN	QNN	902	QN	Eastvale	Corran
-"""
-# admin1CodesASCII.txt: <country>.<code>, name, ascii name, geonameid.
-ADMIN1 = """AA.01	Upper Fen	Upper Fen	1
-AA.02	Lower Fen	Lower Fen	2
-QM.01	Westshire	Westshire	3
-QM.02	Eastvale	Eastvale	4
-QN.01	Corran Province	Corran Province	5
-"""
-
-
-def _city(geonameid: int, name: str, ascii_name: str, country: str, admin1: str) -> str:
-    # cities15000.txt: geonameid, name, asciiname, alternatenames, lat, lon, feature class, feature code, country
-    # code, cc2, admin1 code, ...
-    return "\t".join([str(geonameid), name, ascii_name, "", "0", "0", "P", "PPL", country, "", admin1, "", "", ""])
-
-
-CITIES = [
-    _city(10, "Alderton", "Alderton", "AA", "01"),
-    _city(11, "Brookfield", "Brookfield", "QM", "01"),
-    # Homonyms: one name in two countries, and twice in one country.
-    _city(12, "Harwick", "Harwick", "AA", "01"),
-    _city(13, "Harwick", "Harwick", "QM", "02"),
-    _city(14, "Dunmore", "Dunmore", "QM", "01"),
-    _city(15, "Dunmore", "Dunmore", "QM", "02"),
-    # A city whose name holds a country's name; a city with a non-ASCII name.
-    _city(16, "Southmark Bay", "Southmark Bay", "QM", "01"),
-    _city(17, "Sankt Övel", "Sankt Ovel", "AA", "02"),
-    _city(18, "Corran", "Corran", "QN", "01"),
-]
-
-GAZETTEER = location.Gazetteer.parse(COUNTRY_INFO, ADMIN1, CITIES)
-
 
 def norm(raw: JsonValue, ctx: Context = CTX) -> NormalizeResult:
-    return location.normalize(raw, SPEC, ctx, gazetteer=GAZETTEER)
+    return location.normalize(raw, SPEC, ctx)
 
 
 def value(
-    locality: str | None, region: str | None, country: str | None, *, remote: bool = False
+    text: str | None,
+    locality: str | None = None,
+    region: str | None = None,
+    country: str | None = None,
+    *,
+    remote: bool = False,
 ) -> dict[str, JsonValue]:
-    return {"locality": locality, "region": region, "country": country, "remote_flag": remote}
+    return {"text": text, "locality": locality, "region": region, "country": country, "remote_flag": remote}
 
 
-_separators = st.sampled_from([", ", " , ", " - ", " / ", "; ", " "])
-
-# (locality, region, country code, country name) of cities with one place per name.
-_UNIQUE = [
-    ("Alderton", "Upper Fen", "AA", "Northland"),
-    ("Brookfield", "Westshire", "QM", "Southmark"),
-    ("Sankt Övel", "Lower Fen", "AA", "Northland"),
-]
+# Words that name no remote work in any language: made-up place names.
+_words = st.text(st.sampled_from("abcdefghijklmnopqrstuvwxyzÅÖé"), min_size=1, max_size=8).filter(
+    lambda w: w.casefold() not in {"remote"}
+)
+_places = st.lists(_words, min_size=1, max_size=4).map(", ".join)
+_codes = st.sampled_from(sorted(location.iso_3166_alpha2()))
 
 
-# Text
-
-
-@given(st.sampled_from(_UNIQUE), _separators, st.booleans(), st.booleans())
-def test_a_rendered_location_normalizes_to_itself(
-    place: tuple[str, str, str, str], sep: str, with_region: bool, with_country: bool
-) -> None:
-    locality, region, code, country = place
-    parts = [locality, *([region] if with_region else []), *([country] if with_country else [])]
-
-    assert norm(sep.join(parts)) == Ok(value(locality, region, code))
-
-
-@given(st.sampled_from(["Harwick", "harwick", "HARWICK", " Harwick "]))
-def test_a_city_in_several_countries_with_no_country_is_ambiguous(text: str) -> None:
-    assert norm(text) == Ambiguous(
-        "several_places", (value("Harwick", "Upper Fen", "AA"), value("Harwick", "Eastvale", "QM"))
-    )
-
-
-# Made-up names that hold no name of the fixture and no `type:remote` phrase.
-_new_names = st.text(alphabet="bcdfghjklmnpqrstvwxz", min_size=3, max_size=10).map(lambda s: "Zy" + s)
-
-
-@given(_new_names, st.sampled_from([("AA", "Northland", "01"), ("QN", "Eastvale", "01")]))
-def test_a_generated_homonym_in_two_countries_is_ambiguous_until_a_country_is_named(
-    name: str, other: tuple[str, str, str]
-) -> None:
-    code, country, admin1 = other
-    gazetteer = location.Gazetteer.parse(
-        COUNTRY_INFO, ADMIN1, [*CITIES, _city(90, name, name, "QM", "01"), _city(91, name, name, code, admin1)]
-    )
-    regions = {"AA": "Upper Fen", "QN": "Corran Province"}
-    here, there = value(name, "Westshire", "QM"), value(name, regions[code], code)
-
-    assert location.normalize(name, SPEC, CTX, gazetteer=gazetteer) == Ambiguous(
-        "several_places", (there, here) if code < "QM" else (here, there)
-    )
-    assert location.normalize(f"{name}, {country}", SPEC, CTX, gazetteer=gazetteer) == Ok(there)
-
-
-def test_telecommute_with_a_homonym_keeps_remote_in_every_option() -> None:
-    assert norm({"jobLocationType": "TELECOMMUTE", "addressLocality": "Harwick"}) == Ambiguous(
-        "several_places",
-        (value("Harwick", "Upper Fen", "AA", remote=True), value("Harwick", "Eastvale", "QM", remote=True)),
-    )
-
-
-@given(_separators)
-def test_a_country_settles_a_homonym(sep: str) -> None:
-    assert norm(f"Harwick{sep}Southmark") == Ok(value("Harwick", "Eastvale", "QM"))
-    assert norm(f"Harwick{sep}Northland") == Ok(value("Harwick", "Upper Fen", "AA"))
-
-
-def test_a_city_named_twice_in_one_country_keeps_the_country_and_drops_the_region() -> None:
-    assert norm("Dunmore") == Ok(value("Dunmore", None, "QM"))
-
-
-def test_a_region_settles_a_homonym_within_a_country() -> None:
-    assert norm("Dunmore, Eastvale") == Ok(value("Dunmore", "Eastvale", "QM"))
-
-
-def test_a_name_that_is_both_a_country_and_a_region_alone_is_ambiguous() -> None:
-    assert norm("Eastvale") == Ambiguous("several_places", (value(None, "Eastvale", "QM"), value(None, None, "QN")))
-
-
-def test_a_city_settles_a_name_that_is_both_a_country_and_a_region() -> None:
-    assert norm("Harwick, Eastvale") == Ok(value("Harwick", "Eastvale", "QM"))
-
-
-def test_the_longest_match_wins_over_a_name_inside_it() -> None:
-    assert norm("Southmark Bay") == Ok(value("Southmark Bay", "Westshire", "QM"))
-
-
-def test_the_ascii_name_matches_too() -> None:
-    assert norm("Sankt Ovel") == Ok(value("Sankt Övel", "Lower Fen", "AA"))
-
-
-def test_a_country_alone_is_the_country() -> None:
-    assert norm("Northland") == Ok(value(None, None, "AA"))
-
-
-def test_a_region_alone_is_the_region_and_its_country() -> None:
-    assert norm("Westshire") == Ok(value(None, "Westshire", "QM"))
-
-
-def test_a_city_and_a_country_that_disagree_decline() -> None:
-    assert norm("Alderton, Southmark") == Invalid("inconsistent")
-
-
-def test_two_countries_decline() -> None:
-    # Every place named in the text must fit the value; two countries cannot both hold.
-    assert norm("Northland or Southmark") == Invalid("inconsistent")
-
-
-@given(st.sampled_from(["AA", "QM", "aa", "Platform team", "Lorem ipsum"]))
-def test_text_with_no_name_of_a_place_is_invalid(text: str) -> None:
-    # A two-letter code is not read in text: country codes collide with region codes and with words (ISO 3166-2 and
-    # ISO 3166-1 share the alphabet), so only names match.
-    assert norm(text) == Invalid("no_match")
-
-
-def test_a_lone_surrogate_is_invalid() -> None:
-    assert norm("Alderton \ud800") == Invalid("surrogate")
-
-
-def test_a_country_name_in_the_page_language_matches_through_cldr() -> None:
-    # CLDR territory names (Babel) in the page's language; "Deutschland" is CLDR's German name for DE. DE is not
-    # in this gazetteer, so a matching country must also be one GeoNames lists.
-    ctx = CTX.model_copy(update={"html_lang": "de"})
-    gazetteer = location.Gazetteer.parse(COUNTRY_INFO + "DE\tDEU\t276\tGM\tGermany\tBerlin\n", ADMIN1, CITIES)
-
-    assert location.normalize("Deutschland", SPEC, ctx, gazetteer=gazetteer) == Ok(value(None, None, "DE"))
-    assert norm("Deutschland", ctx) == Invalid("no_match")
-
-
-# Remote
+@given(_places, st.sampled_from(["", " ", "\t"]))
+def test_text_publishes_as_written_with_no_place_inferred(place: str, padding: str) -> None:
+    assert norm(f"{padding}{place}{padding}") == Ok(value(place))
 
 
 @given(st.sampled_from(["Remote", "remote", "REMOTE", "(Remote)"]))
-def test_a_remote_phrase_alone_is_remote_with_no_place(text: str) -> None:
-    assert norm(text) == Ok(value(None, None, None, remote=True))
-
-
-def test_a_remote_phrase_with_a_place_keeps_both() -> None:
-    assert norm("Remote, Northland") == Ok(value(None, None, "AA", remote=True))
+def test_a_remote_phrase_sets_the_flag_and_keeps_the_text(text: str) -> None:
+    assert norm(text) == Ok(value(text, remote=True))
 
 
 def test_remote_is_read_only_in_the_languages_of_the_page() -> None:
     ctx = CTX.model_copy(update={"html_lang": "xx"})
 
-    assert norm("Remote", ctx) == Invalid("no_match")
+    assert norm("Remote", ctx) == Ok(value("Remote"))
+
+
+@pytest.mark.parametrize(("raw", "reason"), [("", "empty"), ("  ", "empty"), ("—", "empty"), ("\ud800", "surrogate")])
+def test_text_with_no_words_is_invalid(raw: str, reason: str) -> None:
+    assert norm(raw) == Invalid(reason)
 
 
 # Structured (schema.org Place, PostalAddress, jobLocationType)
 
 
-@given(st.sampled_from(["AA", "aa", "AAA", "Northland", {"@type": "Country", "name": "Northland"}]))
-def test_a_postal_address_takes_its_parts_as_given_and_the_country_as_a_code(country: JsonValue) -> None:
+@given(_words, _words, _codes, st.booleans())
+def test_a_postal_address_keeps_its_parts_and_a_stated_code(locality: str, region: str, code: str, lower: bool) -> None:
+    written = code.lower() if lower else code
     address: dict[str, JsonValue] = {
         "@type": "PostalAddress",
-        "addressLocality": " Somewhere ",
-        "addressRegion": "Hill",
-        "addressCountry": country,
+        "addressLocality": f" {locality} ",
+        "addressRegion": region,
+        "addressCountry": written,
     }
+    expected = Ok(value(f"{locality}, {region}, {written}", locality, region, code))
 
-    assert norm(address) == Ok(value("Somewhere", "Hill", "AA"))
-    assert norm({"@type": "Place", "address": address}) == Ok(value("Somewhere", "Hill", "AA"))
-
-
-def test_an_unknown_country_is_invalid() -> None:
-    assert norm({"addressLocality": "Alderton", "addressCountry": "Nowhere"}) == Invalid("unknown_country")
+    assert norm(address) == expected
+    assert norm({"@type": "Place", "address": address}) == expected
+    assert norm({**address, "addressCountry": {"@type": "Country", "identifier": written}}) == expected
 
 
-def test_an_address_without_a_country_is_read_as_text() -> None:
-    assert norm({"addressLocality": "Harwick", "addressRegion": "Eastvale"}) == Ok(value("Harwick", "Eastvale", "QM"))
-    assert norm({"addressLocality": "Harwick"}) == Ambiguous(
-        "several_places", (value("Harwick", "Upper Fen", "AA"), value("Harwick", "Eastvale", "QM"))
-    )
+@given(st.sampled_from(["Northland", "NLD", {"@type": "Country", "name": "Northland"}]))
+def test_a_country_stated_by_name_stays_in_the_text_and_gets_no_code(country: JsonValue) -> None:
+    written = country["name"] if isinstance(country, dict) else country
+    result = norm({"addressLocality": "Alderton", "addressCountry": country})
+
+    assert result == Ok(value(f"Alderton, {written}", "Alderton"))
 
 
-def test_a_place_with_only_a_name_is_read_as_text() -> None:
-    assert norm({"@type": "Place", "name": "Brookfield"}) == Ok(value("Brookfield", "Westshire", "QM"))
+@given(st.sampled_from(["ZZ", "XK", "QM", "AA", "zz"]))
+def test_two_letters_that_are_no_iso_3166_1_code_are_invalid(code: str) -> None:
+    assert norm({"addressLocality": "Alderton", "addressCountry": code}) == Invalid("unknown_country")
+
+
+def test_the_user_assigned_ranges_are_no_codes() -> None:
+    codes = location.iso_3166_alpha2()
+
+    assert {"DE", "US", "JP"} <= codes
+    assert not codes & {"AA", "QM", "QZ", "XA", "XK", "XZ", "ZZ"}
+    assert all(len(code) == 2 and code.isascii() and code.isupper() for code in codes)
+
+
+def test_a_place_with_only_a_name_is_its_text() -> None:
+    assert norm({"@type": "Place", "name": "Brookfield"}) == Ok(value("Brookfield"))
+    assert norm({"@type": "Place", "address": "Brookfield, Westshire"}) == Ok(value("Brookfield, Westshire"))
 
 
 @given(
@@ -258,9 +122,9 @@ def test_a_place_with_only_a_name_is_read_as_text() -> None:
     )
 )
 def test_telecommute_is_remote(job_location_type: JsonValue) -> None:
-    assert norm({"jobLocationType": job_location_type}) == Ok(value(None, None, None, remote=True))
-    assert norm({"jobLocationType": job_location_type, "addressCountry": "QM"}) == Ok(
-        value(None, None, "QM", remote=True)
+    assert norm({"jobLocationType": job_location_type}) == Ok(value(None, remote=True))
+    assert norm({"jobLocationType": job_location_type, "addressCountry": "DE"}) == Ok(
+        value("DE", None, None, "DE", remote=True)
     )
 
 
@@ -285,33 +149,33 @@ def test_a_value_with_no_place_and_no_remote_is_invalid(raw: JsonValue, reason: 
     assert norm(raw) == Invalid(reason)
 
 
-# Purity, dispatch and the data files
+# Equality (SPEC-04 §4.5)
 
 
-def test_the_dispatcher_sends_location_here(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(location, "default_gazetteer", lambda: GAZETTEER)
+@given(_places)
+def test_text_compares_by_words(place: str) -> None:
+    assert location.equal(value(place), value(place.upper().replace(", ", " ")), SPEC)
 
-    assert normalize("Alderton", SPEC, CTX) == Ok(value("Alderton", "Upper Fen", "AA"))
+
+def test_parts_count_where_both_values_state_them() -> None:
+    structured = value("Alderton, Upper Fen, DE", "Alderton", "Upper Fen", "DE")
+
+    assert location.equal(structured, value("Alderton, upper fen, DE", "ALDERTON", None, "DE"), SPEC)
+    assert not location.equal(structured, value("Alderton, Upper Fen, FR", "Alderton", "Upper Fen", "FR"), SPEC)
+    assert not location.equal(structured, value("Alderton, Upper Fen, DE"), SPEC)
+    assert not location.equal(value("Alderton"), value("Brookfield"), SPEC)
+    assert not location.equal(value("Alderton"), value("Alderton", remote=True), SPEC)
+
+
+# Dispatch
+
+
+def test_the_dispatcher_sends_location_here() -> None:
+    assert normalize("Alderton", SPEC, CTX) == Ok(value("Alderton"))
 
 
 def test_another_type_is_a_programming_error() -> None:
     spec = FieldSpec(type=FieldType.TEXT)
 
     with pytest.raises(TypeError):
-        location.normalize("Alderton", spec, CTX, gazetteer=GAZETTEER)
-
-
-def test_the_gazetteer_reads_the_geonames_files(tmp_path: Path) -> None:
-    (tmp_path / "countryInfo.txt").write_text(COUNTRY_INFO, encoding="utf-8")
-    (tmp_path / "admin1CodesASCII.txt").write_text(ADMIN1, encoding="utf-8")
-    archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w") as zipped:
-        zipped.writestr("cities15000.txt", "\n".join(CITIES) + "\n")
-    (tmp_path / "cities15000.zip").write_bytes(archive.getvalue())
-
-    assert location.Gazetteer.read(tmp_path) == GAZETTEER
-
-
-def test_a_missing_gazetteer_names_the_command_that_fetches_it(tmp_path: Path) -> None:
-    with pytest.raises(location.GazetteerMissing, match="crawlerai data fetch"):
-        location.Gazetteer.read(tmp_path)
+        location.normalize("Alderton", spec, CTX)

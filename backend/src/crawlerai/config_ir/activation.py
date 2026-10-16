@@ -35,7 +35,7 @@ class NotValidated(ValueError):
 async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -> ExtractionConfigId:
     """Store `validated`'s config for `key` as active and end `key`'s learning run with it; its id. Raises
     `NotValidated` when validation refused the config, `ConfigMismatch` when the config was learned for another site,
-    schema version or page kind, and `NotLearning` when no learning run is in flight for `key`."""
+    schema or page kind, and `NotLearning` when no learning run is in flight for `key`."""
     ir = validated.ir
     if ir is None:
         raise NotValidated(f"progressive_state {key}: validation refused the config ({validated.report.refused})")
@@ -77,13 +77,12 @@ def _field_names(ir: ExtractionConfigIR) -> set[str]:
 
 
 async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR) -> None:
-    """The config names the state's site, schema version and page kind (ARCHITECTURE §5.2, §6: configs are per schema
-    version)."""
+    """The config names the state's site, schema and page kind (ARCHITECTURE §6: configs are per schema)."""
     host = select(Site.host).where(Site.id == key.site_id).scalar_subquery()
-    schema = select(SchemaDef.name).where(SchemaDef.id == key.schema_id, SchemaDef.version == key.schema_version)
+    schema = select(SchemaDef.name).where(SchemaDef.id == key.schema_id)
     found = (await conn.execute(select(host, schema.scalar_subquery()))).one()
-    learned = (ir.site, ir.schema_.name, ir.schema_.version, ir.page_kind)
-    if learned != (*found, key.schema_version, key.page_kind):
+    learned = (ir.site, ir.schema_.name, ir.page_kind)
+    if learned != (*found, key.page_kind):
         raise ConfigMismatch(f"config for {learned} activated for progressive_state {key}")
 
 

@@ -41,7 +41,6 @@ DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, 
 PAGE_URL = "https://shop.example.test/p/1"
 DOCUMENT = SchemaDocument(
     name="synthetic_product",
-    version=1,
     page_kind="detail",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
@@ -176,10 +175,9 @@ async def test_a_complete_page_stores_its_extraction_candidates_and_record(setup
     record = (await setup.conn.execute(select(Record.__table__).where(Record.id == stored.records[0].id))).one()
     assert record.data == {"title": "Widget One", "price": {"amount": "19.90", "currency": "EUR"}}
     assert record.complete is True
-    assert (record.entity_key, record.schema_id, record.schema_version, record.mode) == (
+    assert (record.entity_key, record.schema_id, record.mode) == (
         entity_key(setup.site_id, PAGE_URL),
         setup.schema.id,
-        1,
         "adhoc",
     )
     assert record.field_meta["title"] == {
@@ -239,7 +237,6 @@ async def test_the_extraction_keeps_the_collectors_diagnostics(setup: _Setup, mo
 
 LISTING = SchemaDocument(
     name="synthetic_listing",
-    version=1,
     page_kind="listing",
     fields={
         "title": DOCUMENT.fields["title"],

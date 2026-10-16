@@ -1,8 +1,8 @@
 """Fetch the data files that the manifest pins but the repository does not hold (SPEC-04 §4.6, INV-05, C4).
 
 `backend/data/manifest.json` lists every data file with its source URL and sha256. An entry marked `"fetched": true`
-is not committed (a third-party snapshot such as GeoNames); `fetch_data` downloads it, checks its bytes against the
-pinned hash, and only then writes it. `tools/data_manifest_check.py` checks the same manifest in CI.
+is not committed (a third-party snapshot such as the schema.org vocabulary); `fetch_data` downloads it, checks its
+bytes against the pinned hash, and only then writes it. `tools/data_manifest_check.py` checks the same manifest in CI.
 """
 
 import hashlib

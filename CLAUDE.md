@@ -79,6 +79,10 @@ These come from the generalization contract. Breaking one is a defect, even when
   no secrets, no captures, no evaluation data. Commit only synthetic fixtures.
 - **Dependency licenses.** Don't add dependencies under AGPL, GPL, SSPL or non-commercial licenses. LGPL is
   allowed but avoided. CI enforces this.
+- **Greenfield (owner, 2026-10-16).** No versioning, migration chains or compatibility shims for data or APIs
+  until the owner names a use case. A model change edits the one baseline migration; the database is recreated,
+  never migrated with data steps. Record versions, draft and active configs and `engine_version` are features
+  and stay (ARCHITECTURE Appendix A #43).
 
 ## 3. How work runs
 

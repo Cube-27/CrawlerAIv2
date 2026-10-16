@@ -1,8 +1,6 @@
 import { Label, Table, TextArea, TextField } from "@heroui/react";
 import type { SchemaDef } from "../../api/schemas";
-import { SchemaStatusLabel } from "../../components/SchemaStatusLabel";
 import { FIELD_TYPES } from "../../components/schemaDocument";
-import { schemaPath } from "./paths";
 
 /** A schema's top-level fields, one row each. Type parameters and nested fields are in the JSON tab. */
 export function FieldsTable({ schema }: Readonly<{ schema: SchemaDef }>) {
@@ -46,33 +44,5 @@ export function SchemaJson({ schema }: Readonly<{ schema: SchemaDef }>) {
       <Label>Schema document</Label>
       <TextArea rows={20} />
     </TextField>
-  );
-}
-
-/** Every version of one schema; a row opens that version. */
-export function VersionsTable({ versions }: Readonly<{ versions: readonly SchemaDef[] }>) {
-  return (
-    <Table>
-      <Table.ScrollContainer>
-        <Table.Content aria-label="Versions">
-          <Table.Header>
-            <Table.Column isRowHeader>Version</Table.Column>
-            <Table.Column>Origin</Table.Column>
-            <Table.Column>Status</Table.Column>
-          </Table.Header>
-          <Table.Body items={versions}>
-            {(version) => (
-              <Table.Row id={version.id} href={schemaPath(version.id)}>
-                <Table.Cell>{version.version}</Table.Cell>
-                <Table.Cell>{version.origin}</Table.Cell>
-                <Table.Cell>
-                  <SchemaStatusLabel status={version.status} />
-                </Table.Cell>
-              </Table.Row>
-            )}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-    </Table>
   );
 }

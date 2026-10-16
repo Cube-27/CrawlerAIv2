@@ -1,6 +1,5 @@
 {
   "name": "job_listing",
-  "version": 1,
   "page_kind": "listing",
   "fields": {
     "title": {

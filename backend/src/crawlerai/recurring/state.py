@@ -8,10 +8,19 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import FetchResult, Validators
-from crawlerai.db.models import Extraction, ExtractionMode, Record, RecordId, SchemaId, SiteId, TaskRecord, UrlState
+from crawlerai.db.models import (
+    Extraction,
+    ExtractionMode,
+    Record,
+    RecordId,
+    SiteId,
+    TaskRecord,
+    UrlState,
+)
 from crawlerai.recurring.conditional import Unchanged, received
 from crawlerai.recurring.simhash import hamming
 from crawlerai.resolve.records import entity_key
+from crawlerai.schemas.types import SchemaDef, document_digest
 
 __all__ = ["UNCHANGED_BITS", "record_content", "record_fetch", "standing_record", "stored_validators"]
 
@@ -53,14 +62,14 @@ async def standing_record(
     conn: AsyncConnection,
     site_id: SiteId,
     canonical_url: str,
-    schema_id: SchemaId,
+    schema: SchemaDef,
     config_version: int | None,
 ) -> RecordId | None:
-    """The record that stands for the page when it has not changed: the newest of its entity (`entity_key`) under the
-    schema version that a task extracting the way it would be now (by config `config_version`, or `adhoc` for None)
-    stood for since the page's content last changed (`record_content`); None when the page must be extracted. A task
-    that extracted the changed content and found its record unchanged stands for that record too (SPEC-11 §4.4), so
-    the next run does not extract the page again."""
+    """The record that stands for the page when it has not changed: the newest of its entity (`entity_key`) under
+    `schema` that a task extracting the way it would be now (by config `config_version`, or `adhoc` for None, and
+    with `schema`'s document, `record.schema_digest`) stood for since the page's content last changed
+    (`record_content`); None when the page must be extracted. A task that extracted the changed content and found its
+    record unchanged stands for that record too (SPEC-11 §4.4), so the next run does not extract the page again."""
     mode: ExtractionMode = "adhoc" if config_version is None else "config"
     changed = select(UrlState.last_changed_at).where(*_url(site_id, canonical_url)).scalar_subquery()
     extracted_since = (
@@ -78,7 +87,8 @@ async def standing_record(
         .where(
             Record.site_id == site_id,
             Record.entity_key == entity_key(site_id, canonical_url),
-            Record.schema_id == schema_id,
+            Record.schema_id == schema.id,
+            Record.schema_digest == document_digest(schema),
             extracted_since.exists(),
         )
         .order_by(Record.id.desc())

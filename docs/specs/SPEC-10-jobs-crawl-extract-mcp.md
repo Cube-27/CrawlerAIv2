@@ -54,7 +54,7 @@ Out of scope:
   failed}, usage, webhook_url, engine_version, cancel_requested}` (outcome names as `url_task.outcome`, §6).
   `cancel_requested` is true once a cancel was asked for; a running job stays `running` until its claimed tasks end.
   Added with owner approval (ARCHITECTURE rev 12, D-0745).
-- A job pins, when submitted, the schema version, site config versions, calibration, source precedence and LLM
+- A job pins, when submitted, the schema document (`job.pinned.schema`), site config versions, calibration, source precedence and LLM
   settings it runs with; later changes apply only to jobs submitted after them (INV-28).
 - Each task runs in its own DB session and transaction; a failed task or a crashed browser never fails the job's
   other tasks, and a crashed shared browser is restarted at most once per task (INV-31).

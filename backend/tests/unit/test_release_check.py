@@ -35,7 +35,6 @@ def _schema(page_kind: str, **fields: FieldType) -> SchemaDef:
             "origin": "user",
             "status": "active",
             "name": "synthetic",
-            "version": 1,
             "page_kind": page_kind,
             "fields": specs,
         }
@@ -51,7 +50,7 @@ def _config(fields: dict[str, dict[str, Any]], listing: dict[str, Any] | None = 
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": "listing" if listing else "detail",
             "fetch": {"method": "http"},
             "fields": fields,

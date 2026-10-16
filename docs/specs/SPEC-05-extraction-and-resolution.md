@@ -382,4 +382,4 @@ sets a value; records storage only serializes).
 - **Derived `url` field.** Resolved 2026-10-16 (ARCHITECTURE Appendix A #40, D-0355): the canonical-link and
   final-URL derivations publish in the `derived` bucket.
 - **Required fields in commerce_detail** (image_url) will make `no_match`/incomplete common on real pages; this is
-  measured, not fixed here. `brand` is optional from preset version 2 (ARCHITECTURE Appendix A #35).
+  measured, not fixed here. `brand` is optional in the preset (ARCHITECTURE Appendix A #35).

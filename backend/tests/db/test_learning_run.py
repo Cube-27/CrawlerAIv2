@@ -59,7 +59,8 @@ from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, ListingGapReply, ListingGapRequest
 from crawlerai.resolve.task import Stored, extract_task
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.services import schemas as schemas_service
 from crawlerai.services.jobs import cancel_job
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, sha256_hex
 from crawlerai.storage.fs import FsStore
@@ -76,7 +77,7 @@ StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` 
 def _document(name: str) -> SchemaDocument:
     title = FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name")
     price = FieldSpec(type=FieldType.MONEY, description="d", required=True, schema_org="Offer.price+priceCurrency")
-    return SchemaDocument(name=name, version=1, page_kind="detail", fields={"title": title, "price": price})
+    return SchemaDocument(name=name, page_kind="detail", fields={"title": title, "price": price})
 
 
 def _page(n: int) -> bytes:
@@ -185,7 +186,7 @@ class LearnSite:
 
     @property
     def key(self) -> StateKey:
-        return StateKey(self.site_id, self.schema.id, self.schema.version, "detail")
+        return StateKey(self.site_id, self.schema.id, "detail")
 
     async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False) -> Stored:
         """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one; with
@@ -470,11 +471,57 @@ async def test_an_operator_config_activated_during_the_run_is_not_replaced(site:
     assert (await site.finished(job_id))[0] == "failed"
 
 
+async def _edit_schema(site: LearnSite) -> None:
+    """The site's schema edited through the service a caller's edit goes through (SPEC-04 §4.1)."""
+    content = SchemaContent(page_kind="detail", fields=site.schema.fields, required_groups=[["title"]])
+    async with site.engine.begin() as conn:
+        await schemas_service.update(conn, site.schema.id, content)
+
+
+async def test_a_run_its_schema_edit_overtook_leaves_the_next_run_and_activates_nothing(site: LearnSite) -> None:
+    await site.pages(8)
+    await _forced(site)
+    later: list[JobId | None] = []
+
+    async def edit_and_learn_again() -> None:
+        # The schema is edited while role A is being asked, and the next run starts on the edited document.
+        await _edit_schema(site)
+        async with site.engine.begin() as conn:
+            later.append(await request_learning(conn, site.key, force=True))
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY, before=edit_and_learn_again))
+
+    assert learned == Learned(None, learning.SCHEMA_EDITED)
+    state = await site.state()
+    assert later[0] is not None
+    assert (state.mode, state.active_config_id, state.learning_started_at is not None) == ("learning", None, True)
+    async with site.engine.connect() as conn:
+        configs = select(ExtractionConfig.id).where(*site.key.config_scope())
+        assert (await conn.execute(configs)).all() == []
+    status, payload = await site.finished(job_id)
+    assert (status, payload["reason"], payload["config_id"]) == ("failed", learning.SCHEMA_EDITED, None)
+
+
+async def test_a_run_that_fails_after_its_schema_was_edited_ends_without_touching_the_state(site: LearnSite) -> None:
+    await site.pages(8)
+    await _forced(site)
+
+    async def edit() -> None:
+        await _edit_schema(site)
+
+    job_id, learned = await site.learn(RoleA(BudgetExhausted("no budget"), before=edit))
+
+    assert learned == Learned(None, learning.SCHEMA_EDITED)
+    state = await site.state()
+    assert (state.mode, state.learning_started_at, state.retry_at_pages) == ("cold", None, None)
+    assert (await site.finished(job_id))[0:1] == ("failed",)
+
+
 async def _operator_config(conn: AsyncConnection, site: LearnSite) -> ExtractionConfigId:
     ir = {
         "ir_version": "1",
         "site": site.origin.removeprefix("https://"),
-        "schema": {"name": site.schema.name, "version": 1},
+        "schema": {"name": site.schema.name},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"price": {"steps": [PRICE_STEP], "status": "operator"}},
@@ -571,8 +618,8 @@ async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
-        # A request naming a schema version the state does not have: `_start` cannot read its state.
-        request = Job.request.op("||")(func.jsonb_build_object("schema_version", 99))
+        # A request naming a page kind the state does not have: `_start` cannot read its state.
+        request = Job.request.op("||")(func.jsonb_build_object("page_kind", "listing"))
         await conn.execute(update(Job).where(Job.kind == "learn").values(request=request))
 
     job_id, learned = await site.learn(RoleA())
@@ -679,7 +726,7 @@ async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: LearnSi
         assert job_id is not None
         started = func.now() - LEARN_RUN_TIMEOUT - timedelta(minutes=1)
         await conn.execute(update(Job).where(Job.id == job_id).values(status="running", started_at=started))
-        recent = await request_learning(conn, StateKey(site.site_id, site.schema.id, 1, "listing"), force=True)
+        recent = await request_learning(conn, StateKey(site.site_id, site.schema.id, "listing"), force=True)
         await conn.execute(update(Job).where(Job.id == recent).values(status="running", started_at=func.now()))
 
     async with site.engine.begin() as conn:

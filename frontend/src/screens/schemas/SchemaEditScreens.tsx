@@ -19,11 +19,11 @@ import {
 } from "../../components/schemaDocument";
 import { schemaPath } from "./paths";
 
-/** Opens the version the server stored, with a confirmation. */
-function useOpenSaved() {
+/** Opens the schema the server stored, with a confirmation; `note` follows the name. */
+function useOpenSaved(note = "") {
   const navigate = useNavigate();
-  return ({ id, name, version }: SchemaDef) => {
-    toast.success(`Saved ${name} version ${String(version)}.`);
+  return ({ id, name }: SchemaDef) => {
+    toast.success(`Saved ${name}.${note}`);
     void navigate(schemaPath(id));
   };
 }
@@ -31,6 +31,7 @@ function useOpenSaved() {
 /** A schema form whose submit goes to `onSave`, with the save's state shown. */
 function SchemaEditor({
   title,
+  description,
   mode,
   initial,
   isPending,
@@ -39,6 +40,7 @@ function SchemaEditor({
   cancelTo,
 }: Readonly<{
   title: string;
+  description?: string;
   mode: FormMode;
   /** The schema the form starts from; null for a blank one. */
   initial: SchemaDef | null;
@@ -51,7 +53,7 @@ function SchemaEditor({
   const [form, setForm] = useState(() => (initial === null ? EMPTY_FORM : formOf(initial)));
   return (
     <section className="flex flex-col gap-6">
-      <PageHeader title={title} />
+      <PageHeader title={title} description={description} />
       <SchemaForm
         form={form}
         mode={mode}
@@ -66,8 +68,8 @@ function SchemaEditor({
 }
 
 /** A new `user` schema (SPEC-12 §4.3), blank or, with `?from=<id>`, prefilled from that schema's document: adopting a
- * prompt draft creates a user schema from it. The name starts empty, since a schema's name is taken by its own
- * versions and the server refuses it with 409 (UAT F32). */
+ * prompt draft creates a user schema from it. The name starts empty, since a schema's name is taken by that
+ * schema and the server refuses it with 409 (UAT F32). */
 export function NewSchemaScreen() {
   const from = useSearchParams()[0].get("from");
   const source = useSchema(from);
@@ -96,12 +98,13 @@ export function NewSchemaScreen() {
   );
 }
 
-/** The next version of a schema: its whole document, edited; the name stays (SPEC-07 §4.6). */
+/** A schema's whole document, edited in place; the name stays (SPEC-07 §4.6). Saving suspends the schema's site
+ * configs, so their sites learn again. */
 export function EditSchemaScreen() {
   const { id = "" } = useParams();
   const schema = useSchema(id);
   const update = useUpdateSchema(id);
-  const openSaved = useOpenSaved();
+  const openSaved = useOpenSaved(" Its site configs are learning again.");
   const loadProblem = problemOf(schema.error);
 
   if (loadProblem !== null) return <ProblemAlert problem={loadProblem} />;
@@ -110,6 +113,7 @@ export function EditSchemaScreen() {
   return (
     <SchemaEditor
       title={`Edit ${name}`}
+      description="Saving updates this schema in place. Its learned site configs go back to learning."
       mode="edit"
       initial={schema.data}
       isPending={update.isPending}

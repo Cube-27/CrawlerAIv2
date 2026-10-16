@@ -178,21 +178,20 @@ async def hosts_elsewhere(settings: Settings, split: Split) -> dict[Split, set[s
 
 
 async def resolve_schemas(database_url: str, names: set[str]) -> dict[str, SchemaRef]:
-    """The active version of each schema named, from the main database's `schema_def`. Hidden and fresh pages name
+    """Each active schema named, from the main database's `schema_def`. Hidden and fresh pages name
     their schema too; the private database records the id and name only (D-0172)."""
     engine = create_async_engine(database_url)
     try:
         async with engine.connect() as conn:
             rows = (
                 await conn.execute(
-                    select(SchemaDef.id, SchemaDef.name, SchemaDef.page_kind)
-                    .where(SchemaDef.name.in_(names), SchemaDef.status == "active")
-                    .order_by(SchemaDef.version)
+                    select(SchemaDef.id, SchemaDef.name, SchemaDef.page_kind).where(
+                        SchemaDef.name.in_(names), SchemaDef.status == "active"
+                    )
                 )
             ).all()
     finally:
         await engine.dispose()
-    # Ordered by version, so the newest active version of each name wins.
     schemas = {row.name: SchemaRef(row.id, row.name, row.page_kind) for row in rows}
     missing = sorted(names - schemas.keys())
     if missing:

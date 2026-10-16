@@ -18,7 +18,6 @@ const HELD_OUT = ["0192a000-0000-7000-8000-000000000701", "0192a000-0000-7000-80
 const schema: SchemaDef = {
   id: SCHEMA_ID,
   name: "item_detail",
-  version: 2,
   origin: "user",
   status: "active",
   page_kind: "detail",
@@ -67,7 +66,6 @@ function summary(overrides: Partial<ConfigSummary> = {}): ConfigSummary {
     id: V2_ID,
     site: HOST,
     schema_id: SCHEMA_ID,
-    schema_version: 2,
     page_kind: "detail",
     version: 2,
     status: "active",
@@ -86,7 +84,7 @@ const detail: ConfigDetail = {
   ir: {
     ir_version: "1",
     site: HOST,
-    schema: { name: "item_detail", version: 2 },
+    schema: { name: "item_detail" },
     page_kind: "detail",
     fetch: { method: "http" },
     fields: {
@@ -170,8 +168,8 @@ describe("sites screen", () => {
     await screen.findByRole("heading", { level: 1, name: HOST });
     const table = await screen.findByRole("grid", { name: "Config versions" });
     expect(rowsOf(table)).toEqual([
-      "item_detail version 2detail1suspendedinducedNo fields",
-      "item_detail version 2detail2activeinduced1 corroborated, 1 uncorroborated",
+      "item_detaildetail1suspendedinducedNo fields",
+      "item_detaildetail2activeinduced1 corroborated, 1 uncorroborated",
     ]);
     expect(within(table).getAllByRole("row")[2]).toHaveAttribute("data-href", `/configs/${V2_ID}`);
     expect(calls.find((call) => call.path.startsWith("/v1/sites"))).toMatchObject({
@@ -201,7 +199,7 @@ describe("sites screen", () => {
     await screen.findByText("No configs yet");
 
     await userEvent.click(screen.getByRole("button", { name: /Schema/ }));
-    await userEvent.click(await screen.findByRole("option", { name: "item_detail version 2" }));
+    await userEvent.click(await screen.findByRole("option", { name: "item_detail" }));
     await userEvent.click(screen.getByRole("button", { name: "Learn now" }));
 
     expect(await screen.findByText(`Learning started as job ${JOB_ID}.`)).toBeInTheDocument();
@@ -323,9 +321,9 @@ describe("config screen: correction", () => {
 
     const list = await openTab("Versions");
     expect(rowsOf(list.getByRole("grid", { name: "Versions" }))).toEqual([
-      "item_detail version 2detail1suspendedinducedNo fields",
-      "item_detail version 2detail2suspendedinduced1 corroborated, 1 uncorroborated",
-      "item_detail version 2detail3activeoperator3 operator",
+      "item_detaildetail1suspendedinducedNo fields",
+      "item_detaildetail2suspendedinduced1 corroborated, 1 uncorroborated",
+      "item_detaildetail3activeoperator3 operator",
     ]);
   });
 
@@ -401,7 +399,7 @@ describe("config screen: correction", () => {
 });
 
 describe("config screen: learn and export", () => {
-  it("starts learning for the config's schema version, and forces it after a refusal", async () => {
+  it("starts learning for the config's schema, and forces it after a refusal", async () => {
     let refused = true;
     const calls = configApi({
       [`POST /v1/sites/${HOST}/learn`]: () => {

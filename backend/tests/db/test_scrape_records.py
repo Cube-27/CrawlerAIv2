@@ -55,7 +55,7 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue kettle</title></head
 <p>A kettle that boils water quickly and quietly, with a handle that stays cool to the touch while it pours.</p>
 <p>It holds one and a half litres and switches itself off once the water boils, so it never boils dry.</p>
 </main></body></html>"""
-# A role S reply: a draft schema document without name and version (SPEC-06 §4.5).
+# A role S reply: a draft schema document without a name (SPEC-06 §4.5).
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
@@ -135,7 +135,7 @@ def _document(name: str, **fields: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.fixture
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = SchemaDocument.model_validate({**_document(schema_name), "version": 1})
+    document = SchemaDocument.model_validate(_document(schema_name))
     async with engine.begin() as conn:
         return await registry.create(conn, document, "user")
 
@@ -367,17 +367,17 @@ async def test_an_inline_schema_is_stored_once_and_reused(
 
 
 async def _unusable_schema(engine: AsyncEngine, schema: SchemaDef, problem: str) -> SchemaId:
-    """A schema id records cannot use: a retired version, or a listing schema."""
+    """A schema id records cannot use: a retired schema, or a listing schema."""
     async with engine.begin() as conn:
         if problem == "retired":
             return (await registry.retire(conn, schema.id)).id
         changes = SchemaChanges(page_kind="listing")
-        return (await registry.new_version(conn, schema.name, changes, "user")).id
+        return (await registry.update_schema(conn, schema, changes)).id
 
 
 @pytest.mark.parametrize(
     ("problem", "message"),
-    [("retired", "version 1 is retired"), ("listing", "is for listing pages")],
+    [("retired", "is retired"), ("listing", "is for listing pages")],
 )
 async def test_a_schema_id_records_cannot_use_is_refused_before_any_job(
     engine: AsyncEngine,
@@ -578,7 +578,7 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
     ir = {
         "ir_version": "1",
         "site": host,
-        "schema": {"name": kettle_schema.name, "version": 1},
+        "schema": {"name": kettle_schema.name},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
@@ -597,7 +597,6 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
         config = insert(ExtractionConfig).values(
             site_id=site_id,
             schema_id=kettle_schema.id,
-            schema_version=1,
             page_kind="detail",
             version=3,
             status="active",

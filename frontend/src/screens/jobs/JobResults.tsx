@@ -21,7 +21,7 @@ import { RecordInspector } from "../records/RecordInspector";
 /** The job's records in the columns of their schema, each opening the record inspector. */
 function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>) {
   const [open, setOpen] = useState<StoredRecord | null>(null);
-  // A job extracts with one schema version (ARCHITECTURE §6 `job.schema_id`).
+  // A job extracts with one schema (ARCHITECTURE §6 `job.schema_id`).
   const schema = useSchema(records[0]?.schema_id ?? null);
   const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
   const problem = problemOf(schema.error);

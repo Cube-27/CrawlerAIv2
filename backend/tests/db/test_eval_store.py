@@ -72,7 +72,7 @@ async def case(split_url: tuple[Split, str], tmp_path: Path) -> AsyncIterator[Ca
             schema_id: SchemaId = (
                 await conn.execute(
                     insert(SchemaDef)
-                    .values(name=SCHEMA_NAME, version=1, page_kind="detail", fields={}, origin="user", status="active")
+                    .values(name=SCHEMA_NAME, page_kind="detail", fields={}, origin="user", status="active")
                     .returning(SchemaDef.id)
                 )
             ).scalar_one()

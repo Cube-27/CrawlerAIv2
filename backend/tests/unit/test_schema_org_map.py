@@ -208,7 +208,6 @@ def _schema(**fields: FieldSpec) -> SchemaDef:
         origin="user",
         status="active",
         name="synthetic",
-        version=1,
         page_kind="detail",
         fields=fields,
     )

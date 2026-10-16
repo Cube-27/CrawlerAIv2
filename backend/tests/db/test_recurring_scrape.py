@@ -39,7 +39,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services import jobs
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching
@@ -115,7 +115,7 @@ def fetching(origin: Origin, tmp_path: Path) -> Fetching:
 
 @pytest.fixture
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
@@ -357,7 +357,7 @@ async def test_a_page_that_changed_only_a_nonce_is_unchanged(
     assert again.tasks == {url: ("unchanged", True)}
 
 
-async def test_validators_are_sent_only_where_a_record_of_the_schema_version_stands(
+async def test_validators_are_sent_only_where_a_record_of_the_schema_stands(
     engine: AsyncEngine,
     fetching: Fetching,
     origin: Origin,
@@ -369,14 +369,12 @@ async def test_validators_are_sent_only_where_a_record_of_the_schema_version_sta
     url = f"{own_origin}/kettles/blue"
     origin.pages[url] = _page("Blue kettle")
     await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
+    document = kettle_schema.model_dump(include=set(SchemaDocument.model_fields)) | {"name": f"{kettle_schema.name}_b"}
     async with engine.begin() as conn:
-        changes = SchemaChanges.model_validate(
-            {"fields": {"title": {**TITLE, "description": "The kettle's name"}, "price": PRICE}}
-        )
-        newer = await registry.new_version(conn, kettle_schema.name, changes, "user")
+        another = await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
-    # No record of the new version stands for the page, so nothing may answer for it: it is fetched and extracted.
-    other = await _run_job(engine, fetching, engine_data, [url], _records(newer))
+    # No record of the other schema stands for the page, so nothing may answer for it: it is fetched and extracted.
+    other = await _run_job(engine, fetching, engine_data, [url], _records(another))
     same = await _run_job(engine, fetching, engine_data, [url], _records(kettle_schema))
 
     assert (other.tasks, other.extractions) == ({url: ("extracted", True)}, 1)
