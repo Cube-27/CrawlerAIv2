@@ -20,7 +20,7 @@ availability. Core resolves one price and one availability per page, so a page w
 5. the label format and eval scoring for row-valued fields.
 
 Only the structured collectors (JSON-LD, microdata/RDFa Lite) produce rows in this version. Learning, role C,
-`js_state`/`xhr` and adapters produce no rows (§4.9). Everything is generic: schema.org types and properties name
+`js_state`/`xhr` and adapters produce no rows (§4.9); SPEC-15 later gives adapters rows through schema.org shapes. Everything is generic: schema.org types and properties name
 the structure, and no platform, store or page shape is named in code (C2, C3).
 
 **Evidence (owner review, 2026-10-15).** A baseline run without an LLM over 49 multi-variant product pages on 10
@@ -279,7 +279,7 @@ One optional field. The required fields and `required_groups` are unchanged, so 
   (SPEC-06 §4.4), a span cannot hold a row of typed sub-fields, and rows read from text could not be matched to the
   structured rows by key without the values role C would invent. A required row-mapped field in a custom schema
   that no structured source fills leaves the page `partial`. The labeling pre-fill skips the field the same way.
-- **`js_state`, `xhr`, Open Graph, adapters**: no sub-field candidates. Embedded JSON has no standard keys, and
+- **`js_state`, `xhr`, Open Graph**: no sub-field candidates (adapters: SPEC-15 §4.4 shapes). Embedded JSON has no standard keys, and
   admitting row values by equality needs a row structure the admission rule (§8.1) does not have.
 
 ### 4.10 Labels and eval (SPEC-03 §4.3, §4.6)

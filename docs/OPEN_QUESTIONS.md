@@ -17,7 +17,7 @@ owner is copied here.
 | # | Question | Why it matters | Recommended default |
 |---|---|---|---|
 | 1 | **[User] What does the external crawler platform's config look like?** We need the field list, XPath dialect, whether CSS is accepted, the pagination and params shape, regex/transform syntax, how listings link to details, and how code hints are attached. | The exporter is what config users receive. | A portable IR around XPath 1.0 + regex + named params (§12), exported as `json` and `platform_draft`. Ask for three real configs: a plain HTML site, a custom site, and an API-backed site. |
-| 2 | **[User] Which ATS platforms, and how many job sites per platform?** | Order of adapters after Greenhouse and Lever (§7, §22). | Greenhouse and Lever in L1. Others are admitted by volume or by measured shortfall. |
+| 2 | **[User] Which ATS platforms, and how many job sites per platform?** | Order of adapters after Greenhouse and Lever (§7, §22). | Greenhouse and Lever in L1. Others are admitted by volume or by measured shortfall. Shopify admitted by the owner, 2026-10-16 (ARCHITECTURE Appendix A #46, SPEC-15). |
 | 3 | **[User] Which fields are required per category, what precision bar, and which zero-touch target?** | Defines the presets' core fields, the eval composition and the target. | Core fields as in §5.3; precision 0.97; one zero-touch target per phase, measured on **fresh** sites (§16). |
 | 4 | **[User] Are GMC or job XML feeds needed, or only CSV/JSON?** | Admits the exporter candidate (§22). | CSV/JSON only until someone asks. |
 | 5 | **[Owner] Which LLM providers?** | Roles C, A, D, S (§11). | A provider-agnostic client with two configured providers. No aggregator in production. |

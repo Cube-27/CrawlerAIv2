@@ -30,6 +30,7 @@ marked "Owner to confirm" are agent decisions pending owner confirmation; they a
 | 12 | [Frontend application screens](SPEC-12-frontend-application.md) | §1, §3, §13.1, §5.4, §18, C5 | 00, 03, 07, 08, 10, 11 | L1–L4 |
 | 13 | [Variant matrix: per-variant rows from structured data](SPEC-13-variant-matrix.md) | §5.1–§5.3, §8.2 r3, §10, §16, §22 (admitted, Appendix A #37) | 03, 04, 05, 06, 07, 08 | admitted candidate |
 | 14 | [Playground workspace: one screen per run, clean JSON, server-side key](SPEC-14-playground-workspace.md) | §1, §3, §12.2, §13.1, §18 (rev 17), Appendix A #38 | 07, 08, 10, 12 | L1–L3 |
+| 15 | [Shopify adapter: storefront pages through the Storefront API](SPEC-15-shopify-adapter.md) | §7.1, §22 (admitted, Appendix A #46), C6 | 02, 05, 13 | admitted candidate |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.
@@ -61,6 +62,9 @@ flowchart TB
   S11 --> S12
   S05 --> S13[13 variant matrix]
   S08 --> S13
+  S02 --> S15[15 Shopify adapter]
+  S05 --> S15
+  S13 --> S15
 ```
 
 Layer mapping (§21): L0 = 00, 01, 02 (PRs 1–5), 03. L1 = 02 (PRs 6–9), 04, 05, 06, 07, 12 (PRs 1–5, 9).

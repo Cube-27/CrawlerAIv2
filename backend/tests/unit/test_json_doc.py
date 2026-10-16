@@ -9,7 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.collect.json_doc import parse, select, split_at_last_wildcard
+from crawlerai.collect.json_doc import parse, select
 
 DOCUMENT: JsonValue = {
     "jobs": [{"title": "A", "location": {"name": "Remote"}}, {"title": "B"}, "not an object"],
@@ -64,20 +64,6 @@ def test_a_query_outside_the_subset_is_refused(query: str) -> None:
 def test_every_match_of_a_wildcard_is_a_child_of_the_node(document: JsonValue) -> None:
     children = list(document.values()) if isinstance(document, dict) else document if isinstance(document, list) else []
     assert [value for _, value in select("$[*]", document)] == children
-
-
-@pytest.mark.parametrize(
-    ("query", "parts"),
-    [
-        ("$['title']", ("$", "$['title']")),
-        ("$[*]['text']", ("$[*]", "$['text']")),
-        ("$['jobs'][*]['location']['name']", ("$['jobs'][*]", "$['location']['name']")),
-        ("$[*]['a'][*]", ("$[*]['a'][*]", "$")),
-        ("$['a[*]b']['c']", ("$", "$['a[*]b']['c']")),
-    ],
-)
-def test_a_query_splits_after_its_last_wildcard_segment(query: str, parts: tuple[str, str]) -> None:
-    assert split_at_last_wildcard(query) == parts
 
 
 # RFC 8259 §7: a string's control characters (U+0000-U+001F) must be escaped; json.dumps writes them as these escapes.

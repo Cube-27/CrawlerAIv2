@@ -142,6 +142,19 @@ def engine_rules(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord])
     return rules
 
 
+@dataclass
+class _Turn:
+    """The host whose turn at its rate the caller was admitted for, until a request takes it."""
+
+    host: str | None
+
+    def take(self, host: str) -> bool:
+        taken = host == self.host
+        if taken:
+            self.host = None
+        return taken
+
+
 def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: SiteRules) -> RecipeRung | None:
     """`recipe` bound to this process's rungs (SPEC-09 §4.8), for a page on `page_host` whose robots.txt the caller
     has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
@@ -152,26 +165,33 @@ def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: Si
     json = fetching.rungs.json
     if json is None:
         return None
-    # The host whose turn at its rate the caller was admitted for, until a request takes it.
-    turn: str | None = page_host
+    turn = _Turn(page_host)
     http = fetching.rungs.http
 
     async def page(url: str, policy: FetchPolicy) -> FetchResult:
-        nonlocal turn
-        turn = None  # the page is the first request: its host's turn is the one the caller took
+        turn.host = None  # the page is the first request: its host's turn is the one the caller took
         return await http(url, policy)
 
-    def take_turn(host: str) -> bool:
-        nonlocal turn
-        taken = host == turn
-        if taken:
-            turn = None
-        return taken
+    return RecipeRung(recipe, _polite_send(fetching, json, rules, turn), page, ENGINE_VERSION)
 
-    async def endpoint(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
-        return await _polite_json(fetching.limiter, json, rules, request, policy, take_turn)
 
-    return RecipeRung(recipe, endpoint, page, ENGINE_VERSION)
+def adapter_send(fetching: Fetching, page_host: str, rules: SiteRules) -> JsonFetcher | None:
+    """The JSON fetch an adapter requests its API with (SPEC-15 §4.6), for a page on `page_host` whose robots.txt the
+    caller has checked and whose turn at the host's rate it has taken: an endpoint is requested only where its host's
+    robots.txt (`rules`) allows it, at that host's rate; the first request to the page's host takes the caller's turn,
+    as a recipe's does. A request robots.txt keeps from being sent leaves the page to the page rungs. None without the
+    JSON rung."""
+    json = fetching.rungs.json
+    if json is None:
+        return None
+    return _polite_send(fetching, json, rules, _Turn(page_host))
+
+
+def _polite_send(fetching: Fetching, json: JsonFetcher, rules: SiteRules, turn: _Turn) -> JsonFetcher:
+    async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        return await _polite_json(fetching.limiter, json, rules, request, policy, turn.take)
+
+    return send
 
 
 def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replay | None:

@@ -1,14 +1,15 @@
 """Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
 worked remembered in `site.fetch_method`.
 
-A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) and no other rung. A site whose active
-config has an API recipe is served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the
-config IR sits above `acquire` (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`.
-Every rung is a function of (url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's
-conditional form, which also takes the validators a page last answered with (SPEC-11 §4.2).
+A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
+adapter does not serve it (SPEC-15 §4.6). A site whose active config has an API recipe is served by the recipe's rung
+(SPEC-09 §4.8), which the caller binds to the recipe: the config IR sits above `acquire` (`.importlinter`). The browser
+rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and
+records only. The one exception is the HTTP rung's conditional form, which also takes the validators a page last
+answered with (SPEC-11 §4.2).
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -25,7 +26,7 @@ from crawlerai.acquire.types import (
     Validators,
     policy_with_attempts,
 )
-from crawlerai.adapters.registry import Registry
+from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.db.models import FetchMethod, Site, SiteId
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
@@ -53,6 +54,12 @@ class Rungs:
     json: JsonFetcher | None = None
 
 
+def adapter_registry(active: Collection[str]) -> Registry:
+    """The registry of every platform adapter with `active` running (SPEC-15 §4.8), for the processes that fetch; it
+    raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters declined."""
+    return Registry(platform_adapters(), active)
+
+
 async def acquire(
     url: str,
     policy: FetchPolicy,
@@ -62,23 +69,23 @@ async def acquire(
     recipe: Rung | None = None,
     validators: Validators | None = None,
     admit_next: Admit | None = None,
+    send: JsonFetcher | None = None,
 ) -> FetchResult:
-    """Fetch `url` through the active adapter that detects it, if any. Otherwise through `recipe`, the active config's
-    API recipe bound to its fetch (SPEC-09 §4.8), when the site has one: its result is kept when it is `ok` or asks
-    for fewer requests, and otherwise the page is fetched as if there were no recipe (§4.10). Without a recipe, fetch
-    it with `policy.method_hint`, or else the site's `remembered` method. In `auto`, an HTTP shell or block is fetched
-    again in the browser, and the browser's outcome is kept only if it is `ok`. Each request after the first (the
-    page after a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and
-    is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The
-    result lists every attempt, in its bundle's manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2):
-    a 304 is `ok` and ends the fetch."""
-    if (adapter := rungs.adapters.detect(url)) is not None:
-        return await adapter.fetch(url, policy)
-    served: FetchResult | None = None
-    if recipe is not None:
+    """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
+    without it); a page an adapter does not serve skips the recipe (SPEC-15 §4.6). Otherwise through `recipe`, the
+    active config's API recipe bound to its fetch (SPEC-09 §4.8), when the site has one. The adapter's or the recipe's
+    result is kept when it is `ok` or asks for fewer requests, and otherwise the page is fetched as if there were
+    neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered` method.
+    In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if it is
+    `ok`. Each request after the first (the page after an adapter or a recipe, the browser retry) waits for `admit_next`
+    to admit it at the site's rate (SPEC-02 §4.6), and is not sent when `admit_next` refuses it: the fetch keeps the
+    outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with the HTTP rung
+    only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
+    served = None if send is None else await rungs.adapters.serve(url, policy, send)
+    if served is None and recipe is not None:
         served = await recipe(url, policy)
-        if served.block_class == "ok" or slow_down(served) or not await _admitted(admit_next):
-            return served
+    if served is not None and (served.block_class == "ok" or slow_down(served) or not await _admitted(admit_next)):
+        return served
     kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next)
     if served is not None:
         attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms

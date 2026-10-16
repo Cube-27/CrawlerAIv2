@@ -1,153 +1,143 @@
-"""The adapter collector (SPEC-05 §4.5, ARCHITECTURE §8.1): a platform API's JSON, read through its adapter.
+"""The adapter collector (SPEC-05 §4.5, SPEC-15 §4.4, ARCHITECTURE §8.1): a platform API's JSON, read as the schema.org
+nodes its adapter's shapes say it holds.
 
-An adapter capture's body is the JSON the platform's documented API serves for the page (SPEC-02 §4.9). The adapter's
-`map` gives an RFC 9535 query into that JSON for each schema field whose schema.org path the platform documents; the
-values it selects are `adapter` candidates, located as `adapter:<name>:<normalized path>`. Nothing here interprets a
-value: the field's normalizer is the only filter (C7).
-
-The entity is the JSON object the values belong to: the node a query selects up to its last wildcard, one per item of a
-listing's array, or the document itself when the query has no wildcard (a detail response). A list field's query may
-reach its items through a wildcard of its own (`$['locations'][*]['name']`): its entity is then the longest entity the
-other queries of the map select that starts its query, and the values its rest selects in one entity are one candidate,
-the list, located by that rest with its wildcards (RFC 9535 §2.5.1.2). Its kind is the schema.org type the mapped paths
-start at, and its URL is the value the adapter maps that type's `url` property to.
+An adapter capture's body is the JSON the platform's documented API serves for the page (SPEC-02 §4.9). Each object a
+shape reaches is an entity (`adapter:<name>:<normalized path>`, its kind the shape's type, its parent the enclosing
+node's entity, `via` the property the shape is under) and a node `schema_org_map` reads. Candidates come from
+`field_candidates` with source kind `adapter`, so a field's path reads adapter JSON by the rules it reads JSON-LD and
+microdata with: alternatives, identifier sub-properties, `.name` stand-ins, lists, and the sub-fields of a row-mapped
+field (SPEC-13 §4.2). Each value is located at its own normalized path. Nothing here interprets a value: the field's
+normalizer is the only filter (C7).
 """
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import cache
 
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import Adapter
-from crawlerai.collect.base import Candidate, CollectResult, Entity
-from crawlerai.collect.json_doc import ROOT, parse, select, split_at_last_wildcard
+from crawlerai.adapters.base import ALL, Adapter, Members, Shape
+from crawlerai.collect.base import CollectResult, Entity
+from crawlerai.collect.json_doc import ROOT, member, parse, select
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import candidate, canonical_urls, parse_paths
+from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, entity_urls, field_candidates
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import PageKind
 from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldType, SchemaDef
-
-_URL_FIELD = "url"  # the projection's one field, asking the adapter where the entity's URL is
+from crawlerai.schemas.types import SchemaDef
 
 
 class AdapterCollector:
     """The collector of a capture `adapter` fetched, for a page whose kind the adapter detected as `page_kind`."""
 
-    def __init__(self, adapter: Adapter, page_kind: PageKind) -> None:
+    def __init__(self, adapter: Adapter, page_kind: PageKind, vocabulary: Vocabulary) -> None:
         self._adapter = adapter
         self._page_kind = page_kind
+        self._vocabulary = vocabulary
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
-        adapter = self._adapter.name
+        name = self._adapter.name
         try:
             document = parse(page.html)
         except ValueError as e:
-            return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{adapter}: not JSON ({e})",))
-        paths = {
-            name: spec.schema_org
-            for name, spec in schema.fields.items()
-            # A listing's page-scoped fields describe the page, not a row (SPEC-05 §4.7); the API's rows hold none.
-            # A row-mapped field's path names rows, not values (SPEC-13 §4.2); an adapter reads no rows of rows.
-            if spec.schema_org is not None
-            and not spec.row_mapped
-            and (self._page_kind == "detail" or spec.scope == "row")
-        }
-        queries = self._adapter.map(paths, self._page_kind)
-        kinds = sorted({path.root for name in queries for path in parse_paths(paths[name])})
-        if len(kinds) != 1:
-            diagnostics = (f"adapter:{adapter}: maps fields of several types {kinds}",) if kinds else ()
-            return CollectResult(entities=(), candidates=(), diagnostics=diagnostics)
-        url_query = self._adapter.map({_URL_FIELD: f"{kinds[0]}.url"}, self._page_kind).get(_URL_FIELD)
-        return _Reading(adapter, document, schema, ctx).result(queries, kinds[0], url_query)
+            return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{name}: not JSON ({e})",))
+        nodes: list[_Node] = []
+        for shape in self._adapter.shapes(self._page_kind):
+            nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
+        entities = tuple(
+            Entity(id=n.id, kind=n.shape.type, urls=entity_urls(n, ctx), parent=n.parent, via=n.via) for n in nodes
+        )
+        diagnostics: list[str] = []
+        candidates = field_candidates(
+            [Typed(n.id, (n.shape.type,), n) for n in nodes],
+            self._rows_schema(schema),
+            ctx,
+            vocabulary=self._vocabulary,
+            source_kind="adapter",
+            diagnostics=diagnostics,
+        )
+        return CollectResult(entities=entities, candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+
+    def _rows_schema(self, schema: SchemaDef) -> SchemaDef:
+        """A listing's page-scoped fields describe the page, not a row (SPEC-05 §4.7): the API's rows hold none."""
+        if self._page_kind == "detail":
+            return schema
+        rows = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
+        return schema.model_copy(update={"fields": rows})
 
 
-@dataclass
-class _Reading:
-    """One adapter document read for one schema."""
+@dataclass(frozen=True, slots=True)
+class _Node:
+    """A JSON object (or array) of the document as the node `shape` describes, at the normalized path `path`."""
 
     adapter: str
-    document: JsonValue
-    schema: SchemaDef
-    ctx: Context
-    diagnostics: list[str] = field(default_factory=list)
-    _rows: dict[str, dict[str, JsonValue]] = field(default_factory=dict)  # entity query -> object by path
+    shape: Shape
+    data: JsonValue
+    path: str
+    parent: str | None
+    via: str | None
 
-    def result(self, queries: Mapping[str, str], kind: str, url_query: str | None) -> CollectResult:
-        rows: dict[str, JsonValue] = {}
-        candidates: list[Candidate] = []
-        single = [q for name, q in queries.items() if self.schema.fields[name].type is not FieldType.LIST]
-        entity_queries = {split_at_last_wildcard(q)[0] for q in single + ([url_query] if url_query else [])}
-        for name, query in queries.items():
-            entity_query = self._entity_query(name, query, entity_queries)
-            rest = ROOT + query[len(entity_query) :]
-            # Only a list field's rest can hold a wildcard: the one that selects its items.
-            read = self._list_candidate if split_at_last_wildcard(rest)[0] != ROOT else self._candidates
-            for path, data in self._entities(entity_query).items():
-                rows.setdefault(path, data)
-                candidates.extend(read(name, path, data, rest))
-        url_rest = None if url_query is None else split_at_last_wildcard(url_query)[1]
-        entities = tuple(
-            Entity(id=self._id(path), kind=kind, urls=self._urls(path, data, url_rest), parent=None)
-            for path, data in rows.items()
-        )
-        return CollectResult(entities=entities, candidates=tuple(candidates), diagnostics=tuple(self.diagnostics))
+    @property
+    def id(self) -> str:
+        return f"adapter:{self.adapter}:{self.path}{_segments(self.shape.anchor)}"
 
-    def _entity_query(self, name: str, query: str, entity_queries: set[str]) -> str:
-        """The query of the entities `query` selects values of: up to its last wildcard, or, for a list field whose
-        items that wildcard selects, the longest of the other queries' entities that starts it."""
-        own = split_at_last_wildcard(query)[0]
-        if self.schema.fields[name].type is not FieldType.LIST or own in entity_queries:
-            return own
-        starting = [e for e in entity_queries if query.startswith(e) and query[len(e) :].startswith("[")]
-        return max(starting, key=len, default=own)
+    @property
+    def node_id(self) -> str | None:
+        return None  # an API object has no IRI
 
-    def _entities(self, query: str) -> dict[str, JsonValue]:
-        if query not in self._rows:
-            # The entity is a JSON object (RFC 8259 §4); an array item of another kind holds no fields.
-            selected = self._select(query, self.document, ROOT)
-            self._rows[query] = {path: data for path, data in selected if isinstance(data, dict)}
-        return self._rows[query]
+    def values(self, prop: str) -> Sequence[Value]:
+        if (members := self.shape.properties.get(prop)) is not None:
+            # RFC 8259 `null`: the API states no value.
+            found = _select(members, self.data, self.path)
+            return [Value(raw, self._locator(at)) for at, raw in found if raw is not None]
+        if (stated := self.shape.stated.get(prop)) is not None and isinstance(self.data, dict):
+            value = stated(self.data)
+            return [] if value is None else [Value(value[0], self._locator(self.path + _segments(value[1])))]
+        return [
+            Value(node.data, self._locator(node.path), node)
+            for shape in self.shape.nodes.get(prop, ())
+            for node in _reach(self.adapter, shape, self.data, self.path, parent=self.id, via=prop, nested=False)
+        ]
 
-    def _candidates(self, name: str, path: str, data: JsonValue, query: str) -> list[Candidate]:
-        spec = self.schema.fields[name]
-        found = (
-            candidate(
-                name,
-                spec,
-                self._id(path),
-                "adapter",
-                raw,
-                format_locator("adapter", self.adapter, at),
-                self.ctx,
-                self.diagnostics,
-            )
-            for at, raw in self._select(query, data, path)
-            if raw is not None  # RFC 8259 `null`: the API states no value
-        )
-        return [c for c in found if c is not None]
+    def _locator(self, path: str) -> str:
+        return format_locator("adapter", self.adapter, path)
 
-    def _list_candidate(self, name: str, path: str, data: JsonValue, query: str) -> list[Candidate]:
-        """The one candidate of a list field whose query selects its items through a wildcard: the items' values."""
-        items: list[JsonValue] = [raw for _, raw in self._select(query, data, path) if raw is not None]
-        if not items:
-            return []
-        locator = format_locator("adapter", self.adapter, path + query[len(ROOT) :])
-        found = candidate(
-            name, self.schema.fields[name], self._id(path), "adapter", items, locator, self.ctx, self.diagnostics
-        )
-        return [] if found is None else [found]
 
-    def _urls(self, path: str, data: JsonValue, query: str | None) -> tuple[str, ...]:
-        found = () if query is None else self._select(query, data, path)
-        return canonical_urls((raw for _, raw in found), self.ctx)
+def _reach(
+    adapter: str,
+    shape: Shape,
+    data: JsonValue,
+    path: str,
+    *,
+    parent: str | None,
+    via: str | None,
+    nested: bool = True,
+) -> list[_Node]:
+    """The nodes `shape` reaches from the object `data` at `path`, and, with `nested`, every node under them in
+    document order. A node is an object, or an array a list's shape reaches; an item of another kind holds no node."""
+    reached: list[_Node] = []
+    for at, found in _select(shape.at, data, path):
+        # An anchored node is there only when the member that names it is.
+        if not isinstance(found, (dict, list)) or not _named(shape.anchor, found, at):
+            continue
+        node = _Node(adapter, shape, found, at, parent, via)
+        reached.append(node)
+        if nested:
+            for prop, shapes in shape.nodes.items():
+                for inner in shapes:
+                    reached.extend(_reach(adapter, inner, found, at, parent=node.id, via=prop))
+    return reached
 
-    def _select(self, query: str, data: JsonValue, at: str) -> Sequence[tuple[str, JsonValue]]:
-        try:
-            return select(query, data, at)
-        except ValueError as e:  # a query outside the subset the adapter maps are written in
-            self.diagnostics.append(f"adapter:{self.adapter}: {e}")
-            return ()
 
-    def _id(self, path: str) -> str:
-        return f"adapter:{self.adapter}:{path}"
+def _named(anchor: Members, data: JsonValue, path: str) -> bool:
+    return not anchor or any(value is not None for _, value in _select(anchor, data, path))
+
+
+def _select(members: Members, data: JsonValue, path: str) -> list[tuple[str, JsonValue]]:
+    return select(ROOT + _segments(members), data, path)
+
+
+@cache  # shapes are module constants: a few distinct member tuples, looked up per node
+def _segments(members: Members) -> str:
+    """`members` as RFC 9535 segments: a name segment each, a wildcard segment for `ALL`."""
+    return "".join("[*]" if name == ALL else member("", name) for name in members)

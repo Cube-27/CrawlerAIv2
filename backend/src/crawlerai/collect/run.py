@@ -56,7 +56,7 @@ def collect_page(
         DomCollector(),
     ]
     diagnostics: list[str] = []
-    adapter = _adapter_collector(manifest, adapters, diagnostics)
+    adapter = _adapter_collector(manifest, adapters, vocabulary, diagnostics)
     if adapter is not None:
         collectors.insert(0, adapter)
     results = [
@@ -82,17 +82,18 @@ def collect_page(
 
 
 def _adapter_collector(
-    manifest: CaptureManifest, adapters: Adapters | None, diagnostics: list[str]
+    manifest: CaptureManifest, adapters: Adapters | None, vocabulary: Vocabulary, diagnostics: list[str]
 ) -> AdapterCollector | None:
-    """D-0445: an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`."""
+    """D-0445, INV-39: an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
+    fetches from its final URL."""
     if manifest.method != "api":
         return None
-    adapter = None if adapters is None else adapters.detect(manifest.url)
-    match = None if adapter is None else adapter.detect(manifest.url)
-    if adapter is None or match is None:
-        diagnostics.append("adapter: no active adapter detects the page URL of this api capture")
+    found = None if adapters is None else adapters.reader(manifest.url, manifest.final_url)
+    if found is None:
+        diagnostics.append("adapter: no active adapter reads this api capture")
         return None
-    return AdapterCollector(adapter, match.page_kind)
+    adapter, match = found
+    return AdapterCollector(adapter, match.page_kind, vocabulary)
 
 
 def _isolated[R](collector: object, run: Callable[[], R], diagnostics: list[str]) -> R | None:

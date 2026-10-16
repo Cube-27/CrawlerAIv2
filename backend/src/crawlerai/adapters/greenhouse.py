@@ -10,13 +10,13 @@ left to the generic rungs rather than sent to an API that may not hold it.
 """
 
 import re
-from collections.abc import Mapping
+from dataclasses import replace
 from typing import Final
 from urllib.parse import parse_qs, quote, urlsplit
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import PATH_SEGMENT, AdapterMatch, json_path
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
 from crawlerai.db.models import PageKind
 
 API: Final = "https://boards-api.greenhouse.io/v1/boards"
@@ -28,27 +28,33 @@ BOARD_HOSTS: Final = frozenset({"boards.greenhouse.io", "job-boards.greenhouse.i
 _TOKEN = PATH_SEGMENT
 _JOB_ID = re.compile(r"\d+", re.ASCII)
 
-# schema.org JobPosting property -> the member names leading to its value in a job object (Job Board API
-# documentation, job object). `content` is the description as HTML-escaped HTML; `first_published` and `company_name`
-# are in the retrieve-job response only, so a listing has no value for them.
-_JOB_FIELDS: Final[dict[str, tuple[str, ...]]] = {
-    "JobPosting.title": ("title",),
-    "JobPosting.url": ("absolute_url",),
-    "JobPosting.description": ("content",),
-    "JobPosting.jobLocation": ("location", "name"),
-    "JobPosting.datePosted": ("first_published",),
-    "JobPosting.dateModified": ("updated_at",),
-    "JobPosting.hiringOrganization.name": ("company_name",),
+# A job object as a schema.org JobPosting (Job Board API documentation, job object): property -> the member names
+# leading to its value. `content` is the description as HTML-escaped HTML; `first_published` and `company_name` are in
+# the retrieve-job response only, so a listing has no value for them. The hiring organization is named by the job
+# object's own `company_name`, so its node is a view of the job object anchored at that member.
+_ORGANIZATION: Final = Shape(type="Organization", properties={"name": ("company_name",)}, anchor=("company_name",))
+_JOB: Final = Shape(
+    type="JobPosting",
+    properties={
+        "title": ("title",),
+        "url": ("absolute_url",),
+        "description": ("content",),
+        "jobLocation": ("location", "name"),
+        "datePosted": ("first_published",),
+        "dateModified": ("updated_at",),
+    },
+    nodes={"hiringOrganization": (_ORGANIZATION,)},
+)
+# The retrieve-job response is one job object; the list-jobs response lists them in its `jobs` array (schema.org
+# ItemList, `itemListElement`).
+_SHAPES: Final[dict[PageKind, tuple[Shape, ...]]] = {
+    "detail": (_JOB,),
+    "listing": (Shape(type="ItemList", nodes={"itemListElement": (replace(_JOB, at=("jobs", ALL)),)}),),
 }
-# JSONPath (RFC 9535) roots: the list-jobs response holds the jobs in its `jobs` array.
-_ROOT: Final[dict[PageKind, str]] = {"detail": "$", "listing": "$['jobs'][*]"}
 
 
 class Greenhouse:
     name: Final = "greenhouse"
-
-    def __init__(self, fetch: JsonFetcher) -> None:
-        self._fetch = fetch
 
     def detect(self, url: str) -> AdapterMatch | None:
         parts = urlsplit(url)
@@ -59,17 +65,19 @@ class Greenhouse:
             return _embedded(segments[1:], parse_qs(parts.query))
         return _hosted(segments)
 
-    async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
+    def serves(self, endpoint: str) -> bool:
+        return endpoint.startswith(f"{API}/")
+
+    async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         match = self.detect(url)
         if match is None:
             raise ValueError("not a job board URL this adapter detects")
         endpoint = f"{API}/{quote(match.tenant, safe='')}/jobs"
         endpoint += "?content=true" if match.item is None else f"/{match.item}"
-        return await self._fetch(JsonRequest(url=endpoint, page_url=url), policy)
+        return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
-    def map(self, schema_org: Mapping[str, str], page_kind: PageKind) -> dict[str, str]:
-        root = _ROOT[page_kind]
-        return {field: json_path(root, _JOB_FIELDS[path]) for field, path in schema_org.items() if path in _JOB_FIELDS}
+    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+        return _SHAPES[page_kind]
 
 
 def _hosted(segments: list[str]) -> AdapterMatch | None:

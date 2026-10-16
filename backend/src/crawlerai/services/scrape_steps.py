@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
+from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
@@ -79,16 +80,16 @@ _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
 DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
 
 
-def load_engine_data() -> EngineData | None:
-    """The engine's data files from the engine directory's `data/`, for `records` and replays; None where they are
-    not there (no engine directory, or a tree without `crawlerai data fetch`): `records` and replays are then
-    unavailable, and the other formats work."""
+def load_engine_data(adapters: Adapters) -> EngineData | None:
+    """The engine's data files from the engine directory's `data/`, with the process's active `adapters` to read their
+    captures, for `records` and replays; None where they are not there (no engine directory, or a tree without
+    `crawlerai data fetch`): `records` and replays are then unavailable, and the other formats work."""
     data = engine_data_dir()
     if data is None:
         log.warning("no engine directory: records and replays are unavailable")
         return None
     try:
-        return EngineData.load(data)
+        return EngineData.load(data, adapters)
     except VocabularyMissing as e:
         log.warning("records and replays are unavailable: %s", e)
         return None
