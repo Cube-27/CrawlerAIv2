@@ -1,0 +1,39 @@
+{
+  "items": [
+    {
+      "SearchId": 1,
+      "Keyword": null,
+      "Offset": 0,
+      "Limit": 25,
+      "TotalJobsCount": 2,
+      "SiteNumber": "CX_1",
+      "requisitionList": [
+        {
+          "Id": "100001",
+          "Title": "Synthetic Platform Engineer",
+          "PostedDate": "2026-09-30",
+          "PrimaryLocation": "Northtown, Example Region, Exampleland",
+          "JobSchedule": null,
+          "ShortDescriptionStr": "Build example platforms.",
+          "secondaryLocations": [
+            { "RequisitionLocationId": 1, "Name": "Southville", "CountryCode": "ZZ" }
+          ]
+        },
+        {
+          "Id": "100002",
+          "Title": "Placeholder Analyst",
+          "PostedDate": "2026-09-29",
+          "PrimaryLocation": "Eastport",
+          "JobSchedule": "Full time",
+          "ShortDescriptionStr": null,
+          "secondaryLocations": []
+        }
+      ]
+    }
+  ],
+  "count": 1,
+  "hasMore": false,
+  "limit": 25,
+  "offset": 0,
+  "links": []
+}

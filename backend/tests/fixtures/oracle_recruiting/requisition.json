@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "Id": "100001",
+      "Title": "Synthetic Platform Engineer",
+      "Category": "Engineering",
+      "ExternalPostedStartDate": "2026-09-30T08:15:00+00:00",
+      "JobSchedule": "Full time",
+      "ExternalDescriptionStr": "<p>Build example platforms.</p>",
+      "ExternalResponsibilitiesStr": "<ul><li>Run synthetic services.</li></ul>",
+      "ExternalQualificationsStr": "<ul><li>Three years of example work.</li></ul>",
+      "PrimaryLocation": "Northtown, Example Region, Exampleland",
+      "PrimaryLocationCountry": "ZZ",
+      "LegalEmployer": "Example Employer Inc",
+      "secondaryLocations": [
+        { "RequisitionLocationId": 1, "Name": "Southville", "CountryCode": "ZZ" }
+      ],
+      "workLocation": [],
+      "otherWorkLocations": [],
+      "media": [],
+      "skills": []
+    }
+  ],
+  "count": 1,
+  "hasMore": false,
+  "limit": 25,
+  "offset": 0,
+  "links": []
+}

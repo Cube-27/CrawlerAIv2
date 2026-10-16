@@ -19,6 +19,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
+from crawlerai.adapters.oracle_recruiting import OracleRecruiting
 from crawlerai.adapters.shopify import Shopify
 from crawlerai.adapters.workday import Workday
 
@@ -29,7 +30,7 @@ MAX_DECLINED: Final = 10_000
 
 def platform_adapters() -> tuple[Adapter, ...]:
     """Every adapter, active or not."""
-    return Greenhouse(), Lever(), Shopify(), Workday()
+    return Greenhouse(), Lever(), Shopify(), Workday(), OracleRecruiting()
 
 
 class Registry:
