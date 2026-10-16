@@ -212,7 +212,7 @@ def browser(server: Server) -> Iterator[Browser]:
         except PlaywrightError as e:
             if os.environ.get("CI") or "Executable doesn't exist" not in e.message:
                 raise
-            pytest.skip("Chromium is not installed: run `uv run patchright install chromium`")
+            pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
         try:
             yield Browser(runner, session, server.port)
             # Each fetch closes its own context, so none is left open between tests.

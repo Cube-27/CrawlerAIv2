@@ -42,6 +42,9 @@ _PROBE_URL = "https://identity.invalid/"
 # User-Agent Client Hints (WICG UA-CH §4): the high-entropy values, which with the low-entropy brands, mobile and
 # platform make up CDP's `Network.UserAgentMetadata`.
 _HIGH_ENTROPY_HINTS = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
+# Patchright's documented setup: the full Chromium build (`chromium`), not the headless shell Playwright picks for
+# `headless=True` by default; with `headless=True` it runs Chromium's own headless mode.
+_CHANNEL = "chromium"
 # WebRTC sends UDP outside any proxy; Chromium's policy `disable_non_proxied_udp` keeps it inside the guard.
 _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
@@ -95,7 +98,7 @@ class BrowserSession:
 async def open_browser() -> AsyncIterator[BrowserSession]:
     """The browser runs until the block ends; leaving it ends the browser and driver processes."""
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+        browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, args=_LAUNCH_ARGS)
         try:
             yield BrowserSession(browser, *await _identity(browser))
         finally:

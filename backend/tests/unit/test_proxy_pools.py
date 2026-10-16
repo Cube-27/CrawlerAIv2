@@ -397,7 +397,7 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
     except PlaywrightError as e:
         if os.environ.get("CI") or "Executable doesn't exist" not in e.message:
             raise
-        pytest.skip("Chromium is not installed: run `uv run patchright install chromium`")
+        pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
 
     assert _outcome(through_pool) == (200, "ok", None)
     assert b"<h1>Catalogue</h1>" in through_pool.bundle.body

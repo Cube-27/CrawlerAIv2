@@ -89,7 +89,7 @@ warn_required_dynamic_aliases = true
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-markers"]
 markers = [
-    "browser: drives headless Chromium (`uv run patchright install chromium` once); skipped where it is not installed, except in CI",
+    "browser: drives headless Chromium (`uv run patchright install --no-shell chromium` once); skipped where it is not installed, except in CI",
 ]
 
 [dependency-groups]

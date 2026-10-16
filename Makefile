@@ -86,7 +86,7 @@ check-backend: db
 	cd backend && $(UV_RUN) ruff format --check
 	cd backend && $(UV_RUN) mypy src tests migrations
 	cd backend && $(UV_RUN) lint-imports
-	cd backend && $(UV_RUN) patchright install --only-shell chromium
+	cd backend && $(UV_RUN) patchright install --no-shell chromium
 	$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -q -U postgres \
 		-c 'DROP DATABASE IF EXISTS crawlerai_check' -c 'CREATE DATABASE crawlerai_check OWNER app' \
 		-c 'DROP DATABASE IF EXISTS crawlerai_private_check' -c 'CREATE DATABASE crawlerai_private_check OWNER app'
