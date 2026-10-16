@@ -64,12 +64,13 @@ _POLL_S = 0.25
 # sees nor touches the observer. It is installed on the first call in each document, and answers the seconds since
 # the last change.
 _QUIET_JS = """() => {
+  const millis = () => new Date().getTime();
   if (globalThis.__lastChange === undefined) {
-    globalThis.__lastChange = performance.now();
-    new MutationObserver(() => { globalThis.__lastChange = performance.now(); })
+    globalThis.__lastChange = millis();
+    new MutationObserver(() => { globalThis.__lastChange = millis(); })
       .observe(document, {subtree: true, childList: true, characterData: true});
   }
-  return (performance.now() - globalThis.__lastChange) / 1000;
+  return (millis() - globalThis.__lastChange) / 1000;
 }"""
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
