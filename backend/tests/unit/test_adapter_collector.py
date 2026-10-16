@@ -323,6 +323,34 @@ def test_fields_of_several_types_are_read_from_nested_nodes_each_owned_by_its_no
     }
 
 
+def test_a_property_with_a_stated_main_value_gives_a_list_field_every_value_and_others_the_main_one() -> None:
+    product = Shape(
+        type="Product",
+        properties={"image": ("main", "url")},
+        every={"image": ("all", ALL, "url")},
+    )
+    body = json.dumps(
+        {
+            "main": {"url": "https://a.example.test/1.png"},
+            "all": [{"url": f"https://a.example.test/{n}.png"} for n in (1, 2)],
+        }
+    )
+    preset = _preset("commerce_detail")
+    schema = _schema(
+        "detail", image_url=preset.fields["image_url"], additional_images=preset.fields["additional_images"]
+    )
+
+    result = _collect(_StandIn(product), "detail", body, schema)
+
+    assert _values(result) == {
+        ("adapter:stand-in:$", "image_url"): ("https://a.example.test/1.png", "adapter:stand-in:$['main']['url']"),
+        ("adapter:stand-in:$", "additional_images"): (
+            ["https://a.example.test/1.png", "https://a.example.test/2.png"],
+            "adapter:stand-in:$['all'][0]['url']",
+        ),
+    }
+
+
 def _in_stock(data: Mapping[str, JsonValue]) -> tuple[JsonValue, Members] | None:
     return ("https://schema.org/InStock", ("available",)) if data.get("available") is True else None
 

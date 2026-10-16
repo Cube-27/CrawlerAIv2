@@ -85,11 +85,13 @@ class _Node:
     def node_id(self) -> str | None:
         return None  # an API object has no IRI
 
+    def every_value(self, prop: str) -> Sequence[Value]:
+        members = self.shape.every.get(prop)
+        return self.values(prop) if members is None else self._read(members)
+
     def values(self, prop: str) -> Sequence[Value]:
         if (members := self.shape.properties.get(prop)) is not None:
-            # RFC 8259 `null`: the API states no value.
-            found = _select(members, self.data, self.path)
-            return [Value(raw, self._locator(at)) for at, raw in found if raw is not None]
+            return self._read(members)
         if (stated := self.shape.stated.get(prop)) is not None and isinstance(self.data, dict):
             value = stated(self.data)
             return [] if value is None else [Value(value[0], self._locator(self.path + _segments(value[1])))]
@@ -98,6 +100,10 @@ class _Node:
             for shape in self.shape.nodes.get(prop, ())
             for node in _reach(self.adapter, shape, self.data, self.path, parent=self.id, via=prop, nested=False)
         ]
+
+    def _read(self, members: Members) -> list[Value]:
+        # RFC 8259 `null`: the API states no value.
+        return [Value(raw, self._locator(at)) for at, raw in _select(members, self.data, self.path) if raw is not None]
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)
