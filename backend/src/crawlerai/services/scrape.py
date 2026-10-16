@@ -59,6 +59,7 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import (
     Fetching,
     TargetRejected,
+    adapter_send,
     admitted,
     check_target,
     engine_rules,
@@ -480,11 +481,13 @@ async def polite_fetch(
         if not robots.allows(url):
             return "robots"
     await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    rung = None
-    if recipe is not None:
-        rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
+    rules = engine_rules(engine, fetching.rungs.http, attempts)
+    rung = None if recipe is None else recipe_rung(fetching, recipe, host, rules)
     admit_next = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
-    result = await acquire(url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_next=admit_next)
+    send = adapter_send(fetching, host, rules)
+    result = await acquire(
+        url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_next=admit_next, send=send
+    )
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)

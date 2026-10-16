@@ -8,6 +8,7 @@ the task commits.
 """
 
 from dataclasses import dataclass
+from functools import partial
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -34,7 +35,7 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import JobPins
-from crawlerai.services.fetching import Fetching, endpoint_rules, recipe_rung, recording, refusal
+from crawlerai.services.fetching import Fetching, adapter_send, endpoint_rules, recipe_rung, recording, refusal
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
@@ -144,9 +145,19 @@ async def fetch_page(
     recipe = await _recipe(conn, fetching, task, served, robots)
 
     async def page(url: str, admit_next: Admit) -> FetchResult | Unchanged:
+        # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6).
+        send = adapter_send(fetching, urlsplit(url).hostname or "", partial(endpoint_rules, conn, fetch_robots=robots))
+
         async def fetch(sent: Validators | None) -> FetchResult:
             result = await acquire(
-                url, policy, site.fetch_method, fetching.rungs, recipe=recipe, validators=sent, admit_next=admit_next
+                url,
+                policy,
+                site.fetch_method,
+                fetching.rungs,
+                recipe=recipe,
+                validators=sent,
+                admit_next=admit_next,
+                send=send,
             )
             attempts.extend(result.attempts)
             return result

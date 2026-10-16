@@ -20,7 +20,7 @@ from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
@@ -94,11 +94,12 @@ async def _work() -> None:
             SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
         ) as browser:
             json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
-            rungs = Rungs(http=http, browser=browser.fetch, conditional=http, json=json)
+            adapters = adapter_registry(settings.adapters)
+            rungs = Rungs(http=http, browser=browser.fetch, adapters=adapters, conditional=http, json=json)
             store = open_store(settings.object_store)
             fetching = Fetching(rungs, connector, store, HostLimiter())
             llm, setup = llm_from_settings(settings, engine)
-            data, margins = load_engine_data(), load_drift_margins()
+            data, margins = load_engine_data(adapters), load_drift_margins()
             handlers = task_handlers(fetching, data, margins, llm=llm)
             stop = _stop_on_signals()
             # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).

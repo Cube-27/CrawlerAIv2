@@ -42,12 +42,25 @@ class EvalPrivateDatabaseSettings(_Base):
     eval_private_database_url: SecretStr
 
 
+def _comma_separated(value: object) -> object:
+    """`a,b` as `("a", "b")`; duplicates are refused (for providers, the order is the failover order)."""
+    if not isinstance(value, str):
+        return value
+    names = tuple(name.strip() for name in value.split(","))
+    if len(set(names)) != len(names):
+        raise ValueError("a name is listed twice")
+    return names
+
+
 class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
     # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url}` (SPEC-02 §3, OPEN_QUESTIONS #10).
     proxy_pools: dict[str, Annotated[ProxyEndpoint, BeforeValidator(ProxyEndpoint.parse)]] = Field(default_factory=dict)
+    # `CRAWLERAI_ADAPTERS`, comma-separated: the platform adapters that run (SPEC-15 §4.8). An adapter is listed only
+    # once it was measured on at least three tenants not used to build it (C6); none by default.
+    adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
 
 
 class ApiSettings(_Base):
@@ -69,16 +82,6 @@ class McpSettings(_Base):
 
 
 LLMProviderName = Literal["anthropic", "gemini"]
-
-
-def _comma_separated(value: object) -> object:
-    """`a,b` as `("a", "b")`; duplicates are refused, since the order is the failover order."""
-    if not isinstance(value, str):
-        return value
-    names = tuple(name.strip() for name in value.split(","))
-    if len(set(names)) != len(names):
-        raise ValueError("a provider is listed twice")
-    return names
 
 
 class LLMSettings(_Base):
