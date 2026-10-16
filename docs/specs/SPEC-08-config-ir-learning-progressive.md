@@ -190,7 +190,8 @@ validity}`; `yield = matched/pages`, `validity = valid/matched`.
   generated code (§18). Marked `draft: true` until OPEN_QUESTIONS #1 is answered.
 - `json_records` / `csv_records` / `markdown`: record exports for `GET /v1/jobs/{id}/results?format=` (SPEC-10
   wires the endpoint; the exporters live here). CSV: one column per schema field, nested values JSON-encoded,
-  plus `_status_<field>` columns.
+  plus `_status_<field>` columns. With `csv_safe` (SPEC-10, D-0879) a cell starting with `=`, `+`, `-`, `@`, a tab
+  or a carriage return is prefixed with `'` (OWASP CSV Injection); without it values are written as published.
 
 ### 4.12 Release check (§12.3)
 

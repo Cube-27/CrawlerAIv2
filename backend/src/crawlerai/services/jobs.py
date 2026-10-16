@@ -214,11 +214,14 @@ class ResultsQuery(BaseModel):
     limit: int = Field(default=50, ge=1, le=MAX_PAGE)
     format: ResultFormat = "json"
     include: Literal["metadata"] | None = None  # `json_values` only
+    csv_safe: bool = False  # `csv_records` only: quote formula-like cells for spreadsheets (D-0879)
 
     @model_validator(mode="after")
-    def _include_with_json_values(self) -> "ResultsQuery":
+    def _options_fit_the_format(self) -> "ResultsQuery":
         if self.include is not None and self.format != "json_values":
             raise ValueError("`include` is accepted only with format=json_values")
+        if self.csv_safe and self.format != "csv_records":
+            raise ValueError("`csv_safe` is accepted only with format=csv_records")
         return self
 
 
@@ -354,7 +357,7 @@ async def job_results(
     if query.format == "json":
         return page
     schema = await registry.get_by_id(conn, job.schema_id)
-    content = export_records(query.format, schema, [_content(record) for record in page.items])
+    content = export_records(query.format, schema, [_content(record) for record in page.items], csv_safe=query.csv_safe)
     return ExportPage(format=query.format, content=content, next_cursor=page.next_cursor)
 
 

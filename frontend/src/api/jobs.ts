@@ -216,6 +216,8 @@ export async function exportJobPage(
     format,
     limit: EXPORT_LIMIT,
     ...(cursor === null ? {} : { cursor }),
+    // An export is saved as a file for spreadsheets: quote formula-like cells (OWASP CSV Injection, D-0879).
+    ...(format === "csv_records" ? { csv_safe: true } : {}),
   };
   const result = await apiResult(() => results(client, id, query), "Exporting the job's records");
   if (result.kind === "failed") return result;

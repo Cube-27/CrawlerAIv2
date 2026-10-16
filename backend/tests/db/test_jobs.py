@@ -621,6 +621,31 @@ async def test_results_are_served_as_records_or_as_an_export(client: httpx.Async
     }
 
 
+async def test_a_csv_safe_export_quotes_formula_cells_and_the_default_keeps_them(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+    await world.record(job_id, {"title": "=SUM(1)"}, {"title": meta("published"), "colour": meta("missing")})
+
+    plain = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records"})
+    safe = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records", "csv_safe": "true"})
+
+    header = "colour,title,_status_colour,_status_title\r\n"
+    assert plain.json()["content"] == header + ",=SUM(1),missing,published\r\n"
+    assert safe.json()["content"] == header + ",'=SUM(1),missing,published\r\n"
+
+
+async def test_csv_safe_is_refused_without_csv_records(client: httpx.AsyncClient, world: World) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+
+    responses = [
+        await client.get(f"/v1/jobs/{job_id}/results", params={"csv_safe": "true"}),
+        await client.get(f"/v1/jobs/{job_id}/results", params={"format": "markdown", "csv_safe": "true"}),
+    ]
+
+    assert [(r.status_code, r.json()["type"]) for r in responses] == [(422, "validation")] * 2
+
+
 async def test_page_outputs_are_served_with_each_tasks_last_error(client: httpx.AsyncClient, world: World) -> None:
     job_id = await world.job(status="completed")
     await world.tasks(job_id, [("failed", "failed")], last_error="budget_exhausted")
