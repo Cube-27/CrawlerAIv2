@@ -57,7 +57,6 @@ class Vocabulary:
     sub-properties, transitively (`narrower`)."""
 
     supertypes: Mapping[str, frozenset[str]]
-    identifiers: frozenset[str] = frozenset()
     narrower: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
     @classmethod
@@ -82,16 +81,18 @@ class Vocabulary:
                 parents[name] = frozenset(_schema_names(node.get(_SUB_CLASS_OF)))
             elif (name := _term_name(node, _RDF_PROPERTY)) is not None:
                 broader[name] = frozenset(_schema_names(node.get(_SUB_PROPERTY_OF)))
-        identifiers = frozenset(name for name in broader if _IDENTIFIER in _ancestors(name, broader))
         narrower: dict[str, set[str]] = {}
         for name in broader:
             for ancestor in _ancestors(name, broader) - {name}:
                 narrower.setdefault(ancestor, set()).add(name)
         return cls(
             {name: _ancestors(name, parents) for name in parents},
-            identifiers,
             {name: frozenset(names) for name, names in narrower.items()},
         )
+
+    @property
+    def identifiers(self) -> frozenset[str]:
+        return self.sub_properties(_IDENTIFIER) | {_IDENTIFIER}
 
     def __contains__(self, type_: object) -> bool:
         return type_ in self.supertypes
