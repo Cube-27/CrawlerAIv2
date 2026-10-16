@@ -45,7 +45,7 @@ def _errors(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
 
 
 def test_a_reset_while_a_proactor_transport_closes_is_not_an_error(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.DEBUG, logger=event_loop.log.name)
     close = vars(proactor_events._ProactorBasePipeTransport)["_call_connection_lost"]
 
     _run_callback(close, _closing_transport(), None)
