@@ -146,3 +146,14 @@ def test_two_blocks_of_one_sku_that_disagree_on_the_offer_are_a_conflict() -> No
         "price": ("conflict", "offers_disagree", None),
         "availability": ("conflict", "offers_disagree", None),
     }
+
+
+def test_og_image_selects_one_image_of_a_json_ld_gallery() -> None:
+    gallery = [f"https://cdn.example.test/w1-{side}.jpg" for side in ("front", "back", "side")]
+    product = _product(url=PAGE_URL, name="Widget One", image=gallery)
+
+    named = _extract(_jsonld(product) + _og(("og:image", gallery[1])))
+    unnamed = _extract(_jsonld(product) + _og(("og:image", "https://cdn.example.test/w1-crop.jpg")))
+
+    assert _outcomes(named, "image_url") == {"image_url": ("published", None, gallery[1])}
+    assert _outcomes(unnamed, "image_url") == {"image_url": ("conflict", "disagree", None)}
