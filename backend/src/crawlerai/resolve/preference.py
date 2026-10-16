@@ -13,7 +13,7 @@ Evidence buckets, confidence and τ are the next stage's (`resolve.evidence`); t
 """
 
 import json
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
@@ -28,7 +28,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
-from crawlerai.normalize.dispatch import equal, resource_key
+from crawlerai.normalize.dispatch import equal, equality_key, resource_key
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.ownership import OFFER, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -210,7 +210,7 @@ class Resolver:
     def _offer_split(self, spec: FieldSpec, kept: list[Candidate], anchor: str) -> str | None:
         """§4.8: several Offers publish a field only when all agree, and only from the anchor Offer."""
         offered = [c for c in kept if self._offer_of(c) is not None]
-        if any(a.entity_id != b.entity_id and not _equal(a, b, spec) for a, b in combinations(offered, 2)):
+        if _offers_disagree(offered, spec):
             return "offers_disagree"
         if all(c.entity_id != anchor for c in kept):
             return "offer_split"
@@ -306,8 +306,28 @@ def rule_type(spec: FieldSpec) -> FieldType:
 
 
 def _all_agree(candidates: Sequence[Candidate], spec: FieldSpec) -> bool:
+    keys = _equality_keys(candidates, spec)
+    if keys is not None:
+        return len(set(keys)) <= 1
     # Every pair: the location type's equality is not transitive (SPEC-04 §4.5).
     return all(_equal(a, b, spec) for a, b in combinations(candidates, 2))
+
+
+def _offers_disagree(offered: Sequence[Candidate], spec: FieldSpec) -> bool:
+    """Whether candidates of two different Offers differ. With an equivalence, that is two distinct values while more
+    than one Offer states any: a candidate of another Offer than two different values' differs from one of them."""
+    keys = _equality_keys(offered, spec)
+    if keys is not None:
+        return len(set(keys)) > 1 and len({c.entity_id for c in offered}) > 1
+    return any(a.entity_id != b.entity_id and not _equal(a, b, spec) for a, b in combinations(offered, 2))
+
+
+def _equality_keys(candidates: Sequence[Candidate], spec: FieldSpec) -> list[Hashable] | None:
+    """The candidates' equality keys (`equality_key`: equal keys exactly when the values are equal), so that agreement
+    is one pass over them; `None` when a value has none and pairs must be compared."""
+    keys = [equality_key(_value(c), spec) for c in candidates]
+    keyed = [key for key in keys if key is not None]
+    return keyed if len(keyed) == len(keys) else None
 
 
 def _equal(a: Candidate, b: Candidate, spec: FieldSpec) -> bool:

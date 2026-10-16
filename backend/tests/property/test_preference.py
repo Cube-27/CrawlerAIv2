@@ -157,3 +157,22 @@ def test_only_a_missing_field_is_derived(preference: Preference, canonical: str 
         assert result.derived_by == ("final_url" if canonical is None else "canonical_link")
     else:
         assert result == preference
+
+
+@given(st.lists(st.tuples(st.sampled_from(range(len(OFFERS))), _PRICES), min_size=1, max_size=8))
+def test_offers_split_exactly_when_two_offers_state_different_values(stated: list[tuple[int, dict[str, str]]]) -> None:
+    candidates = [_candidate("price", price, OFFERS[i].id, "jsonld", n) for n, (i, price) in enumerate(stated)]
+
+    result = _resolver().prefer(_schema(price=PRICE), candidates)["price"]
+
+    # §4.8 and INV-14, compared pair by pair: the rule the grouped comparison must give.
+    pairs = [(a, b) for a in stated for b in stated]
+    if any(a[0] != b[0] and a[1] != b[1] for a, b in pairs):
+        assert isinstance(result, Unpublished)
+        assert (result.status, result.reason) == ("conflict", "offers_disagree")
+    elif len({tuple(price.items()) for _, price in stated}) > 1:
+        assert isinstance(result, Unpublished)
+        assert (result.status, result.reason) == ("conflict", "disagree")
+    else:
+        assert isinstance(result, Chosen)
+        assert result.candidate.normalized == Ok(dict(stated[0][1]))

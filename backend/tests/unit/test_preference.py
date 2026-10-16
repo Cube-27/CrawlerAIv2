@@ -2,6 +2,7 @@
 publishes, and why every other one does not."""
 
 import json
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -483,3 +484,35 @@ def test_a_precedence_file_that_is_wrong_is_refused(tmp_path: Path, text: str, m
 
     with pytest.raises(ValueError, match=message):
         load_precedence(path)
+
+
+def test_thousands_of_agreeing_candidates_resolve_without_comparing_every_pair() -> None:
+    # 6,000 equal prices over 80 Offers: about 18 million pairs if each were compared with each.
+    offers = [
+        Entity(id=f"jsonld:0:$['offers'][{i}]", types=("Offer",), urls=(), parent="jsonld:0:$", via="offers")
+        for i in range(80)
+    ]
+    product = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None)
+    price: JsonValue = {"amount": "10.00", "currency": "USD"}
+    candidates = [
+        Candidate(
+            field="price",
+            entity_id=offers[n % len(offers)].id,
+            source_kind="jsonld",
+            raw=price,
+            normalized=Ok(price),
+            locator=f"{offers[n % len(offers)].id}['price'][{n}]",
+            independent=True,
+        )
+        for n in range(6000)
+    ]
+    resolver = Resolver(EntityGraph.of((product, *offers), VOCABULARY), product, PageFacts.of(PAGE_URL, bool), ORDERS)
+    spec = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
+
+    started = time.perf_counter()
+    result = resolver.prefer_fields({"price": spec}, candidates)["price"]
+    elapsed = time.perf_counter() - started
+
+    assert isinstance(result, Chosen)
+    assert result.candidate.normalized == Ok(price)
+    assert elapsed < 5.0
