@@ -58,11 +58,9 @@ export function ScrapeOptions({
           onChange({ ...options, timeoutS });
         }}
       />
-      {/* SPEC-07 §4.4: a scrape's `budget.llm_calls` defaults to 10. */}
       <LlmCallsRow
         value={options.llmCalls}
-        whenEmpty="10"
-        help="The most LLM calls this scrape may make. Empty: 10, the server default."
+        help="The most LLM calls this scrape may make. Empty: the project's limit in Settings."
         onChange={(llmCalls) => {
           onChange({ ...options, llmCalls });
         }}

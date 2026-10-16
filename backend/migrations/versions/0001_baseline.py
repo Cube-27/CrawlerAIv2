@@ -70,6 +70,8 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("llm_call_cap", sa.Integer(), nullable=True),
+        sa.CheckConstraint("llm_call_cap >= 0", name=op.f("ck_project_llm_call_cap_non_negative")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_project")),
         sa.UniqueConstraint("name", name=op.f("uq_project_name")),
     )

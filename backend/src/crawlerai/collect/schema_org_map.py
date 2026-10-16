@@ -194,11 +194,6 @@ class Node(Protocol):
 
     def values(self, prop: str) -> Sequence[Value]: ...
 
-    def every_value(self, prop: str) -> Sequence[Value]:
-        """The values a list field reads: `values`, unless the source states one of them as the main value and lists
-        all of them elsewhere (an adapter's `Shape.every`)."""
-        ...
-
 
 @dataclass(frozen=True, slots=True)
 class Selected:
@@ -232,7 +227,7 @@ def select(node: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
 
 
 def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
-    values = holder.every_value(path.steps[-1]) if as_list else holder.values(path.steps[-1])
+    values = holder.values(path.steps[-1])
     if not values:
         return []
     if as_list:

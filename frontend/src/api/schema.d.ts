@@ -418,6 +418,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/project/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Settings
+         * @description The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no
+         *     `budget.llm_calls`; null bounds none.
+         */
+        get: operations["get_project_settings_v1_project_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Project Settings
+         * @description Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call.
+         */
+        patch: operations["patch_project_settings_v1_project_settings_patch"];
+        trace?: never;
+    };
     "/v1/records": {
         parameters: {
             query?: never;
@@ -722,8 +747,8 @@ export interface components {
          *     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
          *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
          *     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
-         *     `budget.llm_calls` bounds the job's calls, and without a `budget` they are not bounded, as a crawl's are not
-         *     (D-1006). `webhook_url` is called when the job ends (§4.2).
+         *     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
+         *     kind (D-1006, D-1121). `webhook_url` is called when the job ends (§4.2).
          */
         BatchScrapeRequest: {
             budget?: components["schemas"]["Budget"] | null;
@@ -755,12 +780,13 @@ export interface components {
              */
             job_id: string;
         };
-        /** Budget */
+        /**
+         * Budget
+         * @description A request's own bound on its job's LLM calls. A request without one takes the project's `llm_call_cap`, and a
+         *     project without a cap bounds none (owner, 2026-10-16; `db.usage.budget_remaining`).
+         */
         Budget: {
-            /**
-             * Llm Calls
-             * @default 10
-             */
+            /** Llm Calls */
             llm_calls: number;
         };
         /** CaptureRequest */
@@ -1132,16 +1158,12 @@ export interface components {
          * ExtractRequest
          * @description The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
          *     inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
-         *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` bounds a prompt's draft. The `fetch` and
-         *     `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job ends (§4.2).
+         *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
+         *     draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job
+         *     ends (§4.2).
          */
         ExtractRequest: {
-            /**
-             * @default {
-             *       "llm_calls": 10
-             *     }
-             */
-            budget: components["schemas"]["Budget"];
+            budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
              *       "method_hint": "auto",
@@ -2167,6 +2189,14 @@ export interface components {
             type: string;
         };
         /**
+         * ProjectSettings
+         * @description `llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.
+         */
+        ProjectSettings: {
+            /** Llm Call Cap */
+            llm_call_cap: number | null;
+        };
+        /**
          * Proof
          * @description How the recipe was accepted: the held-out captures it reproduced (§4.7), the headers replay tried (§4.6) and
          *     what bound it.
@@ -2453,17 +2483,12 @@ export interface components {
         /**
          * ScrapeRequest
          * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
-         *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft;
-         *     `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched within that
-         *     many seconds.
+         *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
+         *     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
+         *     within that many seconds.
          */
         ScrapeRequest: {
-            /**
-             * @default {
-             *       "llm_calls": 10
-             *     }
-             */
-            budget: components["schemas"]["Budget"];
+            budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
              *       "method_hint": "auto",
@@ -4190,6 +4215,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MapResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_project_settings_v1_project_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    patch_project_settings_v1_project_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettings"];
                 };
             };
             /** @description Unauthorized */

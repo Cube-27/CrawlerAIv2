@@ -1,6 +1,6 @@
 """An adapter's requests go as politely as a page's (SPEC-15 §4.6, §4.8): only where the endpoint host's robots.txt
 allows them, at that host's rate, the first one on the turn the caller was admitted for; and the processes that
-fetch run the adapters `CRAWLERAI_ADAPTERS` names.
+fetch run every adapter `CRAWLERAI_DISABLED_ADAPTERS` does not name.
 
 Hosts are synthetic (`example.test`, C3); nothing goes to the network.
 """
@@ -183,22 +183,20 @@ def test_there_is_no_adapter_send_without_the_json_rung(tmp_path: Path) -> None:
     assert adapter_send(fetching, PAGE_HOST, _allowed) is None
 
 
-def test_the_adapters_setting_names_the_ones_that_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CRAWLERAI_ADAPTERS", "shopify, lever")
-    registry = adapter_registry(AcquireSettings().adapters)
-    shop_page = registry.detect(f"https://{PAGE_HOST}/products/widget")
+def test_every_adapter_runs_unless_the_setting_disables_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    every = adapter_registry(AcquireSettings().disabled_adapters)
+    monkeypatch.setenv("CRAWLERAI_DISABLED_ADAPTERS", "greenhouse")
+    some = adapter_registry(AcquireSettings().disabled_adapters)
+    board = f"https://{GREENHOUSE_BOARD}/example-tenant"
+    shop_listing = f"https://{PAGE_HOST}/collections/widgets"
 
-    assert (shop_page is not None and shop_page.name) == "shopify"
-    assert registry.detect(f"https://{GREENHOUSE_BOARD}/example-tenant") is None  # greenhouse is not listed
-
-
-def test_no_adapter_runs_by_default() -> None:
-    assert AcquireSettings().adapters == ()
+    assert [getattr(every.detect(url), "name", None) for url in (board, shop_listing)] == ["greenhouse", "shopify"]
+    assert [getattr(some.detect(url), "name", None) for url in (board, shop_listing)] == [None, "shopify"]
 
 
 def test_an_unknown_or_repeated_adapter_name_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="no adapter named"):
         adapter_registry(("shopify", "elsewhere"))
-    monkeypatch.setenv("CRAWLERAI_ADAPTERS", "shopify,shopify")
+    monkeypatch.setenv("CRAWLERAI_DISABLED_ADAPTERS", "shopify,shopify")
     with pytest.raises(ValueError, match="listed twice"):
         AcquireSettings()

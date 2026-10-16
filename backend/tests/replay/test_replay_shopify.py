@@ -1,5 +1,4 @@
-"""Storefront API answers replayed through `extract_page` (SPEC-15 §4.5, §7): a product page's answer publishes the
-product, its variants as rows and the offer fields every variant agrees on; a collection page's answer publishes one
+"""Storefront API answers replayed through `extract_page` (SPEC-15 §4.5, §7): a collection page's answer publishes one
 row per product, with a price only where its range is one price.
 
 The answers are synthetic, written to the documented shapes (`example.test` hosts, invented products, C3, C9).
@@ -44,7 +43,7 @@ def _preset(name: str) -> SchemaDef:
     return SchemaDef(**preset.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
 
 
-DETAIL, LISTING = _preset("commerce_detail"), _preset("commerce_listing")
+LISTING = _preset("commerce_listing")
 
 
 def _extract(page_url: str, answer: JsonValue, schema: SchemaDef) -> ExtractionResult:
@@ -72,97 +71,12 @@ def _money(amount: str) -> dict[str, JsonValue]:
     return {"amount": amount, "currencyCode": "EUR"}
 
 
-def _variant(n: int, price: str, *, title: str | None = None, for_sale: bool = True) -> dict[str, JsonValue]:
-    return {
-        "id": f"gid://shopify/ProductVariant/{n}",
-        "title": title or f"Size {n}",
-        "sku": f"W-{n}",
-        "barcode": None,
-        "availableForSale": for_sale,
-        "currentlyNotInStock": False,
-        "price": _money(price),
-    }
-
-
 def _shop(*currencies: str) -> dict[str, JsonValue]:
     return {"paymentSettings": {"enabledPresentmentCurrencies": list(currencies)}}
 
 
-def _product(*variants: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    return {
-        "data": {
-            "shop": _shop("EUR"),
-            "product": {
-                "id": "gid://shopify/Product/1",
-                "title": "Synthetic Widget",
-                "description": "A widget for tests.",
-                "vendor": "Synthetic Works",
-                "onlineStoreUrl": f"{SHOP}/products/widget",
-                "featuredImage": {"url": f"{SHOP}/img/1.png"},
-                "images": {"nodes": [{"url": f"{SHOP}/img/{n}.png"} for n in (1, 2, 3)]},
-                "variants": {"nodes": list(variants)},
-            },
-        }
-    }
-
-
 def _published(fields: FieldSet) -> dict[str, JsonValue]:
     return {name: outcome.value for name, outcome in fields.items() if outcome.status == "published"}
-
-
-def test_a_product_whose_variants_agree_publishes_the_page_and_one_row_per_variant() -> None:
-    result = _extract(f"{SHOP}/products/widget", _product(*(_variant(n, "19.90") for n in (1, 2, 3))), DETAIL)
-
-    assert result.entity is not None
-    published = _published(result.entity)
-    assert {k: v for k, v in published.items() if k != "variants"} == {
-        "title": "Synthetic Widget",
-        "price": {"amount": "19.90", "currency": "EUR"},
-        "availability": "InStock",
-        "url": f"{SHOP}/products/widget",
-        "image_url": f"{SHOP}/img/1.png",
-        "additional_images": [f"{SHOP}/img/{n}.png" for n in (1, 2, 3)],
-        "description": "A widget for tests.",
-        "brand": "Synthetic Works",
-        "product_id": {"scheme": "custom", "value": "gid://shopify/Product/1"},
-    }
-    assert published["variants"] == [
-        {
-            "variant_id": {"scheme": "custom", "value": f"gid://shopify/ProductVariant/{n}"},
-            "sku": {"scheme": "sku", "value": f"W-{n}"},
-            "price": {"amount": "19.90", "currency": "EUR"},
-            "availability": "InStock",
-            "name": f"Size {n}",
-        }
-        for n in (1, 2, 3)
-    ]
-    assert {outcome.evidence for outcome in result.entity.values() if outcome.status == "published"} == {"adapter"}
-
-
-def test_variants_that_disagree_keep_their_prices_in_their_rows_and_publish_no_page_price() -> None:
-    answer = _product(_variant(1, "19.90"), _variant(2, "24.90", for_sale=False))
-
-    result = _extract(f"{SHOP}/products/widget", answer, DETAIL)
-
-    assert result.entity is not None
-    assert (result.entity["price"].status, result.entity["availability"].status) == ("conflict", "conflict")
-    rows = result.entity["variants"].value
-    assert isinstance(rows, list)
-    assert [(row["price"], row["availability"]) for row in rows if isinstance(row, dict)] == [
-        ({"amount": "19.90", "currency": "EUR"}, "InStock"),
-        ({"amount": "24.90", "currency": "EUR"}, "OutOfStock"),
-    ]
-
-
-def test_the_one_variant_of_a_product_without_options_has_no_name() -> None:
-    result = _extract(f"{SHOP}/products/widget", _product(_variant(1, "5.00", title="Default Title")), DETAIL)
-
-    assert result.entity is not None
-    published = _published(result.entity)
-    assert published["sku"] == {"scheme": "sku", "value": "W-1"}  # every variant agrees: variant fill
-    rows = published["variants"]
-    assert isinstance(rows, list)
-    assert [sorted(row) for row in rows if isinstance(row, dict)] == [["availability", "price", "sku", "variant_id"]]
 
 
 def _collection(prices: list[tuple[str, str]], currencies: tuple[str, ...] = ("EUR",)) -> dict[str, JsonValue]:
@@ -207,20 +121,4 @@ def test_a_shop_that_may_show_another_currency_lists_its_products_without_prices
 
     assert [_published(row) for row in result.rows] == [
         {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"} for n in (0, 1)
-    ]
-
-
-def test_a_variant_barcode_is_its_gtin_only_with_a_valid_gs1_check_digit() -> None:
-    # A barcode is "ISBN, UPC, or GTIN" or any text the shop types; the gtin normalizer declines a wrong check digit.
-    valid, wrong = "4006381333931", "4006381333932"
-    answer = _product(_variant(1, "5.00") | {"barcode": valid}, _variant(2, "5.00") | {"barcode": wrong})
-
-    result = _extract(f"{SHOP}/products/widget", answer, DETAIL)
-
-    assert result.entity is not None
-    rows = result.entity["variants"].value
-    assert isinstance(rows, list)
-    assert [(row["sku"], row.get("gtin")) for row in rows if isinstance(row, dict)] == [
-        ({"scheme": "sku", "value": "W-1"}, {"scheme": "gtin", "value": valid}),
-        ({"scheme": "sku", "value": "W-2"}, None),
     ]

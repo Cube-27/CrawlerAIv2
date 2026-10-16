@@ -146,10 +146,14 @@ def version_positive() -> CheckConstraint:
 
 class Project(Base):
     __tablename__ = "project"
+    __table_args__ = (CheckConstraint("llm_call_cap >= 0", name="llm_call_cap_non_negative"),)
 
     id: Mapped[ProjectId] = mapped_column(primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = created_at_column()
+    # The most LLM calls a job of the project may make when its request sets no `budget.llm_calls`; NULL: no cap
+    # (owner, 2026-10-16).
+    llm_call_cap: Mapped[int | None] = mapped_column(Integer)
 
 
 class ApiKey(Base):

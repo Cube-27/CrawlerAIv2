@@ -58,9 +58,9 @@ class AcquireSettings(_Base):
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
     # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url}` (SPEC-02 §3, OPEN_QUESTIONS #10).
     proxy_pools: dict[str, Annotated[ProxyEndpoint, BeforeValidator(ProxyEndpoint.parse)]] = Field(default_factory=dict)
-    # `CRAWLERAI_ADAPTERS`, comma-separated: the platform adapters that run (SPEC-15 §4.8). An adapter is listed only
-    # once it was measured on at least three tenants not used to build it (C6); none by default.
-    adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
+    # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (SPEC-15 §4.8). Every
+    # registered adapter runs unless named here (owner, 2026-10-16).
+    disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
 
 
 class ApiSettings(_Base):

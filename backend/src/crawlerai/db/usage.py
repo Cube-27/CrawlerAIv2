@@ -12,7 +12,7 @@ from typing import Any, Final, Literal
 from sqlalchemy import BigInteger, ColumnElement, cast, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Job, JobId, UrlTask, UsageEvent, UsageResource
+from crawlerai.db.models import Job, JobId, Project, UrlTask, UsageEvent, UsageResource
 
 # `job.request.budget` keys (SPEC-01 §4.6). `pages` is counted from the job's tasks, not from usage events.
 BudgetResource = Literal["llm_calls", "browser_seconds", "pages"]
@@ -56,8 +56,13 @@ def _used(resource: str) -> ColumnElement[int]:
 
 
 async def budget_remaining(conn: AsyncConnection, job_id: JobId, resource: BudgetResource) -> int | None:
-    """What the job may still use of `resource`, never below 0; `None` when its request sets no budget for it."""
-    limit = cast(Job.request["budget"][resource].astext, BigInteger)
+    """What the job may still use of `resource`, never below 0; `None` when its request sets no budget for it. A job
+    whose request sets no `llm_calls` budget takes its project's `llm_call_cap`, as it stands when asked; a project
+    without one leaves the job's LLM calls unbounded (owner, 2026-10-16)."""
+    limit: ColumnElement[int] = cast(Job.request["budget"][resource].astext, BigInteger)
+    if resource == "llm_calls":
+        cap = select(Project.llm_call_cap).where(Project.id == Job.project_id).scalar_subquery()
+        limit = func.coalesce(limit, cast(cap, BigInteger))
     used: ColumnElement[int]
     if resource == "pages":
         # A page is used once its task has ended, whether it extracted or failed; cancelled tasks never ran.

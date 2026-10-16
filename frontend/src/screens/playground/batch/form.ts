@@ -36,7 +36,7 @@ export interface BatchOptions {
   /** Empty: no webhook. */
   webhookUrl: string;
   methodHint: MethodHint;
-  /** `budget.llm_calls`; NaN (empty) leaves `budget` out: no limit (D-1006). */
+  /** `budget.llm_calls`; NaN (empty) leaves `budget` out: the project's limit, or none (D-1121). */
   llmCalls: number;
 }
 

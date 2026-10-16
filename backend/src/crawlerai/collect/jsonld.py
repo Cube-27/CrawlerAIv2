@@ -119,9 +119,6 @@ class _Node:
     def node_id(self) -> str | None:
         return self.graph.resolve_id(self.found.data.get("@id"))
 
-    def every_value(self, prop: str) -> Sequence[Value]:
-        return self.values(prop)
-
     def values(self, prop: str) -> Sequence[Value]:
         values: list[Value] = []
         for key in _keys(prop, in_schema=self.found.in_schema):

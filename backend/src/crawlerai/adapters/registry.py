@@ -1,7 +1,7 @@
 """Which adapter, if any, serves a URL or reads a capture (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.7).
 
-An adapter ships inactive until the eval report shows it measured on ≥ 3 tenants not used to build it (C6, D-0011),
-so the registry answers only for the adapters named active.
+Every registered adapter is active unless the deployment disables it (`CRAWLERAI_DISABLED_ADAPTERS`, owner 2026-10-16);
+the registry answers only for the active ones.
 
 A platform on tenants' own hosts (SPEC-15) can only tell a host is not its own from the host's answer. A host that
 answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a
@@ -57,17 +57,24 @@ class Registry:
                 return adapter, match
         return None
 
+    def would_serve(self, url: str) -> bool:
+        """Whether `serve` would ask an adapter for `url`: an active one detects it and has not declined its host."""
+        return self._serving(url) is not None
+
     async def serve(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult | None:
         """The answer of the active adapter that detects `url` and has not declined its host, requested with `send`;
         None when there is none."""
-        host = urlsplit(url).hostname or ""
-        adapter = next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
+        adapter = self._serving(url)
         if adapter is None:
             return None
         result = await adapter.fetch(url, policy, send)
         if result.attempts[-1].error == NOT_PLATFORM:
-            self._decline(adapter, host)
+            self._decline(adapter, urlsplit(url).hostname or "")
         return result
+
+    def _serving(self, url: str) -> Adapter | None:
+        host = urlsplit(url).hostname or ""
+        return next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
 
     def _is_declined(self, adapter: Adapter, host: str) -> bool:
         until = self._declined.get((adapter.name, host))

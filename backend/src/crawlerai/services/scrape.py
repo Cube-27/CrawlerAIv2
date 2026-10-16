@@ -104,14 +104,17 @@ _CLAIMANT: Final = f"api:{socket.gethostname()}:{os.getpid()}"
 
 
 class Budget(Input):
-    llm_calls: NonNegativeInt = 10
+    """A request's own bound on its job's LLM calls. A request without one takes the project's `llm_call_cap`, and a
+    project without a cap bounds none (owner, 2026-10-16; `db.usage.budget_remaining`)."""
+
+    llm_calls: NonNegativeInt
 
 
 class ScrapeRequest(Input):
     """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
-    must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft;
-    `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched within that
-    many seconds."""
+    must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
+    its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
+    within that many seconds."""
 
     url: str
     formats: list[PageFormat] = Field(min_length=1)
@@ -121,7 +124,7 @@ class ScrapeRequest(Input):
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
     timeout_s: float = Field(default=60, gt=0, le=MAX_TIMEOUT_S)
-    budget: Budget = Budget()
+    budget: Budget | None = None
 
     @field_validator("url")
     @classmethod

@@ -8,7 +8,7 @@ appear only in this package (C3). Nothing here interprets values: the adapter co
 """
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final, Protocol
 
@@ -31,28 +31,20 @@ NOT_PLATFORM: Final = "not_platform"
 NOT_SERVED: Final = "not_served"
 
 Members = tuple[str, ...]  # member names from a JSON object to a value; `ALL` takes every item of an array
-# A value the platform states in a documented form other than schema.org's, read from a node's JSON object: the
-# schema.org value and the members it comes from, or None when the object states none.
-Stated = Callable[[Mapping[str, JsonValue]], tuple[JsonValue, Members] | None]
 
 
 @dataclass(frozen=True)
 class Shape:
     """A schema.org node the API's JSON holds (SPEC-15 §4.4): its type; `at`, the members from the enclosing node's
     object (the document, for a root) to this node's object; `properties`, the members from that object to each
-    schema.org property's values; `nodes`, the shapes of the nodes each property's values are; `stated`, values the
-    platform states in a form of its own; `anchor`, the members that name a node sharing its enclosing node's
-    object (`at=()`), so that it is an entity of its own; and `every`, for a property whose `properties` members hold
-    the one value the platform states as its main one, the members holding all its values in the platform's order: a
-    list field reads these, any other field the main value."""
+    schema.org property's values; `nodes`, the shapes of the nodes each property's values are; and `anchor`, the
+    members that name a node sharing its enclosing node's object (`at=()`), so that it is an entity of its own."""
 
     type: str
     at: Members = ()
     properties: Mapping[str, Members] = field(default_factory=dict)
     nodes: Mapping[str, tuple["Shape", ...]] = field(default_factory=dict)
-    stated: Mapping[str, Stated] = field(default_factory=dict)
     anchor: Members = ()
-    every: Mapping[str, Members] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

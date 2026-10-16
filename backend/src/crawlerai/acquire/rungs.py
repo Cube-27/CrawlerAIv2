@@ -2,17 +2,20 @@
 worked remembered in `site.fetch_method`.
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
-adapter does not serve it (SPEC-15 §4.6). A site whose active config has an API recipe is served by the recipe's rung
-(SPEC-09 §4.8), which the caller binds to the recipe: the config IR sits above `acquire` (`.importlinter`). The browser
-rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and
-records only. The one exception is the HTTP rung's conditional form, which also takes the validators a page last
-answered with (SPEC-11 §4.2).
+adapter does not serve it (SPEC-15 §4.6). A page whose own canonical link is its URL without the query, which an
+adapter detects, is then served by that adapter (SPEC-15 §4.2). A site whose active config has an API recipe is
+served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the config IR sits above `acquire`
+(`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of
+(url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's conditional form, which
+also takes the validators a page last answered with (SPEC-11 §4.2).
 """
 
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from typing import Protocol
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from selectolax.lexbor import LexborHTMLParser
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -28,8 +31,11 @@ from crawlerai.acquire.types import (
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.db.models import FetchMethod, Site, SiteId
+from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
+# A fetch so far: the outcome kept, every attempt and their duration.
+Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
 
 
 class ConditionalRung(Protocol):
@@ -54,10 +60,15 @@ class Rungs:
     json: JsonFetcher | None = None
 
 
-def adapter_registry(active: Collection[str]) -> Registry:
-    """The registry of every platform adapter with `active` running (SPEC-15 §4.8), for the processes that fetch; it
-    raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters declined."""
-    return Registry(platform_adapters(), active)
+def adapter_registry(disabled: Collection[str]) -> Registry:
+    """The registry of every platform adapter, all running but the `disabled` ones (SPEC-15 §4.8), for the processes
+    that fetch; it raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters
+    declined."""
+    adapters = platform_adapters()
+    names = {adapter.name for adapter in adapters}
+    if unknown := sorted(set(disabled) - names):
+        raise ValueError(f"no adapter named {unknown}")
+    return Registry(adapters, names - set(disabled))
 
 
 async def acquire(
@@ -80,7 +91,9 @@ async def acquire(
     it is `ok`. Each request after the first (the page after an adapter or a recipe, the browser retry) waits for
     `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and is not sent when `admit_next` refuses it: the fetch
     keeps the outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with the
-    HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
+    HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no adapter detected whose canonical link
+    is its URL without the query, which an adapter detects, is fetched again by that adapter on its own turn
+    (SPEC-15 §4.2)."""
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
     # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
     # rate, which `admit_next` waits out (SPEC-15 §4.9). A recipe's may be the page's own (its HTML page request).
@@ -93,8 +106,72 @@ async def acquire(
         return served
     kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next)
     if served is not None:
-        attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms
+        return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
+    if send is not None:
+        kept, attempts, duration_ms = await _by_canonical(
+            url, (kept, attempts, duration_ms), policy, rungs, send, admit_next
+        )
     return with_attempts(kept, attempts, duration_ms)
+
+
+async def _by_canonical(
+    url: str, page: Fetched, policy: FetchPolicy, rungs: Rungs, send: JsonFetcher, admit_next: Admit | None
+) -> Fetched:
+    """The adapter's answer for the page's canonical URL (`_query_dropped`), when there is one, it is `ok` and the
+    site's rate admits the request; else the page. Either way with every attempt."""
+    kept, attempts, duration_ms = page
+    canonical = _query_dropped(url, kept, rungs.adapters)
+    if canonical is None or not await _admitted(admit_next):
+        return page
+    served = await rungs.adapters.serve(canonical, policy, send)
+    if served is None:
+        return page
+    return (
+        (served if served.block_class == "ok" else kept),
+        attempts + served.attempts,
+        duration_ms + served.duration_ms,
+    )
+
+
+def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | None:
+    """`url` without its query, when an adapter detects that URL and the page names it as its canonical (RFC 6596; HTML
+    Standard §4.6.7.3, `link rel=canonical`): the page says the parameters it drops do not identify it. No list of
+    parameter names decides it (C4). None otherwise."""
+    parts = urlsplit(url)
+    if not parts.query or page.block_class != "ok":
+        return None
+    bare = urlunsplit(parts._replace(query="", fragment=""))
+    # A host its adapter declined is not asked again, so the request would take a turn at the site's rate for nothing.
+    if not adapters.would_serve(bare) or (canonical := _canonical_link(page)) is None:
+        return None
+    return bare if _same_resource(canonical, bare) else None
+
+
+def _canonical_link(page: FetchResult) -> str | None:
+    """The page's first `link rel=canonical`, resolved against the document's base URL (HTML Standard §2.4.1: the
+    first `base href`, else the page's URL)."""
+    tree = LexborHTMLParser(decode_body(page.bundle))
+    base = page.bundle.manifest.final_url
+    if (base_element := tree.css_first("base[href]")) is not None:
+        base = urljoin(base, base_element.attributes.get("href") or "")
+    for link in tree.css("link[rel][href]"):
+        # HTML Standard §4.6.1: `rel` is a set of space-separated, ASCII case-insensitive keywords.
+        if "canonical" in (link.attributes.get("rel") or "").lower().split():
+            return urljoin(base, link.attributes.get("href") or "")
+    return None
+
+
+def _same_resource(a: str, b: str) -> bool:
+    """Equal scheme, host (both case-insensitive, RFC 3986 §6.2.2.1), port, path and query; the fragment names a part
+    of the resource, not another one (§3.5)."""
+    x, y = urlsplit(a), urlsplit(b)
+    return (x.scheme.lower(), x.hostname, x.port, x.path, x.query) == (
+        y.scheme.lower(),
+        y.hostname,
+        y.port,
+        y.path,
+        y.query,
+    )
 
 
 async def _page(

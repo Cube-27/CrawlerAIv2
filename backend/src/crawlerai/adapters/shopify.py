@@ -1,4 +1,4 @@
-"""Shopify storefronts through the Storefront API (SPEC-15).
+"""Shopify storefront collections through the Storefront API (SPEC-15).
 
 Endpoint, verified against the platform's Storefront API documentation (shopify.dev/docs/api/storefront, 2026-10-16):
 every shop answers `POST /api/{version}/graphql.json` on its own domain, and tokenless access serves products and
@@ -6,14 +6,17 @@ collections, with a query complexity limit of 1,000. Every API response carries 
 that served it (shopify.dev/docs/api/usage/versioning); a retired version falls forward to the oldest supported one.
 
 Shops live on their own domains, so a page URL alone does not say a page is a shop's: the platform's online store
-routes (`/products/{handle}`, `/collections/{handle}`) are the candidates, and the answer's version header is the
-platform's signal. An answer without it is `NOT_PLATFORM`; one with it that holds no product or collection for the
-handle, or GraphQL `errors`, is `NOT_SERVED`. Either way the page falls back to the generic rungs (SPEC-15 §4.6).
+route for a collection (`/collections/{handle}`) is the candidate, and the answer's version header is the platform's
+signal. An answer without it is `NOT_PLATFORM`; one with it that holds no collection for the handle, or GraphQL
+`errors`, is `NOT_SERVED`. Either way the page falls back to the generic rungs (SPEC-15 §4.6).
+
+Product pages are not served (D-1118): the page states fields the API's answer lacks (its default variant's sku,
+condition, rating, review count), so a product page takes the page path, which reads them with the variants the page
+states.
 """
 
 import json
 import re
-from collections.abc import Mapping
 from dataclasses import replace
 from http import HTTPStatus
 from typing import Final
@@ -33,29 +36,12 @@ API_VERSION: Final = "2026-10"
 _ENDPOINT_PATH: Final = re.compile(r"/api/\d{4}-\d{2}/graphql\.json", re.ASCII)
 # Versioning documentation: "API responses include the X-Shopify-API-Version header".
 SIGNAL: Final = "x-shopify-api-version"
-# A handle is a product's or collection's URL name: lowercase letters, digits, hyphens and underscores in practice
+# A handle is a collection's URL name: lowercase letters, digits, hyphens and underscores in practice
 # (Liquid `handle` filter); a handle with other characters is percent-encoded in the URL and left to the generic path.
 _HANDLE: Final = re.compile(r"[\w-]+", re.ASCII)
-# GraphQL Admin API, `ProductVariantsBulkCreateStrategy`: a product without options has one standalone default
-# variant titled "Default Title"; the title names no variant.
-_DEFAULT_TITLE: Final = "Default Title"
-# schema.org ItemAvailability members, by their IRIs.
-_IN_STOCK, _BACK_ORDER, _OUT_OF_STOCK = (f"https://schema.org/{m}" for m in ("InStock", "BackOrder", "OutOfStock"))
-
-# Both queries ask for the currencies the shop presents prices in (`PaymentSettings.enabledPresentmentCurrencies`, "A
+# The query asks for the currencies the shop presents prices in (`PaymentSettings.enabledPresentmentCurrencies`, "A
 # list of enabled currencies (ISO 4217 format) that the shop accepts"): a tokenless answer prices in the shop's primary
 # market, while a page shows the market of its visitor (`_one_currency`).
-_PRODUCT_QUERY: Final = """query Product($handle: String!) {
-  shop { paymentSettings { enabledPresentmentCurrencies } }
-  product(handle: $handle) {
-    id title description vendor onlineStoreUrl
-    featuredImage { url }
-    images(first: 250) { nodes { url } }
-    variants(first: 250) {
-      nodes { id title sku barcode availableForSale currentlyNotInStock price { amount currencyCode } }
-    }
-  }
-}"""
 _COLLECTION_QUERY: Final = """query Collection($handle: String!) {
   shop { paymentSettings { enabledPresentmentCurrencies } }
   collection(handle: $handle) {
@@ -68,30 +54,6 @@ _COLLECTION_QUERY: Final = """query Collection($handle: String!) {
     }
   }
 }"""
-# The query of each page kind, and the member of the answer's `data` that holds its product or collection.
-_QUERIES: Final[dict[PageKind, tuple[str, str]]] = {
-    "detail": (_PRODUCT_QUERY, "product"),
-    "listing": (_COLLECTION_QUERY, "collection"),
-}
-
-
-def _availability(variant: Mapping[str, JsonValue]) -> tuple[JsonValue, Members] | None:
-    """The schema.org availability the variant's two documented booleans state (`ProductVariant`):
-    `availableForSale` "Indicates if the product variant is available for sale"; `currentlyNotInStock` "out of stock
-    but still available for purchase (used for backorders)", schema.org BackOrder."""
-    match variant.get("availableForSale"), variant.get("currentlyNotInStock"):
-        case False, _:
-            return _OUT_OF_STOCK, ("availableForSale",)
-        case True, True:
-            return _BACK_ORDER, ("currentlyNotInStock",)
-        case True, False:
-            return _IN_STOCK, ("availableForSale",)
-    return None
-
-
-def _variant_name(variant: Mapping[str, JsonValue]) -> tuple[JsonValue, Members] | None:
-    title = variant.get("title")
-    return None if title == _DEFAULT_TITLE else (title, ("title",))
 
 
 def _bound(at: Members) -> Shape:
@@ -99,43 +61,6 @@ def _bound(at: Members) -> Shape:
     return Shape(type="Offer", at=at, properties={"price": ("amount",), "priceCurrency": ("currencyCode",)})
 
 
-# A product is a schema.org ProductGroup ("a group of Products that vary only in certain well-described ways"). Its
-# `vendor` ("the manufacturer, wholesaler, or other vendor for the product", Help Center, "Product details") is its
-# schema.org `brand`, as in the platform's own schema.org output (Liquid `structured_data` filter: its documented
-# example states the example shop's vendor as the product's brand). Each variant is a Product under `hasVariant`,
-# whose Offer is a view of the variant anchored at its `price`. The main image is the featured image ("functionally
-# equivalent to images(first: 1)"); a list of images reads every image, in the shop's order (`images`, sorted by
-# `POSITION` by default).
-_VARIANT: Final = Shape(
-    type="Product",
-    at=("variants", "nodes", ALL),
-    properties={"sku": ("sku",), "gtin": ("barcode",), "productID": ("id",)},
-    stated={"name": _variant_name},
-    nodes={
-        "offers": (
-            Shape(
-                type="Offer",
-                properties={"price": ("price", "amount"), "priceCurrency": ("price", "currencyCode")},
-                stated={"availability": _availability},
-                anchor=("price",),
-            ),
-        )
-    },
-)
-_PRODUCT: Final = Shape(
-    type="ProductGroup",
-    at=("data", "product"),
-    properties={
-        "name": ("title",),
-        "description": ("description",),
-        "url": ("onlineStoreUrl",),
-        "productID": ("id",),
-        "image": ("featuredImage", "url"),
-        "brand": ("vendor",),
-    },
-    every={"image": ("images", "nodes", ALL, "url")},
-    nodes={"hasVariant": (_VARIANT,)},
-)
 # A collection lists its products (schema.org ItemList). A listed product's two Offers are its price range's bounds:
 # equal bounds are the one price of every variant, and different ones agree on no single price (INV-14).
 _LISTED: Final = Shape(
@@ -144,12 +69,9 @@ _LISTED: Final = Shape(
     properties={"name": ("title",), "url": ("onlineStoreUrl",), "image": ("featuredImage", "url")},
     nodes={"offers": (_bound(("priceRange", "minVariantPrice")), _bound(("priceRange", "maxVariantPrice")))},
 )
-_SHAPES: Final[dict[PageKind, tuple[Shape, ...]]] = {
-    "detail": (_PRODUCT,),
-    "listing": (Shape(type="ItemList", at=("data", "collection", "products"), nodes={"itemListElement": (_LISTED,)}),),
-}
+_LISTING: Final = Shape(type="ItemList", at=("data", "collection", "products"), nodes={"itemListElement": (_LISTED,)})
 # A listing of a shop whose page may show another currency than the answer's: its rows without their Offers (C7).
-_UNPRICED_LISTING: Final = (replace(_SHAPES["listing"][0], nodes={"itemListElement": (replace(_LISTED, nodes={}),)}),)
+_UNPRICED_LISTING: Final = replace(_LISTING, nodes={"itemListElement": (replace(_LISTED, nodes={}),)})
 
 
 class Shopify:
@@ -160,10 +82,6 @@ class Shopify:
         if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
             return None
         match parts.path.removesuffix("/").split("/"):
-            case ["", "products", handle] if _HANDLE.fullmatch(handle):
-                return AdapterMatch(tenant=parts.hostname, page_kind="detail", item=handle)
-            case ["", "collections", collection, "products", handle] if _handles(collection, handle):
-                return AdapterMatch(tenant=parts.hostname, page_kind="detail", item=handle)
             # A collection URL with a query shows a page, an order or a filter of it, which the first page of the
             # unqueried collection does not reproduce.
             case ["", "collections", handle] if _HANDLE.fullmatch(handle) and not parts.query:
@@ -179,25 +97,18 @@ class Shopify:
         match = self.detect(url)
         if match is None:
             raise ValueError("not a storefront URL this adapter detects")
-        query, member = _QUERIES[match.page_kind]
         request = JsonRequest(
             url=at_origin(url, f"/api/{API_VERSION}/graphql.json"),
             page_url=url,
             method="POST",
             headers=(("Content-Type", "application/json"),),
             # The handle goes in as a GraphQL variable, never into the query's text.
-            body=json.dumps({"query": query, "variables": {"handle": match.item}}),
+            body=json.dumps({"query": _COLLECTION_QUERY, "variables": {"handle": match.item}}),
         )
-        return _verdict(await send(request, policy), match.page_kind, member)
+        return _verdict(await send(request, policy))
 
     def shapes(self, page_kind: PageKind, answer: JsonValue, /) -> tuple[Shape, ...]:
-        if page_kind == "listing" and not _one_currency(answer):
-            return _UNPRICED_LISTING
-        return _SHAPES[page_kind]
-
-
-def _handles(*segments: str) -> bool:
-    return all(_HANDLE.fullmatch(segment) for segment in segments)
+        return (_LISTING if _one_currency(answer) else _UNPRICED_LISTING,)
 
 
 def _transient(status: int) -> bool:
@@ -220,11 +131,10 @@ def _member(value: JsonValue, name: str) -> JsonValue:
     return value.get(name) if isinstance(value, dict) else None
 
 
-def _verdict(result: FetchResult, page_kind: PageKind, member: str) -> FetchResult:
+def _verdict(result: FetchResult) -> FetchResult:
     """`result`, or why it does not serve the page. No response, a slow-down or a server error is kept as it is: it
     says nothing of the platform, and the page falls back. An answer without the platform's signal is `NOT_PLATFORM`;
-    the platform's answer holding errors or no `member` is `NOT_SERVED`, and so is a product of a shop that may show
-    the page in another currency than the answer's: a detail page is read for its price, which the page states."""
+    the platform's answer holding errors or no collection is `NOT_SERVED`."""
     manifest = result.bundle.manifest
     if manifest.status_code == 0 or _transient(manifest.status_code):
         return result
@@ -237,7 +147,6 @@ def _verdict(result: FetchResult, page_kind: PageKind, member: str) -> FetchResu
     served = (
         isinstance(answer, dict)
         and not answer.get("errors")
-        and isinstance(_member(answer.get("data"), member), dict)
-        and (page_kind == "listing" or _one_currency(answer))
+        and isinstance(_member(answer.get("data"), "collection"), dict)
     )
     return result if served else as_error(result, NOT_SERVED)
