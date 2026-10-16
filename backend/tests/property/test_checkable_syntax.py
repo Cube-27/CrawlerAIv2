@@ -1,6 +1,6 @@
 """Which field types have a syntax their normalizer checks (ARCHITECTURE §8.1, SPEC-05 §4.5): a value of such a type
 that normalizes is evidence of the type, so a visible one may be admitted from `js_state` or `xhr` with no other
-source to equal. Any string normalizes as text, so text admits by equality only."""
+source to equal. Any string normalizes as text, and as a location's stated text, so both admit by equality only."""
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -16,10 +16,13 @@ def _spec(type_: FieldType, **parameters: object) -> FieldSpec:
 
 
 @given(ANY_RAW)
-def test_text_and_objects_are_never_checkable_and_types_with_a_grammar_always_are(raw: str | int | float) -> None:
+def test_text_locations_and_objects_are_never_checkable_and_types_with_a_grammar_always_are(
+    raw: str | int | float,
+) -> None:
     opaque = (
         _spec(FieldType.TEXT),
         _spec(FieldType.LONG_TEXT),
+        _spec(FieldType.LOCATION),
         _spec(FieldType.OBJECT, fields={"amount": {"type": "money", "description": "An amount."}}),
     )
     specs = (
@@ -27,11 +30,10 @@ def test_text_and_objects_are_never_checkable_and_types_with_a_grammar_always_ar
         _spec(FieldType.ENUM, vocab="schema:ItemAvailability"),
         _spec(FieldType.DATE),
         _spec(FieldType.DATETIME),
-        _spec(FieldType.LOCATION),
         _spec(FieldType.RANGE),
     )
 
-    assert [checkable(raw, spec) for spec in opaque] == [False, False, False]
+    assert [checkable(raw, spec) for spec in opaque] == [False] * len(opaque)
     assert [checkable(raw, spec) for spec in specs] == [True] * len(specs)
 
 
