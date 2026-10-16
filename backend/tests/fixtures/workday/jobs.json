@@ -1,0 +1,26 @@
+{
+  "total": 3,
+  "jobPostings": [
+    {
+      "title": "Synthetic Data Engineer",
+      "externalPath": "/job/Northtown/Synthetic-Data-Engineer_R-0001",
+      "locationsText": "Northtown",
+      "postedOn": "Posted Today",
+      "bulletFields": ["R-0001"]
+    },
+    {
+      "title": "Example Support Analyst",
+      "externalPath": "/job/Southville/Example-Support-Analyst_R-0002",
+      "locationsText": "2 Locations",
+      "postedOn": "Posted 3 Days Ago",
+      "bulletFields": ["R-0002"]
+    },
+    {
+      "title": "Placeholder Designer",
+      "externalPath": "/job/Remote/Placeholder-Designer_R-0003",
+      "postedOn": "Posted 30+ Days Ago",
+      "bulletFields": ["R-0003"]
+    }
+  ],
+  "facets": []
+}
