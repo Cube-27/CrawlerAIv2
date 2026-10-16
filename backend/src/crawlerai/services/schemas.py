@@ -26,7 +26,7 @@ class NewSchema(SchemaContent):
 
 class SchemaConflict(Refusal):
     """The request is valid but the stored schemas don't allow it: a taken or preset name, an edit to a version that
-    is not the latest or is retired, a change to a preset."""
+    is not the latest, a change to a preset."""
 
 
 class InvalidSchema(Refusal):
@@ -94,10 +94,9 @@ async def list_all(
 
 async def update(conn: AsyncConnection, schema_id: SchemaId, content: SchemaContent) -> SchemaDef:
     """Add the version after `schema_id` with `content` as its whole document; `schema_id` must be the latest
-    version, so an edit never silently drops a version someone else added."""
+    version, so an edit never silently drops a version someone else added. A retired latest version may be edited
+    too: the name lives on in the new, active version, and the retired ones stay retired (owner, D-0395)."""
     current = await _changeable(conn, schema_id)
-    if current.status == "retired":
-        raise SchemaConflict(f"schema {current.name} version {current.version} is retired")
     changes = SchemaChanges.model_validate(content.model_dump())
     try:
         return await registry.new_version(conn, current.name, changes, "user", base_version=current.version)

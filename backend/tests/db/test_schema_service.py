@@ -57,12 +57,30 @@ async def test_update_replaces_the_whole_content(conn: AsyncConnection) -> None:
     assert second.required_groups == []
 
 
-async def test_update_of_a_retired_version_is_refused(conn: AsyncConnection) -> None:
+async def test_update_of_a_retired_latest_version_builds_an_active_one_and_the_old_stays_retired(
+    conn: AsyncConnection,
+) -> None:
     first = await schemas.create(conn, _new())
+    retired = await schemas.retire(conn, first.id)
+
+    second = await schemas.update(conn, first.id, _content(required_groups=[["title"]]))
+
+    assert (second.name, second.version, second.status, second.required_groups) == (
+        "event_detail",
+        2,
+        "active",
+        [["title"]],
+    )
+    assert await schemas.list_all(conn, name="event_detail") == [retired, second]
+
+
+async def test_update_of_a_retired_older_version_is_refused(conn: AsyncConnection) -> None:
+    first = await schemas.create(conn, _new())
+    await schemas.update(conn, first.id, _content())
     await schemas.retire(conn, first.id)
     edit = _content()
 
-    with pytest.raises(SchemaConflict, match="retired"):
+    with pytest.raises(SchemaConflict, match="the latest version is 2"):
         await schemas.update(conn, first.id, edit)
 
 
