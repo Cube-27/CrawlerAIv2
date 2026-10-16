@@ -124,7 +124,10 @@ def assert_removed(repo: Repo, result: subprocess.CompletedProcess[str]) -> None
     assert result.returncode == 0, result.stderr
     assert not repo.worktree.exists()
     assert branch_state(repo) == (False, False)
-    assert repo.docker_log.read_text().splitlines()[0].startswith("ps -a")
+    calls = repo.docker_log.read_text().splitlines()
+    assert calls[0].startswith("ps -a")
+    # The shared test Postgres (test_db.sh drop): the fake container is not running, so no database is dropped.
+    assert calls[1] == "inspect -f {{.State.Running}} crawlerai-test-pg"
 
 
 def test_merged_pr_at_the_tip_removes_worktree_and_branches(tmp_path: Path) -> None:
