@@ -67,6 +67,8 @@ def _locator(entity_id: str, kind: SourceKind, n: int) -> str:
         return f"meta:og:x{n}"
     if kind == "js_state":
         return f"js_state:/html[1]/body[1]/script[1]:$['x{n}']"
+    if kind == "dom":
+        return f"dom:/html[1]/body[1]/img[{n + 1}]"
     return f"{entity_id}['x{n}']"
 
 
@@ -239,7 +241,7 @@ def test_an_independent_lower_kind_selects_one_value_of_an_entity_s_several() ->
     [
         pytest.param(("a.jpg?w=1000", "b.jpg?w=1000"), "a.jpg?w=1200&h=630", "a.jpg?w=1000", id="another-rendition"),
         pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=2", "a.jpg?w=2", id="equal-before-rendition"),
-        pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=3", None, id="two-renditions-named"),
+        pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=3", "a.jpg?w=1", id="two-renditions-named"),
     ],
 )
 def test_a_value_naming_the_same_resource_selects_it_when_none_is_equal(
@@ -283,6 +285,75 @@ def test_several_values_stay_a_conflict_unless_one_independent_value_names_one(o
 
     assert isinstance(result["image"], Unpublished)
     assert (result["image"].status, result["image"].reason) == ("conflict", "disagree")
+
+
+def test_a_value_over_another_scheme_names_the_same_file() -> None:
+    # RFC 3986 §3.2-§3.3: `og:image` over http names the file the JSON-LD gallery states over https.
+    gallery = [_candidate("image", url, n=i) for i, url in enumerate(_GALLERY[:2])]
+    og = _candidate("image", _GALLERY[1].replace("https:", "http:"), PAGE, "og")
+
+    result = _prefer(_schema(image=IMAGE), *gallery, og)["image"]
+
+    assert isinstance(result, Chosen)
+    assert result.candidate is gallery[1]
+
+
+def test_the_first_kind_in_the_order_that_names_a_value_selects_it() -> None:
+    # og:image names the second gallery image in another rendition, and a DOM image the first one exactly: Open Graph
+    # ranks before the DOM, so its naming decides.
+    gallery = [_candidate("image", url, n=i) for i, url in enumerate(_GALLERY[:2])]
+    og = _candidate("image", f"{_GALLERY[1]}?w=1200", PAGE, "og")
+    dom = _candidate("image", _GALLERY[0], PAGE, "dom")
+    resolver = _resolver(orders={**ORDERS, FieldType.IMAGE_URL: ("jsonld", "og", "dom")})
+
+    result = resolver.prefer(_schema(image=IMAGE), [*gallery, og, dom])["image"]
+
+    assert isinstance(result, Chosen)
+    assert result.candidate is gallery[1]
+
+
+def test_renditions_of_one_image_agree() -> None:
+    # The same file in two sizes, as two merged JSON-LD blocks state it: one image, so the first publishes.
+    renditions = [_candidate("image", f"{_GALLERY[0]}?width={w}", n=w) for w in (2000, 480)]
+
+    result = _prefer(_schema(image=IMAGE), *renditions)["image"]
+
+    assert isinstance(result, Chosen)
+    assert result.candidate is renditions[0]
+
+
+@pytest.mark.parametrize(
+    ("second", "published"),
+    [
+        pytest.param(["b.jpg?w=2", "a.jpg?w=2"], 0, id="same-files"),
+        pytest.param(["a.jpg?w=2", "c.jpg?w=2"], None, id="other-files"),
+    ],
+)
+def test_lists_naming_the_same_files_agree(second: list[str], published: int | None) -> None:
+    base = "https://cdn.example.test/i/"
+    lists = [
+        _candidate("images", [base + "a.jpg?w=1", base + "b.jpg?w=1"]),
+        _candidate("images", [base + name for name in second], n=1),
+    ]
+
+    result = _prefer(_schema(images=IMAGES), *lists)["images"]
+
+    if published is None:
+        assert isinstance(result, Unpublished)
+    else:
+        assert isinstance(result, Chosen)
+        assert result.candidate is lists[published]
+
+
+def test_a_list_names_the_list_of_the_same_files() -> None:
+    base = "https://cdn.example.test/i/"
+    lists = [_candidate("images", [base + "a.jpg?w=1"]), _candidate("images", [base + "a_450x450.jpg"], n=1)]
+    og = _candidate("images", ["http://cdn.example.test/i/a.jpg"], PAGE, "og")
+
+    result = _prefer(_schema(images=IMAGES), *lists, og)["images"]
+
+    assert isinstance(result, Chosen)
+    assert result.candidate is lists[0]
 
 
 def test_a_source_kind_outside_the_order_never_wins() -> None:
