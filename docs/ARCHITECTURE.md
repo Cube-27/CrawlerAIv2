@@ -286,7 +286,7 @@ the queue, and the private eval tables: SPEC-01 and SPEC-03.
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `project` | id, name | Groups sites. |
+| `project` | id, name, llm_call_cap? | Groups sites. `llm_call_cap` bounds the LLM calls of a job whose request sets no budget; null: no cap. |
 | `api_key` | id, hashed_key, label, last_used_at | API and MCP access. |
 | `site` | id, project_id, host (exact, lowercased, unique), platform?, fetch_method (`http`, `browser`), proxy_pool?, robots_snapshot, crawl_delay_ms | `fetch_method` is remembered from evidence (§7.1). |
 | `schema_def` | id, name (unique), page_kind, fields, required_groups, origin (`preset`, `user`, `prompt_draft`), status | Edited in place (§5.2). |
@@ -314,7 +314,7 @@ record what happened.
 
 | Rung | When | Mechanism |
 |---|---|---|
-| **Adapter / API** | The site's platform has an adapter, or the active config has an `api_recipe` | Direct JSON with `httpx`. First adapters: Greenhouse and Lever (documented public APIs **[verified]**), then Shopify through its Storefront API (Appendix A #46, SPEC-15); others in the order of OPEN_QUESTIONS #2 (Appendix A #17). A page the adapter does not serve falls back to the page rungs. Adapters run only when `CRAWLERAI_ADAPTERS` names them. |
+| **Adapter / API** | The site's platform has an adapter, or the active config has an `api_recipe` | Direct JSON with `httpx`. First adapters: Greenhouse and Lever (documented public APIs **[verified]**), then Shopify through its Storefront API (Appendix A #46, SPEC-15); others in the order of OPEN_QUESTIONS #2 (Appendix A #17). A page the adapter does not serve falls back to the page rungs. Every adapter runs unless `CRAWLERAI_DISABLED_ADAPTERS` names it (Appendix A #47). |
 | **HTTP** | Default | `curl_cffi` with Chrome TLS impersonation **[verified: MIT]**. |
 | **Browser** | The HTTP result is `blocked` or `shell`, or network capture is needed (§7.2) | **Patchright headless**: the owner's tested configuration (Appendix A #20). The user agent drops `HeadlessChrome`, and client hints stay consistent with it. Network JSON bodies are captured. One navigation, bounded waits. |
 | **Proxy** | `site.proxy_pool` is set | The same rungs, through the configured pool. |
@@ -468,7 +468,9 @@ All generic; no per-site cleaning (C2).
 ### 8.6 Listings and pagination
 
 - **Cold listings.** Rows come from structured data (`ItemList`, or several top-level primary-type entities) or from
-  role C, which returns rows grounded in page text.
+  role C, which returns rows grounded in page text. A role C row whose grounded text lies in exactly one repeated item
+  block takes that block's own link as its item URL (a `dom` candidate), when the block links to one document only
+  (Appendix A #47).
 - **Learned configs** carry a row selector and a next-page selector.
 - **Pagination.** `rel=next` is a standard and core. A structural rule for numbered page links, matching no
   particular parameter name, is defined in SPEC-05. Infinite scroll goes through §7.2.
@@ -655,6 +657,7 @@ matches the engine. Correctness is measured in §16, per field status.
 | `/v1/schemas` | Create, read, update in place, delete (retire). `POST /v1/schemas/draft`: the draft of field names for a page kind, for review before a run (§5.4). |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
 | `/v1/records`, `/v1/captures/{id}/replay` | Records with `field_meta`; replay a capture with the current engine. |
+| `GET/PATCH /v1/project/settings` | The project's settings: `llm_call_cap`, the LLM calls a job may make when its request sets no `budget.llm_calls` (null: no cap). |
 | `GET /v1/usage/llm`, `GET /v1/usage/llm/jobs` | LLM calls, tokens and estimated cost for a range of UTC days: totals, per day, per provider, model and prompt kind, and the costliest jobs; per job, cursor-paginated. An estimate for visibility, not billing (§1). |
 
 Every field in a response carries `value`, `status`, `evidence`, `confidence`, `calibrated` and `locator`. Each
@@ -893,7 +896,7 @@ is measured after it is added.
 | **LLM adjudication** among conflicting candidates | `conflict` abstentions on resolvable cases | The `conflict` rate on hidden required fields is material, and labels show one candidate was right. |
 | **Independent verifier** for configs | Wrong selectors that validate against themselves | Hidden precision of `uncorroborated` config fields is below τ, and they are a material share of fields. |
 | **Self-consistency sampling** for role C | LLM value errors | Hidden precision of the `llm_grounded` bucket is below τ. |
-| **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | Role C cost or coverage on DOM-only fresh sites misses target, and dev shows the collector would help. **Label–value pairs and the main image admitted 2026-10-16** by the owner from the reference eval (Appendix A #42); repeated structure and typed value spotting are not. |
+| **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | Role C cost or coverage on DOM-only fresh sites misses target, and dev shows the collector would help. **Label–value pairs and the main image admitted 2026-10-16** by the owner from the reference eval (Appendix A #42); repeated structure for listing row item URLs only (§8.6, Appendix A #47); other repeated structure and typed value spotting are not. |
 | **More platform adapters** (Workday CXS, iCIMS, ADP, Oracle CX; Shopify admitted, Appendix A #46) | Coverage or cost on those platforms | Results for the platform fall short through the generic path, or volume justifies it (OPEN_QUESTIONS #2). |
 | **Variant-matrix handling** | Per-variant price and availability; the multiple-Offer `conflict` | **Admitted 2026-10-15** by the owner ahead of labels (Appendix A #37); designed in SPEC-13. |
 | **Anti-bot measures**: allowlisting program, cookie handoff, vendor strategies, real Chrome with a behaviour layer (Appendix A #20 owner note: no Patchright on real Chrome), residential proxies, unblockers, CAPTCHA handling, detection bench | Blocked pages | The `blocked` or `shell` outcome rate for a category is material. The cheapest measure that fixes the blocked class is admitted first. |
@@ -976,6 +979,7 @@ implementation go in `DECISIONS.md`, not here.
 | 44 | Owner answers (2026-10-16) | **Variants:** "no default — all variant schema goes into variants and common schema stays out of variants, simple." A multi-variant product's values that vary (price, availability, stock quantity, sku, gtin, variant attributes) publish only in `variants` rows; a top-level field publishes only a value every variant shares. No variant the page URL names is selected (§10; D-0945). **Job location:** "just display whatever is written in jobs location." The location text publishes as written, whitespace collapsed, with no macro-region parsing or "or" split; structured parts only where the page states them structurally (§9; D-0946 class 11). **Provider refusal:** a provider's refusal of a request has its own reason and problem type, `llm_refused` (502), distinct from `llm_unavailable` (D-1009, option a). |
 | 45 | Playground options popover (2026-10-16) | Owner, after #214: the playground's settings open from the command bar's Options button in a popover, with every setting shown at once in a compact grid and no nested Advanced section; the command bar sits centred under a centred mode switch. This replaces #38's "inline options panel with Advanced collapsed"; the rest of #38 stands. Opening the popover moves nothing on the page. SPEC-14 §4.2. |
 | 46 | Shopify adapter (2026-10-16) | The Shopify platform adapter is admitted from §22 "More platform adapters". It reads storefront product and collection pages through the documented Storefront API (tokenless, MoneyV2 prices with their currency), confirms the platform by the documented `X-Shopify-API-Version` response header, and maps the answer to schema.org shapes, so variants give rows under the variant rules (#44). Every adapter's unserved page falls back to the page rungs. Adapters are off until `CRAWLERAI_ADAPTERS` names them. SPEC-15. |
+| 47 | Owner answers (2026-10-16, second set) | **Adapters on by default:** every registered adapter runs; `CRAWLERAI_DISABLED_ADAPTERS` opts out. Shopify product pages take the page path, which keeps the fields only the page states; the adapter serves collections, also a collection URL whose query the page's own canonical link drops (supersedes #46's "Adapters are off"). **Listing row URLs:** a role C row takes its item URL from the one repeated item block holding its grounded text (D-1024, option a; §8.6, §22). **LLM calls:** "there is no cap, but we can put a setting in settings to allow the user to put a cap": no request kind has a default budget; `project.llm_call_cap` (null by default) bounds a job whose request sets none. D-1118–D-1122. |
 
 ---
 
@@ -1068,3 +1072,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 23 | 2026-10-16 | **Owner answers: variants, job location, provider refusal** (Appendix A #44). §5.2 example and §10: no default variant; top-level offer fields publish only when every variant agrees, varying values only in `variants`; Appendix A #37 amended. §9: location text as written, whitespace collapsed, never split. SPEC-04, SPEC-05, SPEC-06 and SPEC-13 updated; INV-36 superseded by INV-38. |
 | 24 | 2026-10-16 | **Playground options popover** (owner; Appendix A #45). The playground's settings move from an inline panel with a collapsed Advanced section to a popover from the Options button showing every setting at once. SPEC-14 §4.2 updated. |
 | 25 | 2026-10-16 | **Shopify adapter** (owner; Appendix A #46). §7.1: Shopify after Greenhouse and Lever, through the Storefront API; an unserved adapter page falls back to the page rungs; adapters run when `CRAWLERAI_ADAPTERS` names them. §22: Shopify leaves "More platform adapters". Appendix A #37 notes the supersession. SPEC-15. |
+| 26 | 2026-10-16 | **Owner answers, second set** (Appendix A #47). §6: `project.llm_call_cap`. §7.1: every adapter runs unless disabled. §8.6: listing row item URLs from repeated item blocks; §22 marks that part of repeated structure admitted. §13.1: `GET/PATCH /v1/project/settings`. SPEC-15 updated; OPEN_QUESTIONS #32 resolved. |

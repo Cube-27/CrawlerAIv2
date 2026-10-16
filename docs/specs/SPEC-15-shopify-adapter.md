@@ -11,14 +11,15 @@ pages, so a cold listing yields no rows; their product pages state JSON-LD, but 
 (SPEC-13 §1 evidence). The platform gives every shop a public, documented JSON API on the shop's own domain. This
 spec adds:
 
-1. a **Shopify adapter**: product and collection pages of a shop are fetched as the Storefront API's GraphQL answer
-   for that product or collection, read as schema.org `ProductGroup`/`Product`/`Offer` nodes (variants included);
+1. a **Shopify adapter**: collection pages of a shop are fetched as the Storefront API's GraphQL answer for that
+   collection, read as schema.org `ItemList`/`Product`/`Offer` nodes. Product pages take the page path, which reads
+   the fields only the page states (D-1118);
 2. **schema.org shapes** for every adapter: an adapter states how its JSON holds schema.org nodes, and the adapter
    collector reads those nodes with the same path rules as JSON-LD and microdata (SPEC-05 §4.5, SPEC-13 §4.2), so
    adapters give variant rows, Offers and several types per page. Greenhouse and Lever move to shapes;
 3. **fallback**: a page an adapter does not serve (any outcome but `ok`, unless it asks for fewer requests) is
    fetched by the generic rungs, as a page an API recipe does not serve is (SPEC-09 §4.10);
-4. **activation**: the adapters a deployment runs are a setting, and the services send an adapter's requests as
+4. **activation**: every adapter runs unless the deployment disables it (D-1119), and the services send an adapter's requests as
    politely as a page's (robots.txt of the endpoint, the host's rate).
 
 Nothing outside `backend/src/crawlerai/adapters/` names the platform (C3).
@@ -26,18 +27,18 @@ Nothing outside `backend/src/crawlerai/adapters/` names the platform (C3).
 ## 2. Scope
 
 Core (admitted by the owner, Appendix A #46):
-- Detection of product and collection pages by the platform's documented URL routes, confirmed per response by the
-  platform's documented API version header (§4.2).
-- Detail: one product with its vendor, its featured image, up to 250 images and up to 250 variants. Listing: the first
-  250 products of a collection. Prices only from a shop that presents one currency (§4.5).
+- Detection of collection pages by the platform's documented URL route, confirmed per response by the platform's
+  documented API version header (§4.2).
+- Listing: the first 250 products of a collection. Prices only from a shop that presents one currency (§4.5).
 - Shapes for Greenhouse, Lever and Shopify; the adapter collector reads shapes only (the `map` method goes).
 - Fallback to the generic rungs; a host whose answer lacks the platform's signal is not tried again for a while.
-- `CRAWLERAI_ADAPTERS` (the active adapters), bound into the API and worker processes with polite JSON requests.
+- `CRAWLERAI_DISABLED_ADAPTERS` (the adapters that do not run), bound into the API and worker processes with polite
+  JSON requests.
 
 Out of scope:
-- Locale-prefixed shop URLs (`/fr/products/…`) and collection URLs with a query (`?page=2`, `sort_by`, filters):
-  they show a localized page or a subset or order the unqueried collection does not reproduce. They take the
-  generic path.
+- Product pages (D-1118), locale-prefixed shop URLs (`/fr/collections/…`) and collection URLs with a query the
+  page's canonical link keeps (`?page=2`, `sort_by`, filters): they show a localized page or a subset or order the
+  unqueried collection does not reproduce. They take the generic path.
 - More than 250 products of a collection (cursor paging), `/collections/all`, search and vendor pages.
 - Size and colour from option names (option names are free text in the shop's language, so reading them would need
   a phrase list, C4), stock quantity (the API documents it as needing an access token), variant URLs.
@@ -62,8 +63,7 @@ supported one. Fields read (Storefront API reference, `Product`, `ProductVariant
 
 | Object | Fields |
 |---|---|
-| `Product` | `id`, `title`, `description`, `vendor` ("The name of the product's vendor"), `onlineStoreUrl`, `featuredImage { url }` ("functionally equivalent to `images(first: 1)`"), `images(first: 250)` (sorted by `POSITION` by default), `variants(first: 250)`, `priceRange { minVariantPrice maxVariantPrice }` |
-| `ProductVariant` | `id`, `title`, `sku`, `barcode` ("ISBN, UPC, or GTIN"), `availableForSale`, `currentlyNotInStock` ("out of stock but still available for purchase (used for backorders)"), `price` |
+| `Product` | `id`, `title`, `onlineStoreUrl`, `featuredImage { url }` ("functionally equivalent to `images(first: 1)`"), `priceRange { minVariantPrice maxVariantPrice }` |
 | `MoneyV2` | `amount` (decimal string), `currencyCode` (ISO 4217) |
 | `Collection` | `products(first: 250) { nodes { … } }` |
 | `Shop` | `paymentSettings { enabledPresentmentCurrencies }` ("A list of enabled currencies (ISO 4217 format) that the shop accepts") |
@@ -78,14 +78,12 @@ considered.
 
 ### 4.2 Detection
 
-A URL is a **candidate** when it is http(s) and its path is one of the platform's online store routes for a product
-or a collection (Liquid `routes`, product and collection URLs), with a handle that is one `PATH_SEGMENT`:
-
-| Path | Page kind | Query |
-|---|---|---|
-| `/products/{handle}` | detail | any (a `variant` parameter names a variant, which the URL rules of SPEC-13 §4.6 read) |
-| `/collections/{collection}/products/{handle}` | detail | any |
-| `/collections/{handle}` | listing | none |
+A URL is a **candidate** when it is http(s), its path is the platform's online store route for a collection
+(Liquid `routes`, collection URLs), `/collections/{handle}` with a handle that is one `PATH_SEGMENT`, and it has no
+query. A URL with a query is served as its canonical when the page, fetched by the page rungs, names that URL without
+the query as its canonical link (RFC 6596, HTML Standard `link rel=canonical`): the page says the parameters it drops
+do not identify it, and no list of parameter names decides (C4). The adapter's request then takes a turn of its own at
+the host's rate, and its answer is recorded under the canonical URL (D-1120).
 
 The path alone is not the platform: other sites use these paths. The platform's signal is in the API's answer:
 - `fetch` sends the query of the page kind (§4.3) to `{scheme}://{host}/api/{version}/graphql.json` with the handle
@@ -93,9 +91,8 @@ The path alone is not the platform: other sites use these paths. The platform's 
 - An answer **without `X-Shopify-API-Version`** is not the platform's: the fetch is `error` `not_platform`, and the
   registry declines the adapter for that host for 24 hours (in-process, at most 10,000 hosts, oldest dropped first).
   A non-platform site therefore gets at most one such request per process per day.
-- An answer with the header whose `data` holds no product (or collection) for the handle, or that holds GraphQL
-  `errors`, is `error` `not_served`: the platform answered, but not for this page. The host is not declined. A
-  product answer of a shop that does not present exactly one currency is `not_served` too (§4.5).
+- An answer with the header whose `data` holds no collection for the handle, or that holds GraphQL `errors`, is
+  `error` `not_served`: the platform answered, but not for this page. The host is not declined.
 - An answer with status 429 or 5xx (RFC 6585 §4, RFC 9110 §15.6) is kept as it is, header or not: it says the server
   cannot answer now, not whether it is the platform's. The host is not declined, and the page falls back (§4.6).
 - Otherwise the answer is `ok`, a capture with method `api`, recorded under the page URL (SPEC-02 §4.9).
@@ -104,20 +101,18 @@ The path alone is not the platform: other sites use these paths. The platform's 
 
 ### 4.3 Queries
 
-Two fixed GraphQL documents in the adapter, each well under the complexity limit (a product query costs 39):
-`product(handle: $handle)` with the §4.1 fields, and `collection(handle: $handle) { products(first: 250) { nodes { id
-title onlineStoreUrl featuredImage priceRange } } }`; both also ask for `shop { paymentSettings {
-enabledPresentmentCurrencies } }`. A version change is a one-line change of the adapter's `API_VERSION`.
+One fixed GraphQL document in the adapter, well under the complexity limit: `collection(handle: $handle) {
+products(first: 250) { nodes { id title onlineStoreUrl featuredImage priceRange } } }`, which also asks for `shop {
+paymentSettings { enabledPresentmentCurrencies } }`. A version change is a one-line change of the adapter's `API_VERSION`.
 
 ### 4.4 Shapes: an adapter's JSON as schema.org nodes
 
 An adapter states, per page kind, `shapes(page_kind) -> tuple[Shape, ...]`:
 
 ```python
-Shape(type="ProductGroup", at=("data", "product"),
-      properties={"name": ("title",), "url": ("onlineStoreUrl",), "productID": ("id",),
-                  "description": ("description",), "image": ("images", "nodes", "*", "url")},
-      nodes={"hasVariant": (Shape(type="Product", at=("variants", "nodes", "*"), ...),)})
+Shape(type="ItemList", at=("data", "collection", "products"),
+      nodes={"itemListElement": (Shape(type="Product", at=("nodes", "*"),
+                                       properties={"name": ("title",), "url": ("onlineStoreUrl",)}, ...),)})
 ```
 
 - `at`: member names from the enclosing node's JSON object (the document for a root) to this node's object; `*`
@@ -126,12 +121,7 @@ Shape(type="ProductGroup", at=("data", "product"),
   no value (RFC 8259: the API states none).
 - `nodes`: schema.org property → the nested node shapes its values are.
 - `anchor`: for a node that is a view of its enclosing object (`at=()`), the member that names it, so its entity
-  has an id of its own (`…['price']` for a variant's Offer).
-- `stated`: schema.org property → a function of the node's object giving one value and the member it comes from,
-  for a value the platform states in a documented form other than the schema.org one (§4.5). Only Shopify uses it.
-- `every`: for a property whose `properties` members hold the one value the platform states as its main value, the
-  members holding all of its values in the platform's order. A list field reads these; any other field reads the main
-  value. Only Shopify uses it (`image`).
+  has an id of its own (Greenhouse's Organization at the job's `company_name`).
 
 `shapes(page_kind, answer)` sees the answer, so the shapes may depend on what it states (§4.5, listing prices).
 
@@ -147,39 +137,14 @@ rows (schema.org ItemList), so the rows do not depend on SPEC-05 §4.7's three-r
 
 ### 4.5 Shopify shapes
 
-**Detail** (`commerce_detail`): the product is a schema.org `ProductGroup` ("a group of Products that vary only in
-certain well-described ways"); each variant a `Product` under `hasVariant` (`name` ← `title`, `sku` ← `sku`, `gtin` ←
-`barcode`, `productID` ← `id`), each with one `Offer` under `offers` anchored at its `price` (`price` ←
-`price.amount`, `priceCurrency` ← `price.currencyCode`, `availability` stated, below). The group carries `name`,
-`description`, `url` (`onlineStoreUrl`), `productID`, `brand` (`vendor`) and `image`: the featured image as its main
-value, every image (`images`, in the shop's order) for a list field (`every`).
-
-**Brand.** The Help Center describes `vendor` as "the manufacturer, wholesaler, or other vendor for the product", and
-the platform's own schema.org output (Liquid `structured_data` filter) states it as the product's `brand` (its
-documented example gives the example shop's vendor as the brand). The adapter states what the shop's own schema.org
-output states.
+**Detail**: not served (D-1118). The round-3 measurement (D-1117) showed the answer lacks values only the page
+states (its default variant's sku, condition, rating, review count), so a product page takes the page path.
 
 **Currency.** The answer prices in the shop's primary market (§4.1); a page shows its visitor's market, in that
 market's currency when the shop presents several. Nothing in the answer says which market a page showed, and the
 page URL is not read for one (C7). So prices are read only from a shop whose `enabledPresentmentCurrencies` is one
-currency: then every page of the shop states that currency. Otherwise a product answer is `not_served` and the page
-falls back, so the page's own price is read; a collection answer keeps its rows without their Offers (the generic
-path gives a collection page no item rows). Requesting with `@inContext(country:)` would need the page's country,
-which only the page states, after a second request.
-
-What publishes follows the existing rules unchanged (INV-38, Appendix A #44): top-level `price` and `availability`
-publish only when every variant's Offer agrees, and no variant is a default; `sku`/`gtin` fill from the variants
-only when they all agree; `variants` publishes one row per variant keyed by `sku`/`gtin` (a variant with neither
-is dropped `no_row_key`). The adapter chooses no default variant.
-
-**Availability** (`stated`): `availableForSale` false → `OutOfStock`; true with `currentlyNotInStock` true →
-`BackOrder` ("out of stock but still available for purchase (used for backorders)", schema.org BackOrder "available
-on back order"); true otherwise → `InStock`. The value is the schema.org IRI, its locator the member that decided
-it: `currentlyNotInStock` for `BackOrder`, `availableForSale` otherwise. Both booleans are documented on
-`ProductVariant`; the table is the platform's statement in schema.org's vocabulary (C2), not a phrase list.
-
-**Variant name.** A product without options has one variant whose title is the platform's placeholder
-`Default Title` (Shopify Help Center, "Variants"): it names no variant, so that variant has no `name`.
+currency: then every page of the shop states that currency. Otherwise a collection answer keeps its rows without their
+Offers (the generic path gives a collection page no item rows).
 
 **Listing** (`commerce_listing`): an `ItemList` at `data.collection.products` whose `itemListElement` nodes are
 `Product`s (`name`, `url` ← `onlineStoreUrl`, `image` ← featured image), each with two `Offer`s under `offers`, at
@@ -212,10 +177,10 @@ like a shop route is therefore never read as the adapter's. The same test decide
 
 ### 4.8 Activation (C6)
 
-`CRAWLERAI_ADAPTERS` (comma-separated names, default none) names the active adapters. An unknown name fails at
-start. The API and worker processes build one registry from it (its decline memory lives as long as the process);
-`EngineData` carries the same registry, so captures are read with it. C6: an adapter is listed only after it was
-measured on at least three tenants not used to build it; the measurement goes in the PR that activates it.
+Every registered adapter runs (owner, 2026-10-16, D-1119); `CRAWLERAI_DISABLED_ADAPTERS` (comma-separated names,
+default none) names the ones that do not. An unknown or repeated name fails at start. The API and worker processes
+build one registry from it (its decline memory lives as long as the process); `EngineData` carries the same registry,
+so captures are read with it.
 
 ### 4.9 Error handling
 
@@ -243,21 +208,18 @@ INV-35, INV-38.
 All fixtures are synthetic: hosts under `example.test`, invented products and handles, JSON written to the
 documented shapes (C3, C9). Tests name the adapter, a platform, never a shop.
 - **Property (Hypothesis)**: detection over generated paths (only the §4.2 routes with one valid handle detect;
-  a dot-segment or a second segment never does); generated products with generated variants read back with one
-  row per keyed variant and every value at its locator; listing rows equal the products, each with its own price
-  only when its bounds agree.
-- **Unit**: the decline rule (no header → `not_platform` and the host declined; header with a null product →
+  a dot-segment or a second segment never does); listing rows equal the products, each with its own price only when
+  its bounds agree.
+- **Unit**: the decline rule (no header → `not_platform` and the host declined; header with a null collection →
   `not_served`, host kept; expiry and the size bound); `acquire` falls back on a non-`ok` adapter result and keeps a
-  429; `serves`/`reader` attribution; availability table; shapes for Greenhouse and Lever give the candidates their
-  maps gave.
-- **Replay** (`tests/replay`): a synthetic detail and listing capture through `extract_page` with
-  `commerce_detail`/`commerce_listing`: variant rows, agreeing and disagreeing prices, listing rows.
+  429; a page whose canonical drops only its query is served by the canonical's adapter; `serves`/`reader`
+  attribution; shapes for Greenhouse and Lever give the candidates their maps gave.
+- **Replay** (`tests/replay`): a synthetic listing capture through `extract_page` with `commerce_listing`: listing
+  rows, with and without prices.
 
 ## 7. Acceptance criteria
 
-- On a synthetic product answer with three variants of one price, `price`, `availability`, `title`, `url`,
-  `image_url` publish with evidence `adapter`, and `variants` has three rows with sku, gtin, price and availability.
-  With disagreeing prices, top-level `price` is `conflict` and the rows keep their own prices.
+- ~~On a synthetic product answer with three variants of one price, …~~ Product pages are not served (D-1118).
 - On a synthetic collection answer, every product is a row with `title` and `url`; `price` publishes only for rows
   whose bounds agree.
 - A non-platform answer falls back to the page rungs; the host is not tried again within the window.
@@ -283,8 +245,6 @@ Rows 1–3 depend on each other in order; row 4 needs row 3.
   how often a collection is larger before adding cursor paging.
 - **Locale-prefixed URLs.** The API serves a locale through `@inContext`; mapping a URL prefix to a language and
   country is left out until a dev page needs it.
-- **Multi-currency shops.** A product page of a shop with several presentment currencies takes the generic path
-  (§4.5), after one API request that is not remembered per host. Measure how many shops present several currencies
-  before remembering it.
-- **Variant attributes.** Size and colour stay inside the variant `name` (SPEC-13 §9 "Attributes outside the
-  four").
+- **Product pages.** Served by the page path (D-1118). Joining the adapter's answer to the page's own collectors (one
+  more source beside the page capture) would add the answer's variants and identifiers where the theme states none;
+  it needs a capture holding both and a measure of cross-source conflicts first.
