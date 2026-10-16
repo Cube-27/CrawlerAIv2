@@ -194,3 +194,33 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
     with pytest.raises(TypeError):
         url.normalize("http://example.test/", spec, CTX)
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "same"),
+    [
+        ("https://cdn.example.test/i/a.jpg?w=1000&h=1000", "https://cdn.example.test/i/a.jpg?w=1200&h=630", True),
+        ("HTTPS://CDN.example.test:443/i/%61.jpg", "https://cdn.example.test/i/a.jpg#zoom", True),
+        ("https://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/b.jpg", False),
+        ("https://cdn.example.test/i/a.jpg", "https://img.example.test/i/a.jpg", False),
+        ("http://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/a.jpg", False),
+    ],
+)
+def test_the_resource_key_ignores_only_the_query(a: str, b: str, same: bool) -> None:
+    key_a, key_b = url.resource_key(a), url.resource_key(b)
+
+    assert key_a is not None
+    assert (key_a == key_b) is same
+
+
+@pytest.mark.parametrize("value", ["/i/a.jpg", "not a url", 7, None])
+def test_a_value_that_is_no_absolute_url_has_no_resource_key(value: JsonValue) -> None:
+    assert url.resource_key(value) is None
+
+
+@given(st.from_regex(r"https?://[a-z]{1,5}\.example\.test(/[a-z%0-9]{0,4}){0,3}(\?[a-z=&]{0,6})?", fullmatch=True))
+def test_equal_urls_have_one_resource_key(raw: str) -> None:
+    canonical = url.canonical(raw, None)
+
+    assert isinstance(canonical, Ok)
+    assert url.resource_key(raw) == url.resource_key(canonical.value)

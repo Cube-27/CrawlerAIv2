@@ -138,7 +138,11 @@ def test_two_blocks_of_one_sku_that_disagree_on_the_offer_are_a_conflict() -> No
     # so the two Offers disagree and neither publishes.
     head = _jsonld(
         _product(url=PAGE_URL, name="Widget One", sku="W-1", offers=_offer("199.95", "https://schema.org/OutOfStock")),
-        _product(name="Widget One", sku="W-1", offers=_offer("179.95", "https://schema.org/InStock", sku="W-1")),
+        _product(
+            name="Widget One",
+            sku="W-1",
+            offers=_offer("179.95", "https://schema.org/InStock", sku="W-1", url=f"{PAGE_URL}?variant=2"),
+        ),
     )
 
     assert _outcomes(_extract(head), "title", "price", "availability") == {
@@ -153,9 +157,11 @@ def test_og_image_selects_one_image_of_a_json_ld_gallery() -> None:
     product = _product(url=PAGE_URL, name="Widget One", image=gallery)
 
     named = _extract(_jsonld(product) + _og(("og:image", gallery[1])))
+    rendition = _extract(_jsonld(product) + _og(("og:image", f"{gallery[1]}?w=1200&amp;h=630")))
     unnamed = _extract(_jsonld(product) + _og(("og:image", "https://cdn.example.test/w1-crop.jpg")))
 
     assert _outcomes(named, "image_url") == {"image_url": ("published", None, gallery[1])}
+    assert _outcomes(rendition, "image_url") == {"image_url": ("published", None, gallery[1])}
     assert _outcomes(unnamed, "image_url") == {"image_url": ("conflict", "disagree", None)}
 
 

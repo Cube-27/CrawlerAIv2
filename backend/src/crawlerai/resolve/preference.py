@@ -28,7 +28,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
-from crawlerai.normalize.dispatch import equal
+from crawlerai.normalize.dispatch import equal, resource_key
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -296,16 +296,19 @@ def _named_member(spec: FieldSpec, members: list[Candidate], kept: list[Candidat
     A property written with several values (JSON-LD 1.1 §4.3.1: an array is a set of values, in no significant
     order; HTML microdata: a repeated itemprop) gives a single-valued field several candidates of one entity, and
     no order among them says which is meant. When independent candidates of other kinds (Open Graph's `og:image`,
-    a field's one value) all equal one of those values, that value is the one the page means; anything else stays a
-    conflict. Admitted state values are never independent, so they never select (§8.1)."""
+    a field's one value) all equal one of those values, that value is the one the page means. A url or image_url
+    value that equals none may still name one by its resource (`resource_key`: the same file in another rendition).
+    Anything else stays a conflict. Admitted state values are never independent, so they never select (§8.1)."""
     if len({c.entity_id for c in members}) != 1:
         return None
-    named = [
-        member
-        for member in members
-        if any(o.independent and o.source_kind != member.source_kind and _equal(o, member, spec) for o in kept)
-    ]
+    namers = [o for o in kept if o.independent and o.source_kind != members[0].source_kind]
+    named = [m for m in members if any(_equal(o, m, spec) for o in namers)] or _same_resource(spec, members, namers)
     return named[0] if named and _all_agree(named, spec) else None
+
+
+def _same_resource(spec: FieldSpec, members: list[Candidate], namers: list[Candidate]) -> list[Candidate]:
+    keys = {resource_key(_value(o), spec) for o in namers} - {None}
+    return [m for m in members if resource_key(_value(m), spec) in keys]
 
 
 def _without(candidates: list[Candidate], removed: list[Candidate]) -> list[Candidate]:

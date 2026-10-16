@@ -235,6 +235,30 @@ def test_an_independent_lower_kind_selects_one_value_of_an_entity_s_several() ->
 
 
 @pytest.mark.parametrize(
+    ("members", "og", "published"),
+    [
+        pytest.param(("a.jpg?w=1000", "b.jpg?w=1000"), "a.jpg?w=1200&h=630", "a.jpg?w=1000", id="another-rendition"),
+        pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=2", "a.jpg?w=2", id="equal-before-rendition"),
+        pytest.param(("a.jpg?w=1", "a.jpg?w=2", "b.jpg"), "a.jpg?w=3", None, id="two-renditions-named"),
+    ],
+)
+def test_a_value_naming_the_same_resource_selects_it_when_none_is_equal(
+    members: tuple[str, ...], og: str, published: str | None
+) -> None:
+    # `og:image` is often another rendition (size, crop) of one of the JSON-LD images: same path, another query.
+    base = "https://cdn.example.test/i/"
+    gallery = [_candidate("image", base + m, n=i) for i, m in enumerate(members)]
+
+    result = _prefer(_schema(image=IMAGE), *gallery, _candidate("image", base + og, PAGE, "og"))["image"]
+
+    if published is None:
+        assert isinstance(result, Unpublished)
+    else:
+        assert isinstance(result, Chosen)
+        assert result.candidate.normalized == Ok(base + published)
+
+
+@pytest.mark.parametrize(
     "others",
     [
         pytest.param([_candidate("image", "https://shop.example.test/z.jpg", PAGE, "og")], id="names-none"),
