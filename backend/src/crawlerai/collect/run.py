@@ -2,8 +2,9 @@
 and diagnostics as one result.
 
 The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
-others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). Then js_state and xhr
-admit their values against the candidates of the other kinds (D-0418).
+others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). The structural DOM
+collector's values are the page's, so it adds candidates and no entities. Then js_state and xhr admit their values
+against the candidates of the other kinds (D-0418).
 """
 
 import logging
@@ -15,6 +16,7 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, Entity
+from crawlerai.collect.dom import DomCollector
 from crawlerai.collect.js_state import JsStateCollector
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
@@ -57,7 +59,9 @@ def collect_page(
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
     entities = tuple(entity for result in results for entity in result.entities)
-    others = tuple(candidate for result in results for candidate in result.candidates)
+    dom = DomCollector()
+    structural = _isolated(dom, partial(dom.collect, page, schema, ctx), diagnostics) or ()
+    others = (*(candidate for result in results for candidate in result.candidates), *structural)
     admitting: Sequence[AdmittingCollector] = (JsStateCollector(), XhrCollector())
     admitted = [
         a

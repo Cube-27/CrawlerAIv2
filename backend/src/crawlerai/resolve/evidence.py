@@ -80,6 +80,9 @@ def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corrobora
         return "agreed"
     if chosen.source_kind in _STRUCTURED:
         return "structured"
+    # A structural DOM value (a label's value, the main image) follows no structured-data standard: its own bucket.
+    if chosen.source_kind == "dom":
+        return "dom"
     if chosen.source_kind == "config":
         return "config_corroborated" if corroborated else "config_uncorroborated"
     if chosen.source_kind == "llm":

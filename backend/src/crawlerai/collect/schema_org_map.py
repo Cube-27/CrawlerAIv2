@@ -152,6 +152,14 @@ def _parse_alternative(path: str) -> MappedPath:
     return MappedPath(root, tuple(steps), joined or None)
 
 
+def named_property(path: MappedPath) -> str:
+    """The schema.org property whose value a path reaches: its last step, or the step before a final `.name`, since
+    the text standing in for a thing names it (`_NAME`): `Product.brand.name` names `brand`."""
+    if len(path.steps) > 1 and path.steps[-1:] == _NAME and path.joined is None:
+        return path.steps[-2]
+    return path.steps[-1]
+
+
 @dataclass(frozen=True, slots=True)
 class Value:
     """One value of a property: `raw` as the page states it (a node's JSON object for a node), where it is, and the

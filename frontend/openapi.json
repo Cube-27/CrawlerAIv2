@@ -4244,6 +4244,7 @@
                   "adapter",
                   "structured",
                   "agreed",
+                  "dom",
                   "config_corroborated",
                   "config_uncorroborated",
                   "llm_grounded",
@@ -4306,7 +4307,8 @@
                   "xhr",
                   "config",
                   "llm",
-                  "derived"
+                  "derived",
+                  "dom"
                 ],
                 "type": "string"
               },
@@ -5261,6 +5263,7 @@
                   "adapter",
                   "structured",
                   "agreed",
+                  "dom",
                   "config_corroborated",
                   "config_uncorroborated",
                   "llm_grounded",
@@ -5309,7 +5312,8 @@
                   "xhr",
                   "config",
                   "llm",
-                  "derived"
+                  "derived",
+                  "dom"
                 ],
                 "type": "string"
               },

@@ -65,7 +65,9 @@ TaskOutcome = Literal[FinishedOutcome, "failed"]
 ExtractionMode = Literal["adhoc", "config"]
 NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
 # `derived`: a page-URL derivation (SPEC-05 §4.8, D-0355), which no candidate states; no candidate row carries it.
-SourceKind = Literal["adapter", "api", "jsonld", "microdata", "og", "js_state", "xhr", "config", "llm", "derived"]
+SourceKind = Literal[
+    "adapter", "api", "jsonld", "microdata", "og", "js_state", "xhr", "config", "llm", "derived", "dom"
+]
 ConfigStatus = Literal["draft", "active", "suspended"]
 ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
 # `extraction_config.field_status` values (ARCHITECTURE §6, §8.3 step 4).

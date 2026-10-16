@@ -4,9 +4,9 @@ published on the learning sample, without an LLM.
 For each field, every sample page's published locator proposes candidate steps:
 - `jsonld:<block>:<path>`: a `jsonld` step relative to each schema.org node the value is nested in (nearest first),
   typed by the node's types, with array indices stripped (`[*]`), then with them kept;
-- `microdata:<xpath>` and `config:` XPaths that select one element: for each anchor on the element and its ancestors
-  (nearest first), the path from the anchored ancestor down to the element without positional predicates, read as
-  `normalize-space(...)`, then as each of the element's attributes;
+- `microdata:<xpath>`, `dom:<xpath>` and `config:` XPaths that select one element: for each anchor on the element and
+  its ancestors (nearest first), the path from the anchored ancestor down to the element without positional
+  predicates, read as `normalize-space(...)`, then as each of the element's attributes;
 - `adapter:`/`api:` with the same mapping name on every page: the field comes from that mapping (`origin=adapter`);
 - anything else (`text:` from role C, `meta:`, `js_state:`, `xhr:`): no induction, the field goes to synthesis.
 
@@ -121,7 +121,7 @@ def _induce_field(f: _Field, result: Induction) -> None:
     if scheme in ("adapter", "api"):
         _mapped(f.name, scheme, locators, result)
         return
-    if not (scheme == "jsonld" or (scheme in ("microdata", "config") and f.spec.item is None)):
+    if not (scheme == "jsonld" or (scheme in ("microdata", "dom", "config") and f.spec.item is None)):
         result.to_synthesize[f.name] = f"not_induced:{scheme}"
         return
     proposals = [_proposals(locator, sample, f) for locator, sample in zip(locators, f.sample, strict=True)]
@@ -156,7 +156,7 @@ def _mapped(name: str, scheme: str, locators: Sequence[Locator], result: Inducti
 
 
 def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candidate]:
-    """The page's candidate steps for its `jsonld`, `microdata` or `config` locator, in order of preference."""
+    """The page's candidate steps for its `jsonld`, `microdata`, `dom` or `config` locator, in order of preference."""
     if locator.scheme == "jsonld":
         return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
     return list(_xpath_candidates(sample.page.lxml_tree, locator.parts[-1]))
