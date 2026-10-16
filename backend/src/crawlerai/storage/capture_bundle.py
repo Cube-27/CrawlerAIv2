@@ -13,12 +13,14 @@ network/0001.json  # captured JSON bodies in request order (browser captures onl
 
 import hashlib
 import io
+import re
 import tarfile
 from datetime import UTC, datetime
 from email.message import Message
 from typing import Annotated, Final, Literal, Self
 from uuid import UUID
 
+import webencodings
 import zstandard
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, ValidationError, model_validator
 
@@ -186,22 +188,54 @@ def private_eval_capture_key(split: Literal["hidden", "fresh"], capture_id: UUID
     return f"{split}/{capture_id}.bundle.zst"
 
 
+# HTML Standard §13.2.3.2: the prescan reads at most the first 1024 bytes for a `meta` element's `charset` attribute,
+# or the `charset` parameter of its `content` (§2.6.7 "extracting a character encoding from a meta element"): the
+# value runs to a quote, whitespace, `;` or the tag's end.
+_PRESCAN_BYTES: Final = 1024
+_META_CHARSET: Final = re.compile(rb"""<meta[\s/][^>]*?charset\s*=\s*["']?\s*([^\s"';>/]+)""", re.IGNORECASE)
+_UTF8: Final = webencodings.UTF8
+_META_UTF16: Final = frozenset({"utf-16be", "utf-16le"})
+_USER_DEFINED: Final = "x-user-defined"
+_WINDOWS_1252: Final = "windows-1252"
+
+
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
 def decode_body(bundle: CaptureBundle) -> str:
-    """The body as text, in the charset its Content-Type names (RFC 9110 §8.3.2), else UTF-8 (the HTML default,
-    HTML Standard §13.2.3.2); undecodable bytes become U+FFFD."""
+    """The body as text; undecodable bytes become U+FFFD. A browser body is the rendered DOM, which the browser fetcher
+    serializes as UTF-8, whatever the server declared for the bytes it sent. Any other body is decoded as HTML encoding
+    sniffing says (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC 9110
+    §8.3.2), else a `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding
+    Standard §4.2 says (`iso-8859-1` is windows-1252), and an unknown label is skipped."""
+    if bundle.manifest.method == "browser":
+        return bundle.body.decode(_UTF8.codec_info.name, errors="replace")
+    encoding = _transport_encoding(bundle.manifest.headers.response) or _meta_encoding(bundle.body) or _UTF8
+    text, _ = webencodings.decode(bundle.body, encoding, errors="replace")  # a byte order mark outranks `encoding`
+    return text
+
+
+def _transport_encoding(headers: HeaderList) -> webencodings.Encoding | None:
     header = Message()
-    for name, value in bundle.manifest.headers.response:
+    for name, value in headers:
         if name.lower() == "content-type":
             header["content-type"] = value
             break
-    try:
-        return bundle.body.decode(header.get_content_charset() or "utf-8", errors="replace")
-    except LookupError:  # a charset Python doesn't know
-        return bundle.body.decode("utf-8", errors="replace")
+    label = header.get_content_charset()
+    return None if label is None else webencodings.lookup(label)
+
+
+def _meta_encoding(body: bytes) -> webencodings.Encoding | None:
+    match = _META_CHARSET.search(body, 0, _PRESCAN_BYTES)
+    encoding = None if match is None else webencodings.lookup(match.group(1).decode("ascii"))
+    if encoding is None:
+        return None
+    # HTML Standard §13.2.3.2 prescan: a `meta` declaration of UTF-16 means UTF-8 (the bytes it was read from are
+    # ASCII-compatible), and of x-user-defined means windows-1252.
+    if encoding.name in _META_UTF16:
+        return _UTF8
+    return webencodings.lookup(_WINDOWS_1252) if encoding.name == _USER_DEFINED else encoding
 
 
 def _body_file(method: CaptureMethod) -> str:
