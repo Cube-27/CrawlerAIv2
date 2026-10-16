@@ -1,6 +1,6 @@
-"""The selected variant and variant fill (SPEC-13 §4.6, INV-36): a detail page's Offer fields come from one variant
-only when a page URL names exactly that variant by its own URL; otherwise every Offer must agree. An identifier the
-group states nothing for takes its variants' value only from the selected variant, or when every variant agrees."""
+"""Common variant fields (SPEC-13 §4.6, INV-36 as amended): a multi-variant product's top-level Offer fields publish
+only when every Offer agrees, whatever variant a page URL names; no variant is a default. An identifier the group
+states nothing for takes its variants' value only when every variant states it alike."""
 
 import json
 from datetime import UTC, datetime
@@ -14,7 +14,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.normalize.base import Context
-from crawlerai.resolve.intent import primary_types, select_target, select_variant
+from crawlerai.resolve.intent import primary_types, select_target
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.preference import (
     PRECEDENCE_TYPES,
@@ -23,7 +23,6 @@ from crawlerai.resolve.preference import (
     Preference,
     Resolver,
     Unpublished,
-    Variants,
 )
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -61,16 +60,15 @@ def _group(*variants: dict[str, Any], **values: Any) -> dict[str, Any]:
     } | values
 
 
-def _resolve(document: dict[str, Any], request_url: str = GROUP_URL, *, rules: bool = True) -> dict[str, Preference]:
+def _resolve(document: dict[str, Any], request_url: str = GROUP_URL, *, fill: bool = True) -> dict[str, Preference]:
     page = ParsedPage(f'<html><head><script type="application/ld+json">{json.dumps(document)}</script></head></html>')
     ctx = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=request_url, page_url=request_url)
     collected = JsonLdCollector(VOCABULARY).collect(page, SCHEMA, ctx)
     graph = EntityGraph.of(collected.entities, VOCABULARY)
     target = select_target(request_url, request_url, GROUP_URL, graph, primary_types(SCHEMA, VOCABULARY))
     assert isinstance(target, Entity)
-    variants = Variants(select_variant(request_url, request_url, GROUP_URL, graph, target)) if rules else None
     facts = PageFacts.of(request_url, lambda value: False)
-    resolver = Resolver(graph, target, facts, dict.fromkeys(PRECEDENCE_TYPES, ORDER), variants=variants)
+    resolver = Resolver(graph, target, facts, dict.fromkeys(PRECEDENCE_TYPES, ORDER), variant_fill=fill)
     return resolver.prefer(SCHEMA, collected.candidates)
 
 
@@ -87,57 +85,35 @@ def _why(preference: Preference) -> tuple[str, str]:
 TWO_PRICES = _group(_variant(VARIANT_URLS[0], "10.00", sku="W-11"), _variant(VARIANT_URLS[1], "12.00", sku="W-12"))
 
 
-def test_the_variant_the_request_url_names_is_the_one_source_of_the_offer_fields() -> None:
+def test_a_variant_the_request_url_names_is_no_default_for_the_offer_fields() -> None:
     result = _resolve(TWO_PRICES, VARIANT_URLS[1])
 
-    assert _value(result["price"]) == {"amount": "12.00", "currency": "EUR"}
-    assert [reason for _, reason in result["price"].rejected] == ["other_variant"]
+    assert _why(result["price"]) == ("conflict", "offers_disagree")
+    assert [reason for _, reason in result["price"].rejected] == ["offers_disagree", "offers_disagree"]
+    assert result["price"] == _resolve(TWO_PRICES)["price"]
 
 
-def test_without_a_url_naming_one_variant_disagreeing_offers_stay_a_conflict() -> None:
-    assert _resolve(TWO_PRICES)["price"] == _resolve(TWO_PRICES, rules=False)["price"]
-    assert isinstance(conflict := _resolve(TWO_PRICES)["price"], Unpublished)
-    assert (conflict.status, conflict.reason) == ("conflict", "offers_disagree")
+def test_a_price_every_variant_states_alike_is_common_and_publishes() -> None:
+    same = _group(_variant(VARIANT_URLS[0], "10.00"), _variant(VARIANT_URLS[1], "10.00"))
+
+    assert _value(_resolve(same, VARIANT_URLS[0])["price"]) == {"amount": "10.00", "currency": "EUR"}
 
 
-def test_variants_that_repeat_the_group_url_select_none() -> None:
-    repeated = _group(_variant(GROUP_URL, "10.00"), _variant(GROUP_URL, "12.00"))
+def test_a_single_variant_publishes_its_offer_and_identifier_at_the_top_level() -> None:
+    result = _resolve(_group(_variant(VARIANT_URLS[0], "10.00", sku="W-11")))
 
-    assert isinstance(conflict := _resolve(repeated)["price"], Unpublished)
-    assert conflict.reason == "offers_disagree"
-
-
-def test_an_aggregate_offer_is_no_variant_holder() -> None:
-    aggregate = {"@type": "AggregateOffer", "lowPrice": "10.00", "priceCurrency": "EUR", "url": VARIANT_URLS[0]}
-    document = _group(_variant(VARIANT_URLS[1], "12.00"), offers=aggregate)
-    page = ParsedPage(f'<html><head><script type="application/ld+json">{json.dumps(document)}</script></head></html>')
-    ctx = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=GROUP_URL)
-    graph = EntityGraph.of(JsonLdCollector(VOCABULARY).collect(page, SCHEMA, ctx).entities, VOCABULARY)
-
-    assert [h.kind for h in graph.holders(graph.entities["jsonld:0:$"])] == ["Product"]
-    assert select_variant(VARIANT_URLS[0], VARIANT_URLS[0], None, graph, graph.entities["jsonld:0:$"]) is None
+    assert _value(result["price"]) == {"amount": "10.00", "currency": "EUR"}
+    assert _value(result["sku"]) == {"scheme": "sku", "value": "W-11"}
 
 
-def test_a_selected_variant_s_aggregate_offer_gives_no_offer_field() -> None:
-    # SPEC-13 §4.3: an AggregateOffer summarizes several offers and is no offer of one item, so it is none of the
-    # selected variant's Offers (§4.6).
-    aggregate = {"@type": "AggregateOffer", "price": "9.00", "lowPrice": "9.00", "priceCurrency": "EUR"}
-    selected = {"@type": "Product", "name": "Synthetic Widget", "url": VARIANT_URLS[0], "offers": aggregate}
-
-    result = _resolve(_group(selected, _variant(VARIANT_URLS[1], "12.00")), VARIANT_URLS[0])
-
-    assert _why(result["price"]) == ("missing", "other_variant")
-    assert {reason for _, reason in result["price"].rejected} == {"other_variant"}
-
-
-def test_the_selected_variant_fills_an_identifier_the_group_does_not_state() -> None:
+def test_an_identifier_that_varies_stays_out_of_the_top_level_even_when_the_url_names_a_variant() -> None:
     result = _resolve(TWO_PRICES, VARIANT_URLS[0])
 
-    assert _value(result["sku"]) == {"scheme": "sku", "value": "W-11"}
+    assert _why(result["sku"]) == ("missing", "not_owned")
     assert _why(result["gtin"]) == ("missing", "no_candidates")  # no variant states one
 
 
-def test_without_a_selection_an_identifier_fills_only_when_every_variant_agrees() -> None:
+def test_an_identifier_fills_only_when_every_variant_agrees() -> None:
     agreeing = _group(
         _variant(VARIANT_URLS[0], "10.00", sku="W-11", gtin="4006381333931"),
         _variant(VARIANT_URLS[1], "12.00", sku="W-12", gtin="4006381333931"),
@@ -146,13 +122,13 @@ def test_without_a_selection_an_identifier_fills_only_when_every_variant_agrees(
 
     result = _resolve(agreeing)
     assert _value(result["gtin"]) == {"scheme": "gtin", "value": "4006381333931"}
+    assert _why(_resolve(agreeing, fill=False)["gtin"]) == ("missing", "not_owned")
     assert _why(result["sku"]) == ("missing", "not_owned")  # the variants disagree
-    assert result["sku"] == _resolve(agreeing, rules=False)["sku"]
     assert _why(_resolve(one_missing)["gtin"]) == ("missing", "not_owned")
 
 
 def test_variant_fill_never_replaces_the_group_s_own_value_or_fills_another_field() -> None:
-    document = _group(_variant(VARIANT_URLS[0], "10.00", sku="W-11"), sku="W-1")
+    document = _group(_variant(VARIANT_URLS[0], "10.00", sku="W-11"), _variant(VARIANT_URLS[1], "12.00"), sku="W-1")
     nameless = _group(_variant(VARIANT_URLS[0], "10.00"))
     del nameless["name"]
 
