@@ -632,7 +632,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-0946 — Round-1 classes 10, 11 and 13 are not built in core
-- Date: 2026-10-16 · Spec/PR: round-1 eval (#207) · Status: decided
+- Date: 2026-10-16 · Spec/PR: round-1 eval (#207) · Status: decided; class 11 superseded by D-1058
 - Decision: Class 10 (image_url from the DOM) and class 13 (an external apply link) need generic DOM heuristics, which ARCHITECTURE §8.1 excludes from core (structural collectors are a §22 candidate, C13); class 11 (location macro-regions and an "or" split) needs a new location representation (SPEC-04 / ARCHITECTURE §9 design).
 - Alternatives: Build them here.
 - Why: Out of this batch's authority; recorded as follow-ups with the eval evidence.

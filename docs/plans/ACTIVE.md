@@ -32,7 +32,7 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
-  field status), D-0915 (SimHash at Hamming 0 misses some edits), D-1009 (a provider refusal's reason).
+  field status), D-0915 (SimHash at Hamming 0 misses some edits).
 
 ## Done specs
 
@@ -76,7 +76,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
-- Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208), class 11 needs a SPEC-04 location design, class 12 is an owner question on SPEC-13's default variant (D-0945, D-0946) [#207].
+- Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
 - Playground: Records with Listing is still disabled ("not available yet"); the API serves listing records since #206 [#206].
 - Recurring: SPEC-11 §4.5's listing diff tracks a listing crawl's page URLs, not its row URLs ("No job stores listing records" no longer holds), and a listing page gets no standing record (rows are keyed by row URL), so it is always re-extracted [#206].
 - Listing items (`acquire.items`): the largest same-shape linked group wins, so a bare tag cloud or pager outside `nav` can outrank a small grid in markdown. Measure on dev first (D-0934, D-0993) [#206, #213].
