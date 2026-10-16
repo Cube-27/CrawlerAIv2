@@ -165,8 +165,8 @@ an empty result with a diagnostic).
   cells whose first is a `th` or a `td` (HTML Standard §4.9) and each `dl` group's terms with its descriptions
   (§4.4.9, a `div` wrapping a group), and the main image, the first `img` of the one `main` element, else the one
   `role="main"` landmark (WAI-ARIA 1.2), else the one `article`, outside `nav`/`header`/`footer`/`aside` and
-  dialogs (`dialog`, roles `dialog` and `alertdialog`), in no subtree §4.4's cleaned text leaves out as not rendered
-  (D-1023), whose `src` (else first `srcset` URL) is not `data:` (RFC 2397). A label names a field when its words (NFKC,
+  dialogs (`dialog`, roles `dialog` and `alertdialog`), and shown by §4.4's cleaned-text rules (hidden subtrees,
+  inherited `visibility`; D-1023), whose `src` (else first `srcset` URL) is not `data:` (RFC 2397). A label names a field when its words (NFKC,
   case-folded, lowerCamelCase split) equal those of the field's name or of the schema.org property its path names
   (the step before a final `.name`): words come from the schema and the pinned vocabulary, never a list (C4). An
   image fills `image_url` fields whose path names `image`; list and object fields get no pair. The value must be

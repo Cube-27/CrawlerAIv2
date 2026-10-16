@@ -177,11 +177,19 @@ def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:
     return children
 
 
-def not_rendered(node: LexborNode) -> bool:
-    """Whether the element is not rendered, with its whole subtree, by the rule that leaves it out of the cleaned
-    text."""
-    attributes = node.attributes
-    return _hidden(node.tag or "", attributes, _declarations(attributes))
+def shown(node: LexborNode) -> bool:
+    """Whether the element is shown by the rules that make the cleaned text: neither it nor an ancestor is hidden
+    (`_hidden`), and the nearest `visibility` it inherits (CSS 2 §11.2) does not hide it."""
+    visibility: str | None = None
+    current: LexborNode | None = node
+    while current is not None and current.is_element_node:
+        attributes = current.attributes
+        style = _declarations(attributes)
+        if _hidden(current.tag or "", attributes, style):
+            return False
+        visibility = visibility or style.get("visibility")
+        current = current.parent
+    return not _invisible(visibility, inherited=False)
 
 
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:

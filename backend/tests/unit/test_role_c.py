@@ -251,9 +251,9 @@ def fill(client: ScriptedClient, request: GapRequest) -> GapReply:
     return asyncio.run(run())
 
 
-def gap_request(html: str, missing: tuple[str, ...]) -> GapRequest:
+def gap_request(html: str, missing: tuple[str, ...], schema: SchemaDef = SCHEMA) -> GapRequest:
     target = Entity(id=OWNER, kind="Product", urls=(PAGE_URL,), parent=None)
-    return GapRequest(ParsedPage(html), SCHEMA, CTX, target, missing)
+    return GapRequest(ParsedPage(html), schema, CTX, target, missing)
 
 
 def test_the_hook_reads_the_cleaned_text_and_records_the_call() -> None:
@@ -377,18 +377,13 @@ RECORDED_REPLY = {
 
 
 def test_a_recorded_reply_to_a_request_of_mostly_absent_fields_gives_the_values_the_page_shows() -> None:
-    preset = load_presets()
-    schema = SCHEMA.model_copy(update={"fields": next(p for p in preset if p.name == "commerce_detail").fields})
+    preset = next(p for p in load_presets() if p.name == "commerce_detail")
     reply_text = json.dumps(RECORDED_REPLY, ensure_ascii=False)
     provider = FakeProvider([ProviderReply(model="fake-fast", text=reply_text, tokens_in=2078, tokens_out=394)])
     client = MeteredClient([provider], create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))  # never connected
-    target = Entity(id=OWNER, kind="Product", urls=(PAGE_URL,), parent=None)
-    request = GapRequest(ParsedPage(RECORDED_PAGE), schema, CTX, target, RECORDED_FIELDS)
+    request = gap_request(RECORDED_PAGE, RECORDED_FIELDS, SCHEMA.model_copy(update={"fields": preset.fields}))
 
-    async def run() -> GapReply:
-        return await role_c(client, job_id=None).detail(request)
-
-    answer = asyncio.run(run())
+    answer = asyncio.run(role_c(client, job_id=None).detail(request))
 
     assert [(c.field, c.raw, c.locator, c.normalized) for c in answer.candidates] == [
         ("availability", "In stock", "text:62-70", Ok("InStock")),

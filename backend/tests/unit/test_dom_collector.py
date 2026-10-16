@@ -159,6 +159,7 @@ def test_without_one_main_region_image_there_is_no_main_image(body: str) -> None
         '<div aria-hidden="true"><div>{}</div></div>',  # hidden from every user, as in the cleaned text
         "<div hidden>{}</div>",
         '<div style="display: none">{}</div>',
+        '<div style="visibility: hidden"><span>{}</span></div>',  # CSS 2 §11.2: inherited
     ],
 )
 def test_an_image_in_a_dialog_or_a_hidden_subtree_is_not_the_main_image(wrapper: str) -> None:
