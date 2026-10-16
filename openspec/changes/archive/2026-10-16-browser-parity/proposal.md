@@ -24,6 +24,6 @@ input.
 
 ## Impact
 
-- Capability: [acquisition](../../specs/acquisition/spec.md) (delta in `specs/acquisition/spec.md`).
+- Capability: [acquisition](../../../specs/acquisition/spec.md) (delta in `specs/acquisition/spec.md`).
 - Files: `backend/src/crawlerai/acquire/browser.py`, `backend/src/crawlerai/acquire/classify.py`, their tests,
   `.github/workflows/ci.yml`, `Makefile`, `CLAUDE.md`, `backend/pyproject.toml` (marker text).

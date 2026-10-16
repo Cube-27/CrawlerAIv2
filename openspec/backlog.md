@@ -36,6 +36,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   itself headless stay `blocked` (§22).
 - Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
 - Tough-site run (#225): listings whose category or chrome-like tiles pass `acquire.items` stay `ok` at HTTP with no rows (about 7 pages); and a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
+- Browser parity (#229): with Patchright's documented setup the 4 dev interstitial rows (Cloudflare-style 403) still
+  end `blocked`; two of them never navigate on within the 18 s wait and two are not judged interstitial by structure.
+  The wait adds about 18 s to each structureless 403 (the blocked pages too); measure on the dev run and lower
+  `_INTERSTITIAL_SHARE` if nothing clears.
 - Tough-site run (#225): 429 and 503 at HTTP are not retried in the browser (SPEC-02 §4.6 backoff, `rungs.slow_down`): kept as designed.
 - ATS adapters (#226): UKG Pro (UltiPro), ADP, Rippling and Paycom are not built yet; Workday and Oracle Recruiting serve each list's first page only (20 and 25 rows), and Workday sites on a tenant's own domain are not detected.
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
