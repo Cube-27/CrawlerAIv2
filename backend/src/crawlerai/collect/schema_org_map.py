@@ -308,15 +308,25 @@ def candidate(
 
 
 def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
-    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its `url` and its own IRI, its
-    `mainEntityOfPage`, and its offers' `url`."""
-    written: list[JsonValue] = _page_names(node)
-    for value in node.values("mainEntityOfPage"):
-        written.extend(_page_names(value.node) if value.node is not None else [value.raw])
+    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its own (`item_urls`) and its offers'
+    `url`."""
+    written: list[JsonValue] = _item_names(node)
     for value in node.values("offers"):
         if value.node is not None:
             written.extend(v.raw for v in value.node.values("url"))
     return canonical_urls(written, ctx)
+
+
+def item_urls(node: Node, ctx: Context) -> tuple[str, ...]:
+    """The canonical URLs that name the item itself: its `url` and its own IRI, and its `mainEntityOfPage`."""
+    return canonical_urls(_item_names(node), ctx)
+
+
+def _item_names(node: Node) -> list[JsonValue]:
+    written: list[JsonValue] = _page_names(node)
+    for value in node.values("mainEntityOfPage"):
+        written.extend(_page_names(value.node) if value.node is not None else [value.raw])
+    return written
 
 
 def canonical_urls(written: Iterable[JsonValue], ctx: Context) -> tuple[str, ...]:

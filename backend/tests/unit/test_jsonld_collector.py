@@ -389,12 +389,18 @@ def test_root_nodes_of_one_type_with_one_identifier_value_are_one_entity() -> No
     # schema.org: `sku` is a sub-property of `identifier`, which identifies the item. Two root Products stating one
     # sku are one product, whether or not either has an @id.
     first = _product(**{"@id": PAGE_URL}, sku="W-1", name="Widget One")
-    second = _product(sku="W-1", name="Widget One", gtin13="4006381333931")
+    second = _product(
+        sku="W-1",
+        name="Widget One",
+        gtin13="4006381333931",
+        offers={"@type": "Offer", "url": f"{PAGE_URL}?variant=2", "price": "9.00", "priceCurrency": "EUR"},
+    )
 
     result = _collect(first, second)
 
-    assert [e.id for e in result.entities] == ["jsonld:0:$"]
-    assert {c.entity_id for c in result.candidates} == {"jsonld:0:$"}
+    # The Offer's URL names a variant's page, not another item.
+    assert [(e.id, e.parent) for e in result.entities] == [("jsonld:0:$", None), ("jsonld:1:$['offers']", "jsonld:0:$")]
+    assert {c.entity_id for c in result.candidates} == {"jsonld:0:$", "jsonld:1:$['offers']"}
 
 
 @pytest.mark.parametrize(

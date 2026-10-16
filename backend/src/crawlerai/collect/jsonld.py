@@ -32,6 +32,7 @@ from crawlerai.collect.schema_org_map import (
     Vocabulary,
     entity_urls,
     field_candidates,
+    item_urls,
     schema_term,
 )
 from crawlerai.content.page import ParsedPage
@@ -184,9 +185,8 @@ class JsonLdCollector:
         entities = [found for found in graph.objects if found.types]
         parents, vias = _parents(entities, graph)
         typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
-        own_urls = {t.id: entity_urls(t.node, ctx) for t in typed}
         roots = [found for found in entities if parents[found.id] is None]
-        same = _same_nodes(roots, graph, self.vocabulary, own_urls)
+        same = _same_nodes(roots, graph, self.vocabulary, {f.id: item_urls(_Node(f, graph), ctx) for f in roots})
         diagnostics.extend(
             f"jsonld: {node} is the node {first} (same @id or identifier)" for node, first in same.items()
         )
@@ -196,7 +196,7 @@ class JsonLdCollector:
         urls: dict[str, tuple[str, ...]] = {}
         for t in typed:
             owner = same.get(t.id, t.id)
-            urls[owner] = tuple(dict.fromkeys((*urls.get(owner, ()), *own_urls[t.id])))
+            urls[owner] = tuple(dict.fromkeys((*urls.get(owner, ()), *entity_urls(t.node, ctx))))
         return CollectResult(
             entities=tuple(
                 Entity(
@@ -309,8 +309,9 @@ def _same_nodes(
 ) -> dict[str, str]:
     """Each root node that shares an identity (`_identity`) with an earlier root node of the same most specific type,
     mapped to the first node of its group, in document order. One `@id` is one node (JSON-LD). One identifier value
-    joins two groups only when their URLs do not name two different pages (schema.org `url`, "URL of the item"): a
-    listing's items may repeat an identifier across distinct items."""
+    joins two groups only when their own URLs (`item_urls`) do not name two different items (schema.org `url`, "URL
+    of the item"): a listing's items may repeat an identifier across distinct items. An Offer's URL may name a
+    variant's page, so it does not count."""
     groups = _Groups([frozenset(urls[found.id]) for found in roots])
     first_with: dict[tuple[str, str, str], int] = {}
     for i, found in enumerate(roots):
