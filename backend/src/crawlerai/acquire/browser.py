@@ -52,8 +52,30 @@ _PROXY_ALL_LOOPBACK = "<-loopback>"
 # SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page.
 _JSON_BODY_MAX_BYTES = 2_000_000
 _JSON_BODIES_MAX = 50
-# The network-idle wait ends at this share of `browser_timeout_s`; the rest is for reading the DOM and the bodies.
-_IDLE_SHARE = 0.9
+# The wait for the page to settle ends at this share of `browser_timeout_s`; the rest is for reading the DOM and the
+# bodies.
+_SETTLE_SHARE = 0.9
+# D-1200: after `load` (HTML Standard §8.4.6), the page is read once its DOM's structure and text have not changed for
+# this long (DOM Standard §4.3, a MutationObserver on `childList` and `characterData`), or once the network is idle.
+# Attribute changes are left out: animations and style toggles change attributes, not content.
+_QUIET_S = 2.0
+_POLL_S = 0.25
+# Evaluated in Patchright's isolated world, which shares the document but not the page's globals, so the page neither
+# sees nor touches the observer. It is installed on the first call in each document, and answers the seconds since
+# the last change.
+_QUIET_JS = """() => {
+  if (globalThis.__lastChange === undefined) {
+    globalThis.__lastChange = performance.now();
+    new MutationObserver(() => { globalThis.__lastChange = performance.now(); })
+      .observe(document, {subtree: true, childList: true, characterData: true});
+  }
+  return (performance.now() - globalThis.__lastChange) / 1000;
+}"""
+# RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
+_REDIRECTION = range(300, 400)
+# RFC 9110 §15.5, §15.6: a 4xx or 5xx document. Its network going idle does not end the wait (D-1201): such a page may
+# still replace itself, and is read once its content is quiet.
+_ERROR_STATUS = 400
 # Chromium's network error names (net/base/net_error_list.h) carry no URL.
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
@@ -184,16 +206,36 @@ async def _render(
             timings["context"] = round((time.monotonic() - opened) * 1000)
 
 
+class _MainFrame:
+    """The main frame's document navigations (D-1201): the latest request (one per redirect hop), whether one is in
+    flight, and the response of the latest document, which the frame shows once the navigation commits."""
+
+    def __init__(self, page: Page, first_url: str) -> None:
+        self._page = page
+        self.last_hop = first_url
+        self.pending = False
+        self.latest: Response | None = None
+
+    def _ours(self, request: Request) -> bool:
+        return request.is_navigation_request() and request.frame == self._page.main_frame
+
+    def on_request(self, request: Request) -> None:
+        if self._ours(request):
+            self.last_hop, self.pending = request.url, True
+
+    def on_response(self, response: Response) -> None:
+        if self._ours(response.request) and response.status not in _REDIRECTION:
+            self.latest, self.pending = response, False
+
+    def on_failed(self, request: Request) -> None:
+        if self._ours(request):
+            self.pending = False
+
+
 async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
 ) -> tuple[Exchange, Content]:
-    last_hop = first.url  # the main frame's latest navigation request: one per redirect hop
-
-    def on_request(request: Request) -> None:
-        nonlocal last_hop
-        if request.is_navigation_request() and request.frame == page.main_frame:
-            last_hop = request.url
-
+    frame = _MainFrame(page, first.url)
     json_responses: list[Response] = []
 
     def on_response(response: Response) -> None:
@@ -201,7 +243,9 @@ async def _navigate(
         if not response.request.is_navigation_request() and _is_json(response):
             json_responses.append(response)
 
-    page.on("request", on_request)
+    page.on("request", frame.on_request)
+    page.on("response", frame.on_response)
+    page.on("requestfailed", frame.on_failed)
     if policy.capture_network_json:
         page.on("response", on_response)
 
@@ -209,9 +253,13 @@ async def _navigate(
     try:
         response = await page.goto(url, wait_until="domcontentloaded", timeout=_ms_until(budget_end))
     except PlaywrightError as e:
-        raise _Failed(_navigation_error(e, guard.rejection_for(last_hop)), None) from e
+        raise _Failed(_navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
     if response is None:  # only a same-document navigation has none, and a new page has no document yet
         raise _Failed("no_response", None)
+    # A page that never settles is read as it is when the wait ends.
+    await _settle(page, frame, started + _SETTLE_SHARE * policy.browser_timeout_s)
+    # The document the frame shows: the first one, or where a navigation it started itself ended.
+    response = frame.latest or response
     sent, received = await asyncio.gather(response.request.headers_array(), response.headers_array())
     exchange = Exchange(
         url=response.url,
@@ -219,11 +267,6 @@ async def _navigate(
         request_headers=recorded(_header_list(sent)),
         response_headers=recorded(_header_list(received)),
     )
-    # Network idle (no connection for 500 ms) is waited for until the hard cap; a page that never settles is read
-    # as it is then.
-    idle_end = started + _IDLE_SHARE * policy.browser_timeout_s
-    with contextlib.suppress(PlaywrightTimeout):
-        await page.wait_for_load_state("networkidle", timeout=_ms_until(idle_end))
     body, raw_body, network, wire_size = await asyncio.gather(
         _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses), _wire_size(response, exchange)
     )
@@ -233,6 +276,43 @@ async def _navigate(
     if wire_size > policy.max_body_bytes or decoded > policy.max_decompressed_bytes:
         raise _Failed("body_cap", exchange)
     return exchange, Content(body=body, raw_body=raw_body, network=network)
+
+
+async def _settle(page: Page, frame: _MainFrame, deadline: float) -> None:
+    """Wait for `load`, then until the content is quiet (`_QUIET_JS`) or, for a document that is no error, the network
+    is idle (no connection for 500 ms), whichever comes first; at most until `deadline`."""
+    with contextlib.suppress(PlaywrightTimeout):
+        await page.wait_for_load_state("load", timeout=_ms_until(deadline))
+    waits = [asyncio.create_task(_content_quiet(page, frame))]
+    if frame.latest is None or frame.latest.status < _ERROR_STATUS:
+        waits.append(asyncio.create_task(_network_idle(page, deadline)))
+    try:
+        await asyncio.wait(waits, timeout=max(0.0, deadline - time.monotonic()), return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for wait in waits:
+            wait.cancel()
+        await asyncio.gather(*waits, return_exceptions=True)
+
+
+async def _content_quiet(page: Page, frame: _MainFrame) -> None:
+    """Returns once no navigation is in flight and the document's structure and text have not changed for `_QUIET_S`."""
+    while True:
+        await asyncio.sleep(_POLL_S)
+        if frame.pending:
+            continue
+        try:
+            quiet = cast(float, await page.evaluate(_QUIET_JS))
+        except PlaywrightError:
+            continue  # the document is being replaced, and its observer with it
+        if quiet >= _QUIET_S:
+            return
+
+
+async def _network_idle(page: Page, deadline: float) -> None:
+    with contextlib.suppress(PlaywrightTimeout):
+        await page.wait_for_load_state("networkidle", timeout=_ms_until(deadline))
+        return
+    await asyncio.Event().wait()  # never idle: the quiet content or the deadline ends the wait
 
 
 async def _rendered(page: Page, exchange: Exchange) -> bytes:
