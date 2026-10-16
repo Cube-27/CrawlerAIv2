@@ -44,8 +44,12 @@ PR, whatever its size; don't run `/simplify` (`CLAUDE.md` §3).
    wrong value proves nothing. For extraction changes, the dev delta is present and the hidden gate passed.
 4. **Scope and simplicity.** Code outside the batch's rows, speculative options, wrappers with one caller, and
    compatibility shims.
-5. **Decisions.** Choices the spec didn't make are listed in the PR's `## Decisions` section. Anything that should
-   have been escalated (`CLAUDE.md` §4) is a blocking finding.
+5. **Decisions and tracker lines.** Choices the spec didn't make are logged in the PR's tracker commit (decisions
+   log entries under the implementor's ID range, listed in `## Decisions`). Anything that should have been escalated
+   (`CLAUDE.md` §4) is a blocking finding. The tracker commit is part of the PR (`/implement-pr` §5): check that
+   every row of the batch, and only those, is `done (#<n>)` with this PR's number in `ACTIVE.md`; that each
+   follow-up is one factual line for work the PR really leaves; and that each decision entry matches the code and
+   uses an ID in the range. A wrong or missing tracker line is an Act-on item.
 6. **SonarCloud and recurring findings.** Read the PR's gate (`tools/orchestrator/wait_ci.sh <n> <head-sha7>`
    prints it). A red gate is an Act-on item. Check the diff against `docs/plans/RECURRING.md` and ENGINEERING's
    "Patterns the analysers flag": a repeat of a listed mistake is an Act-on item.

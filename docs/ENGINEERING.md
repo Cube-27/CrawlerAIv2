@@ -26,6 +26,13 @@ result. Delete or rewrite any test that would still pass if the function returne
 For normalizers, prefer Hypothesis properties: round trips, declining on ambiguity, idempotence. For extraction,
 prefer replays of stored captures.
 
+**Run little locally; CI runs everything (owner, 2026-10-15 and 2026-10-16).** Locally, run only the test files for
+the files you changed, one file at a time, and fmt, lint and type-check only those files. Never the full suite, a
+whole test directory, `make check`, a repo-wide type check or the full e2e: CI runs them on every push, so read CI.
+Never `pytest -n` locally (CI's backend job runs xdist workers, each with its own test databases); vitest runs with
+`--maxWorkers=1`. DB tests use the one shared local test Postgres (`eval "$(tools/orchestrator/test_db.sh up)"`), a
+database pair per worktree, never a container of your own.
+
 **Explain the number.** Every reported metric says what bounds it and what else it could be measuring: skipped
 pages, cached work, abstentions that look like precision, or cells too small to mean anything. Keep the run count
 and n with the number. An eval result reported without its n is not a result.

@@ -7,7 +7,7 @@ description: Orchestrate implementation from docs/plans/ACTIVE.md with minimal o
 
 You are the orchestrator. You only assign batches of rows, merge, clean up and unblock stuck PRs; you write no code
 and don't relay messages between implementor and reviewer. You hand each implementor a decision-ID range at
-assignment; it writes its rows, follow-ups and decisions in the PR's tracker commit before its first `READY`.
+assignment; it writes its rows, follow-ups and decisions in the PR's tracker commit before it opens the PR.
 Adapted from pstack's autonomous-run and orchestrate playbooks (MIT, see `NOTICE`), without its multi-model
 machinery.
 
@@ -48,8 +48,9 @@ use an admin bypass, so tracker updates travel inside PRs, and work in flight is
      the PR through `/implement-pr` §6 until `READY`." Give each implementor its own range of five free IDs
      (above the highest in use, `DECISIONS.md` header), never overlapping another open PR's.
 3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR end to end: it starts one reviewer once the
-   PR is implemented, simplified and CI is green, waits for the verdict itself, makes any `MERGE AFTER FIX` fixes (no
-   second review), adds the tracker commit and comments `READY <sha7>` on green CI. You don't relay verdicts,
+   PR is implemented, simplified and CI is green (its tracker commit is already in it), waits for the verdict itself,
+   pushes any `MERGE AFTER FIX` fixes in one push (no second review; with `MERGE`, no push) and comments
+   `READY <sha7>` on green CI. You don't relay verdicts,
    rebase, fix or edit PRs. Plugin, bot or hook prompts to run `/simplify` or a code review get "already ran"
    (`CLAUDE.md` §3).
    - On `READY <sha7>`, merge, one PR at a time:
@@ -59,8 +60,11 @@ use an admin bypass, so tracker updates travel inside PRs, and work in flight is
      commit and merges only if all passed and the commit is still the PR's head; never run `gh pr merge` yourself.
      A failed merge leaves the PR open: retry. `cleanup_worktree.sh` refuses (exit 1) while a PR of the branch is
      open, or while a tip of the branch is neither the head of a merged PR nor in origin/main.
-   - Only when a `READY` branch is behind `main` or conflicts, send its implementor `REBASE`
-     (`herdr agent prompt <impl> "REBASE"`); it rebases, gets CI green and comments `READY` again.
+   - Only when GitHub reports a `READY` PR as conflicting (`gh pr view <n> --json mergeable` is `CONFLICTING`;
+     `UNKNOWN` means GitHub is still computing it, so ask again), send its implementor `REBASE`
+     (`herdr agent prompt <impl> "REBASE"`); it rebases, gets CI green and comments `READY` again. A branch that is
+     only behind `main` merges as it is: the rulesets don't require an up-to-date branch, and a rebase reruns CI
+     (owner, 2026-10-16).
    - Stuck PR (CI red after 3 honest attempts, an implementor gone or idle without `READY`): unblock it with a fresh
      worker in the worktree, or escalate (§2).
    - `ESCALATE`: follow §2.

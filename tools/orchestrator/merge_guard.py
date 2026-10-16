@@ -1,7 +1,7 @@
 """Claude Code PreToolUse hook: deny a Bash or PowerShell command that merges a pull request directly.
 
 `tools/orchestrator/merge_pr.sh` is the only sanctioned merge path: it merges on a passing CI wait, pinned to the
-head commit, after the implementor's tracker commit. Agents merged their own PRs anyway (#71, #100), so this hook
+head commit, on the implementor's `READY`. Agents merged their own PRs anyway (#71, #100), so this hook
 denies `gh pr merge` (including `--auto`), REST calls to the merge endpoint (`pulls/<n>/merge`, any client) and the
 GraphQL merge mutations. The command string is all the hook sees, so `merge_pr.sh`'s own `gh` call is not a tool
 call and passes. This guards against mistakes, not against an agent set on evading it (aliases, scripts written to
@@ -19,7 +19,7 @@ from itertools import pairwise
 
 REASON = (
     "merge guard: agents don't merge PRs directly. Comment READY <sha7> on the PR and stop; the orchestrator merges"
-    " with tools/orchestrator/merge_pr.sh after the tracker commit (CLAUDE.md section 3, /implement-pr section 6)."
+    " with tools/orchestrator/merge_pr.sh on READY (CLAUDE.md section 3, /implement-pr section 6)."
 )
 
 # GitHub REST "Merge a pull request": PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge.

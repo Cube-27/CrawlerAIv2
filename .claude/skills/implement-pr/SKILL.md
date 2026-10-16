@@ -1,6 +1,6 @@
 ---
 name: implement-pr
-description: Implement one batch of related rows of a spec's PR plan (docs/plans/ACTIVE.md) as one PR, end to end — worktree, tests first, code, /simplify once, verification, PR, review, tracker commit, READY. Use when assigned "SPEC-NN PRs A-B" (or one row) or asked to implement the next PR.
+description: Implement one batch of related rows of a spec's PR plan (docs/plans/ACTIVE.md) as one PR, end to end — worktree, tests first, code, /simplify once, verification, tracker commit, PR, review, fixes in one push, READY. Use when assigned "SPEC-NN PRs A-B" (or one row) or asked to implement the next PR.
 ---
 
 # Implement one PR
@@ -15,8 +15,8 @@ You own one batch of rows of `docs/plans/ACTIVE.md` (its size, branch and worktr
 2. If an orchestrator assigned you the rows, your cwd is already their worktree: use it. Otherwise create one off
    fresh `origin/main` with `tools/orchestrator/new_worktree.sh spec-NN-pr-A-B spec-NN/pr-A-B-<short-name>` (it
    lands in `<main>/../CrawlerAIv2-worktrees/`). Never work in the main checkout.
-3. **Shared files.** `ACTIVE.md` and the decisions log change only in your tracker commit (§6.4). Until then your
-   decisions go in the PR body.
+3. **Shared files.** `ACTIVE.md` and the decisions log change only in your tracker commit, the last commit before
+   you open the PR (§5). Collect your decisions in the PR draft until then.
 4. Read the spec: the design sections your rows touch, its invariants, testing strategy, acceptance criteria and
    your PR-plan rows; then the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items 3-4 name, by section.
 
@@ -24,7 +24,7 @@ You own one batch of rows of `docs/plans/ACTIVE.md` (its size, branch and worktr
 
 Write the exit predicate as a checklist in the PR draft (a local file is fine until the PR opens):
 - each row's acceptance criteria, quoted from the spec;
-- `make check` green (locally, the targeted checks for what you touched; CI runs the full suite);
+- `make check` green (locally, only the targeted checks of §3 for what you touched; CI runs the full suite);
 - for extraction behaviour changes: the dev eval delta, with no regression on required field types.
 
 Name the data shape first: the types, results and state machine that the code is organized around (ENGINEERING:
@@ -66,9 +66,15 @@ This is the PR's one `/simplify` pass; a later prompt to re-run it, or a review,
 - If extraction behaviour changed, run the dev eval and capture the delta per field type.
 - If a check fails twice for the same reason, apply "attack the premise" (ENGINEERING). After three honest
   attempts, escalate (`CLAUDE.md` §5).
-- Database tests: point `CRAWLERAI_TEST_DATABASE_URL` (and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`) at a throwaway
-  Postgres on `127.0.0.1` and a free port (`localhost` hangs asyncpg on Windows; 5432 may be taken). Name its
-  container `crawlerai-<worktree>-pg`, and remove it with its volume (`docker rm -f -v`) before you hand back.
+- **Local test runs are small (owner, 2026-10-16).** Run only the test files for the files you changed, one file at
+  a time (`uv run pytest tests/unit/test_x.py`), and fmt/lint/type-check only those files. Never run the full suite,
+  a whole test directory, `make check` or a repo-wide type check locally: CI runs everything on every push. Never
+  `pytest -n` locally (CI runs the workers); vitest with one worker (`pnpm test --maxWorkers=1 <file>`).
+- Database tests: use the one shared local test Postgres, never a container of your own:
+  `eval "$(tools/orchestrator/test_db.sh up)"` starts `crawlerai-test-pg` on `127.0.0.1:55432` if it is absent
+  (`localhost` hangs asyncpg on Windows), recreates this worktree's two databases in it, empty, and exports
+  `CRAWLERAI_TEST_DATABASE_URL` and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`. Drop them with `test_db.sh drop` before
+  you hand back (`cleanup_worktree.sh` drops them too). Leave the container running for the other worktrees.
 - Docker builds (checking `infra/Dockerfile`): tag the image `crawlerai-<worktree>:check`, and remove it
   (`docker image rm`) when the check is done. Leave no images, volumes or containers behind.
 
@@ -88,8 +94,17 @@ Review your own diff as a hostile reviewer, then fix what you find:
 
 ## 5. Open the PR
 
-- Rebase onto `origin/main` into small, ordered commits, with failing tests before fixes where it tells the
-  story.
+- Your branch is off current `main` (§0.2). Don't rebase because `main` moved since: the rulesets don't require an
+  up-to-date branch, and each push reruns CI. Rebase only when `git merge-tree --write-tree origin/main HEAD` (after
+  `git fetch`) reports a conflict. Small, ordered commits, with failing tests before fixes where it tells the story.
+- **Tracker commit, last before opening** (owner, 2026-10-16), so the reviewer reviews it with the code and no
+  docs-only push reruns CI later: `chore(plan): done SPEC-NN PRs A-B (#n)`, with every row of the batch `done (#n)`
+  in `ACTIVE.md`, the follow-ups you leave as lines under "Follow-ups" (and "Current focus" only if the orchestrator
+  asked), and your decisions in the decisions log under your IDs (the orchestrator's range, or solo the next free
+  IDs; `DECISIONS.md` "Where an entry goes"; `needs-owner` entries also go in its index of open items). `#n` is the
+  number the PR will get: `gh api "repos/{owner}/{repo}/issues?state=all&per_page=1" --jq '.[0].number + 1'`. If
+  `gh pr create` hands out another number, amend the commit and push it with `--force-with-lease` at once (the
+  first CI run is cancelled).
 - Title: `type(scope): subject` (Conventional Commits).
 - Body: use the repo PR template. Keep it a one-minute briefing:
   - `## Why`: 1–3 sentences; link the spec rows.
@@ -97,9 +112,9 @@ Review your own diff as a hostile reviewer, then fix what you find:
   - `## Scope`: what it covers and what it deliberately leaves out.
   - `## Verification`: real commands and their outcomes; acceptance criteria → proof; the simplify pass; the dev
     eval delta when relevant.
-  - `## Decisions`: each decision in the decisions-log template's fields (no ID), marked `decided` or
-    `needs-owner`; or "none".
-- Open it ready, not as a draft, with `gh pr create`. The tracker commit comes after review (§6.4).
+  - `## Decisions`: the IDs of the decisions your tracker commit logs, one line each with its status (`decided` or
+    `needs-owner`); or "none".
+- Open it ready, not as a draft, with `gh pr create`.
 
 ## 6. Own it until READY
 
@@ -117,15 +132,13 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
    verdict there and act on it; the orchestrator never relays verdicts. Then close the reviewer:
    `tools/orchestrator/close_agent.sh reviewer-pr<n>` (reviewers have left their pane open, #97, #99, about 400 MB
    each; the script exits 0 when the reviewer is already gone).
-2. **`MERGE AFTER FIX`:** fix every Act-on item, push, and get every check green again. There is no second review.
-3. **`ESCALATE`:** comment it on the PR and stop; the orchestrator handles it.
-4. **Tracker commit, then ready:** with `MERGE`, or every fix pushed, add `chore(plan): done SPEC-NN PRs A-B (#n)`:
-   every row of the batch `done (#n)` in `ACTIVE.md`, the follow-ups you leave as lines under "Follow-ups" (and
-   "Current focus" only if the orchestrator asked), and your `## Decisions` in the decisions log under your IDs
-   (the orchestrator's range, or solo the next free IDs; `DECISIONS.md` "Where an entry goes"; `needs-owner` entries
-   also go in its index of open items). Push, get CI
-   green, then comment `READY <sha7>` on the PR, listing each Act-on item with the commit that fixed it. Then stop.
-5. **`REBASE`** (sent only when the branch is behind `main` or conflicts): rebase onto `origin/main`, push with
-   `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
+2. **`MERGE`:** push nothing. Comment `READY <sha7>` on the already-green head, then stop.
+3. **`MERGE AFTER FIX`:** fix every Act-on item, commit, and push all the fixes in **one push**; if a fix changes a
+   tracker line (a follow-up, a decision), adjust it in a commit of that same push. Get every check green again, then
+   comment `READY <sha7>` on the PR, listing each Act-on item with the commit that fixed it. Then stop. There is no
+   second review.
+4. **`ESCALATE`:** comment it on the PR and stop; the orchestrator handles it.
+5. **`REBASE`** (sent only when GitHub reports a conflict: `gh pr view <n> --json mergeable` is `CONFLICTING`):
+   rebase onto `origin/main`, push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
 
 The orchestrator merges and cleans up.
