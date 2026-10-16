@@ -40,6 +40,8 @@ _members = st.sampled_from(MEMBERS)
 _whitespace = st.text(alphabet=st.characters(categories=["Zs", "Cc"]).filter(str.isspace), max_size=8)
 # Words that are no availability phrase and hold no part of one, so they cannot complete or split an entry.
 _filler = st.lists(st.sampled_from(["the", "item", "is", "now", "very", "red", "size"]), max_size=4).map(" ".join)
+# What may follow a member phrase without joining its first clause: punctuation, a digit, a line break.
+_rest = st.sampled_from(["", ".", " (5 available)", "\nShips today", ": 3", " 7", "!"])
 
 
 def _phrase(member: str) -> str:
@@ -68,7 +70,7 @@ def test_a_name_that_is_no_member_is_invalid(raw: str) -> None:
     assert enum.normalize(raw, SCHEMA, CTX) == Invalid("not_a_member")
 
 
-@given(_members, _whitespace, st.sampled_from(["", ".", " (5 available)", "\nShips today", ": 3", " 7", "!"]))
+@given(_members, _whitespace, _rest)
 def test_text_opening_with_a_member_phrase_matches_through_the_vocabulary_of_its_members(
     member: str, pad: str, rest: str
 ) -> None:
@@ -135,7 +137,7 @@ def test_a_schema_value_that_is_neither_a_string_nor_a_node_reference_is_invalid
 # Type vocabularies
 
 
-@given(_members, st.sampled_from(["", ".", " (5 available)", "\nShips today", "!"]))
+@given(_members, _rest)
 def test_each_availability_phrase_matches_its_member_as_the_first_clause(member: str, rest: str) -> None:
     raw = f"{_phrase(member).upper()}{rest}"
 

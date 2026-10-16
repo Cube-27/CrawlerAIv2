@@ -54,9 +54,8 @@ def _structured(raw: Mapping[str, JsonValue]) -> NormalizeResult:
         return Invalid("no_currency")
     if not isinstance(currency, str) or currency not in _currencies():
         return Invalid("unknown_currency")
-    # JSON numbers are exact decimals in the text; `repr` is the shortest string that reads back as the same float.
-    if isinstance(amount, (int, float)) and not isinstance(amount, bool):
-        value = Decimal(repr(amount))
+    if (number := numbers.json_decimal(amount)) is not None:
+        value = number
     elif isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(stripped := amount.strip()):
         value = Decimal(stripped)
     else:
@@ -76,7 +75,7 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     if isinstance(run, Invalid):
         return run
     before, after = text[: run.start()], text[run.end() :]
-    if any(minus in before for minus in numbers.MINUS):
+    if numbers.negative(before):
         return Invalid("not_positive")
     signs = _signs(text, before, after)
     if isinstance(signs, Invalid):

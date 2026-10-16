@@ -210,7 +210,7 @@ def _member_pairs(document: JsonValue) -> Iterator[_Reading]:
     """The ordered pairs of scalar members of one object that may join into one money value (`+`, §4.2), in
     document order: one member holds a digit and the other none.
 
-    SPEC-04 money text reading (`normalize/money.py`, `_AMOUNT_RUN`): a money value holds exactly one run of amount
+    SPEC-04 money text reading (`normalize/numbers.py`, `AMOUNT_RUN`): a money value holds exactly one run of amount
     digits, so a joined pair is an amount member and a currency member without digits. Two digit-free members state
     no amount, and two amounts are two runs (a range or a list). So an object gives amounts x digit-free members
     pairs, not the square of its size.

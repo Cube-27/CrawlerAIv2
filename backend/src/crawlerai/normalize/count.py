@@ -11,7 +11,6 @@ Nothing is defaulted (C7): a fraction, a negative number, a range, another unit,
 is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
 """
 
-import math
 import unicodedata
 from collections.abc import Hashable, Mapping
 from decimal import Decimal
@@ -40,10 +39,10 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 def _scalar(raw: Raw, ctx: Context) -> NormalizeResult:
     if isinstance(raw, str):
         return _text(raw, ctx)
-    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw):
+    value = numbers.json_decimal(raw)
+    if value is None or not value.is_finite():
         return Invalid("not_a_count")
-    # JSON numbers are exact decimals in the text; `repr` is the shortest string that reads back as the same float.
-    return _count(Decimal(repr(raw)))
+    return _count(value)
 
 
 def _quantitative_value(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
@@ -68,11 +67,11 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     if len(runs) > 1:
         return Invalid("several_numbers")
     run = runs[0]
-    if text[: run.start()].rstrip().endswith(numbers.MINUS):
+    if numbers.negative(text[: run.start()]):
         return Invalid("negative")
     values = numbers.readings(run.group(), numbers.locale_set(ctx))
     if not values:
-        return Invalid("not_a_count")
+        return Invalid("not_a_count")  # a run no CLDR convention parses strictly ("1,2,3")
     if len(values) == 1:
         return _count(values[0])
     whole = tuple(int(v) for v in values if v == v.to_integral_value())

@@ -112,6 +112,53 @@ def find_codes(by_language: Mapping[str, Entries], words: Tokens, ctx: Context) 
     return frozenset().union(*(e.find(words) for e in entries))
 
 
+def stated_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
+    """The codes `text` states (D-0782, INV-37): the code whose phrase is the text's whole first clause, with every
+    code a phrase names anywhere else in the text (`Entries.find`), so a different code later makes it ambiguous.
+
+    A phrase with other words in its clause ("not in stock", "in stock soon") states nothing: a word before or after
+    it may negate or qualify it, and no standard lists which words do (C4, C7: decline rather than guess).
+    """
+    entries = list(entries)
+    clause = " ".join(tokens(first_clause(text)))
+    opening = {e.phrases[clause] for e in entries if clause in e.phrases}
+    if not opening:
+        return frozenset()
+    words = tokens(text)
+    return frozenset(opening).union(*(e.find(words) for e in entries))
+
+
+def first_clause(text: str) -> str:
+    """The text's first clause: from its first letter, through letters, marks, spaces, dashes and connectors (Unicode
+    general categories L, M, Zs, Pd, Pc, UAX #44), up to the first other character: a punctuation mark, symbol, digit
+    or line break ends it. Leading spaces, punctuation and symbols ("✓ In stock") are skipped; a leading digit is
+    not ("0 in stock"), so the clause is then empty."""
+    start = next((i for i, char in enumerate(text) if not _leads(char)), len(text))
+    end = next((i for i in range(start, len(text)) if not _continues(text[i])), len(text))
+    return text[start:end]
+
+
+# Unicode general categories (UAX #44) that join the words of one clause besides letters and marks: space separators,
+# dash punctuation ("pre-order") and connector punctuation ("in_stock").
+_CLAUSE_JOINERS = frozenset({"Zs", "Pd", "Pc"})
+
+
+def _leads(char: str) -> bool:
+    return char.isspace() or unicodedata.category(char)[0] in "PS"
+
+
+def _continues(char: str) -> bool:
+    category = unicodedata.category(char)
+    return category[0] in "LM" or category in _CLAUSE_JOINERS
+
+
+@cache
+def name_entries(members: frozenset[str]) -> Entries:
+    """Each schema.org member name as a phrase of its own, in token form (`InStock` is "instock", as Open Graph
+    `product:availability` writes it): a member name in any case states the member."""
+    return Entries.of({member: [" ".join(tokens(member))] for member in members})
+
+
 def entries_for(by_language: Mapping[str, Entries], languages: frozenset[str]) -> list[Entries]:
     """A type vocabulary's entries for the page's `languages` (`context_languages`), or for every language when the
     page states none; languages without a file have none."""

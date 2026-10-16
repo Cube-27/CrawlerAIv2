@@ -23,6 +23,19 @@ AMOUNT_RUN = re.compile(r"(?:(?<![^\W_])[.,])?\d+(?:[.,'\u2019\s]\d+)*")
 MINUS = ("-", "\u2212")
 
 
+def json_decimal(value: object) -> Decimal | None:
+    """A JSON number as the exact decimal its text writes (`repr` is the shortest string that reads back as the same
+    float), or `None` for any other value; a JSON boolean is no number."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return Decimal(repr(value))
+    return None
+
+
+def negative(before: str) -> bool:
+    """Whether the text before a number holds a minus sign (`MINUS`), so the number may be negative."""
+    return any(minus in before for minus in MINUS)
+
+
 def readings(written: str, locales: frozenset[str]) -> list[Decimal]:
     """Every value the written amount has under the decimal and group symbols of the locales (CLDR number symbols).
     With no locale evidence, every CLDR convention is possible."""
