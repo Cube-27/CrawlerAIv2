@@ -234,7 +234,7 @@
       },
       "BatchScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10). Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` they are not bounded, as a crawl's are not\n(D-1006). `webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10). Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind (D-1006, D-1121). `webhook_url` is called when the job ends (\u00a74.2).",
         "properties": {
           "budget": {
             "anyOf": [
@@ -356,14 +356,17 @@
       },
       "Budget": {
         "additionalProperties": false,
+        "description": "A request's own bound on its job's LLM calls. A request without one takes the project's `llm_call_cap`, and a\nproject without a cap bounds none (owner, 2026-10-16; `db.usage.budget_remaining`).",
         "properties": {
           "llm_calls": {
-            "default": 10,
             "minimum": 0.0,
             "title": "Llm Calls",
             "type": "integer"
           }
         },
+        "required": [
+          "llm_calls"
+        ],
         "title": "Budget",
         "type": "object"
       },
@@ -1302,13 +1305,17 @@
       },
       "ExtractRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 \u00a74.10), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` bounds a prompt's draft. The `fetch` and\n`locale` are a scrape's (SPEC-07 \u00a74.4), for every URL. `webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 \u00a74.10), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's (SPEC-07 \u00a74.4), for every URL. `webhook_url` is called when the job\nends (\u00a74.2).",
         "properties": {
           "budget": {
-            "$ref": "#/components/schemas/Budget",
-            "default": {
-              "llm_calls": 10
-            }
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
@@ -4053,6 +4060,29 @@
         "title": "Problem",
         "type": "object"
       },
+      "ProjectSettings": {
+        "additionalProperties": false,
+        "description": "`llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.",
+        "properties": {
+          "llm_call_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Call Cap"
+          }
+        },
+        "required": [
+          "llm_call_cap"
+        ],
+        "title": "ProjectSettings",
+        "type": "object"
+      },
       "Proof": {
         "additionalProperties": false,
         "description": "How the recipe was accepted: the held-out captures it reproduced (\u00a74.7), the headers replay tried (\u00a74.6) and\nwhat bound it.",
@@ -4844,13 +4874,17 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft;\n`schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched within that\nmany seconds.",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds.",
         "properties": {
           "budget": {
-            "$ref": "#/components/schemas/Budget",
-            "default": {
-              "llm_calls": 10
-            }
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
@@ -8153,6 +8187,158 @@
         "summary": "Map Urls",
         "tags": [
           "map"
+        ]
+      }
+    },
+    "/v1/project/settings": {
+      "get": {
+        "description": "The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no\n`budget.llm_calls`; null bounds none.",
+        "operationId": "get_project_settings_v1_project_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project Settings",
+        "tags": [
+          "project"
+        ]
+      },
+      "patch": {
+        "description": "Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call.",
+        "operationId": "patch_project_settings_v1_project_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Project Settings",
+        "tags": [
+          "project"
         ]
       }
     },

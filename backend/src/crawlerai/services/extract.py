@@ -67,8 +67,9 @@ DRAFT_TIMEOUT_S: Final = float(MAX_TIMEOUT_S)
 class ExtractRequest(Input):
     """The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
     inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
-    be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` bounds a prompt's draft. The `fetch` and
-    `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job ends (§4.2)."""
+    be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
+    draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job
+    ends (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     schema_: SchemaRequest = Field(alias="schema")
@@ -76,7 +77,7 @@ class ExtractRequest(Input):
     limit: int = Field(default=MAX_URLS, ge=1, le=MAX_URLS)
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
-    budget: Budget = Budget()
+    budget: Budget | None = None
     webhook_url: str | None = None
 
     @field_validator("urls")

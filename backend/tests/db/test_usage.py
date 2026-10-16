@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.db.models import Job, JobId, Project, UrlTask, UsageEvent, UsageResource
@@ -106,6 +106,30 @@ async def test_the_remaining_budget_is_what_the_job_has_not_used(
 
     assert await budget_remaining(conn, job_id, "llm_calls") == remaining
     assert await budget_remaining(conn, job_id, "browser_seconds") == 2
+
+
+async def _cap_llm_calls(conn: AsyncConnection, cap: int | None) -> None:
+    await conn.execute(update(Project).where(Project.name == "default").values(llm_call_cap=cap))
+
+
+@pytest.mark.parametrize("request_", [{}, {"budget": None}, {"budget": {"pages": 5}}])
+async def test_a_job_without_its_own_llm_call_budget_takes_its_projects_cap(
+    conn: AsyncConnection, request_: dict[str, Any]
+) -> None:
+    job_id = await _job_id(conn, request=request_)
+    await record_usage(conn, job_id, "llm_calls", provider=None, model_or_pool=None, quantity=3)
+
+    assert await budget_remaining(conn, job_id, "llm_calls") is None  # no cap: no limit
+    await _cap_llm_calls(conn, 5)
+    assert await budget_remaining(conn, job_id, "llm_calls") == 2
+    assert await budget_remaining(conn, job_id, "browser_seconds") is None
+
+
+async def test_a_jobs_own_llm_call_budget_wins_over_its_projects_cap(conn: AsyncConnection) -> None:
+    await _cap_llm_calls(conn, 5)
+    job_id = await _job_id(conn, request={"budget": {"llm_calls": 20}})
+
+    assert await budget_remaining(conn, job_id, "llm_calls") == 20
 
 
 async def test_the_page_budget_counts_tasks_that_ended(conn: AsyncConnection) -> None:
