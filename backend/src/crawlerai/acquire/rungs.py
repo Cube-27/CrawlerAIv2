@@ -141,7 +141,8 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
     if not parts.query or page.block_class != "ok":
         return None
     bare = urlunsplit(parts._replace(query="", fragment=""))
-    if adapters.detect(bare) is None or (canonical := _canonical_link(page)) is None:
+    # A host its adapter declined is not asked again, so the request would take a turn at the site's rate for nothing.
+    if not adapters.would_serve(bare) or (canonical := _canonical_link(page)) is None:
         return None
     return bare if _same_resource(canonical, bare) else None
 

@@ -4,10 +4,10 @@ admitted by the owner 2026-10-16).
 Role C reads a listing's rows from the cleaned text, which holds no link targets, so its rows carry no item URL. The
 page's repeated item blocks (`acquire.items.item_blocks`: sibling elements of one shape that each are or hold a
 hyperlink) hold each item's own link. A row whose grounded text values all lie in the text of exactly one block, a
-block no other row is in, takes that block's link for each row field that is the item's own schema.org `url`, when the
-block's hyperlinks (HTML Standard §4.6.1) lead to exactly one document other than the page. A row in no block or in
-several, a block two rows are in, or a block with links to several documents gives no candidate: the rule declines
-rather than guesses (C7).
+block no other row has as its one block, takes that block's link for each row field that is the item's own schema.org
+`url`, when the block's hyperlinks (HTML Standard §4.6.1) lead to exactly one document other than the page. A row in
+no block or in several, a block two rows have as their one block, or a block with links to several documents gives no
+candidate: the rule declines rather than guesses (C7).
 """
 
 from collections.abc import Iterator, Sequence
@@ -53,7 +53,7 @@ def row_links(
 def _blocks_of(
     rows: Sequence[Entity], blocks: Sequence[HtmlElement], schema: SchemaDef, candidates: Sequence[Candidate]
 ) -> dict[Entity, HtmlElement]:
-    """Each row's block: the one block whose text holds all its text values, and no other row's."""
+    """Each row's block: the one block whose text holds all its text values, when no other row has it as its one."""
     texts = [_squeezed(block.text_content()) for block in blocks]
     rows_in: dict[int, list[Entity]] = {}
     for row in rows:

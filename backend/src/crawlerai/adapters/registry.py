@@ -57,17 +57,24 @@ class Registry:
                 return adapter, match
         return None
 
+    def would_serve(self, url: str) -> bool:
+        """Whether `serve` would ask an adapter for `url`: an active one detects it and has not declined its host."""
+        return self._serving(url) is not None
+
     async def serve(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult | None:
         """The answer of the active adapter that detects `url` and has not declined its host, requested with `send`;
         None when there is none."""
-        host = urlsplit(url).hostname or ""
-        adapter = next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
+        adapter = self._serving(url)
         if adapter is None:
             return None
         result = await adapter.fetch(url, policy, send)
         if result.attempts[-1].error == NOT_PLATFORM:
-            self._decline(adapter, host)
+            self._decline(adapter, urlsplit(url).hostname or "")
         return result
+
+    def _serving(self, url: str) -> Adapter | None:
+        host = urlsplit(url).hostname or ""
+        return next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
 
     def _is_declined(self, adapter: Adapter, host: str) -> bool:
         until = self._declined.get((adapter.name, host))

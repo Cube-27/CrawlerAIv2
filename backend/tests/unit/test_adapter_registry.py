@@ -372,3 +372,17 @@ def test_a_canonical_request_the_site_rate_refuses_is_not_sent() -> None:
     result = asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, asked)))
 
     assert (result.method, adapter.rung.calls, asked) == ("http", [], [False])
+
+
+def test_a_canonical_of_a_host_its_adapter_declined_takes_no_turn() -> None:
+    # INV-40: the declined host is not asked again, so no turn at the site's rate is spent on it.
+    adapter = ListAdapter("list", "", Rung("api", status=404, block_class="not_found", reason=NOT_PLATFORM))
+    page, asked = PageRung(_canonical(SHOP_LIST)), list[bool]()
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={"list"}))
+
+    def fetch(url: str) -> FetchResult:
+        return asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(True, asked)))
+
+    first, second = fetch(f"{SHOP_LIST}?from=newsletter"), fetch(f"{SHOP_LIST}?from=footer")
+
+    assert (first.method, second.method, adapter.rung.calls, asked) == ("http", "http", [SHOP_LIST], [True])
