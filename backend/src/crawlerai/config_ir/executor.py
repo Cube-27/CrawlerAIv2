@@ -209,7 +209,7 @@ class _Run:
         candidates: list[Candidate] = []
         for n, node in enumerate(self.rows(listing)):
             owner = row_id(n)
-            rows.append(Entity(id=owner, kind=ROW_KIND, urls=(), parent=None))
+            rows.append(Entity(id=owner, types=(ROW_KIND,), urls=(), parent=None))
             candidates.extend(self.fields(listing.fields, _Scope(node, in_row=True), owner))
         next_spec = self.schema.fields.get(NEXT_PAGE_FIELD)
         if listing.next is not None and next_spec is not None:

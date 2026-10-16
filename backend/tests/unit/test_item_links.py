@@ -32,7 +32,7 @@ LISTING = _schema(title=TITLE, url=URL)
 
 
 def _row(n: int) -> Entity:
-    return Entity(id=f"llm:rows[{n}]", kind="page", urls=(), parent=None)
+    return Entity(id=f"llm:rows[{n}]", types=("page",), urls=(), parent=None)
 
 
 def _title(n: int, title: str) -> Candidate:

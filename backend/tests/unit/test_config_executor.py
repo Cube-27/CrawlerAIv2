@@ -267,8 +267,8 @@ def test_a_listing_gives_one_row_entity_per_row_with_fields_relative_to_it() -> 
     }
     result = _run(_ir({}, page_kind="listing", listing=listing), LISTING_HTML, _listing_schema())
     assert result.rows == (
-        Entity(id="config:row:0", kind="ListItem", urls=(), parent=None),
-        Entity(id="config:row:1", kind="ListItem", urls=(), parent=None),
+        Entity(id="config:row:0", types=("ListItem",), urls=(), parent=None),
+        Entity(id="config:row:1", types=("ListItem",), urls=(), parent=None),
     )
     assert [(c.entity_id, c.field, c.raw) for c in result.candidates] == [
         ("config:row:0", "title", "A"),

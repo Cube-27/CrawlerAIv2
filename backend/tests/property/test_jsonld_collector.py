@@ -112,3 +112,29 @@ def test_locators_read_back_the_raw_values(generated: list[JsonValue]) -> None:
         block, path = parse_locator(candidate.locator).parts
         value = _read(documents[int(block)], path)
         assert value == candidate.raw or (isinstance(value, dict) and value.get("@value") == candidate.raw)
+
+
+# A paragraph with text: an empty one renders no line (HTML Standard rendering: an empty block box has no line box).
+_WORDS = st.text(st.characters(categories=("L", "N", "P", "Zs"), exclude_characters="<>&"), max_size=40).filter(
+    str.strip
+)
+_DESCRIBED = SCHEMA.model_copy(
+    update={"fields": {"description": FieldSpec(type=FieldType.LONG_TEXT, description="d", schema_org="Product.name")}}
+)
+
+
+@given(st.lists(_WORDS, min_size=1, max_size=4))
+def test_paragraph_markup_reads_as_the_lines_of_its_text(paragraphs: list[str]) -> None:
+    # HTML Standard rendering: each `p` is a block box, so a fragment of paragraphs reads as their texts, one a line.
+    plain = "\n".join(paragraphs)
+    markup = "".join(f"<p>{p}</p>" for p in paragraphs)
+
+    read = [_described(raw) for raw in (plain, markup)]
+
+    assert read[0] == read[1]
+
+
+def _described(raw: str) -> object:
+    block = json.dumps({"@context": "https://schema.org", "@type": "Product", "name": raw})
+    page = ParsedPage(f'<script type="application/ld+json">{block}</script>')
+    return [c.normalized for c in JsonLdCollector(VOCABULARY).collect(page, _DESCRIBED, CTX).candidates]

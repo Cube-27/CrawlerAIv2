@@ -135,7 +135,7 @@ class MicrodataCollector:
         )
         return CollectResult(
             entities=tuple(
-                Entity(id=t.id, kind=t.types[0], urls=entity_urls(t.node, ctx), parent=parents[t.id], via=vias[t.id])
+                Entity(id=t.id, types=t.types, urls=entity_urls(t.node, ctx), parent=parents[t.id], via=vias[t.id])
                 for t in typed
             ),
             candidates=tuple(candidates),

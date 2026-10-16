@@ -267,7 +267,7 @@ def fill(client: ScriptedClient, request: GapRequest) -> GapReply:
 
 
 def gap_request(html: str, missing: tuple[str, ...], schema: SchemaDef = SCHEMA) -> GapRequest:
-    target = Entity(id=OWNER, kind="Product", urls=(PAGE_URL,), parent=None)
+    target = Entity(id=OWNER, types=("Product",), urls=(PAGE_URL,), parent=None)
     return GapRequest(ParsedPage(html), schema, CTX, target, missing)
 
 

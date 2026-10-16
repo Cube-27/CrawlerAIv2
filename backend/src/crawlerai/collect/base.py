@@ -7,7 +7,7 @@ A collector proposes; it never chooses. Ownership, intent and preference are `cr
 from collections.abc import Mapping, Sequence
 from typing import Protocol, Self
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from crawlerai.collect.locator import LocatorText
 from crawlerai.content.page import ParsedPage
@@ -28,7 +28,9 @@ class Entity(_Model):
     `microdata:/html[1]/body[1]/div[3]`), an adapter's object (`adapter:job`), or the page itself (`page`)."""
 
     id: str
-    kind: str  # the schema.org type name when known (`Product`, `Offer`, `ItemList`), else `page`
+    # The schema.org type names when known (`Product`, `Offer`, `ItemList`), most specific first, else (`page`): a
+    # node is an instance of each of its types (JSON-LD 1.1 §3.5 `@type`; HTML microdata: an `itemtype` list).
+    types: tuple[str, ...] = Field(min_length=1)
     urls: tuple[str, ...]  # canonicalized url, @id, mainEntityOfPage and offers.url values found on the entity
     parent: str | None
     # The schema.org property of the parent whose value holds this entity (`offers`, `isRelatedTo`); None for a root,

@@ -44,7 +44,7 @@ class AdapterCollector:
         for shape in self._adapter.shapes(self._match, document):
             nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
         entities = tuple(
-            Entity(id=n.id, kind=n.shape.type, urls=entity_urls(n, ctx), parent=n.parent, via=n.via) for n in nodes
+            Entity(id=n.id, types=(n.shape.type,), urls=entity_urls(n, ctx), parent=n.parent, via=n.via) for n in nodes
         )
         diagnostics: list[str] = []
         candidates = field_candidates(

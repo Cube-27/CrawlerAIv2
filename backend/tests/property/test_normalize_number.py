@@ -64,7 +64,8 @@ def test_a_number_the_locales_read_differently_is_ambiguous() -> None:
         ("- 4.5", "sign"),
         (True, "not_a_number"),
         (None, "not_a_number"),
-        ({"ratingValue": 4}, "not_a_number"),
+        ({"value": 4}, "not_a_number"),
+        ({"reviewCount": 3}, "not_a_number"),
         ("\ud800 4", "surrogate"),
     ],
 )
@@ -92,3 +93,19 @@ def test_the_dispatcher_routes_the_number_type() -> None:
 def test_a_minus_sign_written_against_the_number_negates_it(value: Decimal) -> None:
     assert number.normalize(f"-{value:f}", NUMBER, EN) == Ok(f"-{value:f}")
     assert number.normalize(f"\u2212{value:f}", NUMBER, EN) == Ok(f"-{value:f}")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # schema.org AggregateRating: `reviewCount` is the count of reviews the rating is based on; none rates nothing.
+        ({"ratingValue": 0, "reviewCount": 0}, Invalid("no_ratings")),
+        ({"ratingValue": "4.5", "reviewCount": "0"}, Invalid("no_ratings")),
+        ({"ratingValue": "4.5", "reviewCount": 12}, Ok("4.5")),
+        ({"ratingValue": "4.5"}, Ok("4.5")),
+        ({"ratingValue": "4.5", "reviewCount": "many"}, Ok("4.5")),
+        ({"ratingValue": "4.5 out of 5", "reviewCount": 3}, Invalid("several_numbers")),
+    ],
+)
+def test_a_rating_value_reads_with_its_review_count(raw: JsonValue, expected: object) -> None:
+    assert number.normalize(raw, NUMBER, EN) == expected

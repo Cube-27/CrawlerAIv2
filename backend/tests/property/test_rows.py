@@ -59,8 +59,8 @@ class Variant:
 
 SKUS = st.sampled_from(["W-11", "W-12", "W-13", "W-14"])
 VARIANTS = st.builds(Variant, SKUS, st.sampled_from(["10.00", "12.00"]), st.none() | st.sampled_from(["Red", "Blue"]))
-# Variants with distinct skus: one per variant.
-DISTINCT = st.lists(VARIANTS, min_size=1, max_size=4, unique_by=lambda v: v.sku)
+# Variants with distinct skus: one per variant. A list of variants has two or more (owner, Appendix A #48).
+DISTINCT = st.lists(VARIANTS, min_size=2, max_size=4, unique_by=lambda v: v.sku)
 
 
 def _jsonld(variants: list[Variant]) -> str:
@@ -137,11 +137,12 @@ def test_rows_never_merge_and_neither_their_order_nor_their_source_changes_them(
 @given(VARIANTS, st.sampled_from(["10.00", "12.00"]))
 def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Variant, other_price: str) -> None:
     twin = Variant(variant.sku, other_price, variant.color)
+    other = Variant("W-99", "10.00", None)  # a second variant, so that the list publishes
 
-    outcome = _outcome(head=_jsonld([variant, twin]))
+    outcome = _outcome(head=_jsonld([variant, twin, other]))
 
     assert outcome.items is not None
-    assert len(outcome.items) == 1
+    assert len(outcome.items) == 2
     price = outcome.items[0].fields["price"]
     if other_price == variant.price:
         assert price.value == {"amount": variant.price, "currency": "EUR"}
@@ -177,14 +178,15 @@ ROW_KEYS = st.lists(
 
 @given(ROW_KEYS)
 def test_rows_link_as_comparing_every_pair_would(row_keys: list[dict[str, list[JsonValue]]]) -> None:
-    rows = [Entity(id=f"row:{i}", kind="Product", urls=(), parent=None) for i in range(len(row_keys))]
+    rows = [Entity(id=f"row:{i}", types=("Product",), urls=(), parent=None) for i in range(len(row_keys))]
     keys = {row.id: k for row, k in zip(rows, row_keys, strict=True)}
 
     assert [[row.id for row in group] for group in linked(_KEY_SUBS, rows, keys)] == _pairwise(rows, keys)
 
 
 def _pairwise(rows: list[Entity], keys: dict[str, dict[str, list[JsonValue]]]) -> list[list[str]]:
-    """The components found by comparing every pair of rows (SPEC-13 §4.4), in collector order by first row."""
+    """The components found by comparing every pair of rows (SPEC-13 §4.4, INV-33), in collector order by first row:
+    two rows link when they share a value of a key sub-field and state no different value of an earlier one."""
     groups: list[set[str]] = []
     for row in rows:
         joined = [g for g in groups if any(_share(keys[row.id], keys[other]) for other in g)]
@@ -194,4 +196,30 @@ def _pairwise(rows: list[Entity], keys: dict[str, dict[str, list[JsonValue]]]) -
 
 
 def _share(a: dict[str, list[JsonValue]], b: dict[str, list[JsonValue]]) -> bool:
-    return any(equal(x, y, _KEY_SUBS[sub]) for sub in a.keys() & b.keys() for x in a[sub] for y in b[sub])
+    subs = list(_KEY_SUBS)
+    return any(
+        any(equal(x, y, _KEY_SUBS[sub]) for x in a.get(sub, ()) for y in b.get(sub, ()))
+        and not any(_differ(a, b, earlier) for earlier in subs[: subs.index(sub)])
+        for sub in subs
+    )
+
+
+def _differ(a: dict[str, list[JsonValue]], b: dict[str, list[JsonValue]], sub: str) -> bool:
+    return any(not equal(x, y, _KEY_SUBS[sub]) for x in a.get(sub, ()) for y in b.get(sub, ()))
+
+
+def test_a_key_never_joins_rows_an_earlier_key_tells_apart() -> None:
+    # Two sizes of one sku with their own GTINs: the gtin, listed first, is the more specific key.
+    rows = [Entity(id=f"row:{i}", types=("Product",), urls=(), parent=None) for i in range(3)]
+    keys: dict[str, dict[str, list[JsonValue]]] = {
+        "row:0": {"gtin": ["4006381333931"], "sku": ["W-1"]},
+        "row:1": {"gtin": ["4006381333948"], "sku": ["W-1"]},
+        "row:2": {"sku": ["W-1"]},
+    }
+    subs = {"gtin": FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin"), "sku": FieldSpec(type=FieldType.TEXT)}
+
+    groups = [[row.id for row in group] for group in linked(subs, rows, keys)]
+
+    # The row without a gtin joins both by its sku, which is then a conflict cluster (INV-33), never a guess.
+    assert groups == [["row:0", "row:1", "row:2"]]
+    assert [[row.id for row in group] for group in linked(subs, rows[:2], keys)] == [["row:0"], ["row:1"]]

@@ -322,7 +322,7 @@ def test_a_listing_config_without_rows_leaves_rows_to_role_c() -> None:
             ),
         ),
         llm_calls=(CALL,),
-        rows=(Entity(id="llm:rows[0]", kind="page", urls=(), parent=None),),
+        rows=(Entity(id="llm:rows[0]", types=("page",), urls=(), parent=None),),
     )
     role_c = FakeRoleC(reply)
     config = _config({"page_title": _steps("normalize-space(//h1)")}, page_kind="listing")
