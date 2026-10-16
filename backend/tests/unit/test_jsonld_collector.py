@@ -403,6 +403,10 @@ def test_root_nodes_of_one_type_with_one_identifier_value_are_one_entity() -> No
         (_product(sku="W-1", name="One"), _product(sku="W-2", name="Two")),  # different identifiers
         (_product(mpn="M-1", name="One"), _product(mpn="M-1", name="Two")),  # mpn is not an identifier property
         (_product(name="One"), _product(name="One")),  # nothing identifies either
+        (
+            _product(sku="W-1", url="https://shop.example.test/p/1"),
+            _product(sku="W-1", url="https://shop.example.test/p/2"),
+        ),  # one sku on two items whose URLs name different pages
         (_product(**{"@id": "_:b0"}, name="One"), _product(**{"@id": "_:b0"}, name="Two")),  # a blank node per block
         (
             _product(**{"@id": PAGE_URL}, name="One"),

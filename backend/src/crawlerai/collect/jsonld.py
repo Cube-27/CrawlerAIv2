@@ -183,19 +183,20 @@ class JsonLdCollector:
                 graph.add(found)
         entities = [found for found in graph.objects if found.types]
         parents, vias = _parents(entities, graph)
+        typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
+        own_urls = {t.id: entity_urls(t.node, ctx) for t in typed}
         roots = [found for found in entities if parents[found.id] is None]
-        same = _same_nodes(roots, graph, self.vocabulary)
+        same = _same_nodes(roots, graph, self.vocabulary, own_urls)
         diagnostics.extend(
             f"jsonld: {node} is the node {first} (same @id or identifier)" for node, first in same.items()
         )
-        typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
         candidates = field_candidates(
             typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
         )
         urls: dict[str, tuple[str, ...]] = {}
         for t in typed:
             owner = same.get(t.id, t.id)
-            urls[owner] = tuple(dict.fromkeys((*urls.get(owner, ()), *entity_urls(t.node, ctx))))
+            urls[owner] = tuple(dict.fromkeys((*urls.get(owner, ()), *own_urls[t.id])))
         return CollectResult(
             entities=tuple(
                 Entity(
@@ -303,28 +304,47 @@ def _member_via(holder: _Object, key: str, via: str | None) -> str | None:
     return schema_term(key) or (key if holder.in_schema and not key.startswith("@") else None)
 
 
-def _same_nodes(roots: Sequence[_Object], graph: _Graph, vocabulary: Vocabulary) -> dict[str, str]:
+def _same_nodes(
+    roots: Sequence[_Object], graph: _Graph, vocabulary: Vocabulary, urls: Mapping[str, tuple[str, ...]]
+) -> dict[str, str]:
     """Each root node that shares an identity (`_identity`) with an earlier root node of the same most specific type,
-    mapped to the first node of its group: a union of the nodes linked through any shared identity, in document
-    order."""
+    mapped to the first node of its group, in document order. One `@id` is one node (JSON-LD). One identifier value
+    joins two groups only when their URLs do not name two different pages (schema.org `url`, "URL of the item"): a
+    listing's items may repeat an identifier across distinct items."""
+    groups = _Groups([frozenset(urls[found.id]) for found in roots])
     first_with: dict[tuple[str, str, str], int] = {}
-    group = list(range(len(roots)))
+    for i, found in enumerate(roots):
+        for prop, value in _identity(found, graph, vocabulary):
+            first = first_with.setdefault((found.types[0], prop, value), i)
+            groups.join(first, i, by_id=prop == "@id")
+    return {roots[i].id: roots[groups.find(i)].id for i in range(len(roots)) if groups.find(i) != i}
 
-    def find(i: int) -> int:
-        while group[i] != i:
-            group[i] = group[group[i]]
-            i = group[i]
+
+@dataclass
+class _Groups:
+    """Disjoint sets of root nodes, each named by its first member, with the URLs its members state."""
+
+    urls: list[frozenset[str]]
+    parent: list[int] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.parent = list(range(len(self.urls)))
+
+    def find(self, i: int) -> int:
+        while self.parent[i] != i:
+            self.parent[i] = self.parent[self.parent[i]]
+            i = self.parent[i]
         return i
 
-    for i, found in enumerate(roots):
-        for key in _identity(found, graph, vocabulary):
-            typed_key = (found.types[0], *key)
-            if typed_key not in first_with:
-                first_with[typed_key] = i
-                continue
-            a, b = find(i), find(first_with[typed_key])
-            group[max(a, b)] = min(a, b)
-    return {roots[i].id: roots[find(i)].id for i in range(len(roots)) if find(i) != i}
+    def join(self, i: int, j: int, *, by_id: bool) -> None:
+        a, b = sorted((self.find(i), self.find(j)))
+        if a == b or not (by_id or self._compatible(a, b)):
+            return
+        self.parent[b] = a
+        self.urls[a] |= self.urls[b]
+
+    def _compatible(self, a: int, b: int) -> bool:
+        return not (self.urls[a] and self.urls[b]) or bool(self.urls[a] & self.urls[b])
 
 
 def _identity(found: _Object, graph: _Graph, vocabulary: Vocabulary) -> Iterator[tuple[str, str]]:
