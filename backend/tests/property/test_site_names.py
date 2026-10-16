@@ -23,18 +23,18 @@ def test_stripping_keeps_a_prefix_with_the_first_segment_and_is_idempotent(
 ) -> None:
     site = SiteNames.of(site_names, page_url)
 
-    stripped = site.strip(title)
+    stripped = site.without_site(title)
 
     assert title.startswith(stripped)
     assert stripped.startswith(title.split(" ")[0])
-    assert site.strip(stripped) == stripped
+    assert site.without_site(stripped) == stripped
 
 
 @given(_PHRASE, _SEPARATORS, _PHRASE)
 def test_a_trailing_stated_site_name_is_stripped(item: str, separator: str, site_name: str) -> None:
     site = SiteNames.of([site_name], None)
 
-    assert site.strip(f"{item} {separator} {site_name}") == item
+    assert site.without_site(f"{item} {separator} {site_name}") == item
 
 
 @given(_PHRASE, _PHRASE)

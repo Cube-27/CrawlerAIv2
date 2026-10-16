@@ -112,7 +112,7 @@ def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta],
     site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
     if site.names(title):
         return [m for m in metas if m.property not in (_TITLE, *_IMAGES)], (_SITE_TITLE,)
-    return [replace(m, reading=site.strip(m.content)) if m.property == _TITLE else m for m in metas], ()
+    return [replace(m, reading=site.without_site(m.content)) if m.property == _TITLE else m for m in metas], ()
 
 
 def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iterator[Candidate]:

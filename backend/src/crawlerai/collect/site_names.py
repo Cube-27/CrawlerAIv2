@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from crawlerai.acquire.public_suffix import default_suffixes
 
 _SEPARATOR = re.compile(r"\s+[^\w\s]\s+")
+_WORD = re.compile(r"\w+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,9 +37,9 @@ class SiteNames:
         folded = fold(text)
         return bool(folded) and (folded in self.stated or folded == self.host)
 
-    def strip(self, title: str) -> str:
-        """`title` without its trailing separator segments that name the site: a name `names` accepts, or a segment
-        that starts with the host's label ("Example Store" on `shop.example.test`). The first segment always stays."""
+    def without_site(self, title: str) -> str:
+        """`title` without its trailing separator segments that name the site (`_names_segment`). The first segment
+        always stays."""
         separators = list(_SEPARATOR.finditer(title))
         end = len(title)
         while separators and self._names_segment(title[separators[-1].end() : end]):
@@ -46,7 +47,13 @@ class SiteNames:
         return title[:end]
 
     def _names_segment(self, segment: str) -> bool:
-        return self.names(segment) or (self.host is not None and fold(segment).startswith(self.host))
+        """A site name, or a segment whose first whole words (runs of word characters) spell the host's label
+        ("Example Store", "Example.com" on `shop.example.test`); a word the label is only a prefix of ("Exampleton")
+        is the segment's own text."""
+        if self.names(segment):
+            return True
+        words = _WORD.findall(segment)
+        return self.host is not None and any(fold("".join(words[:k])) == self.host for k in range(1, len(words) + 1))
 
 
 def fold(text: str) -> str:

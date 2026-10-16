@@ -295,10 +295,11 @@ def _named_member(spec: FieldSpec, members: list[Candidate], kept: list[Candidat
 
     A property written with several values (JSON-LD 1.1 §4.3.1: an array is a set of values, in no significant
     order; HTML microdata: a repeated itemprop) gives a single-valued field several candidates of one entity, and
-    no order among them says which is meant. When independent candidates of other kinds (Open Graph's `og:image`,
-    a field's one value) all equal one of those values, that value is the one the page means. A url or image_url
-    value that equals none may still name one by its resource (`resource_key`: the same file in another rendition).
-    Anything else stays a conflict. Admitted state values are never independent, so they never select (§8.1)."""
+    no order among them says which is meant. When the values that independent candidates of other kinds equal
+    (Open Graph's `og:image`, a field's one value) are one value, it is the one the page means; a namer equal to
+    none of them is then rejected by precedence as usual. With no equal one, an image_url value may name one by its
+    file (`resource_key`: the same image in another rendition). Anything else stays a conflict. Admitted state
+    values are never independent, so they never select (§8.1)."""
     if len({c.entity_id for c in members}) != 1:
         return None
     namers = [o for o in kept if o.independent and o.source_kind != members[0].source_kind]

@@ -6,6 +6,7 @@ from html import escape
 
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.og import OpenGraphCollector
+from crawlerai.collect.site_names import SiteNames
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
@@ -240,6 +241,7 @@ def test_a_trailing_separator_segment_naming_the_site_is_stripped() -> None:
         ("Widget One | Synthetic Tools", "Synthetic Tools", "Widget One"),
         ("Widget One - Blue — Synthetic Tools", "Synthetic Tools", "Widget One - Blue"),
         ("Widget One · Example Store", None, "Widget One"),
+        ("Widget One | Example.com", None, "Widget One"),
         ("Widget One | green | EXAMPLE", None, "Widget One | green"),
         ("Widget One | Tools | Synthetic", "Synthetic Tools - Synthetic", "Widget One | Tools"),
     ]
@@ -257,7 +259,11 @@ def test_a_title_without_a_trailing_site_segment_keeps_every_part() -> None:
         "Widget One: Synthetic Tools",  # a colon after a word is not a separator
         "Widget One-Synthetic Tools",  # nor a hyphen inside a word
         "Widget One | Synthetic Toolshed",
+        "Widget One | Exampleton",  # the host's label `example` is only a prefix of the word
     ):
         result = _collect(("og:title", title), ("og:site_name", "Synthetic Tools"))
 
         assert result.candidates == (_og("title", title, Ok(title), "meta:og:title"),), title
+    on_art = SiteNames.of([], "https://shop.art.test/p/1")
+    assert on_art.without_site("Canvas | Artwork Print") == "Canvas | Artwork Print"
+    assert on_art.without_site("Canvas | Art Store") == "Canvas"

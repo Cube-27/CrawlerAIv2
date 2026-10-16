@@ -108,8 +108,9 @@ def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
 
 
 def resource_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
-    """The resource a url or image_url value names, its query aside (`url.resource_key`); `None` for other types."""
-    return url.resource_key(value) if spec.type in (FieldType.URL, FieldType.IMAGE_URL) else None
+    """The file an image_url value names, its query aside (`url.resource_key`: a query that varies how an image is
+    served); `None` for other types. A page URL's query often names a variant (SPEC-13), so url has none."""
+    return url.resource_key(value) if spec.type is FieldType.IMAGE_URL else None
 
 
 def _list_key(items: list[JsonValue], item: FieldSpec) -> Hashable | None:
