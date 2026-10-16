@@ -50,10 +50,15 @@ export function optionsButton(): HTMLElement {
   return screen.getByRole("button", { name: "Options", hidden: true });
 }
 
+/** The open options popover, once it shows. */
+export async function findOptions() {
+  return within(await screen.findByRole("dialog", { name: "Options" }));
+}
+
 /** Opens the options popover and returns it. */
 export async function openOptions() {
   await userEvent.click(optionsButton());
-  return within(await screen.findByRole("dialog", { name: "Options" }));
+  return findOptions();
 }
 
 /** Closes the options popover with Escape, so the page under it can be used again. */

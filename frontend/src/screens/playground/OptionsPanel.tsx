@@ -67,7 +67,11 @@ export function OptionsPopover({
           </>
         ) : null}
       </Badge.Anchor>
-      <Popover.Content placement="bottom start" className="w-options">
+      {/* Outlined like the command bar; it scrolls inside the height React Aria leaves it in the viewport. */}
+      <Popover.Content
+        placement="bottom start"
+        className="w-options overflow-auto border border-border"
+      >
         <Popover.Dialog ref={dialog} className="options-panel">
           {children}
         </Popover.Dialog>

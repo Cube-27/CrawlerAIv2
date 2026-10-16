@@ -60,7 +60,7 @@ export function PlaygroundLayout({
         >
           <CommandBar
             input={input}
-            optionsToggle={
+            options={
               <OptionsPopover
                 isOpen={optionsOpen}
                 changed={optionsChanged}

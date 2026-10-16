@@ -6,6 +6,7 @@ import { stubApi, type Call } from "../../../test/api";
 import { runApi, SCHEMA_ID } from "../../../test/runs";
 import {
   closeOptions,
+  findOptions,
   openOptions,
   fill,
   openPlayground,
@@ -129,7 +130,7 @@ describe("crawl playground", () => {
 
     await start();
 
-    const options = within(await screen.findByRole("dialog", { name: "Options" }));
+    const options = await findOptions();
     expect(options.getByRole("alert")).toHaveTextContent(
       "A schema's records need a page-kind rule: a page no rule matches is not extracted.",
     );

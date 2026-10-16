@@ -9,10 +9,10 @@ import { ReadOnlyContext } from "./readOnly";
  * HTML §4.10.15); Options and the action stay usable. */
 export function CommandBar({
   input,
-  optionsToggle,
+  options,
   tools,
   action,
-}: Readonly<{ input: ReactNode; optionsToggle: ReactNode; tools: ReactNode; action: ReactNode }>) {
+}: Readonly<{ input: ReactNode; options: ReactNode; tools: ReactNode; action: ReactNode }>) {
   const readOnly = use(ReadOnlyContext);
   return (
     <Card>
@@ -22,7 +22,7 @@ export function CommandBar({
         </fieldset>
         {/* At least as tall as a select, so a mode without one (Map) keeps the action where the others have it. */}
         <div className="flex min-h-10 flex-wrap items-center gap-2">
-          {optionsToggle}
+          {options}
           <fieldset disabled={readOnly} className="contents">
             {tools}
           </fieldset>

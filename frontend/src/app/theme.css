@@ -31,7 +31,7 @@
    * modes moves neither the toolbar nor the run button. */
   --height-playground-input: 5rem;
   /* The options popover: the command bar's width, less 1rem each side at phone width. */
-  --width-options: min(48rem, 100vw - 2rem);
+  --width-options: min(var(--container-playground), 100vw - 2rem);
   /* The playground's output area (SPEC-14 §4.2): a run's pending, failed and done states fill at least this box, so
    * a run moves nothing around it. */
   --height-playground-output: 36rem;
@@ -259,16 +259,12 @@
     }
   }
 
-  /* The playground's options popover (DESIGN.md, Playground options): the panel's padding, outlined like the command
-   * bar, and scrolling inside the height React Aria leaves it in the viewport. */
-  .popover:has(.options-panel) {
-    @apply overflow-auto border border-border;
-  }
+  /* The playground's options popover (DESIGN.md, Playground options): the panel's padding. */
   .options-panel {
     @apply p-panel;
   }
 
-  /* An input group's prefix and suffix read as part of the field: HeroUI draws a divider between them and the input,
+  /* An input group's prefix reads as part of the field: HeroUI draws a divider between it and the input,
    * which showed as a stray bar after `https://`. A text prefix runs straight into the typed text (`https://` then the
    * host); an icon keeps HeroUI's gap. */
   .input-group__prefix {
@@ -276,15 +272,6 @@
     &:not(:has(svg)) {
       @apply pe-0;
     }
-  }
-  .input-group__suffix {
-    border-inline-start-width: 0;
-  }
-
-  /* A collapsed part's trigger (DESIGN.md, Collapsed detail) is a quiet button whose label lines up with the text and
-   * tables around it: its padding hangs into the margin instead of indenting the label. */
-  [data-slot="disclosure-heading"] > .button--ghost.button--sm {
-    @apply -ms-3;
   }
 
   /* A JSON view (SPEC-14 §4.3) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */

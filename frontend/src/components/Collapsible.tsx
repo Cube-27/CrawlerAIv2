@@ -14,7 +14,8 @@ export function Collapsible({
     <Disclosure isExpanded={open} onExpandedChange={setOpen}>
       <div className="flex flex-wrap items-center gap-3">
         <Disclosure.Heading>
-          <Button slot="trigger" variant="ghost" size="sm">
+          {/* The padding hangs into the margin, so the label lines up with the content around it. */}
+          <Button slot="trigger" variant="ghost" size="sm" className="-ms-3">
             {title}
             <Disclosure.Indicator />
           </Button>

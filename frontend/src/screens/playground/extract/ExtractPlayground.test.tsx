@@ -5,6 +5,7 @@ import type { Call } from "../../../test/api";
 import { runApi, SCHEMA_ID } from "../../../test/runs";
 import {
   closeOptions,
+  findOptions,
   fill,
   openOptions,
   openPlayground,
@@ -91,7 +92,7 @@ describe("extract playground", () => {
 
     await extract();
 
-    const options = within(await screen.findByRole("dialog", { name: "Options" }));
+    const options = await findOptions();
     expect(
       options.getByText("Choose a stored schema in the toolbar, or another source."),
     ).toBeInTheDocument();
@@ -99,7 +100,7 @@ describe("extract playground", () => {
     await fill(options.getByRole("textbox", { name: "Schema JSON" }), '{"name": "x"}');
     await closeOptions();
     await extract();
-    const reopened = within(await screen.findByRole("dialog", { name: "Options" }));
+    const reopened = await findOptions();
     expect(await reopened.findByText("Choose the page kind of the records.")).toBeInTheDocument();
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
   });
