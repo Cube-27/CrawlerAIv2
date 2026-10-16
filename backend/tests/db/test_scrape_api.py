@@ -85,7 +85,7 @@ def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[in
         if url.endswith("/slow"):
             await asyncio.sleep(5)
         status, body = pages.get(url, (404, b""))
-        return fetch_result(url, status, body, block_class="ok" if status == 200 else "not_found")
+        return fetch_result(url, status, body, block_class="ok" if status == 200 else "not_found", policy=policy)
 
     async def resolve(host: str) -> list[IPAddress]:
         return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
@@ -453,3 +453,21 @@ async def test_a_listing_without_rows_is_partial_with_no_record(
 
     assert response.status_code == 200, response.text
     assert (response.json()["outcome"], response.json()["records"]) == ("partial", [])
+
+
+async def test_the_markdown_of_a_page_scraped_as_a_listing_keeps_its_items(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str
+) -> None:
+    url = f"{own_origin}/kettles"
+    tiles = "".join(
+        f'<li class="tile"><h3><a href="/kettles/{i}">Kettle {i}</a></h3><p>{i}9.90 EUR</p></li>' for i in range(5)
+    )
+    pages[url] = (200, f"<html><body><main><h1>Kettles</h1><ul>{tiles}</ul></main></body></html>".encode())
+
+    listing = (await _post(client, {"url": url, "formats": ["markdown"], "page_kind": "listing"})).json()["markdown"]
+    detail = (await _post(client, {"url": url, "formats": ["markdown"], "page_kind": "detail"})).json()["markdown"]
+
+    assert [line for line in listing.splitlines() if line.startswith("- ")] == [
+        f"- [Kettle {i}]({own_origin}/kettles/{i}) {i}9.90 EUR" for i in range(5)
+    ]
+    assert f"[Kettle 3]({own_origin}/kettles/3)" not in detail

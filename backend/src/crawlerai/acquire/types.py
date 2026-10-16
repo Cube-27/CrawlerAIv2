@@ -91,3 +91,14 @@ def policy_with_attempts(
     """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it
     (SPEC-02 §4.4)."""
     return {**fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
+
+
+def fetched_as(fetch_policy: dict[str, JsonValue]) -> PageKind | None:
+    """The page kind a capture was fetched as (`FetchPolicy.page_kind`, which its manifest keeps); None for one fetched
+    without a page kind, or before the manifest kept it."""
+    match fetch_policy.get("page_kind"):
+        case "detail":
+            return "detail"
+        case "listing":
+            return "listing"
+    return None

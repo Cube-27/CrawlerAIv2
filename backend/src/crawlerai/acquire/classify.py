@@ -9,11 +9,11 @@ A page fetched as a listing is a shell too when nothing on it lists items (`_lis
 after the page (an XHR), so the browser may render what HTTP did not.
 """
 
-from collections import Counter
-
+from lxml import etree
+from lxml import html as lxml_html
 from selectolax.lexbor import LexborHTMLParser
-from selectolax.lexbor import LexborNode as Node
 
+from crawlerai.acquire.items import item_blocks
 from crawlerai.acquire.types import BlockClass
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
@@ -39,13 +39,7 @@ _PAGE_PARTS = "a[href], area[href], script, link, img, picture, video, audio, if
 TERMINAL_MAX_BYTES = 1024
 # Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): JSON-LD (W3C JSON-LD 1.1 §7.3,
 # script data blocks) and microdata items (HTML Standard §5.2).
-_STRUCTURED_DATA = 'script[type="application/ld+json"], [itemscope]'
-# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4) and
-# the WAI-ARIA 1.2 landmark roles they map to (§5.3.4).
-_CHROME = "nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo], [role=complementary]"
-# A listing lists at least this many items, as resolution takes rows without an ItemList (SPEC-05 §4.7, its
-# MIN_TOP_LEVEL_ROWS): fewer is what a detail page's related items look like.
-_MIN_ITEMS = 3
+_STRUCTURED_DATA = '//script[@type="application/ld+json"] | //*[@itemscope]'
 
 
 def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
@@ -94,31 +88,9 @@ def _is_terminal(body: bytes) -> bool:
 
 
 def _lists_items(body: bytes) -> bool:
-    """Whether the page lists items: structured data, or a repeated item structure in its content. Items are at least
-    `_MIN_ITEMS` siblings of one shape (tag and class list, as one template renders them) that each are or hold a
-    hyperlink. Content is the main landmark (HTML Standard §4.4.14), else the body, without the site's chrome."""
-    tree = LexborHTMLParser(body)
-    if tree.css_first(_STRUCTURED_DATA) is not None:
-        return True
-    content = tree.css_first("main") or tree.body
-    if content is None:
+    """Whether the page lists items: structured data its rows are read from, or repeated items (`item_blocks`)."""
+    try:
+        root = lxml_html.document_fromstring(body)
+    except (etree.ParserError, ValueError):  # a document lxml finds no element in
         return False
-    # One walk up from each hyperlink counts the link-holding elements by parent and shape; an element already
-    # counted had its ancestors counted with it, so every element is counted once.
-    shapes: Counter[tuple[Node, str | None, str | None]] = Counter()
-    counted: set[Node] = set()
-    for link in content.css("a[href]"):
-        node = link
-        while node != content and node not in counted and (parent := node.parent) is not None:
-            counted.add(node)
-            shapes[parent, node.tag, node.attributes.get("class")] += 1
-            node = parent
-    return any(n >= _MIN_ITEMS and not _in_chrome(parent, content) for (parent, _, _), n in shapes.items())
-
-
-def _in_chrome(node: Node | None, content: Node) -> bool:
-    while node is not None and node != content:
-        if node.css_matches(_CHROME):
-            return True
-        node = node.parent
-    return False
+    return bool(root.xpath(_STRUCTURED_DATA)) or bool(item_blocks(root))

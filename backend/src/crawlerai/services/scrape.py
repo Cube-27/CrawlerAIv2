@@ -93,7 +93,7 @@ from crawlerai.services.scrape_steps import (
     store_page_record,
 )
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
-from crawlerai.storage.capture_bundle import decode
+from crawlerai.storage.capture_bundle import CaptureManifest, decode
 
 MAX_TIMEOUT_S: Final = 120  # D-0028
 # A scrape task's `last_error` when it failed for no reason the service declares.
@@ -421,8 +421,8 @@ async def _derive(
     (INV-26), with the site's active `config` when there is one."""
     page = ParsedPage.of(result.bundle)
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
-    final_url = result.bundle.manifest.final_url
-    formats, sample = await asyncio.to_thread(_content, page, final_url, request.formats, sample=prompt is not None)
+    manifest = result.bundle.manifest
+    formats, sample = await asyncio.to_thread(_content, page, manifest, request.formats, sample=prompt is not None)
     drafted = None
     if prompt is not None and sample is not None:
         # Role S's one sample page is the page's cleaned text (SPEC-06 §4.5).
@@ -535,10 +535,10 @@ def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:
 
 
 def _content(
-    page: ParsedPage, final_url: str, requested: list[PageFormat], *, sample: bool
+    page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat], *, sample: bool
 ) -> tuple[Formats, str | None]:
     """The requested content formats of the page and, when `sample`, its cleaned text."""
-    return page_formats(page, final_url, requested), page.cleaned_text.text if sample else None
+    return page_formats(page, manifest, requested), page.cleaned_text.text if sample else None
 
 
 async def _usage(conn: AsyncConnection, job_id: JobId) -> Usage:

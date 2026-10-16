@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
@@ -57,6 +57,7 @@ from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import NewSchema
 from crawlerai.storage.base import ObjectStore
+from crawlerai.storage.capture_bundle import CaptureManifest
 
 log = logging.getLogger(__name__)
 
@@ -360,11 +361,13 @@ class Formats(TypedDict, total=False):
     metadata: PageMetadata
 
 
-def page_formats(page: ParsedPage, final_url: str, requested: list[PageFormat]) -> Formats:
-    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26)."""
+def page_formats(page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat]) -> Formats:
+    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26) and its
+    capture's manifest: a format is a function of the capture alone (§15), the page kind it was fetched as included."""
     formats: Formats = {}
+    final_url = manifest.final_url
     if "markdown" in requested:
-        formats["markdown"] = markdown(page, final_url)
+        formats["markdown"] = markdown(page, final_url, fetched_as(manifest.fetch_policy))
     if "html" in requested:
         formats["html"] = cleaned_html(page)
     if "raw_html" in requested:

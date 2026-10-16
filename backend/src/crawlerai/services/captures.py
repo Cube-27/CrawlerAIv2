@@ -14,6 +14,7 @@ from collections import OrderedDict
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.types import fetched_as
 from crawlerai.config_ir.active import active_config
 from crawlerai.content.markdown import markdown
 from crawlerai.content.page import ParsedPage
@@ -83,7 +84,10 @@ async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: Captu
     made = _MARKDOWN.get(capture_id)
     if made is None:
         bundle = await _bundle(store, capture)
-        made = await asyncio.to_thread(lambda: markdown(ParsedPage.of(bundle), bundle.manifest.final_url))
+        manifest = bundle.manifest
+        made = await asyncio.to_thread(
+            lambda: markdown(ParsedPage.of(bundle), manifest.final_url, fetched_as(manifest.fetch_policy))
+        )
     _MARKDOWN[capture_id] = made
     _MARKDOWN.move_to_end(capture_id)
     while len(_MARKDOWN) > _MARKDOWN_KEPT:

@@ -185,6 +185,7 @@ def fetch_result() -> Callable[..., FetchResult]:
         block_class: BlockClass = "ok",
         error: str | None = None,
         method: CaptureMethod = "http",
+        policy: FetchPolicy | None = None,
     ) -> FetchResult:
         manifest = CaptureManifest(
             capture_id=uuid7(),
@@ -198,7 +199,7 @@ def fetch_result() -> Callable[..., FetchResult]:
             timings_ms={"total": 1},
             html_sha256=sha256_hex(body),
             network_bodies=(),
-            fetch_policy=FetchPolicy().model_dump(mode="json"),
+            fetch_policy=(policy or FetchPolicy()).model_dump(mode="json"),
             engine_version="test",
         )
         attempt = AttemptRecord(

@@ -421,7 +421,7 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
     # for its links, and is never extracted (ARCHITECTURE §13.2).
     if row.outcome != "extracted" or row.object_key is None or row.final_url is None:
         return output
-    made = await asyncio.to_thread(_formats_of, store, row.object_key, row.final_url, formats)
+    made = await asyncio.to_thread(_formats_of, store, row.object_key, formats)
     return output if made is None else output.model_copy(update=made)
 
 
@@ -464,17 +464,17 @@ async def _json_values_item(
     item = JsonValuesItem(url=row.url, outcome=row.outcome, records=records)
     if not metadata or row.outcome not in _EXTRACTED or row.object_key is None or row.final_url is None:
         return item
-    made = await asyncio.to_thread(_formats_of, store, row.object_key, row.final_url, ["metadata"])
+    made = await asyncio.to_thread(_formats_of, store, row.object_key, ["metadata"])
     return item if made is None else item.model_copy(update=made)
 
 
-def _formats_of(store: ObjectStore, object_key: str, final_url: str, formats: list[PageFormat]) -> Formats | None:
+def _formats_of(store: ObjectStore, object_key: str, formats: list[PageFormat]) -> Formats | None:
     """The formats of the capture at `object_key`, from one parse of it (INV-26); None once its bundle is gone."""
     try:
         bundle = decode(store.get(object_key))
     except ObjectNotFound:
         return None
-    return page_formats(ParsedPage.of(bundle), final_url, formats)
+    return page_formats(ParsedPage.of(bundle), bundle.manifest, formats)
 
 
 def _content(record: StoredRecord) -> RecordContent:
