@@ -125,12 +125,17 @@ afterEach(() => {
 });
 
 describe("Job screen", () => {
-  it("shows the job's status, task counts, usage, events and records", async () => {
+  it("shows the job's status, progress, usage, events and records", async () => {
     jobApi();
     await open(`/jobs/${JOB_ID}`, "Learn job");
 
     expect(jobStatus()).toHaveTextContent("running");
-    expect(rowsOf(screen.getByRole("grid", { name: "Tasks by outcome" }))).toEqual(["extracted2"]);
+    expect(screen.getByText("2 of 3 pages done")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Outcomes" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["extracted2"]);
     expect(rowsOf(screen.getByRole("grid", { name: "Usage" }))).toEqual(["pages_fetched2"]);
     expect(screen.getByText("Estimated LLM cost: $0.0123")).toBeInTheDocument();
     const events = screen.getByRole("grid", { name: "Events" });
