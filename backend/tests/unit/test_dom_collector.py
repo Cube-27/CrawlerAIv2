@@ -184,3 +184,42 @@ def test_locators_parse_as_dom_xpaths() -> None:
         .candidates
     )
     assert [parse_locator(c.locator).scheme for c in candidates] == ["dom", "dom"]
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        '<img src="/deco.jpg" alt="">',  # HTML Standard §4.8.4.4: an empty `alt` marks an image as decorative
+        '<img src="/deco.jpg" alt=" " role="none">',  # WAI-ARIA 1.2: roles `none`, `presentation`
+        '<img src="/deco.jpg" alt="x" role="presentation">',
+        # HTML Standard §4.8.9, §4.8.7: a media element's children are fallback content, not shown where it is
+        '<video poster="/poster.jpg"><img src="/poster.jpg"></video>',
+        '<object data="/x.pdf"><img src="/x.png"></object>',
+        # A link card: an image whose block holds one hyperlink to another document is that document's teaser.
+        '<ul><li><div><img src="/c/a.jpg" alt="A"><p>Type A</p><a href="/c/a">Shop now</a></div></li>'
+        '<li><div><img src="/c/b.jpg" alt="B"><p>Type B</p><a href="/c/b">Shop now</a></div></li></ul>',
+        '<a href="https://promo.example.test/sale"><img src="/banner.jpg" alt="Sale"></a>',
+        '<div><a href="/c/a"><img src="/c/a.jpg" alt="A"></a><a href="/c/a">Type A</a></div>',
+    ],
+)
+def test_a_decorative_fallback_or_link_card_image_is_not_the_main_image(other: str) -> None:
+    found = _collect(f'<main>{other}<img src="/p/1.jpg" alt="Product"></main>')
+
+    assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        '<a href="/p/1-large.jpg">{}</a>',  # a link to an image resource (RFC 6838 `image/*`) is the image itself
+        '<a href="#zoom">{}</a>',  # a fragment link stays on this page (RFC 3986 §4.4)
+        '<a href="/p/1">{}</a><a href="/p/1#reviews">Reviews</a>',  # links to this page itself
+        '<div><a href="/c/a">Category A</a> <a href="/c/b">Category B</a>{}</div>',  # links to several documents
+        # The nearest block with a link holds other images too: a gallery beside a link, not one card.
+        '<div>{}<img src="/p/2.jpg" alt="Back"><a href="/c/a">Category A</a></div>',
+    ],
+)
+def test_an_image_linked_to_itself_this_page_or_several_documents_stays_the_main_image(wrapper: str) -> None:
+    found = _collect(f'<main>{wrapper.format(chr(60) + "img src=/p/1.jpg alt=Product>")}</main>')
+
+    assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
