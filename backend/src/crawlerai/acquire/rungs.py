@@ -82,15 +82,15 @@ async def acquire(
     keeps the outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with the
     HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch."""
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
-    if served is not None:
-        # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the
-        # host's rate, which `admit_next` waits out (SPEC-15 §4.9).
-        if served.block_class == "ok" or not await _admitted(admit_next):
-            return served
-    elif recipe is not None:
+    # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
+    # rate, which `admit_next` waits out (SPEC-15 §4.9). A recipe's may be the page's own (its HTML page request).
+    by_recipe = served is None and recipe is not None
+    if served is None and recipe is not None:
         served = await recipe(url, policy)
-        if served.block_class == "ok" or slow_down(served) or not await _admitted(admit_next):
-            return served
+    if served is not None and (
+        served.block_class == "ok" or (by_recipe and slow_down(served)) or not await _admitted(admit_next)
+    ):
+        return served
     kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next)
     if served is not None:
         attempts, duration_ms = served.attempts + attempts, served.duration_ms + duration_ms

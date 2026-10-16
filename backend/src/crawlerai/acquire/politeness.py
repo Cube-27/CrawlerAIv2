@@ -6,11 +6,12 @@ from each, which the design point (0.1 tasks/s) accepts; shared state is a candi
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Final
 
+from crawlerai.acquire.types import AttemptRecord
 from crawlerai.storage.capture_bundle import HeaderList
 
 DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # SPEC-02 §4.6: 1 request/s
@@ -22,6 +23,11 @@ SLOW_DOWN: Final = frozenset({429, 503})
 # Waits until the site's rate admits one more request, records it and answers True; answers False, recording nothing,
 # when that turn is too far off to wait for in place.
 Admit = Callable[[], Awaitable[bool]]
+
+
+def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:
+    """The last attempt a server answered with a 429 or 503 (`SLOW_DOWN`), if any."""
+    return next((a for a in reversed(tuple(attempts)) if a.status in SLOW_DOWN), None)
 
 
 def interval(crawl_delay_ms: int | None, robots_delay: timedelta | None) -> timedelta:

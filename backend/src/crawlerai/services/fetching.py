@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, HostLimiter, interval
+from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, interval, slowed_down
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
@@ -232,9 +232,9 @@ async def _polite_json(
     if not take_turn(host):
         await admitted(limiter, host, *allowed)
     result = await json(request, policy)
-    last = result.attempts[-1]
-    if last.status in SLOW_DOWN and last.retry_after is not None:
-        limiter.pause(host, min(last.retry_after, BACKOFF_MAX))
+    slowed = slowed_down(result.attempts)
+    if slowed is not None and slowed.retry_after is not None:
+        limiter.pause(host, min(slowed.retry_after, BACKOFF_MAX))
     return result
 
 

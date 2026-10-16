@@ -16,9 +16,9 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, HostLimiter, interval
+from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, slowed_down
 from crawlerai.acquire.robots import Fetch, site_robots
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
 from crawlerai.db.queue import LEASE, ClaimedTask, retry_delay
 from crawlerai.recurring.conditional import Unchanged
@@ -72,7 +72,7 @@ async def fetch_politely(
     result = await fetch(task.url, partial(limiter.wait, host, gap, WAIT_MAX))
     if isinstance(result, Unchanged) or result.block_class == "ok":
         return result
-    slowed = _slowed_down(result.attempts)
+    slowed = slowed_down(result.attempts)
     if slowed is None:
         return result
     error = f"http {slowed.status}"
@@ -83,8 +83,3 @@ async def fetch_politely(
         return Finished("blocked", reason=error)
     limiter.pause(host, retry_delay(task.attempts) if asked is None else asked)
     return Failed(error, transient=True, after=asked, exhausted="blocked")
-
-
-def _slowed_down(attempts: tuple[AttemptRecord, ...]) -> AttemptRecord | None:
-    """The last attempt a server answered with a 429 or 503 (`SLOW_DOWN`), if any."""
-    return next((a for a in reversed(attempts) if a.status in SLOW_DOWN), None)
