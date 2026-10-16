@@ -72,6 +72,7 @@ def test_tests_are_not_exempt(tmp_path: Path) -> None:
     [
         "backend/src/crawlerai/adapters/platform.py",
         "docs/notes.md",
+        "openspec/specs/x/spec.md",
         "backend/uv.lock",
         "frontend/pnpm-lock.yaml",
         "frontend/package.json",
