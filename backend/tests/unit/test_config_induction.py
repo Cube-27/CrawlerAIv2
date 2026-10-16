@@ -75,3 +75,8 @@ def test_an_unanchored_element_has_no_verified_selector() -> None:
 def test_an_expression_of_an_earlier_config_is_kept_as_it_is() -> None:
     induced = _induce(*["config:title:0:normalize-space(//h1)"] * 5)
     assert induced.fields["title"].steps == [XPathStep(xpath="normalize-space(//h1)")]
+
+
+def test_a_structural_dom_value_is_induced_like_a_microdata_element() -> None:
+    induced = _induce(*["dom:/html[1]/body[1]/h1[1]"] * 5)
+    assert (induced.fields, induced.to_synthesize) == ({}, {"title": "no_verified_selector"})

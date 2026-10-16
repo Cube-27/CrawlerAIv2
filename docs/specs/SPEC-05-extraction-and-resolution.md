@@ -108,6 +108,7 @@ A string `"<scheme>:<address>"`:
 - `jsonld:<block_index>:<jsonpath>` — block = nth `application/ld+json` script; path within the block as written
   (not its expanded graph), so the locator reads back from the capture.
 - `microdata:<xpath>` — XPath 1.0 to the `itemprop` element.
+- `dom:<xpath>` — XPath 1.0 to the element a structural DOM value came from (a label's value cell, an image).
 - `meta:<property>` — `<meta property|name=…>` (OpenGraph and standard meta).
 - `js_state:<script_xpath>:<jsonpath>`.
 - `xhr:<n>:<jsonpath>` — nth captured network body in the bundle.
@@ -134,8 +135,9 @@ for `visible(value) -> bool`.
 All run on every `ok` capture (§8.2 rule 1). Each returns candidates + entities and never raises (errors become
 an empty result with a diagnostic).
 
-- **jsonld**: parse every `application/ld+json` block (tolerate trailing commas? No — JSON only; invalid blocks
-  are skipped with a diagnostic). Expand `@graph`, resolve `@id` references within the page, normalize
+- **jsonld**: parse every `application/ld+json` block as JSON (RFC 8259). Raw control characters inside strings,
+  which §7 requires escaped, are read as their escaped form (§9 lets a parser accept non-JSON forms); nothing else
+  is repaired (no trailing commas, no structure guessed), and a block that still fails is skipped with a diagnostic. Expand `@graph`, resolve `@id` references within the page, normalize
   `http://schema.org` ↔ `https://schema.org`. Entities = nodes with `@type` in the schema.org vocabulary file.
   For each schema field with `schema_org = "T.p[.q]"`, for each entity of type T (or subtype per the vocabulary
   file's `subClassOf`), the value at the path is a candidate owned by that entity. `+` paths produce one dict
@@ -157,6 +159,16 @@ an empty result with a diagnostic).
   through anything; every scalar leaf is tested against the field's normalizer, which is the only filter. To
   bound cost, leaves are considered only for fields still lacking a candidate or for agreement checks.
 - **xhr**: the bundle's captured JSON bodies, same admission rule as js_state. (Also feeds SPEC-09 discovery.)
+- **dom** (ARCHITECTURE §8.1, Appendix A #42; detail schemas only): label–value pairs, a `tr` of exactly two
+  cells whose first is a `th` or a `td` (HTML Standard §4.9) and each `dl` group's terms with its descriptions
+  (§4.4.9, a `div` wrapping a group), and the main image, the first `img` of the one `main` element, else the one
+  `role="main"` landmark (WAI-ARIA 1.2), else the one `article`, outside `nav`/`header`/`footer`/`aside`, whose
+  `src` (else first `srcset` URL) is not `data:` (RFC 2397). A label names a field when its words (NFKC,
+  case-folded, lowerCamelCase split) equal those of the field's name or of the schema.org property its path names
+  (the step before a final `.name`): words come from the schema and the pinned vocabulary, never a list (C4). An
+  image fills `image_url` fields whose path names `image`; list and object fields get no pair. The value must be
+  `visible`. Candidates: `source_kind='dom'`, entity `page`, `independent=True`, locator `dom:<xpath>`; no
+  precedence over structured kinds (it ranks after `og` in the initial precedence).
 - **adapter**: `source_kind='adapter'`, entity from the adapter's JSON object, locator `adapter:…`, using the
   adapter's `map(schema)`.
 - **config**: `ConfigExecutor` protocol (`crawlerai.collect.config`), bound to its IR because `config_ir` sits above
@@ -245,6 +257,7 @@ Bucket of a published field:
 - `structured` if one structured kind (jsonld/microdata/og);
 - `config_corroborated` / `config_uncorroborated` from the config's field status (SPEC-08; for `operator` fields
   see SPEC-08 Open issues);
+- `dom` for a structural DOM value (§4.5), measured and calibrated like any other;
 - `llm_grounded` for role C values;
 - `derived` for a page-URL derivation (§4.8); its `url|derived` bucket is measured, calibrated and held to τ like
   any other.
@@ -352,6 +365,7 @@ sets a value; records storage only serializes).
 | 11 | Adapter collector | `collect/adapter` | unit | Greenhouse/Lever fixtures map. |
 | 12 | Cold listings + pagination | `resolve/pagination`, listing rows | unit | rel=next + structural rule. |
 | 13 | calibrate / fit-precedence logic | `resolve/calibrate` | unit | Files written from a dev run. |
+| 14 | JSON-LD raw control characters; structural DOM collector (Appendix A #42) | `collect/json_doc,dom`, `resolve/evidence`, migration 0020 | unit, replay | A raw newline in a JSON-LD string keeps the block; a page without structured data publishes the brand, sku, availability and image its label table and main region show, in the `dom` bucket. |
 
 ## 9. Open issues
 

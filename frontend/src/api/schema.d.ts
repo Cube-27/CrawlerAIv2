@@ -1425,7 +1425,7 @@ export interface components {
          * @description The §5.1 field types. A type is added here only together with its normalizer module (C8).
          * @enum {string}
          */
-        FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "count" | "list" | "object";
+        FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "count" | "number" | "list" | "object";
         /**
          * FieldsDraft
          * @description Field names and the page kind of the pages they are read from.
@@ -2237,7 +2237,7 @@ export interface components {
             /** Dropped */
             dropped?: components["schemas"]["DroppedRowMeta"][] | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "dom" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Items */
             items?: components["schemas"]["RowMeta"][] | null;
             /** Locator */
@@ -2245,7 +2245,7 @@ export interface components {
             /** Reason */
             reason: string | null;
             /** Source Kind */
-            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm" | "derived") | null;
+            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm" | "derived" | "dom") | null;
             /**
              * Status
              * @enum {string}
@@ -2620,13 +2620,13 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "dom" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Locator */
             locator: string | null;
             /** Reason */
             reason: string | null;
             /** Source Kind */
-            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm" | "derived") | null;
+            source_kind: ("adapter" | "api" | "jsonld" | "microdata" | "og" | "js_state" | "xhr" | "config" | "llm" | "derived" | "dom") | null;
             /**
              * Status
              * @enum {string}

@@ -27,9 +27,16 @@ TAU_OPTIONAL: Final = 0.95
 # ARCHITECTURE §10: a bucket with fewer than 30 dev labels reports `calibrated=false`.
 MIN_CALIBRATED_N: Final = 30
 # ARCHITECTURE §10 buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
-# JSON-LD and microdata, the Open Graph protocol); role C's grounded values.
+# JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data
+# standard; role C's grounded values. A config value's bucket is its field status; js_state and xhr have none.
 _ADAPTER: frozenset[SourceKind] = frozenset({"adapter", "api"})
-_STRUCTURED: frozenset[SourceKind] = frozenset({"jsonld", "microdata", "og"})
+_BUCKET: Mapping[SourceKind, Evidence] = {
+    "jsonld": "structured",
+    "microdata": "structured",
+    "og": "structured",
+    "dom": "dom",
+    "llm": "llm_grounded",
+}
 
 
 class _Model(BaseModel):
@@ -78,13 +85,9 @@ def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corrobora
     # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself.
     if len({c.source_kind for c in (chosen, *agreeing) if c.independent}) >= 2:
         return "agreed"
-    if chosen.source_kind in _STRUCTURED:
-        return "structured"
     if chosen.source_kind == "config":
         return "config_corroborated" if corroborated else "config_uncorroborated"
-    if chosen.source_kind == "llm":
-        return "llm_grounded"
-    return None
+    return _BUCKET.get(chosen.source_kind)
 
 
 def required_fields(schema: SchemaDef) -> frozenset[str]:

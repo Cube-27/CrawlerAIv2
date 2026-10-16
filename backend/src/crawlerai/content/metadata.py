@@ -96,7 +96,8 @@ def _json_ld_types(page: ParsedPage) -> Iterator[str]:
         if block.type != "application/ld+json":
             continue
         try:
-            document: JsonValue = json.loads(block.text)
+            # Raw control characters inside strings are accepted, as the JSON-LD collector reads blocks (RFC 8259 §9).
+            document: JsonValue = json.loads(block.text, strict=False)
         except (ValueError, RecursionError):
             continue
         yield from map(_type_name, _type_values(document))

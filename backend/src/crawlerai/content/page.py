@@ -60,7 +60,7 @@ class ParsedPage:
             attributes = node.attributes
             if "src" not in attributes:
                 media_type = (attributes.get("type") or "").split(";", 1)[0].strip().lower()
-                blocks.append(ScriptBlock(type=media_type, text=node.text(deep=True), xpath=_xpath(node)))
+                blocks.append(ScriptBlock(type=media_type, text=node.text(deep=True), xpath=node_xpath(node)))
         return tuple(blocks)
 
     @property
@@ -79,7 +79,8 @@ class ParsedPage:
         return render(root)
 
 
-def _xpath(node: lexbor.LexborNode) -> str:
+def node_xpath(node: lexbor.LexborNode) -> str:
+    """The XPath 1.0 path of an element in the selectolax tree, one positional step per ancestor."""
     steps: list[str] = []
     current: lexbor.LexborNode | None = node
     while current is not None and current.is_element_node:

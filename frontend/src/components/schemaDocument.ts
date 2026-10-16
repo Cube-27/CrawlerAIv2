@@ -28,6 +28,7 @@ export const FIELD_TYPES: Readonly<Record<FieldType, string>> = {
   location: "Location",
   range: "Range",
   count: "Count",
+  number: "Number",
   list: "List",
   object: "Object",
 };

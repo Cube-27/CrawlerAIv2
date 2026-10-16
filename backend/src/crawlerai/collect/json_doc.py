@@ -1,6 +1,6 @@
-"""JSON documents as collectors read them: parsed strictly as RFC 8259 JSON, addressed by RFC 9535 normalized paths
-(`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and `adapter` locators (SPEC-05 §4.3), and
-queried with the RFC 9535 subset adapter maps are written in."""
+"""JSON documents as collectors read them: parsed as RFC 8259 JSON (JSON-LD blocks leniently, see `parse`),
+addressed by RFC 9535 normalized paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and
+`adapter` locators (SPEC-05 §4.3), and queried with the RFC 9535 subset adapter maps are written in."""
 
 import json
 import re
@@ -20,9 +20,12 @@ def member(path: str, name: str) -> str:
     return f"{path}['{escaped}']"
 
 
-def parse(text: str) -> JsonValue:
-    """`text` as one JSON value; raises `ValueError` when it is not JSON."""
-    return _guarded(lambda: _DECODER.decode(text))
+def parse(text: str, *, lenient: bool = False) -> JsonValue:
+    """`text` as one JSON value; raises `ValueError` when it is not JSON. `lenient` also accepts raw control
+    characters (U+0000-U+001F) inside strings, which RFC 8259 §7 requires escaped and §9 lets a parser accept as an
+    extension: a raw newline in a string is unambiguous, so the value is the one an escaped newline would give."""
+    decoder = _LENIENT_DECODER if lenient else _DECODER
+    return _guarded(lambda: decoder.decode(text))
 
 
 def parse_prefix(text: str, start: int) -> tuple[JsonValue, int]:
@@ -121,6 +124,8 @@ def _guarded(decode: Callable[[], JsonValue]) -> JsonValue:
 
 
 _DECODER = json.JSONDecoder(parse_constant=_not_json)
+# `strict=False` relaxes exactly the control characters inside strings (Python `json` docs); nothing else.
+_LENIENT_DECODER = json.JSONDecoder(parse_constant=_not_json, strict=False)
 # RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
 _NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
 # A name segment captures its name in the first group; a wildcard or index segment, `*` or the index, in the second.

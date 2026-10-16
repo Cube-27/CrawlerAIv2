@@ -17,7 +17,7 @@ from crawlerai.schemas.types import NAME_PATTERN
 # The page-URL derivations (SPEC-05 §4.8, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
 # (RFC 9110 §15.4). No candidate states them, so their locator names the derivation.
 PageUrlDerivation = Literal["canonical_link", "final_url"]
-Scheme = Literal["jsonld", "microdata", "meta", "js_state", "xhr", "adapter", "api", "config", "text", "derived"]
+Scheme = Literal["jsonld", "microdata", "dom", "meta", "js_state", "xhr", "adapter", "api", "config", "text", "derived"]
 
 # An index into a list the capture holds (script blocks, network bodies, config steps): ASCII digits without a leading
 # zero, so that each index has one spelling.
@@ -36,6 +36,8 @@ _ADDRESS: dict[str, re.Pattern[str]] = {
     "jsonld": _INDEXED_JSONPATH,
     # The element carrying the `itemprop`.
     "microdata": re.compile(_XPATH, re.DOTALL),
+    # The element a structural DOM value came from (a label's value cell, an image).
+    "dom": re.compile(_XPATH, re.DOTALL),
     # HTML Standard, the meta element: a `name` or `property` value; OpenGraph names hold `:` but no whitespace.
     "meta": re.compile(r"(\S+)"),
     "js_state": re.compile(rf"(/.*?script\[[1-9][0-9]*\]):{_JSONPATH}", re.DOTALL),

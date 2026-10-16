@@ -198,3 +198,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: First offer as the default.
 - Why: SPEC-13 excludes any default other than the URL-named variant (C7); changing it is an owner question.
 - Reversible: yes
+
+### D-0963 — `variant_id` is not a row key
+- Date: 2026-10-16 · Spec/PR: SPEC-13 §4.7 (#208) · Status: decided
+- Decision: Each `variants` row gains `variant_id` (identifier, custom; `Product.productID`), the id the variant states. `key` stays `["gtin", "sku", "url"]`, so row matching (§4.4) is unchanged.
+- Alternatives: add it to `key`.
+- Why: a productID's scheme is the site's own, and row matching was designed and tested on the three keys.
+- Reversible: yes

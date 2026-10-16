@@ -80,6 +80,7 @@ def _assess(
 @pytest.mark.parametrize(
     ("kind", "bucket"),
     [
+        ("dom", "dom"),
         ("api", "adapter"),
         ("og", "structured"),
         ("llm", "llm_grounded"),

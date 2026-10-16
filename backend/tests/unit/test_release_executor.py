@@ -110,6 +110,13 @@ def test_a_jsonld_step_reads_typed_nodes_by_type_name_without_subtypes() -> None
     assert any_type.fields == {"title": ["sub", "by-iri"]}
 
 
+def test_a_jsonld_block_with_a_raw_newline_in_a_string_is_read_as_the_collector_reads_it() -> None:
+    block = '{"@context": "https://schema.org", "@type": "Product", "name": "Two\nlines"}'  # a raw newline
+    html = f'<html><head><script type="application/ld+json">{block}</script></head></html>'
+    multi = {"title": FieldRule(many=True, accepts=lambda value, type_: True)}
+    assert _run({"title": [{"jsonld": "$['name']"}]}, html, multi).fields == {"title": ["Two\nlines"]}
+
+
 @pytest.mark.parametrize(
     ("context", "names"),
     [

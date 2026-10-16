@@ -1,10 +1,11 @@
 """Numbers as pages write them (SPEC-04 §4.4): the locales a page and its request state, and the values a written
 number has under their Unicode CLDR number symbols (Babel). Shared by the normalizers that read numbers from text
-(money, count), so each reads them one way."""
+(money, count, number), so each reads them one way."""
 
 import re
 import unicodedata
 from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
 from functools import cache
 
@@ -12,7 +13,7 @@ from babel import Locale, UnknownLocaleError
 from babel.localedata import locale_identifiers
 from babel.numbers import NumberFormatError, get_decimal_symbol, get_group_symbol, parse_decimal
 
-from crawlerai.normalize.base import Context
+from crawlerai.normalize.base import Context, has_surrogate
 
 # Structural: a written amount is a run of digits joined by single separators (CLDR decimal and group symbols: `.`,
 # `,`, apostrophes, spaces). An amount below one may open with its decimal symbol (`.99`), unless a letter or digit
@@ -29,6 +30,30 @@ def json_decimal(value: object) -> Decimal | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return Decimal(repr(value))
     return None
+
+
+@dataclass(frozen=True, slots=True)
+class Stated:
+    """The one number a text holds, as written (for `readings`), and the text before it, where a sign would be."""
+
+    written: str
+    before: str
+
+
+def stated(raw: str) -> Stated | str:
+    """The one number `raw` holds; else why it holds none (`surrogate`, `empty`, `no_number`, `several_numbers`)."""
+    if has_surrogate(raw):
+        return "surrogate"
+    # Unicode NFKC (UAX #15): fullwidth digits and no-break spaces read as their plain form, as CLDR symbols are.
+    text = unicodedata.normalize("NFKC", raw).strip()
+    if not text:
+        return "empty"
+    runs = list(AMOUNT_RUN.finditer(text))
+    if not runs:
+        return "no_number"
+    if len(runs) > 1:
+        return "several_numbers"
+    return Stated(runs[0].group(), text[: runs[0].start()])
 
 
 def negative(before: str) -> bool:

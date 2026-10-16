@@ -15,6 +15,7 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, Entity
+from crawlerai.collect.dom import DomCollector
 from crawlerai.collect.js_state import JsStateCollector
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
@@ -48,7 +49,12 @@ def collect_page(
     vocabulary: Vocabulary,
     adapters: Adapters | None,
 ) -> Collected:
-    collectors: list[Collector] = [JsonLdCollector(vocabulary), MicrodataCollector(vocabulary), OpenGraphCollector()]
+    collectors: list[Collector] = [
+        JsonLdCollector(vocabulary),
+        MicrodataCollector(vocabulary),
+        OpenGraphCollector(),
+        DomCollector(),
+    ]
     diagnostics: list[str] = []
     adapter = _adapter_collector(manifest, adapters, diagnostics)
     if adapter is not None:

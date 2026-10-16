@@ -41,8 +41,8 @@ Full rows are in git history.
 - [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md): PRs 1–10 (#1, #3, #4, #9, #5, #6, #7, #8, #12, #10)
 - [SPEC-01 — Persistence, job queue and capture storage](../specs/SPEC-01-persistence-queue-storage.md): PRs 1–8 (#11, #14, #17, #19, #13, #20, #23, #25)
 - [SPEC-02 — Acquisition](../specs/SPEC-02-acquisition.md): PRs 1–10 (#16, #18, #22, #26, #31, #46, #53, #52, #62, #64)
-- [SPEC-04 — Schemas and normalization](../specs/SPEC-04-schemas-and-normalization.md): PRs 1–11 (#43, #47, #58, #54, #57, #59, #60, #56, #66, #203, #203)
-- [SPEC-05 — Extraction and resolution](../specs/SPEC-05-extraction-and-resolution.md): PRs 1–13 (#67, #72, #78, #83, #79, #85, #90, #94, #100, #86, #91, #106, #109)
+- [SPEC-04 — Schemas and normalization](../specs/SPEC-04-schemas-and-normalization.md): PRs 1–12 (#43, #47, #58, #54, #57, #59, #60, #56, #66, #203, #203, #208)
+- [SPEC-05 — Extraction and resolution](../specs/SPEC-05-extraction-and-resolution.md): PRs 1–14 (#67, #72, #78, #83, #79, #85, #90, #94, #100, #86, #91, #106, #109, #208)
 - [SPEC-06 — LLM layer](../specs/SPEC-06-llm-layer.md): PRs 1–7 (#69, #74, #76, #107, #111, #92, #148)
 - [SPEC-07 — API foundation and `scrape`](../specs/SPEC-07-api-foundation-and-scrape.md): PRs 1–8 (#70, #77, #80, #88, #105, #96, #81, #108)
 - [SPEC-08 — Config IR, learning, progressive mode](../specs/SPEC-08-config-ir-learning-progressive.md): PRs 1–12 (#95, #98, #110, #114, #116, #118, #122, #127, #119, #123, #124, #115)
@@ -73,13 +73,16 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
-- Round-1 eval: classes 10 and 13 are §22 evidence (structural DOM collectors), class 11 needs a SPEC-04 location design, class 12 is an owner question on SPEC-13's default variant (D-0945, D-0946) [#207].
+- Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208), class 11 needs a SPEC-04 location design, class 12 is an owner question on SPEC-13's default variant (D-0945, D-0946) [#207].
 - Playground: Records with Listing is still disabled ("not available yet"); the API serves listing records since #206 [#206].
 - Recurring: SPEC-11 §4.5's listing diff tracks a listing crawl's page URLs, not its row URLs ("No job stores listing records" no longer holds), and a listing page gets no standing record (rows are keyed by row URL), so it is always re-extracted [#206].
 - Listing items (`acquire.items`): the largest same-shape linked group wins, so a bare tag cloud or pager outside `nav` can outrank a small grid in markdown; tiles whose class lists differ are not grouped. Measure on dev first (D-0934) [#206].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
+- Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
+- Precedence: `dom` ranks above `config` for text, long_text, url and image_url, so a config or operator field cannot override a DOM label value; re-check when `fit-precedence` first runs on dev (D-0956) [#208].
+- Normalize: money still reads its amount with its own copy of the surrogate/NFKC/one-run steps that `numbers.stated` now holds for count and number; move it there, mapping its reason codes (D-0960) [#208].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)
 

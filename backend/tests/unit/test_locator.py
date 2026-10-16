@@ -12,6 +12,11 @@ from crawlerai.collect.locator import InvalidLocator, Locator, format_locator, p
         ("jsonld:12:$", "jsonld", ("12", "$")),
         ("microdata:/html[1]/body[1]/div[3]/span[1]", "microdata", ("/html[1]/body[1]/div[3]/span[1]",)),
         ("microdata:/html[1]/body[1]/*[name()='o:p'][1]", "microdata", ("/html[1]/body[1]/*[name()='o:p'][1]",)),
+        (
+            "dom:/html[1]/body[1]/table[1]/tbody[1]/tr[1]/td[1]",
+            "dom",
+            ("/html[1]/body[1]/table[1]/tbody[1]/tr[1]/td[1]",),
+        ),
         ("meta:og:title", "meta", ("og:title",)),
         ("meta:description", "meta", ("description",)),
         (

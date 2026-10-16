@@ -439,3 +439,11 @@ def test_nested_nodes_are_not_merged_by_identifier() -> None:
         "jsonld:0:$['offers'][0]",
         "jsonld:0:$['offers'][1]",
     ]
+
+
+def test_a_block_with_raw_control_characters_inside_strings_is_collected() -> None:
+    # RFC 8259 §7 requires them escaped; the collector accepts them raw inside strings (§9), so the block is not lost.
+    block = '{"@context": "https://schema.org", "@type": "Product", "name": "Widget\tNine", "brand": {"name": "A\nB"}}'
+    result = _collect(block)
+    assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget\tNine"), ("brand", "A\nB")]
+    assert result.diagnostics == ()
