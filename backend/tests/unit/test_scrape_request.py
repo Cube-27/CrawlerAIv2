@@ -30,7 +30,7 @@ def test_takes_the_documented_defaults() -> None:
         "fetch": {"method_hint": "auto", "respect_robots": True, "robots_override_reason": None, "proxy_pool": None},
         "locale": None,
         "timeout_s": 60.0,
-        "budget": {"llm_calls": 10},
+        "budget": None,
     }
 
 
