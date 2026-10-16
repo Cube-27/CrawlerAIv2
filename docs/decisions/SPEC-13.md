@@ -205,3 +205,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: add it to `key`.
 - Why: a productID's scheme is the site's own, and row matching was designed and tested on the three keys.
 - Reversible: yes
+
+### D-0966 — No `variesBy` tuple or position as a variant row key
+- Date: 2026-10-16 · Spec/PR: reference-eval follow-ups (#209) · Status: decided
+- Decision: Row keys stay identifier or url sub-fields; a variant stating neither still drops `no_row_key`.
+- Alternatives: Key on the `variesBy` properties' values, or on productID/mpn.
+- Why: ARCHITECTURE §5.2 and §4.2/§4.7 here limit keys to identifier/url and do not read `variesBy`. On the eval-ref set's 11 `no_row_key` pages, 10 have Offers stating no identifier and no URL but the page's, and 1 is a standalone variant Product beside its ProductGroup (the §9 `isVariantOf` issue); a `variesBy` key recovers none. productID is `variant_id`, not a key (Appendix A #42).
+- Reversible: yes.

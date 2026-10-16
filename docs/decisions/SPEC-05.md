@@ -672,3 +672,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: a separate wiring path for page-only collectors; DOM emitting its own `page` entity (duplicates og's).
 - Why: one collector protocol (C8).
 - Reversible: yes
+
+### D-0965 — Identifier fields read their property's schema.org sub-properties
+- Date: 2026-10-16 · Spec/PR: reference-eval follow-ups (#209) · Status: decided
+- Decision: For an `identifier` field, a `schema_org` path's last property also reaches its `rdfs:subPropertyOf` descendants in the pinned vocabulary (`gtin13` is a `gtin`); other field types read only the property named. SPEC-05 §4.5 gets a clarifying line.
+- Alternatives: Widen every field type; hand-list `gtin8|gtin12|gtin13|gtin14` alternatives in the presets.
+- Why: RDF Schema 1.1 §3.5 entailment from versioned data (C2, C4). An identifier's sub-properties name its schemes; other sub-properties narrow the meaning (`logo` of `image`). Eval-ref replay: variant rows with a gtin 5 → 129 (record matches 14/14, 5/5), top-level gtin +2.
+- Reversible: yes — drop `_with_sub_properties`.
