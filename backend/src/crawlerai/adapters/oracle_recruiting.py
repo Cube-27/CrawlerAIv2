@@ -11,9 +11,9 @@ verified against live answers of several tenants, unauthenticated:
   "JobSchedule", "PrimaryLocation", "secondaryLocations", "LegalEmployer", ...}]}`.
 
 A career site is `https://{pod}.fa[.{data center}].oraclecloud.com/hcmUI/CandidateExperience/{language}/sites/{site}`,
-its list that URL or `.../requisitions`, a job page `.../job/{id}` (or the list's preview, `.../requisitions/preview/
-{id}`). The resources are on the page's own host. The match's tenant is the site's URL, under which a requisition's
-page is `/job/{Id}`.
+its list that URL or `.../requisitions` or `.../jobs`, a job page `.../job/{id}` or `.../preview/{id}`, under the
+site's URL or its list's. The resources are on the page's own host. The match's tenant is the site's URL, under which
+a requisition's page is `/job/{Id}`.
 """
 
 import json
@@ -149,12 +149,15 @@ def _page(url: str) -> _Page | None:
 
 
 def _match(root: str, rest: list[str], query: str) -> AdapterMatch | None:
-    """The site's list or the job page of a requisition, by the path segments after the site's URL."""
+    """The site's list or the job page of a requisition, by the path segments after the site's URL: the list is the
+    site's URL or its list page, and a job page is `job/{id}` or `preview/{id}` under either."""
+    if rest[:1] in (["requisitions"], ["jobs"]):
+        rest = rest[1:]
     match rest:
         # A list URL with a query shows a search or a filter of the list, which its first page does not reproduce.
-        case [] | ["requisitions"] if not query:
+        case [] if not query:
             return AdapterMatch(tenant=root, page_kind="listing")
-        case ["job", item] | ["requisitions", "preview", item] if _NAME.fullmatch(item):
+        case ["job" | "preview", item] if _NAME.fullmatch(item):
             return AdapterMatch(tenant=root, page_kind="detail", item=item)
         case _:
             return None

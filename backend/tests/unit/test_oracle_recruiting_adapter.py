@@ -56,6 +56,7 @@ def test_a_career_site_url_is_a_listing_of_its_site(pod: str, dc: str, site: str
     expected = AdapterMatch(tenant=root, page_kind="listing")
     assert ADAPTER.detect(root) == expected
     assert ADAPTER.detect(f"{root}/requisitions/") == expected
+    assert ADAPTER.detect(f"{root}/jobs") == expected
 
 
 @given(site=names, language=languages, item=names)
@@ -64,6 +65,8 @@ def test_a_job_url_is_a_detail_page_of_its_requisition(site: str, language: str,
     expected = AdapterMatch(tenant=root, page_kind="detail", item=item)
     assert ADAPTER.detect(f"{root}/job/{item}?utm_source=x") == expected
     assert ADAPTER.detect(f"{root}/requisitions/preview/{item}") == expected
+    assert ADAPTER.detect(f"{root}/requisitions/job/{item}") == expected
+    assert ADAPTER.detect(f"{root}/jobs/preview/{item}") == expected
 
 
 @pytest.mark.parametrize(
@@ -79,6 +82,8 @@ def test_a_job_url_is_a_detail_page_of_its_requisition(site: str, language: str,
         f"{ROOT}/job/100001/apply",  # the application form
         f"{ROOT}/job/%22",
         f"{ROOT}/my-profile",
+        f"{ROOT}/jobs/requisitions",
+        f"{ROOT}/requisitions/job",
     ],
 )
 def test_other_urls_are_not_detected(url: str) -> None:
