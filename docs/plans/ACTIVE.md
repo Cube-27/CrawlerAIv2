@@ -70,6 +70,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
 - Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
 - Playground: Batch with a stored schema and a page format selected sends `records` with other formats, which the server refuses (records are asked alone); the UI could ask for `records` alone, as Crawl does [#205].
+- Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
+- Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
+- Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
+- Round-1 eval: classes 10 and 13 are §22 evidence (structural DOM collectors), class 11 needs a SPEC-04 location design, class 12 is an owner question on SPEC-13's default variant (D-0945, D-0946) [#207].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 

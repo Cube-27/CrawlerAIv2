@@ -191,3 +191,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Fold its sub-fields into one judgment (changes the report's shape).
 - Why: SPEC-03 §4.6's required-field rule applies to it (#176).
 - Reversible: yes
+
+### D-0945 — No default-variant rule for multi-variant availability (round-1 class 12)
+- Date: 2026-10-16 · Spec/PR: SPEC-13 §2, §4.6, round-1 eval class 12 (#207) · Status: decided
+- Decision: Not built. With no variant named by the page URLs, offer fields stay `offers_disagree`; the URL-named variant is already selected (`select_variant`).
+- Alternatives: First offer as the default.
+- Why: SPEC-13 excludes any default other than the URL-named variant (C7); changing it is an owner question.
+- Reversible: yes
