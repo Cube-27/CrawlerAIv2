@@ -15,9 +15,9 @@ from crawlerai.resolve.records import entity_key
 
 __all__ = ["UNCHANGED_BITS", "record_content", "record_fetch", "standing_record", "stored_validators"]
 
-# SPEC-11 §4.3, ARCHITECTURE §14: fingerprints at most this many bits apart are the same content. A starting point,
-# to confirm on dev (D-0039).
-UNCHANGED_BITS = 3
+# SPEC-11 §4.3, ARCHITECTURE §14 (owner, D-0665): only equal fingerprints are the same content. SimHash still serves
+# for what it ignores structurally (nonces, whitespace); any other change, such as a new price, runs extraction.
+UNCHANGED_BITS = 0
 
 _OK = 200  # RFC 9110 §15.3.1: the response carries the page itself, and its validators describe it
 
@@ -89,8 +89,7 @@ async def standing_record(
 
 async def record_content(conn: AsyncConnection, site_id: SiteId, canonical_url: str, fingerprint: int) -> bool:
     """Whether the page's content changed (§4.3): its fingerprint is more than `UNCHANGED_BITS` from the stored one,
-    or none is stored. A change stores the new fingerprint and sets `last_changed_at`; an unchanged page keeps the
-    stored one, so that small changes do not add up unseen."""
+    or none is stored. A change stores the new fingerprint and sets `last_changed_at`."""
     query = select(UrlState.content_fingerprint).where(*_url(site_id, canonical_url))
     stored = (await conn.execute(query)).scalar_one_or_none()
     if stored is not None and hamming(int(stored, 16), fingerprint) <= UNCHANGED_BITS:

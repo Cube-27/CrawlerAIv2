@@ -153,34 +153,25 @@ async def test_a_first_fingerprint_is_a_change(conn: AsyncConnection) -> None:
     assert await _content(conn, site_id) == ("0123456789abcdef", now)
 
 
-async def test_a_fingerprint_within_three_bits_is_unchanged_and_keeps_the_stored_one(conn: AsyncConnection) -> None:
+async def test_an_equal_fingerprint_is_unchanged(conn: AsyncConnection) -> None:
     site_id = await _site(conn)
     await record_content(conn, site_id, URL, FINGERPRINT)
     changed_at = await _a_day_ago(conn, site_id)
 
-    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b111) is False
+    assert await record_content(conn, site_id, URL, FINGERPRINT) is False
 
     assert await _content(conn, site_id) == ("0123456789abcdef", changed_at)
 
 
-async def test_a_fingerprint_four_bits_away_is_a_change(conn: AsyncConnection) -> None:
+async def test_a_fingerprint_one_bit_away_is_a_change(conn: AsyncConnection) -> None:
     site_id = await _site(conn)
     await record_content(conn, site_id, URL, FINGERPRINT)
     await _a_day_ago(conn, site_id)
 
-    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b1111 << 60) is True
+    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 1 << 60) is True
 
     now = (await conn.execute(select(func.now()))).scalar_one()
-    assert await _content(conn, site_id) == ("f123456789abcdef", now)
-
-
-async def test_small_changes_do_not_add_up_unseen(conn: AsyncConnection) -> None:
-    # Each step is 2 bits from the last, but the stored fingerprint stays the first: the second step is 4 from it.
-    site_id = await _site(conn)
-    await record_content(conn, site_id, URL, FINGERPRINT)
-
-    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b11) is False
-    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 0b1111) is True
+    assert await _content(conn, site_id) == ("1123456789abcdef", now)
 
 
 async def test_a_fingerprint_keeps_the_validators(
