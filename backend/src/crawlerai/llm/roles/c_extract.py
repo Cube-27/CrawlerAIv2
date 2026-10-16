@@ -1,7 +1,7 @@
 """Role C: grounded values read from a page's cleaned text (SPEC-06 §4.4, ARCHITECTURE §8.4, §8.6, §11).
 
 The model reads the page's cleaned text, never its HTML, with each requested field's name, type and description, and
-replies with one verbatim span for each field the page shows, and an empty one for a field it does not. Each span is
+replies, for each field, whether the page shows it and, when it does, one verbatim span of its value. Each span is
 aligned to the text (`llm.grounding`, INV-12): a value the text does not contain is dropped, and an aligned one is
 normalized like any collector's raw value and proposed as a `source_kind='llm'` candidate with its
 `text:<start>-<end>` locator. Resolution then treats it like any candidate (`llm_grounded` bucket); a value its
@@ -48,17 +48,26 @@ PROMPT_KIND: Final[PromptKind] = "c_extract_detail"
 LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 PREFILL_PROMPT_KIND: Final[PromptKind] = "c_prefill"
 
-# A reply holds one claim per requested field, its verbatim span (§4.3); a field the page does not show is claimed with
-# an empty value. A closed object of required claims, rather than a list of claims or `span | null` per field, keeps
-# the schema inside every provider's structured-output subset (`llm.schema_subset`: no unions, no optional properties)
-# and bounds the reply by the fields asked (F29): Anthropic's subset has no `maxItems` to cap a list of claims, and
-# neither subset has `maxLength`, so a value's length is bounded only by the call's token cap.
+# A reply holds one claim per requested field, its verbatim span (§4.3), with `shown` saying whether the page shows the
+# field at all; a field it does not show is claimed `shown: false` with an empty span. A closed object of required
+# claims, rather than a list of claims or `span | null` per field, keeps the schema inside every provider's
+# structured-output subset (`llm.schema_subset`: no unions, no optional properties) and bounds the reply by the fields
+# asked (F29): Anthropic's subset has no `maxItems` to cap a list of claims, and neither subset has `maxLength`, so a
+# value's length is bounded only by the call's token cap.
+#
+# `shown` comes first, so the model states absence before it writes a span. Without it, the empty span was every
+# field's easiest valid claim, and a fast model gave it for fields the page shows, varying from run to run (D-1097:
+# 55 grounded values over 18 calls without `shown`, 68 with it, on six eval pages, three runs each).
 _ABSENT: Final = ""
 # The claim form is written once, in `$defs` (JSON Schema 2020-12 §8.2.4), and every field refers to it: a provider
 # compiles the schema into a grammar whose size it caps, and the form written out under each field outgrew Anthropic's
 # from 18 fields on (D-1008).
-_CLAIM: Final = closed_object({"value": {"type": "string"}, "start": {"type": "integer"}, "end": {"type": "integer"}})
+_INTEGER: Final[JsonValue] = {"type": "integer"}
+_CLAIM: Final = closed_object(
+    {"shown": {"type": "boolean"}, "value": {"type": "string"}, "start": _INTEGER, "end": _INTEGER}
+)
 _CLAIM_REF: Final[dict[str, JsonValue]] = {"$ref": "#/$defs/claim"}
+_SPAN: Final = tuple(SpanClaim.model_fields)  # the claim's span, without `shown`
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,7 +296,7 @@ class _Reader:
         dropped: list[str] = []
         for name in sorted(self.fields):
             claim = claims[name]
-            if claim["value"] == _ABSENT:
+            if claim["shown"] is not True or claim["value"] == _ABSENT:
                 continue  # the page does not show it: the field stays missing
             candidate = self._candidate(claim, name, owner)
             if candidate is None:
@@ -298,7 +307,7 @@ class _Reader:
 
     def _candidate(self, claim: Mapping[str, JsonValue], name: str, owner: str) -> Candidate | None:
         """The claim's span as a candidate, or None when the text does not contain it (ungrounded, §4.3)."""
-        span = align(SpanClaim.model_validate(claim), self.text)
+        span = align(SpanClaim.model_validate({key: claim[key] for key in _SPAN}), self.text)
         if span is None:
             return None
         return Candidate(

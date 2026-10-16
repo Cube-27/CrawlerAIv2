@@ -306,7 +306,7 @@ async def test_role_c_runs_inside_the_task_without_waiting_on_its_transaction(
                 insert(Job).values(project_id=project, kind="scrape", request={}, engine_version="e").returning(Job.id)
             )
         ).scalar_one()
-    price = {"value": "19.90 EUR", "start": 11, "end": 20}
+    price = {"shown": True, "value": "19.90 EUR", "start": 11, "end": 20}
     answer = json.dumps({"fields": {"price": price}})
     provider = FakeProvider([ProviderReply(model="fake-fast", text=answer, tokens_in=7, tokens_out=3)])
     client = MeteredClient([provider], engine)

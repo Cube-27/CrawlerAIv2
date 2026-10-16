@@ -359,8 +359,8 @@ def test_a_runaway_reply_leaves_the_fields_declined_after_one_charged_call() -> 
 
 # A synthetic product page without structured data (shortened: its navigation and related items cut), and the reply
 # `claude-haiku-5-5` gave on 2026-10-16 to role C's request for the 17 `commerce_detail` fields the page leaves
-# without candidates. Most of the fields are absent and claimed empty; the values it found have offsets 0, which
-# alignment corrects (§4.3).
+# without candidates, with the claim's `shown` flag (D-1097). Most of the fields are absent and claimed not shown; the
+# description's offsets overshoot by one, which alignment corrects (§4.3).
 RECORDED_PAGE = (
     '<!doctype html><html lang="en"><head><title>Lantern Quest | Example Games</title></head><body>'
     '<header><nav><a href="/">Home</a> <a href="/games">Games</a> <a href="/basket">Basket (0)</a></nav></header>'
@@ -375,7 +375,7 @@ RECORDED_FIELDS = (
     *("additional_images", "availability", "brand", "color", "condition", "description", "gender", "gtin"),
     *("material", "mpn", "price", "product_id", "rating", "review_count", "sku", "stock_quantity", "title"),
 )
-_EMPTY = {"value": "", "start": 0, "end": 0}
+_EMPTY = {"shown": False, "value": "", "start": 0, "end": 0}
 RECORDED_DESCRIPTION = (
     "A young mapmaker crosses seven islands to relight the lanterns that guide ships home, solving tide "
     "puzzles on the way."
@@ -383,10 +383,10 @@ RECORDED_DESCRIPTION = (
 RECORDED_REPLY = {
     "fields": {
         **dict.fromkeys(RECORDED_FIELDS, _EMPTY),
-        "availability": {"value": "In stock", "start": 0, "end": 0},
-        "description": {"value": RECORDED_DESCRIPTION, "start": 0, "end": 0},
-        "price": {"value": "64,50 €", "start": 0, "end": 0},
-        "title": {"value": "Lantern Quest", "start": 0, "end": 0},
+        "availability": {"shown": True, "value": "In stock", "start": 62, "end": 70},
+        "description": {"shown": True, "value": RECORDED_DESCRIPTION, "start": 97, "end": 216},
+        "price": {"shown": True, "value": "64,50 €", "start": 54, "end": 61},
+        "title": {"shown": True, "value": "Lantern Quest", "start": 40, "end": 53},
     }
 }
 
@@ -394,7 +394,7 @@ RECORDED_REPLY = {
 def test_a_recorded_reply_to_a_request_of_mostly_absent_fields_gives_the_values_the_page_shows() -> None:
     preset = next(p for p in load_presets() if p.name == "commerce_detail")
     reply_text = json.dumps(RECORDED_REPLY, ensure_ascii=False)
-    provider = FakeProvider([ProviderReply(model="fake-fast", text=reply_text, tokens_in=2078, tokens_out=394)])
+    provider = FakeProvider([ProviderReply(model="fake-fast", text=reply_text, tokens_in=2166, tokens_out=1302)])
     client = MeteredClient([provider], create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))  # never connected
     request = gap_request(RECORDED_PAGE, RECORDED_FIELDS, SCHEMA.model_copy(update={"fields": preset.fields}))
 

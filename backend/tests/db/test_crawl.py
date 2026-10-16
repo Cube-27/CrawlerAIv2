@@ -309,7 +309,7 @@ async def test_role_c_completes_a_discovered_page_whose_price_is_only_in_its_tex
     web.pages[url] = (status, body, block_class)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    price = {"shown": True, "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
     reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
     request = records_crawl(url, kettle_schema, f"{own_origin}/p/*", max_depth=0)
     submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)

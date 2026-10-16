@@ -684,8 +684,8 @@ class GroundingLLM:
         start = text.index(title)
         # Every asked field is claimed, empty when the page does not show it (SPEC-06 §4.4).
         asked = json.loads(json.dumps(req.output_schema))["properties"]["fields"]["required"]
-        claims: dict[str, JsonValue] = {name: {"value": "", "start": 0, "end": 0} for name in asked}
-        claims["title"] = {"value": title, "start": start, "end": start + len(title)}
+        claims: dict[str, JsonValue] = {name: {"shown": False, "value": "", "start": 0, "end": 0} for name in asked}
+        claims["title"] = {"shown": True, "value": title, "start": start, "end": start + len(title)}
         return LLMResponse(
             data={"fields": claims},
             provider="provider-a",
@@ -784,9 +784,9 @@ class PriceLLM:
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         text = req.user.split("<page_text>\n", 1)[1].rsplit("\n</page_text>", 1)[0]
         asked = json.loads(json.dumps(req.output_schema))["properties"]["fields"]["required"]
-        claims: dict[str, JsonValue] = {name: {"value": "", "start": 0, "end": 0} for name in asked}
+        claims: dict[str, JsonValue] = {name: {"shown": False, "value": "", "start": 0, "end": 0} for name in asked}
         start = text.index("$12.50")
-        claims["price"] = {"value": "$12.50", "start": start, "end": start + len("$12.50")}
+        claims["price"] = {"shown": True, "value": "$12.50", "start": start, "end": start + len("$12.50")}
         return LLMResponse(
             data={"fields": claims},
             provider="provider-a",

@@ -327,7 +327,7 @@ def _price_reply(fetch_result: Callable[..., FetchResult], url: str, body: bytes
     """Role C's claim of the price the page shows only in its text (SPEC-06 §4.4)."""
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    price = {"shown": True, "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
     return ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
 
 
