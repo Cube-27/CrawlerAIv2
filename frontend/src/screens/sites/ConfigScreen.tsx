@@ -11,7 +11,7 @@ import { ProblemAlert } from "../../components/ProblemAlert";
 import { ConfigFieldsTable, ConfigVersionsTable, useSchemaLabel } from "./ConfigTables";
 import { CorrectionForm } from "./CorrectionForm";
 import { ExportPanel } from "./ExportPanel";
-import { LearnButtons, useLearn } from "./LearnAction";
+import { LearnButtons, LearnRun, useLearn } from "./LearnAction";
 import { sitePath } from "./paths";
 import { ValidationReportView } from "./ValidationReportView";
 
@@ -83,6 +83,7 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
         <ConfigStatusLabel status={config.status} />
       </PageHeader>
       {learnProblem === null ? null : <ProblemAlert problem={learnProblem} />}
+      {learning.jobId === null ? null : <LearnRun jobId={learning.jobId} />}
       <div className="flex flex-wrap gap-4">
         <Link href={sitePath(config.site)}>Every config of {config.site}</Link>
         <span>

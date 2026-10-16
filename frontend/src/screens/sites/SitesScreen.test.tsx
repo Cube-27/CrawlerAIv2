@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { ConfigDetail, ConfigSummary, ValidationReport } from "../../api/configs";
 import type { SchemaDef } from "../../api/schemas";
-import { problem, stubApi } from "../../test/api";
+import { problem, sse, stubApi } from "../../test/api";
+import { jobSummary } from "../../test/jobs";
 
 const HOST = "shop.example.test";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -194,6 +195,9 @@ describe("sites screen", () => {
       [`GET /v1/sites/${HOST}/configs`]: json({ items: [] }),
       "GET /v1/schemas": json({ items: [schema] }),
       [`POST /v1/sites/${HOST}/learn`]: () => Response.json({ job_id: JOB_ID }, { status: 202 }),
+      [`GET /v1/jobs/${JOB_ID}`]: () =>
+        Response.json(jobSummary({ id: JOB_ID, kind: "learn", status: "failed" })),
+      [`GET /v1/jobs/${JOB_ID}/events`]: () => sse(["1", "failed", {}]),
     });
     await open(`/sites/${HOST}`, HOST);
     await screen.findByText("No configs yet");
@@ -206,6 +210,12 @@ describe("sites screen", () => {
     expect(calls.filter((call) => call.method === "POST")).toMatchObject([
       { path: `/v1/sites/${HOST}/learn`, body: { schema_id: SCHEMA_ID, force: false } },
     ]);
+    // The run's end shows where it was started, with the way to its job page.
+    expect(await screen.findByText("failed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the job" })).toHaveAttribute(
+      "href",
+      `/jobs/${JOB_ID}`,
+    );
   });
 
   it("asks for a schema before it starts learning a site", async () => {
