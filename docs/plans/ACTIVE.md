@@ -72,7 +72,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Playground: Extract's toolbar Schema and its "Schema source" option overlap, and a missing schema opens Options to show its message (UAT 2026-10-16) [#214].
 - Playground: a map's URLs are not kept, so a map result is not in the address and is lost on back navigation [#214].
 - Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
-- Playground: the options panel stays open while a run is shown; closing it on send would hide an options error [#214].
+- Crawl: `CrawlRequest` has no `budget`, so a crawl's LLM calls cannot be capped and the playground shows no limit for it; add `budget.llm_calls` in SPEC-10 if wanted (D-1044) [#218].
+- Scrape and extract: an empty LLM call limit means the server's default of 10, not no limit as for a batch; decide whether they should match D-1006 (D-1044) [#218].
+- Playground: at phone width the toolbar wraps differently per mode (Map has no Format or Schema), so the primary button moves between modes there; at desktop it stays put (D-1043) [#218].
 - Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
