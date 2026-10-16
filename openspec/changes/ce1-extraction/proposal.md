@@ -12,11 +12,14 @@ collect, resolve and normalize, each confirmed in code:
 - the same image in another rendition does not name its original when only the scheme differs, two sources that name
   different gallery members leave the image a conflict, and two copies of one gallery in different renditions
   disagree;
-- a JSON-LD description that is an HTML fragment publishes with its markup;
+- a JSON-LD description that is an HTML fragment publishes with its markup, and a page whose only description is
+  OGP's `og:description` publishes none;
 - an `AggregateRating` with `reviewCount` 0 publishes a rating of a product nobody rated.
 
-The owner also answered two questions (2026-10-16): a product without variants publishes no `variants` list (the
-list appears only with two or more variant rows), and INV-38 stays as written.
+The owner also answered three questions (2026-10-16): a product without variants publishes no `variants` list (the
+list appears only with two or more variant rows); INV-38 stays as written; and generic code reads only properties a
+published standard defines (schema.org, OGP basic, optional and `product:` metadata, HTML's own meta), so
+`og:description` is read and non-standard properties (`og:price:amount`) are left to learned configs.
 
 ## What Changes
 
@@ -28,6 +31,7 @@ list appears only with two or more variant rows), and INV-38 stays as written.
 - Image renditions: `resource_key` ignores the scheme; candidates that name one of an entity's values are taken by
   source kind in precedence order; image values (and lists of them, as multisets) naming the same files agree.
 - A structured-data text value with element markup is read as the fragment's text.
+- OGP `og:description` fills a long_text description, ranked behind JSON-LD and microdata.
 - A number given with `reviewCount` 0 (`ratingValue+reviewCount`) is `Invalid("no_ratings")`.
 - A row-mapped field publishes only when two or more rows publish.
 
@@ -35,10 +39,10 @@ list appears only with two or more variant rows), and INV-38 stays as written.
 
 - Capabilities: [extraction](../../specs/extraction/spec.md), [resolution](../../specs/resolution/spec.md),
   [normalization](../../specs/normalization/spec.md), [variants](../../specs/variants/spec.md) (deltas in `specs/`).
-- Design: owner decisions #44 (kept) and a new #48 (variants list only with two or more rows).
+- Design: owner decisions #44 (kept) and a new #48 (variants list only with two or more rows; standard-defined properties only).
 - Files: `collect/base.py`, `collect/jsonld.py`, `collect/microdata.py`, `collect/adapter.py`, `collect/api.py`,
   `collect/og.py`, `collect/schema_org_map.py`, `content/text.py`, `config_ir/executor.py`, `llm/roles/c_extract.py`,
   `resolve/ownership.py`, `resolve/rows.py`, `resolve/preference.py`, `normalize/url.py`, `normalize/dispatch.py`,
   `normalize/number.py`, `schemas/presets/commerce_detail.json`, and their tests.
-- Not in this change: `og:description` as a description source and Shopify's `og:price:*` (open owner design
-  question), and acquisition (browser wait, retries).
+- Not in this change: `og:price:*`, which no standard defines (owner: learned configs), and acquisition (browser
+  wait, retries).

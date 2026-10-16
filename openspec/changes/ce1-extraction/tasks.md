@@ -12,8 +12,10 @@
       (c) image values and lists naming the same files agree. Unit and property tests; replay.
 - [ ] 1.5 HTML fragments in structured-data text: a text value with element markup is read as the fragment's text.
       Unit and property tests; replay.
-- [ ] 1.6 Rating with zero reviews: `rating` maps `Product.aggregateRating.ratingValue+reviewCount`; a count of 0 is
+- [ ] 1.6 og:description (owner, 2026-10-16): OGP `og:description` fills a long_text description, ranked behind
+      JSON-LD and microdata; only OGP-defined properties are read. Unit tests; replay.
+- [ ] 1.7 Rating with zero reviews: `rating` maps `Product.aggregateRating.ratingValue+reviewCount`; a count of 0 is
       `Invalid("no_ratings")`. Unit tests; replay.
-- [ ] 1.7 Variants list only with two or more rows (owner, 2026-10-16): one published row leaves the field `missing`
+- [ ] 1.8 Variants list only with two or more rows (owner, 2026-10-16): one published row leaves the field `missing`
       (`single_row`). Unit tests; replay.
-- [ ] 1.8 Apply the deltas to `openspec/specs/` and archive this change.
+- [ ] 1.9 Apply the deltas to `openspec/specs/` and archive this change.
