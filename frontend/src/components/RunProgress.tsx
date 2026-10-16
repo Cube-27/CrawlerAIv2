@@ -23,7 +23,7 @@ export function RunProgress({ job }: Readonly<{ job: JobSummary }>) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-3">
           <Typography.Paragraph size="sm" weight="medium">
-            {`${String(ended)} of ${String(total)} pages done`}
+            {`${String(ended)} of ${String(total)} ${total === 1 ? "page" : "pages"} done`}
           </Typography.Paragraph>
           <ElapsedTime startedAt={job.started_at} finishedAt={job.finished_at} />
         </div>

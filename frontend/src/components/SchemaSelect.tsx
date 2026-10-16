@@ -41,6 +41,7 @@ export function SchemaSelect({
         value={value === "" ? empty : value}
         isRequired={noneLabel === undefined}
         hideLabel={hideLabel}
+        placeholder="Choose a schema"
         isDisabled={isDisabled}
         accepts={isOptionOf(options)}
         onChange={(key) => {

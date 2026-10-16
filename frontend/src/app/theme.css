@@ -158,6 +158,11 @@
   .checkbox-group [data-slot="checkbox"] {
     @apply mt-0;
   }
+  /* A required group marks its own label only: HeroUI's rule also reaches each option's label through the option's
+   * `data-required`, so every radio read "Detail *". */
+  .radio-group .radio .radio__content[data-required="true"] > .label::after {
+    content: none;
+  }
 
   /* A form's sections (HeroUI Fieldset): fields inside a section sit closer than the sections do, and a hairline
    * above a heading-weight legend opens each section, so the groups read without boxes (DESIGN.md, Field groups). A

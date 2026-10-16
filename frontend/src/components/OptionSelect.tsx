@@ -7,7 +7,7 @@ export function isOptionOf<K extends string>(options: Readonly<Record<K, string>
 }
 
 /** A labelled HeroUI Select over a `Record` of option labels. With `hideLabel`, the label is its accessible name only,
- * for a toolbar. */
+ * for a toolbar. `placeholder` is what it shows while nothing is chosen. */
 export function OptionSelect<K extends string>({
   label,
   options,
@@ -15,6 +15,7 @@ export function OptionSelect<K extends string>({
   isRequired = false,
   isDisabled = false,
   hideLabel = false,
+  placeholder,
   accepts,
   onChange,
 }: Readonly<{
@@ -24,6 +25,7 @@ export function OptionSelect<K extends string>({
   isRequired?: boolean;
   isDisabled?: boolean;
   hideLabel?: boolean;
+  placeholder?: string;
   accepts: (key: unknown) => key is K;
   onChange: (value: K) => void;
 }>) {
@@ -33,6 +35,7 @@ export function OptionSelect<K extends string>({
       isDisabled={isDisabled}
       value={value}
       {...(hideLabel ? { "aria-label": label } : {})}
+      {...(placeholder === undefined ? {} : { placeholder })}
       onChange={(key: Key | null) => {
         if (accepts(key)) onChange(key);
       }}

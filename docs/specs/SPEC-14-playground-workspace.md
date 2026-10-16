@@ -152,7 +152,8 @@ Top to bottom, in the content column (max 1280px), centred:
   - The JSON column's button opens a HeroUI `Drawer` from the right with that page's item in a `JsonView`.
   - While the job runs, the table refreshes as events arrive. The current page re-fetches on `task_extracted` and
     `task_failed`, at most once a second.
-  - Above the table: `OutcomeCounts`, elapsed time, Cancel, and export buttons for JSON and CSV.
+  - Above the table, one summary surface: status, Cancel, and export buttons for JSON and CSV, then a progress bar
+    with "N of M pages done", the elapsed time and the outcomes reached (D-0975, SPEC-12 decisions).
 - **Map.** A `PagedTable` of links with row selection, and the "Scrape as batch" action (PR 8).
 - **Extract.** As Batch.
 
@@ -187,8 +188,8 @@ Top to bottom, in the content column (max 1280px), centred:
 ### 4.5 Live activity
 
 - `ActivityFeed` consumes the job's SSE stream (the existing `EventLog` consumer, with reconnect via
-  `Last-Event-ID`). It groups events by task URL, newest group first, in a fixed-height scrolling box beside the
-  results table from `lg` up and under it below `lg`.
+  `Last-Event-ID`). It groups events by task URL, newest group first, in a fixed-height scrolling box in a collapsed
+  "Activity" section under the results table (D-0975).
 - Each event kind maps to one sentence in one module, `activityText.ts`. Examples (exact text is settled in the PR):
 
   | Event | Line |
@@ -210,14 +211,14 @@ Top to bottom, in the content column (max 1280px), centred:
 ### 4.6 Recent runs
 
 Under the command bar, before any run on this page, the playground lists the last 10 jobs of its mode (`GET
-/v1/jobs` filtered by kind): start URL or URL count, status (`JobStatusLabel`), started (`Timestamp`). A row opens that
-run on the page (`?job=`). Scrape lists its runs like the other modes (a scrape keeps a job). The section keeps its
+/v1/jobs` filtered by kind): start URL or URL count, status (`JobStatusLabel`), started (`Timestamp`), duration, and an
+"Open" cue; "All runs" opens Jobs filtered by the mode's kind (D-0976). A row opens that run on the page (`?job=`). Scrape lists its runs like the other modes (a scrape keeps a job). The section keeps its
 footprint while loading.
 
 ### 4.7 Get code
 
-A Get code button in the toolbar opens a HeroUI `Drawer` from the right (a side panel, not a modal window). Top to
-bottom:
+A Get code button in the toolbar opens a HeroUI `Drawer` from the right (a side panel, not a modal window). Its
+sections are listed below; the drawer shows them as Endpoint, Code, API key, then the prompts collapsed (D-0974):
 
 1. **Prompts for coding agents.** Two rows, each with a title, a short name and Copy:
    - "Use it with coding agents": how to call this endpoint;
