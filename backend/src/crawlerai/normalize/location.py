@@ -2,7 +2,8 @@
 
 A location publishes what the page states and nothing it does not: no place is looked up, completed or inferred.
 - `text` is the place as the page writes it: a string, a `Place`'s `name`, or a `PostalAddress`'s stated parts
-  joined in the order locality, region, country.
+  joined in the order locality, region, country. Nothing in it is parsed: several places, regions or alternatives
+  ("A or B") stay one text as written (owner, 2026-10-16).
 - `locality`, `region` are a `PostalAddress`'s `addressLocality` and `addressRegion` as written.
 - `country` is an ISO 3166-1 alpha-2 code, and only when `addressCountry` states one (schema.org recommends the
   alpha-2 code). A country stated by name stays in `text`; no code is derived from it.
@@ -145,9 +146,10 @@ def _looks_like_a_code(written: str) -> bool:
 
 
 def _part(given: JsonValue) -> str | None:
+    """A stated part as written: NFC, with each run of whitespace (`str.isspace`) one space."""
     if not isinstance(given, str):
         return None
-    return unicodedata.normalize("NFC", given).strip() or None
+    return " ".join(unicodedata.normalize("NFC", given).split()) or None
 
 
 @cache
