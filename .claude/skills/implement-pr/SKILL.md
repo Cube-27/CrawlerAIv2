@@ -20,7 +20,8 @@ branch and worktree names: `CLAUDE.md` §3), from unchecked to a `READY` PR. Rul
    first commit: `proposal.md` (`## Why`, `## What Changes`, `## Impact`), `tasks.md` (numbered `- [ ] N.M`
    checkboxes, small enough for one PR in total), `design.md` only for a real design choice, and a delta
    `specs/<capability>/spec.md` per touched capability (`## ADDED`, `## MODIFIED` with the whole new requirement text
-   and `(Previously: …)`, or `## REMOVED Requirements`; each requirement with a SHALL sentence and a `#### Scenario:`).
+   and `(Previously: …)`, or `## REMOVED Requirements`; each requirement 1–3 lines of SHALL, with a `#### Scenario:`
+   only where a test or invariant enforces it; `CLAUDE.md` §6).
    A fix that only restores behaviour a requirement already states needs no change folder. A change that would
    contradict `openspec/design/` or the contract is escalated (`CLAUDE.md` §4), not written.
 4. **Shared files.** `tasks.md` checkboxes, `openspec/backlog.md`, decision entries and the archive move change only
@@ -55,7 +56,7 @@ Stop and re-read `CLAUDE.md` §2 if you are about to:
 - add a list of phrases;
 - add a default value;
 - add a DOM selector to generic code;
-- build something from ARCHITECTURE §22.
+- build something from the candidates register (§22, `openspec/design/overview.md`).
 
 Stay in scope. Work outside the batch becomes a follow-up line in `openspec/backlog.md` in your tracker commit, not
 code.

@@ -112,7 +112,7 @@ Escalate for the `CLAUDE.md` §4 list, or a dead end after 3 attempts:
 
 The rule from ENGINEERING ("never block on the human") applies to reversible work. These are never done without
 the owner:
-- changing `openspec/design/` (the former ARCHITECTURE.md), the contract in `openspec/project.md`, or
+- changing `openspec/design/`, the contract in `openspec/project.md`, or
   `openspec/OPEN_QUESTIONS.md`;
 - admitting a §22 candidate;
 - touching eval access or secrets;

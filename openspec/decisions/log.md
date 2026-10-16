@@ -4,7 +4,7 @@ Cross-cutting and process decisions (tooling, CI, orchestration, UAT and review 
 and every `needs-owner` or `pending-owner` entry. Statuses, template and where an entry goes:
 [README.md](README.md). Open owner items are indexed in [../project.md](../project.md#open-owner-items).
 Entries up to D-1135 were written when this file was `docs/DECISIONS.md`; their paths (`docs/...`) and
-`ARCHITECTURE §N` refs are historical and resolve through [../design/README.md](../design/README.md).
+`ARCHITECTURE §N` refs are historical and resolve in the [archived ARCHITECTURE.md](../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md).
 
 ## Entries
 
@@ -860,9 +860,9 @@ Entries up to D-1135 were written when this file was `docs/DECISIONS.md`; their 
 
 ### D-1136 — Documentation in the OpenSpec layout
 - Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided (owner asked for the layout, 2026-10-16)
-- Decision: `openspec/` holds `project.md` (context, contract C1–C13 verbatim), `specs/<capability>/spec.md` (20 capabilities, current behaviour as requirements; INV-NN kept in their requirements), `changes/` (in-flight work; `archive/` holds SPEC-00…SPEC-15 as-is with their logs), `design/` (ARCHITECTURE.md split by section, numbers kept, with a §→file index), `decisions/`, `conventions/` (ENGINEERING, DESIGN, RECURRING), `backlog.md` (was ACTIVE.md) and `OPEN_QUESTIONS.md`. `CLAUDE.md` stays the agent entry point.
-- Alternatives: keep ARCHITECTURE.md whole as an overview (over 1000 lines, read by default); move project.md's role into CLAUDE.md; rewrite code comments that cite `ARCHITECTURE §N`, `SPEC-NN §x` (about 800 files).
-- Why: an agent reads by default only CLAUDE.md, project.md, the capability specs it touches and its change folder; code citations keep resolving through `design/README.md` and `changes/archive/README.md`, so no code changes.
+- Decision: `openspec/` holds `project.md` (context, contract C1–C13 verbatim), `specs/<capability>/spec.md` (14 capabilities, ≤ 100 lines each, current behaviour as requirements; INV-NN kept in their requirements), `changes/` (in-flight work; `archive/` holds SPEC-00…SPEC-15 as-is with their logs), `design/` (`overview.md`: goals, contract evidence, milestone M, candidates register; `owner-decisions.md`: Appendix A, live); ARCHITECTURE.md and INVARIANTS.md frozen verbatim in `changes/archive/2026-10-16-architecture-rev25/`, `decisions/`, `conventions/` (ENGINEERING, DESIGN, RECURRING), `backlog.md` (was ACTIVE.md) and `OPEN_QUESTIONS.md`. `CLAUDE.md` stays the agent entry point.
+- Alternatives: keep ARCHITECTURE.md live (over 1000 lines, duplicating the specs); split it into design files (first draft of #223: grew the docs to ~5,000 lines, owner pushback); move project.md's role into CLAUDE.md; rewrite code comments that cite `ARCHITECTURE §N`, `SPEC-NN §x` (about 800 files).
+- Why: an agent reads by default only CLAUDE.md, project.md, the capability specs it touches and its change folder; code citations (`ARCHITECTURE §N`, `SPEC-NN §x`, `INV-NN`) keep resolving in the archive, so no code changes; nothing is held twice as live text.
 - Reversible: yes — a docs move.
 
 ### D-1137 — SPEC-03 and SPEC-15 archived; row 7 becomes a change
@@ -897,7 +897,8 @@ Entries up to D-1135 were written when this file was `docs/DECISIONS.md`; their 
 - Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided
 - Decision: `openspec/specs/normalization/spec.md` holds one requirement group per field type; C8's one module per type stays a code rule (INV-08).
 - Alternatives: `normalization-money/`, `normalization-enum/` … (11 folders of 20–40 lines).
-- Why: the shared contract (Ok/Ambiguous/Invalid, context, no defaults) is stated once, and the file stays under 300 lines.
+- Why: the shared contract (Ok/Ambiguous/Invalid, context, no defaults) is stated once, and the file stays within the 100-line cap per capability spec (owner, 2026-10-16); per-type detail is in `normalize/<type>.py` and its property tests.
+- Reversible: yes
 
 ### D-1151 — A detail page's related items and its product's group do not make its intent ambiguous
 - Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.6 (#225) · Status: decided

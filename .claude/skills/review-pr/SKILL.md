@@ -44,7 +44,8 @@ PR, whatever its size: no sub-agents, no `/simplify`, no `/code-review` (`CLAUDE
    Verification section. Apply the test-behaviour rule: a test that would still pass if the function returned a
    wrong value proves nothing. For extraction changes, the dev delta is present and the hidden gate passed.
 4. **Scope.** Code outside the batch's tasks, speculative options, and compatibility shims.
-   **Spec deltas:** each delta requirement has a SHALL sentence and a WHEN/THEN scenario, matches what the code does,
+   **Spec deltas:** each delta requirement is 1–3 lines of SHALL (a scenario only where a test or invariant enforces
+   it, `CLAUDE.md` §6), matches what the code does,
    and does not contradict `openspec/design/` or the contract (that would need the owner, `CLAUDE.md` §4). A PR that
    changes behaviour a requirement states, without a delta, is an Act-on item.
 5. **Simplification** (this replaces `/simplify`). Read the diff once more for these; each is an Act-on item when it

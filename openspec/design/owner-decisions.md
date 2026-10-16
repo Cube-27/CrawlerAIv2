@@ -1,11 +1,11 @@
-# Owner decisions (Appendix A)
+# Owner decisions
 
-Design rationale, split from the former `docs/ARCHITECTURE.md` with its section numbers kept (code and history cite `ARCHITECTURE §N`). Index: [README.md](README.md).
+The owner's decisions (ARCHITECTURE Appendix A), current and numbered. A new owner decision is appended here with its
+date, in the PR that applies it to the capability specs (`CLAUDE.md` §6). Agent decisions go in the decision logs
+(`../decisions/README.md`), not here. #1–#46 are verbatim from ARCHITECTURE rev 25, where §N references point
+([archived](../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)).
 
-## Appendix A. Owner decisions
-
-Original decisions are dated 2026-10-08. Later amendments override them. Decisions agents make during
-implementation go in `DECISIONS.md`, not here.
+Original decisions are dated 2026-10-08. Later amendments override them.
 
 | # | Topic | Decision |
 |---|---|---|

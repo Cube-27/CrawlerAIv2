@@ -23,6 +23,7 @@ protected environment (H2); measuring anything also needs labels (H3, milestone 
 
 - Capability: [evaluation](../../specs/evaluation/spec.md) (delta in `specs/evaluation/spec.md`).
 - Design: SPEC-03 §4.8–§4.9 in the [archive](../archive/2026-10-16-spec-03-evaluation-and-measurement/SPEC-03-evaluation-and-measurement.md);
-  ARCHITECTURE §16.4 ([design/evaluation.md](../../design/evaluation.md)), §21 ([design/build-order.md](../../design/build-order.md)).
+  ARCHITECTURE §16.4 and §21 ([archived](../archive/2026-10-16-architecture-rev25/ARCHITECTURE.md), §21 also in
+  [design/overview.md](../../design/overview.md)).
 - Files: `.github/workflows/eval-protected.yml`, `.github/workflows/ci.yml`, `backend/src/crawlerai/eval/` (`export-aggregate`).
 - Status: `human` until H1 and H2 are done.

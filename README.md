@@ -47,7 +47,7 @@ capability, in-flight work as change folders, done work archived.
 | [openspec/specs/](openspec/specs/) | The current behaviour, one `spec.md` of requirements per capability (invariants `INV-NN` included) |
 | [openspec/changes/](openspec/changes/) | In-flight changes (proposal, tasks, spec deltas); [archive/](openspec/changes/archive/README.md) holds the done specs SPEC-00 … SPEC-15 |
 | [openspec/backlog.md](openspec/backlog.md) | Current focus, follow-ups and human-only tasks |
-| [openspec/design/](openspec/design/README.md) | Design rationale: the former ARCHITECTURE.md, section numbers kept, owner decisions, candidates register |
+| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register) and the owner decisions; the full former ARCHITECTURE.md is archived |
 | [openspec/decisions/](openspec/decisions/README.md) | How decisions are logged, and the cross-cutting log |
 | [openspec/OPEN_QUESTIONS.md](openspec/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
 | [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
