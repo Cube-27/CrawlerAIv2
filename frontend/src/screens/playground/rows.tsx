@@ -117,3 +117,29 @@ export function ScopeRows({
     </>
   );
 }
+
+// SPEC-04 §4.2: a schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
+// refuses any other, so a name is checked as it is added.
+const FIELD_NAME = /^[a-z][a-z0-9_]{0,63}$/;
+
+/** `schema.fields`: the names the server drafts a schema from (SPEC-14 §4.10), as chips. */
+export function FieldsRow({
+  values,
+  onChange,
+}: Readonly<{ values: readonly string[]; onChange: (fields: string[]) => void }>) {
+  return (
+    <TagListRow
+      label="Fields"
+      help="Names of the fields to extract. The server drafts a schema with these fields; you review it before the run."
+      name="fields"
+      values={values}
+      placeholder="price"
+      refuse={(entry) =>
+        FIELD_NAME.test(entry)
+          ? null
+          : "Use lowercase letters, digits and _, starting with a letter."
+      }
+      onChange={onChange}
+    />
+  );
+}

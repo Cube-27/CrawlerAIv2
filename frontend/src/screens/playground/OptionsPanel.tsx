@@ -253,13 +253,15 @@ export function TextAreaRow({
 }
 
 /** A list of entries, each added from the text field with Add (or Enter) and removed from its tag; an entry already
- * listed is not added again. `name` is the request member a server error names. */
+ * listed is not added again, and one `refuse` gives a reason for stays in the field with that reason. `name` is the
+ * request member a server error names. */
 export function TagListRow({
   label,
   help,
   name,
   values,
   placeholder,
+  refuse = () => null,
   onChange,
 }: Readonly<{
   label: string;
@@ -267,14 +269,19 @@ export function TagListRow({
   name: string;
   values: readonly string[];
   placeholder: string;
+  refuse?: (entry: string) => string | null;
   onChange: (values: string[]) => void;
 }>) {
   const [draft, setDraft] = useState("");
+  const [refused, setRefused] = useState<string | null>(null);
   // A tag's remove is a keyboard action too (Delete, Backspace), which a disabled fieldset does not block.
   const readOnly = use(ReadOnlyContext);
   const add = () => {
     const entry = draft.trim();
     if (entry === "") return;
+    const reason = refuse(entry);
+    setRefused(reason);
+    if (reason !== null) return;
     onChange(values.includes(entry) ? [...values] : [...values, entry]);
     setDraft("");
   };
@@ -285,7 +292,11 @@ export function TagListRow({
           className="flex flex-1 flex-row items-center justify-between gap-3"
           name={name}
           value={draft}
-          onChange={setDraft}
+          {...(refused === null ? {} : { isInvalid: true })}
+          onChange={(text) => {
+            setDraft(text);
+            setRefused(null);
+          }}
         >
           <RowLabel label={label} help={help} />
           <Input
@@ -299,7 +310,7 @@ export function TagListRow({
               add();
             }}
           />
-          <FieldError />
+          <FieldError>{refused ?? undefined}</FieldError>
         </TextField>
         <Button size="sm" variant="secondary" aria-label={`Add to ${label}`} onPress={add}>
           Add

@@ -1,9 +1,9 @@
 import type { PageKind } from "../../../api/scrape";
 import { OptionsPanel } from "../OptionsPanel";
-import { FetchMethodRow, MetadataRow, PageKindRow, WebhookRow } from "../rows";
+import { FetchMethodRow, FieldsRow, MetadataRow, PageKindRow, WebhookRow } from "../rows";
 import { DEFAULT_BATCH_OPTIONS, type BatchOptions as Options } from "./form";
 
-/** Batch's options panel (SPEC-14 §4.2): page kind, Metadata in JSON and the webhook, then the fetch method under
+/** Batch's options panel (SPEC-14 §4.2): page kind, Metadata in JSON, fields (§4.10) and the webhook, then the fetch method under
  * Advanced. */
 export function BatchOptions({
   options,
@@ -42,6 +42,12 @@ export function BatchOptions({
         isSelected={options.metadataInJson}
         onChange={(metadataInJson) => {
           onChange({ ...options, metadataInJson });
+        }}
+      />
+      <FieldsRow
+        values={options.fields}
+        onChange={(fields) => {
+          onChange({ ...options, fields });
         }}
       />
       <WebhookRow

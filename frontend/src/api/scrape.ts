@@ -7,11 +7,13 @@ export type ScrapeFormat = "markdown" | "html" | "raw_html" | "links" | "metadat
 export type PageKind = "detail" | "listing";
 export type MethodHint = "auto" | "http" | "browser";
 
-/** A schema by id, inline (a SchemaDef the server validates), or drafted from a prompt by role S. */
+/** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names
+ * (SPEC-14 §4.10). */
 export type SchemaRef =
   | { id: string }
   | { inline: Readonly<Record<string, unknown>> }
-  | { prompt: string };
+  | { prompt: string }
+  | { fields: string[] };
 
 /** The request as the form builds it. It leaves out the limits it doesn't set, so the server's defaults apply; the
  * generated type marks every member with a default as required (openapi-typescript), so `runScrape` sends it as
