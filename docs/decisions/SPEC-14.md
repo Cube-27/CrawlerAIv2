@@ -238,3 +238,38 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: disable the button; a URL check in every builder.
 - Why: The snippet is exactly the body sent; the prompts and key help stay reachable; nothing moves.
 - Reversible: yes
+
+### D-0925 — At most 50 distinct field names per draft
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.10, PR 11 (#205) · Status: decided
+- Decision: `schema.fields` takes 1 to 50 distinct schema field names (`MAX_FIELD_NAMES`), checked by the request model (`SchemaFields`), a 422 otherwise.
+- Alternatives: no bound; the schema's own field limit.
+- Why: It bounds the role S request, far above any page's fields.
+- Reversible: yes
+
+### D-0926 — One draft per set of names and page kind, charged to no job
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.10, SPEC-06 §4.5, PR 11 (#205) · Status: decided
+- Decision: A field-name draft is named `draft_` + `sha256("fields\n" + page_kind + "\n" + sorted names joined by "\n")[:12]`; a normalized prompt holds no line feed, so no prompt draft shares the name. The call has `job_id` null: it runs before any job exists, and usage still records it.
+- Alternatives: hash the names in the order given; charge the job created afterwards.
+- Why: The same names in any order give one stable schema (ARCHITECTURE §5.4).
+- Reversible: yes, with a re-draft
+
+### D-0927 — Field names are drafted before the job, for every run type
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.10, PR 11 (#205) · Status: decided
+- Decision: `named_schema` drafts `schema.fields` (through `fields_schema`) while the caller waits, before anything is stored, on scrape, batch, crawl and extract. An LLM failure is its problem (502, 503); a draft of another page kind or a retired one is a 422. `POST /v1/schemas/draft` uses the same helper.
+- Alternatives: draft in the worker; fail the job.
+- Why: The caller sees the problem at once, and no job exists without its schema.
+- Reversible: yes
+
+### D-0928 — What Run sends after the draft review
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.10, PR 11 (#205) · Status: decided
+- Decision: An unchanged draft runs as `schema.fields`, so the request equals Get code and the server reads the stored draft. An edited draft runs as `schema.inline` under a name of its own; the UI refuses an edit that keeps the draft's name, since the server keeps one document per name (409).
+- Alternatives: always send the draft inline; store the edit as a new version of the draft.
+- Why: The request stays reproducible, and drafts get no edited versions.
+- Reversible: yes
+
+### D-0929 — A crawl's field names use its rules' one page kind
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.10, SPEC-10 §4.5, PR 11 (#205) · Status: decided
+- Decision: `CrawlRequest` has no `page_kind`; its field names are drafted for the one page kind of its `page_kind_rules`, which the records validator already requires. The UI refuses fields with no rules or with rules of two kinds.
+- Alternatives: add a `page_kind` member to crawl.
+- Why: No new request member.
+- Reversible: yes
