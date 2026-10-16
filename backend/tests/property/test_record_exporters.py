@@ -90,6 +90,21 @@ def test_csv_cells_round_trip_every_value_and_status(page: tuple[SchemaDocument,
         }
 
 
+@given(_page())
+def test_csv_safe_cells_are_the_plain_cells_with_a_quote_before_a_formula_trigger(
+    page: tuple[SchemaDocument, list[RecordContent]],
+) -> None:
+    schema, records = page
+
+    plain = list(csv.reader(io.StringIO(export_records("csv_records", schema, records), newline="")))
+    safe = list(csv.reader(io.StringIO(export_records("csv_records", schema, records, csv_safe=True), newline="")))
+
+    # OWASP CSV Injection: a cell starting with one of these is read as a formula by spreadsheet applications.
+    assert safe == [
+        ["'" + cell if cell[:1] in ("=", "+", "-", "@", "\t", "\r") else cell for cell in row] for row in plain
+    ]
+
+
 @given(_page(), st.randoms())
 def test_csv_header_depends_on_the_schema_alone(
     page: tuple[SchemaDocument, list[RecordContent]], rng: random.Random

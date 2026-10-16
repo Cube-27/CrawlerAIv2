@@ -164,8 +164,9 @@ validity}`; `yield = matched/pages`, `validity = valid/matched`.
 - Each run of an active config appends per-field `(matched, valid)` to a rolling window (last 50 pages,
   `extraction_config.drift_window` jsonb — plumbing).
 - A field is suspended when its windowed `yield` or `validity` falls below `validation_report` value minus the
-  margin from `backend/data/drift_margins.json` (`{"yield": 0.2, "validity": 0.1, "source_split": "dev"}` —
-  defaults until fitted on dev; INV-02 stamp). Suspension sets `field_status=suspended`; the field's pages fall
+  margin from `backend/data/drift_margins.json` (`{"yield": 0.2, "validity": 0.1, "source_split": "dev", "fit":
+  "spec default, unfitted"}` — defaults until fitted on dev; INV-02 stamp, and `fit` says how the margins were
+  obtained; checked by its stamp, not pinned in the manifest, D-0576). Suspension sets `field_status=suspended`; the field's pages fall
   back to cold-mode resolution (role C allowed); `trigger_learning` re-runs learning for the site.
 - Suspension is logged as a `job_event(kind='drift_suspended')`.
 
@@ -190,7 +191,8 @@ validity}`; `yield = matched/pages`, `validity = valid/matched`.
   generated code (§18). Marked `draft: true` until OPEN_QUESTIONS #1 is answered.
 - `json_records` / `csv_records` / `markdown`: record exports for `GET /v1/jobs/{id}/results?format=` (SPEC-10
   wires the endpoint; the exporters live here). CSV: one column per schema field, nested values JSON-encoded,
-  plus `_status_<field>` columns.
+  plus `_status_<field>` columns. With `csv_safe` (SPEC-10, D-0879) a cell starting with `=`, `+`, `-`, `@`, a tab
+  or a carriage return is prefixed with `'` (OWASP CSV Injection); without it values are written as published.
 
 ### 4.12 Release check (§12.3)
 

@@ -74,7 +74,10 @@ Out of scope:
   field shape) or page outputs for format jobs; exporters from SPEC-08 4.11 for `csv_records`/`markdown`; `json_values` items per SPEC-14 §4.4. A page
   output carries its task's `last_error: str | null`: why it failed, or why it ended with its outcome when the
   outcome alone does not say (a `blocked` task's `robots`), as the worker recorded it (SPEC-01 §4.8). Added with
-  owner approval (ARCHITECTURE rev 12, D-0745).
+  owner approval (ARCHITECTURE rev 12, D-0745). `csv_safe=true`, accepted with `csv_records` only (else 422),
+  prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return (OWASP CSV Injection);
+  the UI's Export CSV sends it. Without it the export is unchanged (INV-27). Added with owner approval
+  (ARCHITECTURE rev 18, D-0879).
 - `GET /v1/jobs/{id}/events` → SSE from `job_event` ordered by id, `Last-Event-ID` resume, heartbeat every 15 s,
   event kinds: `task_fetched` (method, block_class), `task_extracted` (outcome, mode, llm_calls), `task_abstained`
   (fields), `task_failed` (task_id, url, attempts, last_error; when a task ends `failed`, after its last attempt or a

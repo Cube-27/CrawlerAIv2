@@ -126,8 +126,9 @@ Behaviour:
 ### 4.6 Other endpoints
 
 - `/v1/schemas`: `POST` (inline SchemaDef → `origin=user`), `GET /v1/schemas`, `GET /v1/schemas/{id}`,
-  `PUT /v1/schemas/{id}` (creates version+1; schemas are immutable per version), `DELETE` (sets `status=retired`;
-  rows referenced by records are never deleted).
+  `PUT /v1/schemas/{id}` (creates version+1; schemas are immutable per version; a retired latest version may be
+  edited too, and the new version is active while the old ones stay retired, D-0395 owner answer 2026-10-16),
+  `DELETE` (sets `status=retired`; rows referenced by records are never deleted).
 - `GET /v1/records?job_id|site|schema_id&cursor&limit` → records with full `field_meta` in the field shape above.
 - `POST /v1/captures/{id}/replay` → runs `replay_page` with the current engine and the site's active config and
   returns the `records` array (not persisted; for debugging — §13.1). `max_age` and replay never call the LLM

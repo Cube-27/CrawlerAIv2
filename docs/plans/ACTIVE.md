@@ -25,6 +25,7 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 | H5 | Answer the `needs-owner` entries in the decisions log's index of open items. | As they come up | open: see Current focus |
 | H6 (M) | Monthly: sample and label 20–30 fresh sites (OPEN_QUESTIONS #7). | After M | deferred |
 | H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | Proxy use in production | todo |
+| H8 | Create the GitHub release `data-geonames-2026-10-15` holding the three GeoNames files the manifest pins, with the CC BY 4.0 attribution in its notes (D-0311, D-0914; command in #204). Until then `crawlerai data fetch` gets a 404 for them. | `crawlerai data fetch`, SPEC-05's first real run | todo |
 
 ## Current focus
 
@@ -32,9 +33,8 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
   fields) is blocked on D-0810.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
-- Open owner items: D-0311 (GeoNames pin), D-0355 (derived `url` provenance), D-0576 (`drift_margins.json`), D-0656
-  (sites list), D-0665 (SimHash threshold), D-0782–D-0784 (investigate: variants and stock, learned-config approval,
-  an "absent" field status), D-0810 (additional fields), D-0879 (CSV formula injection).
+- Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
+  field status), D-0810 (additional fields), D-0915 (SimHash at Hamming 0 misses some edits).
 
 ## Done specs
 
@@ -61,18 +61,16 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
-- `/v1/schemas`: retiring the latest version freezes the name; decide un-retire, reuse or PUT on a retired latest (D-0395) [#81].
 - Indexes, measure first: `url_task (job_id, status, outcome)` if large-crawl listing is slow [#19, #146]; `job (started_at) WHERE status = 'running'` for `fail_stalled_jobs` and `expire_learn_runs`, which share one shape and could share one reaper [#195].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
 - Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
 - Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64].
-- More of the same, SPEC-05/08/10: CSV formula injection in downloads, blocked on D-0879 [#115].
 - Normalize: a minus counts anywhere before the number (`numbers.negative`), so "In stock - 5 left" declines as negative; count it only when it touches the number, for money and count (D-0922) [#203].
 - Normalize: `count` accepts `unitCode` `C62` with a contradicting `unitText` ("kg"); decide whether to decline any `unitText` beside C62 (D-0921) [#203].
 - Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
-- For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32]. The project license (`AGPL-3.0-only` in `backend/pyproject.toml`) is the owner's call [#175].
+- For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)
 

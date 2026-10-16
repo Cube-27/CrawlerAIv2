@@ -94,7 +94,9 @@ frontend/src/
   (FieldValue) plus mode, version, confidence; row click opens the inspector (every `field_meta` attribute,
   the capture id with a "Replay" action calling `/v1/captures/{id}/replay` and diffing the result against the
   stored record).
-- **Sites & configs**: sites table (host, fetch method, mode per schema, pages extracted); site detail lists config
+- **Sites & configs**: a host lookup that opens `/sites/{host}` (ARCHITECTURE §13.1 has no endpoint that lists
+  sites; a sites table with host, fetch method, mode per schema and pages extracted waits for a `GET /v1/sites`,
+  added when operators need it: D-0656, owner answer 2026-10-16); site detail lists config
   versions with status and field status counts; config detail shows per-field steps, status, yield/validity,
   the validation report, and the correction form (StepsEditor per field + "confirm" checkboxes) submitting
   `PUT`; the response's validation report is shown inline; "Learn now" → `POST …/learn`; "Export" → format

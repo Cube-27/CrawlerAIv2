@@ -26,6 +26,7 @@ _locators = st.one_of(
     st.tuples(st.just("api"), _token, _jsonpath),
     st.tuples(st.just("config"), _name, _index, st.text(min_size=1, max_size=30)),
     st.tuples(st.integers(0, 10**6), st.integers(1, 10**6)).map(lambda p: ("text", str(p[0]), str(p[0] + p[1]))),
+    st.tuples(st.just("derived"), st.sampled_from(["canonical_link", "final_url"])),
 )
 
 

@@ -7,10 +7,13 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.locator import Locator, parse_locator
 from crawlerai.db.models import EvalRunId, SourceKind
 from crawlerai.normalize.base import Ok
+from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.evidence import Bucket, Calibration, assess, evidence_of
 from crawlerai.resolve.preference import Chosen
+from crawlerai.resolve.types import Derivation
 from crawlerai.schemas.types import FieldType
 
 KINDS: tuple[SourceKind, ...] = ("jsonld", "microdata", "og", "js_state", "xhr", "config", "llm")
@@ -69,3 +72,28 @@ def test_a_calibrated_bucket_below_tau_never_publishes(
         assert not outcome.calibrated or (outcome.confidence is not None and outcome.confidence >= tau)
     calibrated_below = evidence is not None and n >= 30 and precision < tau
     assert (outcome.status == "abstained" and outcome.reason == "below_tau") == calibrated_below
+
+
+@given(
+    st.sampled_from(["canonical_link", "final_url"]),
+    st.integers(min_value=0, max_value=200),
+    st.one_of(st.none(), st.floats(min_value=0.0, max_value=1.0)),
+    st.sampled_from([0.95, 0.97]),
+)
+def test_a_derived_page_url_keeps_its_provenance_and_its_buckets_tau(
+    derived_by: Derivation, n: int, precision: float | None, tau: float
+) -> None:
+    calibration = Calibration(
+        eval_run_id=EvalRunId(uuid.uuid4()), git_sha="a", buckets={"url|derived": Bucket(n=n, precision=precision)}
+    )
+
+    outcome = assess(
+        FieldType.URL, Derived("https://example.com/p", derived_by, None), calibration, tau=tau, corroborated=False
+    )
+
+    calibrated_below = n >= 30 and precision is not None and precision < tau
+    assert outcome.status == ("abstained" if calibrated_below else "published")
+    assert outcome.evidence == "derived"
+    if outcome.status == "published":
+        assert (outcome.source_kind, outcome.derived_by) == ("derived", derived_by)
+        assert parse_locator(outcome.locator or "") == Locator("derived", (derived_by,))

@@ -5,7 +5,7 @@ The three formats share one table: a column per schema field, holding the publis
 `_status_<field>` column per field. Columns are in field-name order, so they depend on the schema alone and not on
 the order its fields were declared or stored in (JSONB does not keep key order). Schema names start with a
 lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. Values are serialized as
-published and never fixed (INV-27).
+published and never fixed (INV-27); a `csv_safe` CSV (D-0879) only marks formula-like cells for spreadsheets.
 
 A clean record (`json_values`, SPEC-14 §4.4) is a record's published values alone: the schema's fields in the order
 the schema lists them, each with its value or null, and no status.
@@ -30,19 +30,25 @@ _STATUS_PREFIX = "_status_"
 _MD_PUNCTUATION = re.compile(r"""([!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])""")
 # CommonMark 0.31 §2.6 line endings; a GFM table cell holds no line ending, so one becomes an HTML line break.
 _LINE_ENDING = re.compile(r"\r\n|\r|\n")
+# OWASP CSV Injection: spreadsheet applications read a cell starting with one of these as a formula; a leading `'`
+# makes them show it as text.
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
 
 _Row = dict[str, JsonValue]
 
 
-def export_records(fmt: RecordFormat, schema: SchemaDocument, records: Sequence[RecordContent]) -> str:
-    """`records`, all of `schema`, in `fmt`. A record whose fields are not the schema's is refused (`ValueError`)."""
+def export_records(
+    fmt: RecordFormat, schema: SchemaDocument, records: Sequence[RecordContent], *, csv_safe: bool = False
+) -> str:
+    """`records`, all of `schema`, in `fmt`. A record whose fields are not the schema's is refused (`ValueError`).
+    `csv_safe` (`csv_records` only, D-0879): a cell a spreadsheet would read as a formula starts with `'`."""
     fields = sorted(schema.fields)
     rows = [_row(fields, record) for record in records]
     columns = [*fields, *(_STATUS_PREFIX + name for name in fields)]
     if fmt == "json_records":
         return _json(rows)
     if fmt == "csv_records":
-        return _csv(columns, rows)
+        return _csv(columns, rows, safe=csv_safe)
     return _markdown(columns, rows)
 
 
@@ -73,13 +79,19 @@ def _cell(value: JsonValue) -> str:
     return _json(value)
 
 
-def _csv(columns: list[str], rows: list[_Row]) -> str:
+def _csv(columns: list[str], rows: list[_Row], *, safe: bool) -> str:
     # RFC 4180: a header line, CRLF line breaks, and fields with separators, quotes or line breaks quoted.
     out = io.StringIO(newline="")
     writer = csv.writer(out, lineterminator="\r\n")
     writer.writerow(columns)
-    writer.writerows([_cell(row[column]) for column in columns] for row in rows)
+    cell = _safe_cell if safe else _cell
+    writer.writerows([cell(row[column]) for column in columns] for row in rows)
     return out.getvalue()
+
+
+def _safe_cell(value: JsonValue) -> str:
+    text = _cell(value)
+    return "'" + text if text.startswith(_FORMULA_TRIGGERS) else text
 
 
 def _md_cell(text: str) -> str:

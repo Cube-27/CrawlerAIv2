@@ -14,7 +14,7 @@ repeat cheap. No schedule storage exists in core (§22 candidate).
 
 Core:
 - `url_state` maintenance; `If-None-Match`/`If-Modified-Since`; `unchanged` outcome.
-- SimHash-64 content fingerprint over visible text; Hamming ≤ 3 → `unchanged`, extraction skipped.
+- SimHash-64 content fingerprint over visible text; Hamming 0 (equal fingerprints) → `unchanged`, extraction skipped.
 - Record fingerprint over normalized required fields; versioned records with `changed_fields`.
 - Listing diff: new URLs queued; missing for 2 runs → `gone_at` set.
 - Change feed through `/v1/records?changed_since` and job results carrying `changed_fields`.
@@ -57,9 +57,9 @@ Out of scope (§22):
   that look like nonces — defined structurally as tokens of ≥ 16 characters consisting only of `[A-Za-z0-9_-]`
   (no vocabulary; structural).
 - SimHash-64 over word 3-gram shingles hashed with a fixed 64-bit hash (e.g. `blake2b(digest_size=8)`).
-- If `hamming(new, url_state.content_fingerprint) <= 3` → outcome `unchanged`, extraction skipped, the capture
-  is still stored (replayability; it expires normally). The threshold 3 is a starting point to confirm on dev
-  (preamble).
+- If `hamming(new, url_state.content_fingerprint) == 0` (`UNCHANGED_BITS = 0`) → outcome `unchanged`, extraction
+  skipped, the capture is still stored (replayability; it expires normally). Only nonces and whitespace are ignored,
+  structurally; any other change, such as a new price, runs extraction (ARCHITECTURE §14, Appendix A #40, D-0665).
 - Otherwise extraction runs; `content_fingerprint` and `last_changed_at` are updated.
 - Unchanged pages do not count toward drift windows (SPEC-08 4.9) or `pages_extracted` (§8.3 counts only
   `extracted` and `partial`).
@@ -113,9 +113,9 @@ literals (INV-03).
 
 ## 6. Testing strategy
 
-- SimHash: property tests — identical text → identical hash; a single-word change in a 500-word text → Hamming
-  ≤ 3; a different text → Hamming > 3 with high probability (fixed seeds); nonce stripping by the structural
-  rule.
+- SimHash: property tests — identical text → identical hash; a single-word change in a 500-word text → a
+  different fingerprint on most fixed seeds (SimHash is not a bound: some edits flip no bit); a different text →
+  Hamming > 3 with high probability (fixed seeds); nonce stripping by the structural rule.
 - Conditional GET: local server with ETag support; second fetch yields `unchanged` and no bundle.
 - Record versions: synthetic extractions with a changed price → version 2 with `changed_fields=["price"]`;
   unchanged → no new row.

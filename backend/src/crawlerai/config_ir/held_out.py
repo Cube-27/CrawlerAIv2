@@ -51,8 +51,9 @@ from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
 # §6: the pages learning reads are those whose outcome is `extracted` or `partial`.
 EXTRACTED: Final = ("extracted", "partial")
-# ARCHITECTURE §8.3 step 4: structured data or an adapter; a config's own values and the model's are not references.
-REFERENCE_KINDS: Final = frozenset(get_args(SourceKind)) - {"config", "llm"}
+# ARCHITECTURE §8.3 step 4: structured data or an adapter; a config's own values, the model's and a derived page URL
+# are not references.
+REFERENCE_KINDS: Final = frozenset(get_args(SourceKind)) - {"config", "llm", "derived"}
 
 
 @dataclass(frozen=True, slots=True)

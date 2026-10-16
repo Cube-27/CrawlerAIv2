@@ -171,14 +171,21 @@ def test_malformed_manifest_fails(tmp_path: Path) -> None:
     assert result.stdout.startswith("backend/data/manifest.json: not valid JSON")
 
 
-# --- dev-fitted files (D-0444, owner answer 2026-10-14): exempt from the pin, checked by their stamp ---
+# --- dev-fitted files (D-0444, D-0576, owner answers 2026-10-14 and 2026-10-16): exempt from the pin, checked by
+# their stamp ---
 
 PRECEDENCE = b"source_split: dev\ntext:\n- jsonld\n- og\n"
 CALIBRATION = json.dumps({"calibration_version": 1, "source_split": "dev", "buckets": {}}).encode()
+MARGINS = json.dumps({"yield": 0.2, "validity": 0.1, "source_split": "dev", "fit": "spec default, unfitted"}).encode()
 
 
 def test_dev_fitted_files_need_no_manifest_entry(tmp_path: Path) -> None:
-    files = {"list.txt": CONTENT, "source_precedence.yaml": PRECEDENCE, "calibration.json": CALIBRATION}
+    files = {
+        "list.txt": CONTENT,
+        "source_precedence.yaml": PRECEDENCE,
+        "calibration.json": CALIBRATION,
+        "drift_margins.json": MARGINS,
+    }
     root = make_root(tmp_path, files, {"entries": [entry("list.txt")]})
 
     result = run_check(root)
@@ -230,6 +237,18 @@ def test_a_calibration_without_a_dev_stamp_fails(tmp_path: Path, content: bytes)
     assert result.returncode == 1
     assert result.stdout.splitlines() == [
         "backend/data/calibration.json: a dev-fitted file needs the stamp 'source_split: dev'"
+    ]
+
+
+@pytest.mark.parametrize("content", [b'{"yield": 0.2, "validity": 0.1}', b'{"source_split": "hidden"}'])
+def test_drift_margins_without_a_dev_stamp_fail(tmp_path: Path, content: bytes) -> None:
+    root = make_root(tmp_path, {"drift_margins.json": content}, {"entries": []})
+
+    result = run_check(root)
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        "backend/data/drift_margins.json: a dev-fitted file needs the stamp 'source_split: dev'"
     ]
 
 

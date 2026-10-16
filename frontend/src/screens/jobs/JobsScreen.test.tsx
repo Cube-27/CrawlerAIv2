@@ -305,8 +305,8 @@ describe("Job screen", () => {
     ]);
     const exports = calls.filter(({ query }) => query.includes("csv_records"));
     expect(exports.map(({ query }) => query)).toEqual([
-      "format=csv_records&limit=200",
-      `format=csv_records&limit=200&cursor=${RECORD_ID}`,
+      "format=csv_records&limit=200&csv_safe=true",
+      `format=csv_records&limit=200&cursor=${RECORD_ID}&csv_safe=true`,
     ]);
   });
 

@@ -113,6 +113,17 @@ async def test_delete_retires_the_version_and_keeps_it_readable(client: httpx.As
     assert [s["id"] for s in retired["items"]] == [created["id"]]
 
 
+async def test_put_on_a_retired_latest_version_builds_the_next_version(client: httpx.AsyncClient) -> None:
+    first = await _created(client)
+    await client.delete(f"/v1/schemas/{first['id']}")
+
+    response = await client.put(f"/v1/schemas/{first['id']}", json={"page_kind": "detail", "fields": {"title": TITLE}})
+
+    assert response.status_code == 200, response.text
+    assert (response.json()["version"], response.json()["status"]) == (2, "active")
+    assert (await client.get(f"/v1/schemas/{first['id']}")).json()["status"] == "retired"
+
+
 async def test_a_taken_name_conflicts(client: httpx.AsyncClient) -> None:
     await _created(client)
 

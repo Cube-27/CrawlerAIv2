@@ -41,7 +41,9 @@ Used in: backend/src/crawlerai/normalize/location.py (location normalizer)
 
 Licensed under the Creative Commons Attribution 4.0 License
 (https://creativecommons.org/licenses/by/4.0/). Data by GeoNames; used
-unmodified as a lookup table.
+unmodified as a lookup table. The pinned snapshot (export dump of
+2026-10-15) is mirrored unchanged as the assets of this repository's
+release `data-geonames-2026-10-15`, with this attribution in its notes.
 ------------------------------------------------------------------------
 schema.org — https://schema.org/
 File: schemaorg-all-https.jsonld (release 30.1)

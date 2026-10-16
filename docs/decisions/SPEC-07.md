@@ -79,6 +79,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Retire every version of the name; retire the previous version on PUT.
 - Why: The id names a version, and records and configs reference versions (§5.2, D-0029, D-0243).
 - Reversible: yes
+- Owner answer: owner 2026-10-16: PUT may build a new version on a retired latest version; the name lives on, old versions stay retired, no new endpoint. Implemented in #204.
 
 ### D-0396 — Presets are read-only through the API
 - Date: 2026-10-13 · Spec/PR: SPEC-07 PR 7 (#81) · Status: decided

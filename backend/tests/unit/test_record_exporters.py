@@ -49,6 +49,29 @@ def test_csv_has_one_column_per_field_then_one_status_column_per_field_in_name_o
     assert text == "price,title,_status_price,_status_title\r\n,Lamp,missing,published\r\n"
 
 
+def test_csv_safe_prefixes_a_quote_on_cells_a_spreadsheet_reads_as_a_formula() -> None:
+    record = _record(title="=HYPERLINK(1)", price=-5)
+
+    text = export_records("csv_records", SCHEMA, [record], csv_safe=True)
+
+    assert text == "price,title,_status_price,_status_title\r\n'-5,'=HYPERLINK(1),published,published\r\n"
+
+
+@pytest.mark.parametrize("value", ["+1", "@a", "\tx", "\rx"])
+def test_csv_safe_covers_every_owasp_trigger(value: str) -> None:
+    [_, row] = _csv_rows(export_records("csv_records", SCHEMA, [_record(title=value)], csv_safe=True))
+
+    assert row[1] == "'" + value
+
+
+def test_csv_safe_leaves_other_cells_unchanged() -> None:
+    record = _record(title="Lamp = light", price=5)
+
+    assert export_records("csv_records", SCHEMA, [record], csv_safe=True) == export_records(
+        "csv_records", SCHEMA, [record]
+    )
+
+
 def test_csv_header_is_written_for_an_empty_page() -> None:
     assert export_records("csv_records", SCHEMA, []) == "price,title,_status_price,_status_title\r\n"
 

@@ -285,7 +285,7 @@ the queue, and the private eval tables: SPEC-01 and SPEC-03.
 | `url_state` | site_id, canonical_url, etag, last_modified, content_fingerprint, record_fingerprint, last_seen_at, last_changed_at, missing_runs, gone_at? | §14. |
 | `capture` | id, site_id, url, fetched_at, method (`http`, `browser`, `api`), status_code, final_url, block_class, object_key, html_sha256, expires_at | Production and dev captures only (§15). |
 | `extraction` | id, url_task_id, capture_id, engine_version, config_version?, mode (`adhoc`, `config`), llm_calls | One resolver run. |
-| `candidate` | id, extraction_id, entity_ref, field, raw_value, normalized_value, normalize_status (`ok`, `ambiguous`, `invalid`), source_kind (`adapter`, `api`, `jsonld`, `microdata`, `og`, `js_state`, `xhr`, `config`, `llm`), independent (bool), locator (§8.1), chosen, reject_reason | Kept 30 days. |
+| `candidate` | id, extraction_id, entity_ref, field, raw_value, normalized_value, normalize_status (`ok`, `ambiguous`, `invalid`), source_kind (`adapter`, `api`, `jsonld`, `microdata`, `og`, `js_state`, `xhr`, `config`, `llm`, `derived`; `derived` marks a page-URL derivation, §10, and no candidate row holds it), independent (bool), locator (§8.1), chosen, reject_reason | Kept 30 days. |
 | `record` | id, extraction_id, job_id, site_id, schema_id, schema_version, entity_key, version, data, field_meta (per field → status, reason, evidence, confidence, calibrated, source_kind, locator, derived_by?), complete (bool), changed_fields, mode, fingerprint, created_at | `data` holds published fields only. |
 | `eval_page` (dev in main; hidden and fresh in private) | id, capture_id, split, schema_id, page_kind, category, labels (value + locator, explicit `absent`), labeler, checker | — |
 | `eval_run` | id, engine_version, split, metrics | Hidden and fresh runs export aggregates only. |
@@ -377,7 +377,8 @@ capture (blocked/shell → stop)
     absolute. Any visible string normalizes as text, so text and the other opaque types admit by equality only
     (Appendix A #34).
 - **Locator.** Every candidate carries a locator: `<scheme>:<address>`. Schemes are `jsonld`, `microdata`, `meta`,
-  `js_state`, `xhr`, `adapter`, `api`, `config` and `text` (character offsets). The exact format is in SPEC-05.
+  `js_state`, `xhr`, `adapter`, `api`, `config`, `text` (character offsets) and `derived` (a page-URL derivation,
+  §10: the canonical link or the final URL). The exact format is in SPEC-05.
   Induction (§8.3) generalizes locators.
 - **No generic DOM heuristics.** There is no `[class*=price]`, no bare `h1`, no card-selector lists (C2). The only
   DOM selectors are per-site ones in configs (§8.3). Generic structural collectors are a candidate (§22).
@@ -514,7 +515,9 @@ Offer of the row and evidence per sub-field. Only structured collectors give row
 - `agreed`: two or more **independent** candidates of different source kinds agree;
 - `config_corroborated`;
 - `config_uncorroborated`: also used for `operator` fields, until labels show they need a bucket of their own;
-- `llm_grounded`.
+- `llm_grounded`;
+- `derived`: a detail page's `url` derived from the canonical link (RFC 6596) or the final URL when no candidate
+  states it (SPEC-05 §4.8), with source kind `derived` and a `derived:` locator naming the derivation.
 
 The field's confidence is the measured precision of its (field type, evidence) bucket on **dev**. Buckets with fewer
 than 30 dev labels report `calibrated=false`. Once a bucket is calibrated, a bucket below τ (0.97 for required
@@ -599,7 +602,8 @@ translate it, so what we export is what we run.
 - `platform_draft`: XPath 1.0 + regex + named params per field, listing row/next, and `api_recipe` as a PHP code
   hint. This is a draft for an external crawler platform, revised once a sample of its config format exists
   (OPEN_QUESTIONS #1).
-- `json_records`, `csv_records`, `markdown`.
+- `json_records`, `csv_records`, `markdown`. A `csv_safe` request prefixes `'` to CSV cells a spreadsheet would read
+  as a formula (OWASP CSV Injection); the UI's downloads ask for it, and the default export is unchanged (D-0879).
 - `json_values`: one item per task, `{url, outcome, records, metadata?}`, where each record holds the schema's
   published fields only (null when not published), with page `metadata` on request; no status columns; jobs with and
   without a schema (SPEC-14).
@@ -659,7 +663,7 @@ record carries `mode` and `complete`.
 | Mechanism | Effect |
 |---|---|
 | Conditional GET (`ETag` / `Last-Modified`). A 304 means `unchanged`. | No download on unchanged pages. |
-| Content fingerprint: SimHash-64 of visible text, with scripts, styles and nonces stripped. Hamming ≤ 3 means unchanged; extraction is skipped. | Skips boilerplate-only changes. |
+| Content fingerprint: SimHash-64 of visible text, with scripts, styles and nonces stripped. Only an equal fingerprint (Hamming 0) means unchanged; extraction is skipped. | Skips pages whose visible text did not change, ignoring nonces and whitespace. A one-token change, such as a new price, runs extraction (Appendix A #40). |
 | Record fingerprint over normalized required fields. A change creates a new record `version` with `changed_fields`. | Change feed. |
 | Listing diff. New URLs are queued; URLs missing for 2 runs get `gone_at`. | Catalog adds and removes. |
 
@@ -943,6 +947,7 @@ implementation go in `DECISIONS.md`, not here.
 | 37 | Variant matrix (2026-10-15) | Variant-matrix handling (§22) is admitted now, ahead of labels. `commerce_detail` version 3 adds an optional `variants` list from structured data; sub-fields of a `list` of `object` map by their own `schema_org` paths; the single price, availability, sku and gtin follow the variant the page URL names, else the all-agree rule. No platform JSON adapter. Variant labels and their scoring are specified, not built (SPEC-13). |
 | 38 | Playground UI (2026-10-15) | The UI is one playground: a mode switch (Scrape, Batch, Crawl, Map, Extract), a command bar with the primary action at the top, settings in an inline options panel with Advanced collapsed, and output on the same page. No pop-up windows for runs. Clean JSON is the main output: schema fields only, metadata only when asked for. Batch and crawl show a running table with each page's JSON in a side drawer, and plain-language live activity. The UI never asks for an API key; the server that serves it attaches one (§18). `/` opens the playground. SPEC-14. |
 | 39 | Availability and stock quantity (2026-10-16) | Availability and stock quantity are separate fields. Availability stated in words or codes ("in stock", "instock", "In stock (5 available)") normalizes to the schema.org `ItemAvailability` member, the one availability convention in the repo; the stock quantity is its own `count` field (5). `commerce_detail` version 4 adds the optional `stock_quantity`; variants carry availability and stock quantity when the page states them per variant, otherwise the page's values publish. D-0782. |
+| 40 | Derived page URL; unchanged pages (2026-10-16) | A detail page's `url` derived from the canonical link or the final URL publishes with source kind `derived`, a `derived:` locator and its own `derived` evidence bucket, calibrated like any other (§6, §8.1, §10). INV-22 holds as written. D-0355, option (a). Only an equal content fingerprint (Hamming 0) means a page is unchanged (§14); D-0665, option (b). An opt-in `csv_safe=true` results parameter quotes formula-like CSV cells, and the UI's Export CSV sends it; default output is unchanged (§12.2). D-0879, option (a). |
 
 ---
 
@@ -1028,3 +1033,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 16 | 2026-10-15 | **Variant matrix** (owner admission; Appendix A #37). §5.2: `\|` alternatives in `schema_org`, row-mapped `list` of `object` fields with `key`. §5.3: `commerce_detail` version 3 adds optional `variants`. §10: selected variant by URL identity, variant fill, per-row resolution. §22: the candidate is marked admitted. SPEC-13 added; SPEC-04 and SPEC-05 point to it. INV-33–INV-36. |
 | 17 | 2026-10-15 | **Playground UI and server-side key** (owner; Appendix A #38). §18: the UI never holds an API key; the server that serves it attaches one. §12.2: `json_values` record export. SPEC-14 added; SPEC-12 points to it for the Connect screen, job dialogs, Overview and Scrape layout. |
 | 18 | 2026-10-16 | **Availability and stock quantity** (owner approval, D-0782; Appendix A #39). §5.1: a `count` field type. §5.3: `commerce_detail` version 4 adds optional `stock_quantity`, also per variant. §9: a `count` row; enum text states a member only through its whole first clause. SPEC-04 and SPEC-13 updated. |
+| 19 | 2026-10-16 | **Owner answers of 2026-10-16** (Appendix A #40). §6, §8.1, §10: a derived page URL publishes with source kind `derived`, a `derived:` locator and a `derived` evidence bucket (D-0355); migration 0019. §14 row 2: only Hamming 0 means unchanged (D-0665); SPEC-11 updated. §12.2: an opt-in `csv_safe` CSV export, a `GET /v1/jobs/{id}/results` parameter (D-0879); SPEC-08 and SPEC-10 updated, INV-27 noted. SPEC-05 §4.3, §4.8 and §4.9 updated. MCP tools unchanged (§13.3). |

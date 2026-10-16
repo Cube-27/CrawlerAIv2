@@ -6,12 +6,14 @@ An uncalibrated bucket publishes with `calibrated=false` (§10: a deliberate tra
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.base import Candidate
+from crawlerai.collect.locator import format_locator
 from crawlerai.db.models import EvalRunId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
@@ -122,11 +124,69 @@ def assess(
 ) -> FieldOutcome:
     """One field's outcome: a chosen or derived value publishes with its bucket's measurement unless that bucket is
     calibrated below `tau`; a declined field keeps its status and reason. `row`: a row sub-field (SPEC-13 §4.5)."""
+    if isinstance(decision, Derived) and decision.source is None:
+        published = _page_url(decision)
+    else:
+        candidate = _candidate_value(decision, corroborated=corroborated)
+        if isinstance(candidate, FieldOutcome):
+            return candidate
+        published = candidate
+    confidence, calibrated = calibration.measure(type_, published.evidence, row=row) if calibration else (None, False)
+    if calibrated and confidence is not None and confidence < tau:
+        below = () if published.chosen is None else ((published.chosen, "below_tau"),)
+        return _unpublished(
+            "abstained",
+            "below_tau",
+            (*published.rejected, *below),
+            kept=published.kept,
+            evidence=published.evidence,
+            confidence=confidence,
+            calibrated=True,
+        )
+    return FieldOutcome(
+        status="published",
+        reason=None,
+        value=published.value,
+        evidence=published.evidence,
+        confidence=confidence,
+        calibrated=calibrated,
+        source_kind=published.source_kind,
+        locator=published.locator,
+        derived_by=published.derived_by,
+        chosen=published.chosen,
+        kept=published.kept,
+        rejected=published.rejected,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Published:
+    """A value about to publish, with its provenance (INV-22); its bucket is measured and held to τ next."""
+
+    value: JsonValue
+    evidence: Evidence
+    source_kind: SourceKind
+    locator: str
+    derived_by: Derivation | None
+    chosen: Candidate | None
+    kept: tuple[Candidate, ...]
+    rejected: tuple[tuple[Candidate, str], ...]
+
+
+def _page_url(decision: Derived) -> _Published:
+    # D-0355: no candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
+    # `derived:` locator naming the derivation.
+    locator = format_locator("derived", decision.derived_by)
+    return _Published(decision.value, "derived", "derived", locator, decision.derived_by, None, (), ())
+
+
+def _candidate_value(decision: Preference | Derived, *, corroborated: bool) -> _Published | FieldOutcome:
+    """A chosen candidate's value, or an absolutized one with its source candidate's provenance; else the field's
+    unpublished outcome."""
     derived_by: Derivation | None = None
     if isinstance(decision, Derived):
         if decision.source is None:
-            # D-0355: a page-URL derivation has no candidate, source kind or bucket, which INV-22 requires.
-            return _unpublished("missing", "no_provenance", ())
+            raise TypeError("a page-URL derivation has no candidate")
         value, derived_by = decision.value, decision.derived_by
         # The source is another field's candidate: none of this field's passed screening.
         decision = Chosen(decision.source, (), (), kept=())
@@ -138,31 +198,7 @@ def assess(
     evidence = evidence_of(chosen, decision.agreeing, corroborated=corroborated)
     if evidence is None:
         return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")), kept=decision.kept)
-    confidence, calibrated = calibration.measure(type_, evidence, row=row) if calibration else (None, False)
-    if calibrated and confidence is not None and confidence < tau:
-        return _unpublished(
-            "abstained",
-            "below_tau",
-            (*rejected, (chosen, "below_tau")),
-            kept=decision.kept,
-            evidence=evidence,
-            confidence=confidence,
-            calibrated=True,
-        )
-    return FieldOutcome(
-        status="published",
-        reason=None,
-        value=value,
-        evidence=evidence,
-        confidence=confidence,
-        calibrated=calibrated,
-        source_kind=chosen.source_kind,
-        locator=chosen.locator,
-        derived_by=derived_by,
-        chosen=chosen,
-        kept=decision.kept,
-        rejected=rejected,
-    )
+    return _Published(value, evidence, chosen.source_kind, chosen.locator, derived_by, chosen, decision.kept, rejected)
 
 
 def _unpublished(

@@ -8,6 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from crawlerai.recurring.simhash import BITS, hamming, simhash64, words
+from crawlerai.recurring.state import UNCHANGED_BITS
 
 # Unicode White_Space characters `str.split` splits on: space, tab, LF, CR, VT, FF, no-break, em and ideographic space.
 _SPACES = "".join(map(chr, (0x20, 0x09, 0x0A, 0x0D, 0x0B, 0x0C, 0xA0, 0x2003, 0x3000)))
@@ -80,7 +81,7 @@ def _fingerprint_of(prose: list[str]) -> int:
     return fingerprint
 
 
-def test_a_one_word_edit_of_a_500_word_text_is_mostly_within_three_bits() -> None:
+def test_a_one_word_edit_of_a_500_word_text_is_mostly_a_change() -> None:
     distances = []
     for seed in range(100):
         prose = _prose(seed)
@@ -89,9 +90,9 @@ def test_a_one_word_edit_of_a_500_word_text_is_mostly_within_three_bits() -> Non
         distances.append(hamming(_fingerprint_of(prose), _fingerprint_of(edited)))
 
     # A one-word edit changes 3 of 498 shingles, and a bit flips only where its vote total was that close to zero.
-    # Most edits stay within the §4.3 threshold of 3 bits, but it is not a bound (D-0039: to confirm on dev).
-    assert sum(distance <= 3 for distance in distances) >= 80
-    assert max(distances) > 3
+    # Only an equal fingerprint is unchanged (§4.3, D-0665), so most edits are seen; some flip no bit at all.
+    assert sum(distance > UNCHANGED_BITS for distance in distances) >= 85
+    assert min(distances) == 0
 
 
 def test_another_text_is_far() -> None:

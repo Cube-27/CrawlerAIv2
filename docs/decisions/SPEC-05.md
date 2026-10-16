@@ -581,3 +581,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep `unknown` and document it.
 - Why: D-0880 intends a wheel that names its build; `uv build` failed outright on the missing manifest.
 - Reversible: yes
+
+### D-0910 — The locator of a derived page URL is `derived:<derivation>`
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.3, §4.8 (#204) · Status: decided
+- Decision: A page-URL derivation carries `derived:canonical_link` or `derived:final_url`; an absolutized value keeps its source candidate's locator. The two derivations are one `PageUrlDerivation` literal shared by the locator grammar and `Derivation`.
+- Alternatives: An XPath to `<link rel=canonical>`; a `meta:` locator.
+- Why: The final URL has no DOM node, and the derivation name reads back from the capture (the link relation or `capture.final_url`).
+- Reversible: yes
+
+### D-0911 — `derived` is a member of the §6 `SourceKind`
+- Date: 2026-10-16 · Spec/PR: SPEC-05 §4.8, §4.9 (#204) · Status: decided
+- Decision: `derived` joins the shared `SourceKind`; migration 0019 widens `ck_candidate_source_kind`, and `REFERENCE_KINDS` excludes it. No candidate row holds it.
+- Alternatives: An outcome-only source-kind type, with no migration.
+- Why: The owner's answer to D-0355 puts the source kind in §6 with a migration.
+- Reversible: costly — a migration.
