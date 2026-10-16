@@ -43,7 +43,7 @@ _IN_STOCK, _BACK_ORDER, _OUT_OF_STOCK = (f"https://schema.org/{m}" for m in ("In
 
 _PRODUCT_QUERY: Final = """query Product($handle: String!) {
   product(handle: $handle) {
-    id title description onlineStoreUrl
+    id title description vendor onlineStoreUrl
     featuredImage { url }
     variants(first: 250) {
       nodes { id title sku barcode availableForSale currentlyNotInStock price { amount currencyCode } }
@@ -92,7 +92,10 @@ def _bound(at: Members) -> Shape:
     return Shape(type="Offer", at=at, properties={"price": ("amount",), "priceCurrency": ("currencyCode",)})
 
 
-# A product is a schema.org ProductGroup ("a group of Products that vary only in certain well-described ways"); each
+# A product is a schema.org ProductGroup ("a group of Products that vary only in certain well-described ways"). Its
+# `vendor` ("the manufacturer, wholesaler, or other vendor for the product", Help Center, "Product details") is its
+# schema.org `brand`, as in the platform's own schema.org output (Liquid `structured_data` filter: its documented
+# example states the example shop's vendor as the product's brand). Each
 # variant a Product under `hasVariant`, whose Offer is a view of the variant anchored at its `price`. Its image is the
 # featured image ("functionally equivalent to images(first: 1)"): every image would be several values of one property,
 # which a single image field cannot choose among.
@@ -121,6 +124,7 @@ _PRODUCT: Final = Shape(
         "url": ("onlineStoreUrl",),
         "productID": ("id",),
         "image": ("featuredImage", "url"),
+        "brand": ("vendor",),
     },
     nodes={"hasVariant": (_VARIANT,)},
 )

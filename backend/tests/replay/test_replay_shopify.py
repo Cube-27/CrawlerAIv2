@@ -90,6 +90,7 @@ def _product(*variants: dict[str, JsonValue]) -> dict[str, JsonValue]:
                 "id": "gid://shopify/Product/1",
                 "title": "Synthetic Widget",
                 "description": "A widget for tests.",
+                "vendor": "Synthetic Works",
                 "onlineStoreUrl": f"{SHOP}/products/widget",
                 "featuredImage": {"url": f"{SHOP}/img/1.png"},
                 "variants": {"nodes": list(variants)},
@@ -115,6 +116,7 @@ def test_a_product_whose_variants_agree_publishes_the_page_and_one_row_per_varia
         "image_url": f"{SHOP}/img/1.png",
         "additional_images": [f"{SHOP}/img/1.png"],
         "description": "A widget for tests.",
+        "brand": "Synthetic Works",
         "product_id": {"scheme": "custom", "value": "gid://shopify/Product/1"},
     }
     assert published["variants"] == [
