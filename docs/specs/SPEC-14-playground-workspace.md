@@ -14,8 +14,8 @@ row in a long vertical form, and the primary button is at the bottom. The app al
 This spec replaces that with one **playground**:
 - The run type is a mode switch at the top.
 - A command bar holds the URL (or URL list) and the primary action, with a toolbar under it.
-- Settings open in an inline options panel under the bar. Common settings come first; Advanced (fetch, limits) is
-  collapsed.
+- Settings open in a popover from the bar's Options button, every setting at once in a compact grid (owner,
+  2026-10-16; ARCHITECTURE Appendix A #45).
 - Output appears below on the same page. A single page shows clean JSON. A batch or crawl shows a running table of
   pages, filled in as the run goes, with each page's JSON one click away.
 
@@ -31,7 +31,7 @@ stay HeroUI defaults with this app's theme (DESIGN.md).
    - the mode switch;
    - the command bar;
    - the toolbar: Options, Format, Schema, then the primary action on the right;
-   - the inline options panel;
+   - the options popover;
    - the output area.
 
    The sidebar gets a "Playground" group with one entry per mode. The Overview screen goes; its numbers already
@@ -106,7 +106,11 @@ Top to bottom, in the content column (max 1280px), centred:
 1. **Mode switch.** HeroUI `Tabs` (secondary variant) with Scrape, Batch, Crawl, Map, Extract, grouped under small
    captions ("Pages": Scrape, Batch, Extract; "Sites": Map, Crawl). Each tab is a link to its route, so the
    mode is in the URL and back/forward work.
-2. **Command bar.** One bordered surface (a HeroUI `Card`):
+   The switch is centred over the command bar (owner, 2026-10-16).
+2. **Command bar.** One bordered surface (a HeroUI `Card`), centred in a column narrower than the content
+   (`--container-playground`); the output below it takes the content's width. Row 1 sits in a box of a fixed minimum
+   height that holds a URL and its error as well as Batch's list, so switching modes moves neither the toolbar nor
+   the primary button:
    - Row 1, Scrape/Crawl/Map/Extract: a URL `TextField` with an `https://` prefix.
    - Row 1, Batch: a `TextArea` for URLs, one per line, with a live "N URLs" count. It ends in an icon button that
      uploads a CSV: a `url` header column if present, else the first column (RFC 4180). Uploaded URLs are appended,
@@ -118,18 +122,25 @@ Top to bottom, in the content column (max 1280px), centred:
      - right: Get code (PR 10), then the primary button: "Scrape", "Start batch", "Start crawl", "Map", "Extract".
 
    The primary button is at the top in every mode (owner).
-3. **Options panel.** An inline region directly under the command bar, toggled by Options; it is not an overlay
-   (owner: no pop-up windows). Rows of label, help icon and control (HeroUI `Switch`, `NumberField`, tag list, or
-   `Select`), in two columns from the `md` breakpoint and one column at phone width. Then a collapsed "Advanced"
-   `Disclosure` and a "Reset settings" button. Per mode:
+3. **Options popover.** Options opens a HeroUI `Popover` under it (owner, 2026-10-16, ARCHITECTURE Appendix A #45,
+   replacing the inline panel with a collapsed Advanced section): an overlay, so opening it moves nothing on the
+   page. Its heading and "Reset settings" share the top line; under them every setting shows at once in a grid of
+   cells (label and help icon over the control: HeroUI `Switch`, `NumberField`, tag list, text or `Select`), four
+   columns from `sm` and one at phone width. A tag list or a URL takes two columns; free text over several lines and
+   the page-kind rules take the whole width. Labels are short. Escape, a click outside or Options closes it, and a
+   number typed last is kept. Per mode:
 
-   | Mode | Main rows | Advanced |
-   |---|---|---|
-   | Scrape | Page kind; Metadata in JSON; Fields (§4.10) | Fetch method; max age; timeout; LLM budget |
-   | Batch | Page kind; Metadata in JSON; Fields; webhook URL | Fetch method |
-   | Crawl | Include and Exclude globs (tag lists with Add); page-kind rules (rows of glob and page kind); Metadata in JSON; Fields | Max depth; page limit; fetch method; webhook URL |
-   | Map | Include and Exclude globs; use sitemaps; use links | Page limit |
-   | Extract | URLs or globs (tag list); schema source (stored, inline JSON, prompt, field names) | Page limit; fetch method; LLM budget; webhook URL |
+   | Mode | Settings |
+   |---|---|
+   | Scrape | Page kind; fetch method; max age; timeout; LLM call limit; Metadata in JSON; Fields (§4.10) |
+   | Batch | Page kind; fetch method; LLM call limit; Metadata in JSON; Fields; webhook URL |
+   | Crawl | Include and Exclude globs (tag lists with Add); max depth; page limit; fetch method; Metadata in JSON; Fields; webhook URL; page-kind rules (rows of glob and page kind) |
+   | Map | Include and Exclude globs; use sitemaps; use links; page limit |
+   | Extract | More URLs or globs (tag list); schema source (stored, inline JSON, prompt, field names); page kind; page limit; fetch method; LLM call limit; webhook URL |
+
+   The LLM call limit is `budget.llm_calls`. Empty leaves `budget` out, and the field says what that means for its
+   request: no limit for a batch (D-1006), the server's default of 10 for a scrape or an extract. `CrawlRequest` and
+   `MapRequest` have no `budget`, so Crawl and Map have no limit field.
 
    The rows mirror the request DTOs in `schema.d.ts`: apart from Metadata in JSON, a row exists only for a request
    member, and none is invented. Metadata in JSON is a view option. When it is on, the request's `formats` gains
@@ -332,7 +343,7 @@ that leaves `field_meta` out, as `json_records` does.
 ## 7. Acceptance criteria
 
 - Opening the app shows the Scrape playground with no key prompt; with no key configured it shows the setup notice.
-- In every mode the primary action sits in the command bar, and settings open inline under it (no modal).
+- In every mode the primary action sits in the command bar, and settings open in a popover from it (no modal dialog), moving nothing on the page.
 - A single scrape shows JSON first. A batch of 50 URLs shows a running table, a JSON drawer per row and plain-language
   activity, without leaving the page.
 - A CSV of URLs fills the batch list.
