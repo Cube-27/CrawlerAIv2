@@ -5,7 +5,9 @@ Accepts:
 - a JSON number;
 - a string, from structured data, the DOM or an LLM: the one number in it ("Rated 4.5 stars" is 4.5), read by the
   Unicode CLDR number symbols of the locales the page and the request state (`normalize.numbers`, as money and count
-  read numbers).
+  read numbers);
+- a JSON object from structured data: schema.org `ratingValue` with its AggregateRating's `reviewCount`
+  (`ratingValue+reviewCount`), declined `no_ratings` when the count is 0.
 
 The value is the decimal in fixed-point notation as a JSON string, with its digits as written (`4.50` stays `4.50`),
 as money writes an amount; equality compares decimals. Nothing is defaulted or rescaled (C7): a text with no number or
@@ -13,7 +15,7 @@ two numbers ("4.5 out of 5") is `Invalid`, and so is a minus sign set apart from
 number the page's locales read as different values is `Ambiguous`.
 """
 
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
 from contextlib import suppress
 from decimal import Decimal, InvalidOperation
 
@@ -23,17 +25,41 @@ from crawlerai.normalize import numbers
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
+# schema.org AggregateRating: `ratingValue` is the rating, `reviewCount` the count of reviews it is based on.
+_RATING_VALUE, _REVIEW_COUNT = "ratingValue", "reviewCount"
+
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     """Normalize a number field (SPEC-04 §4.4)."""
     if spec.type is not FieldType.NUMBER:
         raise TypeError(f"the number normalizer does not handle type {spec.type}")
+    if isinstance(raw, dict):
+        return _rating(raw, spec, ctx)
     if isinstance(raw, str):
         return _text(raw, ctx)
     value = numbers.json_decimal(raw)
     if value is None or not value.is_finite():
         return Invalid("not_a_number")
     return Ok(_written(value))
+
+
+def _rating(raw: Mapping[str, JsonValue], spec: FieldSpec, ctx: Context) -> NormalizeResult:
+    """A schema.org `ratingValue` joined to its AggregateRating's `reviewCount` (the `+reviewCount` of a path): the
+    count of reviews the rating is based on. A count of 0 rates nothing, so the value is no rating (C7: a placeholder
+    is not a value); a count that is not stated or not a number leaves the value as stated."""
+    if not raw.keys() <= {_RATING_VALUE, _REVIEW_COUNT} or _RATING_VALUE not in raw:
+        return Invalid("not_a_number")
+    if _count(raw.get(_REVIEW_COUNT)) == 0:
+        return Invalid("no_ratings")
+    return normalize(raw[_RATING_VALUE], spec, ctx)
+
+
+def _count(raw: JsonValue) -> Decimal | None:
+    if isinstance(raw, str):
+        with suppress(InvalidOperation):
+            return Decimal(raw.strip())
+        return None
+    return numbers.json_decimal(raw)
 
 
 def _text(raw: str, ctx: Context) -> NormalizeResult:

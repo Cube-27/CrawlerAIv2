@@ -100,6 +100,16 @@ def test_a_property_the_page_does_not_state_is_missing_never_derived() -> None:
         assert (result.entity[name].status, result.entity[name].reason) == ("missing", "no_candidates")
 
 
+def test_a_rating_of_no_reviews_is_no_rating() -> None:
+    # schema.org AggregateRating: `reviewCount` 0 means the rating is based on nothing; the count itself stays.
+    unrated = PRODUCT | {"aggregateRating": {"@type": "AggregateRating", "ratingValue": 0, "reviewCount": 0}}
+    result = _extract(json.dumps(unrated))
+
+    assert result.entity is not None
+    assert (result.entity["rating"].status, result.entity["rating"].reason) == ("missing", "invalid")
+    assert result.entity["review_count"].value == 0
+
+
 def test_a_block_with_a_raw_newline_inside_a_string_still_publishes_its_fields() -> None:
     # json.dumps escapes the newline as `\n`; the page writes it raw, which RFC 8259 §7 does not allow in a string.
     block = json.dumps(PRODUCT).replace("\\n", "\n")
