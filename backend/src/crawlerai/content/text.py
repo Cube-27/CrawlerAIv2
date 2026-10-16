@@ -21,7 +21,7 @@ from crawlerai.normalize.text import compose, text_form
 # HTML Standard, Rendering, "Hidden elements": the user-agent style sheet gives these `display: none`. SPEC-05 §4.4
 # also drops `noscript` (its content is for user agents without scripting) and `svg` (graphics, not page text);
 # `iframe` content is parsed as raw text and never rendered (HTML Standard, parsing: the generic raw text algorithm).
-_NOT_RENDERED = frozenset(
+NOT_RENDERED = frozenset(
     {
         *("area", "base", "basefont", "datalist", "head", "link", "meta", "noembed", "noframes", "param", "rp"),
         *("script", "style", "template", "title", "noscript", "svg", "iframe"),
@@ -180,7 +180,7 @@ def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.
-    if tag in _NOT_RENDERED or "hidden" in attributes:
+    if tag in NOT_RENDERED or "hidden" in attributes:
         return True
     if tag == "input" and (attributes.get("type") or "").strip().lower() == "hidden":
         return True

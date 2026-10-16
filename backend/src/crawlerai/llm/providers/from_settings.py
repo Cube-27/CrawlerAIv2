@@ -1,7 +1,6 @@
 """The configured providers, in failover order (SPEC-06 §4.2): `CRAWLERAI_LLM_PROVIDERS`, the model per class for
 each, and each one's API key."""
 
-import logging
 from typing import assert_never
 
 from pydantic import SecretStr
@@ -11,8 +10,7 @@ from crawlerai.core.settings import LLMProviderName, LLMSettings
 from crawlerai.llm.client import LLMClient, MeteredClient, ModelClass, Unconfigured
 from crawlerai.llm.providers.anthropic import AnthropicProvider
 from crawlerai.llm.providers.gemini import GeminiProvider
-
-log = logging.getLogger(__name__)
+from crawlerai.llm.setup import LLMSetup
 
 
 def providers_from_settings(settings: LLMSettings) -> list[AnthropicProvider | GeminiProvider]:
@@ -20,15 +18,20 @@ def providers_from_settings(settings: LLMSettings) -> list[AnthropicProvider | G
     return [_provider(name, settings) for name in settings.llm_providers]
 
 
-def client_from_settings(settings: LLMSettings, engine: AsyncEngine) -> LLMClient:
-    """The configured providers' client, or, when a listed provider has no API key, an `Unconfigured` one that names
-    the missing key on every call: a process starts without keys, and work that needs no call still runs. The log
-    names the missing key once, when the process builds its client."""
+def llm_from_settings(settings: LLMSettings, engine: AsyncEngine) -> tuple[LLMClient, LLMSetup]:
+    """The configured providers' client and their setup check (`crawlerai.llm.setup`), on one set of providers. When a
+    listed provider has no API key, or none is listed, the client is an `Unconfigured` one that names the problem on
+    every call, and the setup is `unavailable`: a process starts without keys, and work that needs no call still runs.
+    The log names the problem once, at ERROR, when the process builds its client."""
     try:
-        return MeteredClient(providers_from_settings(settings), engine)
+        providers = providers_from_settings(settings)
     except ValueError as e:
-        log.warning("LLM calls are unavailable: %s", e)
-        return Unconfigured(str(e))
+        problem = str(e)
+    else:
+        if providers:
+            return MeteredClient(providers, engine), LLMSetup(providers)
+        problem = "no LLM provider is listed (CRAWLERAI_LLM_PROVIDERS)"
+    return Unconfigured(problem), LLMSetup.unavailable(problem)
 
 
 def _provider(name: LLMProviderName, settings: LLMSettings) -> AnthropicProvider | GeminiProvider:

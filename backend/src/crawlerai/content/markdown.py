@@ -17,14 +17,16 @@ rest of the content (`_items`): each item's links, images and text, in document 
 """
 
 import re
+from collections.abc import Iterator
 from copy import deepcopy
 
 import trafilatura
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import item_blocks
+from crawlerai.acquire.items import is_hyperlink, item_blocks
 from crawlerai.content.dom import document_base_url
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.text import NOT_RENDERED
 from crawlerai.db.models import PageKind
 
 # CommonMark §4.5: a fenced code block opens and closes with a run of three or more backticks or tildes.
@@ -32,10 +34,9 @@ _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 # CommonMark §5.2: a list item starts with a bullet (`-`, `+`, `*`) or an ordered marker (digits, then `.` or `)`),
 # then whitespace; its indentation is what nests it, and its content starts after that whitespace.
 _LIST_ITEM = re.compile(r"^([ \t]*(?:[-+*]|\d{1,9}[.)]))([ \t]+)")
-# Elements whose content is not an item's text (HTML Standard): never rendered (script data, style sheets, inert
-# templates, script-disabled fallback, §4.12, §4.2.6), and form controls (§4.10), which a reader of the page uses
-# rather than reads.
-_NOT_TEXT = frozenset({"script", "style", "template", "noscript", "button", "select", "input", "textarea", "option"})
+# Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
+# Standard §4.10), which a reader of the page uses rather than reads.
+_NOT_TEXT = NOT_RENDERED | {"button", "select", "input", "textarea", "option"}
 
 
 def markdown(page: ParsedPage, final_url: str, page_kind: PageKind | None = None) -> str:
@@ -64,23 +65,20 @@ def _absolute(page: ParsedPage, final_url: str) -> HtmlElement:
 def _item(item: HtmlElement) -> str:
     """One item on one line: its hyperlinks as Markdown links (an image link's image as its text), its other images,
     and its other visible text, in document order, whitespace collapsed (CSS Text Level 3, `white-space: normal`)."""
-    parts: list[str] = []
-    _write(item, parts)
-    return " ".join(" ".join(parts).split())
+    return " ".join("".join(_parts(item)).split())
 
 
-def _write(element: HtmlElement, parts: list[str]) -> None:
-    """Writes the element's content, without its tail, which follows it in its parent."""
-    if element.tag in ("a", "area") and element.get("href"):
-        parts.append(_link(element))
+def _parts(element: HtmlElement) -> Iterator[str]:
+    """The element's content as Markdown pieces, without its tail, which follows it in its parent."""
+    if is_hyperlink(element):
+        yield f" {_link(element)} "
     elif element.tag == "img":
-        parts.append(_image(element))
-    else:
-        parts.append(element.text or "")
+        yield f" {_image(element)} "
+    elif isinstance(element.tag, str) and element.tag not in _NOT_TEXT:  # not a comment or processing instruction
+        yield element.text or ""
         for child in element:
-            if isinstance(child.tag, str) and child.tag not in _NOT_TEXT:  # not a comment or processing instruction
-                _write(child, parts)
-            parts.append(child.tail or "")
+            yield from _parts(child)
+            yield child.tail or ""
 
 
 def _link(link: HtmlElement) -> str:

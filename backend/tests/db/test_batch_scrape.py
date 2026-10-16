@@ -50,7 +50,7 @@ from crawlerai.storage.fs import FsStore
 from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
-from tests.db.conftest import LISTING_FIELDS, listing_page
+from tests.db.conftest import listing_page, listing_schema
 
 pytestmark = pytest.mark.anyio
 
@@ -326,9 +326,7 @@ async def test_a_listing_page_keeps_a_record_per_row_and_one_without_rows_is_par
     listed, empty = f"{own_origin}/kettles", f"{own_origin}/kettles/none"
     web.pages[listed] = (200, listing_page(own_origin, ["Blue kettle", "Red kettle", "Green kettle"]))
     web.pages[empty] = (200, _page("Blue kettle"))
-    document = {"name": schema_name, "version": 1, "page_kind": "listing", "fields": LISTING_FIELDS}
-    async with engine.begin() as conn:
-        schema = await registry.create(conn, SchemaDocument.model_validate(document), "user")
+    schema = await listing_schema(engine, schema_name)
     request = _batch([listed, empty], "records", schema={"id": str(schema.id)}, page_kind="listing")
     submitted = await submit_batch(engine, fetching.connector, request, data=engine_data)
 

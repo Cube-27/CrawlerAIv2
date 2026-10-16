@@ -15,12 +15,14 @@ names the page names no item. Rows of one collector are never merged here: the r
 from collections.abc import Sequence
 from typing import Final
 
+from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect.base import Entity
 from crawlerai.resolve.intent import LISTS, AmbiguousTarget, is_primary
 from crawlerai.resolve.ownership import EntityGraph
 
-# SPEC-05 §4.7: without an ItemList, at least this many top-level primary entities make a listing's rows.
-MIN_TOP_LEVEL_ROWS: Final = 3
+# SPEC-05 §4.7: without an ItemList, at least this many top-level primary entities make a listing's rows; the same
+# count of repeated items makes a page show a listing's grid (`acquire.items`).
+MIN_TOP_LEVEL_ROWS: Final = MIN_ITEMS
 
 
 def listing_rows(

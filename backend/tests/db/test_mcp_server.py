@@ -32,6 +32,7 @@ from crawlerai.api.app import create_app
 from crawlerai.db.keys import CreatedKey, create_key, revoke_key
 from crawlerai.db.models import ApiKey, ExtractionConfig, ExtractionConfigId, Job, Project, Site, SiteId
 from crawlerai.llm.client import Unconfigured
+from crawlerai.llm.setup import LLMSetup
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
 from crawlerai.mcp_server.server import UNTRUSTED, build_server
 from crawlerai.mcp_server.stdio import key_bind
@@ -336,7 +337,7 @@ async def test_the_stdio_server_acts_with_the_key_in_its_environment(
 async def test_a_revoked_key_stops_the_stdio_server_at_its_next_call(
     key: CreatedKey, engine: AsyncEngine, fetching: Fetching, engine_data: EngineData
 ) -> None:
-    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, drift_margins=None)
+    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, None, LLMSetup.unavailable("no LLM"))
     server = build_server(key_bind(runtime, key.key))
 
     async with create_connected_server_and_client_session(server) as client:
@@ -368,7 +369,7 @@ async def test_a_services_invalid_data_reaches_the_client_as_an_unexpected_error
         TypeAdapter(int).validate_python("stored row 'secret'")
 
     monkeypatch.setattr(schemas, "list_all", parsing_a_stored_row)
-    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, drift_margins=None)
+    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, None, LLMSetup.unavailable("no LLM"))
     server = build_server(key_bind(runtime, key.key))
 
     async with create_connected_server_and_client_session(server) as client:
@@ -393,7 +394,7 @@ async def test_an_unexpected_error_reaches_the_client_without_its_text(
         raise RuntimeError("SELECT secret FROM internals")
 
     monkeypatch.setattr(schemas, "list_all", failing)
-    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, drift_margins=None)
+    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, None, LLMSetup.unavailable("no LLM"))
     server = build_server(key_bind(runtime, key.key))
 
     async with create_connected_server_and_client_session(server) as client:

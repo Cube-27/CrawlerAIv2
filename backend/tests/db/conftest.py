@@ -59,6 +59,7 @@ from crawlerai.db.models import (
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.schemas import registry
 from crawlerai.schemas import types as schema_types
 from crawlerai.services.fetching import Fetching
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
@@ -277,6 +278,13 @@ LISTING_FIELDS: dict[str, Any] = {
     "title": {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"},
     "url": {"type": "url", "required": True, "description": "The product page", "schema_org": "Product.url"},
 }
+
+
+async def listing_schema(engine: AsyncEngine, name: str) -> schema_types.SchemaDef:
+    """A stored listing schema of `LISTING_FIELDS`, named `name`."""
+    document = {"name": name, "version": 1, "page_kind": "listing", "fields": LISTING_FIELDS}
+    async with engine.begin() as conn:
+        return await registry.create(conn, schema_types.SchemaDocument.model_validate(document), "user")
 
 
 def listing_page(

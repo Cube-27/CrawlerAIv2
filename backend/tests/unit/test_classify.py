@@ -173,6 +173,8 @@ def test_a_listing_without_repeated_linked_items_is_a_shell_for_the_listing_kind
         ),
         # Rows published as structured data are read without the grid (SPEC-05 §4.7).
         _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "ItemList"}</script>'),
+        # A media type is compared before its parameters, in any case (RFC 9110 §8.3.1).
+        _listing(_SCRIPT_GRID, head='<script type="Application/LD+JSON; charset=utf-8">{}</script>'),
         _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/Product"></div>'),
     ],
 )

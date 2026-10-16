@@ -230,7 +230,7 @@ async def site_row(conn: AsyncConnection, host: str) -> SiteRow:
 
 
 def fetch_policy(
-    options: FetchOptions, locale: str | None, site_pool: str | None, page_kind: PageKind | None
+    options: FetchOptions, locale: str | None, site_pool: str | None, *, page_kind: PageKind | None = None
 ) -> FetchPolicy:
     return FetchPolicy(
         page_kind=page_kind,

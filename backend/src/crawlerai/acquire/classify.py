@@ -2,8 +2,8 @@
 
 No body text is ever compared with a string: challenge pages served with 200 are not detected by content (that
 would need vendor strings, C3/C4). They mostly present as shells and get a browser retry. An error page served with
-200 that has text enough not to be a shell is told by its shape instead (`_is_terminal`): a small document with a
-message and nothing else, which no site's page is.
+200 that has text enough not to be a shell is told by its shape instead (a terminal document): a small document with
+a message and nothing that links, loads, runs or embeds anything, which no site's page is.
 
 A page fetched as a listing is a shell too when nothing on it lists items (`_lists_items`): its grid loads by script
 after the page (an XHR), so the browser may render what HTTP did not.
@@ -37,9 +37,11 @@ _PAGE_PARTS = "a[href], area[href], script, link, img, picture, video, audio, if
 # A terminal document is at most this many bytes: an unmeasured starting point like the shell thresholds, to be
 # confirmed on dev (SPEC-02 §4.3, D-0008).
 TERMINAL_MAX_BYTES = 1024
-# Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): JSON-LD (W3C JSON-LD 1.1 §7.3,
-# script data blocks) and microdata items (HTML Standard §5.2).
-_STRUCTURED_DATA = '//script[@type="application/ld+json"] | //*[@itemscope]'
+# Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): microdata items (HTML Standard
+# §5.2), and JSON-LD script data blocks (W3C JSON-LD 1.1 §7.3) whose media type, before parameters and in any case
+# (RFC 9110 §8.3.1), is `_JSON_LD`.
+_MICRODATA = "[itemscope]"
+_JSON_LD = "application/ld+json"
 
 
 def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
@@ -52,11 +54,15 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
         return "error"
     if not 200 <= status < 300 or not _is_html(headers):
         return "ok"
-    if _is_shell(body):
+    tree = LexborHTMLParser(body)
+    # Read before the shell rule strips scripts from the tree.
+    terminal = len(body) <= TERMINAL_MAX_BYTES and tree.css_first(_PAGE_PARTS) is None
+    structured = page_kind == "listing" and _has_structured_data(tree)
+    if _is_shell(tree):
         return "shell"
-    if _is_terminal(body):
+    if terminal:
         return "blocked"
-    if page_kind == "listing" and not _lists_items(body):
+    if page_kind == "listing" and not structured and not _lists_items(body):
         return "shell"
     return "ok"
 
@@ -67,8 +73,7 @@ def _is_html(headers: HeaderList) -> bool:
     return not types or types[-1] in _HTML_TYPES
 
 
-def _is_shell(body: bytes) -> bool:
-    tree = LexborHTMLParser(body)
+def _is_shell(tree: LexborHTMLParser) -> bool:
     tree.strip_tags(_INVISIBLE)
     # Links first: most pages have enough of them, and then the body text need not be built.
     if len(tree.css("a[href]")) >= _SHELL_MAX_LINKS:
@@ -79,18 +84,17 @@ def _is_shell(body: bytes) -> bool:
     return len("".join(text.split())) < _SHELL_MAX_TEXT_CHARS
 
 
-def _is_terminal(body: bytes) -> bool:
-    """A small document that links, loads, runs and embeds nothing: an error message answered as success (an edge's
-    refusal, an origin's error stub). The shell rule runs first, so the document has visible text."""
-    if len(body) > TERMINAL_MAX_BYTES:
-        return False
-    return LexborHTMLParser(body).css_first(_PAGE_PARTS) is None
+def _has_structured_data(tree: LexborHTMLParser) -> bool:
+    if tree.css_first(_MICRODATA) is not None:
+        return True
+    types = (script.attributes.get("type") or "" for script in tree.css("script[type]"))
+    return any(type_.split(";", 1)[0].strip().lower() == _JSON_LD for type_ in types)
 
 
 def _lists_items(body: bytes) -> bool:
-    """Whether the page lists items: structured data its rows are read from, or repeated items (`item_blocks`)."""
+    """Whether the page shows repeated items (`item_blocks`); lxml reads it, as the markdown format does."""
     try:
         root = lxml_html.document_fromstring(body)
     except (etree.ParserError, ValueError):  # a document lxml finds no element in
         return False
-    return bool(root.xpath(_STRUCTURED_DATA)) or bool(item_blocks(root))
+    return bool(item_blocks(root))
