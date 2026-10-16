@@ -100,7 +100,9 @@ caller-supplied: incomplete pages return records with `complete=false`, outcome 
 `{url, include: [globs], exclude: [globs], limit: 5000, use_sitemaps: true, use_links: true}` → `{urls: [...],
 sources: {sitemap: n, links: n}, truncated: bool}`.
 - Sitemaps: robots `Sitemap:` lines, else `/sitemap.xml`; indexes followed to depth 3; ≤ 50k URLs read;
-  same registrable host as the start URL — defined as the same exact host (SPEC-01 site identity).
+  same registrable host as the start URL — defined as the same exact host (SPEC-01 site identity): the host the
+  start URL's own redirects end on, when it is that host, a subdomain of it or a domain it is a subdomain of
+  (D-0991).
 - Links: fetch the start URL (HTTP rung only) and take `links` (SPEC-07 4.5) on the same host.
 - Timeout 60 s; the result is not persisted (a `job(kind='map')` row records usage only).
 

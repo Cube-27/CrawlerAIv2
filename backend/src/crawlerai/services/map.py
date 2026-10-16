@@ -4,10 +4,13 @@ sitemaps and the links of the start page. `POST /v1/map` calls it; the MCP `map`
 The start page is fetched over HTTP only, and its links are read only when it was reached (`ok`). Its sitemaps are
 read through `crawl.sitemaps`. Every fetch goes through robots.txt and the site's rate (SPEC-02 §4.6), and robots.txt
 that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`) and kept by the
-request's scope (`crawl.rules`): the start URL's exact host, or the `include` globs, less the `exclude` globs.
+request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude` globs. The
+start page's host is where the site's own redirects took it, on the same site (RFC 9110 §15.4; D-0991): a start URL
+whose host redirects to its `www.` subdomain, or back, is mapped on that host, under its robots.txt and rate; a
+redirect to an unrelated host leaves the start URL's (D-0672).
 
-Sitemap URLs come first, in the order read, then the other links; `sources` counts the returned URLs by source, and
-a URL both found counts as a sitemap's. `truncated` says that more URLs were found than `limit`, or that a cap or the
+Sitemap URLs come first, in the order read, then the other links; `sources` counts the returned URLs by source, and a
+URL both found counts as a sitemap's. `truncated` says that more URLs were found than `limit`, or that a cap or the
 timeout stopped reading: past `TIMEOUT_S`, the URLs found so far are returned.
 
 Nothing found is stored: a `job` of kind `map` records the request and its usage (§4.4). A target the SSRF guard
@@ -18,7 +21,7 @@ both raise `TargetRejected`.
 import asyncio
 from collections.abc import Iterable
 from contextlib import aclosing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final, Literal
 from urllib.parse import urlsplit
 
@@ -32,7 +35,7 @@ from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.canonical import canonicalize
-from crawlerai.crawl.rules import Patterns, Scope
+from crawlerai.crawl.rules import Patterns, Scope, located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
@@ -160,32 +163,50 @@ async def _discover(
     found: _Found,
     attempts: list[AttemptRecord],
 ) -> None:
-    """Add to `found` the links of the start page, then the URLs of the sitemaps: the one fetch of the links comes
-    before the sitemaps, which can take the rest of the timeout."""
-    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
-    robots = await site_rules(engine, fetching.rungs.http, site, request.url, policy, attempts)
-    if robots is None:
+    """Add to `found` the links of the start page, then the URLs of the sitemaps: the one fetch of the start page comes
+    before the sitemaps, which can take the rest of the timeout. The start page is fetched even when its links are not
+    taken, for where it is: when the site redirects it to another host of the site (`crawl.rules.located`), the scope,
+    robots.txt and the sitemaps are that host's."""
+    polite = await _polite(engine, fetching, site, found.scope.host, request.url, attempts)
+    if polite is None:
         return
-    polite = PoliteHttp(fetching, found.scope.host, site.crawl_delay_ms, robots, policy, attempts)
-    if request.use_links:
-        found.add("links", await _links(polite, request.url))
-    if request.use_sitemaps and not found.full:
-        reader = SitemapReader(polite.sitemap_body, found.scope.host)
-        async with aclosing(reader.urls(roots(start, robots.sitemaps))) as urls:
-            async for url in urls:
-                found.add("sitemap", (url,))
-                if found.full:
-                    break
-        found.cut = found.cut or reader.cut
+    page = await polite.fetch(request.url, polite.policy)
+    site_url = located(start, None if page is None else (page.bundle.manifest.method, page.bundle.manifest.final_url))
+    host = urlsplit(site_url).hostname or ""
+    if host != found.scope.host:
+        found.scope = replace(found.scope, host=host)
+        async with engine.begin() as conn:
+            site = await site_row(conn, host)
+        polite = await _polite(engine, fetching, site, host, site_url, attempts)
+    if request.use_links and page is not None and page.block_class == "ok":
+        # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
+        found.add("links", await asyncio.to_thread(_page_links, page.bundle))
+    if polite is not None and request.use_sitemaps and not found.full:
+        await _read_sitemaps(polite, site_url, found)
 
 
-async def _links(polite: PoliteHttp, url: str) -> tuple[str, ...]:
-    """The canonical links of the page at `url`, when it was reached (§4.4: HTTP only)."""
-    result = await polite.fetch(url, polite.policy)
-    if result is None or result.block_class != "ok":
-        return ()
-    # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
-    return await asyncio.to_thread(_page_links, result.bundle)
+async def _polite(
+    engine: AsyncEngine, fetching: Fetching, site: SiteRow, host: str, url: str, attempts: list[AttemptRecord]
+) -> PoliteHttp | None:
+    """Fetches from `site`, on `host`, under the robots.txt of `url` there; `None` when that robots.txt is
+    unreachable."""
+    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
+    robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
+    if robots is None:
+        return None
+    return PoliteHttp(fetching, host, site.crawl_delay_ms, robots, policy, attempts)
+
+
+async def _read_sitemaps(polite: PoliteHttp, site_url: str, found: _Found) -> None:
+    """Add to `found` the URLs of the sitemaps of the start page's host, `site_url` there, until it is full."""
+    listed = () if polite.robots is None else polite.robots.sitemaps
+    reader = SitemapReader(polite.sitemap_body, found.scope.host)
+    async with aclosing(reader.urls(roots(site_url, listed))) as urls:
+        async for url in urls:
+            found.add("sitemap", (url,))
+            if found.full:
+                break
+    found.cut = found.cut or reader.cut
 
 
 def _page_links(bundle: CaptureBundle) -> tuple[str, ...]:

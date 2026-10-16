@@ -402,6 +402,11 @@ async def test_records_without_the_engine_data_are_unavailable(
 
     assert response.status_code == 503
     assert response.json()["type"] == "records_unavailable"
+    # The detail names the fix.
+    assert response.json()["detail"] == (
+        "this process has not loaded the engine's data files: fetch them with `crawlerai data fetch` (in backend/),"
+        " then restart the API and the worker"
+    )
 
 
 def _listing_records(url: str, schema_name: str, **fields: Any) -> dict[str, Any]:

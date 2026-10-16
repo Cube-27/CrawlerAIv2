@@ -83,12 +83,14 @@ def robots(*lines: str) -> Page:
 
 @dataclass
 class Web:
-    """Answers each URL from `pages` over HTTP; anything else is a 404. A URL in `refused` redirects to a private
-    address: the rung reports the guard's refusal as the attempt's error. A URL in `held` answers once its event is
-    set. The browser is never used."""
+    """Answers each URL from `pages` over HTTP; anything else is a 404. A URL of `redirects` answers as its target,
+    reached through the site's redirect. A URL in `refused` redirects to a private address: the rung reports the
+    guard's refusal as the attempt's error. A URL in `held` answers once its event is set. The browser is never
+    used."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, Page] = field(default_factory=dict)
+    redirects: dict[str, str] = field(default_factory=dict)
     refused: set[str] = field(default_factory=set)
     held: dict[str, asyncio.Event] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
@@ -99,8 +101,9 @@ class Web:
         self.fetched.append(url)
         if url in self.held:
             await self.held[url].wait()
-        status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
-        return self.fetch_result(url, status, body, block_class=block_class)
+        final_url = self.redirects.get(url, url)
+        status, body, block_class = self.pages.get(final_url, (404, b"gone", "not_found"))
+        return self.fetch_result(url, status, body, block_class=block_class, final_url=final_url)
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("a crawl of these pages never needs a browser")
@@ -390,6 +393,34 @@ async def test_sitemap_urls_in_scope_are_seeds(
     # Seeds are at depth 0, so `max_depth` 0 fetches them, and none of the links they lead to.
     assert sorted(found) == [f"{own_origin}/", f"{own_origin}/p/1", f"{own_origin}/p/3"]
     assert {(task.depth, task.parent_task_id) for task in found.values()} == {(0, None)}
+
+
+async def test_the_crawl_follows_the_start_page_s_redirect_to_another_host(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, www_origin: str
+) -> None:
+    # The start URL's host redirects to its `www.` subdomain (RFC 9110 §15.4: the redirect names where the resource
+    # is): the site's pages, links and sitemaps are on that host, read under its own robots.txt.
+    web.redirects |= {f"{own_origin}/": f"{www_origin}/", f"{own_origin}/robots.txt": f"{www_origin}/robots.txt"}
+    web.pages |= {
+        f"{www_origin}/robots.txt": robots(f"Sitemap: {www_origin}/products.xml", "Disallow: /private/"),
+        f"{www_origin}/products.xml": urlset(f"{www_origin}/p/1", f"{own_origin}/p/9"),
+        f"{www_origin}/": page("/c/kettles", f"{own_origin}/c/old"),
+        f"{www_origin}/c/kettles": page("/p/2", "/private/3"),
+        f"{www_origin}/p/1": page(product="Blue kettle"),
+        f"{www_origin}/p/2": page(product="Red kettle"),
+    }
+    submitted = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/"), data=None)
+
+    await run(engine, fetching, None, submitted.job_id)
+
+    found = await tasks(engine, submitted.job_id)
+    assert {url: task.outcome for url, task in found.items()} == {
+        f"{own_origin}/": "extracted",
+        f"{www_origin}/p/1": "extracted",
+        f"{www_origin}/c/kettles": "extracted",
+        f"{www_origin}/p/2": "extracted",
+        f"{www_origin}/private/3": "blocked",
+    }
 
 
 async def test_a_retried_start_page_reads_the_sitemaps_once_on_its_last_attempt(
