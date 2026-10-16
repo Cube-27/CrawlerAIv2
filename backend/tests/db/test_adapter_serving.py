@@ -87,8 +87,10 @@ class Web:
         self.requested.append(request.url)
         headers = (("X-Shopify-API-Version", API_VERSION),) if self.platform else ()
         if self.status != 200:
+            # `Retry-After: 0` asks for no pause, so the page's fallback goes without the first backoff's wait.
+            headers = (("Retry-After", "0"),)
             return self.fetch_result(
-                request.page_url, self.status, b"", block_class="blocked", method="api", final_url=request.url
+                request.page_url, self.status, b"", headers, block_class="blocked", method="api", final_url=request.url
             )
         body = json.dumps(self.answer).encode()
         return self.fetch_result(request.page_url, 200, body, headers, method="api", final_url=request.url)

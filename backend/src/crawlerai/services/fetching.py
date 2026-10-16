@@ -23,6 +23,7 @@ from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
+from crawlerai.db.queue import BACKOFF_BASE
 from crawlerai.services.scrape_steps import SiteRow, site_row
 from crawlerai.storage.base import ObjectStore
 
@@ -222,8 +223,9 @@ async def _polite_json(
     take_turn: Callable[[str], bool],
 ) -> FetchResult:
     """`request` sent where its host's robots.txt allows it, at that host's rate unless `take_turn` says the caller's
-    admitted turn there goes to it; else a `blocked` result that sent nothing. A slow-down's `Retry-After` pauses the
-    host (at most `BACKOFF_MAX`, SPEC-02 §4.6), so the next request there, the page's fallback too, waits it out."""
+    admitted turn there goes to it; else a `blocked` result that sent nothing. A slow-down pauses the host for its
+    `Retry-After`, else the first backoff (at most `BACKOFF_MAX`, SPEC-02 §4.6), so the next request there, the page's
+    fallback too, waits it out."""
     allowed = await rules(request.url, policy)
     if isinstance(allowed, str):
         # As a page robots.txt keeps from being fetched: `blocked`.
@@ -233,8 +235,10 @@ async def _polite_json(
         await admitted(limiter, host, *allowed)
     result = await json(request, policy)
     slowed = slowed_down(result.attempts)
-    if slowed is not None and slowed.retry_after is not None:
-        limiter.pause(host, min(slowed.retry_after, BACKOFF_MAX))
+    if slowed is not None:
+        # SPEC-02 §4.6: the pause asked for, else the first backoff.
+        asked = BACKOFF_BASE if slowed.retry_after is None else slowed.retry_after
+        limiter.pause(host, min(asked, BACKOFF_MAX))
     return result
 
 

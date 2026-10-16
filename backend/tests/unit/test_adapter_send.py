@@ -158,6 +158,25 @@ def test_a_slow_down_pauses_the_host_no_longer_than_the_longest_backoff(tmp_path
     assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == BACKOFF_MAX
 
 
+def test_a_slow_down_without_a_retry_after_pauses_the_host_by_the_first_backoff(tmp_path: Path) -> None:
+    # SPEC-02 §4.6: without a Retry-After, the backoff starts at 30 s.
+    limiter = HostLimiter(Clock())
+
+    async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
+        return _answer(request, 429)
+
+    fetching = Fetching(Rungs(http=_never, browser=_never, json=json), SafeConnector(), FsStore(tmp_path), limiter)
+    send = adapter_send(fetching, PAGE_HOST, _allowed)
+    assert send is not None
+
+    async def one() -> FetchResult:
+        return await send(_request(PAGE_HOST), FetchPolicy())
+
+    asyncio.run(one())
+
+    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == timedelta(seconds=30)
+
+
 def test_there_is_no_adapter_send_without_the_json_rung(tmp_path: Path) -> None:
     fetching = Fetching(Rungs(http=_never, browser=_never), SafeConnector(), FsStore(tmp_path), HostLimiter())
 
