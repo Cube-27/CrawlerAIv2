@@ -36,9 +36,39 @@ stop() {
 }
 trap stop INT TERM EXIT
 
+backend="$root/backend"
+
+# The web UI's dev proxy acts with CRAWLERAI_UI_API_KEY (SPEC-14 §4.1). Keep the one in `.env` while the database
+# holds it unrevoked; otherwise (unset, or the database was recreated) create one and write it to `.env`. Only the
+# key's SHA-256 is stored (SPEC-07 §4.2), so the check hashes it the same way.
+ui_key_is_live() {
+  local hashed
+  hashed=$(printf '%s' "$1" | sha256sum | cut -d' ' -f1)
+  [[ $(docker compose -f "$root/infra/docker-compose.yml" exec -T postgres psql -U app -d crawlerai -tAc \
+    "SELECT 1 FROM api_key WHERE hashed_key = '$hashed' AND revoked_at IS NULL") == 1 ]]
+}
+
+ensure_ui_key() {
+  local key=${CRAWLERAI_UI_API_KEY:-} env_file="$root/.env"
+  if [[ -n $key ]] && ui_key_is_live "$key"; then
+    return
+  fi
+  key=$(uv --directory "$backend" run crawlerai apikey create --label ui | sed -n 's/.*"key": "\([^"]*\)".*/\1/p')
+  [[ -n $key ]] || { echo "[dev-up] could not create a UI API key" >&2; exit 1; }
+  # A key is `ck_` and base62 digits, so it needs no escaping in the sed replacement.
+  if grep -q '^CRAWLERAI_UI_API_KEY=' "$env_file"; then
+    sed -i "s/^CRAWLERAI_UI_API_KEY=.*/CRAWLERAI_UI_API_KEY=$key/" "$env_file"
+  else
+    echo "CRAWLERAI_UI_API_KEY=$key" >>"$env_file"
+  fi
+  # make exported the old value; Vite lets the process environment win over `.env`.
+  export CRAWLERAI_UI_API_KEY=$key
+  echo "[dev-up] created a UI API key and wrote it to .env"
+}
+ensure_ui_key
+
 pnpm --dir "$root/frontend" install --frozen-lockfile --prefer-offline --reporter=silent
 
-backend="$root/backend"
 CRAWLERAI_ROLE=api start api uv --directory "$backend" run uvicorn --factory crawlerai.api.app:create_app --reload \
   --port 8000
 CRAWLERAI_ROLE=worker start worker uv --directory "$backend" run crawlerai worker
