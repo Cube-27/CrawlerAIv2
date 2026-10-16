@@ -55,6 +55,11 @@ export function schemaId(request: StoredRequest): string {
   return text(member(request, "schema"), "id");
 }
 
+/** The field names the request's schema is drafted from (SPEC-14 §4.10); none when it names its schema otherwise. */
+export function schemaFields(request: StoredRequest): string[] {
+  return texts(member(request, "schema"), "fields");
+}
+
 /** The page formats asked for, and whether `metadata` was, shown as Metadata in JSON: the request is the same either
  * way. `records` comes from the schema, not the Format select. */
 export function pageFormats(request: StoredRequest): {

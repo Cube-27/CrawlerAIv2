@@ -52,7 +52,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 |---|---|---|
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
-| D-0810 | Additional fields: how typed field names become an extraction | needs-owner |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
 
 ---
@@ -695,11 +694,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Owner answer: owner 2026-10-16: not now; stays an investigate item (needs-owner, open).
 
 ### D-0810 — Additional fields: how typed field names become an extraction
-- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 11 · Status: needs-owner
+- Date: 2026-10-15 · Spec/PR: SPEC-14 PR 11 · Status: confirmed
 - Context: v1 let a user type field names as chips for an ad-hoc extraction. v2 extracts by a schema (stored, inline or drafted from a prompt; prompts only on scrape and extract).
 - Options: (a) a `fields` request member; the server drafts a typed schema from the names (role S); (b) the UI sends the names as a prompt where prompts are allowed; (c) chips pick fields from presets and stored schemas.
 - Recommendation: (a), one path for every run type, with the draft shown for editing; it changes the public API.
 - Blocked: SPEC-14 PR 11 only. The owner discusses it before it is built.
+- Owner answer: confirmed 2026-10-16, option (a): a `fields` request member; the server drafts a typed schema from the names with role S, shown for editing before the run; one path for every run type; public API change approved (ARCHITECTURE Appendix A #41, rev 20). Implemented in #205 (D-0925–D-0929).
 
 ### D-0820 — Decisions log split by spec
 - Date: 2026-10-15 · Spec/PR: workflow (owner request) · Status: decided

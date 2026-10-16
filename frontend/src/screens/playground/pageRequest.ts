@@ -1,4 +1,4 @@
-import type { PageKind, ScrapeFormat } from "../../api/scrape";
+import type { PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/formats";
 import type { PageFormat } from "./FormatSelect";
@@ -36,19 +36,34 @@ export function llmBudget(llmCalls: number): { budget?: { llm_calls: number } } 
   return Number.isNaN(llmCalls) ? {} : { budget: { llm_calls: llmCalls } };
 }
 
-/** What the toolbar's Format and Schema hold, and the Metadata in JSON view option, in every mode that takes them
- * (Scrape, Batch, Crawl; SPEC-14 §4.2). `schemaId` is a stored schema's id, or "" for none; `schemaPageKind` is that
- * schema's page kind. */
+/** What the toolbar's Format and Schema hold, the Metadata in JSON view option and the field names, in every mode
+ * that takes them (Scrape, Batch, Crawl; SPEC-14 §4.2, §4.10). `schemaId` is a stored schema's id, or "" for none;
+ * `schemaPageKind` is that schema's page kind. */
 export interface FormatForm {
   formats: readonly PageFormat[];
   schemaId: string;
   schemaPageKind: SchemaPageKind | null;
-  options: { metadataInJson: boolean };
+  options: { metadataInJson: boolean; fields: readonly string[] };
 }
 
 /** A mode whose request names one page kind for every page (Scrape, Batch). */
 export interface PageKindForm extends FormatForm {
-  options: { metadataInJson: boolean; pageKind: PageKind | null };
+  options: { metadataInJson: boolean; fields: readonly string[]; pageKind: PageKind | null };
+}
+
+/** The request's schema: the stored one, else the field names the server drafts one from (SPEC-14 §4.10), else
+ * none. */
+export function requestSchema(
+  form: FormatForm,
+): Extract<SchemaRef, { id: string } | { fields: string[] }> | null {
+  if (form.schemaId !== "") return { id: form.schemaId };
+  const { fields } = form.options;
+  return fields.length === 0 ? null : { fields: [...fields] };
+}
+
+/** Whether the request names a schema: a stored one or field names. */
+export function hasSchema(form: FormatForm): boolean {
+  return form.schemaId !== "" || form.options.fields.length > 0;
 }
 
 /** `form` with the stored schema `schemaId`, for `schemaPageKind` pages. */
@@ -60,12 +75,13 @@ export function withSchema<F extends Pick<FormatForm, "schemaId" | "schemaPageKi
   return { ...form, schemaId, schemaPageKind };
 }
 
-/** The request's formats: the page formats chosen, `metadata` for Metadata in JSON, and `records` with a schema. */
+/** The request's formats: the page formats chosen, `metadata` for Metadata in JSON, and `records` with a schema or
+ * field names. */
 export function requestFormats(form: FormatForm): ScrapeFormat[] {
   return orderedFormats([
     ...form.formats,
     ...(form.options.metadataInJson ? ["metadata"] : []),
-    ...(form.schemaId === "" ? [] : ["records"]),
+    ...(hasSchema(form) ? ["records"] : []),
   ]);
 }
 
@@ -83,9 +99,11 @@ export function requestPageKind(form: PageKindForm): PageKind | null {
 }
 
 export const NO_ERRORS: Readonly<Record<string, string>> = {};
-export const NO_FORMAT = { formats: "Choose a format, Metadata in JSON or a schema." };
+export const NO_FORMAT = { formats: "Choose a format, Metadata in JSON, a schema or fields." };
 const NO_SCHEMA_PAGE_KIND = { page_kind: "The schema names no page kind, which its records need." };
 const NO_LISTING_RECORDS = { page_kind: "Records of listing pages are not available yet." };
+export const SCHEMA_AND_FIELDS = { fields: "Use the stored schema or fields, not both." };
+const NO_FIELDS_PAGE_KIND = { page_kind: "Choose the page kind the fields are read from." };
 
 /** Why a stored schema's records can't be asked for: it names no page kind, or one the server refuses records of;
  * null when they can. */
@@ -96,11 +114,23 @@ export function schemaPageKindErrors(
   return NO_RECORDS_PAGE_KINDS.has(schemaPageKind) ? NO_LISTING_RECORDS : null;
 }
 
-/** Why `form` can't be sent, by field: it asks for no format, or its schema's records are for no page kind it can ask
- * for (its page kind is none, or one the server refuses records of). Derived from the current form, so a change
- * anywhere that fixes it clears it; each answer is one constant, so the errors change only when the reason does. */
+/** Why field names can't be drafted for pages of `pageKind`: none is chosen, or the server refuses its records; null
+ * when they can. */
+export function fieldsPageKindErrors(
+  pageKind: PageKind | null,
+): Readonly<Record<string, string>> | null {
+  return pageKind === null ? NO_FIELDS_PAGE_KIND : schemaPageKindErrors(pageKind);
+}
+
+/** Why `form` can't be sent, by field: it asks for no format; it names a stored schema and fields; its schema's
+ * records are for no page kind it can ask for (its page kind is none, or one the server refuses records of); or its
+ * fields have no such page kind. Derived from the current form, so a change anywhere that fixes it clears it; each
+ * answer is one constant, so the errors change only when the reason does. */
 export function pageKindErrors(form: PageKindForm): Readonly<Record<string, string>> {
   if (asksForNothing(form)) return NO_FORMAT;
+  const hasFields = form.options.fields.length > 0;
+  if (form.schemaId !== "" && hasFields) return SCHEMA_AND_FIELDS;
+  if (hasFields) return fieldsPageKindErrors(form.options.pageKind) ?? NO_ERRORS;
   if (form.schemaId === "") return NO_ERRORS;
   return schemaPageKindErrors(form.schemaPageKind) ?? NO_ERRORS;
 }

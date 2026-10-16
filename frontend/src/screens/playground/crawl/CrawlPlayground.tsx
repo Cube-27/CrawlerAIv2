@@ -1,6 +1,8 @@
 import { Button } from "@heroui/react";
 import { useSubmitCrawl } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
+import type { CrawlRequest } from "../../../api/jobs";
+import { useFieldsReview } from "../fields/useFieldsReview";
 import { optionsChanged } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
@@ -25,9 +27,12 @@ export function CrawlPlayground() {
   const { jobId, onEdit, show } = useShownJob(crawlForm, setForm);
 
   const request = buildCrawl({ ...form, url: requestUrl(form.url) });
+  const review = useFieldsReview((sent: CrawlRequest) => {
+    submit.mutate(sent, { onSuccess: show });
+  });
   const start = () => {
     if (!check() || request === null) return;
-    submit.mutate(request, { onSuccess: show });
+    review.start(request);
   };
 
   return (
@@ -72,6 +77,7 @@ export function CrawlPlayground() {
         jobId={jobId}
         withMetadata={form.options.metadataInJson}
       />
+      {review.drawer}
     </PlaygroundLayout>
   );
 }

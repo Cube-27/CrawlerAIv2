@@ -9,7 +9,8 @@ required fields don't all publish keeps its record, `complete=false`, with outco
 
 The schema is named by id or given inline, or drafted from a `prompt` by role S (SPEC-06 §4.5) while the caller
 waits: from the cleaned text of the first pages, up to three, of those reached among the first three task URLs. The
-draft is returned with the job. Each task is extracted in its site's progressive mode (ARCHITECTURE §8.3): the job
+draft is returned with the job. Field names are drafted from the names alone, before anything is stored (SPEC-14
+§4.10). Each task is extracted in its site's progressive mode (ARCHITECTURE §8.3): the job
 pins the engine data and the configs active when it was submitted (INV-28), and its pages count toward the site's
 learning trigger (SPEC-08 §4.4).
 
@@ -48,9 +49,8 @@ from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable,
 from crawlerai.services.scrape_steps import (
     FetchOptions,
     Input,
-    SchemaById,
-    SchemaInline,
     SchemaPrompt,
+    SchemaRequest,
     absolute_http_url,
     check_records,
     check_usable,
@@ -66,12 +66,12 @@ DRAFT_TIMEOUT_S: Final = float(MAX_TIMEOUT_S)
 
 class ExtractRequest(Input):
     """The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
-    inline, or asks for a draft from a `prompt`, and its page kind must be `page_kind`. `limit` bounds the job's tasks;
-    `budget.llm_calls` bounds a prompt's draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL.
-    `webhook_url` is called when the job ends (§4.2)."""
+    inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
+    be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` bounds a prompt's draft. The `fetch` and
+    `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job ends (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
-    schema_: SchemaById | SchemaInline | SchemaPrompt = Field(alias="schema")
+    schema_: SchemaRequest = Field(alias="schema")
     page_kind: PageKind
     limit: int = Field(default=MAX_URLS, ge=1, le=MAX_URLS)
     fetch: FetchOptions = FetchOptions()
@@ -151,13 +151,14 @@ async def submit_extract(
 ) -> ExtractSubmitted:
     """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
     (§4.2). Raises, storing no extract job: `TargetsRejected` for a refused target, `RecordsUnavailable` without
-    `data`, `named_schema`'s errors for a schema that cannot be used, `TargetRejected` for a refused fetch of a map, and
+    `data`, `named_schema`'s errors for a schema that cannot be used (or field names `llm` could not draft),
+    `TargetRejected` for a refused fetch of a map, and
     `NothingToExtract`. Raises, failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM
     client's `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
     await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url)
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    schema = await named_schema(engine, request.schema_, request.page_kind)
+    schema = await named_schema(engine, request.schema_, request.page_kind, llm)
     urls = await _task_urls(engine, fetching, request)
     if not urls:
         raise NothingToExtract("the request's globs matched no URL")

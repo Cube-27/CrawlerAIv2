@@ -8,8 +8,8 @@ import type { SchemaRef } from "./scrape";
 
 type Schemas = components["schemas"];
 
-/** A job's schema: by id, or inline (a SchemaDef the server validates). `BatchScrapeRequest` and
- * `CrawlRequest` take no prompt. */
+/** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (SPEC-14
+ * §4.10). `BatchScrapeRequest` and `CrawlRequest` take no prompt. */
 export type JobSchemaRef = Exclude<SchemaRef, { prompt: string }>;
 
 export type JobSummary = Schemas["JobSummary"];

@@ -72,7 +72,7 @@ Problem types: `validation`, `unauthorized`, `rate_limited`, `not_found`, `timeo
 Request:
 ```jsonc
 { "url": "https://…", "formats": ["markdown","records"],
-  "schema": { "id": "…" } | { "inline": { …SchemaDef… } } | { "prompt": "…" } | null,
+  "schema": { "id": "…" } | { "inline": { …SchemaDef… } } | { "prompt": "…" } | { "fields": ["…"] } | null,
   "page_kind": "detail" | "listing" | null,            // required when formats includes records
   "max_age": 0,                                        // seconds; reuse a capture of this URL fetched within max_age
   "fetch": { "method_hint": "auto"|"http"|"browser", "respect_robots": true, "robots_override_reason": null, "proxy_pool": null },
@@ -109,6 +109,9 @@ Behaviour:
 4. Timeout: the whole request is bounded by `timeout_s` (max 120); on timeout → 504 problem `timeout`, the job
    is marked `failed`, nothing partial is returned.
 5. `schema.prompt` → role S (SPEC-06) → the draft schema is used and returned.
+   `schema.fields` → role S drafts a schema with exactly those top-level fields for `page_kind` from the names alone
+   (SPEC-06 §4.5), before the job is stored; a draft the LLM could not give is the LLM failure's problem (502, 503) and
+   stores nothing (ARCHITECTURE §5.4 rev 20, SPEC-14 §4.10).
 
 ### 4.5 Content formats (§8.5)
 

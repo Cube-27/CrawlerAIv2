@@ -61,8 +61,8 @@ stay HeroUI defaults with this app's theme (DESIGN.md).
    - The batch and crawl table, the JSON drawer and the download all read this one shape.
 10. **Get code** (second to last; the owner shared the reference). A right-side drawer for the current request
     (§4.7).
-11. **Additional fields** (last; discussed with the owner before it is built, D-0810). Field names typed as chips
-    for an ad-hoc extraction.
+11. **Additional fields** (last; D-0810 option (a), §4.10). Field names typed as chips
+    for an ad-hoc extraction: the server drafts a schema from them, shown for editing before the run.
 
 Out of scope:
 - Search (no search API).
@@ -77,7 +77,7 @@ Out of scope:
 - SPEC-12 (screens and shared components it reuses: `FieldValue`, `RecordTable`, `EventLog`, `PagedTable`,
   `ProblemAlert`).
 - SPEC-07 (scrape), SPEC-10 (batch, crawl, map, extract, results, events, cancel), SPEC-08 §4.11 (record exporters).
-- No open questions block PRs 1–10. PR 11 waits on D-0810.
+- No open questions block the PRs. PR 11 builds D-0810 option (a) (owner, 2026-10-16).
 
 ## 4. Design
 
@@ -125,11 +125,11 @@ Top to bottom, in the content column (max 1280px), centred:
 
    | Mode | Main rows | Advanced |
    |---|---|---|
-   | Scrape | Page kind; Metadata in JSON | Fetch method; max age; timeout; LLM budget |
-   | Batch | Page kind; Metadata in JSON; webhook URL | Fetch method |
-   | Crawl | Include and Exclude globs (tag lists with Add); page-kind rules (rows of glob and page kind); Metadata in JSON | Max depth; page limit; fetch method; webhook URL |
+   | Scrape | Page kind; Metadata in JSON; Fields (§4.10) | Fetch method; max age; timeout; LLM budget |
+   | Batch | Page kind; Metadata in JSON; Fields; webhook URL | Fetch method |
+   | Crawl | Include and Exclude globs (tag lists with Add); page-kind rules (rows of glob and page kind); Metadata in JSON; Fields | Max depth; page limit; fetch method; webhook URL |
    | Map | Include and Exclude globs; use sitemaps; use links | Page limit |
-   | Extract | URLs or globs (tag list); schema source (stored, inline JSON, prompt) | Page limit; fetch method; LLM budget; webhook URL |
+   | Extract | URLs or globs (tag list); schema source (stored, inline JSON, prompt, field names) | Page limit; fetch method; LLM budget; webhook URL |
 
    The rows mirror the request DTOs in `schema.d.ts`: apart from Metadata in JSON, a row exists only for a request
    member, and none is invented. Metadata in JSON is a view option. When it is on, the request's `formats` gains
@@ -264,6 +264,26 @@ bottom:
   `PageKindRules`) move into the options panel.
 - The Overview (`home`) screen.
 
+### 4.10 Additional fields (D-0810, ARCHITECTURE §5.4 rev 20)
+
+Field names typed as chips become an extraction, by one path for every run type (owner, option (a)):
+
+- **Request.** `schema: {"fields": [names]}` on `ScrapeRequest`, `BatchScrapeRequest`, `CrawlRequest` and
+  `ExtractRequest`: 1–50 distinct schema field names (`[a-z][a-z0-9_]{0,63}`, SPEC-04 §4.2). The page kind is the
+  request's `page_kind`, or for a crawl its rules' one page kind. The server drafts a schema with exactly those
+  top-level fields with role S (SPEC-06 §4.5) before the job is stored, and the run extracts with it. A draft the
+  LLM could not give is a 502 or 503 problem and stores nothing.
+- **Review.** `POST /v1/schemas/draft` `{fields, page_kind}` returns the same draft (`SchemaDef`): the stored one when
+  these names were drafted for that page kind before, else a new one, stored.
+- **UI.** A Fields row in the options panel (Scrape, Batch, Crawl; Extract's schema source "From field names"): a
+  tag list whose entries are checked against the name pattern as they are added; a refused entry stays in the field
+  with the reason. Fields and a stored schema are not sent together. Fields ask for `records` like a schema does.
+- The primary action with fields opens the draft in a right-side `Drawer` (as the JSON drawer) in the schema editor
+  (`SchemaForm`), with Run and Cancel. Run as drafted sends the request with `schema.fields`, the body Get code
+  shows. Run after an edit sends the edited document as `schema.inline`; it needs a name of its own, since the
+  server keeps one document per name. Closing the drawer sends nothing. A failed draft shows its problem in the
+  drawer.
+
 ## 5. Invariants
 
 No new invariant. These still hold:
@@ -294,6 +314,13 @@ that leaves `field_meta` out, as `json_records` does.
   renders its name.
 - Get code: for each mode, the cURL body parsed back as JSON equals the request the primary action sends; quoting
   survives values with quotes and newlines.
+- Additional fields (PR 11):
+  - backend, with a scripted role S provider: names drafted into a stored schema with exactly those fields; the same
+    names in another order reuse it without a call; a draft with other fields is retried, then refused; every run
+    type extracts with the draft of its names; a run whose names cannot be drafted stores no job;
+  - vitest: a refused chip stays in the field with its reason; the draft shows before the run; Run as drafted posts
+    `schema.fields`, the body Get code shows; an edited draft posts inline; a failed draft shows its problem and
+    closing the drawer sends nothing.
 - Backend (PR 9):
   - an exporter property test: every clean record has exactly the schema's fields, in name order, and no `_status_`
     key;
@@ -326,13 +353,13 @@ that leaves `field_meta` out, as `json_records` does.
 | 8 | Batch from results | `screens/playground/map`, `crawl` | vitest | Selected URLs open Batch mode filled. | L3 |
 | 9 | `json_values` results format (backend) | `services/jobs.py`, `config_ir/exporters/records.py`, `api/routers/jobs.py`, `make api-client` | pytest | One item per task for jobs with and without a schema; `include=metadata`; task-id cursor. | L3 |
 | 10 | Get code drawer | `screens/playground/getCode`, `prompts/` | vitest | cURL, Python and MCP for the current request match the body the primary action sends; agent prompts copy. | L1 |
-| 11 | Additional fields (chips) | to be specified | — | Blocked on D-0810: the owner discusses it first. | — |
+| 11 | Additional fields (chips) | `schema.fields` on scrape, batch, crawl and extract; `POST /v1/schemas/draft` (role S); `screens/playground/fields`, the Fields rows; `make api-client` | pytest, vitest | Field names run on every run type through a draft shown for editing first; Get code shows the `fields` body. | L3 |
 
 PR 9 is backend only and can start now, beside PRs 1–3. PR 4 needs it.
 
 ## 9. Open issues
 
-- D-0810 (needs-owner): how typed field names become an extraction (a `fields` request member, a prompt, or a pick
-  from stored schemas). Blocks PR 11 only.
+- D-0810 (confirmed 2026-10-16): option (a), a `fields` request member drafted by role S and shown for editing
+  (§4.10).
 - A production server for the UI does not exist; when one is added it must attach the key as §4.1 does and listen
   only on localhost or a private network (§18).

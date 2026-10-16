@@ -93,6 +93,7 @@ class _Tools:
             runtime.fetching.connector,
             request,
             data=runtime.engine_data,
+            llm=runtime.llm,
             api_key_id=caller.api_key_id,
         )
         return tool_result(submitted.model_dump(mode="json"))

@@ -1,12 +1,13 @@
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, TagListRow, TextAreaRow } from "../OptionsPanel";
-import { FetchMethodRow, PageKindRow, WebhookRow } from "../rows";
+import { FetchMethodRow, FieldsRow, PageKindRow, WebhookRow } from "../rows";
 import { DEFAULT_EXTRACT_OPTIONS, type ExtractOptions as Options, type SchemaSource } from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
   ["id", "Stored schema"],
   ["inline", "Inline JSON"],
   ["prompt", "From a prompt"],
+  ["fields", "From field names"],
 ];
 
 type Change = (options: Options) => void;
@@ -50,8 +51,9 @@ function AdvancedRows({ options, onChange }: Readonly<{ options: Options; onChan
   );
 }
 
-/** The inline schema's JSON or the prompt, for the source that has one. */
+/** The inline schema's JSON, the prompt or the field names, for the source that has one. */
 function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange: Change }>) {
+  if (options.schemaSource === "fields") return <FieldsRow options={options} onChange={onChange} />;
   if (options.schemaSource === "inline")
     return (
       <TextAreaRow
@@ -112,7 +114,7 @@ export function ExtractOptions({
       />
       <SelectRow<SchemaSource>
         label="Schema source"
-        help="A stored schema (the toolbar's Schema), a SchemaDef as JSON, or a schema drafted from a prompt."
+        help="A stored schema (the toolbar's Schema), a SchemaDef as JSON, or a schema drafted from a prompt or from field names."
         name="schema"
         options={SCHEMA_SOURCES}
         value={options.schemaSource}

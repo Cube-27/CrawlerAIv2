@@ -8,6 +8,7 @@ export type NewSchema = components["schemas"]["NewSchema"];
 export type SchemaContent = components["schemas"]["SchemaContent"];
 export type FieldSpecInput = components["schemas"]["FieldSpec-Input"];
 export type FieldType = components["schemas"]["FieldType"];
+export type FieldsDraft = components["schemas"]["FieldsDraft"];
 export type SchemaPageKind = SchemaDef["page_kind"];
 
 /** A schema version as people name it: "<name> version <n>". */
@@ -49,6 +50,12 @@ export function updateSchema(
     () => client.PUT("/v1/schemas/{schema_id}", { params: { path: { schema_id: id } }, body }),
     "Saving the schema",
   );
+}
+
+/** The schema role S drafts from field names for one page kind (SPEC-14 §4.10): the stored draft when these names were
+ * drafted before, else a new one, stored. */
+export function draftSchema(client: ApiClient, body: FieldsDraft): Promise<ApiResult<SchemaDef>> {
+  return apiResult(() => client.POST("/v1/schemas/draft", { body }), "Drafting the schema");
 }
 
 /** Retires the version `id`; the row stays. */

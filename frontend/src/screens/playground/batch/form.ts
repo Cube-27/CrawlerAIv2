@@ -2,11 +2,19 @@ import type { BatchRequest } from "../../../api/jobs";
 import type { MethodHint, PageKind } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
-import { canSend, lines, requestFormats, requestPageKind, webhook } from "../pageRequest";
+import {
+  canSend,
+  lines,
+  requestFormats,
+  requestPageKind,
+  requestSchema,
+  webhook,
+} from "../pageRequest";
 import {
   methodHint,
   pageFormats,
   pageKind,
+  schemaFields,
   schemaId,
   texts,
   webhookUrl,
@@ -14,10 +22,12 @@ import {
 } from "../run/storedRequest";
 
 /** Batch's options panel (SPEC-14 §4.2): each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
- * option that asks for the `metadata` format and the results' `include=metadata`. */
+ * option that asks for the `metadata` format and the results' `include=metadata`. `fields` are the names
+ * `schema.fields` drafts a schema from (§4.10). */
 export interface BatchOptions {
   pageKind: PageKind | null;
   metadataInJson: boolean;
+  fields: readonly string[];
   /** Empty: no webhook. */
   webhookUrl: string;
   methodHint: MethodHint;
@@ -26,6 +36,7 @@ export interface BatchOptions {
 export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   pageKind: null,
   metadataInJson: false,
+  fields: [],
   webhookUrl: "",
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
@@ -59,7 +70,7 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
   return {
     urls: lines(form.urls),
     formats: requestFormats(form),
-    schema: form.schemaId === "" ? null : { id: form.schemaId },
+    schema: requestSchema(form),
     page_kind: requestPageKind(form),
     fetch: { method_hint: form.options.methodHint },
     ...webhook(form.options.webhookUrl),
@@ -79,6 +90,7 @@ export function batchForm(request: StoredRequest): BatchFormState {
     options: {
       pageKind: id === "" ? kind : null,
       metadataInJson,
+      fields: schemaFields(request),
       webhookUrl: webhookUrl(request),
       methodHint: methodHint(request),
     },

@@ -45,14 +45,15 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.db.usage import record_usage
-from crawlerai.llm.roles.s_schema import normalize_prompt
+from crawlerai.llm.client import LLMClient
+from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normalize_prompt
 from crawlerai.normalize.url import canonical_url
 from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import NewSchema
 from crawlerai.storage.base import ObjectStore
@@ -129,6 +130,23 @@ class SchemaPrompt(Input):
         return prompt
 
 
+class SchemaFields(Input):
+    """Field names, drafted into a schema with exactly those top-level fields by role S (SPEC-14 §4.10, D-0810)."""
+
+    fields: list[Name] = Field(min_length=1, max_length=MAX_FIELD_NAMES)
+
+    @field_validator("fields")
+    @classmethod
+    def _distinct(cls, fields: list[str]) -> list[str]:
+        if len(set(fields)) != len(fields):
+            raise ValueError("a field name is given twice")
+        return fields
+
+
+# How a request names its schema: by id, inline, as a prompt or as field names to draft from.
+SchemaRequest = SchemaById | SchemaInline | SchemaPrompt | SchemaFields
+
+
 class FetchOptions(Input):
     method_hint: Literal["auto", "http", "browser"] = "auto"
     respect_robots: bool = True
@@ -141,9 +159,7 @@ class FetchOptions(Input):
         return self
 
 
-def check_records(
-    formats: list[PageFormat], schema: SchemaById | SchemaInline | SchemaPrompt | None, page_kind: PageKind | None
-) -> None:
+def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
     """`records` needs a schema and a `page_kind`, the schema's page kind must be that one, and listing records wait
     for SPEC-05 PR 12 (SPEC-07 §4.4). Raises `ValueError`, for a request model's validator."""
     if "records" not in formats:
@@ -162,12 +178,25 @@ class SchemaUnusable(Refusal):
     """The request's `schema` is one `records` cannot use: no such id, a retired version, or another page kind."""
 
 
+async def fields_schema(engine: AsyncEngine, llm: LLMClient, fields: list[Name], page_kind: PageKind) -> SchemaDef:
+    """Role S's draft of `fields` for `page_kind` pages, checked usable for them (SPEC-14 §4.10). Raises the LLM
+    client's `LLMFailure`, and `SchemaUnusable` for a retired draft."""
+    drafted = await draft_fields(engine, llm, fields=fields, page_kind=page_kind)
+    check_usable(drafted, page_kind)
+    return drafted
+
+
 async def named_schema(
-    engine: AsyncEngine, schema: SchemaById | SchemaInline | SchemaPrompt | None, page_kind: PageKind | None
+    engine: AsyncEngine, schema: SchemaRequest | None, page_kind: PageKind | None, llm: LLMClient
 ) -> SchemaDef | None:
-    """The schema a request names by id, or stores (or matches) inline; None for a prompt, whose draft needs a page.
-    Raises `SchemaUnusable`, and the schemas service's `SchemaConflict` or `InvalidSchema` for an inline schema."""
+    """The schema a request names by id, stores (or matches) inline, or drafts from field names with `llm`; None for a
+    prompt, whose draft needs a page. Raises `SchemaUnusable`, the schemas service's `SchemaConflict` or
+    `InvalidSchema` for an inline schema, and the LLM client's `LLMFailure` for field names it could not draft."""
     match schema:
+        case SchemaFields(fields=fields):
+            if page_kind is None:
+                raise SchemaUnusable("field names need a page_kind to draft a schema for")
+            return await fields_schema(engine, llm, fields, page_kind)
         case SchemaById(id=schema_id):
             async with engine.connect() as conn:
                 try:

@@ -463,6 +463,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/schemas/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Schema
+         * @description The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
+         *     `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
+         *     one, stored. A client shows it for editing before the run (SPEC-14 §4.10). A draft the LLM could not give is a
+         *     problem typed with the LLM failure (502, 503); a retired draft is a 422.
+         */
+        post: operations["draft_schema_v1_schemas_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/schemas/{schema_id}": {
         parameters: {
             query?: never;
@@ -697,7 +720,8 @@ export interface components {
          * BatchScrapeRequest
          * @description The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
          *     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
-         *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for).
+         *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
+         *     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10).
          *     `webhook_url` is called when the job ends (§4.2).
          */
         BatchScrapeRequest: {
@@ -715,7 +739,7 @@ export interface components {
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
             urls: string[];
             /** Webhook Url */
@@ -947,7 +971,8 @@ export interface components {
         /**
          * CrawlRequest
          * @description The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
-         *     page the crawl extracts: `records` is asked alone, and a `schema.prompt` is not taken. `include` and `exclude`
+         *     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
+         *     while the caller waits. `include` and `exclude`
          *     globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is
          *     called when the job ends (§4.2).
          */
@@ -980,7 +1005,7 @@ export interface components {
             /** Page Kind Rules */
             page_kind_rules?: components["schemas"]["PageKindRule"][];
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /** Url */
             url: string;
             /** Webhook Url */
@@ -1108,9 +1133,9 @@ export interface components {
         /**
          * ExtractRequest
          * @description The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
-         *     inline, or asks for a draft from a `prompt`, and its page kind must be `page_kind`. `limit` bounds the job's tasks;
-         *     `budget.llm_calls` bounds a prompt's draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL.
-         *     `webhook_url` is called when the job ends (§4.2).
+         *     inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
+         *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` bounds a prompt's draft. The `fetch` and
+         *     `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job ends (§4.2).
          */
         ExtractRequest: {
             /**
@@ -1139,7 +1164,7 @@ export interface components {
              */
             page_kind: "detail" | "listing";
             /** Schema */
-            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"];
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"];
             /** Urls */
             urls: string[];
             /** Webhook Url */
@@ -1401,6 +1426,19 @@ export interface components {
          * @enum {string}
          */
         FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "count" | "list" | "object";
+        /**
+         * FieldsDraft
+         * @description Field names and the page kind of the pages they are read from.
+         */
+        FieldsDraft: {
+            /** Fields */
+            fields: string[];
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+        };
         /** Health */
         Health: {
             /** Eval Ui */
@@ -2384,6 +2422,14 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * SchemaFields
+         * @description Field names, drafted into a schema with exactly those top-level fields by role S (SPEC-14 §4.10, D-0810).
+         */
+        SchemaFields: {
+            /** Fields */
+            fields: string[];
+        };
         /** SchemaInline */
         SchemaInline: {
             inline: components["schemas"]["NewSchema"];
@@ -2409,7 +2455,8 @@ export interface components {
          * ScrapeRequest
          * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
          *     must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
-         *     `budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds.
+         *     `budget.llm_calls` bounds its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age`
+         *     reuses a capture fetched within that many seconds.
          */
         ScrapeRequest: {
             /**
@@ -2437,7 +2484,7 @@ export interface components {
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
             /**
              * Timeout S
              * @default 60
@@ -2767,6 +2814,16 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3141,6 +3198,16 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4322,6 +4389,80 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    draft_schema_v1_schemas_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FieldsDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -7,6 +7,7 @@ import {
   optionalNumber,
   requestFormats,
   requestPageKind,
+  requestSchema,
 } from "../pageRequest";
 import {
   count,
@@ -14,16 +15,18 @@ import {
   methodHint,
   pageFormats,
   pageKind,
+  schemaFields,
   schemaId,
   text,
   type StoredRequest,
 } from "../run/storedRequest";
 
 /** The settings in the options panel (SPEC-14 §4.2): each is a `ScrapeRequest` member, except `metadataInJson`, a view
- * option that asks for the `metadata` format. */
+ * option that asks for the `metadata` format. `fields` are the names `schema.fields` drafts a schema from (§4.10). */
 export interface ScrapeOptions {
   pageKind: PageKind | null;
   metadataInJson: boolean;
+  fields: readonly string[];
   methodHint: MethodHint;
   /** NaN while empty: the request then leaves the limit to the server. */
   maxAge: number;
@@ -34,6 +37,7 @@ export interface ScrapeOptions {
 export const DEFAULT_OPTIONS: ScrapeOptions = {
   pageKind: null,
   metadataInJson: false,
+  fields: [],
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxAge: Number.NaN,
@@ -66,7 +70,7 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   return {
     url: form.url.trim(),
     formats: requestFormats(form),
-    schema: form.schemaId === "" ? null : { id: form.schemaId },
+    schema: requestSchema(form),
     page_kind: requestPageKind(form),
     fetch: { method_hint: options.methodHint },
     ...optionalNumber("max_age", options.maxAge),
@@ -88,6 +92,7 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
     options: {
       pageKind: id === "" ? kind : null,
       metadataInJson,
+      fields: schemaFields(request),
       methodHint: methodHint(request),
       maxAge: count(request, "max_age"),
       timeoutS: count(request, "timeout_s"),

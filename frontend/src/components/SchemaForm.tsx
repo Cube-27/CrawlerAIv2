@@ -123,12 +123,14 @@ interface JsonText {
 
 /** A schema document edited as a form or as JSON (SPEC-12 §4.3). The two tabs edit one document: leaving the JSON tab
  * reads it back into the form, and stays when it can't. A problem from the API shows above the inputs, and each of
- * its errors next to the input it names. `onSubmit` gets the document; the server validates it. */
+ * its errors next to the input it names. `onSubmit` gets the document; the server validates it. The submit button
+ * reads `submitLabel`. */
 export function SchemaForm({
   form,
   mode,
   problem,
   isPending,
+  submitLabel = "Save",
   onChange,
   onSubmit,
   onCancel,
@@ -136,6 +138,7 @@ export function SchemaForm({
   FormProps & {
     problem: Problem | null;
     isPending: boolean;
+    submitLabel?: string;
     onSubmit: (form: SchemaFormState) => void;
     onCancel: () => void;
   }
@@ -226,7 +229,7 @@ export function SchemaForm({
           Cancel
         </Button>
         <Button type="submit" isPending={isPending}>
-          Save
+          {submitLabel}
         </Button>
       </FormActions>
     </Form>

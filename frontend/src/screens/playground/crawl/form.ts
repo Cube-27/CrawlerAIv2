@@ -5,10 +5,14 @@ import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
   asksForNothing,
+  fieldsPageKindErrors,
+  hasSchema,
   NO_ERRORS,
   NO_FORMAT,
   optionalNumber,
   requestFormats,
+  requestSchema,
+  SCHEMA_AND_FIELDS,
   schemaPageKindErrors,
   webhook,
 } from "../pageRequest";
@@ -17,6 +21,7 @@ import {
   methodHint,
   pageFormats,
   pageKind,
+  schemaFields,
   schemaId,
   text,
   texts,
@@ -32,12 +37,14 @@ export interface RuleRow {
 }
 
 /** Crawl's options panel (SPEC-14 §4.2): each is a `CrawlRequest` member, except `metadataInJson`, a view option.
- * An empty limit (NaN) is left out, so the server's default applies. */
+ * `fields` are the names `schema.fields` drafts a schema from (§4.10). An empty limit (NaN) is left out, so the
+ * server's default applies. */
 export interface CrawlOptions {
   include: readonly string[];
   exclude: readonly string[];
   rules: readonly RuleRow[];
   metadataInJson: boolean;
+  fields: readonly string[];
   maxDepth: number;
   limit: number;
   methodHint: MethodHint;
@@ -50,6 +57,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   exclude: [],
   rules: [],
   metadataInJson: false,
+  fields: [],
   maxDepth: Number.NaN,
   limit: Number.NaN,
   // FetchPolicy's own default (SPEC-02 §4.2).
@@ -82,11 +90,25 @@ const NO_RULES = {
   page_kind_rules:
     "A schema's records need a page-kind rule: a page no rule matches is not extracted.",
 };
+const MIXED_RULES = {
+  page_kind_rules: "Fields are drafted for one page kind: give every rule the same page kind.",
+};
+
+/** Why field names can't be sent: they need rules, of one page kind the server takes records of. */
+function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string>> {
+  const kinds = new Set(setRules(rules).map((rule) => rule.pageKind));
+  if (kinds.size === 0) return NO_RULES;
+  const [kind] = kinds;
+  return kinds.size > 1 ? MIXED_RULES : (fieldsPageKindErrors(kind ?? null) ?? NO_ERRORS);
+}
 
 /** Why `form` can't be sent, by field. A crawl's results are records or page outputs (SPEC-10 §4.5): with a schema
- * it asks for `records` alone, which needs a rule, and every rule is for the schema's page kind; without one it asks
- * for at least one format. */
+ * or field names it asks for `records` alone, which needs a rule; every rule is for the schema's page kind, and field
+ * names take rules of one page kind. Without either it asks for at least one format. */
 export function crawlErrors(form: CrawlFormState): Readonly<Record<string, string>> {
+  const hasFields = form.options.fields.length > 0;
+  if (form.schemaId !== "" && hasFields) return SCHEMA_AND_FIELDS;
+  if (hasFields) return fieldsErrors(form.options.rules);
   if (form.schemaId === "") return asksForNothing(form) ? NO_FORMAT : NO_ERRORS;
   return (
     schemaPageKindErrors(form.schemaPageKind) ??
@@ -94,10 +116,10 @@ export function crawlErrors(form: CrawlFormState): Readonly<Record<string, strin
   );
 }
 
-/** The crawl's formats: `records` alone with a schema (SPEC-10 §4.5), else the page formats and `metadata`. Metadata
- * in JSON still asks the results for each page's metadata, which they read from its capture. */
+/** The crawl's formats: `records` alone with a schema or field names (SPEC-10 §4.5), else the page formats and
+ * `metadata`. Metadata in JSON still asks the results for each page's metadata, which they read from its capture. */
 function crawlFormats(form: CrawlFormState): ScrapeFormat[] {
-  return form.schemaId === "" ? requestFormats(form) : ["records"];
+  return hasSchema(form) ? ["records"] : requestFormats(form);
 }
 
 /** The crawl request for `form`, or null when it can't be sent (`crawlErrors`). With a schema, every rule is for its
@@ -109,7 +131,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
   return {
     url: form.url,
     formats: crawlFormats(form),
-    schema: form.schemaId === "" ? null : { id: form.schemaId },
+    schema: requestSchema(form),
     page_kind_rules: setRules(options.rules).map(({ pattern, pageKind }) => ({
       pattern: pattern.trim(),
       page_kind: schemaKind ?? pageKind,
@@ -152,6 +174,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       exclude: texts(request, "exclude"),
       rules,
       metadataInJson,
+      fields: schemaFields(request),
       maxDepth: count(request, "max_depth"),
       limit: count(request, "limit"),
       methodHint: methodHint(request),

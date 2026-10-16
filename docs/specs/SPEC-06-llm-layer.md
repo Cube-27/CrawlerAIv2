@@ -145,6 +145,12 @@ Labeling pre-fill variant (`c_prefill`, SPEC-03 4.10): identical, requests all f
   the same prompt text (after whitespace normalization) returns the stored schema without a new call ("one
   prompt gives one stable schema"). The draft is returned with the results (SPEC-07/10) for editing; an edit
   creates a `user` schema.
+- Field names (`schema.fields`, ARCHITECTURE §5.4 rev 20, SPEC-14 §4.10): the input is the names (1–50 distinct
+  schema field names, sorted) and the page kind, with the field types and the preset examples, and no sample pages.
+  The reply check also refuses a draft of another page kind or whose top-level fields are not exactly the names
+  (one retry). The name is `"draft_" + sha256("fields\n" + page_kind + "\n" + the sorted names joined by "\n")[:12]`,
+  so one set of names gives one stored draft per page kind, whatever their order. The call is made before any job
+  exists, so no job's budget counts it (`job_id` null).
 - Field descriptions in the draft are what role C will read, so the prompt asks for buyer-facing definitions
   and explicit exclusions (e.g. "without store name").
 

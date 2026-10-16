@@ -1,6 +1,6 @@
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel } from "../OptionsPanel";
-import { FetchMethodRow, MetadataRow, PageKindRow } from "../rows";
+import { FetchMethodRow, FieldsRow, MetadataRow, PageKindRow } from "../rows";
 import { DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
 
 function AdvancedRows({
@@ -51,7 +51,8 @@ function AdvancedRows({
   );
 }
 
-/** Scrape's options panel (SPEC-14 §4.2): page kind and Metadata in JSON, then fetch and limits under Advanced. */
+/** Scrape's options panel (SPEC-14 §4.2): page kind, Metadata in JSON and fields (§4.10), then fetch and limits under
+ * Advanced. */
 export function ScrapeOptions({
   options,
   hasSchema,
@@ -84,6 +85,7 @@ export function ScrapeOptions({
           onChange({ ...options, metadataInJson });
         }}
       />
+      <FieldsRow options={options} onChange={onChange} />
     </OptionsPanel>
   );
 }

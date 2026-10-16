@@ -24,6 +24,7 @@ from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.db.models import ApiKeyId, JobId, UrlTask
+from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.batch import insert_job, records_schema
 from crawlerai.services.fetching import check_targets
@@ -33,6 +34,7 @@ from crawlerai.services.scrape_steps import (
     Input,
     PageFormat,
     SchemaById,
+    SchemaFields,
     SchemaInline,
     absolute_http_url,
     check_records,
@@ -41,7 +43,8 @@ from crawlerai.services.scrape_steps import (
 
 class CrawlRequest(Input):
     """The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
-    page the crawl extracts: `records` is asked alone, and a `schema.prompt` is not taken. `include` and `exclude`
+    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
+    while the caller waits. `include` and `exclude`
     globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is
     called when the job ends (§4.2)."""
 
@@ -51,7 +54,7 @@ class CrawlRequest(Input):
     max_depth: int = Field(default=3, ge=0)
     limit: int = Field(default=500, ge=1, le=MAX_LIMIT)
     formats: list[PageFormat] = Field(min_length=1)
-    schema_: SchemaById | SchemaInline | None = Field(default=None, alias="schema")
+    schema_: SchemaById | SchemaInline | SchemaFields | None = Field(default=None, alias="schema")
     page_kind_rules: list[PageKindRule] = Field(default_factory=list)
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
@@ -103,6 +106,7 @@ async def submit_crawl(
     request: CrawlRequest,
     *,
     data: EngineData | None,
+    llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
 ) -> CrawlSubmitted:
     """Store `request` as a queued job with the start URL's task; `api_key_id`, the key that submitted it, signs its
@@ -111,7 +115,7 @@ async def submit_crawl(
     await check_targets(connector, [("url", request.url)], webhook_url=request.webhook_url)
     # A records crawl's rules have one page kind, its schema's (the request's validator).
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None
-    schema = await records_schema(engine, request.formats, request.schema_, page_kind, data)
+    schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm)
     frontier = request.frontier()
     async with engine.begin() as conn:
         job_id = await insert_job(

@@ -1,5 +1,6 @@
-"""`/v1/schemas` (SPEC-07 §4.6): create, read, list, edit (a new version) and delete (retire). The rules are the
-schemas service's; this router translates HTTP to it and its errors to problems."""
+"""`/v1/schemas` (SPEC-07 §4.6): create, read, list, edit (a new version) and delete (retire), and a draft from field
+names (SPEC-14 §4.10). The rules are the schemas service's; this router translates HTTP to it and its errors to
+problems."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,11 +13,14 @@ from crawlerai.api.auth import require_api_key
 from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE, SchemaList
 from crawlerai.api.problems import conflict, invalid, not_found
-from crawlerai.db.models import SchemaId, SchemaStatus
+from crawlerai.api.submissions import submission_problems
+from crawlerai.db.models import PageKind, SchemaId, SchemaStatus
+from crawlerai.llm.client import LLMClient
 from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.schemas.types import Name, SchemaContent, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
+from crawlerai.services.scrape_steps import SchemaFields, fields_schema
 
 router = APIRouter(
     prefix="/v1/schemas",
@@ -50,6 +54,23 @@ async def create_schema(body: NewSchema, request: Request, response: Response) -
         created = await schemas.create(conn, body)
     response.headers["Location"] = f"{router.prefix}/{created.id}"
     return created
+
+
+class FieldsDraft(SchemaFields):
+    """Field names and the page kind of the pages they are read from."""
+
+    page_kind: PageKind
+
+
+@router.post("/draft", responses={502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE})
+async def draft_schema(body: FieldsDraft, request: Request) -> SchemaDef:
+    """The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
+    `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
+    one, stored. A client shows it for editing before the run (SPEC-14 §4.10). A draft the LLM could not give is a
+    problem typed with the LLM failure (502, 503); a retired draft is a 422."""
+    llm: LLMClient = request.app.state.llm
+    with submission_problems():
+        return await fields_schema(database(request), llm, body.fields, body.page_kind)
 
 
 @router.get("")

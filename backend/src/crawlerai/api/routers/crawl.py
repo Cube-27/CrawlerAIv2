@@ -10,6 +10,7 @@ from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId
+from crawlerai.llm.client import LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import crawl
 from crawlerai.services.crawl import CrawlRequest, CrawlSubmitted
@@ -23,7 +24,11 @@ router = APIRouter(
 )
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED, responses={409: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE})
+@router.post(
+    "",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE},
+)
 async def crawl_site(
     body: CrawlRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
 ) -> CrawlSubmitted:
@@ -33,5 +38,6 @@ async def crawl_site(
     `url` or `webhook_url`, is a 422 and nothing is queued."""
     fetching: Fetching = request.app.state.fetching
     data: EngineData | None = request.app.state.engine_data
+    llm: LLMClient = request.app.state.llm
     with submission_problems():
-        return await crawl.submit_crawl(database(request), fetching.connector, body, data=data, api_key_id=key)
+        return await crawl.submit_crawl(database(request), fetching.connector, body, data=data, llm=llm, api_key_id=key)

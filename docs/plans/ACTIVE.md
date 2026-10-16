@@ -29,12 +29,10 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 
 ## Current focus
 
-- SPEC-14 playground workspace (owner, 2026-10-15; ARCHITECTURE rev 17, D-0809): rows 1–10 done; row 11 (additional
-  fields) is blocked on D-0810.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
-  field status), D-0810 (additional fields), D-0915 (SimHash at Hamming 0 misses some edits).
+  field status), D-0915 (SimHash at Hamming 0 misses some edits).
 
 ## Done specs
 
@@ -53,6 +51,7 @@ Full rows are in git history.
 - [SPEC-11 — Recurring crawls](../specs/SPEC-11-recurring-crawls.md): PRs 1–5 (#131, #135, #136, #142, #139)
 - [SPEC-12 — Frontend application](../specs/SPEC-12-frontend-application.md): PRs 1–11 (#68, #73, #82, #87, #97, #134, #143, #141, #93, #147, #148)
 - [SPEC-13 — Variant matrix](../specs/SPEC-13-variant-matrix.md): PRs 1–4 (#170, #172, #171, #174)
+- [SPEC-14 — Playground workspace](../specs/SPEC-14-playground-workspace.md): PRs 1–11 (#189, #191, #194, #194, #194, #198, #198, #198, #190, #201, #205)
 
 ## Follow-ups
 
@@ -69,6 +68,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Normalize: a minus counts anywhere before the number (`numbers.negative`), so "In stock - 5 left" declines as negative; count it only when it touches the number, for money and count (D-0922) [#203].
 - Normalize: `count` accepts `unitCode` `C62` with a contradicting `unitText` ("kg"); decide whether to decline any `unitText` beside C62 (D-0921) [#203].
 - Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
+- Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
+- Playground: Batch with a stored schema and a page format selected sends `records` with other formats, which the server refuses (records are asked alone); the UI could ask for `records` alone, as Crawl does [#205].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 
@@ -79,19 +80,3 @@ Rows 1–6 and 8–12 done (#28, #27, #30, #33, #29, #32, #35, #42, #34, #39, #4
 | PR | Scope | Status | Notes |
 |---|---|---|---|
 | 7 | Protected job wired (replace placeholder) + dev report in `backend` job | human (H1, H2) | Changes the protected job (CLAUDE.md §4). From #32: run the gate before `put_run` on a push to `main` (or the candidate becomes its own baseline); store the unsuppressed report as `metrics`; check out with `fetch-depth: 0`. From #34: a rotation lowers hidden `n_pages`, so the next gate fails `n_pages_dropped` until a new baseline is recorded. |
-
-## [SPEC-14 — Playground workspace](../specs/SPEC-14-playground-workspace.md)
-
-| PR | Scope | Status | Notes |
-|---|---|---|---|
-| 1 | Server-side key; drop Connect | done (#189) | D-0811, D-0812. |
-| 2 | Playground shell + Scrape mode + options panel | done (#191) | D-0817–D-0819. |
-| 3 | Single-page output with JSON default | done (#194) | D-0825–D-0827. |
-| 4 | Batch mode + running results table + JSON drawer + CSV upload + export buttons | done (#194) | D-0828–D-0831, D-0833, D-0834. |
-| 5 | Live activity feed | done (#194) | D-0832. |
-| 6 | Crawl and Map modes inline | done (#198) | D-0857, D-0862. |
-| 7 | Extract mode; Jobs as history; `/jobs/:id` redirect; edit and re-run; recent runs | done (#198) | D-0855, D-0856, D-0858–D-0860. |
-| 8 | Batch from results | done (#198) | D-0861. |
-| 9 | `json_values` results format (backend) | done (#190) | D-0813–D-0816. |
-| 10 | Get code drawer | done (#201) | D-0890–D-0894. |
-| 11 | Additional fields (chips) | blocked (D-0810) | |

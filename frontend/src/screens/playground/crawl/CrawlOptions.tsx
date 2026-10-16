@@ -1,6 +1,6 @@
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel } from "../OptionsPanel";
-import { FetchMethodRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
+import { FetchMethodRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
 
@@ -46,8 +46,8 @@ function AdvancedRows({
   );
 }
 
-/** Crawl's options panel (SPEC-14 §4.2): the scope globs, the page-kind rules and Metadata in JSON, then depth, page
- * limit, fetch method and webhook under Advanced. With a schema, every rule is for its page kind, `schemaPageKind`. */
+/** Crawl's options panel (SPEC-14 §4.2): the scope globs, Metadata in JSON, fields (§4.10) and the page-kind rules,
+ * then depth, page limit, fetch method and webhook under Advanced. With a schema, every rule is for its page kind, `schemaPageKind`. */
 export function CrawlOptions({
   options,
   schemaPageKind,
@@ -79,6 +79,7 @@ export function CrawlOptions({
           onChange({ ...options, metadataInJson });
         }}
       />
+      <FieldsRow options={options} onChange={onChange} />
       <RuleRows
         rules={options.rules}
         fixed={schemaPageKind}

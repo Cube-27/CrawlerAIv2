@@ -253,6 +253,10 @@ its mapping is chosen in SPEC-04.
 - A **prompt** without a schema is turned into a draft schema by LLM role S (§11), from the prompt plus 1–3 sample
   pages. The draft is stored, returned with the results for editing, and reused, so one prompt gives one stable
   schema.
+- **Field names** (a request's `schema.fields`, on every run type) are drafted by role S into a schema with exactly
+  those top-level fields for the request's page kind, from the names alone, before the job is stored. The same names
+  and page kind give the same stored draft. `POST /v1/schemas/draft` returns that draft, so a client shows it for
+  editing before the run (Appendix A #41).
 
 ### 5.5 Page kind
 
@@ -547,7 +551,7 @@ accepted only through validation by execution (§8.3, §7.2) or by the caller (�
 | **C. Grounded extraction** | Cold-mode gaps (§8.4) | Field values with char offsets from cleaned page text. Ungrounded or type-invalid values are dropped. | Haiku / Flash-Lite-class (≈ $0.0006/page **[verified prices, 2026-10-08]**) |
 | **A. Selector synthesis** | §8.3 step 2 | Selector or JSONPath map, never values. ≤ 3 repair rounds. | Sonnet-class (≈ $0.17–0.33/site) |
 | **D. API-recipe binding** | §7.2, when templating is ambiguous | A typed request spec, never code | Sonnet-class |
-| **S. Schema drafting** | Prompt-only extract (§5.4) | A draft schema | Sonnet-class |
+| **S. Schema drafting** | Prompt-only extract; field names (§5.4) | A draft schema | Sonnet-class |
 
 **Why per-page LLM output is not the path for repeat sites:**
 - values can be wrong inside valid JSON (83% best value accuracy across 21 models **[verified abstract]**);
@@ -623,14 +627,14 @@ matches the engine. Correctness is measured in §16, per field status.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /v1/scrape` | One URL → `formats` ∈ {markdown, html, raw_html, links, metadata, records}. Optional `schema` (id, inline, or `prompt`), `page_kind`, `max_age` to reuse a recent capture. Synchronous with a timeout. |
-| `POST /v1/batch/scrape` | Many URLs, async. |
+| `POST /v1/scrape` | One URL → `formats` ∈ {markdown, html, raw_html, links, metadata, records}. Optional `schema` (id, inline, `prompt`, or field names `fields`, §5.4), `page_kind`, `max_age` to reuse a recent capture. Synchronous with a timeout. |
+| `POST /v1/batch/scrape` | Many URLs, async. Optional `schema` (id, inline, or `fields`). |
 | `POST /v1/map` | URL discovery: sitemaps (robots `Sitemap:`, `/sitemap.xml`, indexes) plus page links. Include/exclude, limit. |
-| `POST /v1/crawl` | Async. Start URL, include/exclude globs, depth, limit, `formats`, optional `schema` with page-kind rules per URL pattern. |
-| `POST /v1/extract` | Async. URLs (globs expanded through `map`) plus `schema` or `prompt` → records, in progressive mode. Returns the drafted schema when a prompt was used. |
+| `POST /v1/crawl` | Async. Start URL, include/exclude globs, depth, limit, `formats`, optional `schema` (id, inline, or `fields`) with page-kind rules per URL pattern. |
+| `POST /v1/extract` | Async. URLs (globs expanded through `map`) plus `schema`, `prompt` or `fields` → records, in progressive mode. Returns the drafted schema when a prompt was used. |
 | `GET /v1/jobs` | Jobs, newest first, each with its status summary; optional `kind` and `status` filters; cursor-paginated. |
 | `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status (with whether a cancel was requested), cancel, paginated results (a page output with its task's failure or block reason; or clean `json_values` items, §12.2), server-sent events for progress (from stored run events). A webhook on completion. |
-| `/v1/schemas` | Create, read, update, delete. |
+| `/v1/schemas` | Create, read, update, delete. `POST /v1/schemas/draft`: the draft of field names for a page kind, for review before a run (§5.4). |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
 | `/v1/records`, `/v1/captures/{id}/replay` | Records with `field_meta`; replay a capture with the current engine. |
 | `GET /v1/usage/llm`, `GET /v1/usage/llm/jobs` | LLM calls, tokens and estimated cost for a range of UTC days: totals, per day, per provider, model and prompt kind, and the costliest jobs; per job, cursor-paginated. An estimate for visibility, not billing (§1). |
@@ -948,6 +952,7 @@ implementation go in `DECISIONS.md`, not here.
 | 38 | Playground UI (2026-10-15) | The UI is one playground: a mode switch (Scrape, Batch, Crawl, Map, Extract), a command bar with the primary action at the top, settings in an inline options panel with Advanced collapsed, and output on the same page. No pop-up windows for runs. Clean JSON is the main output: schema fields only, metadata only when asked for. Batch and crawl show a running table with each page's JSON in a side drawer, and plain-language live activity. The UI never asks for an API key; the server that serves it attaches one (§18). `/` opens the playground. SPEC-14. |
 | 39 | Availability and stock quantity (2026-10-16) | Availability and stock quantity are separate fields. Availability stated in words or codes ("in stock", "instock", "In stock (5 available)") normalizes to the schema.org `ItemAvailability` member, the one availability convention in the repo; the stock quantity is its own `count` field (5). `commerce_detail` version 4 adds the optional `stock_quantity`; variants carry availability and stock quantity when the page states them per variant, otherwise the page's values publish. D-0782. |
 | 40 | Derived page URL; unchanged pages (2026-10-16) | A detail page's `url` derived from the canonical link or the final URL publishes with source kind `derived`, a `derived:` locator and its own `derived` evidence bucket, calibrated like any other (§6, §8.1, §10). INV-22 holds as written. D-0355, option (a). Only an equal content fingerprint (Hamming 0) means a page is unchanged (§14); D-0665, option (b). An opt-in `csv_safe=true` results parameter quotes formula-like CSV cells, and the UI's Export CSV sends it; default output is unchanged (§12.2). D-0879, option (a). |
+| 41 | Additional fields (2026-10-16) | Field names typed in the UI become a `fields` request member on every run type (scrape, batch, crawl, extract). The server drafts a typed schema from the names with role S, for the request's page kind; the UI shows the draft for editing before the run (D-0810, option a). |
 
 ---
 
@@ -1034,3 +1039,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 17 | 2026-10-15 | **Playground UI and server-side key** (owner; Appendix A #38). §18: the UI never holds an API key; the server that serves it attaches one. §12.2: `json_values` record export. SPEC-14 added; SPEC-12 points to it for the Connect screen, job dialogs, Overview and Scrape layout. |
 | 18 | 2026-10-16 | **Availability and stock quantity** (owner approval, D-0782; Appendix A #39). §5.1: a `count` field type. §5.3: `commerce_detail` version 4 adds optional `stock_quantity`, also per variant. §9: a `count` row; enum text states a member only through its whole first clause. SPEC-04 and SPEC-13 updated. |
 | 19 | 2026-10-16 | **Owner answers of 2026-10-16** (Appendix A #40). §6, §8.1, §10: a derived page URL publishes with source kind `derived`, a `derived:` locator and a `derived` evidence bucket (D-0355); migration 0019. §14 row 2: only Hamming 0 means unchanged (D-0665); SPEC-11 updated. §12.2: an opt-in `csv_safe` CSV export, a `GET /v1/jobs/{id}/results` parameter (D-0879); SPEC-08 and SPEC-10 updated, INV-27 noted. SPEC-05 §4.3, §4.8 and §4.9 updated. MCP tools unchanged (§13.3). |
+| 20 | 2026-10-16 | **Additional fields** (owner approval, D-0810 option a; Appendix A #41). §5.4: `schema.fields` is drafted by role S from the names alone, one stored draft per names and page kind. §11: role S drafts field names. §13.1: `fields` on scrape, batch, crawl and extract; `POST /v1/schemas/draft`. SPEC-06 §4.5, SPEC-07 §4.4, SPEC-10 §4.3–4.6 and SPEC-14 §4.10 updated. |

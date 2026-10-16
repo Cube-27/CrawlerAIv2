@@ -4,7 +4,8 @@ before they store anything, as problem details (SPEC-07 §4.8)."""
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from crawlerai.api.problems import ProblemError, conflict, invalid, records_unavailable
+from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable
+from crawlerai.llm.client import LLMFailure
 from crawlerai.services.fetching import TargetsRejected
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
 from crawlerai.services.scrape import RecordsUnavailable
@@ -14,7 +15,8 @@ from crawlerai.services.scrape_steps import SchemaUnusable
 @contextmanager
 def submission_problems() -> Iterator[None]:
     """Raise the submission's errors as problems: a refused target and an unusable schema are 422s, a conflicting
-    inline schema a 409, and `records` without the engine's data a 503."""
+    inline schema a 409, `records` without the engine's data a 503, and field names the LLM could not draft a schema
+    from the LLM failure's problem."""
     try:
         yield
     except TargetsRejected as e:
@@ -28,3 +30,5 @@ def submission_problems() -> Iterator[None]:
         raise conflict(str(e)) from e
     except RecordsUnavailable as e:
         raise records_unavailable(str(e)) from e
+    except LLMFailure as e:
+        raise llm_problem(e) from e

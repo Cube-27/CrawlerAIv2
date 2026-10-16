@@ -1,6 +1,8 @@
 import { Button } from "@heroui/react";
 import { useRef, useState, type ReactNode } from "react";
+import type { ScrapeRequest } from "../../../api/scrape";
 import { useApiClient } from "../../../app/auth";
+import { useFieldsReview } from "../fields/useFieldsReview";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { ScrapeOutput } from "../output/ScrapeOutput";
 import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
@@ -36,7 +38,8 @@ function outputState(
 }
 
 /** The Scrape playground at `/` (SPEC-14 §4.2): the mode switch, the command bar with `POST /v1/scrape`'s URL, format
- * and schema, the inline options panel, then what the scrape returned. Before any scrape, the recent scrapes; one
+ * and schema, the inline options panel, then what the scrape returned. Field names open their draft for review first
+ * (§4.10). Before any scrape, the recent scrapes; one
  * opens as a run (`?job=`, a scrape keeps a job), its page in the results table. */
 export function ScrapePlayground() {
   const client = useApiClient();
@@ -51,14 +54,18 @@ export function ScrapePlayground() {
   const latest = useRef(0);
 
   const request = buildRequest({ ...form, url: requestUrl(form.url) });
-  const submit = () => {
-    if (!check() || request === null) return;
+  const send = (sent: ScrapeRequest) => {
     clear();
     const run = ++latest.current;
     setState({ kind: "pending" });
-    void runScrape(client, request).then((result) => {
+    void runScrape(client, sent).then((result) => {
       if (run === latest.current) setState(result);
     });
+  };
+  const review = useFieldsReview(send);
+  const submit = () => {
+    if (!check() || request === null) return;
+    review.start(request);
   };
 
   const withMetadata = form.options.metadataInJson;
@@ -103,6 +110,7 @@ export function ScrapePlayground() {
       }
     >
       {output}
+      {review.drawer}
     </PlaygroundLayout>
   );
 }
