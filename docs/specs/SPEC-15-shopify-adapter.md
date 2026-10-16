@@ -1,7 +1,7 @@
 # SPEC-15 — Shopify adapter: storefront pages through the Storefront API
 
 Layer: admitted candidate (ARCHITECTURE §22 "More platform adapters", admitted for Shopify by the owner 2026-10-16,
-Appendix A #45); builds on SPEC-02 §4.4 and §4.9 (adapters), SPEC-05 §4.5 (adapter collector), SPEC-13 (variant
+Appendix A #46); builds on SPEC-02 §4.4 and §4.9 (adapters), SPEC-05 §4.5 (adapter collector), SPEC-13 (variant
 rows). Architecture refs: §7.1, §8.1, §8.2, §8.6, §10, C2, C3, C6, C7, C9.
 
 ## 1. Summary
@@ -25,7 +25,7 @@ Nothing outside `backend/src/crawlerai/adapters/` names the platform (C3).
 
 ## 2. Scope
 
-Core (admitted by the owner, Appendix A #45):
+Core (admitted by the owner, Appendix A #46):
 - Detection of product and collection pages by the platform's documented URL routes, confirmed per response by the
   platform's documented API version header (§4.2).
 - Detail: one product with its featured image and up to 250 variants. Listing: the first 250 products of a collection.
@@ -241,7 +241,7 @@ documented shapes (C3, C9). Tests name the adapter, a platform, never a shop.
 | 1 | Shapes for adapters; fallback; attribution | `adapters/base` (`Shape`, protocol `fetch(url, policy, send)`, `shapes`, `serves`), `adapters/registry` (`reader`, declines), Greenhouse and Lever as shapes, `collect/adapter` (shapes), `collect/run`, `resolve/task`, `acquire/rungs` (fallback), SPEC-02/05/13 text | unit, property | Greenhouse/Lever candidates unchanged; INV-39, INV-40 tests pass. |
 | 2 | Shopify adapter | `adapters/shopify` (detection, queries, shapes, availability), registry | unit, property, replay | §7 detail and listing criteria pass on synthetic answers. |
 | 3 | Activation and polite sending | `core/settings` (`adapters`), `acquire` registry builder, `services/fetching.adapter_send`, scrape and worker call sites, `EngineData` registry | unit | A configured adapter runs in scrape and the worker, through robots.txt and the host's rate. |
-| 4 | C6 measurement and activation note | PR evaluation section; Appendix A #45 note | eval (local, aggregate only) | ≥ 3 unseen shops measured. |
+| 4 | C6 measurement and activation note | PR evaluation section; Appendix A #46 note | eval (local, aggregate only) | ≥ 3 unseen shops measured. |
 
 Rows 1–3 depend on each other in order; row 4 needs row 3.
 

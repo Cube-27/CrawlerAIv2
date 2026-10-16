@@ -29,7 +29,7 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 
 ## Current focus
 
-- Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
+- Data accuracy: SPEC-13 and SPEC-15 (Shopify adapter, off by default) are complete. Next: option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
   field status), D-0915 (SimHash at Hamming 0 misses some edits).
@@ -52,6 +52,7 @@ Full rows are in git history.
 - [SPEC-12 — Frontend application](../specs/SPEC-12-frontend-application.md): PRs 1–11 (#68, #73, #82, #87, #97, #134, #143, #141, #93, #147, #148)
 - [SPEC-13 — Variant matrix](../specs/SPEC-13-variant-matrix.md): PRs 1–4 (#170, #172, #171, #174)
 - [SPEC-14 — Playground workspace](../specs/SPEC-14-playground-workspace.md): PRs 1–11 (#189, #191, #194, #194, #194, #198, #198, #198, #190, #201, #205)
+- [SPEC-15 — Shopify adapter](../specs/SPEC-15-shopify-adapter.md): PRs 1–4 (#219, #219, #219, #219)
 
 ## Follow-ups
 
@@ -104,6 +105,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Listings: rows without structured data carry no item URL (13 of 15 pages with rows, reference eval round 2); taking it from the repeated item's link is the §22 repeated-structure candidate, awaiting the owner (D-1024) [#217].
 - Collect: the main image is still the first shown image of the main region; on pages whose structured data names an image, measure whether a `dom` image that disagrees costs precision (D-1023) [#217].
 - Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
+- Shopify adapter: a collection over 250 products stops at 250 (one of four measured collections reached it); measure on dev before adding cursor paging (SPEC-15 §9) [#219].
+- Shopify adapter: on detail pages the generic path publishes page-only fields the API does not state (brand, rating, review count, condition); compare both paths on dev labels before turning the adapter on for detail pages (D-1088) [#219].
+- Shopify adapter: locale-prefixed URLs, `vendor` as brand and more images are open (SPEC-15 §9) [#219].
+- Adapters: a host's decline (D-1078) lives in each process for 24 hours; store it on the site row if the probe traffic shows in logs. An adapter request on the page's host re-reads that host's robots rules, already checked by the caller [#219].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)
 
