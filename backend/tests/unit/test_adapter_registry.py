@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 import pytest
+from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
@@ -75,7 +76,7 @@ class StubAdapter:
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         return await self.rung(url, policy)
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return ()
 
 

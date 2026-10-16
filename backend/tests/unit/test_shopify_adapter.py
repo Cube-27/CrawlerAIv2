@@ -36,6 +36,8 @@ from crawlerai.schemas.types import SchemaDef
 ADAPTER = Shopify()
 SHOP = "shop.example.test"
 ENDPOINT = f"https://{SHOP}/api/{API_VERSION}/graphql.json"
+# A shop that presents its prices in one currency only.
+ONE_CURRENCY: JsonValue = {"paymentSettings": {"enabledPresentmentCurrencies": ["EUR"]}}
 
 handles = st.from_regex(r"[a-z0-9][a-z0-9_-]{0,40}", fullmatch=True)
 
@@ -114,7 +116,7 @@ def _fetch(url: str, handler: Handler) -> FetchResult:
 )
 def test_a_page_is_asked_of_the_storefront_api_with_its_handle_as_a_variable(page: str, member: str) -> None:
     sent: list[httpx.Request] = []
-    answer: JsonValue = {"data": {member: {"id": "gid://shopify/Thing/1"}}}
+    answer: JsonValue = {"data": {"shop": ONE_CURRENCY, member: {"id": "gid://shopify/Thing/1"}}}
 
     def handler(request: httpx.Request) -> httpx.Response:
         sent.append(request)
@@ -167,6 +169,33 @@ def test_a_platform_answer_without_the_product_does_not_serve_the_page(answer: J
     assert _error(result) == ("error", NOT_SERVED, b"")
 
 
+@pytest.mark.parametrize(
+    "shop",
+    [
+        {"paymentSettings": {"enabledPresentmentCurrencies": ["EUR", "SEK"]}},
+        {"paymentSettings": {"enabledPresentmentCurrencies": []}},
+        {"paymentSettings": None},
+        None,
+    ],
+)
+def test_a_product_of_a_shop_that_may_show_another_currency_does_not_serve_the_page(shop: JsonValue) -> None:
+    # SPEC-15 §4.5: the API prices in the shop's primary market, the page in the visitor's; with several currencies
+    # they may differ, and the page's own price is read from the page (C7).
+    answer: JsonValue = {"data": {"shop": shop, "product": {"id": "1"}}}
+
+    result = _fetch(f"https://{SHOP}/products/widget", _platform(answer))
+
+    assert _error(result) == ("error", NOT_SERVED, b"")
+
+
+def test_a_product_of_a_shop_with_one_currency_serves_the_page() -> None:
+    answer: JsonValue = {"data": {"shop": ONE_CURRENCY, "product": {"id": "1"}}}
+
+    result = _fetch(f"https://{SHOP}/products/widget", _platform(answer))
+
+    assert (result.block_class, json.loads(result.bundle.body)) == ("ok", answer)
+
+
 def test_a_platform_status_failure_is_kept_as_it_is() -> None:
     result = _fetch(f"https://{SHOP}/products/widget", _platform({}, status=429))
 
@@ -214,7 +243,7 @@ def test_the_endpoint_keeps_the_pages_port_and_drops_its_user_information() -> N
 
     def handler(request: httpx.Request) -> httpx.Response:
         sent.append(request.headers["Host"] + request.url.path)
-        return _platform({"data": {"product": {"id": "1"}}})(request)
+        return _platform({"data": {"shop": ONE_CURRENCY, "product": {"id": "1"}}})(request)
 
     _fetch(f"https://user:secret@{SHOP}:8443/products/widget", handler)
 
@@ -233,7 +262,9 @@ DETAIL = SchemaDef(**_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset"
 
 
 def _availability(variant: dict[str, JsonValue]) -> list[tuple[JsonValue, str]]:
-    answer = {"data": {"product": {"variants": {"nodes": [variant | {"price": {"amount": "1.00"}}]}}}}
+    answer = {
+        "data": {"shop": ONE_CURRENCY, "product": {"variants": {"nodes": [variant | {"price": {"amount": "1.00"}}]}}}
+    }
     collector = AdapterCollector(ADAPTER, "detail", VOCABULARY)
     result = collector.collect(ParsedPage(json.dumps(answer)), DETAIL, Context(captured_at=datetime.now(UTC)))
     return [(c.raw, c.locator.rsplit("[", 1)[1]) for c in result.candidates if c.field == "availability"]

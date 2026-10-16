@@ -10,6 +10,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
@@ -83,9 +84,14 @@ def _variant(n: int, price: str, *, title: str | None = None, for_sale: bool = T
     }
 
 
+def _shop(*currencies: str) -> dict[str, JsonValue]:
+    return {"paymentSettings": {"enabledPresentmentCurrencies": list(currencies)}}
+
+
 def _product(*variants: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return {
         "data": {
+            "shop": _shop("EUR"),
             "product": {
                 "id": "gid://shopify/Product/1",
                 "title": "Synthetic Widget",
@@ -94,7 +100,7 @@ def _product(*variants: dict[str, JsonValue]) -> dict[str, JsonValue]:
                 "onlineStoreUrl": f"{SHOP}/products/widget",
                 "featuredImage": {"url": f"{SHOP}/img/1.png"},
                 "variants": {"nodes": list(variants)},
-            }
+            },
         }
     }
 
@@ -158,7 +164,7 @@ def test_the_one_variant_of_a_product_without_options_has_no_name() -> None:
     assert [sorted(row) for row in rows if isinstance(row, dict)] == [["availability", "price", "sku", "variant_id"]]
 
 
-def _collection(prices: list[tuple[str, str]]) -> dict[str, JsonValue]:
+def _collection(prices: list[tuple[str, str]], currencies: tuple[str, ...] = ("EUR",)) -> dict[str, JsonValue]:
     nodes: list[JsonValue] = [
         {
             "id": f"gid://shopify/Product/{n}",
@@ -169,7 +175,7 @@ def _collection(prices: list[tuple[str, str]]) -> dict[str, JsonValue]:
         }
         for n, (low, high) in enumerate(prices)
     ]
-    return {"data": {"collection": {"products": {"nodes": nodes}}}}
+    return {"data": {"shop": _shop(*currencies), "collection": {"products": {"nodes": nodes}}}}
 
 
 amounts = st.integers(min_value=1, max_value=99_999).map(lambda cents: f"{cents // 100}.{cents % 100:02d}")
@@ -188,3 +194,16 @@ def test_every_listed_product_is_a_row_with_a_price_only_when_its_range_is_one_p
         for n, (low, high) in enumerate(prices)
     ]
     assert [_published(row) for row in result.rows] == expected
+
+
+@pytest.mark.parametrize("currencies", [("EUR", "SEK"), ()])
+def test_a_shop_that_may_show_another_currency_lists_its_products_without_prices(currencies: tuple[str, ...]) -> None:
+    # SPEC-15 §4.5: the API prices in the shop's primary market; a shop presenting several currencies may show the
+    # page in another one, so no listed price is the page's for certain (C7).
+    answer = _collection([("1.00", "1.00"), ("2.00", "2.00")], currencies)
+
+    result = _extract(f"{SHOP}/collections/widgets", answer, LISTING)
+
+    assert [_published(row) for row in result.rows] == [
+        {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"} for n in (0, 1)
+    ]

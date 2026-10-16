@@ -42,7 +42,7 @@ class AdapterCollector:
         except ValueError as e:
             return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{name}: not JSON ({e})",))
         nodes: list[_Node] = []
-        for shape in self._adapter.shapes(self._page_kind):
+        for shape in self._adapter.shapes(self._page_kind, document):
             nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
         entities = tuple(
             Entity(id=n.id, kind=n.shape.type, urls=entity_urls(n, ctx), parent=n.parent, via=n.via) for n in nodes

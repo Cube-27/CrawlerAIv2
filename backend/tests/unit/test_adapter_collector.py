@@ -248,7 +248,7 @@ class _StandIn:
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         raise AssertionError("collecting fetches nothing")
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return self._shapes
 
 

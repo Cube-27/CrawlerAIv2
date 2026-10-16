@@ -46,6 +46,7 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Lamps</title></head>
 <body><main><h1>Lamp page</h1><p>A lamp that lights a desk.</p></main></body></html>"""
 ANSWER = {
     "data": {
+        "shop": {"paymentSettings": {"enabledPresentmentCurrencies": ["EUR"]}},
         "product": {
             "id": "gid://shopify/Product/1",
             "title": "Desk Lamp",
@@ -55,7 +56,7 @@ ANSWER = {
                     {"id": "v2", "sku": "L-2", "price": {"amount": "19.50", "currencyCode": "EUR"}},
                 ]
             },
-        }
+        },
     }
 }
 

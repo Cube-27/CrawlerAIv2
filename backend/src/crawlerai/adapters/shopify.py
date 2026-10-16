@@ -14,6 +14,7 @@ handle, or GraphQL `errors`, is `NOT_SERVED`. Either way the page falls back to 
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from http import HTTPStatus
 from typing import Final
 from urllib.parse import urlsplit
@@ -41,7 +42,11 @@ _DEFAULT_TITLE: Final = "Default Title"
 # schema.org ItemAvailability members, by their IRIs.
 _IN_STOCK, _BACK_ORDER, _OUT_OF_STOCK = (f"https://schema.org/{m}" for m in ("InStock", "BackOrder", "OutOfStock"))
 
+# Both queries ask for the currencies the shop presents prices in (`PaymentSettings.enabledPresentmentCurrencies`, "A
+# list of enabled currencies (ISO 4217 format) that the shop accepts"): a tokenless answer prices in the shop's primary
+# market, while a page shows the market of its visitor (`_one_currency`).
 _PRODUCT_QUERY: Final = """query Product($handle: String!) {
+  shop { paymentSettings { enabledPresentmentCurrencies } }
   product(handle: $handle) {
     id title description vendor onlineStoreUrl
     featuredImage { url }
@@ -51,6 +56,7 @@ _PRODUCT_QUERY: Final = """query Product($handle: String!) {
   }
 }"""
 _COLLECTION_QUERY: Final = """query Collection($handle: String!) {
+  shop { paymentSettings { enabledPresentmentCurrencies } }
   collection(handle: $handle) {
     products(first: 250) {
       nodes {
@@ -140,6 +146,8 @@ _SHAPES: Final[dict[PageKind, tuple[Shape, ...]]] = {
     "detail": (_PRODUCT,),
     "listing": (Shape(type="ItemList", at=("data", "collection", "products"), nodes={"itemListElement": (_LISTED,)}),),
 }
+# A listing of a shop whose page may show another currency than the answer's: its rows without their Offers (C7).
+_UNPRICED_LISTING: Final = (replace(_SHAPES["listing"][0], nodes={"itemListElement": (replace(_LISTED, nodes={}),)}),)
 
 
 class Shopify:
@@ -178,9 +186,11 @@ class Shopify:
             # The handle goes in as a GraphQL variable, never into the query's text.
             body=json.dumps({"query": query, "variables": {"handle": match.item}}),
         )
-        return _verdict(await send(request, policy), member)
+        return _verdict(await send(request, policy), match.page_kind, member)
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, answer: JsonValue, /) -> tuple[Shape, ...]:
+        if page_kind == "listing" and not _one_currency(answer):
+            return _UNPRICED_LISTING
         return _SHAPES[page_kind]
 
 
@@ -194,10 +204,25 @@ def _transient(status: int) -> bool:
     return status == HTTPStatus.TOO_MANY_REQUESTS or status >= HTTPStatus.INTERNAL_SERVER_ERROR
 
 
-def _verdict(result: FetchResult, member: str) -> FetchResult:
+def _one_currency(answer: JsonValue) -> bool:
+    """Whether the shop presents its prices in one currency only, so that the answer's prices are in the currency any
+    page of the shop shows. A tokenless answer prices in the shop's primary market (`@inContext` names no other), while
+    the page shows its visitor's market; with several currencies they may differ, and nothing in the answer says which
+    one a page showed (C7: decline rather than guess)."""
+    shop = _member(_member(answer, "data"), "shop")
+    currencies = _member(_member(shop, "paymentSettings"), "enabledPresentmentCurrencies")
+    return isinstance(currencies, list) and len(currencies) == 1
+
+
+def _member(value: JsonValue, name: str) -> JsonValue:
+    return value.get(name) if isinstance(value, dict) else None
+
+
+def _verdict(result: FetchResult, page_kind: PageKind, member: str) -> FetchResult:
     """`result`, or why it does not serve the page. No response, a slow-down or a server error is kept as it is: it
     says nothing of the platform, and the page falls back. An answer without the platform's signal is `NOT_PLATFORM`;
-    the platform's answer holding errors or no `member` is `NOT_SERVED`."""
+    the platform's answer holding errors or no `member` is `NOT_SERVED`, and so is a product of a shop that may show
+    the page in another currency than the answer's: a detail page is read for its price, which the page states."""
     manifest = result.bundle.manifest
     if manifest.status_code == 0 or _transient(manifest.status_code):
         return result
@@ -207,7 +232,10 @@ def _verdict(result: FetchResult, member: str) -> FetchResult:
         return result
     # `fetch_json` checked that an `ok` body is JSON (RFC 8259); GraphQL answers with an object.
     answer = json.loads(result.bundle.body)
-    if not isinstance(answer, dict) or answer.get("errors"):
-        return as_error(result, NOT_SERVED)
-    data = answer.get("data")
-    return result if isinstance(data, dict) and isinstance(data.get(member), dict) else as_error(result, NOT_SERVED)
+    served = (
+        isinstance(answer, dict)
+        and not answer.get("errors")
+        and isinstance(_member(answer.get("data"), member), dict)
+        and (page_kind == "listing" or _one_currency(answer))
+    )
+    return result if served else as_error(result, NOT_SERVED)

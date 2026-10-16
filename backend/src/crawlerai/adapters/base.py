@@ -79,6 +79,6 @@ class Adapter(Protocol):
         that does not serve the page is an `error` outcome with reason `NOT_PLATFORM` or `NOT_SERVED`."""
         ...
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
-        """The root nodes of the API's JSON for a page of `page_kind`."""
+    def shapes(self, page_kind: PageKind, answer: JsonValue, /) -> tuple[Shape, ...]:
+        """The root nodes of `answer`, the API's JSON for a page of `page_kind`."""
         ...

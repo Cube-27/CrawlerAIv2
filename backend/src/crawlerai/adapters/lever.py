@@ -11,6 +11,8 @@ from dataclasses import replace
 from typing import Final
 from urllib.parse import parse_qs, quote, urlsplit
 
+from pydantic import JsonValue
+
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
@@ -67,7 +69,7 @@ class Lever:
         endpoint += "?mode=json" if match.item is None else f"/{quote(match.item, safe='')}"
         return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return _SHAPES[page_kind]
 
 

@@ -434,7 +434,7 @@ class FakeAdapter:
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         raise AssertionError("extraction fetches nothing")
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return (Shape(type="JobPosting", properties={"title": ("title",)}),)
 
 
