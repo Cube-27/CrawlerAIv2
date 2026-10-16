@@ -106,7 +106,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Collect: the main image is still the first shown image of the main region; on pages whose structured data names an image, measure whether a `dom` image that disagrees costs precision (D-1023) [#217].
 - Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
 - Shopify adapter: a collection over 250 products stops at 250 (one of four measured collections reached it); measure on dev before adding cursor paging (SPEC-15 §9) [#219].
-- Shopify adapter: on detail pages the generic path publishes page-only fields the API does not state (brand, rating, review count, condition); compare both paths on dev labels before turning the adapter on for detail pages (D-1088) [#219].
+- Shopify adapter: on detail pages the generic path publishes page-only fields the API does not state (rating, review count, condition); compare both paths on dev labels before turning the adapter on for detail pages (D-1088) [#219].
 - Shopify adapter: locale-prefixed URLs are open (SPEC-15 §9) [#219].
 - Shopify adapter: a product page of a shop with several presentment currencies sends one API request, then falls back, every time; remember it per host if such shops are common (D-1114) [#221].
 - Shopify adapter: `Shopify._transient` (429, 5xx) and `llm.client.is_transient` (adds 408) are two transient-status rules; share one in `acquire/politeness` if a third appears [#221].

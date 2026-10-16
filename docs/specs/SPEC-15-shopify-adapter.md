@@ -193,8 +193,8 @@ of every variant; different ones are a range, and no single row price is chosen.
 declined for the host), its `fetch(url, policy, send)` goes first. Its result is kept when it is `ok`, or when
 `admit_next` refuses a further request. Otherwise the page is fetched by the page rungs (HTTP, browser) as if there
 were no adapter, after `admit_next`, and the result lists both attempts. A slow-down (429/503) of the endpoint falls
-back too: its `Retry-After` pauses the endpoint host's rate (at most the longest backoff, SPEC-02 §4.6), and the
-page, a request of its own, waits that out through `admit_next` (§4.9). A site's API recipe is not tried after an
+back too: its `Retry-After`, else the first backoff, pauses the endpoint host's rate (at most the longest backoff,
+SPEC-02 §4.6), and the page, a request of its own, waits that out through `admit_next` (§4.9). A site's API recipe is not tried after an
 adapter. `send` is the JSON fetch adapters use; without it no adapter runs.
 
 `send` in the services (`services.fetching.adapter_send`): the endpoint is fetched only where its host's robots.txt
