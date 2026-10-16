@@ -112,9 +112,6 @@ class _Node:
     def values(self, prop: str) -> Sequence[Value]:
         return [self._value(p) for p in self.item.properties if prop in p.names]
 
-    def every_value(self, prop: str) -> Sequence[Value]:
-        return self.values(prop)
-
     def _value(self, prop: _Property) -> Value:
         locator = f"microdata:{prop.element.xpath}"
         nested = self.document.items.get(prop.element.xpath)

@@ -47,15 +47,19 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Lamps</title></head>
 ANSWER = {
     "data": {
         "shop": {"paymentSettings": {"enabledPresentmentCurrencies": ["EUR"]}},
-        "product": {
-            "id": "gid://shopify/Product/1",
-            "title": "Desk Lamp",
-            "variants": {
+        "collection": {
+            "products": {
                 "nodes": [
-                    {"id": "v1", "sku": "L-1", "price": {"amount": "19.50", "currencyCode": "EUR"}},
-                    {"id": "v2", "sku": "L-2", "price": {"amount": "19.50", "currencyCode": "EUR"}},
+                    {
+                        "id": "gid://shopify/Product/1",
+                        "title": "Desk Lamp",
+                        "priceRange": {
+                            "minVariantPrice": {"amount": "19.50", "currencyCode": "EUR"},
+                            "maxVariantPrice": {"amount": "19.50", "currencyCode": "EUR"},
+                        },
+                    }
                 ]
-            },
+            }
         },
     }
 }
@@ -106,7 +110,7 @@ def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
 
 @pytest.fixture
 def fetching(web: Web, tmp_path: Path) -> Fetching:
-    rungs = Rungs(http=web.http, browser=web.browser, adapters=adapter_registry(("shopify",)), json=web.json)
+    rungs = Rungs(http=web.http, browser=web.browser, adapters=adapter_registry(()), json=web.json)
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
 
 
@@ -117,21 +121,21 @@ def data(engine_data: EngineData, fetching: Fetching) -> EngineData:
 
 @pytest.fixture
 async def lamp_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    document = {"name": schema_name, "page_kind": "listing", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
 
 def _scrape(url: str, schema: SchemaDef) -> ScrapeRequest:
     return ScrapeRequest.model_validate(
-        {"url": url, "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "detail"}
+        {"url": url, "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
     )
 
 
-async def test_a_scrape_of_a_storefront_product_is_served_over_the_platform_api(
+async def test_a_scrape_of_a_storefront_collection_is_served_over_the_platform_api(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
-    url = f"{own_origin}/products/desk-lamp"
+    url = f"{own_origin}/collections/lamps"
     web.pages[url] = PAGE
 
     result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
@@ -143,7 +147,7 @@ async def test_a_scrape_of_a_storefront_product_is_served_over_the_platform_api(
     (record,) = result.records
     title, price = record.fields["title"], record.fields["price"]
     assert (title.value, title.source_kind, title.evidence) == ("Desk Lamp", "adapter", "adapter")
-    assert title.locator == "adapter:shopify:$['data']['product']['title']"
+    assert title.locator == "adapter:shopify:$['data']['collection']['products']['nodes'][0]['title']"
     assert price.value == {"amount": "19.50", "currency": "EUR"}
 
 
@@ -151,7 +155,7 @@ async def test_a_page_of_a_host_that_is_not_the_platform_is_fetched_as_a_page_an
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
     # INV-40.
-    url = f"{own_origin}/products/desk-lamp"
+    url = f"{own_origin}/collections/lamps"
     web.pages[url] = PAGE
     web.platform = False
 
@@ -176,7 +180,7 @@ async def test_an_endpoint_that_cannot_answer_now_leaves_the_page_to_the_page_ru
     status: int,
 ) -> None:
     # SPEC-15 §4.9: a slow-down or a server error says nothing of the platform; the page falls back on its turn.
-    url = f"{own_origin}/products/desk-lamp"
+    url = f"{own_origin}/collections/lamps"
     web.pages[url] = PAGE
     web.status = status
 
@@ -197,7 +201,7 @@ async def test_an_endpoint_that_cannot_answer_now_leaves_the_page_to_the_page_ru
 async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is_fetched(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
-    url = f"{own_origin}/products/desk-lamp"
+    url = f"{own_origin}/collections/lamps"
     web.pages[url] = PAGE
     web.pages[f"{own_origin}/robots.txt"] = b"User-agent: *\nDisallow: /api/\n"
 
@@ -224,7 +228,7 @@ async def _run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, jo
     await loop
 
 
-async def test_a_batch_task_of_a_storefront_product_is_served_over_the_platform_api(
+async def test_a_batch_task_of_a_storefront_collection_is_served_over_the_platform_api(
     engine: AsyncEngine,
     fetching: Fetching,
     web: Web,
@@ -233,10 +237,10 @@ async def test_a_batch_task_of_a_storefront_product_is_served_over_the_platform_
     lamp_schema: SchemaDef,
     data: EngineData,
 ) -> None:
-    url = f"{own_origin}/products/desk-lamp"
+    url = f"{own_origin}/collections/lamps"
     web.pages[url] = PAGE
     request = BatchScrapeRequest.model_validate(
-        {"urls": [url], "formats": ["records"], "schema": {"id": str(lamp_schema.id)}, "page_kind": "detail"}
+        {"urls": [url], "formats": ["records"], "schema": {"id": str(lamp_schema.id)}, "page_kind": "listing"}
     )
     submitted = await submit_batch(engine, fetching.connector, request, data=data)
 

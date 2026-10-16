@@ -54,10 +54,15 @@ class Rungs:
     json: JsonFetcher | None = None
 
 
-def adapter_registry(active: Collection[str]) -> Registry:
-    """The registry of every platform adapter with `active` running (SPEC-15 §4.8), for the processes that fetch; it
-    raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters declined."""
-    return Registry(platform_adapters(), active)
+def adapter_registry(disabled: Collection[str]) -> Registry:
+    """The registry of every platform adapter, all running but the `disabled` ones (SPEC-15 §4.8), for the processes
+    that fetch; it raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters
+    declined."""
+    adapters = platform_adapters()
+    names = {adapter.name for adapter in adapters}
+    if unknown := sorted(set(disabled) - names):
+        raise ValueError(f"no adapter named {unknown}")
+    return Registry(adapters, names - set(disabled))
 
 
 async def acquire(

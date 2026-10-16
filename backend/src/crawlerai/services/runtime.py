@@ -56,7 +56,9 @@ def fetching_from_settings(settings: Settings) -> Fetching:
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
     )
     json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
-    rungs = Rungs(http=http, browser=browser, adapters=adapter_registry(settings.adapters), conditional=http, json=json)
+    rungs = Rungs(
+        http=http, browser=browser, adapters=adapter_registry(settings.disabled_adapters), conditional=http, json=json
+    )
     return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
 
 

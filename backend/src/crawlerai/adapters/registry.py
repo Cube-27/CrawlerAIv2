@@ -1,7 +1,7 @@
 """Which adapter, if any, serves a URL or reads a capture (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.7).
 
-An adapter ships inactive until the eval report shows it measured on ≥ 3 tenants not used to build it (C6, D-0011),
-so the registry answers only for the adapters named active.
+Every registered adapter is active unless the deployment disables it (`CRAWLERAI_DISABLED_ADAPTERS`, owner 2026-10-16);
+the registry answers only for the active ones.
 
 A platform on tenants' own hosts (SPEC-15) can only tell a host is not its own from the host's answer. A host that
 answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a

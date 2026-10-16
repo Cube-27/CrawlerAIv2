@@ -7,7 +7,6 @@ no hostname or tenant is written here (C3, C9).
 """
 
 import json
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Shape
+from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Shape
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 from crawlerai.collect.adapter import AdapterCollector
@@ -323,44 +322,10 @@ def test_fields_of_several_types_are_read_from_nested_nodes_each_owned_by_its_no
     }
 
 
-def test_a_property_with_a_stated_main_value_gives_a_list_field_every_value_and_others_the_main_one() -> None:
-    product = Shape(
-        type="Product",
-        properties={"image": ("main", "url")},
-        every={"image": ("all", ALL, "url")},
-    )
-    body = json.dumps(
-        {
-            "main": {"url": "https://a.example.test/1.png"},
-            "all": [{"url": f"https://a.example.test/{n}.png"} for n in (1, 2)],
-        }
-    )
-    preset = _preset("commerce_detail")
-    schema = _schema(
-        "detail", image_url=preset.fields["image_url"], additional_images=preset.fields["additional_images"]
-    )
-
-    result = _collect(_StandIn(product), "detail", body, schema)
-
-    assert _values(result) == {
-        ("adapter:stand-in:$", "image_url"): ("https://a.example.test/1.png", "adapter:stand-in:$['main']['url']"),
-        ("adapter:stand-in:$", "additional_images"): (
-            ["https://a.example.test/1.png", "https://a.example.test/2.png"],
-            "adapter:stand-in:$['all'][0]['url']",
-        ),
-    }
-
-
-def _in_stock(data: Mapping[str, JsonValue]) -> tuple[JsonValue, Members] | None:
-    return ("https://schema.org/InStock", ("available",)) if data.get("available") is True else None
-
-
 def test_an_anchored_node_is_an_entity_of_its_own_on_its_enclosing_object() -> None:
-    offer = Shape(
-        type="Offer", properties={"price": ("amount",)}, stated={"availability": _in_stock}, anchor=("amount",)
-    )
+    offer = Shape(type="Offer", properties={"price": ("amount",), "priceCurrency": ("currency",)}, anchor=("amount",))
     product = Shape(type="Product", properties={"name": ("title",)}, nodes={"offers": (offer,)})
-    body = json.dumps({"title": "Widget", "amount": "9.50", "available": True})
+    body = json.dumps({"title": "Widget", "amount": "9.50", "currency": "EUR"})
 
     result = _collect(_StandIn(product), "detail", body, _preset("commerce_detail"))
 
@@ -368,7 +333,7 @@ def test_an_anchored_node_is_an_entity_of_its_own_on_its_enclosing_object() -> N
         ("adapter:stand-in:$", None),
         ("adapter:stand-in:$['amount']", "adapter:stand-in:$"),
     ]
-    assert _values(result)[("adapter:stand-in:$['amount']", "availability")] == (
-        "https://schema.org/InStock",
-        "adapter:stand-in:$['available']",
+    assert _values(result)[("adapter:stand-in:$['amount']", "price")] == (
+        {"price": "9.50", "priceCurrency": "EUR"},
+        "adapter:stand-in:$['amount']",
     )
