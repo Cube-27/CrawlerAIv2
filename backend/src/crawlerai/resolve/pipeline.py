@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
+from crawlerai.collect.item_links import row_links
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls
 from crawlerai.content.context import page_context
@@ -414,11 +415,13 @@ class _Listing:
 
     def with_reply(self, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
         """The listing with role C's rows: each row entity joins the graph and resolves its row fields from the
-        candidates, and the page fields resolve again with the reply's."""
+        candidates, with the item URLs of their repeated item blocks (`row_links`, §8.6), and the page fields resolve
+        again with the reply's."""
         page = self.page
         graph = EntityGraph.of((*page.graph.entities.values(), *reply.rows), page.data.vocabulary)
         page = replace(page, graph=graph)
-        candidates = (*self.candidates, *reply.candidates)
+        links = row_links(page.page, page.schema, page.ctx, reply.rows, reply.candidates)
+        candidates = (*self.candidates, *reply.candidates, *links)
         fields, rows = page.resolve_listing(candidates, reply.rows)
         if reply.failure is not None:
             fields = _unanswered(fields, asked, reply.failure)

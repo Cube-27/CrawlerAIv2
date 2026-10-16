@@ -6,6 +6,7 @@ Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic
 import asyncio
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -710,3 +711,26 @@ def test_a_listings_confidence_is_its_least_confident_rows(url_n: int, expected:
     data = EngineData(VOCABULARY, DATA.orders, calibration)
     result = _listing(_html(_item_list(_row(1), _row(2))), data=data)
     assert result.record_confidence == expected
+
+
+def _card(n: int, *links: str) -> str:
+    anchors = "".join(f'<a href="{href}">Widget {n}</a>' for href in links)
+    return f'<li class="card"><h3>{anchors or f"Widget {n}"}</h3><span>{n}.50 EUR</span></li>'
+
+
+def test_a_role_c_row_takes_the_item_url_of_the_one_repeated_item_block_holding_its_title() -> None:
+    # ARCHITECTURE §8.6, D-1024 (a): the block's own link, as a `dom` candidate; role C's ungrounded url stays out.
+    cards = "".join(_card(n, f"/p/{n}", f"/p/{n}#reviews") for n in (1, 2, 3))
+    reply = replace(ROWS_REPLY, candidates=ROWS_REPLY.candidates[:1] + ROWS_REPLY.candidates[2:])
+
+    result = _listing(_html(body=f"<ul>{cards}</ul>"), role_c=FakeRoleC(listing_reply=reply), data=COMMITTED)
+
+    assert _row_values(result) == [
+        {"title": "Widget 1", "url": "https://shop.example.test/p/1"},
+        {"title": "Widget 2", "url": "https://shop.example.test/p/2"},
+    ]
+    assert [(row["url"].source_kind, row["url"].locator) for row in result.rows] == [
+        ("dom", "dom:/html[1]/body[1]/ul[1]/li[1]/h3[1]/a[1]"),
+        ("dom", "dom:/html[1]/body[1]/ul[1]/li[2]/h3[1]/a[1]"),
+    ]
+    assert result.outcome == "extracted"
