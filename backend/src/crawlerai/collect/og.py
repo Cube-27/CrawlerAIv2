@@ -5,15 +5,21 @@ OpenGraph names no entity types, so every value describes the page's one object:
 its type and the one schema.org property its `schema_org` path names on the root type (`Product.name` has the role
 `name`; `Product.brand.name` names the brand's name, not the object's, so it has none). The table is justified by the
 OGP specification (C2), not by any page.
+
+OGP's basic metadata (`og:title`, `og:image`, `og:url`) describes one object. Client-rendered pages often keep the
+site's own defaults there: an `og:title` that names the site (`site_names`) says the object is the site, so its
+`og:title` and `og:image` are not the entity's. A title that ends in separator segments naming the site is read
+without them.
 """
 
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
 from crawlerai.collect.schema_org_map import parse_paths
+from crawlerai.collect.site_names import SiteNames
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
@@ -32,30 +38,39 @@ class _Row:
 
 
 _OG_URL = "og:url"
+_TITLE = "og:title"
+_IMAGES = ("og:image", "og:image:url")
 # Open Graph protocol, "Basic Metadata": `og:title` is the object's title, `og:image` its image, `og:url` its
 # canonical URL; "Structured Properties": `og:image:url` is identical to `og:image`. The OGP `product` namespace:
 # `product:availability` is the item's availability. `product:price:*` is the money row, read by `_price`.
 _TABLE = (
-    _Row(("og:title",), FieldType.TEXT, "name"),
-    _Row(("og:image", "og:image:url"), FieldType.IMAGE_URL, "image"),
+    _Row((_TITLE,), FieldType.TEXT, "name"),
+    _Row(_IMAGES, FieldType.IMAGE_URL, "image"),
     _Row((_OG_URL,), FieldType.URL, "url"),
     _Row(("product:availability",), FieldType.ENUM, "availability"),
 )
 # OGP `product` namespace: `product:price:amount` is the price and `product:price:currency` its ISO 4217 code.
 _AMOUNT, _CURRENCY = "product:price:amount", "product:price:currency"
-_READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY}
+# OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
+_SITE_NAME = "og:site_name"
+_READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY, _SITE_NAME}
+SITE_TITLE = "og: og:title names the site, so og:title and og:image are not read"
 
 
 @dataclass(frozen=True, slots=True)
 class _Meta:
+    """One OGP property; `reading` is the content as a field reads it (a title without its site segments)."""
+
     property: str
     content: str
+    reading: str
 
 
 @dataclass(frozen=True, slots=True)
 class _Value:
     raw: JsonValue
     locator: str
+    reading: JsonValue  # what is normalized: `raw`, or a title without its site segments
 
 
 class OpenGraphCollector:
@@ -63,9 +78,10 @@ class OpenGraphCollector:
         metas = _metas(page)
         if not metas:
             return CollectResult(entities=(), candidates=())
+        metas, diagnostics = _without_site_values(metas, ctx)
         candidates = tuple(_candidates(metas, schema, ctx))
         entity = Entity(id=PAGE, kind=PAGE, urls=_urls(metas, ctx), parent=None)
-        return CollectResult(entities=(entity,), candidates=candidates)
+        return CollectResult(entities=(entity,), candidates=candidates, diagnostics=diagnostics)
 
 
 def price_currencies(page: ParsedPage) -> list[str]:
@@ -83,8 +99,18 @@ def _metas(page: ParsedPage) -> list[_Meta]:
         key = attributes.get("property") or attributes.get("name")
         content = attributes.get("content")
         if key in _READ and content is not None:
-            metas.append(_Meta(key, content))
+            metas.append(_Meta(key, content, content))
     return metas
+
+
+def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta], tuple[str, ...]]:
+    """The metas the fields read: without `og:title` and `og:image` when the (first) title names the site, else with
+    each title read without its trailing site segments."""
+    site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
+    title = next((m.content for m in metas if m.property == _TITLE), None)
+    if title is not None and site.names(title):
+        return [m for m in metas if m.property not in (_TITLE, *_IMAGES)], (SITE_TITLE,)
+    return [replace(m, reading=site.strip(m.content)) if m.property == _TITLE else m for m in metas], ()
 
 
 def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iterator[Candidate]:
@@ -95,7 +121,7 @@ def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iter
                 entity_id=PAGE,
                 source_kind="og",
                 raw=found.raw,
-                normalized=normalize(found.raw, spec, ctx),
+                normalized=normalize(found.reading, spec, ctx),
                 locator=found.locator,
                 independent=True,
             )
@@ -131,7 +157,8 @@ def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:
     if not found:
         return None
     raw: JsonValue = [m.content for m in found] if as_list else found[0].content
-    return _Value(raw, f"meta:{found[0].property}")
+    reading: JsonValue = [m.reading for m in found] if as_list else found[0].reading
+    return _Value(raw, f"meta:{found[0].property}", reading)
 
 
 def _price(metas: Sequence[_Meta]) -> _Value | None:
@@ -143,7 +170,7 @@ def _price(metas: Sequence[_Meta]) -> _Value | None:
     raw: dict[str, JsonValue] = {"amount": amounts[0]}
     if currencies := [m.content for m in metas if m.property == _CURRENCY]:
         raw["currency"] = currencies[0]
-    return _Value(raw, f"meta:{_AMOUNT}")
+    return _Value(raw, f"meta:{_AMOUNT}", raw)
 
 
 def _urls(metas: Sequence[_Meta], ctx: Context) -> tuple[str, ...]:

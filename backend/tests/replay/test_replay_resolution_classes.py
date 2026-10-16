@@ -74,3 +74,31 @@ def test_state_admission_stays_linear_in_values_and_anchors() -> None:
 
     assert _outcomes(result, "title") == {"title": ("published", None, "Synthetic Widget")}
     assert elapsed < 20
+
+
+def _og(*metas: tuple[str, str]) -> str:
+    return "".join(f'<meta property="{p}" content="{c}">' for p, c in metas)
+
+
+def test_site_wide_og_values_on_a_client_rendered_page_do_not_publish() -> None:
+    # The page names its product only in rendered text; its og block is the site's default.
+    head = _og(
+        ("og:site_name", "Synthetic Tools - Workshop"),
+        ("og:title", "Synthetic Tools"),
+        ("og:image", "https://shop.example.test/banner.png"),
+        ("og:url", PAGE_URL),
+    )
+
+    result = _extract(head, "<h1>Widget One</h1>")
+
+    assert _outcomes(result, "title", "image_url", "url") == {
+        "title": ("missing", "no_candidates", None),
+        "image_url": ("missing", "no_candidates", None),
+        "url": ("published", None, PAGE_URL),
+    }
+
+
+def test_an_og_title_publishes_without_its_site_segment() -> None:
+    result = _extract(_og(("og:title", "Widget One | green | Example Store")))
+
+    assert _outcomes(result, "title") == {"title": ("published", None, "Widget One | green")}

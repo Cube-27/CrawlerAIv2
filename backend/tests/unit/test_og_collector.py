@@ -204,3 +204,60 @@ def test_alternatives_have_a_role_only_when_each_names_the_same_property_of_its_
 
     found = _collect(("og:image", "https://shop.example.test/a.png"), schema=schema).candidates
     assert [c.field for c in found] == ["image"]
+
+
+def test_an_og_title_naming_the_site_is_no_entity_value() -> None:
+    # OGP: `og:site_name` is the name of the overall site. An `og:title` equal to it (or to a separator run of it)
+    # describes the site, and so does the `og:image` beside it; `og:url` still names the page.
+    for site_name in ("Synthetic Tools", "Synthetic Tools - Workshop", "SYNTHETIC tools"):
+        result = _collect(
+            ("og:site_name", site_name),
+            ("og:title", "Synthetic Tools"),
+            ("og:image", "https://shop.example.test/banner.png"),
+            ("og:url", PAGE_URL),
+        )
+
+        assert [c.field for c in result.candidates] == ["url"]
+        assert result.diagnostics == ("og: og:title names the site, so og:title and og:image are not read",)
+
+
+def test_an_og_title_equal_to_the_host_s_registrable_label_is_no_entity_value() -> None:
+    # The page is on `shop.example.test`: its registrable domain (Public Suffix List) is `example.test`.
+    result = _collect(("og:title", "Example"), ("og:image", "https://shop.example.test/banner.png"))
+
+    assert result.candidates == ()
+
+
+def test_an_og_title_that_only_contains_the_site_name_stays() -> None:
+    result = _collect(("og:site_name", "Synthetic Tools"), ("og:title", "Synthetic Tools Hammer"))
+
+    assert result.candidates == (_og("title", "Synthetic Tools Hammer", Ok("Synthetic Tools Hammer"), "meta:og:title"),)
+
+
+def test_a_trailing_separator_segment_naming_the_site_is_stripped() -> None:
+    # The raw value stays as the page writes it; the normalized value is the title without the site's segment.
+    cases = [
+        ("Widget One | Synthetic Tools", "Synthetic Tools", "Widget One"),
+        ("Widget One - Blue — Synthetic Tools", "Synthetic Tools", "Widget One - Blue"),
+        ("Widget One · Example Store", None, "Widget One"),
+        ("Widget One | green | EXAMPLE", None, "Widget One | green"),
+        ("Widget One | Tools | Synthetic", "Synthetic Tools - Synthetic", "Widget One | Tools"),
+    ]
+    for title, site_name, expected in cases:
+        metas = [("og:title", title)] + ([("og:site_name", site_name)] if site_name else [])
+
+        result = _collect(*metas)
+
+        assert result.candidates == (_og("title", title, Ok(expected), "meta:og:title"),), title
+
+
+def test_a_title_without_a_trailing_site_segment_keeps_every_part() -> None:
+    for title in (
+        "Synthetic Tools | Widget One",  # a leading site segment is not stripped
+        "Widget One: Synthetic Tools",  # a colon after a word is not a separator
+        "Widget One-Synthetic Tools",  # nor a hyphen inside a word
+        "Widget One | Synthetic Toolshed",
+    ):
+        result = _collect(("og:title", title), ("og:site_name", "Synthetic Tools"))
+
+        assert result.candidates == (_og("title", title, Ok(title), "meta:og:title"),), title
