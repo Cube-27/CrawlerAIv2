@@ -184,12 +184,13 @@
     border-radius: calc(var(--radius) * 1.5);
   }
 
-  /* Table cells keep clear of the table's edges and of each other (DESIGN.md, Spacing). */
+  /* Table cells keep clear of the table's edges and of each other (DESIGN.md, Spacing); at phone width the columns
+   * need the room more than the cells do. */
   .table__column {
-    @apply px-cell-x;
+    @apply px-3 sm:px-cell-x;
   }
   .table__cell {
-    @apply px-cell-x py-cell-y;
+    @apply px-3 py-cell-y sm:px-cell-x;
   }
 
   /* A side drawer (DESIGN.md, Side drawer): wide enough for its content, with the panel's padding. At phone width it
