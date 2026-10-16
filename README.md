@@ -72,7 +72,8 @@ the API on port 8000 (`GET /healthz`). The frontend runs separately: `cd fronten
 The UI never asks for an API key: `pnpm dev` attaches `CRAWLERAI_UI_API_KEY` from `.env` to its API requests, so set
 it to a key from `cd backend && uv run crawlerai apikey create --label ui` first.
 To run everything at once (API, worker, scheduler and the frontend on http://localhost:5173, in one terminal; Ctrl+C
-stops all of them), use `make up` instead.
+stops all of them), use `make up` instead. It also creates the UI key and writes it to `.env` when that key is unset
+or no longer in the database (after the database is recreated).
 Every other command, including the checks CI runs, is in [CLAUDE.md §7](CLAUDE.md#7-commands).
 
 ## Repository layout
