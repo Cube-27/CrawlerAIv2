@@ -15,8 +15,8 @@ availability. Core resolves one price and one availability per page, so a page w
 2. row resolution: rows found from the target entity, matched across sources by a declared key, each sub-field
    resolved by the §10 rules inside its row, with provenance per sub-field;
 3. preset `commerce_detail` with an optional `variants` field;
-4. a selected-variant rule for the single `price`, `availability`, `sku` and `gtin`: a variant is selected when the
-   request, final or canonical URL names exactly one variant entity by its own URL;
+4. a common-value rule for the single `price`, `availability`, `sku` and `gtin`: they publish only a value every
+   variant shares, and what varies is published only in `variants` (owner, 2026-10-16; Appendix A #44);
 5. the label format and eval scoring for row-valued fields.
 
 Only the structured collectors (JSON-LD, microdata/RDFa Lite) produce rows in this version. Learning, role C,
@@ -45,7 +45,7 @@ Core (admitted by the owner, Appendix A #37):
   sub-field.
 - `FieldOutcome.items` and `record.field_meta.<field>.items`; the records API shape (additive).
 - Preset `commerce_detail`: `variants`, optional.
-- Selected variant for top-level offer fields, and variant fill for empty top-level fields.
+- Common values for top-level offer fields, and variant fill for empty top-level identifier fields.
 - Role C and learning skip row-mapped fields (stated limits, §4.9).
 - Label format extension and eval scoring for row-valued fields (code and synthetic tests; no labels).
 
@@ -58,7 +58,8 @@ Out of scope:
 - Currency conversion. Stock quantities (`inventoryLevel`) and availability read from page text are SPEC-04's
   (rows 10–11, D-0782); `stock_quantity` is a sub-field of each row (§4.7).
 - The labeling screen's row editor and a variants table in the records screen (§9).
-- Any default variant other than the one the URLs name. schema.org has no "default variant" property.
+- Any default variant, including one a page URL names (owner, 2026-10-16). schema.org has no "default variant"
+  property.
 
 ## 3. Dependencies
 
@@ -198,30 +199,24 @@ Each cluster is resolved like an entity, by the existing `Resolver` stages, with
   else `missing` with the furthest reason reached (`no_rows`, `no_row_key`, `row_key_conflict`,
   `key_unpublished`).
 
-### 4.6 Selected variant and the single offer fields (§10 atomic offers)
+### 4.6 Common values and the single offer fields (§10 atomic offers)
 
-`price`, `availability`, `sku` and `gtin` keep their meaning: the selected or default variant. This rule does not
-depend on whether the schema has a `variants` field.
+Owner, 2026-10-16 (Appendix A #44, D-0945): "no default — all variant schema goes into variants and common schema
+stays out of variants, simple." `price`, `availability`, `stock_quantity`, `sku` and `gtin` at the top level mean the
+product's value when every variant has the same one. A value that varies across variants is published only in the
+row-mapped `variants` field (§4.5). This rule does not depend on whether the schema has a `variants` field.
 
-- **Variant holders** of the target: its `hasVariant` members (step A) and the Offers directly under it.
-- `select_variant(request_url, final_url, canonical_url, graph, target) -> Entity | None`, in `resolve/intent.py`:
-  the one holder whose own `urls` (its `url`, its IRI, its `mainEntityOfPage`, its offers' `url`; SPEC-05 §4.2)
-  contain any page URL, when exactly one holder does. This is `select_target`'s URL-identity test applied to
-  variants. It compares whole canonicalized URLs, and never reads a query parameter's value (§8.2 rule 4, INV-13).
-  Variants that repeat the group URL all match the canonical URL, so none is selected.
-- **With a selected holder**: the top-level offer fields come only from the selected holder's Offers (the selected
-  Offer, or the selected variant's Offers). Other holders' Offer candidates are rejected `other_variant`. INV-15
-  holds inside the selected holder.
-- **Without one**: unchanged. Every Offer of the target and of its variants joins the atomic-offer rule, so the
-  fields publish only when all agree, else `conflict` (`offers_disagree`).
+- **Offer fields.** Every Offer of the target and of its `hasVariant` members joins the atomic-offer rule (SPEC-05
+  §4.8), so the fields publish only when all agree, else `conflict` (`offers_disagree`). No variant is selected:
+  a request, final or canonical URL that names one variant does not make its Offer the source. A product with a
+  single variant (or a single Offer) publishes its values at the top level.
 - **Variant fill** applies to the identifier fields only: a top-level `sku` or `gtin` field (type `identifier`)
-  for which the target itself has no owned candidate takes the selected variant's candidates. With no selected
-  variant, it takes the variants' candidates only when every variant has one and all agree. No other top-level
-  field is filled (`name`, `brand`, `image_url`, `url` stay the target's own), and a value the target states itself
-  is never replaced. This refines D-0785: a variant's sku is published as the page's sku only when the URLs select
-  that variant, or when all variants agree.
-- **Default variant.** The page URL with no variant named selects nothing. Choosing the first or the cheapest
-  variant would be a guess (C7).
+  for which the target itself has no owned candidate takes its variants' candidates only when every variant has
+  one and all agree. No other top-level field is filled (`name`, `brand`, `image_url`, `url`, `color` stay the
+  target's own), and a value the target states itself is never replaced. This refines D-0785: a variant's sku is
+  published as the page's sku only when all variants agree.
+- **Superseded (2026-10-16).** The earlier selected-variant rule (`select_variant`, the `other_variant` rejection:
+  a URL naming exactly one variant made it the source of the offer fields) is removed. A page URL is no default.
 
 ### 4.7 Preset `commerce_detail`: `variants`
 
@@ -316,8 +311,8 @@ not scored):
 - Reported per `(split, list.<type>)`, per `(split, schema, field.sub)`, and per `(split, list.<type>, evidence)`
   for calibration, plus row precision (matched engine rows / engine rows) and row recall (matched label rows /
   label rows). Hidden and fresh cells follow §16.3 suppression.
-- `variants` is optional, so the precision gate on required field types does not cover it. The selected-variant
-  rule (§4.6) changes required `price` and `availability` and is gated as usual.
+- `variants` is optional, so the precision gate on required field types does not cover it. The common-value rule
+  (§4.6) governs required `price` and `availability` and is gated as usual.
 
 ### 4.11 Error handling
 
@@ -334,8 +329,12 @@ New (appended to `docs/INVARIANTS.md`):
 - **INV-34**: Every sub-field outcome of a published row carries status and reason. Every published sub-field
   carries `evidence`, `confidence`, `calibrated`, `source_kind` and `locator` (INV-22 per row).
 - **INV-35**: A variant row's price, currency and availability come from one Offer in that row (INV-15 per row).
-- **INV-36**: A detail page's top-level offer fields come from a single variant only when the request, final or
-  canonical URL names exactly that variant by its own URL. Otherwise they publish only when every Offer agrees.
+- **INV-36** (superseded by INV-38, 2026-10-16): A detail page's top-level offer fields come from a single variant
+  only when the request, final or canonical URL names exactly that variant by its own URL. Otherwise they publish
+  only when every Offer agrees.
+- **INV-38**: A detail page's top-level offer fields, and a top-level `sku` or `gtin` filled from its variants,
+  publish only a value every Offer (or every variant) states alike; no variant is a default, whatever a page URL
+  names. Values that vary publish only in the row-mapped `variants` field.
 
 Existing invariants that apply: INV-13, INV-14, INV-15, INV-22, INV-27.
 
@@ -352,9 +351,9 @@ platform.
 - **Unit**: each §4.3 shape (hasVariant with Offers; one Offer per variant; AggregateOffer with offers; an
   AggregateOffer alone gives no row); one Offer per variant whose Offers carry only a url (each Offer is a row);
   a ProductGroup with both direct Offers and `hasVariant` rows (matched by key); variants repeating the group URL
-  (not a key value; no selection); a selected
-  variant by request URL; canonical-only match of all variants (no selection); variant fill does not replace the
-  group's own value; `_gaps` never asks role C for a row-mapped field; learning reports `not_learned: row_field`.
+  (not a key value); a request URL naming one variant selects nothing (the offer fields stay `offers_disagree`
+  when the variants differ); a price every variant shares publishes; variant fill does not replace the group's own
+  value; `_gaps` never asks role C for a row-mapped field; learning reports `not_learned: row_field`.
 - **Replay** (SPEC-03): dev captures before and after each PR. PR 1 must give identical records for presets v1/v2.
   PRs 2–3 report the differences.
 
@@ -362,9 +361,10 @@ platform.
 
 - Preset `commerce_detail` v3 loads. On synthetic fixtures of each §4.3 shape, `variants` publishes one row per
   variant with per-sub-field meta, in JSON-LD and microdata alike.
-- On a synthetic page where the variants' Offers disagree and the request URL names one variant, `price` and
-  `availability` publish from that variant; without a naming URL they stay `conflict` (`offers_disagree`).
-- INV-33–INV-36 each have a test that fails when the rule is removed.
+- On a synthetic page where the variants' Offers disagree, `price` and `availability` stay `conflict`
+  (`offers_disagree`) whether or not the request URL names one variant, and each variant's price is in its
+  `variants` row; where every variant agrees, the value publishes at the top level.
+- INV-33–INV-35 and INV-38 each have a test that fails when the rule is removed.
 - The eval computes per-sub-field and row metrics from synthetic labels in `label_version` 2.
 - **Milestone M (not required to mark this spec done):** variant labels on dev; precision per `list.<type>` and
   row recall reported.
@@ -392,8 +392,8 @@ PR 2 depends on PR 1. PR 3 depends only on step A (#168) and can run beside PR 2
 - **Attributes outside the four.** A variant that differs by a property `variesBy` names other than size, color,
   material or pattern reaches the record only through `name`. An open attribute map is not a §5.1 type, and adding
   one would be a new type (C8) for a schema that needs it.
-- **Top-level `sku`/`gtin` from the selected Offer.** In the one-Offer-per-variant shape, the top-level `sku` path
-  stays `Product.sku`, so the selected Offer's own `sku` is not read. Adding `|Offer.sku` to the top-level paths is
+- **Top-level `sku`/`gtin` from Offers.** In the one-Offer-per-variant shape, the top-level `sku` path stays
+  `Product.sku`, so an `sku` every Offer shares is not read. Adding `|Offer.sku` to the top-level paths is
   a preset change to measure on dev first.
 - **Field-level evidence for mixed sources.** §4.5 defines field-level `evidence` for the two buckets structured
   sources give. A later source of rows (config, role C) needs a rule.

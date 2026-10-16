@@ -65,7 +65,8 @@ Out of scope:
 
 RFC 9457 `application/problem+json`: `{type, title, status, detail, instance, errors?: [{field, reason}]}`.
 Problem types: `validation`, `unauthorized`, `rate_limited`, `not_found`, `timeout`, `fetch_failed`,
-`budget_exhausted`, `ssrf_rejected`.
+`budget_exhausted`, `ssrf_rejected`; for an LLM call without a valid reply (SPEC-06 §4.7), 503 `llm_unavailable`,
+502 `llm_refused` (a provider refused the request, D-1009) and 502 `llm_output_invalid`.
 
 ### 4.4 `POST /v1/scrape`
 

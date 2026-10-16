@@ -200,11 +200,8 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
      the page itself is the target (cold pages without markup).
 - Ambiguous → every field is `conflict` with reason `intent_ambiguous`; the page is incomplete and handled per
   4.10 (`partial` for caller-supplied URLs, `no_match` for crawl-discovered ones).
-- `select_variant(request_url, final_url, canonical_url, graph, target) -> Entity | None` (SPEC-13 §4.6, detail
-  pages): of the target's variant holders (its `hasVariant` members and the Offers directly under it; never an
-  `AggregateOffer`, a summary of offers), the one whose own `urls` contain a page URL, when exactly one does: step
-  3's URL test applied to variants. Whole canonicalized URLs are compared; no query parameter is read (INV-13).
-  The page URL with no variant named selects none (no first or cheapest default, C7).
+- No variant is selected (SPEC-13 §4.6, owner 2026-10-16): step 3's URL test is not applied to variants, and a
+  page URL that names one variant makes it no default (INV-38).
 
 ### 4.7 Preference (§10)
 
@@ -228,12 +225,12 @@ No collector contains a hostname, a class-name fragment or a phrase list (C2/C3;
   `Offer` entity. When several Offers exist, the target's own and its variants' (§4.6), the field is `conflict`
   (`offers_disagree`) unless all Offers agree; `AggregateOffer.lowPrice/highPrice` are never published as price
   (they feed `range` fields only).
-- **Selected variant** (INV-36, SPEC-13 §4.6): when `select_variant` selects a holder, the Offer fields come only
-  from its Offers (the selected Offer, or the selected variant's); other holders' Offer candidates are rejected
-  `other_variant`, and INV-15 holds inside the holder.
+- **No default variant** (INV-38, SPEC-13 §4.6, owner 2026-10-16): no variant is selected, whatever variant a page
+  URL names, so the Offer fields publish only when every Offer agrees; a value that varies is published only in the
+  row-mapped `variants` field. The former selected-variant rule (`select_variant`, `other_variant`) is removed.
 - **Variant fill** (SPEC-13 §4.6): a `gtin` or `sku` identifier field for which no candidate is the target's takes
-  the selected variant's own candidates; with no variant selected, its variants' only when every variant has one
-  and all agree (else it stays as it was). A value the target states is never replaced; no other field is filled.
+  its variants' candidates only when every variant has one and all agree (else it stays as it was). A value the
+  target states is never replaced; no other field is filled.
 - **Row-mapped fields** (SPEC-13 §4.3 to §4.5, `resolve/rows.py`): on a detail page, a row-mapped `list<object>`
   field's rows are the entities its row path reaches from the target; sub-field candidates belong to the row whose
   scope holds their owner (else `not_in_row`); rows are matched by key into variants (`no_row_key`,
