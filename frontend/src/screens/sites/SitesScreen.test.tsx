@@ -431,6 +431,26 @@ describe("config screen: learn and export", () => {
     ]);
   });
 
+  it("shows the learning run beside the config's badges, linking its job", async () => {
+    configApi({
+      [`POST /v1/sites/${HOST}/learn`]: () => Response.json({ job_id: JOB_ID }, { status: 202 }),
+      [`GET /v1/jobs/${JOB_ID}`]: () =>
+        Response.json(jobSummary({ id: JOB_ID, kind: "learn", status: "running" })),
+      [`GET /v1/jobs/${JOB_ID}/events`]: () => sse(),
+    });
+    await open(`/configs/${V2_ID}`, HOST);
+
+    await userEvent.click(screen.getByRole("button", { name: "Learn now" }));
+
+    const badges = screen.getByRole("heading", { level: 1 }).parentElement;
+    if (badges === null) throw new Error("no badge row");
+    expect(await within(badges).findByText("running")).toBeInTheDocument();
+    expect(within(badges).getByRole("link", { name: "Open the job" })).toHaveAttribute(
+      "href",
+      `/jobs/${JOB_ID}`,
+    );
+  });
+
   it("saves the export as a file and shows the release report with manual fields marked", async () => {
     const saved: Blob[] = [];
     // jsdom has no object URLs; the file's content is what was handed to one.

@@ -81,9 +81,10 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
         <Chip>v{config.version}</Chip>
         <Chip>{config.origin}</Chip>
         <ConfigStatusLabel status={config.status} />
+        {/* In the header's badge row, beside the button that started it: nothing below moves (D-0983). */}
+        {learning.jobId === null ? null : <LearnRun jobId={learning.jobId} />}
       </PageHeader>
       {learnProblem === null ? null : <ProblemAlert problem={learnProblem} />}
-      {learning.jobId === null ? null : <LearnRun jobId={learning.jobId} />}
       <div className="flex flex-wrap gap-4">
         <Link href={sitePath(config.site)}>Every config of {config.site}</Link>
         <span>

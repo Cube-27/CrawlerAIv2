@@ -327,7 +327,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 
 ### D-0983 — A learning run started on a site or config page shows its status there
 - Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
-- Decision: After Learn now, the page shows "Learning job", the job's status (kept current by its events) and a link to its job page; the toast gets an "Open job" action.
+- Decision: After Learn now, the page shows "Learning job", the job's status (kept current by its events) and a link to its job page (on a config page in the header's badge row, so nothing below moves; on a site page under the Learn form); the toast gets an "Open job" action.
 - Alternatives: The toast alone.
 - Why: A failed learning run left the site page at "No configs yet" with no way to see why (UAT).
 - Reversible: yes
