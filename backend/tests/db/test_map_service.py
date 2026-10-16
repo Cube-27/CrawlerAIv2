@@ -54,10 +54,12 @@ def page(*hrefs: str) -> bytes:
 
 @dataclass
 class Web:
-    """Answers each URL from `pages`; anything else is a 404. `slow` URLs are held back by `delay_s`."""
+    """Answers each URL from `pages`; anything else is a 404. A URL of `redirects` answers as its target, reached
+    through the site's redirect. `slow` URLs are held back by `delay_s`."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, Page] = field(default_factory=dict)
+    redirects: dict[str, str] = field(default_factory=dict)
     fetched: list[tuple[CaptureMethod, str]] = field(default_factory=list)
     policies: dict[str, FetchPolicy] = field(default_factory=dict)
     slow: set[str] = field(default_factory=set)
@@ -69,8 +71,11 @@ class Web:
             self.policies[url] = policy
             if url in self.slow:
                 await asyncio.sleep(self.delay_s)
-            status, body, block_class, error = self.pages.get(url, (404, b"gone", "not_found", None))
-            return self.fetch_result(url, status, body, block_class=block_class, error=error, method=method)
+            final_url = self.redirects.get(url, url)
+            status, body, block_class, error = self.pages.get(final_url, (404, b"gone", "not_found", None))
+            return self.fetch_result(
+                url, status, body, block_class=block_class, error=error, method=method, final_url=final_url
+            )
 
         return fetch
 
@@ -161,7 +166,8 @@ async def test_without_a_robots_sitemap_reads_sitemap_xml(
     result = await map_urls(engine, fetching, request(f"{own_origin}/deep/start?x=1", use_links=False))
 
     assert result.urls == [f"{own_origin}/p/1"]
-    assert web.urls() == [f"{own_origin}/robots.txt", f"{own_origin}/sitemap.xml"]
+    # The start page is fetched for where it is (its redirect), even when its links are not taken.
+    assert web.urls() == [f"{own_origin}/robots.txt", f"{own_origin}/deep/start?x=1", f"{own_origin}/sitemap.xml"]
 
 
 async def test_include_and_exclude_choose_the_urls_and_include_may_name_another_host(
@@ -215,7 +221,49 @@ async def test_sources_can_be_turned_off(engine: AsyncEngine, fetching: Fetching
 
     assert (links_only.urls, sitemaps_only.urls) == ([f"{own_origin}/l"], [f"{own_origin}/s"])
     assert web.urls().count(f"{own_origin}/sitemap.xml") == 1
-    assert web.urls().count(f"{own_origin}/") == 1
+    assert web.urls().count(f"{own_origin}/") == 2
+
+
+async def test_the_scope_follows_the_start_page_s_redirect_to_another_host(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, other_origin: str
+) -> None:
+    # The start URL's host redirects every URL to `own_origin` (RFC 9110 §15.4: the redirect names where the resource
+    # is): the site's links and sitemaps are on that host, read under its own robots.txt.
+    web.redirects |= {f"{other_origin}/": f"{own_origin}/", f"{other_origin}/robots.txt": f"{own_origin}/robots.txt"}
+    web.pages |= {
+        f"{own_origin}/robots.txt": robots(f"Sitemap: {own_origin}/products.xml"),
+        f"{own_origin}/products.xml": (200, urlset(f"{own_origin}/p/1", f"{other_origin}/p/9"), "ok", None),
+        f"{own_origin}/": (200, page("/c/1", f"{own_origin}/c/2", f"{other_origin}/c/3"), "ok", None),
+    }
+
+    result = await map_urls(engine, fetching, request(f"{other_origin}/"))
+
+    assert result.urls == [f"{own_origin}/p/1", f"{own_origin}/c/1", f"{own_origin}/c/2"]
+    assert web.urls() == [
+        f"{other_origin}/robots.txt",
+        f"{other_origin}/",
+        f"{own_origin}/robots.txt",
+        f"{own_origin}/products.xml",
+    ]
+
+
+async def test_the_redirect_target_s_robots_txt_decides_what_is_fetched_there(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, other_origin: str
+) -> None:
+    web.redirects[f"{other_origin}/"] = f"{own_origin}/"
+    web.pages |= {
+        f"{other_origin}/robots.txt": robots(),
+        f"{other_origin}/sitemap.xml": (200, urlset(f"{own_origin}/p/1"), "ok", None),
+        f"{own_origin}/robots.txt": robots("Disallow: /sitemap.xml"),
+        f"{own_origin}/sitemap.xml": (200, urlset(f"{own_origin}/p/2"), "ok", None),
+        f"{own_origin}/": (200, page("/c/1"), "ok", None),
+    }
+
+    result = await map_urls(engine, fetching, request(f"{other_origin}/"))
+
+    assert result.urls == [f"{own_origin}/c/1"]
+    assert f"{own_origin}/sitemap.xml" not in web.urls()
+    assert f"{other_origin}/sitemap.xml" not in web.urls()
 
 
 async def test_fetches_over_http_only_and_takes_no_links_from_a_page_not_reached(
