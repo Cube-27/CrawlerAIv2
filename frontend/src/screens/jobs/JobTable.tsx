@@ -70,8 +70,9 @@ function JobFilterFields({
 
 /** The Jobs screen's columns and their widths. */
 const JOB_COLUMNS = [
-  ["kind", "w-1/10"],
-  ["target", "w-3/10"],
+  // Wide enough for the longest kind, "Batch scrape", untruncated.
+  ["kind", "w-1/8"],
+  ["target", "w-11/40"],
   ["status", "w-3/20"],
   ["tasks", "w-1/5"],
   ["created", "w-1/6"],
