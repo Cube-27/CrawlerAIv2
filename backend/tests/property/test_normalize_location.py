@@ -48,6 +48,22 @@ def test_text_publishes_as_written_with_no_place_inferred(place: str, padding: s
     assert norm(f"{padding}{place}{padding}") == Ok(value(place))
 
 
+@given(st.lists(_words, min_size=2, max_size=4), st.sampled_from(["  ", "\n", "\t ", "\u00a0"]))
+def test_text_publishes_with_its_whitespace_runs_collapsed_and_nothing_else_changed(words: list[str], gap: str) -> None:
+    assert norm(gap.join(words)) == Ok(value(" ".join(words)))
+
+
+def test_a_location_naming_several_places_publishes_as_one_text_unsplit() -> None:
+    # Owner, 2026-10-16 (D-0946 class 11): the location publishes as written; no "or" split, no region parsing.
+    assert norm("North Region or  Lakeside, Remote") == Ok(value("North Region or Lakeside, Remote", remote=True))
+
+
+def test_address_parts_publish_with_their_whitespace_collapsed() -> None:
+    raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Lake\n  Town", "addressRegion": "North  Shore"}
+
+    assert norm(raw) == Ok(value("Lake Town, North Shore", "Lake Town", "North Shore"))
+
+
 @given(st.sampled_from(["Remote", "remote", "REMOTE", "(Remote)"]))
 def test_a_remote_phrase_sets_the_flag_and_keeps_the_text(text: str) -> None:
     assert norm(text) == Ok(value(text, remote=True))
