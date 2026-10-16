@@ -15,7 +15,7 @@ function count(data: JsonObject, name: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function plural(n: number, word: string): string {
+export function plural(n: number, word: string): string {
   return `${String(n)} ${word}${n === 1 ? "" : "s"}`;
 }
 

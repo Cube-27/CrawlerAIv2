@@ -1,5 +1,6 @@
 import { Typography } from "@heroui/react";
 import type { OutcomeCounts as Outcomes, TaskCounts, TaskOutcome, TaskStatus } from "../api/jobs";
+import { plural } from "./activityText";
 import { OutcomeLabel } from "./OutcomeLabel";
 
 // In the order a task goes through them (SPEC-01 §4.2), and the outcomes as ARCHITECTURE §6 lists them.
@@ -16,13 +17,22 @@ const OUTCOMES: readonly TaskOutcome[] = [
   "failed",
 ];
 
+/** How many tasks the job has, in every status. */
+export function taskTotal(counts: TaskCounts): number {
+  return STATUSES.reduce((sum, status) => sum + counts[status], 0);
+}
+
+/** How many of the job's tasks have ended: done, failed or cancelled (SPEC-01 §4.2). */
+export function endedTasks(counts: TaskCounts): number {
+  return counts.done + counts.failed + counts.cancelled;
+}
+
 /** A job's tasks in one line: their total, then each status some task has, as "3 tasks: 1 queued, 2 done". */
 export function TaskCountsText({ counts }: Readonly<{ counts: TaskCounts }>) {
-  const total = STATUSES.reduce((sum, status) => sum + counts[status], 0);
   const parts = STATUSES.filter((status) => counts[status] > 0).map(
     (status) => `${String(counts[status])} ${status}`,
   );
-  const tasks = `${String(total)} ${total === 1 ? "task" : "tasks"}`;
+  const tasks = plural(taskTotal(counts), "task");
   return <>{parts.length === 0 ? tasks : `${tasks}: ${parts.join(", ")}`}</>;
 }
 

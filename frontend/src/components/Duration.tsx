@@ -1,5 +1,4 @@
-import { Typography } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const SECOND = 1000;
 
@@ -18,19 +17,39 @@ export function elapsedText(ms: number): string {
   return `${String(seconds)}s`;
 }
 
+// One clock for every running duration on the page: it ticks once a second while any is shown, so ten running rows
+// re-render together on one timer rather than on ten.
+let clockNow = Date.now();
+const listeners = new Set<() => void>();
+let timer: ReturnType<typeof setInterval> | undefined;
+
+function subscribeClock(listener: () => void): () => void {
+  listeners.add(listener);
+  if (timer === undefined) {
+    clockNow = Date.now();
+    timer = setInterval(() => {
+      clockNow = Date.now();
+      listeners.forEach((notify) => {
+        notify();
+      });
+    }, SECOND);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size > 0) return;
+    clearInterval(timer);
+    timer = undefined;
+  };
+}
+
+function stillClock(): () => void {
+  // no-op: a duration that has ended, or not started, needs no ticks
+  return () => undefined;
+}
+
 /** The time now, read again every second while `ticking`. */
 function useNow(ticking: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!ticking) return undefined;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, SECOND);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [ticking]);
-  return now;
+  return useSyncExternalStore(ticking ? subscribeClock : stillClock, () => clockNow);
 }
 
 /** How long a job has run, as text: from its start to its end, or to now while it runs; a dash before it starts. */
@@ -41,16 +60,4 @@ export function DurationText({
   const now = useNow(startedAt !== null && finishedAt === null);
   const end = finishedAt === null ? now : Date.parse(finishedAt);
   return <>{startedAt === null ? "—" : elapsedText(end - Date.parse(startedAt))}</>;
-}
-
-/** A job's elapsed time as a muted line: "Elapsed 12s". */
-export function ElapsedTime({
-  startedAt,
-  finishedAt,
-}: Readonly<{ startedAt: string | null; finishedAt: string | null }>) {
-  return (
-    <Typography.Paragraph size="sm" color="muted">
-      Elapsed <DurationText startedAt={startedAt} finishedAt={finishedAt} />
-    </Typography.Paragraph>
-  );
 }

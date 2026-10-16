@@ -1,7 +1,6 @@
 import {
   Badge,
   Button,
-  Disclosure,
   FieldError,
   Input,
   Label,
@@ -18,6 +17,7 @@ import {
 } from "@heroui/react";
 import { ArrowRotateLeft, CircleQuestion, Sliders } from "@gravity-ui/icons";
 import { use, useId, useState, type Key, type ReactNode } from "react";
+import { Collapsible } from "../../components/Collapsible";
 import { ReadOnlyContext } from "./readOnly";
 
 /** The playground's options panel (SPEC-14 §4.2, DESIGN.md Options panel): rows of label, help icon and control, in
@@ -359,21 +359,11 @@ export function OptionsPanel({
       <fieldset disabled={readOnly} className={GRID}>
         {children}
       </fieldset>
-      <Disclosure>
-        <Disclosure.Heading>
-          <Button slot="trigger" variant="ghost" size="sm">
-            Advanced
-            <Disclosure.Indicator />
-          </Button>
-        </Disclosure.Heading>
-        <Disclosure.Content>
-          <Disclosure.Body>
-            <fieldset disabled={readOnly} className={`${GRID} pt-3`}>
-              {advanced}
-            </fieldset>
-          </Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>
+      <Collapsible title="Advanced">
+        <fieldset disabled={readOnly} className={GRID}>
+          {advanced}
+        </fieldset>
+      </Collapsible>
       <div className="flex justify-end">
         <Button variant="ghost" size="sm" isDisabled={readOnly} onPress={onReset}>
           <ArrowRotateLeft aria-hidden="true" />

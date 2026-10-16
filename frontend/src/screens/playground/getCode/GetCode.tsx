@@ -1,7 +1,8 @@
-import { Button, Disclosure, Drawer, Tabs, Typography } from "@heroui/react";
+import { Button, Drawer, Tabs, Typography } from "@heroui/react";
 import { Code, Copy } from "@gravity-ui/icons";
 import { useMemo, useState, type Key } from "react";
 import { copyText } from "../../../app/clipboard";
+import { Collapsible } from "../../../components/Collapsible";
 import type { ModeId } from "../modes";
 import { ENDPOINTS, type Endpoint } from "./endpoints";
 import { agentPrompts } from "./prompts";
@@ -88,41 +89,29 @@ function CodeBlock({
 /** The prompts for coding agents (SPEC-14 §4.7), collapsed under the code: most readers want the code itself. */
 function Prompts({ mode }: Readonly<{ mode: ModeId }>) {
   return (
-    <Disclosure>
-      <Disclosure.Heading>
-        <Button slot="trigger" variant="ghost" size="sm">
-          Prompts for coding agents
-          <Disclosure.Indicator />
-        </Button>
-      </Disclosure.Heading>
-      <Disclosure.Content>
-        <Disclosure.Body>
-          <section aria-label="Prompts for coding agents" className="flex flex-col gap-3 pt-3">
-            {agentPrompts(mode).map((prompt) => (
-              <div key={prompt.name} className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <Typography.Paragraph>{prompt.title}</Typography.Paragraph>
-                  <Typography.Paragraph size="sm" color="muted" className="truncate">
-                    {prompt.name}
-                  </Typography.Paragraph>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  aria-label={`Copy ${prompt.title}`}
-                  onPress={() => {
-                    copyText(prompt.text, "the prompt");
-                  }}
-                >
-                  <Copy aria-hidden="true" />
-                  Copy
-                </Button>
-              </div>
-            ))}
-          </section>
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
+    <Collapsible title="Prompts for coding agents">
+      {agentPrompts(mode).map((prompt) => (
+        <div key={prompt.name} className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <Typography.Paragraph>{prompt.title}</Typography.Paragraph>
+            <Typography.Paragraph size="sm" color="muted" className="truncate">
+              {prompt.name}
+            </Typography.Paragraph>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            aria-label={`Copy ${prompt.title}`}
+            onPress={() => {
+              copyText(prompt.text, "the prompt");
+            }}
+          >
+            <Copy aria-hidden="true" />
+            Copy
+          </Button>
+        </div>
+      ))}
+    </Collapsible>
   );
 }
 
