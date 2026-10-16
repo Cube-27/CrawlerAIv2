@@ -58,6 +58,10 @@ Full rows are in git history.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
+- Tough-site run (#225): the browser's network-idle wait reached its 40.5 s cap on 8 of 33 browser fetches (idle never comes on pages with tracking traffic); a content-stable exit is a SPEC-02 §4.8 change, measure first.
+- Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
+- Tough-site run (#225): listings whose category or chrome-like tiles pass `acquire.items` stay `ok` at HTTP with no rows (about 7 pages); and a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
+- Tough-site run (#225): 429 and 503 at HTTP are not retried in the browser (SPEC-02 §4.6 backoff, `rungs.slow_down`): kept as designed. ATS adapters (Workday, UltiPro, ADP, Rippling, Oracle CX, iCIMS, Paycom): owner question pending.
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
