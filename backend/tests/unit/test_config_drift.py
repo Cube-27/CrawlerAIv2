@@ -30,9 +30,10 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.services.scrape_steps import load_drift_margins
 
 CTX_TIME = datetime(2026, 10, 1, tzinfo=UTC)
-MARGINS = DriftMargins.model_validate({"yield": 0.25, "validity": 0.25, "source_split": "dev"})
+MARGINS = DriftMargins.model_validate({"yield": 0.25, "validity": 0.25, "source_split": "dev", "fit": "test"})
 HIT = Observation(matched=True, valid=True)
 MISS = Observation(matched=False, valid=False)
 DECLINED = Observation(matched=True, valid=False)
@@ -171,14 +172,21 @@ def test_the_window_is_the_last_fifty_pages_in_order(pages: list[Observation]) -
 def test_margins_are_read_from_their_dev_stamped_file(tmp_path: Path) -> None:
     path = tmp_path / "drift_margins.json"
     assert load_margins(path) is None
-    path.write_text(json.dumps({"yield": 0.2, "validity": 0.1, "source_split": "dev"}), encoding="utf-8")
+    path.write_text(json.dumps({"yield": 0.3, "validity": 0.05, "source_split": "dev", "fit": "run"}), encoding="utf-8")
     margins = load_margins(path)
     assert margins is not None
-    assert (margins.yield_, margins.validity) == (0.2, 0.1)
+    assert (margins.yield_, margins.validity, margins.fit) == (0.3, 0.05, "run")
+
+
+def test_the_shipped_margins_are_the_spec_defaults_stamped_unfitted() -> None:
+    # D-0576 (owner, 2026-10-16): SPEC-08 §4.9's margins, stamped so nobody takes them for values fitted on labels.
+    assert load_drift_margins() == DriftMargins.model_validate(
+        {"yield": 0.2, "validity": 0.1, "source_split": "dev", "fit": "spec default, unfitted"}
+    )
 
 
 def test_margins_fitted_on_another_split_are_refused(tmp_path: Path) -> None:
     path = tmp_path / "drift_margins.json"
-    path.write_text(json.dumps({"yield": 0.2, "validity": 0.1, "source_split": "hidden"}), encoding="utf-8")
+    path.write_text(json.dumps({"yield": 0.2, "validity": 0.1, "source_split": "hidden", "fit": "x"}), encoding="utf-8")
     with pytest.raises(ValidationError, match="source_split"):
         load_margins(path)

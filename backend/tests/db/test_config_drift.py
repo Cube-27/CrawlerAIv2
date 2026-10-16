@@ -35,7 +35,7 @@ from crawlerai.schemas.types import SchemaDef as Schema
 
 pytestmark = pytest.mark.anyio
 
-MARGINS = DriftMargins.model_validate({"yield": 0.25, "validity": 0.25, "source_split": "dev"})
+MARGINS = DriftMargins.model_validate({"yield": 0.25, "validity": 0.25, "source_split": "dev", "fit": "test"})
 OLD = "<html><body><h1 class='title'>A lamp</h1></body></html>"
 NEW = "<html><body><h2 class='heading'>A lamp</h2></body></html>"
 IR: dict[str, Any] = {

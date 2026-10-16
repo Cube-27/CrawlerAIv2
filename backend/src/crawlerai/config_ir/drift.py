@@ -8,8 +8,9 @@ back to cold-mode resolution, and the site re-learns.
 (`extraction_config.drift_window`), suspends the fields that drifted in both the IR and `field_status`, logs a
 `drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`).
 
-The margins are `backend/data/drift_margins.json`, fitted on dev and stamped so (INV-02). Without the file nothing
-is suspended (C7: no default margin); windows are still recorded.
+The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` (INV-02) and with how they were
+obtained: until labels exist, SPEC-08 §4.9's values, stamped "spec default, unfitted" (D-0576). Without the file
+nothing is suspended (C7: no default margin); windows are still recorded.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -45,6 +46,8 @@ class DriftMargins(BaseModel):
     yield_: Annotated[float, Field(ge=0, le=1, alias="yield")]
     validity: Annotated[float, Field(ge=0, le=1)]
     source_split: Literal["dev"]
+    # How the margins were obtained, so spec defaults are never taken for values fitted on labels (D-0576).
+    fit: Annotated[str, Field(min_length=1)]
 
 
 def load_margins(path: Path) -> DriftMargins | None:

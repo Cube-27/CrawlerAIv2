@@ -6,9 +6,10 @@ match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawl
 (SPEC-04 §4.6): its file may be absent, and when present it must match its hash. Prints one line per problem and
 exits 1, or prints one summary line and exits 0.
 
-Two files are fitted on dev rather than fetched (SPEC-05 §4.7, §4.9; D-0444, owner answer 2026-10-14):
-`source_precedence.yaml` and `calibration.json`. The fit commands rewrite them, so no sha256 can be pinned; they are
-not listed in the manifest, and each must instead carry the stamp `source_split: dev` (INV-02).
+Three files are fitted on dev rather than fetched (SPEC-05 §4.7, §4.9, SPEC-08 §4.9; D-0444 and D-0576, owner
+answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. Fitting
+rewrites them, so no sha256 can be pinned; they are not listed in the manifest, and each must instead carry the
+stamp `source_split: dev` (INV-02).
 """
 
 import argparse
@@ -39,7 +40,11 @@ def yaml_dev_stamp(text: str) -> bool:
 
 
 # The dev-fitted files (top level of the data directory), each with how its stamp is read.
-DEV_FITTED = {"source_precedence.yaml": yaml_dev_stamp, "calibration.json": json_dev_stamp}
+DEV_FITTED = {
+    "source_precedence.yaml": yaml_dev_stamp,
+    "calibration.json": json_dev_stamp,
+    "drift_margins.json": json_dev_stamp,
+}
 
 
 def valid_entry_path(path: str) -> bool:
