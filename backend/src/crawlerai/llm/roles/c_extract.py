@@ -89,8 +89,8 @@ class FilledListing(Filled):
 
 
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
-    """`{fields: {<field>: {value, start, end}}}`: a claim per requested field, empty when the page does not show it
-    (§4.4)."""
+    """`{fields: {<field>: {shown, value, start, end}}}`: a claim per requested field, `shown: false` when the page does
+    not show it (§4.4)."""
     return _with_claim(closed_object({"fields": _claims(fields)}))
 
 
