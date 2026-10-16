@@ -396,7 +396,8 @@ describe("records screen: the inspector", () => {
     );
     const price = within(fields.getByRole("row", { name: /price/ }));
     expect(price.getByText("uncalibrated")).toBeInTheDocument();
-    expect(price.getAllByText("conflict")).toHaveLength(2);
+    // The status shows once, in its own column; the value cell has the dash.
+    expect(price.getAllByText("conflict")).toHaveLength(1);
     expect(price.getByText("0.41")).toBeInTheDocument();
   });
 
