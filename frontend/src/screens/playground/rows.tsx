@@ -65,16 +65,14 @@ export function FetchMethodRow({
   );
 }
 
-/** `budget.llm_calls` (SPEC-06 §4.8): the most LLM calls the request may make. Empty leaves `budget` out; what that
- * means differs by request, so `whenEmpty` (the field's placeholder) and `help` say it. */
+/** `budget.llm_calls` (SPEC-06 §4.8): the most LLM calls the request may make. Empty leaves `budget` out, and the
+ * project's LLM call limit (Settings) applies, or none (D-1121). */
 export function LlmCallsRow({
   value,
-  whenEmpty,
   help,
   onChange,
 }: Readonly<{
   value: number;
-  whenEmpty: string;
   help: string;
   onChange: (llmCalls: number) => void;
 }>) {
@@ -85,7 +83,7 @@ export function LlmCallsRow({
       name="budget.llm_calls"
       value={value}
       minValue={0}
-      placeholder={whenEmpty}
+      placeholder="Project setting"
       onChange={onChange}
     />
   );

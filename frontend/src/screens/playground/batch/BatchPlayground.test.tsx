@@ -175,13 +175,13 @@ describe("batch playground: the command bar", () => {
     });
   });
 
-  it("sends the LLM call limit as the batch's budget, and no budget while it is empty, which the field says is no limit", async () => {
+  it("sends the LLM call limit as the batch's budget, and no budget while it is empty, which the field says is the project setting", async () => {
     const calls = batchApi();
     await openPlayground("/batch");
     await typeUrls("https://shop.test/a");
     const options = await openOptions();
     const limit = options.getByRole("textbox", { name: "LLM call limit" });
-    expect(limit).toHaveAttribute("placeholder", "No limit");
+    expect(limit).toHaveAttribute("placeholder", "Project setting");
 
     await userEvent.type(limit, "25");
     await closeOptions();

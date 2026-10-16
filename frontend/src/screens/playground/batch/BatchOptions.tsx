@@ -43,11 +43,9 @@ export function BatchOptions({
           onChange({ ...options, methodHint });
         }}
       />
-      {/* D-1006: a batch without a `budget` makes as many LLM calls as its pages need. */}
       <LlmCallsRow
         value={options.llmCalls}
-        whenEmpty="No limit"
-        help="The most LLM calls the whole batch may make. Empty: no limit."
+        help="The most LLM calls the whole batch may make. Empty: the project's limit in Settings."
         onChange={(llmCalls) => {
           onChange({ ...options, llmCalls });
         }}

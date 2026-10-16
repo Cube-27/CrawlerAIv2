@@ -166,7 +166,10 @@ describe("scrape playground: the shell", () => {
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeVisible();
     expect(options.getByRole("textbox", { name: "Max age (s)" })).toBeVisible();
     expect(options.getByRole("textbox", { name: "Timeout (s)" })).toBeVisible();
-    expect(options.getByRole("textbox", { name: "LLM call limit" })).toBeVisible();
+    expect(options.getByRole("textbox", { name: "LLM call limit" })).toHaveAttribute(
+      "placeholder",
+      "Project setting",
+    );
     expect(options.queryByRole("button", { name: "Advanced" })).not.toBeInTheDocument();
 
     await closeOptions();

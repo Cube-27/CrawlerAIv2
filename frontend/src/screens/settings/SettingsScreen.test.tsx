@@ -1,5 +1,5 @@
 import { today } from "@internationalized/date";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
@@ -9,6 +9,8 @@ import { problem, stubApi } from "../../test/api";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const REPORT = "GET /v1/usage/llm";
+const SETTINGS = "GET /v1/project/settings";
+const NO_CAP = { [SETTINGS]: () => Response.json({ llm_call_cap: null }) };
 
 function usage(overrides: Partial<LlmUsage> = {}): LlmUsage {
   return {
@@ -92,6 +94,15 @@ async function openSettings() {
   await screen.findByRole("heading", { level: 1, name: "Settings" });
 }
 
+/** The LLM call limit field, once it shows the saved `value`: the form mounts again when the settings arrive. */
+async function savedLimit(value: string): Promise<HTMLElement> {
+  const name = "LLM call limit per run";
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name })).toHaveValue(value);
+  });
+  return screen.getByRole("textbox", { name });
+}
+
 function rowsOf(name: string): (string | null)[] {
   return within(screen.getByRole("grid", { name }))
     .getAllByRole("row")
@@ -108,7 +119,7 @@ function startOf(days: number): string {
 
 describe("Settings screen", () => {
   it("shows the LLM cost of the last 30 days by total, model and role, job and day", async () => {
-    const calls = stubApi({ [REPORT]: () => Response.json(report) });
+    const calls = stubApi({ ...NO_CAP, [REPORT]: () => Response.json(report) });
     await openSettings();
 
     await screen.findByRole("grid", { name: "Total" });
@@ -127,6 +138,7 @@ describe("Settings screen", () => {
 
   it("opens a job from the top jobs", async () => {
     stubApi({
+      ...NO_CAP,
       [REPORT]: () => Response.json(report),
       [`GET /v1/jobs/${JOB_ID}`]: () =>
         problem(404, { title: "Not found", detail: `no job ${JOB_ID}` }),
@@ -140,7 +152,7 @@ describe("Settings screen", () => {
   });
 
   it("asks for the range chosen", async () => {
-    const calls = stubApi({ [REPORT]: () => Response.json(report) });
+    const calls = stubApi({ ...NO_CAP, [REPORT]: () => Response.json(report) });
     await openSettings();
     await screen.findByRole("grid", { name: "Total" });
 
@@ -153,7 +165,7 @@ describe("Settings screen", () => {
   });
 
   it("says so when the range has no LLM calls", async () => {
-    stubApi({ [REPORT]: () => Response.json(empty) });
+    stubApi({ ...NO_CAP, [REPORT]: () => Response.json(empty) });
     await openSettings();
 
     expect(await screen.findByText("No LLM calls in this range")).toBeInTheDocument();
@@ -162,11 +174,48 @@ describe("Settings screen", () => {
 
   it("shows the problem of a refused report", async () => {
     stubApi({
+      ...NO_CAP,
       [REPORT]: () =>
         problem(422, { title: "Invalid request", detail: "the range spans more than 366 days" }),
     });
     await openSettings();
 
     expect(await screen.findByText("the range spans more than 366 days")).toBeInTheDocument();
+  });
+
+  it("shows the project's LLM call limit and saves a new one", async () => {
+    const calls = stubApi({
+      [SETTINGS]: () => Response.json({ llm_call_cap: 25 }),
+      [REPORT]: () => Response.json(empty),
+      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
+    });
+    await openSettings();
+    const field = await savedLimit("25");
+
+    await userEvent.clear(field);
+    await userEvent.type(field, "40");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved the LLM call limit.")).toBeInTheDocument();
+    const saves = calls.filter(({ method }) => method === "PATCH").map(({ body }) => body);
+    expect(saves).toEqual([{ llm_call_cap: 40 }]);
+  });
+
+  it("saves an empty LLM call limit as no limit", async () => {
+    const calls = stubApi({
+      [SETTINGS]: () => Response.json({ llm_call_cap: 25 }),
+      [REPORT]: () => Response.json(empty),
+      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
+    });
+    await openSettings();
+    const field = await savedLimit("25");
+
+    await userEvent.clear(field);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Saved the LLM call limit.");
+    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
+      { llm_call_cap: null },
+    ]);
   });
 });

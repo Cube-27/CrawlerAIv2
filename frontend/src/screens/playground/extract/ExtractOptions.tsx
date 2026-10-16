@@ -107,11 +107,10 @@ export function ExtractOptions({
           onChange({ ...options, methodHint });
         }}
       />
-      {/* SPEC-10 §4.6: an extract's `budget.llm_calls` bounds a prompt's draft and defaults to 10. */}
+      {/* SPEC-10 §4.6: an extract's `budget.llm_calls` bounds a prompt's draft. */}
       <LlmCallsRow
         value={options.llmCalls}
-        whenEmpty="10"
-        help="The most LLM calls drafting a schema from the prompt may make. Empty: 10, the server default."
+        help="The most LLM calls drafting a schema from the prompt may make. Empty: the project's limit in Settings."
         onChange={(llmCalls) => {
           onChange({ ...options, llmCalls });
         }}
