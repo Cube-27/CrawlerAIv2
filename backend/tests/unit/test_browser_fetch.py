@@ -459,11 +459,11 @@ def test_an_interstitial_is_read_where_its_navigation_ends_after_the_quiet_time(
 def test_an_interstitial_that_stays_is_read_after_its_share_of_the_budget(browser: Browser, server: Server) -> None:
     server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
 
-    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=10))
+    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=20))
 
     assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    # 40% of the 10 s budget waiting for a navigation, then the 2 s DOM quiet; never the whole budget.
-    assert 4_000 <= result.duration_ms < 8_000
+    # 40% of the 20 s budget waiting for a navigation, then the 2 s DOM quiet; never the 90% settle share.
+    assert 8_000 <= result.duration_ms < 14_000
 
 
 def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, server: Server) -> None:
