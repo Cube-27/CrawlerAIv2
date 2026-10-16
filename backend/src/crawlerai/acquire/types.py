@@ -94,8 +94,8 @@ def policy_with_attempts(
 
 
 def fetched_as(fetch_policy: dict[str, JsonValue]) -> PageKind | None:
-    """The page kind a capture was fetched as (`FetchPolicy.page_kind`, which its manifest keeps); None for one fetched
-    without a page kind, or before the manifest kept it."""
+    """The page kind a capture was fetched as (the `page_kind` of its `FetchPolicy`, which its manifest keeps); None
+    for one fetched without a page kind, or before the manifest kept it."""
     match fetch_policy.get("page_kind"):
         case "detail":
             return "detail"

@@ -273,7 +273,7 @@ def engine_data() -> EngineData:
     )
 
 
-# A listing schema's row fields: the item's name and URL (schema.org Thing.name, Thing.url).
+# A listing schema's row fields: the item's name and URL (the schema.org Thing properties `name` and `url`).
 LISTING_FIELDS: dict[str, Any] = {
     "title": {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"},
     "url": {"type": "url", "required": True, "description": "The product page", "schema_org": "Product.url"},
