@@ -1,6 +1,6 @@
 {
   "name": "commerce_detail",
-  "version": 3,
+  "version": 4,
   "page_kind": "detail",
   "required_groups": [["sku", "gtin"]],
   "fields": {
@@ -22,6 +22,11 @@
       "required": true,
       "description": "Whether the selected or default variant can be bought now",
       "schema_org": "Offer.availability"
+    },
+    "stock_quantity": {
+      "type": "count",
+      "description": "Number of items of the selected or default variant the page says are in stock, when it states one",
+      "schema_org": "Offer.inventoryLevel"
     },
     "url": {
       "type": "url",
@@ -54,7 +59,7 @@
     },
     "variants": {
       "type": "list",
-      "description": "Every variant the buyer can choose (for example a size or colour), one entry each, with its own identifiers, price and availability",
+      "description": "Every variant the buyer can choose (for example a size or colour), one entry each, with its own identifiers, price, availability and stock quantity",
       "schema_org": "ProductGroup.hasVariant|Product.offers|Product.offers.offers",
       "key": ["gtin", "sku", "url"],
       "item": {
@@ -82,6 +87,11 @@
           "vocab": "schema:ItemAvailability",
           "description": "Whether this variant can be bought now",
           "schema_org": "Offer.availability"
+        },
+        "stock_quantity": {
+          "type": "count",
+          "description": "Number of items of this variant the page says are in stock, when it states one",
+          "schema_org": "Offer.inventoryLevel"
         },
         "url": {
           "type": "url",

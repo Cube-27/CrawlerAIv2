@@ -116,9 +116,10 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
     presets = {preset.name: preset for preset in load_presets()}
 
     assert sorted(presets) == ["commerce_detail", "commerce_listing", "job_detail", "job_listing"]
-    # commerce_detail 2: `brand` optional (owner, Appendix A #35); 3: the optional row-mapped `variants` (SPEC-13 §4.7).
+    # commerce_detail 2: `brand` optional (owner, Appendix A #35); 3: the optional row-mapped `variants` (SPEC-13 §4.7);
+    # 4: the optional `stock_quantity`, also per variant (D-0782).
     assert {name: preset.version for name, preset in presets.items()} == {
-        "commerce_detail": 3,
+        "commerce_detail": 4,
         "commerce_listing": 1,
         "job_detail": 1,
         "job_listing": 1,
@@ -135,6 +136,13 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
     assert presets["commerce_detail"].fields["availability"].vocab == "schema:ItemAvailability"
     variants = presets["commerce_detail"].fields["variants"]
     assert (variants.row_mapped, variants.required, variants.key) == (True, False, ["gtin", "sku", "url"])
+    stock = presets["commerce_detail"].fields["stock_quantity"]
+    assert (stock.type, stock.required, stock.schema_org) == (FieldType.COUNT, False, "Offer.inventoryLevel")
+    assert variants.item is not None
+    assert variants.item.fields is not None
+    assert variants.item.fields["stock_quantity"] == stock.model_copy(
+        update={"description": "Number of items of this variant the page says are in stock, when it states one"}
+    )
     assert {n: s.scheme for n, s in presets["commerce_detail"].fields.items() if s.scheme} == {
         "sku": "sku",
         "gtin": "gtin",
