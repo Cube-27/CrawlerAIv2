@@ -130,9 +130,14 @@ export function ResultsTable({
 }: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean; outputs: boolean }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
   const values = useJobValues(jobId, { cursor, limit: PAGE_SIZE, withMetadata });
-  const pageOutputs = useJobResults(jobId, { cursor, limit: PAGE_SIZE }, outputs).data;
   // The open drawer's row, by its place: its item is read from the page shown, so a refresh updates it.
   const [openId, setOpenId] = useState<number | null>(null);
+  // Page outputs can be large: they are read only while a drawer shows one.
+  const pageOutputs = useJobResults(
+    jobId,
+    { cursor, limit: PAGE_SIZE },
+    outputs && openId !== null,
+  ).data;
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const data = values.data;
   const first = (page - 1) * PAGE_SIZE + 1;

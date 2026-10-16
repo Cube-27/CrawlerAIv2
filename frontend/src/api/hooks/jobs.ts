@@ -93,18 +93,16 @@ export function useJobValues(
   });
 }
 
-/** Every `json_values` item of the job, for its JSON download (SPEC-14 §4.4). */
-export function useExportJobValues(id: string) {
+/** The job's JSON download (SPEC-14 §4.4): every `json_values` item, or with `outputs` (a job without a schema)
+ * every page output. */
+export function useExportJobJson(id: string, outputs: boolean) {
   const client = useApiClient();
   return useMutation({
-    mutationFn: (withMetadata: boolean) => unwrap(exportJobValues(client, id, withMetadata)),
+    mutationFn: (withMetadata: boolean): Promise<unknown[]> =>
+      outputs
+        ? unwrap(exportJobOutputs(client, id))
+        : unwrap(exportJobValues(client, id, withMetadata)),
   });
-}
-
-/** Every page output of a job without a schema, for its JSON download. */
-export function useExportJobOutputs(id: string) {
-  const client = useApiClient();
-  return useMutation({ mutationFn: () => unwrap(exportJobOutputs(client, id)) });
 }
 
 /** The answer is the job after the cancel: shown without a read. */

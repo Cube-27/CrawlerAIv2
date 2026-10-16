@@ -1,6 +1,6 @@
 import { Button, toast } from "@heroui/react";
 import { ArrowDownToLine } from "@gravity-ui/icons";
-import { useExportJob, useExportJobOutputs, useExportJobValues } from "../../../api/hooks/jobs";
+import { useExportJob, useExportJobJson } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { saveExportPages, saveJson } from "../../../app/download";
 
@@ -25,9 +25,7 @@ export function RunExports({
   withMetadata,
   outputs,
 }: Readonly<{ jobId: string; withMetadata: boolean; outputs: boolean }>) {
-  const values = useExportJobValues(jobId);
-  const pages = useExportJobOutputs(jobId);
-  const json = outputs ? pages : values;
+  const json = useExportJobJson(jobId, outputs);
   const csv = useExportJob(jobId);
   const busy = json.isPending || csv.isPending;
   return (
@@ -37,14 +35,14 @@ export function RunExports({
         isPending={json.isPending}
         isDisabled={busy}
         onPress={() => {
-          const save = (items: unknown[]) => {
-            const filename = `job-${jobId}.json`;
-            saveJson(filename, items);
-            toast.success(`Saved ${filename}.`);
-          };
-          const handlers = { onSuccess: save, onError: notifyRefused };
-          if (outputs) pages.mutate(undefined, handlers);
-          else values.mutate(withMetadata, handlers);
+          json.mutate(withMetadata, {
+            onSuccess: (items) => {
+              const filename = `job-${jobId}.json`;
+              saveJson(filename, items);
+              toast.success(`Saved ${filename}.`);
+            },
+            onError: notifyRefused,
+          });
         }}
       >
         <ArrowDownToLine aria-hidden="true" />

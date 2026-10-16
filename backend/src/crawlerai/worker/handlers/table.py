@@ -21,8 +21,6 @@ def task_handlers(
     """The handler of each job kind with tasks, for a worker that fetches with `fetching`; `data` is None in a worker
     without the engine's data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9);
     role C runs on `llm`."""
-    return {
-        "batch_scrape": scrape_handler(fetching, data, margins, llm=llm),
-        "crawl": crawl_handler(fetching, data, margins, llm=llm),
-        "extract": scrape_handler(fetching, data, margins, llm=llm),
-    }
+    # An extract job's tasks run as a records batch's do (`worker.handlers.scrape`).
+    scrape = scrape_handler(fetching, data, margins, llm=llm)
+    return {"batch_scrape": scrape, "crawl": crawl_handler(fetching, data, margins, llm=llm), "extract": scrape}
