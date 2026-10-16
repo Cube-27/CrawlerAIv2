@@ -151,8 +151,8 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
     }
     # Optional fields mapped to the schema.org properties the page states (owner, 2026-10-16; ARCHITECTURE §5.3).
     named = ("description", "additional_images", "color", "material", "gender", "condition", "rating", "review_count")
-    optional = {n: (s.type.value, s.schema_org) for n, s in presets["commerce_detail"].fields.items() if n in named}
-    assert optional == {
+    stated = {n: (s.type.value, s.schema_org) for n, s in presets["commerce_detail"].fields.items() if n in named}
+    assert stated == {
         "description": ("long_text", "Product.description"),
         "additional_images": ("list", "Product.image"),
         "color": ("text", "Product.color"),
