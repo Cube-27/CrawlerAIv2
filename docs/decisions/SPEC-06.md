@@ -261,3 +261,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep a Python lookup beside the SQL.
 - Why: Two copies could drift untested.
 - Reversible: yes
+
+### D-0935 — The LLM setup is checked at start and reported by `/healthz`
+- Date: 2026-10-16 · Spec/PR: reference eval round 1 (#206) · Status: decided
+- Decision: API, MCP stdio and worker ask each provider's model lookup (no tokens) about the configured model ids, on the client's own providers; a refused model, an unanswered check, a listed provider without its key or no provider listed is logged at ERROR, and `GET /healthz` reports `llm: checking | ok | unavailable` while staying 200.
+- Alternatives: fail `/healthz`; list the problems in it.
+- Why: reference eval §7 (every scrape `partial` with only a WARNING); the probe is unauthenticated, so it names no model or key, and an API that serves all but LLM calls stays up.
+- Reversible: yes

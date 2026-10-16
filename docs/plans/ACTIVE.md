@@ -74,6 +74,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
 - Round-1 eval: classes 10 and 13 are §22 evidence (structural DOM collectors), class 11 needs a SPEC-04 location design, class 12 is an owner question on SPEC-13's default variant (D-0945, D-0946) [#207].
+- Playground: Records with Listing is still disabled ("not available yet"); the API serves listing records since #206 [#206].
+- Recurring: SPEC-11 §4.5's listing diff tracks a listing crawl's page URLs, not its row URLs ("No job stores listing records" no longer holds), and a listing page gets no standing record (rows are keyed by row URL), so it is always re-extracted [#206].
+- Listing items (`acquire.items`): the largest same-shape linked group wins, so a bare tag cloud or pager outside `nav` can outrank a small grid in markdown; tiles whose class lists differ are not grouped. Measure on dev first (D-0934) [#206].
+- Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 
