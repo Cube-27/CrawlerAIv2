@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from selectolax.lexbor import LexborNode
+from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from crawlerai.normalize.text import compose, text_form
 
@@ -111,6 +111,19 @@ def render(root: LexborNode) -> tuple[CleanedText, tuple[str, ...]]:
         else:
             stack.extend(reversed(_enter(item, shown)))
     return CleanedText("".join(builder.parts), tuple(builder.runs)), tuple(shown)
+
+
+def fragment_text(value: str) -> str | None:
+    """The text `value` renders when it is an HTML fragment holding element markup, as structured data's text
+    sometimes is (a description written as `<p>…</p><ul>…</ul>`), else `None`: a value without an element (`1 < 2`)
+    is text. HTML Standard parsing builds the fragment's elements and decodes its character references once; its text
+    is rendered as the page's (`render`), block boxes on lines of their own."""
+    if "<" not in value:
+        return None
+    body = LexborHTMLParser(value).body
+    if body is None or next(body.iter(), None) is None:  # no element child, so no element at all
+        return None
+    return render(body)[0].text
 
 
 class _Enter(NamedTuple):

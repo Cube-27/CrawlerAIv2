@@ -6,6 +6,7 @@ The platforms come from the adapter modules and the recorded API responses under
 no hostname or tenant is written here (C3, C9).
 """
 
+import html
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from crawlerai.collect.base import CollectResult, Entity
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.text import fragment_text
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
 from crawlerai.normalize.base import Context, Ok
@@ -174,7 +176,10 @@ def test_every_candidate_is_the_normalized_value_its_locator_selects(
         # A list field's candidate holds every value its property reaches and is located at the first.
         (raw,) = candidate.raw if isinstance(candidate.raw, list) else [candidate.raw]
         assert select(path, document) == [(path, raw)]
-        assert candidate.normalized == normalize(candidate.raw, schema.fields[candidate.field], CTX)
+        # A text value holding markup (a job description's HTML) reads as the fragment's text.
+        fragment = fragment_text(candidate.raw) if isinstance(candidate.raw, str) else None
+        read = candidate.raw if fragment is None else html.escape(fragment, quote=False)
+        assert candidate.normalized == normalize(read, schema.fields[candidate.field], CTX)
         assert path.startswith(candidate.entity_id.removeprefix(f"adapter:{adapter.name}:"))
 
 

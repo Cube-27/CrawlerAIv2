@@ -452,3 +452,35 @@ def test_a_block_with_raw_control_characters_inside_strings_is_collected() -> No
     result = _collect(block)
     assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget\tNine"), ("brand", "A\nB")]
     assert result.diagnostics == ()
+
+
+DESCRIBED = _schema(
+    title=_text("Product.name"),
+    description=FieldSpec(type=FieldType.LONG_TEXT, description="d", schema_org="Product.description"),
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "title", "description"),
+    [
+        pytest.param(
+            "<p>Soft <b>cotton</b>.</p><ul><li>Machine wash</li><li>Tumble dry</li></ul>",
+            "Soft cotton. Machine wash Tumble dry",
+            "Soft cotton.\nMachine wash\nTumble dry",
+            id="block-markup",
+        ),
+        # References decode once: a fragment's `&amp;amp;` is the text `&amp;`, as in a value without markup.
+        pytest.param("<b>Fish</b> &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="fragment-reference"),
+        pytest.param("Fish &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="text-reference"),
+        pytest.param("Sizes 1 < 2 & more", "Sizes 1 < 2 & more", "Sizes 1 < 2 & more", id="no-element"),
+    ],
+)
+def test_a_text_value_holding_element_markup_is_read_as_its_rendered_text(
+    raw: str, title: str, description: str
+) -> None:
+    result = _collect({"@context": SCHEMA_ORG, "@type": "Product", "name": raw, "description": raw}, schema=DESCRIBED)
+
+    assert [(c.field, c.raw, c.normalized) for c in result.candidates] == [
+        ("title", raw, Ok(title)),
+        ("description", raw, Ok(description)),
+    ]
