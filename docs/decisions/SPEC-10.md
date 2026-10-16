@@ -394,3 +394,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Ignore it for other formats.
 - Why: As `include` with `json_values`: an option that cannot apply is refused, not dropped.
 - Reversible: yes
+
+### D-0951 — A job pins its schema document (INV-28)
+- Date: 2026-10-16 · Spec/PR: greenfield (#210) · Status: decided
+- Decision: `job.pinned.schema` holds the schema document at submit (`JobPins.schema_`); the worker extracts with it, so an edit during a job changes none of that job's records.
+- Alternatives: read the schema row per task (an edit would change a running job's records).
+- Why: INV-28 named the schema version; with versions gone the document itself is pinned.
+- Reversible: yes

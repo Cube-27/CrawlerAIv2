@@ -25,7 +25,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-0243 — `create` inserts version 1; `new_version` inserts latest+1
-- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: decided
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 1 (#43) · Status: superseded by D-0950
 - Decision: `create` refuses an existing name. `new_version(name, SchemaChanges, origin)` applies the given changes to the latest version, validates the whole document and inserts latest+1; older versions stay `active`. The function is `list_schemas`, not `list`.
 - Alternatives: `new_version` retires the previous version; `create` takes any version.
 - Why: Records and configs reference older versions; retiring is SPEC-07's decision.
@@ -519,3 +519,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Map `potentialAction.target`; pick the link by its text.
 - Why: Link text is a word list (C4) and a DOM heuristic is the §22 structural-collector candidate (D-0946); `directApply: true` agrees with the posting URL. `ApplyAction` waits for a dev page that shows it (C5).
 - Reversible: yes.
+
+### D-0950 — A schema edit is in place and sends the schema's sites back to learning
+- Date: 2026-10-16 · Spec/PR: greenfield (#210) · Status: decided
+- Decision: One `schema_def` row per name; `PUT` rewrites the document. A changed document runs `progressive.relearn_schema`: the schema's `active` configs become `suspended` (drafts stay), its states go `cold` (a `schema_edit` transition) with no run in flight and `active_config_id`, `retry_at_pages` cleared, `pages_extracted` kept. An unchanged document changes nothing. A learning run the edit overtook ends its job `failed` with `schema_edited` and touches no state (it compares `document_digest` of its document with the current one). A retired schema or a preset is 409. `crawlerai schemas sync` upserts presets the same way.
+- Alternatives: a new `relearn` config status; deleting learned configs; keeping versions.
+- Why: ARCHITECTURE §5.2, Appendix A #43 (owner, greenfield). A run started before the edit can then neither activate nor fail its state (`NotLearning`).
+- Reversible: costly — versions would come back in the tables, API and IR.
+
+### D-0953 — `location` publishes what the page states; country codes only as stated
+- Date: 2026-10-16 · Spec/PR: greenfield (#210) · Status: decided
+- Decision: The value is `{text, locality, region, country, remote_flag}`. `country` only from an `addressCountry` that is an ISO 3166-1 alpha-2 code as CLDR lists territories (via Babel) less ISO 3166-1's user-assigned codes (AA, QM–QZ, X*, ZZ); other two-letter values are `Invalid("unknown_country")`, a country name gets no code. Location is no longer a checkable type: any string is a location's text.
+- Alternatives: keep a gazetteer; derive codes from Babel's territory names.
+- Why: Appendix A #43: "our job is to extract page data, not change it"; C7 (decline rather than guess).
+- Reversible: yes — a lookup could be added back as a separate step.
