@@ -171,6 +171,12 @@ def test_a_listing_without_repeated_linked_items_is_a_shell_for_the_listing_kind
         _listing(
             "<div>" + "".join(f'<a class="card" href="/p/{i}"><h3>Kettle {i}</h3></a>' for i in range(4)) + "</div>"
         ),
+        # Tiles of one template whose class lists differ by a token of each tile's own.
+        _listing(
+            "<div>"
+            + "".join(f'<div class="card order-{i}"><a href="/p/{i}">Kettle {i}</a></div>' for i in range(4))
+            + "</div>"
+        ),
         # Rows published as structured data are read without the grid (SPEC-05 §4.7).
         _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "ItemList"}</script>'),
         # A media type is compared before its parameters, in any case (RFC 9110 §8.3.1).
