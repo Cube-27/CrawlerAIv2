@@ -6,7 +6,8 @@ would need vendor strings, C3/C4). They mostly present as shells and get a brows
 a message and nothing that links, loads, runs or embeds anything, which no site's page is.
 
 A page fetched as a listing is a shell too when nothing on it lists items (`_lists_items`): its grid loads by script
-after the page (an XHR), so the browser may render what HTTP did not.
+after the page (an XHR), so the browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
+browser is the last rung, and its page is extracted whatever its links.
 """
 
 from lxml import etree
@@ -42,6 +43,9 @@ TERMINAL_MAX_BYTES = 1024
 # (RFC 9110 §8.3.1), is `_JSON_LD`.
 _MICRODATA = "[itemscope]"
 _JSON_LD = "application/ld+json"
+# JSON script data blocks (RFC 8259 §11, the `application/json` media type): the page's script state, which the
+# js_state collector reads rows from (SPEC-05 §4.5).
+_JSON = "application/json"
 
 
 def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
@@ -88,7 +92,7 @@ def _has_structured_data(tree: LexborHTMLParser) -> bool:
     if tree.css_first(_MICRODATA) is not None:
         return True
     types = (script.attributes.get("type") or "" for script in tree.css("script[type]"))
-    return any(type_.split(";", 1)[0].strip().lower() == _JSON_LD for type_ in types)
+    return any(type_.split(";", 1)[0].strip().lower() in (_JSON_LD, _JSON) for type_ in types)
 
 
 def _lists_items(body: bytes) -> bool:

@@ -175,6 +175,8 @@ def test_a_listing_without_repeated_linked_items_is_a_shell_for_the_listing_kind
         _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "ItemList"}</script>'),
         # A media type is compared before its parameters, in any case (RFC 9110 §8.3.1).
         _listing(_SCRIPT_GRID, head='<script type="Application/LD+JSON; charset=utf-8">{}</script>'),
+        # A JSON data block, which the page's script state is read from (RFC 8259 media type).
+        _listing(_SCRIPT_GRID + '<script type="application/json">{"items": []}</script>'),
         _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/Product"></div>'),
     ],
 )

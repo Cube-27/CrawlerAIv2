@@ -225,6 +225,14 @@ def test_js_only_page_is_rendered_and_its_json_captured(browser: Browser, server
     assert decode(encode(result.bundle)) == result.bundle
 
 
+def test_a_listing_rendered_in_the_browser_is_not_judged_by_its_linked_items(browser: Browser, server: Server) -> None:
+    # The page's items render as unlinked paragraphs from fetched JSON: the browser is the last rung, so the listing
+    # rule (a shell, for the browser to retry) does not apply, and the rows the JSON holds stay extractable.
+    result = browser.fetch(server.url("/app"), FetchPolicy(browser_timeout_s=10, page_kind="listing"))
+
+    assert (result.block_class, result.bundle.manifest.fetch_policy["page_kind"]) == ("ok", "listing")
+
+
 def test_attempt_and_manifest_record_the_outcome(browser: Browser, server: Server) -> None:
     result = browser.fetch(server.url("/app"))
 

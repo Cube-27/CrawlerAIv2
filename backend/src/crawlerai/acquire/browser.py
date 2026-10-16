@@ -126,11 +126,11 @@ async def fetch_browser(
             exchange, content = await _render(
                 url, policy, session, connector or SafeConnector(), proxy, started, timings
             )
-        # classify parses HTML synchronously; a thread keeps the event loop free.
+        # classify parses HTML synchronously; a thread keeps the event loop free. Without the page kind: the listing
+        # rule calls a page a shell for the browser to render, and the browser is the last rung, so its page is
+        # extracted whatever its links (rows from captured JSON are read then).
         headers = exchange.response_headers
-        block_class: BlockClass = await asyncio.to_thread(
-            classify, exchange.status, headers, content.body, policy.page_kind
-        )
+        block_class: BlockClass = await asyncio.to_thread(classify, exchange.status, headers, content.body)
     except _Failed as failed:
         error, block_class, exchange = failed.error, "error", failed.exchange
     except UnknownProxyPool as unknown:
