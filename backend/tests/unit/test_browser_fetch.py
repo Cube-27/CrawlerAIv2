@@ -1,5 +1,5 @@
 """Browser fetch (SPEC-02 §4.8, §4.5): a JS-only page is rendered, the JSON it loads is captured within the caps, every
-connection passes the SSRF guard, and the browser presents one consistent identity.
+connection passes the SSRF guard, and the page and its workers present Chromium's own identity.
 
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. The connector admits only
 those hosts (and the server's own address) at the server's port; every other name goes through the real guard with
@@ -68,6 +68,9 @@ setInterval(() => fetch('/api/n/0'), 100);
 _REPLACES_ITSELF = b"""<html><body><p>One moment</p><script>
 setTimeout(() => location.replace('/app'), 1000);
 </script></body></html>"""
+
+# A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own.
+_WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js');</script></body></html>"""
 
 
 @dataclass(frozen=True)
@@ -140,6 +143,8 @@ def server() -> Iterator[Server]:
             "/busy": Reply(body=_BUSY),
             "/still": Reply(body=_STILL),
             "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
+            "/with-worker": Reply(body=_WITH_WORKER),
+            "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
             "/hop-private": Reply(302, headers=(("Location", "http://internal.example.com/"),)),
@@ -509,15 +514,16 @@ def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body(
     assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
 
 
-def test_user_agent_and_client_hints_name_chrome_and_agree(browser: Browser, server: Server) -> None:
-    # 127.0.0.1 is a secure context (W3C Secure Contexts §3.2), where Chromium sends client hints.
-    browser.fetch(server.url("/app", host="127.0.0.1"))
+def test_the_page_and_its_worker_present_chromiums_own_identity(browser: Browser, server: Server) -> None:
+    # No override (D-1205): the document and a dedicated worker's request carry the same user agent, and its major
+    # version is the one the client-hint brands name. 127.0.0.1 is a secure context (W3C Secure Contexts §3.2), where
+    # Chromium sends client hints.
+    browser.fetch(server.url("/with-worker", host="127.0.0.1"))
 
-    sent = next(h for host, path, h in server.requests if path == "/app" and host.startswith("127.0.0.1"))
-    agent = sent["User-Agent"]
-    assert "HeadlessChrome" not in agent
-    brands = dict(re.findall(r'"([^"]+)";v="(\d+)"', sent["sec-ch-ua"]))
-    assert "HeadlessChrome" not in brands
-    chrome_major = re.search(r" Chrome/(\d+)\.", agent)
+    sent = {path: h for host, path, h in server.requests if host.startswith("127.0.0.1")}
+    agent = sent["/with-worker"]["User-Agent"]
+    assert sent["/api/n/7"]["User-Agent"] == agent
+    brands = dict(re.findall(r'"([^"]+)";v="(\d+)"', sent["/with-worker"]["sec-ch-ua"]))
+    chrome_major = re.search(r"Chrome/(\d+)\.", agent)
     assert chrome_major is not None
     assert brands["Chromium"] == chrome_major.group(1)

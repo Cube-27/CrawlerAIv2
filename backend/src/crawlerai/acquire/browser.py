@@ -19,7 +19,6 @@ from typing import cast
 from patchright.async_api import Browser, Page, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
-from pydantic import JsonValue
 
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.headers import recorded
@@ -32,18 +31,9 @@ from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_fi
 
 __all__ = ["BrowserSession", "fetch_browser", "open_browser"]
 
-# Chromium names its headless build `HeadlessChrome` in the user agent and the client-hint brands; the headed build
-# says `Chrome` (§7.1: the user agent drops `HeadlessChrome`).
-_HEADLESS_PRODUCT = "HeadlessChrome"
-_HEADED_PRODUCT = "Chrome"
-# RFC 6761 §6.4: `.invalid` never resolves. The identity probe page is served from inside the browser, not fetched;
-# https makes it a secure context, where Chromium exposes its client hints (W3C Secure Contexts, UA-CH §3).
-_PROBE_URL = "https://identity.invalid/"
-# User-Agent Client Hints (WICG UA-CH §4): the high-entropy values, which with the low-entropy brands, mobile and
-# platform make up CDP's `Network.UserAgentMetadata`.
-_HIGH_ENTROPY_HINTS = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
-# Patchright's documented setup: the full Chromium build (`chromium`), not the headless shell Playwright picks for
-# `headless=True` by default; with `headless=True` it runs Chromium's own headless mode.
+# Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
+# Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own user agent and
+# client hints and no custom headers, so the page, its workers and its requests all show one identity.
 _CHANNEL = "chromium"
 # WebRTC sends UDP outside any proxy; Chromium's policy `disable_non_proxied_udp` keeps it inside the guard.
 _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
@@ -86,12 +76,9 @@ _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
 @dataclass(frozen=True)
 class BrowserSession:
-    """A launched browser and the identity every page presents: Chromium's own user agent and client hints, with
-    the headless product name replaced so the two agree."""
+    """A launched browser, shared by the fetches of one worker process."""
 
     browser: Browser
-    user_agent: str
-    client_hints: dict[str, JsonValue]  # CDP `Network.UserAgentMetadata`
 
 
 @asynccontextmanager
@@ -100,27 +87,9 @@ async def open_browser() -> AsyncIterator[BrowserSession]:
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, args=_LAUNCH_ARGS)
         try:
-            yield BrowserSession(browser, *await _identity(browser))
+            yield BrowserSession(browser)
         finally:
             await browser.close()
-
-
-async def _identity(browser: Browser) -> tuple[str, dict[str, JsonValue]]:
-    page = await browser.new_page()
-    try:
-        await page.route(_PROBE_URL, lambda route: route.fulfill(content_type="text/html", body=""))
-        await page.goto(_PROBE_URL)
-        user_agent = cast(str, await page.evaluate("navigator.userAgent"))
-        hints = cast(
-            dict[str, JsonValue],
-            await page.evaluate("hints => navigator.userAgentData.getHighEntropyValues(hints)", _HIGH_ENTROPY_HINTS),
-        )
-    finally:
-        await page.close()
-    for key in ("brands", "fullVersionList"):
-        brands = cast(list[dict[str, str]], hints[key])
-        hints[key] = cast(JsonValue, [b for b in brands if b["brand"] != _HEADLESS_PRODUCT])
-    return user_agent.replace(f"{_HEADLESS_PRODUCT}/", f"{_HEADED_PRODUCT}/"), hints
 
 
 class _Failed(Exception):
@@ -199,11 +168,6 @@ async def _render(
         opened = time.monotonic()
         try:
             page = await context.new_page()
-            cdp = await context.new_cdp_session(page)
-            await cdp.send(
-                "Network.setUserAgentOverride",
-                {"userAgent": session.user_agent, "userAgentMetadata": session.client_hints},
-            )
             return await _navigate(page, url, first, policy, guard, started)
         finally:
             await context.close()
