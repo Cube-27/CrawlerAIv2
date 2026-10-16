@@ -49,7 +49,7 @@ from crawlerai.worker.handlers import crawl as crawl_handler_module
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
 from tests.conftest import ParserCounter
-from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.db.conftest import LISTING_FIELDS, PRIVATE_HOST, listing_page, resolve
 
 pytestmark = pytest.mark.anyio
 
@@ -241,6 +241,33 @@ async def test_only_urls_a_rule_matches_are_extracted_and_outcomes_match_the_tas
     results = await _results(engine, fetching, submitted.job_id)
     assert isinstance(results, RecordPage)
     assert [record.fields["title"].value for record in results.items] == ["Blue kettle"]
+
+
+async def test_a_listing_rule_keeps_each_rows_record_and_follows_the_next_page(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
+) -> None:
+    start, second = f"{own_origin}/c/kettles", f"{own_origin}/c/kettles?page=2"
+    web.pages |= {
+        start: (200, listing_page(own_origin, ["Blue kettle", "Red kettle"], next_page=second), "ok"),
+        second: (200, listing_page(own_origin, ["Green kettle", "Grey kettle"], first=3), "ok"),
+    }
+    document = {"name": schema_name, "version": 1, "page_kind": "listing", "fields": LISTING_FIELDS}
+    async with engine.begin() as conn:
+        schema = await registry.create(conn, SchemaDocument.model_validate(document), "user")
+    rules = [{"pattern": f"{own_origin}/c/*", "page_kind": "listing"}]
+    request = crawl(
+        start, "records", schema={"id": str(schema.id)}, page_kind_rules=rules, include=[f"{own_origin}/c/*"]
+    )
+    submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)
+
+    await run(engine, fetching, engine_data, submitted.job_id)
+
+    found = await tasks(engine, submitted.job_id)
+    results = await _results(engine, fetching, submitted.job_id)
+    assert {url: task.outcome for url, task in found.items()} == {start: "extracted", second: "extracted"}
+    assert isinstance(results, RecordPage)
+    titles = sorted(str(record.fields["title"].value) for record in results.items)
+    assert titles == ["Blue kettle", "Green kettle", "Grey kettle", "Red kettle"]
 
 
 async def test_a_page_is_parsed_once_for_its_links_and_its_record(

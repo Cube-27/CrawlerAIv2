@@ -2454,9 +2454,9 @@ export interface components {
         /**
          * ScrapeRequest
          * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
-         *     must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
-         *     `budget.llm_calls` bounds its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age`
-         *     reuses a capture fetched within that many seconds.
+         *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft;
+         *     `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched within that
+         *     many seconds.
          */
         ScrapeRequest: {
             /**

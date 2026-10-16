@@ -33,6 +33,7 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.fetching import Fetching
 from crawlerai.storage.fs import FsStore
+from tests.db.conftest import LISTING_FIELDS, listing_page
 
 pytestmark = pytest.mark.anyio
 
@@ -402,3 +403,53 @@ async def test_records_without_the_engine_data_are_unavailable(
 
     assert response.status_code == 503
     assert response.json()["type"] == "records_unavailable"
+
+
+def _listing_records(url: str, schema_name: str, **fields: Any) -> dict[str, Any]:
+    inline = {"name": schema_name, "page_kind": "listing", "fields": {**LISTING_FIELDS, **fields}}
+    return {"url": url, "formats": ["records"], "schema": {"inline": inline}, "page_kind": "listing"}
+
+
+async def test_a_listing_answers_one_record_per_row(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, schema_name: str
+) -> None:
+    url = f"{own_origin}/kettles"
+    pages[url] = (200, listing_page(own_origin, ["Blue kettle", "Red kettle", "Green kettle"]))
+
+    response = await _post(client, _listing_records(url, schema_name))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["outcome"] == "extracted"
+    rows = [(r["complete"], r["fields"]["title"]["value"], r["fields"]["url"]["value"]) for r in body["records"]]
+    assert rows == [
+        (True, "Blue kettle", f"{own_origin}/kettles/1"),
+        (True, "Red kettle", f"{own_origin}/kettles/2"),
+        (True, "Green kettle", f"{own_origin}/kettles/3"),
+    ]
+
+
+async def test_a_listing_with_an_incomplete_row_is_partial_and_keeps_every_row(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, schema_name: str
+) -> None:
+    url = f"{own_origin}/kettles"
+    pages[url] = (200, listing_page(own_origin, ["Blue kettle", "Red kettle", "Green kettle"], priced=False))
+
+    response = await _post(client, _listing_records(url, schema_name, price=PRICE))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["outcome"] == "partial"
+    assert [(r["complete"], r["fields"]["price"]["status"]) for r in body["records"]] == [(False, "missing")] * 3
+
+
+async def test_a_listing_without_rows_is_partial_with_no_record(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, schema_name: str
+) -> None:
+    url = f"{own_origin}/kettles"
+    pages[url] = (200, PAGE)
+
+    response = await _post(client, _listing_records(url, schema_name))
+
+    assert response.status_code == 200, response.text
+    assert (response.json()["outcome"], response.json()["records"]) == ("partial", [])

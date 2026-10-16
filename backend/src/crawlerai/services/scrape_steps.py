@@ -160,16 +160,14 @@ class FetchOptions(Input):
 
 
 def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
-    """`records` needs a schema and a `page_kind`, the schema's page kind must be that one, and listing records wait
-    for SPEC-05 PR 12 (SPEC-07 §4.4). Raises `ValueError`, for a request model's validator."""
+    """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one (SPEC-07 §4.4). Raises
+    `ValueError`, for a request model's validator."""
     if "records" not in formats:
         return
     if schema is None:
         raise ValueError("the records format needs a schema")
     if page_kind is None:
         raise ValueError("the records format needs a page_kind")
-    if page_kind == "listing":
-        raise ValueError("records of listing pages are not available yet")
     if isinstance(schema, SchemaInline) and schema.inline.page_kind != page_kind:
         raise ValueError(f"the inline schema is for {schema.inline.page_kind} pages, not {page_kind}")
 
@@ -283,11 +281,12 @@ async def store_page_record(
     margins: DriftMargins | None,
     caller_supplied: bool = True,
 ) -> Stored:
-    """Store the extraction of a detail page and what it keeps: a caller-supplied page keeps its record, complete or
-    not (`partial`, ARCHITECTURE §10), and a crawl-discovered one only a complete record (else `no_match`, §23); none
-    when resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied page without a
-    record. A page with a record counts toward its progressive state. A page `config` ran on joins the config's drift
-    window (SPEC-08 §4.9)."""
+    """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
+    (`partial`, ARCHITECTURE §10), and a crawl-discovered one only complete records (else `no_match`, §23); none when
+    resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied detail page without a
+    record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
+    page with a record counts toward its progressive state. A page `config` ran on joins the config's drift window
+    (SPEC-08 §4.9)."""
     stored = await store_extraction(
         conn,
         task,
@@ -304,12 +303,14 @@ async def store_page_record(
     if stored.records:
         await _count_page(conn, site_id, schema)
     elif caller_supplied:
-        return replace(stored, outcome="failed")
+        listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
+        return replace(stored, outcome="partial" if listed_nothing else "failed")
     return stored
 
 
-def record_outcome(record: StoredRecord) -> Literal["extracted", "partial"]:
-    return "extracted" if record.draft.complete else "partial"
+def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "partial"]:
+    """A caller-supplied page's outcome: `extracted` when it kept records and every one is complete (§10)."""
+    return "extracted" if records and all(record.draft.complete for record in records) else "partial"
 
 
 async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:

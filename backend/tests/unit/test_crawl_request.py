@@ -50,10 +50,6 @@ def test_refuses_a_member_out_of_range(member: str, value: object) -> None:
             {"page_kind_rules": [DETAIL, {"pattern": "*/c/*", "page_kind": "listing"}]},
             "the records format takes rules of one page kind, the schema's",
         ),
-        (
-            {"page_kind_rules": [{"pattern": "*", "page_kind": "listing"}]},
-            "records of listing pages are not available yet",
-        ),
         ({"schema": None}, "the records format needs a schema"),
     ],
 )
@@ -63,6 +59,16 @@ def test_records_need_a_schema_and_rules_of_its_page_kind(members: dict[str, Any
     [(_, error)] = _errors(body)
 
     assert error == f"Value error, {message}"
+
+
+def test_records_take_listing_rules() -> None:
+    rules = [{"pattern": "*", "page_kind": "listing"}]
+
+    request = CrawlRequest.model_validate(
+        {"url": URL, "formats": ["records"], "schema": SCHEMA, "page_kind_rules": rules}
+    )
+
+    assert [rule.page_kind for rule in request.page_kind_rules] == ["listing"]
 
 
 def test_formats_take_rules_of_any_page_kind() -> None:
