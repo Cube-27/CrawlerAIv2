@@ -129,3 +129,20 @@ def test_a_prefixed_tag_is_addressed_by_name_and_resolves_in_lxml() -> None:
 
     assert page.cleaned_text.offsets[2] == TextRun(2, 3, "/html[1]/body[1]/p[1]/*[name()='o:p'][2]")
     assert [e.text_content() for e in page.lxml_tree.xpath(page.cleaned_text.offsets[2].node_path)] == ["c"]
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ('<h3><a href="/b" title="A Long Book Title">A Long ...</a></h3>', "A Long Book Title"),
+        ('<h3><a href="/b" title="A Long Book Title"><span>A Long Bo\u2026</span></a></h3>', "A Long Book Title"),
+        # The title is shown only where it completes the elided text: other advisory text stays as written.
+        ('<h3><a href="/b" title="Open the book">A Long ...</a></h3>', "A Long ..."),
+        ('<h3><a href="/b" title="A Long Book Title">A Long Book</a></h3>', "A Long Book"),
+        ('<h3><a href="/b" title="A Long Book Title">...</a></h3>', "..."),
+    ],
+)
+def test_elided_text_is_completed_by_its_title(body: str, expected: str) -> None:
+    # HTML Standard §3.2.6.1: `title` is advisory information for its element, such as the full text it shows; an
+    # ellipsis (U+2026, or three full stops, its compatibility decomposition) marks the text as cut.
+    assert _text(body) == expected
