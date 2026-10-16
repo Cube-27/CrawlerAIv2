@@ -43,7 +43,7 @@ Full rows are in git history.
 - [SPEC-00 — Project setup and engineering foundations](../specs/SPEC-00-project-setup.md): PRs 1–10 (#1, #3, #4, #9, #5, #6, #7, #8, #12, #10)
 - [SPEC-01 — Persistence, job queue and capture storage](../specs/SPEC-01-persistence-queue-storage.md): PRs 1–8 (#11, #14, #17, #19, #13, #20, #23, #25)
 - [SPEC-02 — Acquisition](../specs/SPEC-02-acquisition.md): PRs 1–10 (#16, #18, #22, #26, #31, #46, #53, #52, #62, #64)
-- [SPEC-04 — Schemas and normalization](../specs/SPEC-04-schemas-and-normalization.md): PRs 1–9 (#43, #47, #58, #54, #57, #59, #60, #56, #66)
+- [SPEC-04 — Schemas and normalization](../specs/SPEC-04-schemas-and-normalization.md): PRs 1–11 (#43, #47, #58, #54, #57, #59, #60, #56, #66, #203, #203)
 - [SPEC-05 — Extraction and resolution](../specs/SPEC-05-extraction-and-resolution.md): PRs 1–13 (#67, #72, #78, #83, #79, #85, #90, #94, #100, #86, #91, #106, #109)
 - [SPEC-06 — LLM layer](../specs/SPEC-06-llm-layer.md): PRs 1–7 (#69, #74, #76, #107, #111, #92, #148)
 - [SPEC-07 — API foundation and `scrape`](../specs/SPEC-07-api-foundation-and-scrape.md): PRs 1–8 (#70, #77, #80, #88, #105, #96, #81, #108)
@@ -68,6 +68,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
 - Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64].
 - More of the same, SPEC-05/08/10: CSV formula injection in downloads, blocked on D-0879 [#115].
+- Normalize: a minus counts anywhere before the number (`numbers.negative`), so "In stock - 5 left" declines as negative; count it only when it touches the number, for money and count (D-0922) [#203].
+- Normalize: `count` accepts `unitCode` `C62` with a contradicting `unitText` ("kg"); decide whether to decline any `unitText` beside C62 (D-0921) [#203].
+- Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32]. The project license (`AGPL-3.0-only` in `backend/pyproject.toml`) is the owner's call [#175].
 
