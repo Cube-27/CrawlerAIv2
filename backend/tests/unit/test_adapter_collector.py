@@ -78,11 +78,14 @@ def test_a_detail_response_is_one_posting_with_a_candidate_per_documented_field(
     entity = "adapter:greenhouse:$"
     assert result.entities == (
         Entity(
-            id=entity, kind="JobPosting", urls=("https://jobs.example.com/example-tenant/jobs/4000001",), parent=None
+            id=entity,
+            types=("JobPosting",),
+            urls=("https://jobs.example.com/example-tenant/jobs/4000001",),
+            parent=None,
         ),
         Entity(
             id="adapter:greenhouse:$['company_name']",
-            kind="Organization",
+            types=("Organization",),
             urls=(),
             parent=entity,
             via="hiringOrganization",
@@ -122,7 +125,7 @@ def test_a_listing_response_is_a_list_of_postings_each_owning_its_values() -> No
     result = _collect(LEVER, "listing", _fixture("lever/postings.json"), _preset("job_listing"))
 
     rows = ("adapter:lever:$[0]", "adapter:lever:$[1]")
-    assert [(e.id, e.kind, e.parent, e.via) for e in result.entities] == [
+    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
         ("adapter:lever:$", "ItemList", None, None),
         *((row, "JobPosting", "adapter:lever:$", "itemListElement") for row in rows),
     ]
@@ -310,7 +313,7 @@ def test_fields_of_several_types_are_read_from_nested_nodes_each_owned_by_its_no
 
     result = _collect(_StandIn(product), "detail", body, schema)
 
-    assert [(e.id, e.kind, e.parent, e.via) for e in result.entities] == [
+    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
         ("adapter:stand-in:$", "Product", None, None),
         ("adapter:stand-in:$['offer']", "Offer", "adapter:stand-in:$", "offers"),
     ]

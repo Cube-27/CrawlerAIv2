@@ -177,7 +177,7 @@ ROW_KEYS = st.lists(
 
 @given(ROW_KEYS)
 def test_rows_link_as_comparing_every_pair_would(row_keys: list[dict[str, list[JsonValue]]]) -> None:
-    rows = [Entity(id=f"row:{i}", kind="Product", urls=(), parent=None) for i in range(len(row_keys))]
+    rows = [Entity(id=f"row:{i}", types=("Product",), urls=(), parent=None) for i in range(len(row_keys))]
     keys = {row.id: k for row, k in zip(rows, row_keys, strict=True)}
 
     assert [[row.id for row in group] for group in linked(_KEY_SUBS, rows, keys)] == _pairwise(rows, keys)

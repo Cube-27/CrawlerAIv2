@@ -47,7 +47,7 @@ PRODUCT_SCHEMA = _schema(
 
 
 def _entity(id_: str, kind: str = "Product", *urls: str, parent: str | None = None, via: str | None = None) -> Entity:
-    return Entity(id=id_, kind=kind, urls=urls, parent=parent, via=via)
+    return Entity(id=id_, types=(kind,), urls=urls, parent=parent, via=via)
 
 
 def _select(
@@ -89,6 +89,12 @@ def test_the_one_primary_entity_is_the_target_whatever_its_urls() -> None:
 def test_a_subtype_of_the_primary_type_is_a_primary_entity() -> None:
     product = _entity("jsonld:0:$", "IndividualProduct")
     assert _select(product) == product
+
+
+def test_an_entity_of_several_types_is_primary_when_any_of_them_is() -> None:
+    # JSON-LD 1.1 §3.5: a node is an instance of each of its types, whichever is listed first.
+    work = Entity(id="jsonld:0:$", types=("CreativeWork", "Product"), urls=(), parent=None)
+    assert _select(work, _entity("jsonld:1:$", "Organization")) == work
 
 
 def test_related_products_are_not_candidates() -> None:
@@ -168,7 +174,7 @@ def test_primary_entities_that_are_all_excluded_are_ambiguous() -> None:
 def test_without_a_primary_entity_the_page_is_the_target() -> None:
     page = _entity(PAGE, PAGE, PAGE_URL)
     assert _select(page, _entity("jsonld:0:$", "Organization")) == page
-    assert _select() == Entity(id=PAGE, kind=PAGE, urls=(), parent=None)
+    assert _select() == Entity(id=PAGE, types=(PAGE,), urls=(), parent=None)
 
 
 def _jsonld_target(*blocks: Any, request_url: str = PAGE_URL) -> Entity | AmbiguousTarget:

@@ -82,9 +82,9 @@ def test_a_product_with_nested_items() -> None:
         f"microdata:{BODY}/div[1]/div[2]",
     )
     assert result.entities == (
-        Entity(id=product, kind="Product", urls=(PAGE_URL,), parent=None),
-        Entity(id=brand, kind="Brand", urls=(), parent=product, via="brand"),
-        Entity(id=offer, kind="Offer", urls=(), parent=product, via="offers"),
+        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None),
+        Entity(id=brand, types=("Brand",), urls=(), parent=product, via="brand"),
+        Entity(id=offer, types=("Offer",), urls=(), parent=product, via="offers"),
     )
     assert result.candidates == (
         _candidate("title", product, "Widget 9", Ok("Widget 9"), f"{product}/h1[1]"),
@@ -268,7 +268,7 @@ def test_an_item_two_items_reference_has_no_parent() -> None:
 )
 def test_schema_org_spellings(markup: str) -> None:
     result = _collect(markup)
-    assert [e.kind for e in result.entities] == ["Product"]
+    assert [e.types[0] for e in result.entities] == ["Product"]
     assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget 9")]
 
 
@@ -288,7 +288,7 @@ def test_markup_outside_schema_org_gives_no_entities(markup: str) -> None:
     result = _collect(
         markup + '<div itemscope itemtype="https://schema.org/Product"><b itemprop="name">Widget 10</b></div>'
     )
-    assert [e.kind for e in result.entities] == ["Product"]
+    assert [e.types[0] for e in result.entities] == ["Product"]
     assert [c.raw for c in result.candidates] == ["Widget 10"]
 
 
@@ -297,7 +297,7 @@ def test_an_untyped_nested_item_s_names_are_not_schema_org() -> None:
         '<div itemscope itemtype="https://schema.org/Product">'
         '<div itemprop="brand" itemscope><span itemprop="name">Acme 7</span></div><b itemprop="name">Widget 9</b></div>'
     )
-    assert [e.kind for e in result.entities] == ["Product"]
+    assert [e.types[0] for e in result.entities] == ["Product"]
     assert _fields(result) == [("title", f"microdata:{BODY}/div[1]", "Widget 9")]
 
 
@@ -311,8 +311,8 @@ def test_rdfa_lite_nests_resources() -> None:
     )
     product, offer = f"microdata:{BODY}/div[1]", f"microdata:{BODY}/div[1]/div[1]"
     assert result.entities == (
-        Entity(id=product, kind="Product", urls=(PAGE_URL,), parent=None),
-        Entity(id=offer, kind="Offer", urls=(PAGE_URL,), parent=product, via="offers"),
+        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None),
+        Entity(id=offer, types=("Offer",), urls=(PAGE_URL,), parent=product, via="offers"),
     )
     assert _fields(result) == [
         ("title", product, "Widget 9"),
@@ -380,7 +380,7 @@ def test_subtypes_come_first_and_match_their_supertype_s_paths() -> None:
         '<div itemscope itemtype="https://schema.org/Thing https://schema.org/IndividualProduct">'
         '<b itemprop="name">Widget 9</b></div>'
     )
-    assert [e.kind for e in result.entities] == ["IndividualProduct"]
+    assert [e.types[0] for e in result.entities] == ["IndividualProduct"]
     assert [c.field for c in result.candidates] == ["title"]
 
 
@@ -403,3 +403,12 @@ def test_a_blank_item_id_names_no_page(attribute: str) -> None:
     # A blank id would resolve to the base URL itself and name the page the item is on.
     result = _collect(f'<div {attribute} itemtype="https://schema.org/Product" typeof="Product"></div>')
     assert [e.urls for e in result.entities] == [()]
+
+
+def test_an_item_is_an_entity_of_each_of_its_types() -> None:
+    # HTML microdata: `itemtype` is a set of types of one vocabulary, and the item is of each.
+    result = _collect(
+        '<div itemscope itemtype="https://schema.org/CreativeWork https://schema.org/Product">'
+        '<b itemprop="name">Widget 9</b></div>'
+    )
+    assert [e.types for e in result.entities] == [("CreativeWork", "Product")]

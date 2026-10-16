@@ -77,7 +77,7 @@ def test_each_ogp_property_maps_to_the_field_of_its_role() -> None:
     )
 
     assert result == CollectResult(
-        entities=(Entity(id="page", kind="page", urls=("https://shop.example.test/p/1?ref=x",), parent=None),),
+        entities=(Entity(id="page", types=("page",), urls=("https://shop.example.test/p/1?ref=x",), parent=None),),
         candidates=(
             _og("title", "Synthetic Widget", Ok("Synthetic Widget"), "meta:og:title"),
             _og(
@@ -189,7 +189,7 @@ def test_og_url_names_the_page_entity_even_without_a_url_field() -> None:
     result = _collect(("og:url", "HTTPS://Shop.Example.TEST/p/1"), schema=schema)
 
     assert result == CollectResult(
-        entities=(Entity(id="page", kind="page", urls=("https://shop.example.test/p/1",), parent=None),),
+        entities=(Entity(id="page", types=("page",), urls=("https://shop.example.test/p/1",), parent=None),),
         candidates=(),
     )
 

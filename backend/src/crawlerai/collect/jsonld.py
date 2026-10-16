@@ -203,7 +203,7 @@ class JsonLdCollector:
             entities=tuple(
                 Entity(
                     id=t.id,
-                    kind=t.types[0],
+                    types=t.types,
                     urls=tuple(urls[t.id]),
                     parent=same.get(parent, parent) if (parent := parents[t.id]) is not None else None,
                     via=vias[t.id],

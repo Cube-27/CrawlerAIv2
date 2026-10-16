@@ -33,10 +33,10 @@ PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 ORDERS = dict.fromkeys(PRECEDENCE_TYPES, ORDER)
 
-PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
-OFFER_A = Entity(id="jsonld:0:$['offers'][0]", kind="Offer", urls=(), parent=PRODUCT.id, via="offers")
-OFFER_B = Entity(id="jsonld:0:$['offers'][1]", kind="Offer", urls=(), parent=PRODUCT.id, via="offers")
-RELATED = Entity(id="jsonld:0:$['isRelatedTo']", kind="Product", urls=(), parent=PRODUCT.id, via="isRelatedTo")
+PRODUCT = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None)
+OFFER_A = Entity(id="jsonld:0:$['offers'][0]", types=("Offer",), urls=(), parent=PRODUCT.id, via="offers")
+OFFER_B = Entity(id="jsonld:0:$['offers'][1]", types=("Offer",), urls=(), parent=PRODUCT.id, via="offers")
+RELATED = Entity(id="jsonld:0:$['isRelatedTo']", types=("Product",), urls=(), parent=PRODUCT.id, via="isRelatedTo")
 ENTITIES = (PRODUCT, OFFER_A, OFFER_B, RELATED)
 
 TITLE = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.name")
@@ -379,7 +379,7 @@ def test_an_aggregate_low_price_is_never_the_price() -> None:
     schema = _schema(title=TITLE, price=PRICE)
     collected = JsonLdCollector(VOCABULARY).collect(ParsedPage(html), schema, _CTX)
     graph = EntityGraph.of(collected.entities, VOCABULARY)
-    product = next(e for e in collected.entities if e.kind == "Product")
+    product = next(e for e in collected.entities if e.types == ("Product",))
     resolver = Resolver(graph=graph, target=product, page=PageFacts.of(PAGE_URL, lambda _: False), orders=ORDERS)
 
     result = resolver.prefer(schema, collected.candidates)

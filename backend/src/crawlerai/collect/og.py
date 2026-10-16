@@ -80,7 +80,7 @@ class OpenGraphCollector:
             return CollectResult(entities=(), candidates=())
         metas, diagnostics = _without_site_values(metas, ctx)
         candidates = tuple(_candidates(metas, schema, ctx))
-        entity = Entity(id=PAGE, kind=PAGE, urls=_urls(metas, ctx), parent=None)
+        entity = Entity(id=PAGE, types=(PAGE,), urls=_urls(metas, ctx), parent=None)
         return CollectResult(entities=(entity,), candidates=candidates, diagnostics=diagnostics)
 
 

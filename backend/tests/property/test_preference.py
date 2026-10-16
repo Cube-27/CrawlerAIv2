@@ -22,9 +22,10 @@ VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 ORDERS = dict.fromkeys(PRECEDENCE_TYPES, ORDER)
-PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
+PRODUCT = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None)
 OFFERS = tuple(
-    Entity(id=f"jsonld:0:$['offers'][{i}]", kind="Offer", urls=(), parent=PRODUCT.id, via="offers") for i in range(3)
+    Entity(id=f"jsonld:0:$['offers'][{i}]", types=("Offer",), urls=(), parent=PRODUCT.id, via="offers")
+    for i in range(3)
 )
 
 SKU = FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="d", schema_org="Product.sku")

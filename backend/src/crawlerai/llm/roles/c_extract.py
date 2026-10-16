@@ -105,8 +105,8 @@ def listing_output_schema(row_fields: Sequence[str], page_fields: Sequence[str])
 
 def row_entity(position: int) -> Entity:
     """The entity of a listing's row as role C reads it: its position among the reply's rows. No schema.org type is
-    known for it (`Entity.kind` is then `page`), and it is the child of no structured entity."""
-    return Entity(id=f"llm:rows[{position}]", kind=PAGE, urls=(), parent=None)
+    known for it (`Entity.types` is then `page`), and it is the child of no structured entity."""
+    return Entity(id=f"llm:rows[{position}]", types=(PAGE,), urls=(), parent=None)
 
 
 def detail_request(

@@ -10,8 +10,8 @@ from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 
-PRODUCT = Entity(id="jsonld:0:$['@graph'][0]", kind="Product", urls=("https://shop.example.test/p/1",), parent=None)
-OFFER = Entity(id="jsonld:0:$['@graph'][0]['offers']", kind="Offer", urls=(), parent=PRODUCT.id)
+PRODUCT = Entity(id="jsonld:0:$['@graph'][0]", types=("Product",), urls=("https://shop.example.test/p/1",), parent=None)
+OFFER = Entity(id="jsonld:0:$['@graph'][0]['offers']", types=("Offer",), urls=(), parent=PRODUCT.id)
 
 
 def _candidate(**changes: Any) -> Candidate:
