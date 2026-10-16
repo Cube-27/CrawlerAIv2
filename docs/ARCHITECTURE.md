@@ -95,7 +95,7 @@ on every site.
 | C1 | **Held-out data is never seen and never fitted.** Splits: dev, hidden, fresh (§16). Hidden and fresh pages, their captures and their site metadata live **only** in a private database and object store (§15), never in the main DB, the repo, logs or CI artifacts (the repo is public, so CI logs and artifacts are too). Agents see only aggregates. Hidden and fresh are never used to fit thresholds, precedence or calibration. Every label is confirmed by a human. | Separate database and store with custodian-only credentials; a protected CI job. |
 | C2 | **Generic code encodes standards, types and structure only.** Admissible justifications: a published standard (schema.org, ISO 4217/8601/3166, CLDR, GS1, RFC, HTML, Open Graph), a property of a field type, or a structural regularity of HTML. "Site X does Y" is never admissible. Each generic rule names its justification. | Review. |
 | C3 | **No site literals outside site data.** Hostnames, retailer and brand names, and strings copied from pages appear only in the adapter package and in database rows. | CI scan of the whole repo with a domain regex and a reviewed allowlist (standards hosts such as schema.org, package registries, RFC 2606 example names). The scan against hidden and fresh hostnames runs in the protected job, from a secret list, reporting only file and line. |
-| C4 | **No lists that grow one incident at a time.** Vocabularies come from versioned external data (CLDR, schema.org, GeoNames). A type vocabulary with no standard (such as availability phrases) lives in its normalizer, is tagged by language, and grows only under the C10 acceptance rule. | Review; PR report. |
+| C4 | **No lists that grow one incident at a time.** Vocabularies come from versioned external data (CLDR, schema.org). A type vocabulary with no standard (such as availability phrases) lives in its normalizer, is tagged by language, and grows only under the C10 acceptance rule. | Review; PR report. |
 | C5 | **A failing site is fixed with data, not code.** Re-run learning (§8.3) or correct the site's config through the API. A PR changes generic behaviour only for a class of failures. | Review. |
 | C6 | **Adapters only for multi-tenant platforms**, evaluated on ≥ 3 tenants not used to build them. | Eval report. |
 | C7 | **Normalizers decline rather than guess** (§9). No defaults, no host tables, no values from URL codes. Derived values fill only empty fields and carry `derived_by`. | Property tests. |
@@ -192,7 +192,7 @@ A **schema** is a row in the database. Code knows about field **types**, never a
 | `url`, `image_url` | absolute, canonicalized |
 | `identifier` | {scheme: gtin \| isbn \| mpn \| sku \| custom, value} |
 | `date`, `datetime` | ISO 8601 |
-| `location` | {locality, region, country ISO 3166, remote_flag} |
+| `location` | {text, locality, region, country ISO 3166-1 alpha-2, remote_flag}: what the page states (§9) |
 | `range` | {min, max, currency or unit, period}; covers salary |
 | `count` | non-negative integer, such as a stock quantity (Appendix A #39) |
 | `number` | decimal as the page states it, such as a rating value (Appendix A #42) |
@@ -204,7 +204,7 @@ Types not in this table are added when a schema needs them, each with its one no
 
 ```jsonc
 {
-  "name": "commerce_detail", "version": 1, "page_kind": "detail",
+  "name": "commerce_detail", "page_kind": "detail",
   "required_groups": [["sku", "gtin"]],
   "fields": {
     "title":  { "type": "text",  "required": true, "scope": "row",
@@ -228,7 +228,9 @@ Types not in this table are added when a schema needs them, each with its one no
 - **Rows.** A `list` of `object` with a `schema_org` path is row-mapped: the path names the row nodes from the
   target, each sub-field maps by its own path within its row, and `key` names the identifier or url sub-fields
   that match one row across sources (SPEC-13).
-- **Versioning.** Schemas are immutable per version. Records and configs reference `(schema_id, schema_version)`.
+- **No versions.** One schema per name, edited in place (Appendix A #43). Records and configs reference
+  `schema_id`. An edit suspends the schema's active site configs and sends its progressive states back to
+  `cold`, so its sites learn again; a job runs with the document it pinned at submit (INV-28).
 - Full rules: SPEC-04.
 
 ### 5.3 Presets
@@ -241,13 +243,14 @@ Types not in this table are added when a schema needs them, each with its one no
 | `job_listing` | row: `title`, `url`; `location` when shown; page: `next_page_url` |
 
 "When shown" fields are optional fields in the preset: `required` can't express a condition.
-`commerce_detail` version 3 adds the optional `variants` list, one row per variant with its sku, gtin, price,
-availability, url, name and distinguishing attributes (Appendix A #37, SPEC-13). Version 4 adds the optional
+`commerce_detail` has the optional `variants` list, one row per variant with its sku, gtin, price,
+availability, url, name and distinguishing attributes (Appendix A #37, SPEC-13), and the optional
 `stock_quantity` (count), at the top level and in each variant row (Appendix A #39). The owner added, in place,
 optional fields the page states, each mapped to its schema.org property: `description`, `additional_images`,
 `color`, `material`, `gender`, `condition` (`itemCondition`), `rating` (`aggregateRating.ratingValue`, a
 `number`), `review_count`, `mpn` and `product_id` (`productID`), and `variant_id` in each variant row. Nothing is
-derived: no counts or values the page doesn't state (Appendix A #42).
+derived: no counts or values the page doesn't state (Appendix A #42). A preset changes by editing its file;
+`crawlerai schemas sync` updates the stored preset in place.
 Optional fields are added when a user needs them (OPEN_QUESTIONS #3). The presets map onto Google Merchant Center
 and Google-for-Jobs `JobPosting` required properties **[verified]**. `apply_url` has no direct schema.org property;
 its mapping is chosen in SPEC-04.
@@ -286,16 +289,16 @@ the queue, and the private eval tables: SPEC-01 and SPEC-03.
 | `project` | id, name | Groups sites. |
 | `api_key` | id, hashed_key, label, last_used_at | API and MCP access. |
 | `site` | id, project_id, host (exact, lowercased, unique), platform?, fetch_method (`http`, `browser`), proxy_pool?, robots_snapshot, crawl_delay_ms | `fetch_method` is remembered from evidence (§7.1). |
-| `schema_def` | id, name, version, page_kind, fields, required_groups, origin (`preset`, `user`, `prompt_draft`), status | Immutable per version. |
-| `extraction_config` | id, site_id, schema_id, schema_version, page_kind, version, status (`draft`, `active`, `suspended`), ir (§12), origin (`adapter`, `induced`, `llm_synth`, `operator`), field_status (per field → `corroborated` / `uncorroborated` / `operator` / `suspended`, plus validation yield), validation_report | One `active` per (site, schema, page_kind). |
-| `progressive_state` | site_id, schema_id, schema_version, page_kind, mode (`cold`, `learning`, `active`), pages_extracted | §8.4. A new schema version starts in `cold`. |
+| `schema_def` | id, name (unique), page_kind, fields, required_groups, origin (`preset`, `user`, `prompt_draft`), status | Edited in place (§5.2). |
+| `extraction_config` | id, site_id, schema_id, page_kind, version, status (`draft`, `active`, `suspended`), ir (§12), origin (`adapter`, `induced`, `llm_synth`, `operator`), field_status (per field → `corroborated` / `uncorroborated` / `operator` / `suspended`, plus validation yield), validation_report | One `active` per (site, schema, page_kind). |
+| `progressive_state` | site_id, schema_id, page_kind, mode (`cold`, `learning`, `active`), pages_extracted | §8.4. A schema edit sends it back to `cold`. |
 | `job` | id, project_id, kind (`scrape`, `batch_scrape`, `map`, `crawl`, `extract`, `learn`), request (frozen), schema_id?, status, webhook_url?, engine_version, usage | — |
 | `url_task` | id, job_id, url, canonical_url, page_kind?, status, attempts, capture_id, outcome (`extracted`, `partial`, `unchanged`, `links_only`, `blocked`, `shell`, `not_found`, `no_match`, `failed`), last_error | Claimed with `FOR UPDATE SKIP LOCKED`. |
 | `url_state` | site_id, canonical_url, etag, last_modified, content_fingerprint, record_fingerprint, last_seen_at, last_changed_at, missing_runs, gone_at? | §14. |
 | `capture` | id, site_id, url, fetched_at, method (`http`, `browser`, `api`), status_code, final_url, block_class, object_key, html_sha256, expires_at | Production and dev captures only (§15). |
 | `extraction` | id, url_task_id, capture_id, engine_version, config_version?, mode (`adhoc`, `config`), llm_calls | One resolver run. |
 | `candidate` | id, extraction_id, entity_ref, field, raw_value, normalized_value, normalize_status (`ok`, `ambiguous`, `invalid`), source_kind (`adapter`, `api`, `jsonld`, `microdata`, `og`, `js_state`, `xhr`, `config`, `llm`, `derived`, `dom`; `derived` marks a page-URL derivation, §10, and no candidate row holds it), independent (bool), locator (§8.1), chosen, reject_reason | Kept 30 days. |
-| `record` | id, extraction_id, job_id, site_id, schema_id, schema_version, entity_key, version, data, field_meta (per field → status, reason, evidence, confidence, calibrated, source_kind, locator, derived_by?), complete (bool), changed_fields, mode, fingerprint, created_at | `data` holds published fields only. |
+| `record` | id, extraction_id, job_id, site_id, schema_id, entity_key, version, data, field_meta (per field → status, reason, evidence, confidence, calibrated, source_kind, locator, derived_by?), complete (bool), changed_fields, mode, fingerprint, schema_digest, created_at | `data` holds published fields only. `schema_digest`: the document it was extracted with (§5.2). |
 | `eval_page` (dev in main; hidden and fresh in private) | id, capture_id, split, schema_id, page_kind, category, labels (value + locator, explicit `absent`), labeler, checker | — |
 | `eval_run` | id, engine_version, split, metrics | Hidden and fresh runs export aggregates only. |
 | `usage_event` | id, job_id, resource, provider, model_or_pool, quantity, metadata | Visibility and budgets; not billing. |
@@ -448,7 +451,7 @@ extraction, and a `learn` job re-runs.
 
 | Mode | Entered when | Path | Record `mode` |
 |---|---|---|---|
-| `cold` | A new (site, schema, page_kind) | Collectors → resolve. Required fields still missing → **LLM role C**: grounded extraction from cleaned page text. Values must be verbatim substrings with offsets and must pass their type normalizer. | `adhoc` |
+| `cold` | A new (site, schema, page_kind), or its schema was edited | Collectors → resolve. Required fields still missing → **LLM role C**: grounded extraction from cleaned page text. Values must be verbatim substrings with offsets and must pass their type normalizer. | `adhoc` |
 | `learning` | 8 pages extracted, or an explicit `learn` job | §8.3 runs in the background; pages keep being served in cold mode. | `adhoc` |
 | `active` | A config activates | Collectors + config → resolve. Role C only for fields the config doesn't cover. | `config` |
 
@@ -489,7 +492,7 @@ hint. Never host tables (C7).
 | money | Unicode CLDR via Babel **[verified: BSD-3]**; `price-parser` (BSD-3) to locate the number | The symbol maps to several currencies (`$` → USD, CAD, AUD, MXN, ARS, …) and context doesn't settle it. The decimal separator is ambiguous. The value isn't positive. |
 | enum | schema.org enumerations; language-tagged type vocabularies (C4) | No match. Matching is token-level, never by substring order. Text states a member only when its whole first clause is the member's phrase or name ("Not in stock" declines). |
 | date | ISO 8601; `dateparser` (BSD-3) with the page language | Day and month order is ambiguous for the locale. A relative date arrives without a capture time. |
-| location | GeoNames (CC BY 4.0), ISO 3166 | No match, or several equally likely matches. Remote only from `jobLocationType=TELECOMMUTE` or an explicit remote phrase. |
+| location | schema.org `Place` / `PostalAddress`; ISO 3166-1 alpha-2 codes as CLDR lists them | Nothing stated, or an `addressCountry` of two letters that is no ISO 3166-1 code. The text and address parts publish as written; a country code only when the page states one, never derived from a name. Remote only from `jobLocationType=TELECOMMUTE` or an explicit remote phrase. |
 | range | schema.org `MonetaryAmount` / `QuantitativeValue`; parsed text | Period or currency unresolved. Min > max. |
 | count | JSON numbers; schema.org `QuantitativeValue` (`inventoryLevel`); the one number in a text, read by CLDR number symbols | A fraction, a negative number, a range, a unit other than one, no number or two numbers in the text. |
 | number | JSON numbers; the one number in a text, read by CLDR number symbols; digits kept as written | No number or two numbers in the text; a minus sign set apart from the digits. |
@@ -593,7 +596,7 @@ translate it, so what we export is what we run.
 ```jsonc
 {
   "ir_version": "1",
-  "site": "example.com", "schema": {"name": "commerce_detail", "version": 1}, "page_kind": "detail",
+  "site": "example.com", "schema": {"name": "commerce_detail"}, "page_kind": "detail",
   "fetch": { "method": "http" },
   "fields": {
     "title": { "steps": [ {"jsonld": "$.name", "when_type": "Product"},
@@ -649,7 +652,7 @@ matches the engine. Correctness is measured in §16, per field status.
 | `POST /v1/extract` | Async. URLs (globs expanded through `map`) plus `schema`, `prompt` or `fields` → records, in progressive mode. Returns the drafted schema when a prompt was used. |
 | `GET /v1/jobs` | Jobs, newest first, each with its status summary; optional `kind` and `status` filters; cursor-paginated. |
 | `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results`, `GET /v1/jobs/{id}/events` | Status (with whether a cancel was requested), cancel, paginated results (a page output with its task's failure or block reason; or clean `json_values` items, §12.2), server-sent events for progress (from stored run events). A webhook on completion. |
-| `/v1/schemas` | Create, read, update, delete. `POST /v1/schemas/draft`: the draft of field names for a page kind, for review before a run (§5.4). |
+| `/v1/schemas` | Create, read, update in place, delete (retire). `POST /v1/schemas/draft`: the draft of field names for a page kind, for review before a run (§5.4). |
 | `/v1/sites/{host}/configs`, `/v1/configs/{id}` (read/update), `/v1/configs/{id}/export`, `/v1/sites/{host}/learn` | Configs, operator corrections (C5), exports, forcing learning. |
 | `/v1/records`, `/v1/captures/{id}/replay` | Records with `field_meta`; replay a capture with the current engine. |
 | `GET /v1/usage/llm`, `GET /v1/usage/llm/jobs` | LLM calls, tokens and estimated cost for a range of UTC days: totals, per day, per provider, model and prompt kind, and the costliest jobs; per job, cursor-paginated. An estimate for visibility, not billing (§1). |
@@ -701,7 +704,7 @@ Adaptive scheduling and API delta fetches are candidates (§22).
   - A private root holds hidden and fresh captures and their recorded LLM responses. Only custodian credentials can
     read it (C1).
 - **Retention.** Production captures expire after 30 days. Eval captures never expire.
-- **Replay.** A pure function: `(capture, engine_version, config, schema_version) → record`. Live runs and replays
+- **Replay.** A pure function: `(capture, engine_version, config, schema) → record`. Live runs and replays
   share one code path. In eval replay, LLM responses are recorded and replayed, so CI needs no network.
 - **Public repo.** The repo is public (Appendix A #26). Evaluation data, captures and secrets never enter it.
 
@@ -802,7 +805,7 @@ subtraction.
 | HTTP | `curl_cffi` **[verified: MIT]**; `httpx` | — |
 | Browser | Patchright **[verified: Apache-2.0]**, headless | Owner-tested |
 | HTML | `selectolax` **[verified: MIT]**; `lxml` (BSD) for XPath 1.0 | lxml matches PHP DOMXPath |
-| Normalization | Babel / CLDR (BSD-3), `price-parser` (BSD-3), `dateparser` (BSD-3), GeoNames (CC BY 4.0), `trafilatura` **[verified: Apache-2.0]** | Standards over lists (C4) |
+| Normalization | Babel / CLDR (BSD-3), `price-parser` (BSD-3), `dateparser` (BSD-3), `trafilatura` **[verified: Apache-2.0]** | Standards over lists (C4) |
 | LLM | Provider-agnostic thin client with JSON-schema outputs | Two providers (OPEN_QUESTIONS #5) |
 | Frontend | Vite + React + TypeScript + **HeroUI** (built on React Aria) | Appendix A #27; version in SPEC-00 |
 | Tests | pytest, Hypothesis (test-only), import-linter; Vitest | C8, C9 |
@@ -969,6 +972,7 @@ implementation go in `DECISIONS.md`, not here.
 | 40 | Derived page URL; unchanged pages (2026-10-16) | A detail page's `url` derived from the canonical link or the final URL publishes with source kind `derived`, a `derived:` locator and its own `derived` evidence bucket, calibrated like any other (§6, §8.1, §10). INV-22 holds as written. D-0355, option (a). Only an equal content fingerprint (Hamming 0) means a page is unchanged (§14); D-0665, option (b). An opt-in `csv_safe=true` results parameter quotes formula-like CSV cells, and the UI's Export CSV sends it; default output is unchanged (§12.2). D-0879, option (a). |
 | 41 | Additional fields (2026-10-16) | Field names typed in the UI become a `fields` request member on every run type (scrape, batch, crawl, extract). The server drafts a typed schema from the names with role S, for the request's page kind; the UI shows the draft for editing before the run (D-0810, option a). |
 | 42 | Reference-eval coverage (2026-10-16) | Label–value pairs and the main image, from the §22 structural DOM candidate, are admitted: source kind `dom`, a `dom:` locator and a `dom` evidence bucket (§6, §8.1, §10). `commerce_detail` gains optional schema.org-mapped fields the page states, edited in place, and a `number` field type for `rating` (§5.1, §5.3, §9). Extract, never enrich. D-0955–D-0957. |
+| 43 | Greenfield: no versioning; extract, not enrich (2026-10-16) | "Nobody asked for [schema versioning] and there are no users"; "migration and versioning all should be greenfield always for now; if there is a use case we will implement later." One schema per name, edited in place; an edit sends its learned configs back to learning (§5.2). One baseline migration; the database is recreated, never migrated with data steps. Record versions, draft and active configs and `engine_version` stay: they are features. GeoNames is dropped: "our job is to extract page data, not change it"; a location publishes what the page states (§9). |
 
 ---
 
@@ -1057,3 +1061,4 @@ Condensed from the 2026-10-08 research notes, which are not in the repo.
 | 19 | 2026-10-16 | **Owner answers of 2026-10-16** (Appendix A #40). §6, §8.1, §10: a derived page URL publishes with source kind `derived`, a `derived:` locator and a `derived` evidence bucket (D-0355); migration 0019. §14 row 2: only Hamming 0 means unchanged (D-0665); SPEC-11 updated. §12.2: an opt-in `csv_safe` CSV export, a `GET /v1/jobs/{id}/results` parameter (D-0879); SPEC-08 and SPEC-10 updated, INV-27 noted. SPEC-05 §4.3, §4.8 and §4.9 updated. MCP tools unchanged (§13.3). |
 | 20 | 2026-10-16 | **Additional fields** (owner approval, D-0810 option a; Appendix A #41). §5.4: `schema.fields` is drafted by role S from the names alone, one stored draft per names and page kind. §11: role S drafts field names. §13.1: `fields` on scrape, batch, crawl and extract; `POST /v1/schemas/draft`. SPEC-06 §4.5, SPEC-07 §4.4, SPEC-10 §4.3–4.6 and SPEC-14 §4.10 updated. |
 | 21 | 2026-10-16 | **Reference-eval coverage** (owner; Appendix A #42). §5.1: a `number` field type. §5.3: `commerce_detail` optional fields the page states. §6, §8.1, §10: structural DOM values (label–value pairs, main image) with source kind `dom` and a `dom` bucket; migration 0020. §9: a `number` row. §22: the two collectors marked admitted. SPEC-04, SPEC-05 and SPEC-13 updated. |
+| 22 | 2026-10-16 | **Greenfield: no versioning; GeoNames dropped** (owner; Appendix A #43). §5.2: one schema per name, edited in place; an edit suspends its active configs and sends its progressive states to `cold`. §5.3: preset files carry no version. §6: `schema_version` leaves `extraction_config`, `progressive_state` and `record`; `schema_def.name` is unique; `record` gains `schema_digest`. §8.4: an edited schema starts `cold`. §12.1: the IR names its schema by name. §13.1: `PUT /v1/schemas/{id}` edits in place. §15: replay takes the schema. §5.1, §9, §19, C4: GeoNames removed; `location` gains `text` and states only what the page states. One baseline migration. SPEC-01, SPEC-04, SPEC-05, SPEC-07, SPEC-08, SPEC-10, SPEC-13 and INV-08, INV-28 updated. |

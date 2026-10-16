@@ -51,7 +51,7 @@ Out of scope:
 ### 4.2 Tables
 
 All §6 tables and columns are implemented with the names written there, including `site.host` (exact,
-lowercased, UNIQUE), `extraction_config.schema_version`, `progressive_state.pages_extracted`,
+lowercased, UNIQUE), `schema_def.name` (UNIQUE), `progressive_state.pages_extracted`,
 `url_state.missing_runs` and `gone_at`, `candidate.independent`, and `record.version`, `changed_fields`,
 `complete`, `mode`, `fingerprint`. Types: ids are `uuid` (v7 generated in Python, stored as `uuid`); money
 `numeric(18,6)`; times `timestamptz` in UTC; JSON is `jsonb`. Enumerations are Postgres `text` with a CHECK
@@ -226,5 +226,7 @@ store is a different DSN).
   (plumbing in SPEC-01): `job_event`.
 - **Site identity.** Resolved in ARCHITECTURE rev 5 §6: `host` is exact, lowercased, unique. `www.example.com`
   and `example.com` are therefore two sites; no public-suffix logic.
-- **Config ↔ schema version.** Resolved in ARCHITECTURE rev 5 §5.2 and §6: configs reference
-  `(schema_id, schema_version)`, so a schema version bump means a new config.
+- **Config ↔ schema.** ARCHITECTURE rev 22 §5.2 and §6 (Appendix A #43): schemas have no versions; configs
+  reference `schema_id`, and an edit suspends the schema's active configs so its sites learn again.
+- **Migrations.** The project is greenfield (Appendix A #43): one baseline revision holds the whole schema and
+  is edited when the models change; databases are recreated, never migrated with data steps.

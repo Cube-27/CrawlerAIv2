@@ -20,7 +20,7 @@ their APIs appear (SPEC-07 → SPEC-08 → SPEC-10 → SPEC-11).
 Core screens:
 1. **Connect** (API key entry; held in memory only and sent as a bearer header, no cookies (§18); SPEC-07 auth).
 2. **Scrape** (form for `POST /v1/scrape`; shows formats and records) — L1.
-3. **Schemas** (list, view versions, create/edit as form + JSON, edit a prompt draft into a user schema) — L1.
+3. **Schemas** (list, view, create/edit as form + JSON, edit a prompt draft into a user schema) — L1.
 4. **Records** (browse by job/site/schema; field inspector with status, reason, evidence, confidence,
    calibrated, source kind, locator, derived_by; change feed with `changed_fields` once SPEC-11 exists) — L1/L4.
 5. **Sites & configs** (site list with fetch method and mode; config versions; per-field steps, status and
@@ -87,8 +87,8 @@ frontend/src/
 - **Scrape**: URL, formats (checkbox group), schema (select: presets/user/draft, inline JSON, or prompt), page
   kind, max age, fetch hints, budget; result tabs: records (RecordTable with inspector drawer), markdown,
   html, links, metadata, fetch attempts, usage. A prompt result shows the draft with "Edit as schema".
-- **Schemas**: table (name, version, origin, status, page kind); detail: fields table + JSON tab; edit creates a
-  new version (server rule); drafts (`origin=prompt_draft`) show the originating prompt hash and an "Adopt as
+- **Schemas**: table (name, origin, status, page kind); detail: fields table + JSON tab; edit updates the schema
+  in place and sends its site configs back to learning (server rule, ARCHITECTURE Appendix A #43); drafts (`origin=prompt_draft`) show the originating prompt hash and an "Adopt as
   user schema" action (creates a `user` schema via `POST`).
 - **Records**: filters (job, site, schema, changed since); RecordTable with one column per schema field
   (FieldValue) plus mode, version, confidence; row click opens the inspector (every `field_meta` attribute,

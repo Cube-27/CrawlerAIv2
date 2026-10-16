@@ -14,7 +14,7 @@ availability. Core resolves one price and one availability per page, so a page w
    through their own `schema_org` paths, plus `|` alternatives in any `schema_org` path;
 2. row resolution: rows found from the target entity, matched across sources by a declared key, each sub-field
    resolved by the §10 rules inside its row, with provenance per sub-field;
-3. preset `commerce_detail` version 3 with an optional `variants` field;
+3. preset `commerce_detail` with an optional `variants` field;
 4. a selected-variant rule for the single `price`, `availability`, `sku` and `gtin`: a variant is selected when the
    request, final or canonical URL names exactly one variant entity by its own URL;
 5. the label format and eval scoring for row-valued fields.
@@ -44,7 +44,7 @@ Core (admitted by the owner, Appendix A #37):
 - Row discovery, row matching, per-row preference (agreement, precedence, atomic offers), evidence and τ per
   sub-field.
 - `FieldOutcome.items` and `record.field_meta.<field>.items`; the records API shape (additive).
-- Preset `commerce_detail` version 3 (`variants`, optional).
+- Preset `commerce_detail`: `variants`, optional.
 - Selected variant for top-level offer fields, and variant fill for empty top-level fields.
 - Role C and learning skip row-mapped fields (stated limits, §4.9).
 - Label format extension and eval scoring for row-valued fields (code and synthetic tests; no labels).
@@ -56,7 +56,7 @@ Out of scope:
 - Top-level variants linked only by `isVariantOf` (§9).
 - A top-level `object` field mapped by sub-field paths (it keeps reading literal JSON keys, SPEC-04 §4.4).
 - Currency conversion. Stock quantities (`inventoryLevel`) and availability read from page text are SPEC-04's
-  (rows 10–11, D-0782); version 4 adds `stock_quantity` to each row (§4.7).
+  (rows 10–11, D-0782); `stock_quantity` is a sub-field of each row (§4.7).
 - The labeling screen's row editor and a variants table in the records screen (§9).
 - Any default variant other than the one the URLs name. schema.org has no "default variant" property.
 
@@ -223,9 +223,9 @@ depend on whether the schema has a `variants` field.
 - **Default variant.** The page URL with no variant named selects nothing. Choosing the first or the cheapest
   variant would be a guess (C7).
 
-### 4.7 Preset `commerce_detail` version 3
+### 4.7 Preset `commerce_detail`: `variants`
 
-Version 2 plus one optional field. The required fields and `required_groups` are unchanged, so completeness and
+One optional field. The required fields and `required_groups` are unchanged, so completeness and
 `record_fingerprint` (required fields only) are unchanged.
 
 | Sub-field | Type | `schema_org` |
