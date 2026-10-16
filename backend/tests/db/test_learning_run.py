@@ -167,10 +167,10 @@ class RoleA:
 
 # Role A's reply: `PRICE_STEP` in the wire form (`config_ir.step_wire`).
 PRICE_WIRE = {"selector": "xpath", "expression": PRICE_STEP["xpath"], "when_type": "", "source": "", "post": []}
-PRICE_REPLY = {"fields": {"price": {"steps": [PRICE_WIRE]}}}
+PRICE_REPLY = {"fields": [{"field": "price", "steps": [PRICE_WIRE]}]}
 # A reply whose price step matches no element of the sample pages.
 MISSING_PRICE_REPLY = {
-    "fields": {"price": {"steps": [{**PRICE_WIRE, "expression": "normalize-space(//p[@class='absent'])"}]}}
+    "fields": [{"field": "price", "steps": [{**PRICE_WIRE, "expression": "normalize-space(//p[@class='absent'])"}]}]
 }
 
 
