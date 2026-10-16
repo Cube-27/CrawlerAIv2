@@ -467,7 +467,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "source_kind IN ('adapter', 'api', 'jsonld', 'microdata', 'og', 'js_state', 'xhr', 'config', 'llm',"
-            " 'derived')",
+            " 'derived', 'dom')",
             name=op.f("ck_candidate_source_kind"),
         ),
         sa.ForeignKeyConstraint(
