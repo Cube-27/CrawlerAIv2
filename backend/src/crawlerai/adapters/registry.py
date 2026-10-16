@@ -1,24 +1,39 @@
-"""Which adapter, if any, serves a URL (SPEC-02 §4.4, §4.9).
+"""Which adapter, if any, serves a URL or reads a capture (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.7).
 
 An adapter ships inactive until the eval report shows it measured on ≥ 3 tenants not used to build it (C6, D-0011),
 so the registry answers only for the adapters named active.
+
+A platform on tenants' own hosts (SPEC-15) can only tell a host is not its own from the host's answer. A host that
+answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a
+site that is not the platform's gets at most one adapter request per window from this process.
 """
 
-from collections.abc import Collection, Iterable
+import time
+from collections import OrderedDict
+from collections.abc import Callable, Collection, Iterable
+from typing import Final
+from urllib.parse import urlsplit
 
 from crawlerai.acquire.api import JsonFetcher
-from crawlerai.adapters.base import Adapter
+from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.adapters.base import NOT_PLATFORM, Adapter
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 
+# How long a host stays declined, and how many declined hosts are remembered (the oldest is forgotten first).
+DECLINE_SECONDS: Final = 24 * 60 * 60
+MAX_DECLINED: Final = 10_000
 
-def platform_adapters(fetch: JsonFetcher) -> tuple[Adapter, ...]:
-    """Every adapter, active or not, fetching through `fetch`."""
-    return Greenhouse(fetch), Lever(fetch)
+
+def platform_adapters() -> tuple[Adapter, ...]:
+    """Every adapter, active or not."""
+    return Greenhouse(), Lever()
 
 
 class Registry:
-    def __init__(self, adapters: Iterable[Adapter], active: Collection[str]) -> None:
+    def __init__(
+        self, adapters: Iterable[Adapter], active: Collection[str], *, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         adapters = tuple(adapters)
         names = [adapter.name for adapter in adapters]
         if len(set(names)) != len(names):
@@ -26,6 +41,41 @@ class Registry:
         if unknown := sorted(set(active) - set(names)):
             raise ValueError(f"no adapter named {unknown}")
         self._active = tuple(adapter for adapter in adapters if adapter.name in active)
+        self._clock = clock
+        self._declined: OrderedDict[tuple[str, str], float] = OrderedDict()  # (adapter, host) -> until
 
     def detect(self, url: str) -> Adapter | None:
-        return next((adapter for adapter in self._active if adapter.detect(url) is not None), None)
+        """The active adapter that detects `url`, unless it declined the URL's host."""
+        host = urlsplit(url).hostname or ""
+        return next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
+
+    def reader(self, url: str, endpoint: str) -> Adapter | None:
+        """The active adapter that reads an `api` capture of the page at `url` whose final URL is `endpoint`: one that
+        detects the page and fetches from that endpoint (INV-38). Declines do not matter: the capture is the answer."""
+        return next((a for a in self._active if a.detect(url) is not None and a.serves(endpoint)), None)
+
+    async def serve(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult | None:
+        """The answer of the adapter `detect` names for `url`, requested with `send`; None when there is none."""
+        adapter = self.detect(url)
+        if adapter is None:
+            return None
+        result = await adapter.fetch(url, policy, send)
+        if result.attempts[-1].error == NOT_PLATFORM:
+            self._decline(adapter, urlsplit(url).hostname or "")
+        return result
+
+    def _is_declined(self, adapter: Adapter, host: str) -> bool:
+        until = self._declined.get((adapter.name, host))
+        if until is None:
+            return False
+        if until > self._clock():
+            return True
+        del self._declined[(adapter.name, host)]
+        return False
+
+    def _decline(self, adapter: Adapter, host: str) -> None:
+        key = (adapter.name, host)
+        self._declined.pop(key, None)
+        self._declined[key] = self._clock() + DECLINE_SECONDS
+        while len(self._declined) > MAX_DECLINED:
+            self._declined.popitem(last=False)

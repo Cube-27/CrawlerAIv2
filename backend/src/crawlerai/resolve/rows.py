@@ -336,13 +336,15 @@ def _dropped_candidates(
 def _published(
     rows: Sequence[tuple[str, RowOutcome]], dropped: tuple[DroppedRow, ...], rejected: tuple[tuple[Candidate, str], ...]
 ) -> FieldOutcome:
-    """§4.5 "The field's outcome": the published rows' published sub-fields as the value; `agreed` when every published
-    sub-field is, else `structured`; the least confidence, calibrated only when all are; the first row's source kind
+    """§4.5 "The field's outcome": the published rows' published sub-fields as the value; the bucket every published
+    sub-field has (`agreed`, `structured`, or `adapter` for an adapter's rows, SPEC-15 §4.5), else `structured`; the
+    least confidence, calibrated only when all are; the first row's source kind
     and its entity's locator."""
     published = [o for _, row in rows for o in row.fields.values() if o.status == "published"]
     confidences = [o.confidence for o in published]
     first_row, first = rows[0][0], next(o for o in rows[0][1].fields.values() if o.status == "published")
-    evidence: Evidence = "agreed" if all(o.evidence == "agreed" for o in published) else "structured"
+    buckets = {o.evidence for o in published if o.evidence is not None}  # a published outcome has one (INV-22)
+    evidence: Evidence = buckets.pop() if len(buckets) == 1 else "structured"
     return FieldOutcome(
         status="published",
         reason=None,

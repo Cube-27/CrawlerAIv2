@@ -13,8 +13,9 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
+from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch
+from crawlerai.adapters.base import AdapterMatch, Shape
 from crawlerai.adapters.registry import Registry
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.og import OpenGraphCollector
@@ -87,13 +88,18 @@ def _html(*nodes: Mapping[str, Any], head: str = "", body: str = "") -> str:
 
 
 def _bundle(
-    body: str, *, block_class: BlockClass = "ok", method: CaptureMethod = "http", url: str = PAGE_URL
+    body: str,
+    *,
+    block_class: BlockClass = "ok",
+    method: CaptureMethod = "http",
+    url: str = PAGE_URL,
+    final_url: str | None = None,
 ) -> CaptureBundle:
     raw = body.encode()
     manifest = CaptureManifest(
         capture_id=uuid7(),
         url=url,
-        final_url=url,
+        final_url=final_url or url,
         fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
         method=method,
         status_code=200,
@@ -414,27 +420,33 @@ def test_a_role_c_failure_is_not_a_resolution_error() -> None:
 
 
 class FakeAdapter:
-    """A platform whose page URLs are under `/jobs/` of the synthetic host and whose API holds a `title` member."""
+    """A platform whose page URLs are under `/jobs/` of the synthetic host, whose API is under `/api/`, and whose
+    answer is a JobPosting with a `title` member."""
 
     name = "synthetic"
 
     def detect(self, url: str) -> AdapterMatch | None:
         return AdapterMatch(tenant="t", page_kind="detail") if "/jobs/" in url else None
 
-    async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
+    def serves(self, endpoint: str) -> bool:
+        return "/api/" in endpoint
+
+    async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         raise AssertionError("extraction fetches nothing")
 
-    def map(self, schema_org: Mapping[str, str], page_kind: PageKind) -> dict[str, str]:
-        return {name: "$['title']" for name, path in schema_org.items() if path == "JobPosting.title"}
+    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+        return (Shape(type="JobPosting", properties={"title": ("title",)}),)
 
 
 JOB = _schema(title=FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="JobPosting.title"))
 JOB_URL = "https://jobs.example.test/jobs/1"
+JOB_API = "https://jobs.example.test/api/jobs/1"
 
 
-def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url() -> None:
+def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url_and_serves_its_endpoint() -> None:
     data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=["synthetic"]))
-    result = _extract(_bundle('{"title": "Engineer"}', method="api", url=JOB_URL), JOB, data=data)
+    bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url=JOB_API)
+    result = _extract(bundle, JOB, data=data)
     assert result.entity is not None
     title = result.entity["title"]
     assert (title.value, title.source_kind, title.evidence, title.locator) == (
@@ -447,9 +459,19 @@ def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url() -> No
 
 def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> None:
     data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=[]))
-    result = _extract(_bundle('{"title": "Engineer"}', method="api", url=JOB_URL), JOB, data=data)
+    bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url=JOB_API)
+    result = _extract(bundle, JOB, data=data)
     assert (result.candidates, _statuses(result)) == ((), {"title": ("missing", "no_candidates")})
-    assert result.diagnostics == ("adapter: no active adapter detects the page URL of this api capture",)
+    assert result.diagnostics == ("adapter: no active adapter reads this api capture",)
+
+
+def test_an_api_capture_from_another_endpoint_of_a_detected_page_is_not_the_adapters() -> None:
+    # INV-38: an API recipe's capture of a page URL the adapter detects is the recipe's, not the adapter's.
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=["synthetic"]))
+    bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url="https://data.example.test/1")
+    result = _extract(bundle, JOB, data=data)
+    assert (result.candidates, _statuses(result)) == ((), {"title": ("missing", "no_candidates")})
+    assert result.diagnostics == ("adapter: no active adapter reads this api capture",)
 
 
 # --- cold listings (§4.7 "Listings", §8.6) ---
