@@ -78,12 +78,5 @@ class EntityGraph:
         """The target's `hasVariant` members."""
         return tuple(e for e in self.entities.values() if e.parent == target.id and e.via == VARIANT)
 
-    def offers_of(self, holder: Entity) -> frozenset[str]:
-        """The Offers a variant holder stands for: itself when it is an Offer, else the Offers directly under it. An
-        AggregateOffer is none: it summarizes several offers, not an offer of one item (SPEC-13 §4.3)."""
-        if self.is_a(holder, OFFER):
-            return frozenset({holder.id})
-        return frozenset(e.id for e in self.entities.values() if e.parent == holder.id and self._single_offer(e))
-
     def _single_offer(self, entity: Entity) -> bool:
         return self.is_a(entity, OFFER) and not self.is_a(entity, AGGREGATE_OFFER)

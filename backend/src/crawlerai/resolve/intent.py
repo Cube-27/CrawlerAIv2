@@ -4,10 +4,6 @@ The candidates are the entities of the schema's primary types, without those ins
 primary entity's relation properties, or a primary entity's variants. One candidate is the target. Of several, the
 one whose URLs name the request, final or canonical URL is; if none or several do, the page is ambiguous and nothing
 is guessed. A page with no entity of a primary type at all is about itself, the `page` entity.
-
-The selected variant (SPEC-13 §4.6) is found the same way among the target's variant holders: the one whose own URLs
-name a page URL, when exactly one does. The page URL with no variant named selects none; a first or cheapest variant
-would be a guess (C7).
 """
 
 from dataclasses import dataclass
@@ -69,17 +65,6 @@ def select_target(
     if len(named) == 1:
         return named[0]
     return AmbiguousTarget(tuple(e.id for e in named or candidates))
-
-
-def select_variant(
-    request_url: str, final_url: str, canonical_url: str | None, graph: EntityGraph, target: Entity
-) -> Entity | None:
-    """The target's variant holder (`EntityGraph.holders`) whose own URLs contain a page URL, when exactly one does.
-    Whole canonical URLs are compared and no query parameter is read (§8.2 rule 4, INV-13): variants that repeat the
-    group's URL all match it, so none is selected."""
-    page_urls = [url for url in (request_url, final_url, canonical_url) if url is not None]
-    named = [holder for holder in graph.holders(target) if _names_any(holder, page_urls)]
-    return named[0] if len(named) == 1 else None
 
 
 def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:

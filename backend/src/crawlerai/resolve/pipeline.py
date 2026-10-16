@@ -40,7 +40,7 @@ from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
-from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target, select_variant
+from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.pagination import next_page_candidates
@@ -51,7 +51,6 @@ from crawlerai.resolve.preference import (
     PageFacts,
     Preference,
     Resolver,
-    Variants,
     intent_ambiguous,
     load_precedence,
 )
@@ -274,7 +273,6 @@ class _Page:
     primary: frozenset[str]
     target: Entity | AmbiguousTarget
     facts: PageFacts
-    variants: Variants | None  # the target's variant rules, for a detail page's target (SPEC-13 §4.6)
     page_urls: tuple[str, ...]  # the request, final and canonical URLs, canonicalized (SPEC-13 §4.4)
 
     @classmethod
@@ -289,13 +287,8 @@ class _Page:
         primary = primary_types(schema, data.vocabulary)
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
-        variants = None
-        if schema.page_kind == "detail" and isinstance(target, Entity):
-            variants = Variants(select_variant(manifest.url, manifest.final_url, canonical, graph, target))
         page_urls = canonical_urls((manifest.url, manifest.final_url, canonical), ctx)
-        return cls(
-            page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts, variants, page_urls
-        )
+        return cls(page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts, page_urls)
 
     @property
     def candidates(self) -> tuple[Candidate, ...]:
@@ -307,7 +300,7 @@ class _Page:
 
     def resolve(self, candidates: Sequence[Candidate]) -> FieldSet:
         """A detail page's fields, for its target."""
-        return self.resolve_for(self.target, candidates, page_values=True, variants=self.variants)
+        return self.resolve_for(self.target, candidates, page_values=True, detail=self.schema.page_kind == "detail")
 
     def resolve_listing(
         self, candidates: Sequence[Candidate], rows: Sequence[Entity]
@@ -324,17 +317,17 @@ class _Page:
         candidates: Sequence[Candidate],
         *,
         page_values: bool,
-        variants: Variants | None = None,
+        detail: bool = False,
     ) -> FieldSet:
         """Preference (§4.7, §4.8) for `target`, derivations, then evidence and τ (§4.9). `page_values`: whether
-        page-level candidates are the target's (`EntityGraph.owned_by`); `variants`: the detail target's variant rules
-        (SPEC-13 §4.6)."""
+        page-level candidates are the target's (`EntityGraph.owned_by`); `detail`: whether `target` is a detail page's,
+        with its variant fill and row-mapped fields (SPEC-13 §4.3 to §4.6)."""
         schema = self.schema
         decisions: Mapping[str, Preference | Derived]
         if isinstance(target, AmbiguousTarget):
             decisions = intent_ambiguous(schema, candidates)
         else:
-            resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values, variants)
+            resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values, variant_fill=detail)
             preferences = resolver.prefer(schema, candidates)
             by_field: dict[str, list[Candidate]] = defaultdict(list)
             for candidate in candidates:
@@ -352,7 +345,7 @@ class _Page:
                 for name, spec in schema.fields.items()
             }
         fields = assess_fields(schema, decisions, self.data.calibration, corroborated=self.config.corroborated)
-        if variants is not None and isinstance(target, Entity):
+        if detail and isinstance(target, Entity):
             fields |= self._rows(target, candidates)
         return fields
 
