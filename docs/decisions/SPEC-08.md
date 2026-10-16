@@ -568,3 +568,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Keep a stored `xpath` that differs from today's translation, or re-translate on load: either reverses D-0461 or changes what a validated config runs.
 - Why: A cssselect bump that changes a translation fails CI before stored IRs stop loading; that PR decides how to migrate them (review of #95).
 - Reversible: yes
+
+### D-0913 — Drift margins carry a required `fit` stamp
+- Date: 2026-10-16 · Spec/PR: SPEC-08 §4.9 (#204) · Status: decided
+- Decision: `DriftMargins.fit` is a required, non-empty string saying how the margins were obtained; the committed `drift_margins.json` says "spec default, unfitted".
+- Alternatives: An optional note.
+- Why: The owner's answer to D-0576: nobody may take the spec's margins for values fitted on labels.
+- Reversible: yes

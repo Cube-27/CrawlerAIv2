@@ -50,15 +50,10 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 
 | ID | Title | Status |
 |---|---|---|
-| D-0311 | GeoNames has no versioned download URL | needs-owner |
-| D-0576 | `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444) | needs-owner |
-| D-0656 | The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint | needs-owner |
-| D-0665 | Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged` | needs-owner |
-| D-0355 | Derived `url` values (canonical link, final URL) have no provenance under INV-22 | needs-owner |
-| D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner |
-| D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner |
+| D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
+| D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0810 | Additional fields: how typed field names become an extraction | needs-owner |
-| D-0879 | CSV formula injection in `csv_records` downloads | needs-owner |
+| D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
 
 ---
 
@@ -189,12 +184,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0311 — GeoNames has no versioned download URL
-- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: needs-owner
+- Date: 2026-10-13 · Spec/PR: SPEC-04 PR 7 (#60) · Status: confirmed
 - Decision: Needed: a stable source for the four pinned GeoNames files (SPEC-04 §4.6). `download.geonames.org/export/dump/*` is rewritten daily, so the pinned sha256 (the 2026-10-13 snapshot) stops matching and `crawlerai data fetch` refuses ("the entry needs re-pinning").
 - Alternatives: (a) re-pin in a PR whenever a fetch is needed; (b) mirror the pinned snapshot as a release asset of this repo (CC BY 4.0 allows it with attribution) and point `url` at it; (c) an owner-run object-store mirror.
 - Why: Recommendation (b), a one-time owner action. Blocked: SPEC-05's first real run; tests use a synthetic gazetteer and CI never fetches.
 - Reversible: yes — change the manifest `url`.
-- Owner answer:
+- Owner answer: confirmed 2026-10-16, option (b): mirror the pinned snapshot as a release asset of this repo (CC BY 4.0, attribution in the release notes and NOTICE). Re-pinned to the 2026-10-15 snapshot in #204 (D-0914); the owner creates the release (ACTIVE H8).
 
 ### D-0319 — One review per PR; `MERGE AFTER FIX` is not re-reviewed
 - Date: 2026-10-13 · Spec/PR: workflow (#63) · Status: decided (owner)
@@ -246,11 +241,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0355 — Derived `url` values and INV-22
-- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 2 (#72) · Status: needs-owner
+- Date: 2026-10-13 · Spec/PR: SPEC-05 PR 2 (#72) · Status: confirmed
 - Decision: Question: INV-22 requires `evidence`, `source_kind` and `locator` on every published field, but the `canonical_link` and `final_url` derivations (SPEC-05 §4.8, D-0019) have no candidate, no §6 `SourceKind` and no §10 bucket. Options: (a) a `derived` source kind and evidence bucket, with locators for the link and the final URL (ARCHITECTURE §6/§10 and a migration); (b) exempt `derived_by` fields from those INV-22 attributes; (c) keep a derived `url` in `field_meta` only. Recommendation: (a). Blocked: SPEC-05 PR 7 and PR 8. The models enforce INV-22 as written.
 - Alternatives: See options.
 - Why: Every published value keeps its provenance and is calibrated like any other bucket.
 - Reversible: yes
+- Owner answer: confirmed 2026-10-16, option (a): a `derived` source kind and evidence bucket with locators for the canonical link and the final URL (ARCHITECTURE Appendix A #39). Implemented in #204 (D-0910, D-0911).
 
 ### D-0356 — Theme-only check as a Python tool with an import allow-list
 - Date: 2026-10-13 · Spec/PR: owner direction (#71) · Status: decided
@@ -331,11 +327,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes — edit `tools/orchestrator/wait_ci.sh`.
 
 ### D-0576 — `drift_margins.json` is a dev-fitted file under `backend/data/` (with D-0444)
-- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: needs-owner
+- Date: 2026-10-14 · Spec/PR: SPEC-08 PR 9 (#119) · Status: confirmed
 - Decision: Question: `drift_margins.json` (§4.9) is a third dev-fitted file under `backend/data/`, like `calibration.json` and `source_precedence.yaml`, so INV-05's pinned-sha256 rule blocks it the same way. Options: (a) as D-0444 (a): the manifest check exempts stamped dev-fitted files, and the spec's `{"yield": 0.2, "validity": 0.1, "source_split": "dev"}` is committed; (b)/(c) as D-0444. Recommendation: answer with OPEN_QUESTIONS #19, option (a). Blocked: drift suspension in production; until then windows are recorded and nothing is suspended (C7: no default margin). Copied to OPEN_QUESTIONS #20.
 - Alternatives: See options.
 - Why: The same contradiction as D-0444 (CLAUDE.md §4).
 - Reversible: yes
+- Owner answer: confirmed 2026-10-16, option (a): the manifest check exempts stamped dev-fitted files; the spec's margins are committed with the stamp "spec default, unfitted". Implemented in #204 (D-0913).
 
 ### D-0647 — Worktree cleanup checks the merge itself
 - Date: 2026-10-14 · Spec/PR: chore, run-plan §2a (#133) · Status: decided
@@ -352,14 +349,15 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0656 — The `/sites` screen opens a site by host; a sites table needs a `GET /v1/sites` endpoint
-- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: needs-owner
+- Date: 2026-10-14 · Spec/PR: SPEC-12 PR 6 (#134) · Status: confirmed
 - Decision: `/sites` is a host lookup that opens `/sites/{host}` (config versions from `GET /v1/sites/{host}/configs`). SPEC-12 §4.3's sites table (host, fetch method, mode per schema, pages extracted) is not built: ARCHITECTURE §13.1 has no endpoint that lists sites.
 - Alternatives: (a) add `GET /v1/sites` to §13.1 and SPEC-08 (a public API change); (b) amend SPEC-12 §4.3 to the host lookup.
 - Why: Adding an endpoint changes the public API, which is the owner's call (CLAUDE.md §4). Recommendation: (b) now, (a) when operators need the table. Blocks nothing.
 - Reversible: yes
+- Owner answer: confirmed 2026-10-16, option (b): SPEC-12 §4.3 amended to the host lookup as built; a sites table later, when needed (#204).
 
 ### D-0665 — Hamming ≤ 3 lets a one-word change, such as a new price, pass as `unchanged`
-- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: needs-owner
+- Date: 2026-10-14 · Spec/PR: SPEC-11 PR 2 (#135) · Status: confirmed
 - Question: ARCHITECTURE §14 row 2 treats Hamming ≤ 3 as unchanged and skips extraction. On 100 fixed-seed 500-word texts, a one-word edit stays within 3 bits on 87 seeds and moves 4 to 6 bits on the other 13 (the test asserts at least 80, and that some exceed 3). So on a long page, a change to a single visible token (a price, a stock count, a date) usually skips extraction, and row 3's record version and change feed never see it. The threshold is meant to skip boilerplate-only changes. Nonces and whitespace are already ignored structurally, at Hamming 0.
 - Options:
   - (a) Keep ≤ 3 as built here, and confirm on dev (D-0039).
@@ -367,6 +365,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
   - (c) Make the threshold depend on text length.
 - Recommendation: (b), until dev results show which boilerplate changes ≤ 3 would absorb. It is a one-constant change (`UNCHANGED_BITS`).
 - Blocked: nothing in this PR. It affects whether PR 3's "a changed price yields a new record version" holds on real long pages.
+- Owner answer: confirmed 2026-10-16, option (b): only Hamming 0 counts as unchanged (`UNCHANGED_BITS = 0`); ARCHITECTURE §14 row 2 amended (#204). SimHash still misses some one-word edits: D-0915.
 
 ### D-0680 — Recurring Sonar test-style rules become ruff checks
 - Date: 2026-10-14 · Spec/PR: owner chore, Sonar settings and debt (#138) · Status: decided
@@ -685,6 +684,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: See ideas; keep corroboration as is.
 - Why: Evidence: on one site the config's JSON-LD steps were "corroborated" by the same JSON-LD values (circular); a title kept the site-name suffix on every page; an image URL was one placeholder shared by every product on two sites. Blocked: nothing; values are unchanged meanwhile.
 - Reversible: yes
+- Owner answer: owner 2026-10-16: not now; stays an investigate item (needs-owner, open).
 
 ### D-0784 — Investigate: an "absent" field status so role C stops asking
 - Date: 2026-10-15 · Spec/PR: accuracy Q1 option C (#167) · Status: needs-owner (area to investigate, not a decision)
@@ -692,6 +692,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Keep asking role C on every page for a required field the site never shows; make more fields optional per preset (as `brand`, D-0781).
 - Why: Evidence: with `brand` and `url` absent on several UAT sites, role C ran once per page on every page, in config mode too. Blocked: nothing; the gap rule is unchanged.
 - Reversible: yes
+- Owner answer: owner 2026-10-16: not now; stays an investigate item (needs-owner, open).
 
 ### D-0810 — Additional fields: how typed field names become an extraction
 - Date: 2026-10-15 · Spec/PR: SPEC-14 PR 11 · Status: needs-owner
@@ -744,11 +745,12 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-0879 — CSV formula injection in `csv_records` downloads
-- Date: 2026-10-16 · Spec/PR: SPEC-08 §4.11, SPEC-10 follow-ups (#199) · Status: needs-owner
+- Date: 2026-10-16 · Spec/PR: SPEC-08 §4.11, SPEC-10 follow-ups (#199) · Status: confirmed
 - Decision: Open. Should `csv_records` neutralise cells starting with `=`, `+`, `-`, `@`, tab or CR (OWASP CSV Injection), now that the UI's Export CSV saves them as a file? Recommendation: (a). Blocks only the #115 follow-up.
 - Alternatives: (a) an opt-in `csv_safe=true` results parameter that prefixes `'`, sent by the UI download (an API change); (b) always prefix (amends INV-27); (c) leave values unchanged and warn in the export UI.
 - Why: INV-27: exporters serialize the published value unchanged, so either fix changes the API or the invariant (review of #115).
 - Reversible: yes
+- Owner answer: confirmed 2026-10-16, option (a): an opt-in `csv_safe=true` results parameter, sent by the UI's Export CSV; default output unchanged (INV-27). Implemented in #204 (D-0912).
 
 ### D-0906 — Stock analyser rules for ENGINEERING's patterns
 - Date: 2026-10-16 · Spec/PR: follow-up (#202) · Status: decided
@@ -756,3 +758,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: Adopt those too, with suppressions.
 - Why: The adopted rules flag only real cases; the others flag framework and protocol signatures and sequential loops, which ENGINEERING exempts (#192).
 - Reversible: yes
+
+### D-0914 — GeoNames re-pinned to the 2026-10-15 snapshot at this repo's release assets
+- Date: 2026-10-16 · Spec/PR: owner answers (#204) · Status: decided
+- Decision: The three GeoNames entries point at the release `data-geonames-2026-10-15` of this repo and pin the export dump of 2026-10-15; `retrieved` is 2026-10-16.
+- Alternatives: Pin the 2026-10-13 snapshot named in D-0311.
+- Why: Upstream rewrote two of the 2026-10-13 files (`cities15000.zip`, `countryInfo.txt`), so no copy of that snapshot was available to mirror.
+- Reversible: yes — change the manifest entries.
+
+### D-0915 — SimHash at Hamming 0 still misses some one-word edits
+- Date: 2026-10-16 · Spec/PR: owner answers, D-0665 (#204) · Status: needs-owner
+- Decision: Question: with `UNCHANGED_BITS = 0`, a one-word edit of a 500-word text leaves the SimHash unchanged on 10 of 100 fixed seeds (`test_simhash.py`), so on those pages a new price is skipped as `unchanged`, although ARCHITECTURE §14 now says a one-token change runs extraction. Options: (a) keep SimHash at Hamming 0 and amend §14's wording; (b) an exact hash (e.g. blake2b) of the visible text after nonce and whitespace stripping, which sees every edit; (c) both, SimHash kept for near-duplicate reporting only. Recommendation: (b). Blocked: nothing; recurring crawls run as built.
+- Alternatives: See options.
+- Why: SimHash flips a bit only where a vote total was near zero, so it is not a bound (D-0665's evidence); changing §14 is the owner's call. Copied to OPEN_QUESTIONS #30.
+- Reversible: yes — one function and the stored fingerprint format.

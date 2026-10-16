@@ -387,3 +387,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Type the tool argument as a UUID (changes its input schema).
 - Why: FastMCP validates arguments before a tool runs; any other `ValidationError` is a service's parse of stored rows, which REST answers 500 `UNEXPECTED` (review of #195).
 - Reversible: yes
+
+### D-0912 — `csv_safe` is accepted only with `format=csv_records`
+- Date: 2026-10-16 · Spec/PR: SPEC-10 §4.2 (#204) · Status: decided
+- Decision: Any other format with `csv_safe=true` answers 422. The UI sends it from `exportJobPage`, so every CSV download carries it. Cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'`, numbers included.
+- Alternatives: Ignore it for other formats.
+- Why: As `include` with `json_values`: an option that cannot apply is refused, not dropped.
+- Reversible: yes
