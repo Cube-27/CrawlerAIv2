@@ -60,7 +60,7 @@ def _shapes(nodes: list[HtmlElement]) -> list[list[HtmlElement]]:
     tokens = [frozenset(_tokens(node.get("class"))) for node in nodes]
     counts = Counter(token for own in tokens for token in own)
     shared = frozenset(token for token, count in counts.items() if 2 * count > len(nodes))
-    groups: dict[object, list[HtmlElement]] = {}
+    groups: dict[frozenset[str], list[HtmlElement]] = {}
     for node, own in zip(nodes, tokens, strict=True):
         groups.setdefault(shared if shared and shared <= own else own, []).append(node)
     return list(groups.values())

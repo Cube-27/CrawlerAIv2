@@ -2,11 +2,11 @@
 takes, and enqueueing them as the job's tasks.
 
 A page contributes its links (SPEC-07 §4.5) and its next-page candidates (SPEC-05 §4.12), in canonical form
-(`crawl.canonical`). The crawl takes those its request's scope admits (`crawl.rules.Scope`), and never one off the
-start page's host and its subdomains, whatever an `include` glob matches (D-0037): every page fetched is on the site the
-caller named, where the site's own redirect of the start URL put it (D-0991). A URL is enqueued once per job (`url_task` UNIQUE (`job_id`, `canonical_url`)), at its parent's depth
-plus one, up to `max_depth`, until the job has `limit` tasks; its page kind is the first matching page-kind rule's.
-Patterns come from requests; this module names no host (INV-03).
+(`crawl.canonical`). The crawl takes those its request's scope admits (`crawl.rules.Scope`), and never one off the start
+page's host and its subdomains, whatever an `include` glob matches (D-0037): every page fetched is on the site the
+caller named, where the site's own redirect of the start URL put it (D-0991). A URL is enqueued once per job (`url_task`
+UNIQUE (`job_id`, `canonical_url`)), at its parent's depth plus one, up to `max_depth`, until the job has `limit` tasks;
+its page kind is the first matching page-kind rule's. Patterns come from requests; this module names no host (INV-03).
 """
 
 from collections.abc import Iterable

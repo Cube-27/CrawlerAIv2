@@ -29,12 +29,12 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy
 from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.canonical import canonicalize
-from crawlerai.crawl.rules import Patterns, Scope
+from crawlerai.crawl.rules import Patterns, Scope, located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
@@ -170,16 +170,18 @@ async def _discover(
     if polite is None:
         return
     page = await polite.fetch(request.url, polite.policy)
-    located = _located(page, start)
-    host = urlsplit(located).hostname or ""
+    site_url = located(start, None if page is None else (page.bundle.manifest.method, page.bundle.manifest.final_url))
+    host = urlsplit(site_url).hostname or ""
     if host != found.scope.host:
         found.scope = replace(found.scope, host=host)
-        polite = await _polite(engine, fetching, await _site(engine, host), host, located, attempts)
+        async with engine.begin() as conn:
+            site = await site_row(conn, host)
+        polite = await _polite(engine, fetching, site, host, site_url, attempts)
     if request.use_links and page is not None and page.block_class == "ok":
         # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
         found.add("links", await asyncio.to_thread(_page_links, page.bundle))
     if polite is not None and request.use_sitemaps and not found.full:
-        await _read_sitemaps(polite, located, found)
+        await _read_sitemaps(polite, site_url, found)
 
 
 async def _polite(
@@ -194,23 +196,11 @@ async def _polite(
     return PoliteHttp(fetching, host, site.crawl_delay_ms, robots, policy, attempts)
 
 
-async def _site(engine: AsyncEngine, host: str) -> SiteRow:
-    async with engine.begin() as conn:
-        return await site_row(conn, host)
-
-
-def _located(page: FetchResult | None, start: str) -> str:
-    """Where the start page is, in canonical form: the URL its redirects ended at, or `start` when it was not
-    fetched."""
-    final = None if page is None else canonicalize(page.bundle.manifest.final_url)
-    return final or start
-
-
-async def _read_sitemaps(polite: PoliteHttp, located: str, found: _Found) -> None:
-    """Add to `found` the URLs of the sitemaps of the start page's host, `located` there, until it is full."""
+async def _read_sitemaps(polite: PoliteHttp, site_url: str, found: _Found) -> None:
+    """Add to `found` the URLs of the sitemaps of the start page's host, `site_url` there, until it is full."""
     listed = () if polite.robots is None else polite.robots.sitemaps
     reader = SitemapReader(polite.sitemap_body, found.scope.host)
-    async with aclosing(reader.urls(roots(located, listed))) as urls:
+    async with aclosing(reader.urls(roots(site_url, listed))) as urls:
         async for url in urls:
             found.add("sitemap", (url,))
             if found.full:

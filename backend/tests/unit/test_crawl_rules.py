@@ -3,7 +3,7 @@ says otherwise, `include` globs over the canonical URL, and `exclude`, which win
 
 import pytest
 
-from crawlerai.crawl.rules import PageKindRule, Scope, UrlGlob, is_glob, page_kind_for, url_glob
+from crawlerai.crawl.rules import PageKindRule, Scope, UrlGlob, is_glob, located, page_kind_for, url_glob
 
 HOST = "shop.example.test"
 
@@ -119,3 +119,18 @@ def test_a_glob_matches_the_canonical_urls_of_its_host_only() -> None:
 
     assert Scope(HOST, include=(glob.pattern,)).admits("https://shop.example.test/p/1")
     assert not Scope(HOST, include=(glob.pattern,)).admits("https://shop.example.test.other.test/p/1")
+
+
+@pytest.mark.parametrize(
+    ("capture", "expected"),
+    [
+        # RFC 9110 §15.4: the site's redirect names where the start page is; that URL is taken in canonical form.
+        (("http", "HTTPS://www.Example.test/home#top"), "https://www.example.test/home"),
+        (("browser", "https://www.example.test/"), "https://www.example.test/"),
+        # No capture, or an API recipe's, whose final URL is its endpoint: the start URL.
+        (None, "https://example.test/"),
+        (("api", "https://api.example.test/v1/items"), "https://example.test/"),
+    ],
+)
+def test_the_start_page_is_where_its_capture_s_redirects_ended(capture: tuple[str, str] | None, expected: str) -> None:
+    assert located("https://example.test/", capture) == expected

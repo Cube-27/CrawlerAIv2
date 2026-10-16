@@ -57,6 +57,16 @@ class Scope:
         return urlsplit(url).hostname == self.host
 
 
+def located(start: str, capture: tuple[str, str] | None) -> str:
+    """Where the start page of a map or crawl is, in canonical form, from its capture's (method, final URL): the URL
+    the site's redirects of `start` ended at, which the request's scope follows (RFC 9110 §15.4: a redirect names the
+    resource's location; D-0991). `start` itself without a capture, or for an API recipe's (method `api`), whose final
+    URL is its endpoint, not the page."""
+    if capture is None or capture[0] == "api":
+        return start
+    return canonicalize(capture[1]) or start
+
+
 def _any_match(url: str, patterns: tuple[str, ...]) -> bool:
     # `fnmatchcase`: a URL path is case-sensitive (RFC 3986 §6.2.2.1), and `fnmatch` folds case on Windows.
     return any(fnmatchcase(url, pattern) for pattern in patterns)
