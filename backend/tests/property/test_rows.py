@@ -59,8 +59,8 @@ class Variant:
 
 SKUS = st.sampled_from(["W-11", "W-12", "W-13", "W-14"])
 VARIANTS = st.builds(Variant, SKUS, st.sampled_from(["10.00", "12.00"]), st.none() | st.sampled_from(["Red", "Blue"]))
-# Variants with distinct skus: one per variant.
-DISTINCT = st.lists(VARIANTS, min_size=1, max_size=4, unique_by=lambda v: v.sku)
+# Variants with distinct skus: one per variant. A list of variants has two or more (owner, Appendix A #48).
+DISTINCT = st.lists(VARIANTS, min_size=2, max_size=4, unique_by=lambda v: v.sku)
 
 
 def _jsonld(variants: list[Variant]) -> str:
@@ -137,11 +137,12 @@ def test_rows_never_merge_and_neither_their_order_nor_their_source_changes_them(
 @given(VARIANTS, st.sampled_from(["10.00", "12.00"]))
 def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Variant, other_price: str) -> None:
     twin = Variant(variant.sku, other_price, variant.color)
+    other = Variant("W-99", "10.00", None)  # a second variant, so that the list publishes
 
-    outcome = _outcome(head=_jsonld([variant, twin]))
+    outcome = _outcome(head=_jsonld([variant, twin, other]))
 
     assert outcome.items is not None
-    assert len(outcome.items) == 1
+    assert len(outcome.items) == 2
     price = outcome.items[0].fields["price"]
     if other_price == variant.price:
         assert price.value == {"amount": variant.price, "currency": "EUR"}

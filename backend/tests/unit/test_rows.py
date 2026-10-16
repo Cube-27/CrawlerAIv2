@@ -146,10 +146,11 @@ def test_offers_under_an_aggregate_offer_are_rows_and_the_aggregate_is_not() -> 
     aggregate = {"@type": "AggregateOffer", "lowPrice": "10.00", "priceCurrency": "EUR"}
     product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": PAGE_URL}
 
-    rows = _variants(product | {"offers": aggregate | {"offers": [_offer("10.00", sku="W-11")]}})
+    offers = [_offer("10.00", sku="W-11"), _offer("12.00", sku="W-12")]
+    rows = _variants(product | {"offers": aggregate | {"offers": offers}})
     alone = _variants(product | {"offers": aggregate | {"sku": "W-1"}})
 
-    assert _skus(rows) == [_sku("W-11")]
+    assert _skus(rows) == [_sku("W-11"), _sku("W-12")]
     assert (alone.status, alone.reason) == ("missing", "no_rows")
 
 
@@ -161,7 +162,9 @@ def test_offers_that_carry_only_a_url_are_one_row_each() -> None:
 
 
 def test_a_group_s_direct_offers_and_its_variants_match_by_key() -> None:
-    group = _group(_variant("W-11", "10.00", color="Red"), offers=[_offer("10.00", sku="W-11")])
+    group = _group(
+        _variant("W-11", "10.00", color="Red"), _variant("W-12", "12.00"), offers=[_offer("10.00", sku="W-11")]
+    )
 
     rows = _rows(_variants(group))
 
@@ -171,14 +174,16 @@ def test_a_group_s_direct_offers_and_its_variants_match_by_key() -> None:
             "price": {"amount": "10.00", "currency": "EUR"},
             "availability": "InStock",
             "color": "Red",
-        }
+        },
+        {"sku": _sku("W-12"), "price": {"amount": "12.00", "currency": "EUR"}, "availability": "InStock"},
     ]
 
 
 def test_variants_that_repeat_the_group_url_have_no_url_key() -> None:
-    outcome = _variants(_group(_variant("W-11", "10.00", url=PAGE_URL), {"@type": "Product", "url": PAGE_URL}))
+    keyless = {"@type": "Product", "url": PAGE_URL}
+    outcome = _variants(_group(_variant("W-11", "10.00", url=PAGE_URL), keyless, _variant("W-12", "12.00")))
 
-    assert _skus(outcome) == [_sku("W-11")]
+    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
     assert outcome.dropped is not None
     assert [row.reason for row in outcome.dropped] == ["no_row_key"]
 
@@ -233,7 +238,7 @@ def test_an_aggregate_offer_repeating_the_target_url_leaves_it_no_key() -> None:
     # §4.4: the target's own URL is no key. An AggregateOffer is no offer of one item (§4.3), so its repeating that URL
     # does not make it an Offer's URL that one row may key on.
     product_url = "https://shop.example.test/g/1"
-    offers = [_offer("10.00", url=product_url), _offer("12.00", sku="W-12")]
+    offers = [_offer("10.00", url=product_url), _offer("12.00", sku="W-12"), _offer("14.00", sku="W-14")]
     aggregate = {"@type": "AggregateOffer", "lowPrice": "10.00", "priceCurrency": "EUR", "url": product_url}
     product = {
         "@type": "Product",
@@ -244,7 +249,7 @@ def test_an_aggregate_offer_repeating_the_target_url_leaves_it_no_key() -> None:
 
     outcome = _variants(product)
 
-    assert _skus(outcome) == [_sku("W-12")]
+    assert _skus(outcome) == [_sku("W-12"), _sku("W-14")]
     assert outcome.dropped is not None
     assert [row.reason for row in outcome.dropped] == ["no_row_key"]
 
@@ -317,28 +322,29 @@ def test_a_row_s_price_comes_from_one_offer() -> None:
     # INV-35: two Offers in one row that disagree leave the row's price a conflict; the row still publishes its key.
     variant = {"@type": "Product", "sku": "W-11", "offers": [_offer("10.00"), _offer("11.00")]}
 
-    outcome = _variants(_group(variant))
+    outcome = _variants(_group(variant, _variant("W-12", "12.00")))
 
     assert outcome.items is not None
     price = outcome.items[0].fields["price"]
     assert (price.status, price.reason) == ("conflict", "offers_disagree")
-    assert _skus(outcome) == [_sku("W-11")]
+    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
 
 
 def test_the_group_s_own_values_are_in_no_row() -> None:
-    outcome = _variants(_group(_variant("W-11", "10.00"), sku="W-1"))
+    outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00"), sku="W-1"))
 
-    assert _skus(outcome) == [_sku("W-11")]
+    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
     assert [(c.raw, reason) for c, reason in outcome.rejected if c.field == "variants.sku"] == [("W-1", "not_in_row")]
 
 
 def test_the_record_meta_holds_one_item_per_row_and_the_dropped_rows() -> None:
-    meta = FieldMeta.of(_variants(_group(_variant("W-11", "10.00"), {"@type": "Product", "url": PAGE_URL})))
+    keyless = {"@type": "Product", "url": PAGE_URL}
+    meta = FieldMeta.of(_variants(_group(_variant("W-11", "10.00"), keyless, _variant("W-12", "12.00"))))
 
     dumped = meta.model_dump(mode="json")
     item = SCHEMA.fields["variants"].item
     assert item is not None
-    assert [set(row["fields"]) for row in dumped["items"]] == [set(item.fields or {})]
+    assert [set(row["fields"]) for row in dumped["items"]] == [set(item.fields or {})] * 2
     assert dumped["dropped"] == [{"locators": ["jsonld:0:$['hasVariant'][1]"], "reason": "no_row_key"}]
     plain = FieldMeta.of(_variants(_group()))
     assert "items" not in plain.model_dump(mode="json")
@@ -393,3 +399,22 @@ def _missing() -> FieldOutcome:
         chosen=None,
         rejected=(),
     )
+
+
+def test_one_plain_offer_is_no_variant_list() -> None:
+    # Owner, 2026-10-16 (Appendix A #48): a product without variants has no variant list; its Offer's values publish
+    # at the top level as usual.
+    product = {"@type": "Product", "name": "Synthetic Widget", "url": PAGE_URL, "offers": _offer("10.00", sku="W-11")}
+
+    outcome = _variants(product)
+
+    assert (outcome.status, outcome.reason, outcome.value) == ("missing", "single_row", None)
+    assert {(c.field, reason) for c, reason in outcome.rejected} >= {("variants.sku", "single_row")}
+
+
+def test_one_variant_left_by_dropped_rows_is_no_variant_list() -> None:
+    outcome = _variants(_group(_variant("W-11", "10.00"), {"@type": "Product", "url": PAGE_URL}))
+
+    assert (outcome.status, outcome.reason) == ("missing", "single_row")
+    assert outcome.dropped is not None
+    assert [row.reason for row in outcome.dropped] == ["no_row_key"]

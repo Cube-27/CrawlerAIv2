@@ -29,9 +29,13 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 _Keys = dict[str, list[JsonValue]]  # a row's key values, by key sub-field
 RowOf = Callable[[Candidate], str | None]
 NOT_IN_ROW: Final = "not_in_row"
+SINGLE_ROW: Final = "single_row"
 # Why a row-mapped field publishes nothing, from the earliest stage to the furthest; the furthest reached is the reason.
 _NO_ROWS = ("no_rows", "no_row_key", "row_key_conflict", "key_unpublished")
 _URL = FieldSpec(type=FieldType.URL)
+# Owner, 2026-10-16 (Appendix A #48): a product without variants has no variant list; the list is published only for
+# two or more variants, and one row's values publish at the top level by the common-value rule (INV-38).
+_MIN_ROWS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,9 +80,11 @@ def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldO
     resolved.rejected.extend(_dropped_candidates(in_rows, row_of, dropped))
     for variant in variants:
         resolved.add(row_field, variant, in_rows, row_of)
-    if resolved.published:
+    if len(resolved.published) >= _MIN_ROWS:
         return _published(resolved.published, tuple(resolved.dropped), tuple(resolved.rejected))
-    reasons += ["key_unpublished"] * (len(variants) - len(resolved.published))
+    if resolved.published:
+        return _single_row(resolved, in_rows)
+    reasons += ["key_unpublished"] * len(variants)
     abstained = bool(variants) and resolved.abstained and set(reasons) == {"key_unpublished"}
     status: FieldStatus = "abstained" if abstained else "missing"
     return FieldOutcome(
@@ -93,6 +99,27 @@ def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldO
         derived_by=None,
         chosen=None,
         rejected=tuple(resolved.rejected),
+        dropped=tuple(resolved.dropped),
+    )
+
+
+def _single_row(resolved: "_Resolved", candidates: Sequence[Candidate]) -> FieldOutcome:
+    """The field's outcome when one row publishes: `missing` (`single_row`), its candidates rejected with that
+    reason (§4.5, owner #48)."""
+    rejected = {id(c) for c, _ in resolved.rejected}
+    single = [(c, SINGLE_ROW) for c in candidates if id(c) not in rejected]
+    return FieldOutcome(
+        status="missing",
+        reason=SINGLE_ROW,
+        value=None,
+        evidence=None,
+        confidence=None,
+        calibrated=False,
+        source_kind=None,
+        locator=None,
+        derived_by=None,
+        chosen=None,
+        rejected=(*resolved.rejected, *single),
         dropped=tuple(resolved.dropped),
     )
 
