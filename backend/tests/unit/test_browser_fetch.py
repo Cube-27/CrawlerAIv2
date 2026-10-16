@@ -72,6 +72,19 @@ setTimeout(() => location.replace('/app'), 1000);
 # A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own.
 _WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js');</script></body></html>"""
 
+# A 403 document with no site structure (a shell) that navigates on after longer than the 2 s DOM quiet.
+_INTERSTITIAL = b"""<html><body><p>One moment</p><script>
+setTimeout(() => location.replace('/app'), 4000);
+</script></body></html>"""
+# A 403 document that is a site page: enough text and hyperlinks (`acquire/classify.py`).
+_REFUSAL_PAGE = (
+    b"<html><body><nav>"
+    + b"".join(b'<a href="/c/%d">Section %d</a>' % (i, i) for i in range(6))
+    + b"</nav><p>"
+    + b"This page is not available to you. " * 8
+    + b"</p></body></html>"
+)
+
 
 @dataclass(frozen=True)
 class Reply:
@@ -145,6 +158,8 @@ def server() -> Iterator[Server]:
             "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
             "/with-worker": Reply(body=_WITH_WORKER),
             "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
+            "/interstitial": Reply(403, body=_INTERSTITIAL),
+            "/refusal": Reply(403, body=_REFUSAL_PAGE),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
             "/hop-private": Reply(302, headers=(("Location", "http://internal.example.com/"),)),
@@ -424,13 +439,31 @@ def test_an_error_document_that_navigates_itself_is_read_where_the_navigation_en
     assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
 
 
-def test_an_error_document_that_stays_is_read_with_its_own_status(browser: Browser, server: Server) -> None:
-    server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
-
-    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=15))
+def test_an_error_document_that_is_a_site_page_is_read_once_quiet(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/refusal"), FetchPolicy(browser_timeout_s=15))
 
     assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    assert result.duration_ms < 8_000
+    assert result.duration_ms < 5_000
+
+
+def test_an_interstitial_is_read_where_its_navigation_ends_after_the_quiet_time(
+    browser: Browser, server: Server
+) -> None:
+    result = browser.fetch(server.url("/interstitial"), FetchPolicy(browser_timeout_s=20))
+
+    manifest = result.bundle.manifest
+    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
+    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
+
+
+def test_an_interstitial_that_stays_is_read_after_its_share_of_the_budget(browser: Browser, server: Server) -> None:
+    server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
+
+    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=10))
+
+    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
+    # 40% of the 10 s budget waiting for a navigation, then the 2 s DOM quiet; never the whole budget.
+    assert 4_000 <= result.duration_ms < 8_000
 
 
 def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, server: Server) -> None:
