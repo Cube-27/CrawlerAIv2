@@ -10,6 +10,7 @@ misnested tags). The lxml tree comes from libxml2's own HTML parser, so a path i
 """
 
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -47,6 +48,9 @@ _SHOWN_ATTRIBUTES = ("alt", "title", "value", "content")
 _NCNAME = re.compile(r"[^\W\d][\w.\-]*")
 
 _Attributes = dict[str, str | None]
+# Unicode: U+2026 HORIZONTAL ELLIPSIS, whose compatibility decomposition (NFKC) is three U+002E FULL STOPs.
+_ELLIPSIS = "..."
+_ELLIPSES = ("\u2026", _ELLIPSIS)
 
 
 class TextRun(NamedTuple):
@@ -138,9 +142,24 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
     invisible = _invisible(style.get("visibility"), inherited=item.invisible)
     if not invisible:
         shown.extend(value for name in _SHOWN_ATTRIBUTES if (value := attributes.get(name)))
-    children = _children(item.node, item.path, invisible)
+    full = None if invisible else _completed(item.node, attributes.get("title"))
+    children: list[_Item] = [_Text(full, item.path)] if full else _children(item.node, item.path, invisible)
     separator = _separator(tag)
     return [_Separate(separator), *children, _Separate(separator)] if separator else children
+
+
+def _completed(node: LexborNode, title: str | None) -> str | None:
+    """The element's `title` when its text is that title cut short: the text ends in an ellipsis (U+2026, or the
+    three full stops it decomposes to under NFKC) and the title starts with the text before it and goes on. HTML
+    Standard §3.2.6.1: `title` is advisory information for its element, here the full text the element shows cut."""
+    if not title:
+        return None
+    shown_text = " ".join(compose(node.text(deep=True)).split())
+    if not shown_text.endswith(_ELLIPSES):
+        return None
+    cut = unicodedata.normalize("NFKC", shown_text).removesuffix(_ELLIPSIS).rstrip()
+    full = " ".join(compose(title).split())
+    return full if cut and full.startswith(cut) and len(full) > len(cut) else None
 
 
 def _separator(tag: str) -> str:

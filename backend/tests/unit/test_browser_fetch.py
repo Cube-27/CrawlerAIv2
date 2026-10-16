@@ -35,7 +35,7 @@ pytestmark = pytest.mark.browser
 
 _HTML = "text/html; charset=utf-8"
 _JSON = "application/json"
-_APP = b"""<html><body><div id="root"></div><script>
+_APP = b"""<html><body><nav><a href="/">Home</a></nav><div id="root"></div><script>
 fetch('/api/items').then(r => r.json()).then(items => {
   let html = '';
   for (const item of items) html += '<p>' + item['name'] + '</p>';

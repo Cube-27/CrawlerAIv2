@@ -22,6 +22,7 @@ from crawlerai.db.models import Site, SiteId
 ROBOTS_TTL: Final = timedelta(hours=24)  # SPEC-02 §4.6; RFC 9309 §2.4 allows caching for up to 24 hours
 PARSE_LIMIT_BYTES: Final = 500 * 1024  # RFC 9309 §2.5: parse at least the first 500 KiB
 _USER_AGENT: Final = "*"
+_TOO_MANY_REQUESTS: Final = 429  # RFC 6585 §4
 
 Fetch = Callable[[str], Awaitable[FetchResult]]
 
@@ -76,13 +77,14 @@ def at_origin(url: str, path: str) -> str:
 
 def snapshot_of(result: FetchResult) -> RobotsSnapshot | None:
     """The rules a robots.txt fetch yields, or `None` when it was unreachable, which allows nothing (RFC 9309
-    §2.3.1.4: a 5xx status or a network error)."""
+    §2.3.1.4: a 5xx status or a network error; and a 429, which asks for fewer requests, RFC 6585 §4, rather than
+    saying the file is unavailable)."""
     manifest = result.bundle.manifest
     status, error = manifest.status_code, result.attempts[-1].error
     if 200 <= status < 300 and error is None:
         body = result.bundle.body[:PARSE_LIMIT_BYTES].decode("utf-8", errors="replace")  # RFC 9309 §2.3: UTF-8
     # RFC 9309 §2.3.1.3: a 4xx status means unavailable, as do more than five redirects (§2.3.1.2).
-    elif 400 <= status < 500 or error == "too_many_redirects":
+    elif (400 <= status < 500 and status != _TOO_MANY_REQUESTS) or error == "too_many_redirects":
         body = ""
     else:
         return None

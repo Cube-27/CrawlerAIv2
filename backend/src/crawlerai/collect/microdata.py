@@ -117,7 +117,7 @@ class _Node:
         nested = self.document.items.get(prop.element.xpath)
         if nested is not None:
             return Value(_raw(nested, self.document), locator, _Node(nested, self.document))
-        return Value(_scalar(prop), locator)
+        return Value(_scalar(prop), locator, url=_is_url(prop))
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +329,16 @@ def _resolve(written: str | None, ctx: Context) -> str | None:
 
 def _scalar(prop: _Property) -> str:
     return _rdfa_text(prop.element.node) if prop.rdfa else _microdata_text(prop.element.node)
+
+
+def _is_url(prop: _Property) -> bool:
+    """Whether the property's value is a URL its element names (`_URL_ATTRIBUTES`; RDFa's IRI attributes), not text."""
+    node = prop.element.node
+    if not prop.rdfa:
+        return (node.tag or "") in _URL_ATTRIBUTES
+    attributes = node.attributes
+    literal = "content" in attributes or (node.tag == "time" and "datetime" in attributes)
+    return not literal and any(a in attributes for a in _RDFA_IRI_ATTRIBUTES)
 
 
 def _microdata_text(node: LexborNode) -> str:

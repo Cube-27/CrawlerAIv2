@@ -182,6 +182,9 @@ class Value:
     raw: JsonValue
     locator: str
     node: "Node | None" = None
+    # Whether the source gives the value as a URL it names, not as text (HTML microdata "Values": a hyperlink's or an
+    # embedded resource's URL attribute; RDFa's IRI attributes).
+    url: bool = False
 
 
 class Node(Protocol):
@@ -199,6 +202,7 @@ class Node(Protocol):
 class Selected:
     raw: JsonValue
     locator: str
+    url: bool = False  # `Value.url` of every value selected
 
 
 # schema.org data model ("Conformance"): where a property expects a Thing, a text value is accepted; the text names
@@ -220,7 +224,7 @@ def select(node: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
                 if value.node is not None:
                     reached.append(value.node)
                 elif names_thing and isinstance(value.raw, str):
-                    named.append(Selected(value.raw, value.locator))
+                    named.append(Selected(value.raw, value.locator, value.url))
         holders = reached
     selected = [s for holder in holders for s in _last(holder, path, as_list=as_list)]
     return selected + named
@@ -231,9 +235,9 @@ def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
     if not values:
         return []
     if as_list:
-        return [Selected([v.raw for v in values], values[0].locator)]
+        return [Selected([v.raw for v in values], values[0].locator, all(v.url for v in values))]
     if path.joined is None:
-        return [Selected(v.raw, v.locator) for v in values]
+        return [Selected(v.raw, v.locator, v.url) for v in values]
     companions = [c.raw for c in holder.values(path.joined)]
     extra: dict[str, JsonValue] = {}
     if companions:
@@ -248,6 +252,16 @@ class Typed:
     id: str
     types: tuple[str, ...]
     node: Node
+
+
+# A URL is not prose: the text types (SPEC-04 §5.1 `text`, `long_text`) take no value a source gives as a URL.
+_TEXT_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT})
+
+
+def _holds_text(spec: FieldSpec) -> bool:
+    """Whether the field's values are prose: a text type, or a list of one."""
+    item = spec.item if spec.type is FieldType.LIST else spec
+    return item is not None and item.type in _TEXT_TYPES
 
 
 def field_candidates(
@@ -266,6 +280,8 @@ def field_candidates(
         if spec.type is FieldType.IDENTIFIER:
             paths = _with_sub_properties(paths, vocabulary)
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
+            if selected.url and _holds_text(spec):
+                continue
             found = candidate(name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
             if found is not None:
                 yield found

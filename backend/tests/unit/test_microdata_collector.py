@@ -111,22 +111,68 @@ def test_a_product_with_nested_items() -> None:
     ("element", "raw"),
     [
         ('<meta itemprop="name" content="Widget 9">', "Widget 9"),
-        ('<img itemprop="name" src="/w.png" alt="x">', "/w.png"),
-        ('<a itemprop="name" href="/w">Widget 9</a>', "/w"),
-        ('<link itemprop="name" href="/w">', "/w"),
-        ('<object itemprop="name" data="/w.bin"></object>', "/w.bin"),
         ('<data itemprop="name" value="9">nine</data>', "9"),
         ('<meter itemprop="name" value="0.5">half</meter>', "0.5"),
         ('<time itemprop="name" datetime="2026-10-01">1 October</time>', "2026-10-01"),
         ('<time itemprop="name">2026-10-01</time>', "2026-10-01"),
         ('<span itemprop="name">Widget <b>9</b></span>', "Widget 9"),
-        ('<img itemprop="name">', ""),  # a missing URL attribute is the empty string
     ],
 )
 def test_the_value_of_a_property_follows_its_element(element: str, raw: str) -> None:
     # HTML Standard, microdata, "Values": the attribute or text that holds an element's property value.
     result = _collect(f'<div itemscope itemtype="https://schema.org/Product">{element}</div>')
     assert [(c.field, c.raw) for c in result.candidates] == [("title", raw)]
+
+
+URL_SCHEMA = SCHEMA.model_copy(
+    update={"fields": {"title": _text("Product.name"), "link": FieldSpec(type=FieldType.URL, schema_org="Product.url")}}
+)
+
+
+@pytest.mark.parametrize(
+    ("element", "raw"),
+    [
+        ('<img itemprop="url" src="/w.png" alt="x">', "/w.png"),
+        ('<a itemprop="url" href="/w">Widget 9</a>', "/w"),
+        ('<link itemprop="url" href="/w">', "/w"),
+        ('<object itemprop="url" data="/w.bin"></object>', "/w.bin"),
+        ('<img itemprop="url">', ""),  # a missing URL attribute is the empty string
+    ],
+)
+def test_the_value_of_a_url_property_is_its_element_s_url(element: str, raw: str) -> None:
+    result = _collect(f'<div itemscope itemtype="https://schema.org/Product">{element}</div>', URL_SCHEMA)
+    assert [(c.field, c.raw) for c in result.candidates] == [("link", raw)]
+
+
+@pytest.mark.parametrize(
+    "element",
+    [
+        '<a itemprop="name" href="/w" title="Widget 9 deluxe">Widget 9...</a>',
+        '<img itemprop="name" src="/w.png" alt="Widget 9">',
+        '<link itemprop="name" href="/w">',
+    ],
+)
+def test_a_url_value_is_not_text(element: str) -> None:
+    # HTML Standard microdata "Values" make a hyperlink's or an image's property value the URL it names: a URL, not
+    # the prose a text field holds, so a text field takes no candidate from it.
+    result = _collect(f'<div itemscope itemtype="https://schema.org/Product">{element}</div>', URL_SCHEMA)
+    assert [c.field for c in result.candidates] == []
+
+
+def test_a_list_of_text_takes_no_url_values() -> None:
+    tags = FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.TEXT), schema_org="Product.keywords")
+    schema = SCHEMA.model_copy(update={"fields": {"tags": tags}})
+    markup = '<a itemprop="keywords" href="/t/1">one</a><a itemprop="keywords" href="/t/2">two</a>'
+    result = _collect(f'<div itemscope itemtype="https://schema.org/Product">{markup}</div>', schema)
+    assert [c.field for c in result.candidates] == []
+
+
+def test_an_rdfa_iri_value_is_not_text() -> None:
+    # RDFa Core 1.1 §7.5 step 11: `href` makes the property's value an IRI.
+    result = _collect(
+        '<div vocab="https://schema.org/" typeof="Product"><a property="name" href="/w">W</a></div>', URL_SCHEMA
+    )
+    assert [c.field for c in result.candidates] == []
 
 
 def test_a_nested_item_s_properties_are_not_the_outer_item_s() -> None:

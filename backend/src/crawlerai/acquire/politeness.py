@@ -25,6 +25,11 @@ SLOW_DOWN: Final = frozenset({429, 503})
 Admit = Callable[[], Awaitable[bool]]
 
 
+async def refuse() -> bool:
+    """The `Admit` of a fetch that may send no further request: robots.txt disallows the page (SPEC-15 §4.6)."""
+    return False
+
+
 def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:
     """The last attempt a server answered with a 429 or 503 (`SLOW_DOWN`), if any."""
     return next((a for a in reversed(tuple(attempts)) if a.status in SLOW_DOWN), None)

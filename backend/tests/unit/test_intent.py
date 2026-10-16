@@ -147,7 +147,7 @@ def test_urls_match_after_canonicalization() -> None:
 
 
 def test_several_candidates_and_no_url_match_is_ambiguous() -> None:
-    first = _entity("jsonld:0:$", "Product", OTHER_URL)
+    first = _entity("jsonld:0:$", "Product", PAGE_URL + "?size=2")
     second = _entity("jsonld:1:$", "Product")
     assert _select(first, second) == AmbiguousTarget(candidates=(first.id, second.id))
 
@@ -221,3 +221,65 @@ def test_primary_types_are_the_roots_of_every_alternative() -> None:
     schema = _schema(title=_field("ProductGroup.sku|Product.sku"), price=_field("Offer.price+priceCurrency"))
 
     assert primary_types(schema, VOCABULARY) == frozenset({"ProductGroup", "Product"})
+
+
+def test_products_whose_urls_lead_to_other_documents_do_not_compete_with_the_page_own() -> None:
+    # A related product's own URL names another document (RFC 3986 §3.3: another path), so it is not this page's.
+    main = _entity("jsonld:0:$", "Product")
+    related = [_entity(f"jsonld:{i}:$", "Product", f"https://shop.example.test/p/{i + 10}") for i in (1, 2)]
+    assert _select(main, *related) == main
+
+
+def test_a_query_selects_within_the_same_document() -> None:
+    # The same path with another query may be this page's variant: not another document, so still ambiguous.
+    first = _entity("jsonld:0:$", "Product", PAGE_URL + "?colour=red")
+    second = _entity("jsonld:1:$", "Product")
+    assert _select(first, second) == AmbiguousTarget(candidates=(first.id, second.id))
+
+
+def test_only_products_of_other_documents_leave_the_page_ambiguous() -> None:
+    first = _entity("jsonld:0:$", "Product", OTHER_URL)
+    second = _entity("jsonld:1:$", "Product", "https://shop.example.test/p/3")
+    assert _select(first, second) == AmbiguousTarget(candidates=(first.id, second.id))
+
+
+def _repeated(n: int, *urls: str) -> list[Entity]:
+    return [
+        _entity(f"microdata:/html[1]/body[1]/table[1]/tr[1]/th[{i + 1}]", "Product", url)
+        for i, url in zip(range(n), urls, strict=True)
+    ]
+
+
+def test_items_repeated_in_one_structure_do_not_compete_even_when_one_names_the_page() -> None:
+    # A comparison table or carousel: sibling items of one shape are one list's items (as an ItemList's are).
+    main = _entity("jsonld:0:$", "Product", PAGE_URL)
+    others = _repeated(3, PAGE_URL, OTHER_URL, "https://shop.example.test/p/3")
+    assert _select(main, *others) == main
+
+
+def test_two_sibling_items_are_not_a_repeated_structure() -> None:
+    main = _entity("jsonld:0:$", "Product", PAGE_URL)
+    pair = _repeated(2, PAGE_URL, PAGE_URL)
+    assert _select(main, *pair) == AmbiguousTarget(candidates=(main.id, pair[0].id, pair[1].id))
+
+
+def test_a_product_group_with_variants_is_preferred_to_a_product_naming_the_same_page() -> None:
+    group = _entity("jsonld:0:$", "ProductGroup", PAGE_URL)
+    variant = _entity("jsonld:0:$['hasVariant'][0]", "Product", PAGE_URL + "?v=1", parent=group.id, via="hasVariant")
+    product = _entity("jsonld:1:$", "Product", PAGE_URL)
+    assert _select(group, variant, product) == group
+
+
+def test_two_product_groups_naming_the_page_stay_ambiguous() -> None:
+    groups = [_entity(f"jsonld:{i}:$", "ProductGroup", PAGE_URL) for i in (0, 1)]
+    variants = [
+        _entity(f"jsonld:{i}:$['hasVariant'][0]", "Product", parent=f"jsonld:{i}:$", via="hasVariant") for i in (0, 1)
+    ]
+    assert _select(*groups, *variants) == AmbiguousTarget(candidates=(groups[0].id, groups[1].id))
+
+
+def test_the_group_a_product_is_a_variant_of_is_not_a_candidate() -> None:
+    # schema.org `isVariantOf` (inverse of `hasVariant`): its value is the group the holder belongs to.
+    product = _entity("jsonld:0:$", "Product", PAGE_URL + "?colour=red")
+    group = _entity("jsonld:0:$['isVariantOf']", "ProductGroup", PAGE_URL, parent=product.id, via="isVariantOf")
+    assert _select(product, group, request_url=OTHER_URL) == product

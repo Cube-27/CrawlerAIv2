@@ -154,7 +154,7 @@ def test_only_the_first_500_kib_are_kept() -> None:
 
 @pytest.mark.parametrize(
     ("status", "error"),
-    [(404, None), (301, "too_many_redirects")],
+    [(404, None), (403, None), (401, None), (301, "too_many_redirects")],
 )
 def test_an_unavailable_robots_file_allows_everything(status: int, error: str | None) -> None:
     result = _fetched(status, b"<html>nope</html>", error)
@@ -167,7 +167,7 @@ def test_an_unavailable_robots_file_allows_everything(status: int, error: str | 
 
 @pytest.mark.parametrize(
     ("status", "error"),
-    [(500, None), (0, "timeout"), (200, "body_cap")],
+    [(500, None), (503, None), (429, None), (0, "timeout"), (200, "body_cap")],
 )
 def test_an_unreachable_robots_file_gives_no_snapshot(status: int, error: str | None) -> None:
     result = _fetched(status, b"", error)

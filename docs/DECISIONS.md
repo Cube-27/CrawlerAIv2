@@ -907,3 +907,57 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: the title field only (needs a list of title properties, `name`/`title`); the block's first link (a brand or review link in a card would win).
 - Why: The owner's option (a), read conservatively: every value role C grounded must sit in the block, and a card linking to two documents says nothing about which is the item's.
 - Reversible: yes
+
+### D-1151 — A detail page's related items and its product's group do not make its intent ambiguous
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.6 (#225) · Status: decided
+- Decision: `resolve.intent`: when the page URLs settle no single candidate, the page's own candidates are those that are not another page's item: not one whose every URL names another document (scheme, host and path, RFC 3986 §3; the query is left out, as it may select a variant of the same page), and not one of three or more microdata items whose element paths differ only in positions (sibling elements of one shape: a carousel, a comparison table). One own candidate is the target; of several, the one naming a page URL; of several of those, the one product group with variants (`hasVariant`). The group a product `isVariantOf` is not a candidate. Otherwise the page stays ambiguous.
+- Alternatives: count any entity nested in a primary entity out (breaks the tested rule that only lists and relation properties exclude); compare full URLs for "another document" (a variant URL with another query order would count as elsewhere).
+- Why: 7 of 41 tough-run detail pages published nothing (every field `intent_ambiguous`); replayed, all 7 now have a target, 32 of their 35 core fields publish, and no other page's target changes.
+- Reversible: yes
+
+### D-1152 — Bodies are decoded by HTML encoding sniffing; a browser body is UTF-8
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.1 (#225) · Status: decided
+- Decision: `decode_body` takes a byte order mark, else the Content-Type charset, else a `meta` declaration in the first 1024 bytes, else UTF-8 (HTML Standard §13.2.3.2), with labels resolved by the Encoding Standard (`iso-8859-1` is windows-1252) through `webencodings` (BSD-3-Clause). A browser capture's body is the rendered DOM the fetcher serializes as UTF-8, so it is decoded as UTF-8 whatever the server declared.
+- Alternatives: keep the header-only decode (a browser capture of a page declared windows-1252 turns every non-ASCII character into mojibake); a hand-written label table (a list to keep, C4).
+- Why: the reported mojibake class. It is not reproduced in the stored captures: all 336 bodies of the reference runs are UTF-8 and declared so.
+- Reversible: yes
+
+### D-1153 — A URL a source gives as a property value is not text
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.5 (#225) · Status: decided
+- Decision: A microdata value read from a URL attribute (`a`, `area`, `link` href, `img` src, ..., HTML Standard microdata "Values") or an RDFa IRI attribute is marked `url`; a `text` or `long_text` field takes no candidate from it. Enum and URL fields still do (`<link itemprop="availability" href=...>`).
+- Alternatives: the element's text in place of its URL (not the property's value by the standard); a text normalizer that declines URL-looking strings (a guess).
+- Why: one tough-run listing published a relative path as the title of all 117 rows (`itemprop="name"` on a hyperlink).
+- Reversible: yes
+
+### D-1154 — Elided text shows the full title its element's `title` attribute gives
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.4 (#225) · Status: decided
+- Decision: In the cleaned text, an element whose text ends in an ellipsis (U+2026 or three full stops, its NFKC form) and whose `title` starts with that text without the ellipsis and goes on, shows its `title` (HTML Standard §3.2.6.1: advisory information for the element). Role C then reads and grounds the full name.
+- Alternatives: replace the value after grounding (the value would not be a span of the text, INV-12).
+- Why: two tough-run listings published half their row titles cut short with an ellipsis; their captures now read the full names.
+- Reversible: yes
+
+### D-1155 — A robots.txt answered with 429 is unreachable
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-02 §4.6 (#225) · Status: decided
+- Decision: `robots.snapshot_of` treats 429 like a 5xx (unreachable: allows nothing, retried); other 4xx stay unavailable (allows everything, RFC 9309 §2.3.1.3).
+- Why: 429 asks for fewer requests (RFC 6585 §4); it does not say the file is unavailable. A 403 robots.txt already allowed everything; the tough-run pages "blocked by robots" were real disallows (re-checked: 6 of 7 hosts answer 200 with a disallow).
+- Reversible: yes
+
+### D-1156 — A page an adapter serves is not held back by its own robots.txt
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-15 §4.6 (#225) · Status: decided
+- Decision: When `Registry.would_serve(url)`, a page robots.txt disallows is still handed to `acquire`: the adapter requests its API under that host's robots.txt (`adapter_send`), and the page rungs are not admitted (`politeness.refuse`); an adapter answer that is not `ok` ends as `robots`. Same in `services.scrape.polite_fetch` and `worker.polite.fetch_politely`.
+- Why: robots.txt governs the URLs a crawler requests (RFC 9309 §2.2); an adapter never requests the page. 4 tough-run job board embed URLs are disallowed by their host's robots.txt and served by the Greenhouse adapter's API, which its host allows.
+- Reversible: yes
+
+### D-1157 — A served page that links nowhere is blocked
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-02 §4.3 (#225) · Status: decided · Supersedes the terminal-document rule (small, no page parts)
+- Decision: A 2xx HTML page that is not a shell and has no hyperlink (`a`/`area` with `href`, HTML Standard §4.6) is `blocked`, whatever scripts, images or forms it holds.
+- Alternatives: compare with a 403 body of the same host (no such body is stored; the bot pages came with 200); text phrases (C4).
+- Why: two tough-run browser captures were a bot page (18 KB, scripts, a form, no link) classed `ok` and extracted empty. Of the 336 stored 2xx captures classed `ok`, those two are the only ones without a hyperlink.
+- Reversible: yes
+
+### D-1158 — A listing whose structured data lists no items is a shell
+- Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-02 §4.3, D-0933 (#225) · Status: decided
+- Decision: The HTTP listing-shell rule's "structured data" is now data that lists items: a JSON-LD node typed ItemList (any depth), or at least `MIN_ITEMS` microdata items. Other JSON-LD (WebSite, Organization, BreadcrumbList) and JSON script state no longer exempt a listing without repeated items from the browser.
+- Alternatives: keep JSON script state as rows (it exempted 4 tough-run listings that had none; the browser renders the grid from it when it has them).
+- Why: 8 tough-run listings with no rows at HTTP were `ok` because of such data; replayed, all 8 are now `shell` (browser retry). One of them had 58 role C rows at HTTP: if its browser retry fails, the HTTP shell is kept and those rows are lost (follow-up).
+- Reversible: yes

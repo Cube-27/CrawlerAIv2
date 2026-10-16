@@ -164,7 +164,10 @@ async def fetch_page(
 
         return await fetch_unless_unchanged(fetch, validators, has_record=standing is not None)
 
-    fetched = await fetch_politely(conn, task, site.id, policy, page, fetching.limiter, fetch_robots=robots)
+    by_adapter = fetching.rungs.adapters.would_serve(task.url)
+    fetched = await fetch_politely(
+        conn, task, site.id, policy, page, fetching.limiter, fetch_robots=robots, by_adapter=by_adapter
+    )
     if isinstance(fetched, FetchResult):
         if (refused := refusal(fetched)) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)

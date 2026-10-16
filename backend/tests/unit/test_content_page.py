@@ -71,6 +71,44 @@ def test_the_body_decodes_in_the_content_type_charset_else_utf8(
     assert page.lxml_tree.text_content() == expected
 
 
+@pytest.mark.parametrize(
+    ("body", "headers"),
+    [
+        # Encoding Standard §4.2: the label `iso-8859-1` is windows-1252, where 0x96 is an en dash.
+        (b"<p>a \x96 b</p>", (("content-type", "text/html; charset=iso-8859-1"),)),
+        # HTML Standard §13.2.3.2: without a transport charset, the prescan reads a `meta` charset declaration.
+        (b'<meta charset="windows-1252"><p>a \x96 b</p>', (("content-type", "text/html"),)),
+        (b'<meta http-equiv="Content-Type" content="text/html; charset=latin1"><p>a \x96 b</p>', ()),
+        # A byte order mark outranks every declaration (Encoding Standard §6 "decode").
+        (b"\xef\xbb\xbf<p>a \xe2\x80\x93 b</p>", (("content-type", "text/html; charset=windows-1252"),)),
+        # The transport charset outranks a `meta` declaration.
+        (b'<meta charset="windows-1252"><p>a \xe2\x80\x93 b</p>', (("content-type", "text/html; charset=utf-8"),)),
+    ],
+)
+def test_the_body_decodes_as_the_encoding_sniffing_algorithm_says(
+    body: bytes, headers: tuple[tuple[str, str], ...]
+) -> None:
+    assert ParsedPage.of(_bundle(body, headers)).cleaned_text.text == "a \u2013 b"
+
+
+def test_a_meta_charset_label_that_is_not_ascii_is_skipped() -> None:
+    # Curly quotes around the label: no encoding has that name, so the body is decoded as UTF-8.
+    body = "<meta charset=\u201cwindows-1252\u201d><p>a \u2013 b</p>".encode()
+    assert ParsedPage.of(_bundle(body, ())).cleaned_text.text == "a \u2013 b"
+
+
+def test_a_browser_capture_is_utf8_whatever_the_server_declared() -> None:
+    # The browser body is the rendered DOM, serialized by the fetcher as UTF-8 (`acquire.browser`); the server's
+    # declaration was for the bytes it sent, which the browser already decoded.
+    body = '<meta charset="windows-1252"><p>a \u2013 b</p>'.encode()
+    plain = _bundle(body, (("content-type", "text/html; charset=windows-1252"),))
+    manifest = plain.manifest.model_copy(update={"method": "browser"})
+
+    page = ParsedPage.of(CaptureBundle(manifest=manifest, body=plain.body, network=()))
+
+    assert page.cleaned_text.text == "a \u2013 b"
+
+
 def test_the_page_keeps_the_captured_network_bodies_in_request_order() -> None:
     bodies = (b'{"a": 1}', b"[2]")
     entries = tuple(
