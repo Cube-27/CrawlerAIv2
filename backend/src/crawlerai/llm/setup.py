@@ -1,5 +1,5 @@
 """The LLM setup check (SPEC-06 §4.2): whether the configured providers can serve calls. A listed provider without its
-API key, or a configured model id its provider does not know, would otherwise show only as `llm_unavailable` on every
+API key, or a configured model id its provider does not know, would otherwise show only as `llm_refused` on every
 record while the requests succeed. Each problem is logged at ERROR once, when a process starts, and the status is
 what `GET /healthz` reports (the problems stay in the log: the probe is unauthenticated).
 

@@ -533,3 +533,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: keep a gazetteer; derive codes from Babel's territory names.
 - Why: Appendix A #43: "our job is to extract page data, not change it"; C7 (decline rather than guess).
 - Reversible: yes — a lookup could be added back as a separate step.
+
+### D-1058 — Owner answer to D-0946 class 11: a job location publishes as written
+- Date: 2026-10-16 · Spec/PR: SPEC-04 §4.4, ARCHITECTURE §9 (#216) · Status: confirmed
+- Decision: "just display whatever is written in jobs location." No macro-region parsing and no "or" split: a location text naming several places stays one `text`. The only change to the value is that each whitespace run in the text and the stated address parts becomes one space (it was NFC and trimmed only). Structured parts stay where the page states them structurally (`PostalAddress`).
+- Alternatives: a new location representation with regions and alternatives (round-1 class 11 as framed in D-0946).
+- Why: owner answer, 2026-10-16 (Appendix A #44); extract, never enrich (Appendix A #43).
+- Reversible: yes

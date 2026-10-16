@@ -298,10 +298,10 @@ def test_a_failure_after_answered_calls_records_each_of_them() -> None:
 
 
 def test_a_refusal_puts_its_cause_in_the_page_diagnostic() -> None:
-    # F33: "llm_unavailable" alone does not say that the model id is unknown.
+    # F33: the reason alone does not say that the model id is unknown.
     filled = extract(ScriptedClient(ProviderRefused("fake", "fast-model", 404, "model: fast-model not found")))
 
-    assert filled.diagnostics == ("role C: llm_unavailable (fake: HTTP 404: model: fast-model not found)",)
+    assert filled.diagnostics == ("role C: llm_refused (fake: HTTP 404: model: fast-model not found)",)
 
 
 # --- a recorded runaway reply (F29) ---

@@ -694,20 +694,21 @@ def test_prefill_with_a_stale_if_match_is_refused_before_the_call() -> None:
 
 
 @pytest.mark.parametrize(
-    ("failure", "status"),
+    ("failure", "status", "problem"),
     [
-        (ProviderUnavailable("no provider answered"), 503),
-        (ProviderRefused("fake", "fake-fast", 400, "schema refused"), 503),
-        (OutputInvalid("at $: not an object"), 502),
+        (ProviderUnavailable("no provider answered"), 503, "llm_unavailable"),
+        (ProviderRefused("fake", "fake-fast", 400, "schema refused"), 502, "llm_refused"),
+        (OutputInvalid("at $: not an object"), 502, "llm_output_invalid"),
     ],
 )
-def test_prefill_without_a_valid_reply_stores_nothing(failure: Exception, status: int) -> None:
+def test_prefill_without_a_valid_reply_stores_nothing(failure: Exception, status: int, problem: str) -> None:
     backend = FakeBackend(llm=ScriptedClient(failure))
     page = backend.store.add()
 
     response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
 
     assert response.status_code == status
+    assert response.json()["type"] == problem
     assert response.json()["detail"] == str(failure)
     assert _writes(backend) == []
 

@@ -20,7 +20,7 @@ from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.resolve.evidence import TAU_OPTIONAL, TAU_REQUIRED, Calibration, assess
 from crawlerai.resolve.intent import LISTS, RELATIONS
-from crawlerai.resolve.ownership import AGGREGATE_OFFER, OFFER, EntityGraph
+from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
 from crawlerai.resolve.preference import Orders, PageFacts, Resolver
 from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -224,7 +224,7 @@ def _not_keys(row_field: RowField) -> tuple[frozenset[str], frozenset[str]]:
     is either the target's or an Offer's: `_without_group_urls` decides by how many rows carry it."""
     graph, target = row_field.graph, row_field.target
     # An AggregateOffer is no offer of one item (§4.3): a URL it repeats is not one row's.
-    offers = {u for e in graph.holders(target) if graph.is_a(e, OFFER) for u in e.urls}
+    offers = {u for e in graph.offers(target) for u in e.urls}
     own = [u for u in target.urls if u not in offers]
     return frozenset((*row_field.page_urls, *own)), frozenset(u for u in target.urls if u in offers)
 

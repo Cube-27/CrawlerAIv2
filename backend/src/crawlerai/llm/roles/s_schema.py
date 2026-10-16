@@ -131,7 +131,7 @@ async def draft_schema(
     """The draft schema for `prompt`: the stored one when this prompt was drafted before, else a new draft from the
     model, stored. No transaction is held during the call (the client commits usage on its own, D-0346).
 
-    Raises the client's `BudgetExhausted`, `ProviderUnavailable` and `OutputInvalid` (after the retry)."""
+    Raises the client's `LLMFailure`s (`OutputInvalid` after the retry)."""
     _checked_prompt(prompt, samples)
     name = draft_name(prompt)
     return await _drafted(engine, client, draft_request(prompt, samples, job_id), partial(_invalid, name=name), name)
@@ -160,8 +160,7 @@ async def draft_fields(
 ) -> SchemaDef:
     """The draft schema for `fields` on `page_kind` pages: the stored one when these names were drafted for that page
     kind before, else a new draft from the model, stored. The names are distinct and at most `MAX_FIELD_NAMES` (the
-    request model's check). Raises the client's `ProviderUnavailable` and
-    `OutputInvalid` (after the retry)."""
+    request model's check). Raises the client's `LLMFailure`s (`OutputInvalid` after the retry)."""
     name = fields_name(fields, page_kind)
     check = partial(_invalid_fields, name=name, fields=frozenset(fields), page_kind=page_kind)
     return await _drafted(engine, client, fields_request(fields, page_kind), check, name)

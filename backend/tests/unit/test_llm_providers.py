@@ -239,7 +239,7 @@ def test_a_rejected_request_is_refused_with_the_providers_message(vendor: Vendor
 
     with pytest.raises(ProviderRefused, match=f"{vendor.name}: HTTP 400: .*synthetic error") as refused:
         run(provider)
-    assert (refused.value.code, refused.value.field_reason, len(requests)) == ("llm_unavailable", "llm_unavailable", 1)
+    assert (refused.value.code, refused.value.field_reason, len(requests)) == ("llm_refused", "llm_refused", 1)
     assert (refused.value.provider, refused.value.model, refused.value.status) == (vendor.name, "strong-model", 400)
 
 

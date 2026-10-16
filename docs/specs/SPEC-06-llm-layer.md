@@ -75,7 +75,7 @@ class LLMClient(Protocol):
   **[unverified per provider; otherwise instruct JSON + validate]**; on invalid JSON or schema violation, one
   retry with the validation error appended, except for a reply cut at `max_output_tokens` (`OutputCut`, reason
   `llm_output_invalid`), which the same request would cut again; on provider 429/5xx/timeouts, failover to the next
-  provider once; any other error status is a refusal (`ProviderRefused`, reason `llm_unavailable`), neither retried
+  provider once; any other error status is a refusal (`ProviderRefused`, reason `llm_refused`, D-1009), neither retried
   nor failed over, and logged once per provider, model and status with the provider's message (the API key
   redacted).
 - Output schemas: every role's output schema stays inside each provider's documented structured-output subset
@@ -164,9 +164,12 @@ Labeling pre-fill variant (`c_prefill`, SPEC-03 4.10): identical, requests all f
 
 ### 4.7 Error handling
 
-- `BudgetExhausted`, `ProviderUnavailable` (after failover), `OutputInvalid` (after retry) are typed exceptions;
-  the pipeline converts them into an extraction diagnostic and leaves the fields `missing` with reason
-  `llm_unavailable` / `llm_budget` / `llm_output_invalid` — never a published guess. The diagnostic states the
+- `BudgetExhausted`, `ProviderUnavailable` (after failover), `ProviderRefused` (not retried), `OutputInvalid`
+  (after retry) are typed exceptions; the pipeline converts them into an extraction diagnostic and leaves the
+  fields `missing` with reason `llm_budget` / `llm_unavailable` / `llm_refused` / `llm_output_invalid` — never a
+  published guess. Each code is also the task's `last_error` and the API problem type: 422 `budget_exhausted`,
+  503 `llm_unavailable`, 502 `llm_refused` (the request is at fault, not the provider's availability; owner
+  2026-10-16, D-1009 option a), 502 `llm_output_invalid`. The diagnostic states the
   cause where it holds no page content: a refusal's status and message, the providers' errors, a cut reply's cap.
 - Timeouts: 60 s per call (`fast`), 120 s (`strong`).
 

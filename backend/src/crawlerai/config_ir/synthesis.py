@@ -13,7 +13,7 @@ many as the engine published where it published rows; row fields are checked row
 to it, and are written again whenever the row selector is. `next_page_url` becomes the listing's `next` step.
 
 Model output is data: steps are parsed by the IR model and interpreted by the executors, never executed (INV-17); an
-invalid step is a diagnostic, not an error. An LLM failure (`BudgetExhausted`, `ProviderUnavailable`, `OutputInvalid`)
+invalid step is a diagnostic, not an error. An LLM failure (`LLMFailure`: budget, unavailable, refused, invalid)
 propagates: the learning job ends `failed` and nothing activates (§4.13).
 """
 

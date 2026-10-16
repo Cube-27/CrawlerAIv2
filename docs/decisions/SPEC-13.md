@@ -193,7 +193,7 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Reversible: yes
 
 ### D-0945 — No default-variant rule for multi-variant availability (round-1 class 12)
-- Date: 2026-10-16 · Spec/PR: SPEC-13 §2, §4.6, round-1 eval class 12 (#207) · Status: decided
+- Date: 2026-10-16 · Spec/PR: SPEC-13 §2, §4.6, round-1 eval class 12 (#207) · Status: superseded by D-1057
 - Decision: Not built. With no variant named by the page URLs, offer fields stay `offers_disagree`; the URL-named variant is already selected (`select_variant`).
 - Alternatives: First offer as the default.
 - Why: SPEC-13 excludes any default other than the URL-named variant (C7); changing it is an owner question.
@@ -212,3 +212,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Key on the `variesBy` properties' values, or on productID/mpn.
 - Why: ARCHITECTURE §5.2 and §4.2/§4.7 here limit keys to identifier/url and do not read `variesBy`. On the eval-ref set's 11 `no_row_key` pages, 10 have Offers stating no identifier and no URL but the page's, and 1 is a standalone variant Product beside its ProductGroup (the §9 `isVariantOf` issue); a `variesBy` key recovers none. productID is `variant_id`, not a key (Appendix A #42).
 - Reversible: yes.
+
+### D-1057 — Owner answer to D-0945: no default variant; varying values only in `variants`
+- Date: 2026-10-16 · Spec/PR: SPEC-13 §4.6 (#216) · Status: confirmed
+- Decision: "no default — all variant schema goes into variants and common schema stays out of variants, simple." `select_variant` and the `other_variant` rejection are removed: a multi-variant product's top-level price, availability and stock quantity publish only when every Offer agrees (else `conflict`, `offers_disagree`, unchanged), and a top-level sku or gtin fills from variants only when all agree. A URL naming one variant selects nothing. INV-36 superseded by INV-38; Appendix A #37 amended, #44 added.
+- Alternatives: keep the URL-named variant (the previous rule); the first Offer as default.
+- Why: owner answer, 2026-10-16 (Appendix A #44).
+- Reversible: yes
+
+### D-1059 — Common-value reading of the variants answer
+- Date: 2026-10-16 · Spec/PR: SPEC-13 §4.6 (#216) · Status: decided
+- Decision: A top-level field whose variants disagree keeps status `conflict` with reason `offers_disagree` (no new reason), so the gap rule does not ask role C for it. `variants` rows are unchanged: each row keeps its own values even where all rows agree. The `commerce_detail` descriptions of price, availability, stock_quantity, sku, gtin and color now say the top-level value is the product's common one and per-variant values are in `variants` (role C and role A read them).
+- Alternatives: a new reason such as `varies_by_variant`; dropping common values from rows.
+- Why: the smallest change that matches the answer; a new reason would change the reason vocabulary the eval and UI read, and stripping common values from rows would make a row's meaning depend on its siblings.
+- Reversible: yes

@@ -67,23 +67,14 @@ class EntityGraph:
         holder = self.entities[owner.parent]
         return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)
 
-    def holders(self, target: Entity) -> tuple[Entity, ...]:
-        """The target's variant holders (SPEC-13 §4.6): its `hasVariant` members and the Offers directly under it,
-        an AggregateOffer excepted."""
-        return tuple(
-            e for e in self.entities.values() if e.parent == target.id and (e.via == VARIANT or self._single_offer(e))
-        )
+    def offers(self, target: Entity) -> tuple[Entity, ...]:
+        """The Offers directly under the target, an AggregateOffer excepted: it summarizes several offers, not an offer
+        of one item (SPEC-13 §4.3)."""
+        return tuple(e for e in self.entities.values() if e.parent == target.id and self._single_offer(e))
 
     def variants(self, target: Entity) -> tuple[Entity, ...]:
         """The target's `hasVariant` members."""
         return tuple(e for e in self.entities.values() if e.parent == target.id and e.via == VARIANT)
-
-    def offers_of(self, holder: Entity) -> frozenset[str]:
-        """The Offers a variant holder stands for: itself when it is an Offer, else the Offers directly under it. An
-        AggregateOffer is none: it summarizes several offers, not an offer of one item (SPEC-13 §4.3)."""
-        if self.is_a(holder, OFFER):
-            return frozenset({holder.id})
-        return frozenset(e.id for e in self.entities.values() if e.parent == holder.id and self._single_offer(e))
 
     def _single_offer(self, entity: Entity) -> bool:
         return self.is_a(entity, OFFER) and not self.is_a(entity, AGGREGATE_OFFER)

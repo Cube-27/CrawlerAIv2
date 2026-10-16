@@ -12,19 +12,19 @@
     "price": {
       "type": "money",
       "required": true,
-      "description": "Current price of the selected or default variant, with its currency",
+      "description": "Current price of the product, with its currency, when every variant has the same price; prices that differ by variant are in variants",
       "schema_org": "Offer.price+priceCurrency"
     },
     "availability": {
       "type": "enum",
       "vocab": "schema:ItemAvailability",
       "required": true,
-      "description": "Whether the selected or default variant can be bought now",
+      "description": "Whether the product can be bought now, when every variant has the same availability; availability that differs by variant is in variants",
       "schema_org": "Offer.availability"
     },
     "stock_quantity": {
       "type": "count",
-      "description": "Number of items of the selected or default variant the page says are in stock, when it states one",
+      "description": "Number of items the page says are in stock, when it states one that every variant shares; quantities that differ by variant are in variants",
       "schema_org": "Offer.inventoryLevel"
     },
     "url": {
@@ -47,13 +47,13 @@
     "sku": {
       "type": "identifier",
       "scheme": "sku",
-      "description": "The seller's stock keeping unit for the selected or default variant",
+      "description": "The seller's stock keeping unit for the product, when every variant has the same one; per-variant skus are in variants",
       "schema_org": "Product.sku"
     },
     "gtin": {
       "type": "identifier",
       "scheme": "gtin",
-      "description": "GS1 trade item number (GTIN-8, -12, -13 or -14) of the selected or default variant",
+      "description": "GS1 trade item number (GTIN-8, -12, -13 or -14) of the product, when every variant has the same one; per-variant gtins are in variants",
       "schema_org": "Product.gtin"
     },
     "mpn": {
@@ -81,7 +81,7 @@
     },
     "color": {
       "type": "text",
-      "description": "Colour of the selected or default variant, as the page states it",
+      "description": "Colour of the product, as the page states it for the product itself; per-variant colours are in variants",
       "schema_org": "Product.color"
     },
     "material": {

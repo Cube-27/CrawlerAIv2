@@ -183,10 +183,13 @@ structural property.
 
 **location** → `{text, locality, region, country, remote_flag}`: what the page states, nothing looked up or
 inferred (ARCHITECTURE Appendix A #43).
-- Text (a string, or a `Place` with only a `name`): `text` as written (NFC, trimmed); the other parts `None`.
-- Structured (`Place`/`PostalAddress`): `addressLocality`, `addressRegion` as written; `country` only when
-  `addressCountry` (text, or a `Country`'s `identifier` or `name`) is an ISO 3166-1 alpha-2 code, as CLDR lists
-  them (via Babel) less ISO 3166-1's user-assigned ranges; two other letters → `Invalid("unknown_country")`; a
+- Text (a string, or a `Place` with only a `name`): `text` as written (NFC, each whitespace run one space,
+  trimmed); the other parts `None`. Nothing in the text is parsed: several places, macro-regions or alternatives
+  ("A or B") stay one text, never split (owner, 2026-10-16: "just display whatever is written in jobs location";
+  ARCHITECTURE Appendix A #44).
+- Structured (`Place`/`PostalAddress`): `addressLocality`, `addressRegion` as written (whitespace collapsed);
+  `country` only when `addressCountry` (text, or a `Country`'s `identifier` or `name`) is an ISO 3166-1 alpha-2
+  code, as CLDR lists them (via Babel) less ISO 3166-1's user-assigned ranges; two other letters → `Invalid("unknown_country")`; a
   country written as a name gets no code. `text` joins the stated parts as written (locality, region, country).
 - Nothing stated and not remote → `Invalid("no_match")`.
 - `remote_flag` only from `jobLocationType == TELECOMMUTE` or the `type:remote` vocabulary (`en`: "remote",
@@ -280,7 +283,7 @@ Hypothesis property tests per type (`tests/property/test_normalize_<type>.py`), 
 - count: whole numbers round-trip; a fraction, a negative number or two numbers in a text → `Invalid`.
 - date: numeric `a/b/c` with both orders valid and no locale → `Ambiguous`; ISO round-trips.
 - identifier: random 13-digit strings with a correct check digit → `Ok`; one digit perturbed → `Invalid`.
-- location: generated text publishes as written with no part inferred; a stated alpha-2 code publishes, two
+- location: generated text publishes as written (whitespace runs collapsed) with no part inferred or split; a stated alpha-2 code publishes, two
   letters that are no code → `Invalid`; a country name gets no code.
 - url: any output starts with `http(s)://` and has no fragment.
 - Context purity: `normalize` called twice with the same input and context returns the same result (no I/O).

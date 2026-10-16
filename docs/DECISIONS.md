@@ -53,7 +53,6 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
-| D-1009 | A provider's refusal of a request is labelled `llm_unavailable` | needs-owner |
 
 ---
 
@@ -824,7 +823,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Reversible: yes
 
 ### D-1009 — A provider's refusal of a request is labelled `llm_unavailable`
-- Date: 2026-10-16 · Spec/PR: UAT fixes (#215) · Status: needs-owner
+- Date: 2026-10-16 · Spec/PR: UAT fixes (#215) · Status: confirmed 2026-10-16, option (a) (D-1056)
 - Question: SPEC-06 §4.2 and §4.7 (D-0748) give `ProviderRefused` (any non-transient HTTP error, such as a 400 for a schema the provider will not compile) the reason and problem type `llm_unavailable`, the same as "no provider answered". UAT read a learn job's `llm_unavailable` as an outage when the request itself was refused. Relabelling changes a field reason and a public problem type.
 - Options: (a) a new code `llm_refused` (field reason, task `last_error`, problem 502) for `ProviderRefused`; (b) keep `llm_unavailable` and add the refusal's cause to the learn job's end event (the role C diagnostic already carries it); (c) leave as is.
 - Recommendation: (a): a refusal is the request's fault, and operators act on it differently from an outage.
@@ -842,4 +841,11 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Date: 2026-10-16 · Spec/PR: UAT fixes (#215) · Status: decided
 - Decision: No code change for: a markdown-only crawl making no LLM calls (no schema, nothing to extract); brand published from the page's JSON-LD `brand.name`, which states the site's name (extract, never enrich: Appendix A #43); price not taken from an `AggregateOffer`'s `lowPrice` (§10) and left to role C, which that run could not call (no provider key then); `rating` a decimal string as written (SPEC-04 §4.4 number, like money amounts); a `shell` page escalated to the browser in auto mode but kept from HTTP because the browser's result was a shell too (SPEC-02 §4.4, ARCHITECTURE §7.1).
 - Why: Each follows the cited rule; the captures and their manifests show it.
+- Reversible: yes
+
+### D-1056 — Owner answer to D-1009: a provider refusal is `llm_refused`
+- Date: 2026-10-16 · Spec/PR: SPEC-06 §4.2, §4.7; SPEC-07 §4.3 (#216) · Status: confirmed
+- Decision: `ProviderRefused` has its own code `llm_refused`: the field reason, the task's `last_error` and the problem type (502 "LLM refused the request"). It subclasses `LLMFailure` directly, no longer `ProviderUnavailable`; nothing caught it as the latter. The OpenAPI document is unchanged (502 was already declared, problem types are strings); the UI shows the problem's title and raw reasons, so it needs no label map.
+- Alternatives: (b) keep `llm_unavailable` and add the cause to the learn job's end event; (c) leave as is.
+- Why: owner, 2026-10-16, deferring to the recommendation: a refusal is the request's fault (Appendix A #44; OPEN_QUESTIONS #31).
 - Reversible: yes

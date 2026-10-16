@@ -211,16 +211,22 @@ class ProviderUnavailable(LLMFailure):
         return str(self)  # each provider's status or error, without the request
 
 
-class ProviderRefused(ProviderUnavailable):
+class ProviderRefused(LLMFailure):
     """A provider refused the request: an HTTP error status that `is_transient` does not cover. The call gave no reply,
-    as when no provider answers, so the fields stay `missing` with `llm_unavailable` (§4.7); the message keeps the
-    provider's reason. A retry or another provider would not fix the request, so it is neither."""
+    so the fields stay `missing`, with `llm_refused` rather than `llm_unavailable`: the request is at fault, not the
+    provider's availability (§4.7, D-1009). The message keeps the provider's reason. A retry or another provider would
+    not fix the request, so it is neither."""
+
+    code = field_reason = "llm_refused"
 
     def __init__(self, provider: str, model: str, status: int, message: str) -> None:
         super().__init__(f"{provider}: HTTP {status}: {message}")
         self.provider = provider
         self.model = model
         self.status = status
+
+    def cause(self) -> str | None:
+        return str(self)  # the provider's status and reason, without the request
 
 
 class OutputInvalid(LLMFailure):

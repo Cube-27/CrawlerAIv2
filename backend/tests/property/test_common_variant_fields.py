@@ -1,5 +1,5 @@
-"""INV-36 over generated URL sets (SPEC-13 §4.6): a detail page's price comes from a single variant only when the page
-URLs name exactly that variant by its own URL; otherwise it publishes only when every variant's Offer agrees."""
+"""INV-36 as amended over generated URL sets (SPEC-13 §4.6): a detail page's price publishes only when every
+variant's Offer agrees, whatever variant the request URL names; a URL never selects a default variant."""
 
 import json
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
-from crawlerai.resolve.intent import primary_types, select_target, select_variant
+from crawlerai.resolve.intent import primary_types, select_target
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.preference import (
     PRECEDENCE_TYPES,
@@ -24,7 +24,6 @@ from crawlerai.resolve.preference import (
     PageFacts,
     Resolver,
     Unpublished,
-    Variants,
 )
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -62,9 +61,8 @@ def _price(variants: list[tuple[str, str]], request_url: str) -> Chosen | Unpubl
     graph = EntityGraph.of(collected.entities, VOCABULARY)
     target = select_target(request_url, request_url, GROUP_URL, graph, primary_types(SCHEMA, VOCABULARY))
     assert isinstance(target, Entity)
-    variant_rules = Variants(select_variant(request_url, request_url, GROUP_URL, graph, target))
     orders: Orders = dict.fromkeys(PRECEDENCE_TYPES, ("jsonld",))
-    resolver = Resolver(graph, target, PageFacts.of(request_url, lambda _: False), orders, variants=variant_rules)
+    resolver = Resolver(graph, target, PageFacts.of(request_url, lambda _: False), orders, variant_fill=True)
     return resolver.prefer(SCHEMA, collected.candidates)["price"]
 
 
@@ -72,20 +70,13 @@ def _price(variants: list[tuple[str, str]], request_url: str) -> Chosen | Unpubl
     st.lists(st.tuples(st.sampled_from(URLS), st.sampled_from(PRICES)), min_size=1, max_size=4),
     st.sampled_from(URLS),
 )
-def test_the_price_comes_from_one_variant_only_when_the_urls_name_exactly_that_one(
-    variants: list[tuple[str, str]], request_url: str
-) -> None:
-    named = [p for url, p in variants if url in (request_url, GROUP_URL)]
+def test_the_price_publishes_only_when_every_variant_agrees(variants: list[tuple[str, str]], request_url: str) -> None:
+    prices = {p for _, p in variants}
     result = _price(variants, request_url)
 
-    if len(named) == 1:
-        expected: str | None = named[0]
-    else:
-        expected = PRICES[0] if all(p == PRICES[0] for _, p in variants) else None
-        expected = PRICES[1] if all(p == PRICES[1] for _, p in variants) else expected
-    if expected is None:
-        assert isinstance(result, Unpublished)
-        assert result.reason == "offers_disagree"
-    else:
+    if len(prices) == 1:
         assert isinstance(result, Chosen)
-        assert result.candidate.normalized.value == {"amount": expected, "currency": "EUR"}  # type: ignore[union-attr]
+        assert result.candidate.normalized.value == {"amount": prices.pop(), "currency": "EUR"}  # type: ignore[union-attr]
+    else:
+        assert isinstance(result, Unpublished)
+        assert (result.status, result.reason) == ("conflict", "offers_disagree")

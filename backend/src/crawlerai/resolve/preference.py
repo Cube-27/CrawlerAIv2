@@ -5,9 +5,9 @@ from the request URL's query (INV-13); every other one is rejected with its reas
 exact-match type publishes only when all agree (INV-14); text, long_text, url and image_url take the first source kind
 of the type's order in `source_precedence.yaml`. A page's Offer fields come from one Offer (INV-15).
 
-On a detail page (SPEC-13 §4.6), a variant the page URLs select is the only source of the Offer fields: other
-holders' Offers are rejected `other_variant` (INV-36). An identifier field the target states nothing for takes its
-variants' value: the selected variant's, or, with none selected, the value every variant states alike.
+On a detail page (SPEC-13 §4.6, INV-36), no variant is a default: every Offer of the target and of its variants joins
+the atomic-offer rule, so a value that varies across variants publishes only in the row-mapped `variants` field. An
+identifier field the target states nothing for takes the value every variant states alike (variant fill).
 
 Evidence buckets, confidence and τ are the next stage's (`resolve.evidence`); this module only chooses.
 """
@@ -30,7 +30,7 @@ from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.dispatch import equal, resource_key
 from crawlerai.normalize.text import text_form
-from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph
+from crawlerai.resolve.ownership import OFFER, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PRECEDENCE_FILE = "source_precedence.yaml"
@@ -40,7 +40,7 @@ PRECEDENCE_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL
 STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
-_STAGES = ("invalid", "ambiguous", "not_owned", "url_param", "other_variant")
+_STAGES = ("invalid", "ambiguous", "not_owned", "url_param")
 # GS1 GTIN and a seller's SKU identify one product, so a variant's identifies the variant (SPEC-13 §4.6, variant fill).
 _FILLED_SCHEMES = frozenset({"gtin", "sku"})
 
@@ -85,14 +85,6 @@ class PageFacts:
 
 
 @dataclass(frozen=True, slots=True)
-class Variants:
-    """The variant rules of a detail page's target (SPEC-13 §4.6): `selected` is the variant holder the page URLs
-    select (`select_variant` in `resolve/intent.py`), or None."""
-
-    selected: Entity | None
-
-
-@dataclass(frozen=True, slots=True)
 class Resolver:
     """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
     Its fields' candidates are screened, then chosen per type. `page_values`: whether page-level candidates are the
@@ -104,7 +96,7 @@ class Resolver:
     page: PageFacts
     orders: Orders
     page_values: bool = True
-    variants: Variants | None = None  # a detail page's target only (SPEC-13 §4.6)
+    variant_fill: bool = False  # a detail page's target only (SPEC-13 §4.6)
     owns: Callable[[Candidate], bool] | None = None
 
     def prefer(self, schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
@@ -119,9 +111,6 @@ class Resolver:
         screened = {name: self.screen(by_field[name]) for name in fields}
         # In schema order: the anchor takes the first Offer seen on a tie.
         offer_fields = [name for name, spec in fields.items() if self._is_offer_field(spec)]
-        if self.variants is not None and self.variants.selected is not None:
-            selected = self.graph.offers_of(self.variants.selected)
-            screened |= {name: self._from_selected(*screened[name], selected) for name in offer_fields}
         anchor = self._anchor({name: screened[name][0] for name in offer_fields})
         chosen = {
             name: self._choose(spec, *screened[name], anchor=anchor if name in offer_fields else None)
@@ -162,28 +151,15 @@ class Resolver:
             return self.owns(candidate)
         return self.graph.owned_by(candidate, self.target, page_values=self.page_values)
 
-    def _from_selected(
-        self, kept: list[Candidate], rejected: list[Rejection], selected: frozenset[str]
-    ) -> tuple[list[Candidate], list[Rejection]]:
-        """INV-36: with a selected variant, an Offer field's Offer candidates come from the selected holder's Offers
-        only; other holders' are `other_variant`."""
-        others = [c for c in kept if (offer := self._offer_of(c)) is not None and offer not in selected]
-        return _without(kept, others), [*rejected, *((c, "other_variant") for c in others)]
-
     def _fill(self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference) -> Preference:
         """Variant fill (SPEC-13 §4.6): a gtin or sku field the target states nothing for (no candidate is the
-        target's) takes the selected variant's candidates, or, with no variant selected, its variants' when every
-        variant has one and all agree. A value the target states is never replaced, and no other field is filled."""
-        if self.variants is None or spec.type is not FieldType.IDENTIFIER or spec.scheme not in _FILLED_SCHEMES:
+        target's) takes its variants' candidates when every variant has one and all agree: the value is common to
+        the variants. A value the target states is never replaced, and no other field is filled."""
+        if not self.variant_fill or spec.type is not FieldType.IDENTIFIER or spec.scheme not in _FILLED_SCHEMES:
             return preference
         if any(self.graph.owned_by(c, self.target, page_values=self.page_values) for c in candidates):
             return preference
-        selected = self.variants.selected
-        if selected is not None and selected.via == VARIANT:
-            members: tuple[Entity, ...] = (selected,)
-        else:
-            members = self.graph.variants(self.target)
-        pooled = [self._variant_kept(member, candidates) for member in members]
+        pooled = [self._variant_kept(member, candidates) for member in self.graph.variants(self.target)]
         if not pooled or not all(pooled):
             return preference
         kept = [c for member_kept in pooled for c in member_kept]
@@ -310,10 +286,6 @@ def _named_member(spec: FieldSpec, members: list[Candidate], kept: list[Candidat
 def _same_resource(spec: FieldSpec, members: list[Candidate], namers: list[Candidate]) -> list[Candidate]:
     keys = {resource_key(_value(o), spec) for o in namers} - {None}
     return [m for m in members if resource_key(_value(m), spec) in keys]
-
-
-def _without(candidates: list[Candidate], removed: list[Candidate]) -> list[Candidate]:
-    return [c for c in candidates if not any(c is r for r in removed)]
 
 
 def _all_rejected(
