@@ -3,9 +3,9 @@
 Endpoints, from the platform's documentation (REST API for Oracle Fusion Cloud HCM, "Recruiting Candidate Experience
 Job Requisitions" and "Recruiting Candidate Experience Job Requisition Details", docs.oracle.com, 2026-10-16) and
 verified against live answers of several tenants, unauthenticated:
-- `GET /hcmRestApi/resources/latest/recruitingCEJobRequisitions?finder=findReqs;siteNumber={site},limit=...` answers a
-  site's first page of requisitions: `{"items": [{"requisitionList": [{"Id", "Title", "PostedDate",
-  "PrimaryLocation", ...}]}]}`;
+- `GET /hcmRestApi/resources/latest/recruitingCEJobRequisitions?finder=findReqs;siteNumber={site},limit=...` with
+  `expand=requisitionList` answers a site's first page of requisitions,
+  `{"items": [{"requisitionList": [{"Id", "Title", "PostedDate", "PrimaryLocation", ...}]}]}`;
 - `GET /hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?finder=ById;siteNumber={site},Id="{id}"`
   answers one requisition: `{"items": [{"Id", "Title", "ExternalDescriptionStr", "ExternalPostedStartDate",
   "JobSchedule", "PrimaryLocation", "secondaryLocations", "LegalEmployer", ...}]}`.
@@ -112,7 +112,8 @@ class OracleRecruiting:
         base = f"https://{page.host}{RESOURCES}"
         if page.match.item is None:
             query = f"{_finder('findReqs', page.site)},limit={PAGE_SIZE},offset=0"
-            endpoint = f"{base}/recruitingCEJobRequisitions?{query}"
+            # The search's `requisitionList` is a child collection, in the answer only when expanded.
+            endpoint = f"{base}/recruitingCEJobRequisitions?{query}&expand=requisitionList"
         else:
             item = quote(json.dumps(page.match.item))  # the finder's string argument, double-quoted
             endpoint = f"{base}/recruitingCEJobRequisitionDetails?{_finder('ById', page.site)},Id={item}&expand=all"

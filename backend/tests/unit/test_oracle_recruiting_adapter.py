@@ -38,6 +38,7 @@ ROOT = f"https://{HOST}/hcmUI/CandidateExperience/en/sites/{SITE}"
 API = f"https://{HOST}{RESOURCES}"
 LIST_ENDPOINT = (
     f"{API}/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber={SITE},limit={PAGE_SIZE},offset=0"
+    "&expand=requisitionList"
 )
 JOB_ENDPOINT = (
     f"{API}/recruitingCEJobRequisitionDetails?onlyData=true&finder=ById;siteNumber={SITE},Id=%22100001%22&expand=all"
