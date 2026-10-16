@@ -1,13 +1,14 @@
 ---
 name: run-plan
-description: Orchestrate implementation from docs/plans/ACTIVE.md with minimal owner involvement — assign batches of ready PR rows to workers with decision-ID ranges, merge READY PRs one at a time on green, clean up, unblock stuck PRs, escalate only what CLAUDE.md requires. Use when asked to run, continue or orchestrate the implementation.
+description: Orchestrate implementation from the OpenSpec changes (openspec/changes/) and backlog with minimal owner involvement — assign batches of ready tasks or backlog items to workers with decision-ID ranges, merge READY PRs one at a time on green, clean up, unblock stuck PRs, escalate only what CLAUDE.md requires. Use when asked to run, continue or orchestrate the implementation.
 ---
 
 # Run the plan
 
-You are the orchestrator. You only assign batches of rows, merge, clean up and unblock stuck PRs; you write no code
+You are the orchestrator. You only assign batches of tasks, merge, clean up and unblock stuck PRs; you write no code
 and don't relay messages between implementor and reviewer. You hand each implementor a decision-ID range at
-assignment; it writes its rows, follow-ups and decisions in the PR's tracker commit before it opens the PR.
+assignment; it checks its tasks, writes its follow-ups and decisions, and archives a completed change in the PR's
+tracker commit before it opens the PR.
 Adapted from pstack's autonomous-run and orchestrate playbooks (MIT, see `NOTICE`), without its multi-model
 machinery.
 
@@ -15,38 +16,42 @@ Requires herdr (`HERDR_ENV=1`). Without it, run `/implement-pr` solo instead.
 
 ## 0. Frame (once per session)
 
-1. Read `CLAUDE.md`, `docs/ENGINEERING.md`, the dependency section of `docs/specs/README.md`, the "Index of open
-   items" in `docs/DECISIONS.md`, and from `docs/plans/ACTIVE.md` the human tasks, "Current focus", "Follow-ups" and
-   the tables of specs with rows not done. Read by section, never in full (`CLAUDE.md` §1).
-2. Write the exit predicate as something countable. Take it from the owner's request; the default is "every row
-   of the current layer (§21 L0…L4) is `done`, CI on `main` is green". "Current focus" is refreshed only when it
-   materially changes: ask the next implementor to replace it in its tracker commit, with the text.
-3. Run session pickup (`/pickup`) if open PRs or `spec-*` branches exist from an earlier session.
+1. Read `CLAUDE.md`, `openspec/project.md` (with "Open owner items"), `openspec/conventions/ENGINEERING.md`,
+   `openspec/backlog.md`, and each active change's `proposal.md` and `tasks.md` (`ls openspec/changes`, archive
+   excluded).
+2. Write the exit predicate as something countable. Take it from the owner's request; the default is "every task
+   of the active changes that is not `human` or `blocked` is checked, CI on `main` is green". "Current focus" in
+   `backlog.md` is refreshed only when it materially changes: ask the next implementor to replace it in its tracker
+   commit, with the text. When no change has ready tasks, the next work is a backlog item (the implementor writes its
+   change folder first, `/implement-pr` §0.3), chosen by "Current focus".
+3. Run session pickup (`/pickup`) if open PRs or `change/*` (or older `spec-*`) branches exist from an earlier
+   session.
 
 ## 1. Loop
 
 Repeat until the predicate holds, or nothing is runnable. `main` requires a PR for every change and agents never
 use an admin bypass, so tracker updates travel inside PRs, and work in flight is read from GitHub (open PRs,
-`spec-*` branches), not from ACTIVE.md. ACTIVE.md records only `todo`, `done (#n)`, `blocked (D-NNNN)`, `human` and
-`deferred`.
+`change/*` branches), not from `openspec/`. A task in `tasks.md` is unchecked (`todo`), checked with `(#n)` (done),
+or marked `blocked (D-NNNN)`, `human` or `deferred`.
 
-1. **Ready set.** A row is ready when it is `todo`, has no open PR or `spec-*` branch, and everything it needs is
-   available: the code it touches or builds on is merged, or what it needs from unmerged work is fully specified
-   (types, API shapes, table columns). Readiness is per row (owner, 2026-10-13): a row can be ready while its spec's
-   other dependencies, or earlier rows of its spec, are not `done`. Rows that are `human` or `blocked` are skipped.
+1. **Ready set.** A task is ready when it is unchecked, has no open PR or `change/*` branch, and everything it needs
+   is available: the code it touches or builds on is merged, or what it needs from unmerged work is fully specified
+   (types, API shapes, table columns). Readiness is per task (owner, 2026-10-13): a task can be ready while other
+   tasks of its change are not done. Tasks that are `human` or `blocked` are skipped.
 2. **Assign.** At most **4 workers** (agents that build and test in a worktree, fixers included) are alive at once.
    Reviewers don't count, because they use little memory. Every start needs at least 1.5 GB free (owner,
    2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*`, everything else is a worker.
-   Each assignment is one PR covering a batch of related ready rows (`CLAUDE.md` §3). Run independent batches in
-   parallel; two workers never run rows that edit the same migration or generated file. For each assignment:
-   - `tools/orchestrator/new_worktree.sh spec-NN-pr-A-B spec-NN/pr-A-B-<short-name>`: fetches and creates the
-     worktree off `origin/main` at `<main>/../CrawlerAIv2-worktrees/spec-NN-pr-A-B`. Never a raw
-     `git worktree add`, and never an MSYS drive path (`/c/...`): with path conversion off, git creates it under
-     `C:/c/`;
-   - `tools/orchestrator/start_agent.sh <name> spec-NN-pr-A-B "<prompt>"` (§1a) with: "Run `/implement-pr` for
-     SPEC-NN PRs A-B in one PR. An orchestrator assigned you these rows. Your decision IDs are D-NNNN..D-NNNN. Own
-     the PR through `/implement-pr` §6 until `READY`." Give each implementor its own range of five free IDs
-     (above the highest in use, `DECISIONS.md` header), never overlapping another open PR's.
+   Each assignment is one PR covering a batch of related ready tasks of one change, or one backlog item
+   (`CLAUDE.md` §3). Run independent batches in parallel; two workers never run tasks that edit the same migration
+   or generated file. For each assignment:
+   - `tools/orchestrator/new_worktree.sh <change-id> change/<change-id>`: fetches and creates the worktree off
+     `origin/main` at `<main>/../CrawlerAIv2-worktrees/<change-id>`. Never a raw `git worktree add`, and never an
+     MSYS drive path (`/c/...`): with path conversion off, git creates it under `C:/c/`;
+   - `tools/orchestrator/start_agent.sh <name> <change-id> "<prompt>"` (§1a) with: "Run `/implement-pr` for change
+     <change-id> tasks A-B in one PR (or: for backlog item '<line>'; write its change folder first). An
+     orchestrator assigned you this work. Your decision IDs are D-NNNN..D-NNNN. Own the PR through `/implement-pr`
+     §6 until `READY`." Give each implementor its own range of five free IDs (above the highest in use,
+     `openspec/decisions/README.md`), never overlapping another open PR's.
 3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR end to end: it starts one reviewer once the
    PR is implemented and CI is green (its tracker commit is already in it), waits for the verdict itself,
    pushes any `MERGE AFTER FIX` fixes in one push (no second review; with `MERGE`, no push) and comments
@@ -97,16 +102,18 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
 ## 2. Escalation (the only times the owner is involved)
 
 Escalate for the `CLAUDE.md` §4 list, or a dead end after 3 attempts:
-1. Add a `needs-owner` entry to DECISIONS.md with the question, options, recommendation, and what is blocked.
-2. Mark the affected rows `blocked (D-NNNN)`.
-   Do steps 1–2 in a small `chore(plan): escalate …` PR from its own worktree (`new_worktree.sh`). It touches only
+1. Add a `needs-owner` entry to `openspec/decisions/log.md` with the question, options, recommendation, and what
+   is blocked, and list it under "Open owner items" in `openspec/project.md`.
+2. Mark the affected tasks `blocked (D-NNNN)`.
+   Do steps 1–2 in a small `chore(openspec): escalate …` PR from its own worktree (`new_worktree.sh`). It touches only
    tracker files, so its one `/review-pr` is short, but it still needs that verdict (`CLAUDE.md` §3).
 3. Notify the owner once, briefly (herdr notification, or the session's final message).
-4. **Keep going** with other ready rows. Never wait idle on the owner while ready work exists.
+4. **Keep going** with other ready tasks. Never wait idle on the owner while ready work exists.
 
 The rule from ENGINEERING ("never block on the human") applies to reversible work. These are never done without
 the owner:
-- changing ARCHITECTURE.md or OPEN_QUESTIONS.md;
+- changing `openspec/design/` (the former ARCHITECTURE.md), the contract in `openspec/project.md`, or
+  `openspec/OPEN_QUESTIONS.md`;
 - admitting a §22 candidate;
 - touching eval access or secrets;
 - force-pushing or rewriting `main`, or using an admin bypass of the branch rules;
@@ -116,33 +123,33 @@ the owner:
 
 Agents should not make the same mistake twice:
 - After each review, read its `Categories:` line and the PR's SonarCloud findings. When a category or rule shows up
-  a second time, add it to `docs/plans/RECURRING.md`, and in the same change:
+  a second time, add it to `openspec/conventions/RECURRING.md`, and in the same change:
   - prefer a **check**: a lint rule, a `tools/` scan or a CI step, so the mistake can't merge again;
   - where no check can catch it, add a **skill rule** to `/implement-pr` or `/review-pr`, and make the rule name the
     finding.
 - Your own slips count too. Fix the procedure or a `tools/orchestrator/` script, not just the instance.
 - These changes go through a normal PR with a fresh reviewer. Do them as soon as a slot frees up, ahead of new
-  rows. They pay back on every later row.
+  tasks. They pay back on every later task.
 
 ## 3. Stop
 
 Stop when:
 - the predicate holds;
-- or every remaining row is `human` or `blocked`, which you report as such.
+- or every remaining task is `human` or `blocked`, which you report as such.
 
-A plateau is not a stop; a red `main` is not a stop. Never weaken a check, skip a hook, or mark a row `done` without
+A plateau is not a stop; a red `main` is not a stop. Never weaken a check, skip a hook, or mark a task done without
 a merged PR to reach the predicate.
 
 **Final report** (short):
 - the predicate and its state;
-- rows merged this session, with PR numbers;
-- rows blocked and why (D-IDs);
-- human tasks now due (H-numbers in ACTIVE.md);
-- the next ready rows.
+- tasks merged this session, with PR numbers, and changes archived;
+- tasks blocked and why (D-IDs);
+- human tasks now due (H-numbers in `tasks.md` or `backlog.md`);
+- the next ready tasks or backlog items.
 
 ## Cost discipline
 
 - Within the hard limits above, 1 reviewer per PR, whatever its size. No multi-agent panels, no parallel attempts at
-  the same row.
+  the same task.
 - One batch per worker. Start a fresh worker per batch rather than reusing a long, compacted one.
 - Don't re-verify work a merged PR already proved. Trust the CI record (pickup rules).

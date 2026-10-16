@@ -123,7 +123,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Visual values only in theme.css, UI only from @heroui/react (docs/DESIGN.md, Theming and Stack). Needs no
+      # Visual values only in theme.css, UI only from @heroui/react (openspec/conventions/DESIGN.md, Theming and Stack). Needs no
       # node_modules, so it runs before the install.
       - run: python3 ../tools/theme_only_check.py
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -174,7 +174,7 @@ jobs:
       - run: uv run --no-sync --no-build mypy --strict ../tools
       - run: uv run --no-sync --no-build pytest ../tools/tests
       - run: uv run --no-sync --no-build python ../tools/site_literal_scan.py --public
-      # One decision ID per entry across docs/DECISIONS.md and docs/decisions/ (D-0823).
+      # One decision ID per entry across every Markdown file under openspec/ (D-0823, D-1136).
       - run: uv run --no-sync --no-build python ../tools/decision_ids.py
 
   # SPEC-00 §4.6 job 5: every file under backend/data/ is pinned in the manifest (C4, INV-05).

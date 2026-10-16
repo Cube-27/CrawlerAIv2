@@ -63,7 +63,7 @@ check-size-gates:
 check-complexity:
 	cd backend && $(UV_RUN) complexipy --no-ignore
 
-# Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (docs/DESIGN.md, Theming and Stack).
+# Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (openspec/conventions/DESIGN.md, Theming and Stack).
 check-theme:
 	cd backend && $(UV_RUN) python ../tools/theme_only_check.py
 
