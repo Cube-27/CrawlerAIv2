@@ -4,7 +4,9 @@ sitemaps and the links of the start page. `POST /v1/map` calls it; the MCP `map`
 The start page is fetched over HTTP only, and its links are read only when it was reached (`ok`). Its sitemaps are
 read through `crawl.sitemaps`. Every fetch goes through robots.txt and the site's rate (SPEC-02 §4.6), and robots.txt
 that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`) and kept by the
-request's scope (`crawl.rules`): the start URL's exact host, or the `include` globs, less the `exclude` globs.
+request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude` globs. The
+start page's host is where the site's own redirects took it (RFC 9110 §15.4; D-0991): a start URL whose host redirects
+to another is mapped on that one, under its robots.txt and rate.
 
 Sitemap URLs come first, in the order read, then the other links; `sources` counts the returned URLs by source, and
 a URL both found counts as a sitemap's. `truncated` says that more URLs were found than `limit`, or that a cap or the
@@ -18,7 +20,7 @@ both raise `TargetRejected`.
 import asyncio
 from collections.abc import Iterable
 from contextlib import aclosing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final, Literal
 from urllib.parse import urlsplit
 
@@ -27,7 +29,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -160,32 +162,60 @@ async def _discover(
     found: _Found,
     attempts: list[AttemptRecord],
 ) -> None:
-    """Add to `found` the links of the start page, then the URLs of the sitemaps: the one fetch of the links comes
-    before the sitemaps, which can take the rest of the timeout."""
-    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
-    robots = await site_rules(engine, fetching.rungs.http, site, request.url, policy, attempts)
-    if robots is None:
+    """Add to `found` the links of the start page, then the URLs of the sitemaps: the one fetch of the start page comes
+    before the sitemaps, which can take the rest of the timeout. The start page is fetched even when its links are not
+    taken, for where it is: when the site redirects it to another host, the scope, robots.txt and the sitemaps are
+    that host's (RFC 9110 §15.4: a redirect names the resource's location)."""
+    polite = await _polite(engine, fetching, site, found.scope.host, request.url, attempts)
+    if polite is None:
         return
-    polite = PoliteHttp(fetching, found.scope.host, site.crawl_delay_ms, robots, policy, attempts)
-    if request.use_links:
-        found.add("links", await _links(polite, request.url))
-    if request.use_sitemaps and not found.full:
-        reader = SitemapReader(polite.sitemap_body, found.scope.host)
-        async with aclosing(reader.urls(roots(start, robots.sitemaps))) as urls:
-            async for url in urls:
-                found.add("sitemap", (url,))
-                if found.full:
-                    break
-        found.cut = found.cut or reader.cut
+    page = await polite.fetch(request.url, polite.policy)
+    located = _located(page, start)
+    host = urlsplit(located).hostname or ""
+    if host != found.scope.host:
+        found.scope = replace(found.scope, host=host)
+        polite = await _polite(engine, fetching, await _site(engine, host), host, located, attempts)
+    if request.use_links and page is not None and page.block_class == "ok":
+        # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
+        found.add("links", await asyncio.to_thread(_page_links, page.bundle))
+    if polite is not None and request.use_sitemaps and not found.full:
+        await _read_sitemaps(polite, located, found)
 
 
-async def _links(polite: PoliteHttp, url: str) -> tuple[str, ...]:
-    """The canonical links of the page at `url`, when it was reached (§4.4: HTTP only)."""
-    result = await polite.fetch(url, polite.policy)
-    if result is None or result.block_class != "ok":
-        return ()
-    # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
-    return await asyncio.to_thread(_page_links, result.bundle)
+async def _polite(
+    engine: AsyncEngine, fetching: Fetching, site: SiteRow, host: str, url: str, attempts: list[AttemptRecord]
+) -> PoliteHttp | None:
+    """Fetches from `site`, on `host`, under the robots.txt of `url` there; `None` when that robots.txt is
+    unreachable."""
+    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
+    robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
+    if robots is None:
+        return None
+    return PoliteHttp(fetching, host, site.crawl_delay_ms, robots, policy, attempts)
+
+
+async def _site(engine: AsyncEngine, host: str) -> SiteRow:
+    async with engine.begin() as conn:
+        return await site_row(conn, host)
+
+
+def _located(page: FetchResult | None, start: str) -> str:
+    """Where the start page is, in canonical form: the URL its redirects ended at, or `start` when it was not
+    fetched."""
+    final = None if page is None else canonicalize(page.bundle.manifest.final_url)
+    return final or start
+
+
+async def _read_sitemaps(polite: PoliteHttp, located: str, found: _Found) -> None:
+    """Add to `found` the URLs of the sitemaps of the start page's host, `located` there, until it is full."""
+    listed = () if polite.robots is None else polite.robots.sitemaps
+    reader = SitemapReader(polite.sitemap_body, found.scope.host)
+    async with aclosing(reader.urls(roots(located, listed))) as urls:
+        async for url in urls:
+            found.add("sitemap", (url,))
+            if found.full:
+                break
+    found.cut = found.cut or reader.cut
 
 
 def _page_links(bundle: CaptureBundle) -> tuple[str, ...]:
