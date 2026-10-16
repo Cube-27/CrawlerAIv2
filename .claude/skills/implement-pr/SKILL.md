@@ -66,15 +66,13 @@ This is the PR's one `/simplify` pass; a later prompt to re-run it, or a review,
 - If extraction behaviour changed, run the dev eval and capture the delta per field type.
 - If a check fails twice for the same reason, apply "attack the premise" (ENGINEERING). After three honest
   attempts, escalate (`CLAUDE.md` §5).
-- **Local test runs are small (owner, 2026-10-16).** Run only the test files for the files you changed, one file at
-  a time (`uv run pytest tests/unit/test_x.py`), and fmt/lint/type-check only those files. Never run the full suite,
-  a whole test directory, `make check` or a repo-wide type check locally: CI runs everything on every push. Never
-  `pytest -n` locally (CI runs the workers); vitest with one worker (`pnpm test --maxWorkers=1 <file>`).
-- Database tests: use the one shared local test Postgres, never a container of your own:
-  `eval "$(tools/orchestrator/test_db.sh up)"` starts `crawlerai-test-pg` on `127.0.0.1:55432` if it is absent
-  (`localhost` hangs asyncpg on Windows), recreates this worktree's two databases in it, empty, and exports
-  `CRAWLERAI_TEST_DATABASE_URL` and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`. Drop them with `test_db.sh drop` before
-  you hand back (`cleanup_worktree.sh` drops them too). Leave the container running for the other worktrees.
+- **Small local runs** (ENGINEERING "Run little locally"): the test files of the files you changed, one file at a
+  time (`uv run pytest tests/unit/test_x.py`, `pnpm test --maxWorkers=1 <file>`), never `pytest -n`, never the full
+  suite. CI runs everything on every push.
+- Database tests: `eval "$(tools/orchestrator/test_db.sh up)"` starts the shared `crawlerai-test-pg` if it is absent,
+  recreates this worktree's two databases in it, empty, and exports `CRAWLERAI_TEST_DATABASE_URL` and
+  `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`. Run `tools/orchestrator/test_db.sh drop` before you hand back, and leave the
+  container running for the other worktrees.
 - Docker builds (checking `infra/Dockerfile`): tag the image `crawlerai-<worktree>:check`, and remove it
   (`docker image rm`) when the check is done. Leave no images, volumes or containers behind.
 
@@ -138,7 +136,6 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
    comment `READY <sha7>` on the PR, listing each Act-on item with the commit that fixed it. Then stop. There is no
    second review.
 4. **`ESCALATE`:** comment it on the PR and stop; the orchestrator handles it.
-5. **`REBASE`** (sent only when GitHub reports a conflict: `gh pr view <n> --json mergeable` is `CONFLICTING`):
-   rebase onto `origin/main`, push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
+5. **`REBASE`** (sent only when the PR conflicts, `/run-plan` §1.3): rebase onto `origin/main`, push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
 
 The orchestrator merges and cleans up.

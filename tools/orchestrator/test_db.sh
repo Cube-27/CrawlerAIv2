@@ -26,7 +26,10 @@ private_db=${main_db}_private
 init_sql="$(dirname "${BASH_SOURCE[0]}")/../../infra/postgres/init.sql"
 
 running() { [[ $(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null) == true ]]; }
-psql_admin() { docker exec -i -e PGOPTIONS=-cclient_min_messages=warning "$container" psql -v ON_ERROR_STOP=1 -q -U postgres "$@"; }
+psql_admin() {
+  docker exec -i -e PGOPTIONS=-cclient_min_messages=warning "$container" psql -v ON_ERROR_STOP=1 -q -U postgres "$@"
+}
+drop_sql=(-c "DROP DATABASE IF EXISTS $main_db WITH (FORCE)" -c "DROP DATABASE IF EXISTS $private_db WITH (FORCE)")
 
 # Ready on TCP: the image's first-start init runs a server on the Unix socket only, then restarts it.
 wait_ready() {
@@ -40,27 +43,26 @@ wait_ready() {
 
 start() {
   running && return 0
+  local fresh=
   if docker inspect "$container" >/dev/null 2>&1; then
     docker start "$container" >/dev/null || err "could not start $container"
-    wait_ready
-    return 0
+  else
+    docker run -d --name "$container" -e POSTGRES_PASSWORD=postgres -p "127.0.0.1:$port:5432" postgres:16 >/dev/null \
+      || err "could not create $container"
+    fresh=1
   fi
-  docker run -d --name "$container" -e POSTGRES_PASSWORD=postgres -p "127.0.0.1:$port:5432" postgres:16 >/dev/null \
-    || err "could not create $container"
   wait_ready
-  psql_admin < "$init_sql" || err "could not apply infra/postgres/init.sql in $container"
+  [[ -z $fresh ]] || psql_admin < "$init_sql" || err "could not apply infra/postgres/init.sql in $container"
 }
 
 if [[ $action == drop ]]; then
   running || exit 0
-  psql_admin -c "DROP DATABASE IF EXISTS $main_db WITH (FORCE)" -c "DROP DATABASE IF EXISTS $private_db WITH (FORCE)" \
-    || err "could not drop the databases of $name"
+  psql_admin "${drop_sql[@]}" || err "could not drop the databases of $name"
   exit 0
 fi
 
 start
-psql_admin -c "DROP DATABASE IF EXISTS $main_db WITH (FORCE)" -c "DROP DATABASE IF EXISTS $private_db WITH (FORCE)" \
-  -c "CREATE DATABASE $main_db OWNER app" -c "CREATE DATABASE $private_db OWNER app" \
+psql_admin "${drop_sql[@]}" -c "CREATE DATABASE $main_db OWNER app" -c "CREATE DATABASE $private_db OWNER app" \
   || err "could not create the databases of $name"
 echo "export CRAWLERAI_TEST_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:$port/$main_db"
 echo "export CRAWLERAI_TEST_PRIVATE_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:$port/$private_db"

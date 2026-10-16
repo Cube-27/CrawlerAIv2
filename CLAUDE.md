@@ -96,16 +96,15 @@ Project skills in `.claude/skills/` hold the procedures:
 | Skill | Who runs it | Does |
 |---|---|---|
 | `/run-plan` | The orchestrator | Assigns batches of ready rows to workers (at most 4 workers at once; reviewers don't count) with a decision-ID range each, merges `READY` PRs one at a time with `merge_pr.sh`, cleans up, unblocks stuck PRs, escalates. |
-| `/implement-pr` | A worker | Takes one batch from `todo` to a `READY` PR: tests first, then code, `/simplify` once, tracker lines, PR, green CI, its one reviewer, fixes in one push. |
+| `/implement-pr` | A worker | Takes one batch from `todo` to a `READY` PR: tests first, then code, `/simplify` once, tracker commit, PR, green CI, its one reviewer, fixes in one push. |
 | `/review-pr` | A fresh reviewer agent | One verdict per PR against its rows, §2 and `docs/ENGINEERING.md`: `MERGE`, `MERGE AFTER FIX` or `ESCALATE`, posted as a PR comment. |
 | `/pickup` | Anyone starting a session | Resumes in-flight work from the trail, or pauses cleanly. |
 
 **The orchestrator only orchestrates.** It never relays verdicts, edits, fixes or rebases PRs; it sends `REBASE` only
 when GitHub reports a conflict (`gh pr view <n> --json mergeable` is `CONFLICTING`), never because `main` moved: the
 rulesets don't require an up-to-date branch, and every push reruns CI (owner, 2026-10-16). **The implementor owns its
-PR to `READY`**: it branches from current `main`, commits its tracker lines (`ACTIVE.md` rows, follow-ups, and
-decisions under the decision-ID range it was given at assignment; `/implement-pr` §5) before it opens the PR, so the
-reviewer reviews them too, starts its own reviewer, reads the verdict, pushes the fixes in one push, and comments
+PR to `READY`**: it branches from current `main`, makes its tracker commit (under the decision-ID range it was given
+at assignment) the last commit before it opens the PR (`/implement-pr` §5), so the reviewer reviews it too, starts its own reviewer, reads the verdict, pushes the fixes in one push, and comments
 `READY <sha7>` on green CI. With `MERGE` there is no push: `READY` names the already-green head.
 
 `main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
