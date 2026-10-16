@@ -186,7 +186,7 @@ if r.method == "browser" and r.block_class == "ok": site.fetch_method = "browser
 - `Adapter` protocol: `name`, `detect(url) -> AdapterMatch | None` (tenant slug + page kind), `fetch(url, policy)
   -> FetchResult` (method `api`, body is JSON), `map(schema_def) -> dict[field, JSONPath]` using the platform's
   documented fields (SPEC-15 §4.4 replaces `map` with schema.org `shapes(page_kind)`, `fetch` takes a `send` that
-  the caller makes polite, `serves(endpoint)` names the adapter's endpoints, and a page the adapter does not serve
+  the caller makes polite, `serves(match, endpoint)` names the adapter's endpoints for a page, and a page the adapter does not serve
   falls back to the page rungs) (C2: "a published standard" — the vendor's public API documentation counts as the platform's
   standard, and it lives in the adapter package where hostnames are allowed).
 - Detection uses the platforms' documented public hostnames **inside the adapter package only** (C3 exemption).
