@@ -65,8 +65,9 @@ class Greenhouse:
             return _embedded(segments[1:], parse_qs(parts.query))
         return _hosted(segments)
 
-    def serves(self, endpoint: str) -> bool:
-        return endpoint.startswith(f"{API}/")
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        # The board's own endpoints, as `fetch` asks them: `{API}/{board_token}/jobs...`.
+        return endpoint.startswith(f"{API}/{quote(match.tenant, safe='')}/")
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         match = self.detect(url)

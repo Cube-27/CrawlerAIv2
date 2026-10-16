@@ -72,11 +72,14 @@ def test_other_urls_are_not_detected(url: str) -> None:
     assert ADAPTER.detect(url) is None
 
 
-def test_it_serves_storefront_api_endpoints_of_any_version() -> None:
-    assert ADAPTER.serves(ENDPOINT) is True
-    assert ADAPTER.serves(f"https://{SHOP}/api/2025-01/graphql.json") is True
-    assert ADAPTER.serves(f"https://{SHOP}/products/widget") is False
-    assert ADAPTER.serves(f"https://{SHOP}/api/unstable/graphql.json") is False
+def test_it_serves_storefront_api_endpoints_of_any_version_on_the_pages_host() -> None:
+    # SPEC-15 §4.7: the endpoint is on the page's own host.
+    page = AdapterMatch(tenant=SHOP, page_kind="detail", item="widget")
+    assert ADAPTER.serves(page, ENDPOINT) is True
+    assert ADAPTER.serves(page, f"https://{SHOP.upper()}/api/2025-01/graphql.json") is True
+    assert ADAPTER.serves(page, f"https://{SHOP}/products/widget") is False
+    assert ADAPTER.serves(page, f"https://{SHOP}/api/unstable/graphql.json") is False
+    assert ADAPTER.serves(page, f"https://other.example.test/api/{API_VERSION}/graphql.json") is False
 
 
 Handler = Callable[[httpx.Request], httpx.Response]

@@ -69,8 +69,9 @@ class Adapter(Protocol):
         """The tenant and page kind of a platform page URL, or None for any other URL."""
         ...
 
-    def serves(self, endpoint: str) -> bool:
-        """Whether `endpoint`, a capture's final URL, is one of the API endpoints this adapter fetches."""
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        """Whether `endpoint`, a capture's final URL, is one of the API endpoints this adapter fetches for the page it
+        detected as `match`."""
         ...
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:

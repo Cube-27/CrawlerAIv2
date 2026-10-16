@@ -69,8 +69,8 @@ class StubAdapter:
         on_host = not self.host or urlsplit(url).hostname == self.host
         return AdapterMatch(tenant="tenant", page_kind="listing") if on_host else None
 
-    def serves(self, endpoint: str) -> bool:
-        return urlsplit(endpoint).path.startswith("/api/")
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        return urlsplit(endpoint).path.startswith(f"/api/{match.tenant}/")
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         return await self.rung(url, policy)
@@ -131,10 +131,11 @@ def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_e
     board = StubAdapter("board", "board.example.test")
     registry = Registry([board], active={"board"})
 
-    found = registry.reader(BOARD, "https://board.example.test/api/list")
+    found = registry.reader(BOARD, "https://board.example.test/api/tenant/list")
     assert found is not None
     assert found[0] is board
     assert registry.reader(BOARD, "https://data.example.test/list") is None
+    assert registry.reader(BOARD, "https://board.example.test/api/other/list") is None
     assert registry.reader("https://shop.example.test/api/x", "https://shop.example.test/api/x") is None
 
 

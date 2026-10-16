@@ -95,5 +95,10 @@ def test_a_url_it_does_not_detect_is_refused() -> None:
 
 
 def test_it_serves_the_endpoints_it_fetches_and_no_page() -> None:
-    assert ADAPTER.serves(f"{JOB_SITE_APIS[HOST]}/example-tenant/jobs") is True
-    assert ADAPTER.serves(f"https://{HOST}/example-tenant") is False
+    site = AdapterMatch(tenant="example-tenant", page_kind="listing")
+    api = JOB_SITE_APIS[HOST]
+    assert ADAPTER.serves(site, f"{api}/example-tenant?mode=json") is True
+    assert ADAPTER.serves(site, f"{api}/example-tenant/0f1e2d") is True
+    assert ADAPTER.serves(site, f"{api}/other-tenant?mode=json") is False
+    assert ADAPTER.serves(site, f"{api}/example-tenant-2?mode=json") is False
+    assert ADAPTER.serves(site, f"https://{HOST}/example-tenant") is False

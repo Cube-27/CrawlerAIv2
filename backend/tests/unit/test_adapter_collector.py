@@ -242,7 +242,7 @@ class _StandIn:
     def detect(self, url: str) -> AdapterMatch | None:
         return None
 
-    def serves(self, endpoint: str) -> bool:
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
         return False
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:

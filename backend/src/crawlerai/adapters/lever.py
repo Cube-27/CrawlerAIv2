@@ -53,8 +53,10 @@ class Lever:
         found = _detect(url)
         return None if found is None else found[1]
 
-    def serves(self, endpoint: str) -> bool:
-        return any(endpoint.startswith(f"{api}/") for api in JOB_SITE_APIS.values())
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        # The site's own endpoints, as `fetch` asks them: `{api}/{site}?mode=json` and `{api}/{site}/{posting_id}`.
+        site = quote(match.tenant, safe="")
+        return any(endpoint.startswith((f"{api}/{site}?", f"{api}/{site}/")) for api in JOB_SITE_APIS.values())
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         found = _detect(url)

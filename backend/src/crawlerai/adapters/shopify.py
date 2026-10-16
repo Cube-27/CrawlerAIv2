@@ -156,8 +156,10 @@ class Shopify:
                 return AdapterMatch(tenant=parts.hostname, page_kind="listing", item=handle)
         return None
 
-    def serves(self, endpoint: str) -> bool:
-        return _ENDPOINT_PATH.fullmatch(urlsplit(endpoint).path) is not None
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        # SPEC-15 §4.7: the API path on the page's own host (the tenant), where `fetch` asks it.
+        parts = urlsplit(endpoint)
+        return parts.hostname == match.tenant and _ENDPOINT_PATH.fullmatch(parts.path) is not None
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         match = self.detect(url)
