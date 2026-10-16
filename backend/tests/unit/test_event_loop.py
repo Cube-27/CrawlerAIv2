@@ -9,7 +9,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from crawlerai.core import event_loop
 from crawlerai.core.event_loop import quiet_peer_resets
+
+
+@pytest.fixture(autouse=True)
+def _logged(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Alembic's `fileConfig` (migrations/env.py) disables existing loggers when a DB test migrates in this process.
+    monkeypatch.setattr(event_loop.log, "disabled", False)
 
 
 def _reset(*_args: object) -> None:
