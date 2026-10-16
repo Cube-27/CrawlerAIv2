@@ -1,0 +1,87 @@
+# Backlog
+
+Work not yet in a change: the current focus, follow-ups left by merged PRs, and human-only tasks that no change
+owns. It replaces `docs/plans/ACTIVE.md` (D-1136). Implementors add the follow-ups they leave in their tracker
+commit and delete the lines their PR closes; a follow-up that grows into work becomes a change folder under
+`changes/`. In-flight work is read from open PRs and `changes/`, not from here.
+
+## Current focus
+
+- Data accuracy: SPEC-13 and SPEC-15 (Shopify adapter, off by default) are complete. Next: option (b),
+  structural ownership of array rows, for checkable types inside related-item arrays.
+- Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
+  field status), D-0915 (SimHash at Hamming 0 misses some edits).
+
+## Human-only tasks
+
+Agents can't do these. Tasks H1, H2, H3 and H6 (milestone M) belong to the change
+[wire-protected-eval-job](changes/wire-protected-eval-job/tasks.md). Labeling is deferred until the crawler works,
+so they block no other work: the protected eval job stays a `no_baseline` placeholder, and tests run against local
+throwaway databases.
+
+| # | Task | Needed by | Status |
+|---|---|---|---|
+| H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | Live LLM runs | deferred (owner, 2026-10-13: not needed yet) |
+| H5 | Answer the `needs-owner` entries in the open owner items in `project.md`. | As they come up | open: see Open owner items in `project.md` |
+| H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | Proxy use in production | todo |
+| H8 | Create the GitHub release `data-geonames-2026-10-15` holding the three GeoNames files the manifest pins, with the CC BY 4.0 attribution in its notes (D-0311, D-0914; command in #204). Until then `crawlerai data fetch` gets a 404 for them. | `crawlerai data fetch`, SPEC-05's first real run | obsolete: GeoNames dropped (D-0953, #210) |
+
+## Follow-ups
+
+Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
+
+- Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
+- Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
+- Optional: report non-LLM recipe errors as a refused recipe [#151].
+- Indexes, measure first: `url_task (job_id, status, outcome)` if large-crawl listing is slow [#19, #146]; `job (started_at) WHERE status = 'running'` for `fail_stalled_jobs` and `expire_learn_runs`, which share one shape and could share one reaper [#195].
+- Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
+- Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
+- Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
+- Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64].
+- Normalize: a minus counts anywhere before the number (`numbers.negative`), so "In stock - 5 left" declines as negative; count it only when it touches the number, for money and count (D-0922) [#203].
+- Normalize: `count` accepts `unitCode` `C62` with a contradicting `unitText` ("kg"); decide whether to decline any `unitText` beside C62 (D-0921) [#203].
+- Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
+- Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
+- Playground: Extract's toolbar Schema and its "Schema source" option overlap, and a missing schema opens Options to show its message (UAT 2026-10-16) [#214].
+- Playground: a map's URLs are not kept, so a map result is not in the address and is lost on back navigation [#214].
+- Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
+- Crawl: `CrawlRequest` has no `budget`, so a crawl's LLM calls cannot be capped and the playground shows no limit for it; add `budget.llm_calls` in SPEC-10 if wanted (D-1044) [#218].
+- Scrape and extract: an empty LLM call limit means the server's default of 10, not no limit as for a batch; decide whether they should match D-1006 (D-1044) [#218].
+- Playground: at phone width the toolbar wraps differently per mode (Map has no Format or Schema), so the primary button moves between modes there; at desktop it stays put (D-1043) [#218].
+- Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
+- Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
+- Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
+- Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
+- Playground: Records with Listing is still disabled ("not available yet"); the API serves listing records since #206 [#206].
+- Recurring: SPEC-11 §4.5's listing diff tracks a listing crawl's page URLs, not its row URLs ("No job stores listing records" no longer holds), and a listing page gets no standing record (rows are keyed by row URL), so it is always re-extracted [#206].
+- Listing items (`acquire.items`): the largest same-shape linked group wins, so a bare tag cloud or pager outside `nav` can outrank a small grid in markdown. Measure on dev first (D-0934, D-0993) [#206, #213].
+- Markdown: trafilatura drops the space after an inline element whose parent is a `div`, `td` or `li` (`**Warning!**This`); fix upstream, or rewrap such runs before extraction with dev evidence (D-0994) [#213].
+- Markdown: a listing page with no repeated items keeps only what trafilatura's `favor_precision` keeps (a UAT listing kept only its FAQ); compare recall mode on dev listings before changing it [#213].
+- Crawl: each task that adds URLs looks up the start task's capture for the site's host (D-0991); store the host on the job if the query shows in profiles. A redirected start page is usually linked from itself, so its target is fetched again as a task [#213].
+- Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
+- Collect: identifier widening (D-0965) also applies to a field mapped to `T.identifier` itself, pooling every scheme; stop at `identifier` or keep sub-properties of the field's `scheme` [#209].
+- Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows; one eval page shows it, see SPEC-13 §9 (D-0966) [#209].
+- Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
+- For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
+- Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
+- Precedence: `dom` ranks above `config` for text, long_text, url and image_url, so a config or operator field cannot override a DOM label value; re-check when `fit-precedence` first runs on dev (D-0956) [#208].
+- Normalize: money still reads its amount with its own copy of the surrogate/NFKC/one-run steps that `numbers.stated` now holds for count and number; move it there, mapping its reason codes (D-0960) [#208].
+- Config IR: `SchemaRef` names the schema only, so an operator can still activate a draft learned before a schema edit; a document digest in the IR would refuse it (D-0950) [#210].
+- Normalize: `iso_3166_alpha2` keeps CLDR's EU, EZ and UN, which ISO 3166-1 reserves exceptionally rather than assigning to countries; exclude the exceptionally reserved codes [#210].
+- Schemas: an edit's `relearn_schema` scans `progressive_state` by `schema_id`, which no index leads; add one if edits become frequent [#210].
+- Worker: no production path passes `llm=None` to the page handlers any more (`task_handlers`); tests still use it to bind no role C. Make `llm` required and pass `NO_LLM` in tests [#215].
+- LLM: role A and role C each fixed the provider's grammar cap their own way (D-1008); a new role with a repeated subschema should hoist it to `$defs` or use a named list, and a client-level check of schema size could catch it before a 400 [#215].
+- LLM eval: role C's and role A's `request_hash` changed with their output schemas (D-1008), so recorded dev-eval replies are re-recorded on the next run [#215].
+- LLM setup: the setup.py:1-3 docstring should say `llm_unavailable` or `llm_refused` (a missing key still raises ProviderUnavailable) [#216].
+- LLM eval: role C's `request_hash` changed with its message order (D-1021); recorded dev-eval replies are re-recorded on the next run [#217].
+- Listings: rows without structured data carry no item URL (13 of 15 pages with rows, reference eval round 2); taking it from the repeated item's link is the §22 repeated-structure candidate, awaiting the owner (D-1024) [#217].
+- Collect: a banner whose block links to several documents (a promotion with category links) still passes the link-card rule and can be the main image (round 3: one page, its field already `conflict`); measure before widening it (D-1096) [#220].
+- LLM eval: role C's `request_hash` changed with its claim form (D-1097); recorded dev-eval replies are re-recorded on the next run. Round 3's all-empty role C page did not reproduce from its capture; re-check in round 4 [#220].
+- Collect: the main image is still the first shown image of the main region; on pages whose structured data names an image, measure whether a `dom` image that disagrees costs precision (D-1023) [#217].
+- Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
+- Shopify adapter: a collection over 250 products stops at 250 (one of four measured collections reached it); measure on dev before adding cursor paging (SPEC-15 §9) [#219].
+- Shopify adapter: on detail pages the generic path publishes page-only fields the API does not state (rating, review count, condition); compare both paths on dev labels before turning the adapter on for detail pages (D-1088) [#219].
+- Shopify adapter: locale-prefixed URLs are open (SPEC-15 §9) [#219].
+- Shopify adapter: a product page of a shop with several presentment currencies sends one API request, then falls back, every time; remember it per host if such shops are common (D-1114) [#221].
+- Shopify adapter: `Shopify._transient` (429, 5xx) and `llm.client.is_transient` (adds 408) are two transient-status rules; share one in `acquire/politeness` if a third appears [#221].
+- Adapters: a host's decline (D-1078) lives in each process for 24 hours; store it on the site row if the probe traffic shows in logs. An adapter request on the page's host re-reads that host's robots rules, already checked by the caller [#219].
