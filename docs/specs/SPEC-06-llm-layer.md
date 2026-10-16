@@ -113,6 +113,12 @@ Input (flat, cleaned, never raw HTML):
 - the request URL (as context; the model is told it is not a source of values — §8.2 rule 4 is enforced later
   anyway).
 
+The user message gives the URL line, then the page text, then the fields asked (for a listing, the row fields and
+then the page fields): the text first and the request after it, as the provider's long-context guidance advises.
+With the fields first, a fast model answered every field empty on pages that show some of them once most of the
+fields asked were absent (D-1021). Roles A, D and S, on the `strong` model, keep their layout until an eval
+shows the same failure.
+
 Output schema (detail): `{fields: {<name>: {value: string, start: int, end: int}}}`, a closed object with one
 required claim per requested field, so a reply holds exactly as many claims as fields asked; a field the page does
 not show is claimed with an empty value. Listing: `{rows: [{<name>: claim}], page: {<name>: claim}}`, rows in page

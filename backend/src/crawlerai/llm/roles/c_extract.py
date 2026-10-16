@@ -110,8 +110,12 @@ def detail_request(
 ) -> LLMRequest:
     """The role C request for `fields` in `text`, which the caller has cut to `DETAIL_MAX_CHARS`. Fields are listed by
     name, so the same inputs give the same `request_hash` (INV-10). `job_id` is None only for a replay or the
-    labeling pre-fill, which no job pays for."""
-    user = f"{_url_line(page_url)}Fields:\n{field_lines(fields)}\n\n{_page_text(text)}"
+    labeling pre-fill, which no job pays for.
+
+    The page text comes first and the fields asked after it, as Anthropic's long-context prompting guidance advises
+    (long documents at the top, the query at the end): with the fields first, a fast model answered every field empty
+    on pages that show some of them once most of the fields asked were absent (D-1021)."""
+    user = f"{_url_line(page_url)}{_page_text(text)}\n\nFields:\n{field_lines(fields)}"
     return LLMRequest(
         prompt_kind=kind,
         model_class="fast",
@@ -134,13 +138,13 @@ def listing_request(
 ) -> LLMRequest:
     """A listing's role C request, as `detail_request`, for the row fields of each listed item and the page fields;
     the caller has cut `text` to `LISTING_MAX_CHARS`."""
-    rows = f"Row fields, for each listed item (at most {LISTING_MAX_ROWS} rows):\n{field_lines(row_fields)}\n\n"
-    page = f"Page fields:\n{field_lines(page_fields)}\n\n" if page_fields else ""
+    rows = f"Row fields, for each listed item (at most {LISTING_MAX_ROWS} rows):\n{field_lines(row_fields)}"
+    page = f"\n\nPage fields:\n{field_lines(page_fields)}" if page_fields else ""
     return LLMRequest(
         prompt_kind=kind,
         model_class="fast",
         system=LISTING_SYSTEM,
-        user=f"{_url_line(page_url)}{rows}{page}{_page_text(text)}",
+        user=f"{_url_line(page_url)}{_page_text(text)}\n\n{rows}{page}",
         output_schema=listing_output_schema(list(row_fields), list(page_fields)),
         max_output_tokens=LISTING_MAX_OUTPUT_TOKENS,
         job_id=job_id,

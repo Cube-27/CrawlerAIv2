@@ -177,6 +177,21 @@ def _children(node: LexborNode, path: str, invisible: bool) -> list[_Item]:
     return children
 
 
+def shown(node: LexborNode) -> bool:
+    """Whether the element is shown by the rules that make the cleaned text: neither it nor an ancestor is hidden
+    (`_hidden`), and the nearest `visibility` it inherits (CSS 2 §11.2) does not hide it."""
+    visibility: str | None = None
+    current: LexborNode | None = node
+    while current is not None and current.is_element_node:
+        attributes = current.attributes
+        style = _declarations(attributes)
+        if _hidden(current.tag or "", attributes, style):
+            return False
+        visibility = visibility or style.get("visibility")
+        current = current.parent
+    return not _invisible(visibility, inherited=False)
+
+
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.

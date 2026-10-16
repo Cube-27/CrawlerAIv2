@@ -150,6 +150,29 @@ def test_without_one_main_region_image_there_is_no_main_image(body: str) -> None
     assert _collect(body) == {}
 
 
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        '<div role="dialog" aria-modal="true">{}</div>',  # WAI-ARIA 1.2 dialog: a window apart from the page
+        '<div role="alertdialog">{}</div>',
+        "<dialog open>{}</dialog>",  # HTML Standard §4.11.4
+        '<div aria-hidden="true"><div>{}</div></div>',  # hidden from every user, as in the cleaned text
+        "<div hidden>{}</div>",
+        '<div style="display: none">{}</div>',
+        '<div style="visibility: hidden"><span>{}</span></div>',  # CSS 2 §11.2: inherited
+    ],
+)
+def test_an_image_in_a_dialog_or_a_hidden_subtree_is_not_the_main_image(wrapper: str) -> None:
+    # D-1023: a drawer or modal inside `main` holds images of its own (a badge, a size chart), not the entity's.
+    found = _collect(f'<main>{wrapper.format("<img src=/badge.png>")}<img src="/p/1.jpg"></main>')
+
+    assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
+
+
+def test_a_hidden_main_region_has_no_main_image() -> None:
+    assert _collect('<div aria-hidden="true"><main><img src="/p/1.jpg"></main></div>') == {}
+
+
 def test_locators_parse_as_dom_xpaths() -> None:
     candidates = (
         DomCollector()

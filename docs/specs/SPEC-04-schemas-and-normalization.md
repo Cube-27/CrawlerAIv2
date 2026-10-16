@@ -217,7 +217,8 @@ inferred (ARCHITECTURE Appendix A #43).
 **url / image_url** → absolute http(s) URL string.
 - WHATWG parsing (`urllib.parse` + the `url` crate is not needed; use `rfc3986`-free stdlib with explicit
   canonicalization: lowercase scheme/host, remove default port, strip fragment, percent-normalize), absolutized
-  against the document base (`<base href>` or final URL). Non-http(s) or unparsable → `Invalid`. `image_url`
+  against the document base (`<base href>` or final URL). Non-http(s) or unparsable → `Invalid`; so is an empty
+  host (`https:////host/x`: RFC 9110 §4.2.1), never repaired by the WHATWG parser's slash skipping (D-1022). `image_url`
   additionally requires a path or `content-type` evidence that it is an image — content-type is not available
   without a fetch, so the only check is "not a data: URL and not the page URL itself"; nothing else (no extension
   list; C4).

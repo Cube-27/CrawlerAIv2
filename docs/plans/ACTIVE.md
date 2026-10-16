@@ -97,6 +97,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Worker: no production path passes `llm=None` to the page handlers any more (`task_handlers`); tests still use it to bind no role C. Make `llm` required and pass `NO_LLM` in tests [#215].
 - LLM: role A and role C each fixed the provider's grammar cap their own way (D-1008); a new role with a repeated subschema should hoist it to `$defs` or use a named list, and a client-level check of schema size could catch it before a 400 [#215].
 - LLM eval: role C's and role A's `request_hash` changed with their output schemas (D-1008), so recorded dev-eval replies are re-recorded on the next run [#215].
+- LLM setup: the setup.py:1-3 docstring should say `llm_unavailable` or `llm_refused` (a missing key still raises ProviderUnavailable) [#216].
+- LLM eval: role C's `request_hash` changed with its message order (D-1021); recorded dev-eval replies are re-recorded on the next run [#217].
+- Listings: rows without structured data carry no item URL (13 of 15 pages with rows, reference eval round 2); taking it from the repeated item's link is the §22 repeated-structure candidate, awaiting the owner (D-1024) [#217].
+- Collect: the main image is still the first shown image of the main region; on pages whose structured data names an image, measure whether a `dom` image that disagrees costs precision (D-1023) [#217].
 - Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)
