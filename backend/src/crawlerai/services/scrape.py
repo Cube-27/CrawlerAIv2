@@ -9,6 +9,7 @@ events are kept like any job's. The task is fetched as a worker fetches one: rob
 A `schema.prompt` is drafted into a schema by role S (SPEC-06 §4.5) from the cleaned text of the fetched page, and the
 draft is returned; the same prompt returns the stored draft without a call. A page that was not reached is not drafted
 from. A draft the LLM could not give (no provider, no budget, an invalid reply) fails the job, like a timeout.
+`schema.fields` is drafted from the names before the job starts (SPEC-14 §4.10), so a draft that fails stores nothing.
 
 `records` extracts the page with `extract_page` (SPEC-05) against the schema named by id, given inline, or drafted,
 and stores the extraction and the record (`resolve.task`). A scrape URL is caller-supplied, so a page whose required
@@ -49,7 +50,7 @@ from crawlerai.core.errors import Refusal
 from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
-from crawlerai.llm.client import LLMClient, LLMFailure, Unconfigured
+from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
@@ -70,14 +71,14 @@ from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
+    NO_LLM,
     FetchOptions,
     Formats,
     Input,
     PageFormat,
     PageOutcome,
-    SchemaById,
-    SchemaInline,
     SchemaPrompt,
+    SchemaRequest,
     SchemaUnusable,
     SiteRow,
     check_records,
@@ -100,7 +101,6 @@ MAX_TIMEOUT_S: Final = 120  # D-0028
 INTERNAL_ERROR: Final = "internal_error"
 # The process that runs a scrape's task, named as a worker names itself (`crawlerai.worker.loop`).
 _CLAIMANT: Final = f"api:{socket.gethostname()}:{os.getpid()}"
-_NO_LLM: Final = Unconfigured("no LLM provider is configured")
 
 
 class Budget(Input):
@@ -110,11 +110,12 @@ class Budget(Input):
 class ScrapeRequest(Input):
     """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
-    `budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds."""
+    `budget.llm_calls` bounds its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age`
+    reuses a capture fetched within that many seconds."""
 
     url: str
     formats: list[PageFormat] = Field(min_length=1)
-    schema_: SchemaById | SchemaInline | SchemaPrompt | None = Field(default=None, alias="schema")
+    schema_: SchemaRequest | None = Field(default=None, alias="schema")
     page_kind: PageKind | None = None
     max_age: NonNegativeInt = 0  # seconds
     fetch: FetchOptions = FetchOptions()
@@ -235,19 +236,20 @@ async def scrape(
     fetching: Fetching,
     request: ScrapeRequest,
     *,
-    llm: LLMClient = _NO_LLM,
+    llm: LLMClient = NO_LLM,
     data: EngineData | None = None,
     margins: DriftMargins | None = None,
 ) -> ScrapeResult:
     """Run `request` as a scrape job; `records` reads `data`, and an active config's drift `margins`. Raises, before
     any job is created: `TargetRejected` for a target refused outright, `RecordsUnavailable` for `records` without
     `data`, `SchemaUnusable` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
-    `InvalidSchema` for an inline schema. Raises, failing the job: `TargetRejected` for a refused redirect,
+    `InvalidSchema` for an inline schema, and the LLM client's `LLMFailure` for field names it could not draft.
+    Raises, failing the job: `TargetRejected` for a refused redirect,
     `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
     `SchemaUnusable` for a draft of another page kind. Any other exception fails the job with `internal_error` and
     propagates."""
     await check_target(fetching.connector, request.url)
-    work = _Work(llm, data, margins, await _named_schema(engine, request, data))
+    work = _Work(llm, data, margins, await _named_schema(engine, request, data, llm))
     task = await _start(engine, request, work.schema)
     try:
         async with asyncio.timeout(request.timeout_s):
@@ -270,14 +272,16 @@ async def scrape(
         raise
 
 
-async def _named_schema(engine: AsyncEngine, request: ScrapeRequest, data: EngineData | None) -> SchemaDef | None:
-    """The schema `records` extracts with when the request names it by id or inline; None without `records`, and
-    for a prompt, whose draft needs the page."""
+async def _named_schema(
+    engine: AsyncEngine, request: ScrapeRequest, data: EngineData | None, llm: LLMClient
+) -> SchemaDef | None:
+    """The schema `records` extracts with when the request names it by id, inline or by field names; None without
+    `records`, and for a prompt, whose draft needs the page."""
     if "records" not in request.formats:
         return None
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    return await named_schema(engine, request.schema_, request.page_kind)
+    return await named_schema(engine, request.schema_, request.page_kind, llm)
 
 
 async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None) -> ClaimedTask:

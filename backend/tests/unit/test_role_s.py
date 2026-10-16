@@ -2,21 +2,30 @@
 accepts a schema document without its name and version."""
 
 import json
+import re
 import uuid
+from random import Random
 from typing import cast
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import request_hash
-from crawlerai.llm.roles.s_schema import SAMPLE_MAX_CHARS, draft_name, draft_request, output_schema
+from crawlerai.llm.roles.s_schema import (
+    SAMPLE_MAX_CHARS,
+    draft_name,
+    draft_request,
+    fields_name,
+    fields_request,
+    output_schema,
+)
 from crawlerai.llm.roles.s_wire import from_wire, to_wire
 from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldType
+from crawlerai.schemas.types import NAME_PATTERN, FieldType
 
 JOB = JobId(uuid.UUID(int=1))
 
@@ -161,3 +170,33 @@ def test_a_list_with_two_items_is_refused() -> None:
 
     with pytest.raises(ValueError, match=r"fields\.a: a list has one item, not 2"):
         from_wire(wire)
+
+
+# Field names (SPEC-14 §4.10): one draft per set of names and page kind, from a request without samples or a job.
+field_names = st.lists(st.from_regex(NAME_PATTERN, fullmatch=True), min_size=1, max_size=8, unique=True)
+
+
+# The first request reads the presets (cached afterwards), which can outlast Hypothesis's default deadline.
+@settings(deadline=None)
+@given(field_names, st.randoms())
+def test_the_names_in_any_order_share_a_draft_name(names: list[str], rng: Random) -> None:
+    shuffled = rng.sample(names, len(names))
+
+    assert fields_name(shuffled, "detail") == fields_name(names, "detail")
+    assert fields_request(shuffled, "detail").user == fields_request(names, "detail").user
+
+
+@given(field_names)
+def test_a_draft_name_is_a_schema_name_and_differs_by_page_kind(names: list[str]) -> None:
+    detail, listing = fields_name(names, "detail"), fields_name(names, "listing")
+
+    assert detail != listing
+    assert re.fullmatch(NAME_PATTERN, detail)
+
+
+def test_the_fields_request_holds_the_sorted_names_and_page_kind_and_no_job() -> None:
+    req = fields_request(["price", "colour"], "listing")
+
+    assert (req.prompt_kind, req.model_class, req.job_id) == ("s_draft", "strong", None)
+    assert '<fields page_kind="listing">\ncolour\nprice\n</fields>' in req.user
+    assert "<sample_page" not in req.user

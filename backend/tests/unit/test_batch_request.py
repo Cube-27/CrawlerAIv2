@@ -65,4 +65,8 @@ def test_records_need_a_schema_and_a_page_kind() -> None:
 def test_refuses_a_prompt() -> None:
     body = {"urls": [URL], "formats": ["records"], "schema": {"prompt": "kettles"}, "page_kind": "detail"}
 
-    assert {location[:2] for location, _ in _errors(body)} == {("schema", "SchemaById"), ("schema", "SchemaInline")}
+    assert {location[:2] for location, _ in _errors(body)} == {
+        ("schema", "SchemaById"),
+        ("schema", "SchemaInline"),
+        ("schema", "SchemaFields"),
+    }

@@ -33,16 +33,19 @@ from crawlerai.db.models import (
     Site,
     UrlTask,
 )
+from crawlerai.llm.client import LLMClient
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
+    NO_LLM,
     FetchOptions,
     Input,
     PageFormat,
     SchemaById,
+    SchemaFields,
     SchemaInline,
     absolute_http_url,
     check_records,
@@ -55,12 +58,13 @@ MAX_URLS: Final = 1000  # SPEC-10 §4.3
 class BatchScrapeRequest(Input):
     """The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
-    asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for).
+    asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
+    and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10).
     `webhook_url` is called when the job ends (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     formats: list[PageFormat] = Field(min_length=1)
-    schema_: SchemaById | SchemaInline | None = Field(default=None, alias="schema")
+    schema_: SchemaById | SchemaInline | SchemaFields | None = Field(default=None, alias="schema")
     page_kind: PageKind | None = None
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
@@ -110,15 +114,17 @@ async def submit_batch(
     request: BatchScrapeRequest,
     *,
     data: EngineData | None,
+    llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
 ) -> BatchSubmitted:
     """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
     (SPEC-10 §4.2). Raises, storing nothing: `TargetsRejected` for a refused target,
-    `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
+    `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use
+    (or field names `llm` could not draft)."""
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
     await check_targets(connector, targets, webhook_url=request.webhook_url)
     # A format batch that names a schema is a format job.
-    schema = await records_schema(engine, request.formats, request.schema_, request.page_kind, data)
+    schema = await records_schema(engine, request.formats, request.schema_, request.page_kind, data, llm)
     async with engine.begin() as conn:
         job_id = await insert_job(
             conn,
@@ -150,9 +156,10 @@ async def insert_tasks(
 async def records_schema(
     engine: AsyncEngine,
     formats: list[PageFormat],
-    schema: SchemaById | SchemaInline | None,
+    schema: SchemaById | SchemaInline | SchemaFields | None,
     page_kind: PageKind | None,
     data: EngineData | None,
+    llm: LLMClient,
 ) -> SchemaDef | None:
     """The schema a job's `records` are extracted with; None without `records`, the only format that reads a schema
     (SPEC-07 §4.4). Raises `RecordsUnavailable` without `data`, and `named_schema`'s errors."""
@@ -160,7 +167,7 @@ async def records_schema(
         return None
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    return await named_schema(engine, schema, page_kind)
+    return await named_schema(engine, schema, page_kind, llm)
 
 
 async def insert_job(

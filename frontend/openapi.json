@@ -234,7 +234,7 @@
       },
       "BatchScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for).\n`webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10).\n`webhook_url` is called when the job ends (\u00a74.2).",
         "properties": {
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
@@ -292,6 +292,9 @@
               },
               {
                 "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
               },
               {
                 "type": "null"
@@ -863,7 +866,7 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, and a `schema.prompt` is not taken. `include` and `exclude`\nglobs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is\ncalled when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `include` and `exclude`\nglobs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is\ncalled when the job ends (\u00a74.2).",
         "properties": {
           "exclude": {
             "items": {
@@ -942,6 +945,9 @@
               },
               {
                 "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
               },
               {
                 "type": "null"
@@ -1296,7 +1302,7 @@
       },
       "ExtractRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt`, and its page kind must be `page_kind`. `limit` bounds the job's tasks;\n`budget.llm_calls` bounds a prompt's draft. The `fetch` and `locale` are a scrape's (SPEC-07 \u00a74.4), for every URL.\n`webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 \u00a74.10), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` bounds a prompt's draft. The `fetch` and\n`locale` are a scrape's (SPEC-07 \u00a74.4), for every URL. `webhook_url` is called when the job ends (\u00a74.2).",
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/Budget",
@@ -1347,6 +1353,9 @@
               },
               {
                 "$ref": "#/components/schemas/SchemaPrompt"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
               }
             ],
             "title": "Schema"
@@ -2123,6 +2132,36 @@
         ],
         "title": "FieldType",
         "type": "string"
+      },
+      "FieldsDraft": {
+        "additionalProperties": false,
+        "description": "Field names and the page kind of the pages they are read from.",
+        "properties": {
+          "fields": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Fields",
+            "type": "array"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fields",
+          "page_kind"
+        ],
+        "title": "FieldsDraft",
+        "type": "object"
       },
       "Health": {
         "additionalProperties": false,
@@ -4716,6 +4755,27 @@
         "title": "SchemaDef",
         "type": "object"
       },
+      "SchemaFields": {
+        "additionalProperties": false,
+        "description": "Field names, drafted into a schema with exactly those top-level fields by role S (SPEC-14 \u00a74.10, D-0810).",
+        "properties": {
+          "fields": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "SchemaFields",
+        "type": "object"
+      },
       "SchemaInline": {
         "additionalProperties": false,
         "properties": {
@@ -4783,7 +4843,7 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and\n`budget.llm_calls` bounds its draft. `max_age` reuses a capture fetched within that many seconds.",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and\n`budget.llm_calls` bounds its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age`\nreuses a capture fetched within that many seconds.",
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/Budget",
@@ -4856,6 +4916,9 @@
               },
               {
                 "$ref": "#/components/schemas/SchemaPrompt"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
               },
               {
                 "type": "null"
@@ -5618,6 +5681,21 @@
             },
             "description": "Too Many Requests"
           },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -6213,6 +6291,21 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
           },
           "503": {
             "content": {
@@ -8431,6 +8524,118 @@
           }
         ],
         "summary": "Create Schema",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/v1/schemas/draft": {
+      "post": {
+        "description": "The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's\n`schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new\none, stored. A client shows it for editing before the run (SPEC-14 \u00a74.10). A draft the LLM could not give is a\nproblem typed with the LLM failure (502, 503); a retired draft is a 422.",
+        "operationId": "draft_schema_v1_schemas_draft_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldsDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Draft Schema",
         "tags": [
           "schemas"
         ]

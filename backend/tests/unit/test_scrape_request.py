@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.services.scrape import ScrapeRequest
-from crawlerai.services.scrape_steps import SchemaPrompt
+from crawlerai.services.scrape_steps import SchemaFields, SchemaPrompt
 
 URL = "https://shop.example.test/kettles/blue"
 
@@ -70,6 +70,29 @@ def test_takes_records_with_a_schema_and_a_detail_page_kind() -> None:
     )
 
     assert (request.schema_, request.page_kind) == (SchemaPrompt(prompt="kettle names"), "detail")
+
+
+def test_takes_field_names_as_the_schema() -> None:
+    request = ScrapeRequest.model_validate(
+        {"url": URL, "formats": ["records"], "schema": {"fields": ["title", "price"]}, "page_kind": "detail"}
+    )
+
+    assert request.schema_ == SchemaFields(fields=["title", "price"])
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        (["title", "title"], "Value error, a field name is given twice"),
+        (["Unit price"], "String should match pattern '^[a-z][a-z0-9_]{0,63}$'"),
+        ([], "List should have at least 1 item after validation, not 0"),
+        ([f"f{n}" for n in range(51)], "List should have at most 50 items after validation, not 51"),
+    ],
+)
+def test_refuses_field_names_that_are_not_distinct_schema_names(fields: list[str], message: str) -> None:
+    body = {"url": URL, "formats": ["records"], "schema": {"fields": fields}, "page_kind": "detail"}
+
+    assert message in _messages(body)
 
 
 def test_records_need_a_schema() -> None:
