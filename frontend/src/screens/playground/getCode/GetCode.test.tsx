@@ -138,11 +138,15 @@ describe("get code", () => {
     });
   });
 
-  it("shows the prompts, where the key comes from and the endpoint, and no key", async () => {
+  it("shows the endpoint and where the key comes from, the prompts collapsed, and no key", async () => {
     stubApi({ "GET /v1/schemas": schemaList });
     await openPlayground("/");
 
     const drawer = await openGetCode();
+    expect(
+      drawer.queryByRole("button", { name: "Copy Use it with coding agents" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(drawer.getByRole("button", { name: "Prompts for coding agents" }));
 
     expect(
       drawer.getByRole("button", { name: "Copy Use it with coding agents" }),
