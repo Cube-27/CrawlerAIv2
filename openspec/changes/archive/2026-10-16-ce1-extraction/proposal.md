@@ -37,8 +37,8 @@ published standard defines (schema.org, OGP basic, optional and `product:` metad
 
 ## Impact
 
-- Capabilities: [extraction](../../specs/extraction/spec.md), [resolution](../../specs/resolution/spec.md),
-  [normalization](../../specs/normalization/spec.md), [variants](../../specs/variants/spec.md) (deltas in `specs/`).
+- Capabilities: [extraction](../../../specs/extraction/spec.md), [resolution](../../../specs/resolution/spec.md),
+  [normalization](../../../specs/normalization/spec.md), [variants](../../../specs/variants/spec.md) (deltas in `specs/`).
 - Design: owner decisions #44 (kept) and a new #48 (variants list only with two or more rows; standard-defined properties only).
 - Files: `collect/base.py`, `collect/jsonld.py`, `collect/microdata.py`, `collect/adapter.py`, `collect/api.py`,
   `collect/og.py`, `collect/schema_org_map.py`, `content/text.py`, `config_ir/executor.py`, `llm/roles/c_extract.py`,

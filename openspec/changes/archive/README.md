@@ -55,6 +55,7 @@ candidates (Appendix A #37, #46).
 | 14 | [Playground workspace: one screen per run, clean JSON, server-side key](2026-10-16-spec-14-playground-workspace/SPEC-14-playground-workspace.md) ([decisions](2026-10-16-spec-14-playground-workspace/decisions.md)) | §1, §3, §12.2, §13.1, §18 (rev 17), Appendix A #38 | 07, 08, 10, 12 | L1–L3 | PRs 1–11 (#189, #191, #194, #194, #194, #198, #198, #198, #190, #201, #205) |
 | 15 | [Shopify adapter: storefront pages through the Storefront API](2026-10-16-spec-15-shopify-adapter/SPEC-15-shopify-adapter.md) ([decisions](2026-10-16-spec-15-shopify-adapter/decisions.md)) | §7.1, §22 (admitted, Appendix A #46), C6 | 02, 05, 13 | admitted candidate | PRs 1–4 (#219, #219, #219, #219) |
 | — | [ATS adapters: Workday and Oracle Recruiting Cloud](2026-10-16-ats-adapters/proposal.md) ([tasks](2026-10-16-ats-adapters/tasks.md)) | §7.1, C6 | 02, 15 | L1 (adapters) | tasks 1.1–1.4 (#226) |
+| — | [ce1 extraction fixes](2026-10-16-ce1-extraction/proposal.md) ([tasks](2026-10-16-ce1-extraction/tasks.md), [decisions](2026-10-16-ce1-extraction/design.md)) | §8.1, §8.2, §9, §10, Appendix A #48 | 05, 13 | L1 | tasks 1.1–1.9 (#227) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.
