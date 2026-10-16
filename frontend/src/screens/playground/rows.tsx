@@ -1,6 +1,6 @@
 import type { MethodHint, PageKind } from "../../api/scrape";
 import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
-import { SelectRow, SwitchRow, TagListRow, TextRow } from "./OptionsPanel";
+import { NumberRow, SelectRow, SwitchRow, TagListRow, TextRow } from "./OptionsPanel";
 
 /** Options rows more than one mode has (SPEC-14 §4.2), each named after its request member. */
 
@@ -60,6 +60,32 @@ export function FetchMethodRow({
       name="fetch.method_hint"
       options={METHOD_HINTS}
       value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+/** `budget.llm_calls` (SPEC-06 §4.8): the most LLM calls the request may make. Empty leaves `budget` out; what that
+ * means differs by request, so `whenEmpty` (the field's placeholder) and `help` say it. */
+export function LlmCallsRow({
+  value,
+  whenEmpty,
+  help,
+  onChange,
+}: Readonly<{
+  value: number;
+  whenEmpty: string;
+  help: string;
+  onChange: (llmCalls: number) => void;
+}>) {
+  return (
+    <NumberRow
+      label="LLM call limit"
+      help={help}
+      name="budget.llm_calls"
+      value={value}
+      minValue={0}
+      placeholder={whenEmpty}
       onChange={onChange}
     />
   );

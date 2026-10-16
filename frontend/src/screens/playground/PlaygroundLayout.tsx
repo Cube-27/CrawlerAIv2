@@ -6,15 +6,15 @@ import { CommandBar } from "./CommandBar";
 import { GetCode } from "./getCode/GetCode";
 import type { ModeId } from "./modes";
 import { ModeSwitch } from "./ModeSwitch";
-import { OptionsToggle } from "./OptionsPanel";
+import { OptionsPopover } from "./OptionsPanel";
 import { ReadOnlyContext } from "./readOnly";
 
-/** Every mode's page (SPEC-14 §4.2), top to bottom: the mode switch, the command bar (`input`, the Options toggle,
- * `tools`, `action`) in a form whose errors are `validationErrors`, the inline options panel (`options`) while
- * `optionsOpen`, then the output (`children`). The toggle shows a dot when `optionsChanged`. Get code, before the
- * action, shows `request`: the body the action sends, built once for both (null while the form can't be sent). With
- * `onEdit`, the page shows a run's request read-only, and the action is "Edit and re-run", which calls it (SPEC-14
- * §4.8). */
+/** Every mode's page (SPEC-14 §4.2), top to bottom: the mode switch, centred; the command bar (`input`, the Options
+ * button, `tools`, `action`), centred in a narrower column, in a form whose errors are `validationErrors`; then the
+ * output (`children`) across the content width. Options opens `options` in a popover while `optionsOpen`, and shows a
+ * dot when `optionsChanged`. Get code, before the action, shows `request`: the body the action sends, built once for
+ * both (null while the form can't be sent). With `onEdit`, the page shows a run's request read-only, and the action
+ * is "Edit and re-run", which calls it (SPEC-14 §4.8). */
 export function PlaygroundLayout({
   mode,
   validationErrors,
@@ -51,7 +51,7 @@ export function PlaygroundLayout({
       <ModeSwitch current={mode} />
       <ReadOnlyContext value={readOnly}>
         <Form
-          className="flex flex-col gap-4"
+          className="mx-auto w-full max-w-playground"
           validationErrors={validationErrors}
           onSubmit={(event) => {
             event.preventDefault();
@@ -60,12 +60,14 @@ export function PlaygroundLayout({
         >
           <CommandBar
             input={input}
-            optionsToggle={
-              <OptionsToggle
+            options={
+              <OptionsPopover
                 isOpen={optionsOpen}
                 changed={optionsChanged}
-                onChange={onOptionsOpen}
-              />
+                onOpenChange={onOptionsOpen}
+              >
+                {options}
+              </OptionsPopover>
             }
             tools={tools}
             action={
@@ -82,7 +84,6 @@ export function PlaygroundLayout({
               </>
             }
           />
-          {optionsOpen ? options : null}
         </Form>
       </ReadOnlyContext>
       {children}

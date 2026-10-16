@@ -25,7 +25,7 @@ export function RuleRows({
     onChange(rules.map((rule) => (rule.key === key ? next : rule)));
   };
   return (
-    <fieldset className="flex flex-col gap-2 md:col-span-2">
+    <fieldset className="col-span-full flex flex-col gap-2">
       <legend className="contents">
         <Label>Page-kind rules</Label>
       </legend>

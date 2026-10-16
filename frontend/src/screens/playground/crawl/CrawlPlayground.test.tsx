@@ -5,6 +5,8 @@ import type { JsonValuesItem } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
 import { runApi, SCHEMA_ID } from "../../../test/runs";
 import {
+  closeOptions,
+  findOptions,
   openOptions,
   fill,
   openPlayground,
@@ -79,6 +81,7 @@ describe("crawl playground", () => {
     await userEvent.click(options.getByRole("button", { name: "Add rule" }));
     await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
     await pick(/Page kind 1/, "Listing");
+    await closeOptions();
 
     await start();
 
@@ -103,6 +106,7 @@ describe("crawl playground", () => {
     const options = await openOptions();
     await userEvent.click(options.getByRole("button", { name: "Add rule" }));
     await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
+    await closeOptions();
 
     await start();
 
@@ -126,7 +130,7 @@ describe("crawl playground", () => {
 
     await start();
 
-    const options = within(await screen.findByRole("region", { name: "Options" }));
+    const options = await findOptions();
     expect(options.getByRole("alert")).toHaveTextContent(
       "A schema's records need a page-kind rule: a page no rule matches is not extracted.",
     );

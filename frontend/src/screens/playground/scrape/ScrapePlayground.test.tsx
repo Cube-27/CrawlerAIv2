@@ -5,6 +5,7 @@ import type { RecordField, ScrapeResponse } from "../../../api/scrape";
 import { problem, stubApi } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import {
+  closeOptions,
   openOptions,
   openPlayground,
   optionsButton,
@@ -155,23 +156,32 @@ describe("scrape playground: the shell", () => {
     expect(tab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("opens the options inline under the command bar, with Advanced collapsed, and no dialog", async () => {
+  it("opens every setting at once in a popover from Options, with no Advanced section, and closes on Escape", async () => {
     await openScrape();
-    expect(screen.queryByRole("region", { name: "Options" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Options" })).not.toBeInTheDocument();
 
     const options = await openOptions();
 
-    expect(screen.getByRole("button", { name: "Options" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(optionsButton()).toHaveAttribute("aria-expanded", "true");
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeVisible();
-    expect(options.getByRole("button", { name: "Advanced" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(options.queryByRole("textbox", { name: "Max age (seconds)" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(options.getByRole("textbox", { name: "Max age (s)" })).toBeVisible();
+    expect(options.getByRole("textbox", { name: "Timeout (s)" })).toBeVisible();
+    expect(options.getByRole("textbox", { name: "LLM call limit" })).toBeVisible();
+    expect(options.queryByRole("button", { name: "Advanced" })).not.toBeInTheDocument();
+
+    await closeOptions();
+    expect(optionsButton()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps a number typed just before Escape closes the options", async () => {
+    await openScrape();
+    const options = await openOptions();
+    await userEvent.type(options.getByRole("textbox", { name: "LLM call limit" }), "7");
+
+    await closeOptions();
+
+    const reopened = await openOptions();
+    expect(reopened.getByRole("textbox", { name: "LLM call limit" })).toHaveValue("7");
   });
 
   it("marks Options exactly when a setting differs from its default, until Reset settings", async () => {
@@ -185,14 +195,13 @@ describe("scrape playground: the shell", () => {
     await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
     expect(optionsButton()).not.toHaveAccessibleDescription();
 
-    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
-    await userEvent.type(options.getByRole("textbox", { name: "Timeout (seconds)" }), "90");
+    await userEvent.type(options.getByRole("textbox", { name: "Timeout (s)" }), "90");
     await userEvent.tab();
     expect(optionsButton()).toHaveAccessibleDescription("Settings changed");
 
     await userEvent.click(options.getByRole("button", { name: "Reset settings" }));
     expect(optionsButton()).not.toHaveAccessibleDescription();
-    expect(options.getByRole("textbox", { name: "Timeout (seconds)" })).toHaveValue("");
+    expect(options.getByRole("textbox", { name: "Timeout (s)" })).toHaveValue("");
   });
 });
 
@@ -230,11 +239,11 @@ describe("scrape playground: the request", () => {
     await toggleFormats("Markdown", "Links");
     const options = await openOptions();
     await pick(/Page kind/, "Listing");
-    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
     await pick(/Fetch method/, "Browser");
-    await userEvent.type(options.getByRole("textbox", { name: "Max age (seconds)" }), "3600");
-    await userEvent.type(options.getByRole("textbox", { name: "Timeout (seconds)" }), "90");
-    await userEvent.type(options.getByRole("textbox", { name: "LLM call budget" }), "0");
+    await userEvent.type(options.getByRole("textbox", { name: "Max age (s)" }), "3600");
+    await userEvent.type(options.getByRole("textbox", { name: "Timeout (s)" }), "90");
+    await userEvent.type(options.getByRole("textbox", { name: "LLM call limit" }), "0");
+    await closeOptions();
 
     await submit();
 
@@ -257,6 +266,7 @@ describe("scrape playground: the request", () => {
     await typeUrl();
     const options = await openOptions();
     await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    await closeOptions();
 
     await submit();
 
@@ -312,6 +322,7 @@ describe("scrape playground: the request", () => {
     const options = await openOptions();
 
     await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    await closeOptions();
     await submit();
 
     await screen.findByText("extracted");
@@ -349,7 +360,7 @@ describe("scrape playground: the request", () => {
     await submit();
 
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-    expect(screen.getByRole("region", { name: "Options" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Options" })).toBeInTheDocument();
     expect(screen.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
     await userEvent.click(selectTrigger(/Page kind/));
     for (const kind of ["Detail", "Listing"]) {
@@ -395,7 +406,7 @@ describe("scrape playground: the request", () => {
     await submit();
 
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-    expect(screen.getByRole("region", { name: "Options" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Options" })).toBeInTheDocument();
   });
 });
 
@@ -550,6 +561,7 @@ describe("scrape playground: JSON output", () => {
     await typeUrl();
     const options = await openOptions();
     await userEvent.click(options.getByRole("switch", { name: "Metadata in JSON" }));
+    await closeOptions();
 
     await submit();
 

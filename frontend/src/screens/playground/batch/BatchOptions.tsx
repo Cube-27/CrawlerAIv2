@@ -1,10 +1,17 @@
 import type { PageKind } from "../../../api/scrape";
 import { OptionsPanel } from "../OptionsPanel";
-import { FetchMethodRow, FieldsRow, MetadataRow, PageKindRow, WebhookRow } from "../rows";
+import {
+  FetchMethodRow,
+  FieldsRow,
+  LlmCallsRow,
+  MetadataRow,
+  PageKindRow,
+  WebhookRow,
+} from "../rows";
 import { DEFAULT_BATCH_OPTIONS, type BatchOptions as Options } from "./form";
 
-/** Batch's options panel (SPEC-14 §4.2): page kind, Metadata in JSON, fields (§4.10) and the webhook, then the fetch method under
- * Advanced. */
+/** Batch's options (SPEC-14 §4.2): page kind, fetch method, the LLM call limit, Metadata in JSON, fields (§4.10) and
+ * the webhook. */
 export function BatchOptions({
   options,
   hasSchema,
@@ -18,14 +25,6 @@ export function BatchOptions({
 }>) {
   return (
     <OptionsPanel
-      advanced={
-        <FetchMethodRow
-          value={options.methodHint}
-          onChange={(methodHint) => {
-            onChange({ ...options, methodHint });
-          }}
-        />
-      }
       onReset={() => {
         onChange(DEFAULT_BATCH_OPTIONS);
       }}
@@ -36,6 +35,21 @@ export function BatchOptions({
         schemaPageKind={schemaPageKind}
         onChange={(pageKind) => {
           onChange({ ...options, pageKind });
+        }}
+      />
+      <FetchMethodRow
+        value={options.methodHint}
+        onChange={(methodHint) => {
+          onChange({ ...options, methodHint });
+        }}
+      />
+      {/* D-1006: a batch without a `budget` makes as many LLM calls as its pages need. */}
+      <LlmCallsRow
+        value={options.llmCalls}
+        whenEmpty="No limit"
+        help="The most LLM calls the whole batch may make. Empty: no limit."
+        onChange={(llmCalls) => {
+          onChange({ ...options, llmCalls });
         }}
       />
       <MetadataRow

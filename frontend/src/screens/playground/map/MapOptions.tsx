@@ -2,25 +2,13 @@ import { NumberRow, OptionsPanel, SwitchRow } from "../OptionsPanel";
 import { ScopeRows } from "../rows";
 import { DEFAULT_MAP_OPTIONS, type MapOptions as Options } from "./form";
 
-/** Map's options panel (SPEC-14 §4.2): the scope globs and the two sources, then the URL limit under Advanced. */
+/** Map's options (SPEC-14 §4.2): the scope globs, then the two sources and the URL limit. */
 export function MapOptions({
   options,
   onChange,
 }: Readonly<{ options: Options; onChange: (options: Options) => void }>) {
   return (
     <OptionsPanel
-      advanced={
-        <NumberRow
-          label="Page limit"
-          help="The most URLs the map returns. Empty: the server default."
-          name="limit"
-          value={options.limit}
-          minValue={1}
-          onChange={(limit) => {
-            onChange({ ...options, limit });
-          }}
-        />
-      }
       onReset={() => {
         onChange(DEFAULT_MAP_OPTIONS);
       }}
@@ -46,6 +34,16 @@ export function MapOptions({
         isSelected={options.useLinks}
         onChange={(useLinks) => {
           onChange({ ...options, useLinks });
+        }}
+      />
+      <NumberRow
+        label="Page limit"
+        help="The most URLs the map returns. Empty: the server default."
+        name="limit"
+        value={options.limit}
+        minValue={1}
+        onChange={(limit) => {
+          onChange({ ...options, limit });
         }}
       />
     </OptionsPanel>

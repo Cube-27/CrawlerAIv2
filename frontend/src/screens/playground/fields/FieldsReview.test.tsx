@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { SchemaDef } from "../../../api/schemas";
 import { problem, stubApi, type Call } from "../../../test/api";
 import {
+  closeOptions,
   fill,
   openOptions,
   openPlayground,
@@ -84,6 +85,7 @@ describe("additional fields: the draft review", () => {
   it("shows the draft before the run, and Run as drafted posts the names, the body Get code shows", async () => {
     const calls = stubScrape();
     await scrapeWithFields("price", "colour");
+    await closeOptions();
     await userEvent.click(screen.getByRole("button", { name: "Get code" }));
     const getCode = within(await screen.findByRole("dialog"));
     const curl = curlBody(getCode.getByRole("region", { name: "cURL code" }).textContent);
@@ -112,6 +114,7 @@ describe("additional fields: the draft review", () => {
   it("posts an edited draft inline, under the name it was given", async () => {
     const calls = stubScrape();
     await scrapeWithFields("price", "colour");
+    await closeOptions();
     await userEvent.click(screen.getByRole("button", { name: "Scrape" }));
     const drawer = await review();
     const name = await drawer.findByRole("textbox", { name: "Name" });
@@ -135,6 +138,7 @@ describe("additional fields: the draft review", () => {
   it("shows a draft the server could not give as its problem, and closing the drawer sends nothing", async () => {
     const calls = stubScrape(() => problem(503, { title: "No LLM provider is configured" }));
     await scrapeWithFields("price");
+    await closeOptions();
     await userEvent.click(screen.getByRole("button", { name: "Scrape" }));
     const drawer = await review();
 
@@ -157,6 +161,7 @@ describe("additional fields: the draft review", () => {
     const options = await openOptions();
     await pick(/Page kind/, "Detail");
     await fill(options.getByRole("textbox", { name: "Fields" }), "price", true);
+    await closeOptions();
 
     await userEvent.click(screen.getByRole("button", { name: "Start batch" }));
     await userEvent.click((await review()).getByRole("button", { name: "Run" }));
@@ -182,6 +187,7 @@ describe("additional fields: the draft review", () => {
     await userEvent.click(options.getByRole("button", { name: "Add rule" }));
     await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
     await pick(/Page kind 1/, "Detail");
+    await closeOptions();
 
     await userEvent.click(screen.getByRole("button", { name: "Start crawl" }));
     await userEvent.click((await review()).getByRole("button", { name: "Run" }));

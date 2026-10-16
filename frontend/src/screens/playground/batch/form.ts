@@ -6,6 +6,7 @@ import { badUrlLine } from "./urls";
 import {
   hasSchema,
   lines,
+  llmBudget,
   NO_ERRORS,
   pageKindErrors,
   requestFormats,
@@ -14,6 +15,7 @@ import {
   webhook,
 } from "../pageRequest";
 import {
+  llmCalls,
   methodHint,
   pageFormats,
   pageKind,
@@ -34,6 +36,8 @@ export interface BatchOptions {
   /** Empty: no webhook. */
   webhookUrl: string;
   methodHint: MethodHint;
+  /** `budget.llm_calls`; NaN (empty) leaves `budget` out: no limit (D-1006). */
+  llmCalls: number;
 }
 
 export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
@@ -43,6 +47,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   webhookUrl: "",
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
+  llmCalls: Number.NaN,
 };
 
 export interface BatchFormState {
@@ -85,6 +90,7 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
     fetch: { method_hint: form.options.methodHint },
+    ...llmBudget(form.options.llmCalls),
     ...webhook(form.options.webhookUrl),
   };
 }
@@ -105,6 +111,7 @@ export function batchForm(request: StoredRequest): BatchFormState {
       fields: schemaFields(request),
       webhookUrl: webhookUrl(request),
       methodHint: methodHint(request),
+      llmCalls: llmCalls(request),
     },
   };
 }

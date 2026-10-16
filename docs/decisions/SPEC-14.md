@@ -273,3 +273,38 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: add a `page_kind` member to crawl.
 - Why: No new request member.
 - Reversible: yes
+
+### D-1041 — Playground settings in a popover, every setting at once
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2, owner feedback after #214 (#218) · Status: decided (owner)
+- Decision: Options opens a HeroUI `Popover` (modal, so Escape, a click outside or Options closes it) holding every setting in a grid of label-over-control cells, four columns from `sm`, one at phone width; no nested Advanced section. ARCHITECTURE Appendix A #45 replaces #38's inline panel.
+- Alternatives: keep the inline panel without Advanced (it pushes the output down when opened).
+- Why: Owner asked for all settings visible in a compact two-row grid; an overlay moves nothing on the page.
+- Reversible: yes
+
+### D-1042 — Closing the options blurs the focused control first
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2 (#218) · Status: decided
+- Decision: `OptionsPopover` blurs the focused element inside the popover before it closes, so a React Aria `NumberField`, which commits its text on blur, keeps the number typed last when Escape closes the popover.
+- Alternatives: commit on every keystroke in `NumberRow` (bypasses the field's own parsing).
+- Why: In a browser, a limit typed then Escape was lost.
+- Reversible: yes
+
+### D-1043 — A centred, narrower command bar whose input box has a fixed minimum height
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2 (#218) · Status: decided
+- Decision: The mode switch is centred; the command bar sits centred in `--container-playground` (48rem). Its input is in a box of at least `--height-playground-input` (5rem), which holds a URL and its error line or Batch's two-line list and count, and the toolbar is at least `h-10`, so the primary button is at the same place in every mode at desktop width. The output keeps the content's width.
+- Alternatives: a taller box for a six-line batch list (leaves Scrape with empty space).
+- Why: Owner's reference layout; switching modes must not move the card or the run button.
+- Reversible: yes
+
+### D-1044 — The LLM call limit is shown where the request takes a `budget`
+- Date: 2026-10-16 · Spec/PR: SPEC-14 §4.2, D-1006 (#218) · Status: decided
+- Decision: One `LlmCallsRow` ("LLM call limit", `budget.llm_calls`) in Scrape, Batch and Extract. Empty leaves `budget` out; its placeholder and help say what that means per request: "No limit" for a batch (D-1006), "10" (the server's default) for a scrape or an extract. Crawl and Map get none: their requests have no `budget`.
+- Alternatives: add `budget` to `CrawlRequest` here (backend scope, left as a follow-up).
+- Why: A row exists only for a request member (§4.2); the hint must state what the server does.
+- Reversible: yes
+
+### D-1045 — An input group's prefix reads as part of the field
+- Date: 2026-10-16 · Spec/PR: DESIGN.md Components (#218) · Status: decided
+- Decision: theme.css drops HeroUI's divider after an `InputGroup` prefix, and a text prefix has no end padding, so `https://` runs into the typed host; an icon prefix keeps its gap.
+- Alternatives: drop the prefix and show `https://` as a placeholder.
+- Why: The divider read as a stray "|" after `https://` (owner).
+- Reversible: yes

@@ -6,54 +6,77 @@ import {
   Label,
   ListBox,
   NumberField,
+  Popover,
   Select,
   Switch,
   Tag,
   TagGroup,
   TextArea,
   TextField,
-  ToggleButton,
   Tooltip,
 } from "@heroui/react";
 import { ArrowRotateLeft, CircleQuestion, Sliders } from "@gravity-ui/icons";
-import { use, useId, useState, type Key, type ReactNode } from "react";
-import { Collapsible } from "../../components/Collapsible";
+import { use, useId, useRef, useState, type Key, type ReactNode } from "react";
 import { ReadOnlyContext } from "./readOnly";
 
-/** The playground's options panel (SPEC-14 §4.2, DESIGN.md Options panel): rows of label, help icon and control, in
- * two columns from `md`, then a collapsed Advanced section and Reset settings. It is inline, never an overlay. */
+/** The playground's options (SPEC-14 §4.2, DESIGN.md Playground options): a popover from the command bar's Options
+ * button with every setting at once, in a grid of cells (label and help icon over the control): four columns from
+ * `sm`, one at phone width; a list or free text takes two columns or the whole width. It is an overlay, so opening it
+ * moves nothing on the page. */
 
-/** The command bar's Options button. A dot shows when a setting differs from its default, and the button's description
- * says so. */
-export function OptionsToggle({
+/** The command bar's Options button and the popover it opens, holding `children` (a mode's `OptionsPanel`). A dot
+ * shows when a setting differs from its default, and the button's description says so. */
+export function OptionsPopover({
   isOpen,
   changed,
-  onChange,
-}: Readonly<{ isOpen: boolean; changed: boolean; onChange: (isOpen: boolean) => void }>) {
+  onOpenChange,
+  children,
+}: Readonly<{
+  isOpen: boolean;
+  changed: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  children: ReactNode;
+}>) {
   const changedId = useId();
+  const dialog = useRef<HTMLElement>(null);
+  // A number field commits its text on blur (React Aria NumberField), and Escape removes the popover while the field
+  // has focus, so the number typed last would be lost: the focused control is blurred first.
+  const change = (open: boolean) => {
+    const focused = document.activeElement;
+    if (!open && focused instanceof HTMLElement && dialog.current?.contains(focused) === true)
+      focused.blur();
+    onOpenChange(open);
+  };
   return (
-    <Badge.Anchor>
-      <ToggleButton
-        isIconOnly
-        variant="ghost"
-        aria-label="Options"
-        aria-controls="playground-options"
-        aria-expanded={isOpen}
-        {...(changed ? { "aria-describedby": changedId } : {})}
-        isSelected={isOpen}
-        onChange={onChange}
+    <Popover isOpen={isOpen} onOpenChange={change}>
+      <Badge.Anchor>
+        <Button
+          isIconOnly
+          variant="ghost"
+          aria-label="Options"
+          {...(changed ? { "aria-describedby": changedId } : {})}
+        >
+          <Sliders aria-hidden="true" />
+        </Button>
+        {changed ? (
+          <>
+            <Badge aria-hidden="true" color="accent" size="sm" />
+            <span id={changedId} hidden>
+              Settings changed
+            </span>
+          </>
+        ) : null}
+      </Badge.Anchor>
+      {/* Outlined like the command bar; it scrolls inside the height React Aria leaves it in the viewport. */}
+      <Popover.Content
+        placement="bottom start"
+        className="w-options overflow-auto border border-border"
       >
-        <Sliders aria-hidden="true" />
-      </ToggleButton>
-      {changed ? (
-        <>
-          <Badge aria-hidden="true" color="accent" size="sm" />
-          <span id={changedId} hidden>
-            Settings changed
-          </span>
-        </>
-      ) : null}
-    </Badge.Anchor>
+        <Popover.Dialog ref={dialog} className="options-panel">
+          {children}
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover>
   );
 }
 
@@ -68,17 +91,22 @@ function Help({ label, text }: Readonly<{ label: string; text: string }>) {
   );
 }
 
-/** A row's left side: the control's label and its help icon. */
-function RowLabel({ label, help }: Readonly<{ label: string; help: string }>) {
+/** A cell's top line: the control's label and its help icon. `id` names the control when the label is not the
+ * field's own (a switch). */
+function CellLabel({ label, help, id }: Readonly<{ label: string; help: string; id?: string }>) {
   return (
     <span className="flex items-center gap-1.5">
-      <Label>{label}</Label>
+      <Label {...(id === undefined ? {} : { id })}>{label}</Label>
       <Help label={label} text={help} />
     </span>
   );
 }
 
-const ROW = "flex flex-row items-center justify-between gap-3";
+/** One grid cell; a wide one (a list of entries, a URL) spans two columns from `sm`. */
+const CELL = "flex min-w-0 flex-col gap-1.5";
+const WIDE_CELL = `${CELL} sm:col-span-2`;
+/** A cell across the whole grid: free text over several lines, rows of rules. */
+const FULL_CELL = `${CELL} col-span-full`;
 
 export function SwitchRow({
   label,
@@ -91,17 +119,24 @@ export function SwitchRow({
   isSelected: boolean;
   onChange: (isSelected: boolean) => void;
 }>) {
-  // The label and the track are one clickable element (Switch.Content), so the help icon follows the track.
+  // The label sits above the track like every cell's, so the help icon can follow it outside the clickable track.
+  const labelId = useId();
   return (
-    <Switch className={ROW} isSelected={isSelected} onChange={onChange}>
-      <Switch.Content className="flex-1 justify-between">
-        <Label>{label}</Label>
-        <Switch.Control>
-          <Switch.Thumb />
-        </Switch.Control>
-      </Switch.Content>
-      <Help label={label} text={help} />
-    </Switch>
+    <div className={CELL}>
+      <CellLabel label={label} help={help} id={labelId} />
+      <Switch
+        aria-labelledby={labelId}
+        className="h-9 justify-center"
+        isSelected={isSelected}
+        onChange={onChange}
+      >
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
+      </Switch>
+    </div>
   );
 }
 
@@ -127,7 +162,7 @@ export function SelectRow<K extends string>({
 }>) {
   return (
     <Select
-      className={ROW}
+      className={CELL}
       name={name}
       value={value}
       {...(placeholder === undefined ? {} : { placeholder })}
@@ -137,7 +172,7 @@ export function SelectRow<K extends string>({
         if (chosen !== undefined) onChange(chosen[0]);
       }}
     >
-      <RowLabel label={label} help={help} />
+      <CellLabel label={label} help={help} />
       <Select.Trigger>
         <Select.Value />
         <Select.Indicator />
@@ -157,8 +192,8 @@ export function SelectRow<K extends string>({
   );
 }
 
-/** A whole number of at least `minValue`; empty (NaN) leaves it to the server. `name` is the request member a server
- * error names. */
+/** A whole number of at least `minValue`; empty (NaN) leaves it out, and `placeholder` says what that means. `name`
+ * is the request member a server error names. */
 export function NumberRow({
   label,
   help,
@@ -166,6 +201,7 @@ export function NumberRow({
   value,
   minValue,
   maxValue,
+  placeholder = "Default",
   onChange,
 }: Readonly<{
   label: string;
@@ -174,11 +210,12 @@ export function NumberRow({
   value: number;
   minValue: number;
   maxValue?: number;
+  placeholder?: string;
   onChange: (value: number) => void;
 }>) {
   return (
     <NumberField
-      className={ROW}
+      className={CELL}
       name={name}
       value={value}
       minValue={minValue}
@@ -186,10 +223,10 @@ export function NumberRow({
       formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
       onChange={onChange}
     >
-      <RowLabel label={label} help={help} />
+      <CellLabel label={label} help={help} />
       <NumberField.Group>
         <NumberField.DecrementButton />
-        <NumberField.Input placeholder="Default" />
+        <NumberField.Input placeholder={placeholder} />
         <NumberField.IncrementButton />
       </NumberField.Group>
     </NumberField>
@@ -213,16 +250,16 @@ export function TextRow({
   onChange: (value: string) => void;
 }>) {
   return (
-    <TextField className={ROW} name={name} value={value} onChange={onChange}>
-      <RowLabel label={label} help={help} />
+    <TextField className={WIDE_CELL} name={name} value={value} onChange={onChange}>
+      <CellLabel label={label} help={help} />
       <Input autoComplete="off" spellCheck={false} placeholder={placeholder} />
       <FieldError />
     </TextField>
   );
 }
 
-/** Free text over several lines, across the panel's width; empty leaves the member out. `name` is the request
- * member a server error names. */
+/** Free text over several lines, across the grid; empty leaves the member out. `name` is the request member a server
+ * error names. */
 export function TextAreaRow({
   label,
   help,
@@ -239,14 +276,9 @@ export function TextAreaRow({
   onChange: (value: string) => void;
 }>) {
   return (
-    <TextField
-      className="flex flex-col gap-2 md:col-span-2"
-      name={name}
-      value={value}
-      onChange={onChange}
-    >
-      <RowLabel label={label} help={help} />
-      <TextArea rows={6} spellCheck={false} placeholder={placeholder} />
+    <TextField className={FULL_CELL} name={name} value={value} onChange={onChange}>
+      <CellLabel label={label} help={help} />
+      <TextArea rows={4} spellCheck={false} placeholder={placeholder} />
       <FieldError />
     </TextField>
   );
@@ -286,20 +318,21 @@ export function TagListRow({
     setDraft("");
   };
   return (
-    <div className="flex flex-col gap-2">
-      <div className={ROW}>
-        <TextField
-          className="flex flex-1 flex-row items-center justify-between gap-3"
-          name={name}
-          value={draft}
-          isInvalid={refused !== null}
-          onChange={(text) => {
-            setDraft(text);
-            setRefused(null);
-          }}
-        >
-          <RowLabel label={label} help={help} />
+    <div className={WIDE_CELL}>
+      <TextField
+        className="flex flex-col gap-1.5"
+        name={name}
+        value={draft}
+        isInvalid={refused !== null}
+        onChange={(text) => {
+          setDraft(text);
+          setRefused(null);
+        }}
+      >
+        <CellLabel label={label} help={help} />
+        <div className="flex items-center gap-2">
           <Input
+            className="min-w-0 flex-1"
             autoComplete="off"
             spellCheck={false}
             placeholder={placeholder}
@@ -310,12 +343,12 @@ export function TagListRow({
               add();
             }}
           />
-          <FieldError>{refused ?? undefined}</FieldError>
-        </TextField>
-        <Button size="sm" variant="secondary" aria-label={`Add to ${label}`} onPress={add}>
-          Add
-        </Button>
-      </div>
+          <Button variant="secondary" aria-label={`Add to ${label}`} onPress={add}>
+            Add
+          </Button>
+        </div>
+        <FieldError>{refused ?? undefined}</FieldError>
+      </TextField>
       {values.length === 0 ? null : (
         <TagGroup
           aria-label={label}
@@ -341,35 +374,28 @@ export function TagListRow({
   );
 }
 
-const GRID = "grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2";
-
+/** A mode's settings in the options popover: its heading and Reset settings on one line, then every setting in the
+ * grid. Read-only, the settings are disabled (a disabled fieldset, HTML §4.10.15) and can still be read. */
 export function OptionsPanel({
-  advanced,
   onReset,
   children,
-}: Readonly<{ advanced: ReactNode; onReset: () => void; children: ReactNode }>) {
-  // Read-only, the settings are disabled (a disabled fieldset, HTML §4.10.15), while Advanced still opens.
+}: Readonly<{ onReset: () => void; children: ReactNode }>) {
   const readOnly = use(ReadOnlyContext);
   return (
-    <section
-      id="playground-options"
-      aria-label="Options"
-      className="options-panel flex flex-col gap-4"
-    >
-      <fieldset disabled={readOnly} className={GRID}>
-        {children}
-      </fieldset>
-      <Collapsible title="Advanced">
-        <fieldset disabled={readOnly} className={GRID}>
-          {advanced}
-        </fieldset>
-      </Collapsible>
-      <div className="flex justify-end">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <Popover.Heading slot="title">Options</Popover.Heading>
         <Button variant="ghost" size="sm" isDisabled={readOnly} onPress={onReset}>
           <ArrowRotateLeft aria-hidden="true" />
           Reset settings
         </Button>
       </div>
-    </section>
+      <fieldset
+        disabled={readOnly}
+        className="grid grid-cols-1 items-start gap-x-4 gap-y-4 sm:grid-cols-4"
+      >
+        {children}
+      </fieldset>
+    </div>
   );
 }
