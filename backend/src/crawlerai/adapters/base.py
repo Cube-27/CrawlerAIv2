@@ -41,8 +41,10 @@ class Shape:
     """A schema.org node the API's JSON holds (SPEC-15 §4.4): its type; `at`, the members from the enclosing node's
     object (the document, for a root) to this node's object; `properties`, the members from that object to each
     schema.org property's values; `nodes`, the shapes of the nodes each property's values are; `stated`, values the
-    platform states in a form of its own; and `anchor`, the members that name a node sharing its enclosing node's
-    object (`at=()`), so that it is an entity of its own."""
+    platform states in a form of its own; `anchor`, the members that name a node sharing its enclosing node's
+    object (`at=()`), so that it is an entity of its own; and `every`, for a property whose `properties` members hold
+    the one value the platform states as its main one, the members holding all its values in the platform's order: a
+    list field reads these, any other field the main value."""
 
     type: str
     at: Members = ()
@@ -50,6 +52,7 @@ class Shape:
     nodes: Mapping[str, tuple["Shape", ...]] = field(default_factory=dict)
     stated: Mapping[str, Stated] = field(default_factory=dict)
     anchor: Members = ()
+    every: Mapping[str, Members] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -69,8 +72,9 @@ class Adapter(Protocol):
         """The tenant and page kind of a platform page URL, or None for any other URL."""
         ...
 
-    def serves(self, endpoint: str) -> bool:
-        """Whether `endpoint`, a capture's final URL, is one of the API endpoints this adapter fetches."""
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        """Whether `endpoint`, a capture's final URL, is one of the API endpoints this adapter fetches for the page it
+        detected as `match`."""
         ...
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
@@ -78,6 +82,6 @@ class Adapter(Protocol):
         that does not serve the page is an `error` outcome with reason `NOT_PLATFORM` or `NOT_SERVED`."""
         ...
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
-        """The root nodes of the API's JSON for a page of `page_kind`."""
+    def shapes(self, page_kind: PageKind, answer: JsonValue, /) -> tuple[Shape, ...]:
+        """The root nodes of `answer`, the API's JSON for a page of `page_kind`."""
         ...

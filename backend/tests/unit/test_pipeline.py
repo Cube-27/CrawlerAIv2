@@ -428,13 +428,13 @@ class FakeAdapter:
     def detect(self, url: str) -> AdapterMatch | None:
         return AdapterMatch(tenant="t", page_kind="detail") if "/jobs/" in url else None
 
-    def serves(self, endpoint: str) -> bool:
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
         return "/api/" in endpoint
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         raise AssertionError("extraction fetches nothing")
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return (Shape(type="JobPosting", properties={"title": ("title",)}),)
 
 

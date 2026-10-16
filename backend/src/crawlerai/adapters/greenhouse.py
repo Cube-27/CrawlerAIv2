@@ -14,6 +14,8 @@ from dataclasses import replace
 from typing import Final
 from urllib.parse import parse_qs, quote, urlsplit
 
+from pydantic import JsonValue
+
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
@@ -65,8 +67,9 @@ class Greenhouse:
             return _embedded(segments[1:], parse_qs(parts.query))
         return _hosted(segments)
 
-    def serves(self, endpoint: str) -> bool:
-        return endpoint.startswith(f"{API}/")
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        # The board's own endpoints, as `fetch` asks them: `{API}/{board_token}/jobs...`.
+        return endpoint.startswith(f"{API}/{quote(match.tenant, safe='')}/")
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         match = self.detect(url)
@@ -76,7 +79,7 @@ class Greenhouse:
         endpoint += "?content=true" if match.item is None else f"/{match.item}"
         return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return _SHAPES[page_kind]
 
 

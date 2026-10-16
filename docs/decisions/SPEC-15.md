@@ -106,3 +106,59 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: activate by default now.
 - Why: The adapter is clearly better on listings and loses page-only fields on detail; turning it on per deployment is the operator's choice until dev labels measure both.
 - Reversible: yes
+
+### D-1111 — A storefront 429 or 5xx says nothing of the platform; the page falls back on its turn
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.2, §4.6, §4.9 (#221) · Status: decided
+- Context: Round-3 reference eval: an edge in front of a shop answered the Storefront endpoint 429 without the API's version header; it was read as `not_platform`, the host was declined for 24 h, and `acquire` kept the 429 (`slow_down`), so the task failed with no page fallback.
+- Decision: A 429 or 5xx (RFC 6585 §4, RFC 9110 §15.6) is kept as it is by the adapter, header or not, and declines no host. `acquire` no longer keeps an adapter's slow-down: the page falls back after `admit_next`. The polite JSON send pauses the endpoint host by the answer's `Retry-After`, else by the first backoff (30 s, SPEC-02 §4.6), at most `BACKOFF_MAX`, so the page waits it out on the host's rate, or is not sent when the worker's wait bound refuses it (the 429 is kept, and the task retries as before). A worker task whose kept outcome is `ok` after an earlier slow-down keeps its page. An API recipe's slow-down is still kept (its HTML page request can be the one that asked). INV-40 reads "an outcome other than `ok`", "when the site's rate admits it".
+- Alternatives: keep the 429 and let the worker retry (the eval's failure mode for scrape); fall back at once, ignoring `Retry-After`.
+- Why: The endpoint is not the page; a slow-down asks for a pause, which the host's rate already enforces.
+- Reversible: yes
+
+### D-1112 — `serves(match, endpoint)`: an adapter serves only its own page's endpoints
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.7, INV-39 (#221) · Status: decided
+- Context: #219 review: `Shopify.serves` checked only the path, on any host, against SPEC-15 §4.7 ("on the page's host").
+- Decision: `serves` takes the page's `AdapterMatch`. Shopify: the Storefront path on the page's own host. Greenhouse and Lever: the board's or site's own endpoints on their API hosts.
+- Alternatives: pass the page URL; keep path-only matching and change the spec.
+- Why: The spec's rule; the match already names the tenant, so no adapter needs the URL again.
+- Reversible: yes
+
+### D-1113 — A storefront product's `vendor` is its schema.org `brand`
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5 (#221); supersedes the "Brand" out-of-scope line of SPEC-15 §2 · Status: decided
+- Context: Round-3 eval: brand lost on 4/9 detail pages. The Help Center describes Vendor as "The manufacturer, wholesaler, or other vendor for the product"; the platform's Liquid `structured_data` filter, its own schema.org output, gives the example shop's vendor as the product's brand.
+- Decision: `ProductGroup.brand` ← `vendor` on detail answers.
+- Alternatives: leave brand to the page (the generic path reads the same value from the theme's JSON-LD); `manufacturer`.
+- Why: The adapter states what the shop's own schema.org output states. Local re-measure: vendor equals the page's brand on 9/9 detail pages of 3 shops.
+- Reversible: yes
+
+### D-1114 — Prices only from a shop with one presentment currency
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.1, §4.5 (#221) · Status: decided
+- Context: Round-3 eval: the adapter published a price in the shop's primary-market currency while the page stated another. A tokenless Storefront answer prices in the shop's primary market (checked on 5 shops: the answer's `localization` was the primary country whatever the vantage); the page shows its visitor's market. `@inContext(country:)` needs the page's country, which only the page states (a second request); reading it from the URL is C7's "values taken from URL codes".
+- Decision: Both queries ask for `shop.paymentSettings.enabledPresentmentCurrencies`. Exactly one currency: prices are read as before. Otherwise a product answer is `not_served` (the page falls back and its own price is read), and a collection answer keeps its rows without Offers (`shapes(page_kind, answer)` now sees the answer).
+- Alternatives: compare against the page's stated currency (needs the page fetched too); `@inContext` from the page's localization markup (two requests and platform markup parsing); publish the primary-market price.
+- Why: The most conservative reading of C7: a price is published only when the answer's currency is the one any page of the shop shows.
+- Reversible: yes
+
+### D-1115 — `Shape.every`: a list field reads every value, other fields the stated main one
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.4, §4.5 (#221) · Status: decided
+- Context: Mapping every image to `image` made `image_url` a conflict (several values of one entity, D-0944); SPEC-15 §9 kept the featured image only.
+- Decision: `Shape.every` names, for a property whose `properties` members hold the platform's stated main value, the members holding all its values. Schema.org nodes gain `every_value(prop)` (JSON-LD and microdata: `values`); `select` reads it for a list field. Shopify: `image` ← `featuredImage.url`, `every` `image` ← `images(first: 250)` in shop order.
+- Alternatives: a first-value-is-main rule for every source (JSON-LD arrays are unordered, JSON-LD 1.1 §4.3.1).
+- Why: The platform states which image is the main one; only a source that states it says so.
+- Reversible: yes
+
+### D-1116 — Top-level sku and gtin of a multi-variant product stay unpublished
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §4.5 (#221) · Status: decided
+- Context: Round-3 eval: sku and gtin lost on one page. The variants' `sku` and `barcode` were already mapped; the page's JSON-LD stated one variant's sku at the top level, which the adapter does not choose (no default variant, Appendix A #44, D-1057).
+- Decision: No change: each variant row carries its sku and gtin; a barcode is a gtin only with a valid GS1 check digit (the gtin normalizer declines otherwise; replay test added).
+- Alternatives: fill the top level from the first variant (a default variant).
+- Why: The owner's no-default-variant rule.
+- Reversible: yes
+
+### D-1117 — C6 re-measure after the round-3 fixes
+- Date: 2026-10-16 · Spec/PR: SPEC-15 §7 (#221) · Status: decided
+- Context: Five shops outside the reference set (three with one presentment currency, two with several), one collection and three product pages each, adapter vs the generic HTTP path, no LLM, aggregate only.
+- Decision: Listings: generic 0 rows on 5/5; adapter 509 rows, 509 with a URL, 352 with a price (none on the two multi-currency shops, by D-1114). Detail, one-currency shops (9 pages): brand agrees 9/9, price agrees 6/6 (3 pages neither), url 8/9; adapter-only product_id 9, gtin 2; generic-only sku 6 (a theme's default variant), condition 6, rating 3, review count 3; additional images: adapter more on 4. Detail, multi-currency shops (6 pages): `not_served`, so the page path's result. The adapter stays off by default; a listing-only default is the owner's call (recommendation in the PR).
+- Alternatives: none.
+- Why: C6 evidence for the changed adapter.
+- Reversible: yes

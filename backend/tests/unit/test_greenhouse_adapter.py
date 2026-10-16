@@ -104,5 +104,9 @@ def test_a_url_it_does_not_detect_is_refused() -> None:
 
 
 def test_it_serves_the_endpoints_it_fetches_and_no_page() -> None:
-    assert ADAPTER.serves(f"{API}/example-tenant/jobs") is True
-    assert ADAPTER.serves(f"https://{HOST}/example-tenant") is False
+    board = AdapterMatch(tenant="example-tenant", page_kind="listing")
+    assert ADAPTER.serves(board, f"{API}/example-tenant/jobs") is True
+    assert ADAPTER.serves(board, f"{API}/example-tenant/jobs/12") is True
+    assert ADAPTER.serves(board, f"{API}/other-tenant/jobs") is False
+    assert ADAPTER.serves(board, f"{API}/example-tenant-2/jobs") is False
+    assert ADAPTER.serves(board, f"https://{HOST}/example-tenant") is False

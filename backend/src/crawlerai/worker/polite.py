@@ -16,9 +16,9 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, HostLimiter, interval
+from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, slowed_down
 from crawlerai.acquire.robots import Fetch, site_robots
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
 from crawlerai.db.queue import LEASE, ClaimedTask, retry_delay
 from crawlerai.recurring.conditional import Unchanged
@@ -50,9 +50,10 @@ async def fetch_politely(
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
     - the site not admitted yet: postponed until it is;
-    - a 429 or 503 to any request of the fetch, not only the one whose outcome it kept: a transient failure, retried
-      after its `Retry-After` or the queue's backoff, then `blocked` once attempts run out; `blocked` at once when the
-      server asks for more than the longest backoff.
+    - a 429 or 503 to any request of the fetch, not only the one whose outcome it kept, unless the outcome kept is
+      `ok` (the page an adapter's endpoint fell back to, SPEC-15 §4.9): a transient failure, retried after its
+      `Retry-After` or the queue's backoff, then `blocked` once attempts run out; `blocked` at once when the server
+      asks for more than the longest backoff.
     `fetch` admits each request after its first at the site's rate, waiting in place (`HostLimiter.wait`) up to
     `WAIT_MAX`."""
     site = (await conn.execute(select(Site.robots_snapshot, Site.crawl_delay_ms).where(Site.id == site_id))).one()
@@ -69,9 +70,9 @@ async def fetch_politely(
         return Postpone(wait)
 
     result = await fetch(task.url, partial(limiter.wait, host, gap, WAIT_MAX))
-    if isinstance(result, Unchanged):
+    if isinstance(result, Unchanged) or result.block_class == "ok":
         return result
-    slowed = _slowed_down(result.attempts)
+    slowed = slowed_down(result.attempts)
     if slowed is None:
         return result
     error = f"http {slowed.status}"
@@ -82,8 +83,3 @@ async def fetch_politely(
         return Finished("blocked", reason=error)
     limiter.pause(host, retry_delay(task.attempts) if asked is None else asked)
     return Failed(error, transient=True, after=asked, exhausted="blocked")
-
-
-def _slowed_down(attempts: tuple[AttemptRecord, ...]) -> AttemptRecord | None:
-    """The last attempt a server answered with a 429 or 503 (`SLOW_DOWN`), if any."""
-    return next((a for a in reversed(attempts) if a.status in SLOW_DOWN), None)

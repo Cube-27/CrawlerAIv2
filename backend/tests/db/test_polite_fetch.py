@@ -327,6 +327,28 @@ async def test_a_slow_down_answering_a_request_whose_outcome_was_not_kept_backs_
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=30))
 
 
+async def test_a_page_kept_ok_after_a_slow_down_to_an_earlier_request_is_the_tasks_page(
+    conn: AsyncConnection, web: Web
+) -> None:
+    # SPEC-15 §4.9: an adapter's endpoint asked for fewer requests, and the page fetched after it on its turn is `ok`.
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/robots.txt"] = (200, OPEN_ROBOTS.encode(), ())
+    web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
+    (task,) = await _tasks(conn, "/item/1")
+    endpoint = AttemptRecord(method="api", status=429, block_class="blocked", duration_ms=1)
+
+    async def fallen_back(url: str, _admit: Admit) -> FetchResult:
+        page = await web(url)
+        return page.model_copy(update={"attempts": (endpoint, *page.attempts)})
+
+    result = await fetch_politely(
+        conn, task, site_id, FetchPolicy(), fallen_back, HostLimiter(Clock()), fetch_robots=web
+    )
+
+    assert isinstance(result, FetchResult)
+    assert [(a.method, a.status) for a in result.attempts] == [("api", 429), ("http", 200)]
+
+
 async def test_a_retry_after_answering_a_request_whose_outcome_was_not_kept_is_read(
     conn: AsyncConnection, web: Web
 ) -> None:

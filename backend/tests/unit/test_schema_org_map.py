@@ -102,6 +102,9 @@ class _Node:
     properties: Mapping[str, Sequence["JsonValue | _Node"]]
     node_id: str | None = None
 
+    def every_value(self, prop: str) -> list[Value]:
+        return self.values(prop)
+
     def values(self, prop: str) -> list[Value]:
         found = []
         for i, item in enumerate(self.properties.get(prop, ())):

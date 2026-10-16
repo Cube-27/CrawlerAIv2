@@ -11,6 +11,8 @@ from dataclasses import replace
 from typing import Final
 from urllib.parse import parse_qs, quote, urlsplit
 
+from pydantic import JsonValue
+
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
@@ -53,8 +55,10 @@ class Lever:
         found = _detect(url)
         return None if found is None else found[1]
 
-    def serves(self, endpoint: str) -> bool:
-        return any(endpoint.startswith(f"{api}/") for api in JOB_SITE_APIS.values())
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        # The site's own endpoints, as `fetch` asks them: `{api}/{site}?mode=json` and `{api}/{site}/{posting_id}`.
+        site = quote(match.tenant, safe="")
+        return any(endpoint.startswith((f"{api}/{site}?", f"{api}/{site}/")) for api in JOB_SITE_APIS.values())
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         found = _detect(url)
@@ -65,7 +69,7 @@ class Lever:
         endpoint += "?mode=json" if match.item is None else f"/{quote(match.item, safe='')}"
         return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
-    def shapes(self, page_kind: PageKind) -> tuple[Shape, ...]:
+    def shapes(self, page_kind: PageKind, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return _SHAPES[page_kind]
 
 

@@ -53,7 +53,7 @@ class Registry:
         """The active adapter that reads an `api` capture of the page at `url` whose final URL is `endpoint`, with its
         match: one that detects the page and fetches from that endpoint (INV-39)."""
         for adapter in self._active:
-            if (match := adapter.detect(url)) is not None and adapter.serves(endpoint):
+            if (match := adapter.detect(url)) is not None and adapter.serves(match, endpoint):
                 return adapter, match
         return None
 

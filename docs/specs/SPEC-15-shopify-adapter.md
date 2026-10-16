@@ -28,7 +28,8 @@ Nothing outside `backend/src/crawlerai/adapters/` names the platform (C3).
 Core (admitted by the owner, Appendix A #46):
 - Detection of product and collection pages by the platform's documented URL routes, confirmed per response by the
   platform's documented API version header (§4.2).
-- Detail: one product with its featured image and up to 250 variants. Listing: the first 250 products of a collection.
+- Detail: one product with its vendor, its featured image, up to 250 images and up to 250 variants. Listing: the first
+  250 products of a collection. Prices only from a shop that presents one currency (§4.5).
 - Shapes for Greenhouse, Lever and Shopify; the adapter collector reads shapes only (the `map` method goes).
 - Fallback to the generic rungs; a host whose answer lacks the platform's signal is not tried again for a while.
 - `CRAWLERAI_ADAPTERS` (the active adapters), bound into the API and worker processes with polite JSON requests.
@@ -38,8 +39,7 @@ Out of scope:
   they show a localized page or a subset or order the unqueried collection does not reproduce. They take the
   generic path.
 - More than 250 products of a collection (cursor paging), `/collections/all`, search and vendor pages.
-- Brand (the platform's `vendor` names the vendor, which is not always the brand; v1 published sellers as brands),
-  size and colour from option names (option names are free text in the shop's language, so reading them would need
+- Size and colour from option names (option names are free text in the shop's language, so reading them would need
   a phrase list, C4), stock quantity (the API documents it as needing an access token), variant URLs.
 - Any other platform adapter (§22 keeps Workday CXS, iCIMS, ADP, Oracle CX).
 
@@ -62,10 +62,15 @@ supported one. Fields read (Storefront API reference, `Product`, `ProductVariant
 
 | Object | Fields |
 |---|---|
-| `Product` | `id`, `title`, `description`, `onlineStoreUrl`, `featuredImage { url }` ("functionally equivalent to `images(first: 1)`"), `variants(first: 250)`, `priceRange { minVariantPrice maxVariantPrice }` |
+| `Product` | `id`, `title`, `description`, `vendor` ("The name of the product's vendor"), `onlineStoreUrl`, `featuredImage { url }` ("functionally equivalent to `images(first: 1)`"), `images(first: 250)` (sorted by `POSITION` by default), `variants(first: 250)`, `priceRange { minVariantPrice maxVariantPrice }` |
 | `ProductVariant` | `id`, `title`, `sku`, `barcode` ("ISBN, UPC, or GTIN"), `availableForSale`, `currentlyNotInStock` ("out of stock but still available for purchase (used for backorders)"), `price` |
 | `MoneyV2` | `amount` (decimal string), `currencyCode` (ISO 4217) |
 | `Collection` | `products(first: 250) { nodes { … } }` |
+| `Shop` | `paymentSettings { enabledPresentmentCurrencies }` ("A list of enabled currencies (ISO 4217 format) that the shop accepts") |
+
+A tokenless request names no buyer context (`@inContext`), and the answer prices in the shop's primary market
+(observed 2026-10-16: the answer's currency was the shop's primary currency whatever the requesting vantage, while
+the page HTML showed the vantage's market).
 
 The Ajax API's `/products/{handle}.js` was rejected: it states prices as integers with no currency, so the money
 normalizer could not read them without a fallback currency (C7). The undocumented `products.json` endpoints were not
@@ -89,16 +94,20 @@ The path alone is not the platform: other sites use these paths. The platform's 
   registry declines the adapter for that host for 24 hours (in-process, at most 10,000 hosts, oldest dropped first).
   A non-platform site therefore gets at most one such request per process per day.
 - An answer with the header whose `data` holds no product (or collection) for the handle, or that holds GraphQL
-  `errors`, is `error` `not_served`: the platform answered, but not for this page. The host is not declined.
+  `errors`, is `error` `not_served`: the platform answered, but not for this page. The host is not declined. A
+  product answer of a shop that does not present exactly one currency is `not_served` too (§4.5).
+- An answer with status 429 or 5xx (RFC 6585 §4, RFC 9110 §15.6) is kept as it is, header or not: it says the server
+  cannot answer now, not whether it is the platform's. The host is not declined, and the page falls back (§4.6).
 - Otherwise the answer is `ok`, a capture with method `api`, recorded under the page URL (SPEC-02 §4.9).
 
 `*.myshopify.com` hosts need no special case: the same routes and the same signal apply.
 
 ### 4.3 Queries
 
-Two fixed GraphQL documents in the adapter, each well under the complexity limit: `product(handle: $handle)` with
-the §4.1 fields, and `collection(handle: $handle) { products(first: 250) { nodes { id title onlineStoreUrl
-featuredImage priceRange } } }`. A version change is a one-line change of the adapter's `API_VERSION`.
+Two fixed GraphQL documents in the adapter, each well under the complexity limit (a product query costs 39):
+`product(handle: $handle)` with the §4.1 fields, and `collection(handle: $handle) { products(first: 250) { nodes { id
+title onlineStoreUrl featuredImage priceRange } } }`; both also ask for `shop { paymentSettings {
+enabledPresentmentCurrencies } }`. A version change is a one-line change of the adapter's `API_VERSION`.
 
 ### 4.4 Shapes: an adapter's JSON as schema.org nodes
 
@@ -120,6 +129,11 @@ Shape(type="ProductGroup", at=("data", "product"),
   has an id of its own (`…['price']` for a variant's Offer).
 - `stated`: schema.org property → a function of the node's object giving one value and the member it comes from,
   for a value the platform states in a documented form other than the schema.org one (§4.5). Only Shopify uses it.
+- `every`: for a property whose `properties` members hold the one value the platform states as its main value, the
+  members holding all of its values in the platform's order. A list field reads these; any other field reads the main
+  value. Only Shopify uses it (`image`).
+
+`shapes(page_kind, answer)` sees the answer, so the shapes may depend on what it states (§4.5, listing prices).
 
 The adapter collector (`collect/adapter.py`) walks the shapes over the document: each object a shape reaches is an
 entity (`adapter:<name>:<normalized path>`, kind its type, parent the enclosing entity, `via` the property), and a
@@ -137,8 +151,21 @@ rows (schema.org ItemList), so the rows do not depend on SPEC-05 §4.7's three-r
 certain well-described ways"); each variant a `Product` under `hasVariant` (`name` ← `title`, `sku` ← `sku`, `gtin` ←
 `barcode`, `productID` ← `id`), each with one `Offer` under `offers` anchored at its `price` (`price` ←
 `price.amount`, `priceCurrency` ← `price.currencyCode`, `availability` stated, below). The group carries `name`,
-`description`, `url` (`onlineStoreUrl`), `productID` and `image` (the featured image only: every image would be
-several values of one property, and a single image field publishes only when its values agree).
+`description`, `url` (`onlineStoreUrl`), `productID`, `brand` (`vendor`) and `image`: the featured image as its main
+value, every image (`images`, in the shop's order) for a list field (`every`).
+
+**Brand.** The Help Center describes `vendor` as "the manufacturer, wholesaler, or other vendor for the product", and
+the platform's own schema.org output (Liquid `structured_data` filter) states it as the product's `brand` (its
+documented example gives the example shop's vendor as the brand). The adapter states what the shop's own schema.org
+output states.
+
+**Currency.** The answer prices in the shop's primary market (§4.1); a page shows its visitor's market, in that
+market's currency when the shop presents several. Nothing in the answer says which market a page showed, and the
+page URL is not read for one (C7). So prices are read only from a shop whose `enabledPresentmentCurrencies` is one
+currency: then every page of the shop states that currency. Otherwise a product answer is `not_served` and the page
+falls back, so the page's own price is read; a collection answer keeps its rows without their Offers (the generic
+path gives a collection page no item rows). Requesting with `@inContext(country:)` would need the page's country,
+which only the page states, after a second request.
 
 What publishes follows the existing rules unchanged (INV-38, Appendix A #44): top-level `price` and `availability`
 publish only when every variant's Offer agrees, and no variant is a default; `sku`/`gtin` fill from the variants
@@ -147,26 +174,28 @@ is dropped `no_row_key`). The adapter chooses no default variant.
 
 **Availability** (`stated`): `availableForSale` false → `OutOfStock`; true with `currentlyNotInStock` true →
 `BackOrder` ("out of stock but still available for purchase (used for backorders)", schema.org BackOrder "available
-on back order"); true otherwise → `InStock`. The value is the schema.org IRI, its locator the
-`availableForSale` member. Both booleans are documented on `ProductVariant`; the table is the platform's statement
-in schema.org's vocabulary (C2), not a phrase list.
+on back order"); true otherwise → `InStock`. The value is the schema.org IRI, its locator the member that decided
+it: `currentlyNotInStock` for `BackOrder`, `availableForSale` otherwise. Both booleans are documented on
+`ProductVariant`; the table is the platform's statement in schema.org's vocabulary (C2), not a phrase list.
 
 **Variant name.** A product without options has one variant whose title is the platform's placeholder
 `Default Title` (Shopify Help Center, "Variants"): it names no variant, so that variant has no `name`.
 
 **Listing** (`commerce_listing`): an `ItemList` at `data.collection.products` whose `itemListElement` nodes are
 `Product`s (`name`, `url` ← `onlineStoreUrl`, `image` ← featured image), each with two `Offer`s under `offers`, at
-`priceRange.minVariantPrice` and `priceRange.maxVariantPrice`. The row's `price` publishes only when the two bounds
-agree (the exact-match rule, INV-14): equal bounds are the one price of every variant; different ones are a range,
-and no single row price is chosen.
+`priceRange.minVariantPrice` and `priceRange.maxVariantPrice` (none for a shop with several currencies, above). The
+row's `price` publishes only when the two bounds agree (the exact-match rule, INV-14): equal bounds are the one price
+of every variant; different ones are a range, and no single row price is chosen.
 
 ### 4.6 Acquisition and fallback (SPEC-02 §4.4)
 
 `acquire(url, policy, remembered, rungs, *, send=…)`: when the registry has an adapter for `url` (detected, and not
-declined for the host), its `fetch(url, policy, send)` goes first. Its result is kept when it is `ok`, when it asks
-for fewer requests (429/503), or when `admit_next` refuses a further request. Otherwise the page is fetched by the
-page rungs (HTTP, browser) as if there were no adapter, after `admit_next`, and the result lists both attempts. A
-site's API recipe is not tried after an adapter. `send` is the JSON fetch adapters use; without it no adapter runs.
+declined for the host), its `fetch(url, policy, send)` goes first. Its result is kept when it is `ok`, or when
+`admit_next` refuses a further request. Otherwise the page is fetched by the page rungs (HTTP, browser) as if there
+were no adapter, after `admit_next`, and the result lists both attempts. A slow-down (429/503) of the endpoint falls
+back too: its `Retry-After`, else the first backoff, pauses the endpoint host's rate (at most the longest backoff,
+SPEC-02 §4.6), and the page, a request of its own, waits that out through `admit_next` (§4.9). A site's API recipe is not tried after an
+adapter. `send` is the JSON fetch adapters use; without it no adapter runs.
 
 `send` in the services (`services.fetching.adapter_send`): the endpoint is fetched only where its host's robots.txt
 allows it, at the host's rate; the first request takes the turn the caller was admitted for (the page's host), as a
@@ -176,8 +205,9 @@ falls back.
 ### 4.7 Reading a capture (SPEC-05 §4.5, D-0445)
 
 An `api` capture is read by an adapter only when the adapter detects its page URL (`url`) **and** its final URL is
-one of the adapter's endpoints (`serves(final_url)`: the documented API host for Greenhouse and Lever; the path
-`/api/{YYYY-MM}/graphql.json` on the page's host for Shopify). An API recipe's capture of a page whose URL looks
+one of the adapter's endpoints for that page (`serves(match, final_url)`: the board's or site's own endpoints on the
+documented API host for Greenhouse and Lever; the path `/api/{YYYY-MM}/graphql.json` on the page's host for
+Shopify). An API recipe's capture of a page whose URL looks
 like a shop route is therefore never read as the adapter's. The same test decides `ActiveConfig.for_capture`.
 
 ### 4.8 Activation (C6)
@@ -192,16 +222,17 @@ measured on at least three tenants not used to build it; the measurement goes in
 - Every network, status, size and decode failure is `fetch_json`'s (SPEC-02 §4.7) and falls back (§4.6).
 - A body that is not JSON, or whose shape does not match, yields no entities (collector diagnostic), never an
   exception.
-- A shop that rate-limits the API (429, or GraphQL `THROTTLED` with status 200 and `errors`) is `not_served` or a
-  429 outcome: the first falls back to the page, the second backs off as any 429 does.
+- A shop that rate-limits the API (429, or GraphQL `THROTTLED` with status 200 and `errors`), or an endpoint answering
+  a 5xx, gives a 429/5xx outcome or `not_served`: either way the page falls back on its turn at the host's rate, and the
+  host is not declined. A worker task whose page was fetched `ok` after an endpoint's slow-down keeps that page.
 
 ## 5. Invariants
 
 New (appended to `docs/INVARIANTS.md`):
 - **INV-39**: An `api` capture is read by an adapter only when that adapter detects the capture's page URL and its
   final URL is one of the adapter's endpoints.
-- **INV-40**: A page an adapter does not serve (an outcome other than `ok` that does not ask for fewer requests) is
-  fetched by the page rungs, and its result lists every attempt; a host whose answer lacks the platform's signal is
+- **INV-40**: A page an adapter does not serve (an outcome other than `ok`) is fetched by the page rungs when the
+  site's rate admits it, and its result lists every attempt; a host whose answer lacks the platform's signal is
   not sent to that adapter again within the decline window.
 
 Existing invariants that apply: INV-11, INV-13, INV-14, INV-15, INV-16, INV-22, INV-23, INV-29, INV-30, INV-33,
@@ -252,9 +283,8 @@ Rows 1–3 depend on each other in order; row 4 needs row 3.
   how often a collection is larger before adding cursor paging.
 - **Locale-prefixed URLs.** The API serves a locale through `@inContext`; mapping a URL prefix to a language and
   country is left out until a dev page needs it.
-- **Brand.** `vendor` is not mapped (§2). If dev labels show it equals the brand on most shops, map it with
-  evidence.
-- **More images.** `additional_images` holds the featured image only (§4.5). Reading every image needs a way to
-  tell the main image from the others in one property's values, for every source, not only this adapter.
+- **Multi-currency shops.** A product page of a shop with several presentment currencies takes the generic path
+  (§4.5), after one API request that is not remembered per host. Measure how many shops present several currencies
+  before remembering it.
 - **Variant attributes.** Size and colour stay inside the variant `name` (SPEC-13 §9 "Attributes outside the
   four").

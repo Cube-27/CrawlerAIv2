@@ -14,7 +14,7 @@ import pytest
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter
 from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
@@ -22,6 +22,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.greenhouse import BOARD_HOSTS
 from crawlerai.core.settings import AcquireSettings
 from crawlerai.services.fetching import Fetching, adapter_send
+from crawlerai.storage.capture_bundle import HeaderList
 from crawlerai.storage.fs import FsStore
 
 PAGE_HOST = "shop.example.test"
@@ -40,7 +41,7 @@ class CountingLimiter(HostLimiter):
         return True
 
 
-def _ok(request: JsonRequest) -> FetchResult:
+def _answer(request: JsonRequest, status: int = 200, headers: HeaderList = ()) -> FetchResult:
     return fetch_result(
         url=request.page_url,
         method="api",
@@ -48,11 +49,18 @@ def _ok(request: JsonRequest) -> FetchResult:
         engine_version="test",
         fetched_at=datetime.now(UTC),
         started=time.monotonic(),
-        exchange=Exchange(url=request.url, status=200, request_headers=(), response_headers=()),
-        content=Content(body=b"{}"),
-        block_class="ok",
+        exchange=Exchange(url=request.url, status=status, request_headers=(), response_headers=headers),
+        content=Content(body=b"{}" if status == 200 else b""),
+        block_class="ok" if status == 200 else "blocked",
         error=None,
     )
+
+
+class Clock:
+    now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
 
 
 async def _never(_url: str, _policy: FetchPolicy) -> FetchResult:
@@ -62,7 +70,7 @@ async def _never(_url: str, _policy: FetchPolicy) -> FetchResult:
 def _fetching(tmp_path: Path, sent: list[str], limiter: HostLimiter) -> Fetching:
     async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
         sent.append(request.url)
-        return _ok(request)
+        return _answer(request)
 
     rungs = Rungs(http=_never, browser=_never, json=json)
     return Fetching(rungs, SafeConnector(), FsStore(tmp_path), limiter)
@@ -109,6 +117,64 @@ def test_a_request_robots_txt_disallows_is_not_sent_and_is_blocked(tmp_path: Pat
     result = asyncio.run(one())
 
     assert (sent, result.block_class, result.attempts[-1].error) == ([], "blocked", "robots")
+
+
+def test_a_slow_down_with_a_retry_after_pauses_the_endpoint_host(tmp_path: Path) -> None:
+    # RFC 6585 §4, RFC 9110 §10.2.3: the pause goes on the host's rate, so the page's fallback request waits it out.
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
+        return _answer(request, 429, (("Retry-After", "20"),))
+
+    fetching = Fetching(Rungs(http=_never, browser=_never, json=json), SafeConnector(), FsStore(tmp_path), limiter)
+    send = adapter_send(fetching, PAGE_HOST, _allowed)
+    assert send is not None
+
+    async def one() -> FetchResult:
+        return await send(_request(PAGE_HOST), FetchPolicy())
+
+    asyncio.run(one())
+
+    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == timedelta(seconds=20)
+
+
+def test_a_slow_down_pauses_the_host_no_longer_than_the_longest_backoff(tmp_path: Path) -> None:
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
+        return _answer(request, 503, (("Retry-After", "86400"),))
+
+    fetching = Fetching(Rungs(http=_never, browser=_never, json=json), SafeConnector(), FsStore(tmp_path), limiter)
+    send = adapter_send(fetching, PAGE_HOST, _allowed)
+    assert send is not None
+
+    async def one() -> FetchResult:
+        return await send(_request(PAGE_HOST), FetchPolicy())
+
+    asyncio.run(one())
+
+    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == BACKOFF_MAX
+
+
+def test_a_slow_down_without_a_retry_after_pauses_the_host_by_the_first_backoff(tmp_path: Path) -> None:
+    # SPEC-02 §4.6: without a Retry-After, the backoff starts at 30 s.
+    limiter = HostLimiter(Clock())
+
+    async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
+        return _answer(request, 429)
+
+    fetching = Fetching(Rungs(http=_never, browser=_never, json=json), SafeConnector(), FsStore(tmp_path), limiter)
+    send = adapter_send(fetching, PAGE_HOST, _allowed)
+    assert send is not None
+
+    async def one() -> FetchResult:
+        return await send(_request(PAGE_HOST), FetchPolicy())
+
+    asyncio.run(one())
+
+    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == timedelta(seconds=30)
 
 
 def test_there_is_no_adapter_send_without_the_json_rung(tmp_path: Path) -> None:
