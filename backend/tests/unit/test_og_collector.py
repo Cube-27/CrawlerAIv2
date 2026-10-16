@@ -93,6 +93,27 @@ def test_each_ogp_property_maps_to_the_field_of_its_role() -> None:
     )
 
 
+DESCRIBED = _schema(
+    **SCHEMA.fields,
+    description=_field(FieldType.LONG_TEXT, "Product.description"),
+    summary=_field(FieldType.TEXT, "Product.description"),
+)
+
+
+def test_og_description_is_the_long_text_description() -> None:
+    # OGP "Optional Metadata": `og:description` is "a one to two sentence description of your object".
+    result = _collect(("og:description", "A synthetic widget &amp; stand."), schema=DESCRIBED)
+
+    assert result.candidates == (
+        _og(
+            "description",
+            "A synthetic widget &amp; stand.",
+            Ok("A synthetic widget & stand."),
+            "meta:og:description",
+        ),
+    )
+
+
 def test_og_title_maps_only_to_the_name_of_the_root_type() -> None:
     # `Product.brand.name` is the brand's name, not the name of the object the page describes (Open Graph protocol,
     # `og:title`).
@@ -214,11 +235,15 @@ def test_an_og_title_naming_the_site_is_no_entity_value() -> None:
             ("og:site_name", site_name),
             ("og:title", "Synthetic Tools"),
             ("og:image", "https://shop.example.test/banner.png"),
+            ("og:description", "Tools for every workshop."),
             ("og:url", PAGE_URL),
+            schema=DESCRIBED,
         )
 
         assert [c.field for c in result.candidates] == ["url"]
-        assert result.diagnostics == ("og: og:title names the site, so og:title and og:image are not read",)
+        assert result.diagnostics == (
+            "og: og:title names the site, so og:title, og:image and og:description are not read",
+        )
 
 
 def test_an_og_title_equal_to_the_host_s_registrable_label_is_no_entity_value() -> None:
