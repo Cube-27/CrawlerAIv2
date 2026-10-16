@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EmptyView } from "./EmptyView";
 import { LoadingView } from "./LoadingView";
+import { ProblemAlert } from "./ProblemAlert";
 import { StatusLabel } from "./StatusLabel";
 import { TablePagination } from "./TablePagination";
 
@@ -80,5 +81,27 @@ describe("TablePagination", () => {
 
     expect(onNext).toHaveBeenCalledTimes(1);
     expect(screen.getByText("50 records")).toBeInTheDocument();
+  });
+});
+
+describe("ProblemAlert", () => {
+  it("names each refused member, and gives a whole-request reason without one", () => {
+    render(
+      <ProblemAlert
+        problem={{
+          title: "Invalid request",
+          detail: null,
+          retryAfter: null,
+          errors: [
+            { field: "urls", reason: "at most 1000 URLs" },
+            { field: "", reason: "records are asked alone" },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Invalid requesturls: at most 1000 URLsrecords are asked alone",
+    );
   });
 });

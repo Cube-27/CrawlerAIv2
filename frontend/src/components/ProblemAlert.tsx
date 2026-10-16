@@ -15,7 +15,8 @@ function ProblemLines({ problem }: Readonly<{ problem: Problem }>) {
     <>
       {problem.errors.map((error) => (
         <Alert.Description key={`${error.field}:${error.reason}`}>
-          {error.field}: {error.reason}
+          {/* An error about the whole request names no field (RFC 9457 extension `errors`). */}
+          {error.field === "" ? error.reason : `${error.field}: ${error.reason}`}
         </Alert.Description>
       ))}
       {problem.retryAfter === null ? null : (

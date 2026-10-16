@@ -4,6 +4,7 @@ import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
   canSend,
+  hasSchema,
   lines,
   requestFormats,
   requestPageKind,
@@ -64,12 +65,13 @@ export function initialBatch(urls: string): BatchFormState {
   return { ...INITIAL_BATCH, urls };
 }
 
-/** The batch request for `form`, or null when it can't be sent (`canSend`). */
+/** The batch request for `form`, or null when it can't be sent (`canSend`). A batch's results are records or page
+ * outputs (SPEC-10 §4.5), so with a schema or field names it asks for `records` alone, as a crawl does (D-0980). */
 export function buildBatch(form: BatchFormState): BatchRequest | null {
   if (!canSend(form)) return null;
   return {
     urls: lines(form.urls),
-    formats: requestFormats(form),
+    formats: hasSchema(form) ? ["records"] : requestFormats(form),
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
     fetch: { method_hint: form.options.methodHint },

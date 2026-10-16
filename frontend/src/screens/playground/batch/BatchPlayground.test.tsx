@@ -122,12 +122,13 @@ describe("batch playground: the command bar", () => {
     expect(screen.getByText("2 URLs")).toBeInTheDocument();
   });
 
-  it("posts the batch request SPEC-10 defines from the list, toolbar and options", async () => {
+  it("posts the batch request SPEC-10 defines, with a schema asking for records alone", async () => {
     const calls = batchApi();
     await openPlayground("/batch");
     await typeUrls("https://shop.test/a\n https://shop.test/b ");
     await toggleFormats("Links");
     await pick(/Schema/, "item_detail");
+    expect(screen.getByRole("button", { name: /Format/ })).toBeDisabled();
     const options = await openOptions();
     await userEvent.type(
       options.getByRole("textbox", { name: "Webhook URL" }),
@@ -141,7 +142,7 @@ describe("batch playground: the command bar", () => {
     await pagesGrid();
     expect(posted(calls)).toEqual({
       urls: ["https://shop.test/a", "https://shop.test/b"],
-      formats: ["markdown", "links", "records"],
+      formats: ["records"],
       schema: { id: SCHEMA_ID },
       page_kind: "detail",
       fetch: { method_hint: "http" },
@@ -407,6 +408,22 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
         .map((line) => line.textContent),
     ).toEqual(["Fetched over HTTP.", "Extracted: extracted (config). Used 1 LLM call."]);
     expect(within(feed).getByText("Failed after 3 attempts: timeout")).toBeInTheDocument();
+  });
+
+  it("does not count cancelled pages as done", async () => {
+    batchApi({
+      [`GET ${JOB}`]: () =>
+        Response.json(
+          job({
+            status: "cancelled",
+            counts: { queued: 0, claimed: 0, done: 2, failed: 0, cancelled: 1 },
+          }),
+        ),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    expect(screen.getByText("2 of 3 pages done, 1 cancelled")).toBeInTheDocument();
   });
 
   it("keeps Cancel in place, disabled, once the run has ended", async () => {

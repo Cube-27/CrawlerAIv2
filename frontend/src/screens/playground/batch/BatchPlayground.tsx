@@ -4,7 +4,7 @@ import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { BatchRequest } from "../../../api/jobs";
 import { useFieldsReview } from "../fields/useFieldsReview";
-import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
+import { hasSchema, optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobModeOutput } from "../run/JobRun";
@@ -57,7 +57,7 @@ export function BatchPlayground() {
       optionsOpen={optionsOpen}
       onOptionsOpen={setOptionsOpen}
       optionsChanged={optionsChanged(form.options, DEFAULT_BATCH_OPTIONS)}
-      tools={<PageTools form={form} onChange={setForm} />}
+      tools={<PageTools form={form} formatsUnused={hasSchema(form)} onChange={setForm} />}
       action={
         <Button type="submit" isPending={submit.isPending}>
           Start batch
