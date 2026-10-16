@@ -84,11 +84,11 @@ def test_a_product_with_a_nested_offer() -> None:
             "offers": {"@type": "Offer", "price": "10.50", "priceCurrency": "EUR"},
         }
     )
-    product = Entity(id="jsonld:0:$", kind="Product", urls=(PAGE_URL,), parent=None)
+    product = Entity(id="jsonld:0:$", types=("Product",), urls=(PAGE_URL,), parent=None)
     assert result.entities == (
         product,
-        Entity(id="jsonld:0:$['brand']", kind="Brand", urls=(), parent=product.id, via="brand"),
-        Entity(id="jsonld:0:$['offers']", kind="Offer", urls=(), parent=product.id, via="offers"),
+        Entity(id="jsonld:0:$['brand']", types=("Brand",), urls=(), parent=product.id, via="brand"),
+        Entity(id="jsonld:0:$['offers']", types=("Offer",), urls=(), parent=product.id, via="offers"),
     )
     assert result.candidates == (
         _candidate("title", product.id, "Widget 9", Ok("Widget 9"), "jsonld:0:$['name']"),
@@ -122,7 +122,7 @@ def test_graph_nodes_and_id_references() -> None:
         }
     )
     product_id, offer_id = "jsonld:0:$['@graph'][0]", "jsonld:0:$['@graph'][1]"
-    assert [(e.id, e.kind, e.parent, e.via) for e in result.entities] == [
+    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
         (product_id, "Product", None, None),
         (offer_id, "Offer", product_id, "offers"),
     ]
@@ -195,7 +195,7 @@ def test_an_invalid_block_is_skipped_with_a_diagnostic() -> None:
 )
 def test_schema_org_spellings(block: Any) -> None:
     result = _collect(block)
-    assert [e.kind for e in result.entities] == ["Product"]
+    assert [e.types[0] for e in result.entities] == ["Product"]
     assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget 9")]
 
 
@@ -231,12 +231,18 @@ def test_a_subtype_matches_its_supertype_s_paths() -> None:
             ],
         }
     )
-    assert [e.kind for e in result.entities] == ["IndividualProduct", "AggregateOffer", "Offer"]
+    assert [e.types[0] for e in result.entities] == ["IndividualProduct", "AggregateOffer", "Offer"]
     assert [(c.field, c.entity_id) for c in result.candidates] == [
         ("title", "jsonld:0:$"),
         ("price", "jsonld:0:$['offers'][0]"),
         ("price", "jsonld:0:$['offers'][1]"),
     ]
+
+
+def test_a_node_is_an_entity_of_each_of_its_types() -> None:
+    # JSON-LD 1.1 §3.5: a node with several `@type` values is an instance of each; none is dropped for another.
+    result = _collect({"@context": SCHEMA_ORG, "@type": ["CreativeWork", "Product"], "name": "Widget 9"})
+    assert [e.types for e in result.entities] == [("CreativeWork", "Product")]
 
 
 def test_an_unknown_type_between_entities_is_skipped_for_the_parent() -> None:
@@ -373,7 +379,7 @@ def test_two_definitions_of_one_node_id_are_one_entity() -> None:
 
     result = _collect(first, second)
 
-    assert [(e.id, e.kind, e.urls, e.parent) for e in result.entities] == [
+    assert [(e.id, e.types[0], e.urls, e.parent) for e in result.entities] == [
         ("jsonld:0:$", "Product", (PAGE_URL,), None),
         ("jsonld:1:$['offers']", "Offer", (), "jsonld:0:$"),
     ]
@@ -446,3 +452,35 @@ def test_a_block_with_raw_control_characters_inside_strings_is_collected() -> No
     result = _collect(block)
     assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget\tNine"), ("brand", "A\nB")]
     assert result.diagnostics == ()
+
+
+DESCRIBED = _schema(
+    title=_text("Product.name"),
+    description=FieldSpec(type=FieldType.LONG_TEXT, description="d", schema_org="Product.description"),
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "title", "description"),
+    [
+        pytest.param(
+            "<p>Soft <b>cotton</b>.</p><ul><li>Machine wash</li><li>Tumble dry</li></ul>",
+            "Soft cotton. Machine wash Tumble dry",
+            "Soft cotton.\nMachine wash\nTumble dry",
+            id="block-markup",
+        ),
+        # References decode once: a fragment's `&amp;amp;` is the text `&amp;`, as in a value without markup.
+        pytest.param("<b>Fish</b> &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="fragment-reference"),
+        pytest.param("Fish &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="text-reference"),
+        pytest.param("Sizes 1 < 2 & more", "Sizes 1 < 2 & more", "Sizes 1 < 2 & more", id="no-element"),
+    ],
+)
+def test_a_text_value_holding_element_markup_is_read_as_its_rendered_text(
+    raw: str, title: str, description: str
+) -> None:
+    result = _collect({"@context": SCHEMA_ORG, "@type": "Product", "name": raw, "description": raw}, schema=DESCRIBED)
+
+    assert [(c.field, c.raw, c.normalized) for c in result.candidates] == [
+        ("title", raw, Ok(title)),
+        ("description", raw, Ok(description)),
+    ]

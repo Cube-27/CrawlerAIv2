@@ -19,8 +19,8 @@ FINAL_URL = "https://shop.example.test/p/1?colour=red"
 CANONICAL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=FINAL_URL, page_url=FINAL_URL)
 
-PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
-RELATED = Entity(id="jsonld:0:$['isRelatedTo']", kind="Product", urls=(), parent=PRODUCT.id, via="isRelatedTo")
+PRODUCT = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None)
+RELATED = Entity(id="jsonld:0:$['isRelatedTo']", types=("Product",), urls=(), parent=PRODUCT.id, via="isRelatedTo")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 RESOLVER = Resolver(
     graph=EntityGraph.of((PRODUCT, RELATED), VOCABULARY),

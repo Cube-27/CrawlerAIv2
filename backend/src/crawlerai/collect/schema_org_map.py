@@ -7,6 +7,7 @@ A path of alternatives `A|B` (SPEC-13 §4.1) reaches what each alternative reach
 read as fields of their own, named `<field>.<sub-field>` (SPEC-13 §4.2).
 """
 
+import html
 import json
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from urllib.parse import urlsplit
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.base import Candidate
+from crawlerai.content.text import fragment_text
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, Ok
@@ -282,9 +284,22 @@ def field_candidates(
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
             if selected.url and _holds_text(spec):
                 continue
-            found = candidate(name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
+            read = _fragment_read(selected.raw, spec)
+            found = candidate(
+                name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics, read=read
+            )
             if found is not None:
                 yield found
+
+
+def _fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
+    """What a text field reads of a structured-data value holding element markup: the fragment's rendered text
+    (`fragment_text`), its references already decoded once, so they are escaped again for the text normalizer, which
+    decodes them (a literal `&amp;` stays text). `None` for any other value."""
+    if spec.type not in _TEXT_TYPES or not isinstance(raw, str):
+        return None
+    text = fragment_text(raw)
+    return None if text is None else html.escape(text, quote=False)
 
 
 def mapped_fields(schema: SchemaDef) -> Iterator[tuple[str, FieldSpec, tuple[MappedPath, ...]]]:
@@ -344,17 +359,19 @@ def candidate(
     locator: str,
     ctx: Context,
     diagnostics: list[str],
+    *,
+    read: JsonValue = None,
 ) -> Candidate | None:
-    """The independent candidate of one value a collector read from a source's own structure, normalized as `spec`.
-    A value the candidate model refuses (nested deeper than its validator recurses) is skipped with a diagnostic: a
-    collector never raises on page content (SPEC-05 §4.5)."""
+    """The independent candidate of one value a collector read from a source's own structure, normalized as `spec`
+    (from `read` when given: what the field reads of `raw`). A value the candidate model refuses (nested deeper than
+    its validator recurses) is skipped with a diagnostic: a collector never raises on page content (SPEC-05 §4.5)."""
     try:
         return Candidate(
             field=field,
             entity_id=entity_id,
             source_kind=source_kind,
             raw=raw,
-            normalized=normalize(raw, spec, ctx),
+            normalized=normalize(raw if read is None else read, spec, ctx),
             locator=locator,
             independent=True,
         )

@@ -8,8 +8,8 @@ OGP specification (C2), not by any page.
 
 OGP's basic metadata (`og:title`, `og:image`, `og:url`) describes one object. Client-rendered pages often keep the
 site's own defaults there: an `og:title` that names the site (`site_names`) says the object is the site, so its
-`og:title` and `og:image` are not the entity's. A title that ends in separator segments naming the site is read
-without them.
+`og:title`, `og:image` and `og:description` are not the entity's. A title that ends in separator segments naming the
+site is read without them.
 """
 
 from collections.abc import Iterator, Sequence
@@ -40,13 +40,17 @@ class _Row:
 _OG_URL = "og:url"
 _TITLE = "og:title"
 _IMAGES = ("og:image", "og:image:url")
+_DESCRIPTION = "og:description"
 # Open Graph protocol, "Basic Metadata": `og:title` is the object's title, `og:image` its image, `og:url` its
-# canonical URL; "Structured Properties": `og:image:url` is identical to `og:image`. The OGP `product` namespace:
-# `product:availability` is the item's availability. `product:price:*` is the money row, read by `_price`.
+# canonical URL; "Structured Properties": `og:image:url` is identical to `og:image`; "Optional Metadata":
+# `og:description` is "a one to two sentence description" of the object, prose for a long_text description. The OGP
+# `product` namespace: `product:availability` is the item's availability. `product:price:*` is the money row, read by
+# `_price`. Only properties OGP defines are read (owner, Appendix A #48); others are left to learned configs.
 _TABLE = (
     _Row((_TITLE,), FieldType.TEXT, "name"),
     _Row(_IMAGES, FieldType.IMAGE_URL, "image"),
     _Row((_OG_URL,), FieldType.URL, "url"),
+    _Row((_DESCRIPTION,), FieldType.LONG_TEXT, "description"),
     _Row(("product:availability",), FieldType.ENUM, "availability"),
 )
 # OGP `product` namespace: `product:price:amount` is the price and `product:price:currency` its ISO 4217 code.
@@ -54,7 +58,9 @@ _AMOUNT, _CURRENCY = "product:price:amount", "product:price:currency"
 # OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
 _SITE_NAME = "og:site_name"
 _READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY, _SITE_NAME}
-_SITE_TITLE = "og: og:title names the site, so og:title and og:image are not read"
+_SITE_TITLE = "og: og:title names the site, so og:title, og:image and og:description are not read"
+# The values a site-default block holds about the site rather than the object.
+_SITE_DEFAULTS = (_TITLE, *_IMAGES, _DESCRIPTION)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +86,7 @@ class OpenGraphCollector:
             return CollectResult(entities=(), candidates=())
         metas, diagnostics = _without_site_values(metas, ctx)
         candidates = tuple(_candidates(metas, schema, ctx))
-        entity = Entity(id=PAGE, kind=PAGE, urls=_urls(metas, ctx), parent=None)
+        entity = Entity(id=PAGE, types=(PAGE,), urls=_urls(metas, ctx), parent=None)
         return CollectResult(entities=(entity,), candidates=candidates, diagnostics=diagnostics)
 
 
@@ -104,14 +110,14 @@ def _metas(page: ParsedPage) -> list[_Meta]:
 
 
 def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta], tuple[str, ...]]:
-    """The metas the fields read: without `og:title` and `og:image` when the (first) title names the site, else with
-    each title read without its trailing site segments."""
+    """The metas the fields read: without `og:title`, `og:image` and `og:description` when the (first) title names the
+    site, else with each title read without its trailing site segments."""
     title = next((m.content for m in metas if m.property == _TITLE), None)
     if title is None:
         return metas, ()
     site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
     if site.names(title):
-        return [m for m in metas if m.property not in (_TITLE, *_IMAGES)], (_SITE_TITLE,)
+        return [m for m in metas if m.property not in _SITE_DEFAULTS], (_SITE_TITLE,)
     return [replace(m, reading=site.without_site(m.content)) if m.property == _TITLE else m for m in metas], ()
 
 

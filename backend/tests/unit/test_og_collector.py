@@ -77,7 +77,7 @@ def test_each_ogp_property_maps_to_the_field_of_its_role() -> None:
     )
 
     assert result == CollectResult(
-        entities=(Entity(id="page", kind="page", urls=("https://shop.example.test/p/1?ref=x",), parent=None),),
+        entities=(Entity(id="page", types=("page",), urls=("https://shop.example.test/p/1?ref=x",), parent=None),),
         candidates=(
             _og("title", "Synthetic Widget", Ok("Synthetic Widget"), "meta:og:title"),
             _og(
@@ -89,6 +89,27 @@ def test_each_ogp_property_maps_to_the_field_of_its_role() -> None:
             _og("availability", "InStock", Ok("InStock"), "meta:product:availability"),
             _og("url", "https://shop.example.test/p/1?ref=x", Ok("https://shop.example.test/p/1?ref=x"), "meta:og:url"),
             _og("image_url", "/img/widget.png", Ok("https://shop.example.test/img/widget.png"), "meta:og:image"),
+        ),
+    )
+
+
+DESCRIBED = _schema(
+    **SCHEMA.fields,
+    description=_field(FieldType.LONG_TEXT, "Product.description"),
+    summary=_field(FieldType.TEXT, "Product.description"),
+)
+
+
+def test_og_description_is_the_long_text_description() -> None:
+    # OGP "Optional Metadata": `og:description` is "a one to two sentence description of your object".
+    result = _collect(("og:description", "A synthetic widget &amp; stand."), schema=DESCRIBED)
+
+    assert result.candidates == (
+        _og(
+            "description",
+            "A synthetic widget &amp; stand.",
+            Ok("A synthetic widget & stand."),
+            "meta:og:description",
         ),
     )
 
@@ -189,7 +210,7 @@ def test_og_url_names_the_page_entity_even_without_a_url_field() -> None:
     result = _collect(("og:url", "HTTPS://Shop.Example.TEST/p/1"), schema=schema)
 
     assert result == CollectResult(
-        entities=(Entity(id="page", kind="page", urls=("https://shop.example.test/p/1",), parent=None),),
+        entities=(Entity(id="page", types=("page",), urls=("https://shop.example.test/p/1",), parent=None),),
         candidates=(),
     )
 
@@ -214,11 +235,15 @@ def test_an_og_title_naming_the_site_is_no_entity_value() -> None:
             ("og:site_name", site_name),
             ("og:title", "Synthetic Tools"),
             ("og:image", "https://shop.example.test/banner.png"),
+            ("og:description", "Tools for every workshop."),
             ("og:url", PAGE_URL),
+            schema=DESCRIBED,
         )
 
         assert [c.field for c in result.candidates] == ["url"]
-        assert result.diagnostics == ("og: og:title names the site, so og:title and og:image are not read",)
+        assert result.diagnostics == (
+            "og: og:title names the site, so og:title, og:image and og:description are not read",
+        )
 
 
 def test_an_og_title_equal_to_the_host_s_registrable_label_is_no_entity_value() -> None:

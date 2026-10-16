@@ -151,7 +151,7 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
         "material": ("text", "Product.material.name"),
         "gender": ("text", "Product.audience.suggestedGender"),
         "condition": ("enum", "Offer.itemCondition|Product.itemCondition"),
-        "rating": ("number", "Product.aggregateRating.ratingValue"),
+        "rating": ("number", "Product.aggregateRating.ratingValue+reviewCount"),
         "review_count": ("count", "Product.aggregateRating.reviewCount"),
     }
     assert variants.item.fields["variant_id"].schema_org == "Product.productID"

@@ -6,6 +6,7 @@ The platforms come from the adapter modules and the recorded API responses under
 no hostname or tenant is written here (C3, C9).
 """
 
+import html
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from crawlerai.collect.base import CollectResult, Entity
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.text import fragment_text
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
 from crawlerai.normalize.base import Context, Ok
@@ -78,11 +80,14 @@ def test_a_detail_response_is_one_posting_with_a_candidate_per_documented_field(
     entity = "adapter:greenhouse:$"
     assert result.entities == (
         Entity(
-            id=entity, kind="JobPosting", urls=("https://jobs.example.com/example-tenant/jobs/4000001",), parent=None
+            id=entity,
+            types=("JobPosting",),
+            urls=("https://jobs.example.com/example-tenant/jobs/4000001",),
+            parent=None,
         ),
         Entity(
             id="adapter:greenhouse:$['company_name']",
-            kind="Organization",
+            types=("Organization",),
             urls=(),
             parent=entity,
             via="hiringOrganization",
@@ -122,7 +127,7 @@ def test_a_listing_response_is_a_list_of_postings_each_owning_its_values() -> No
     result = _collect(LEVER, "listing", _fixture("lever/postings.json"), _preset("job_listing"))
 
     rows = ("adapter:lever:$[0]", "adapter:lever:$[1]")
-    assert [(e.id, e.kind, e.parent, e.via) for e in result.entities] == [
+    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
         ("adapter:lever:$", "ItemList", None, None),
         *((row, "JobPosting", "adapter:lever:$", "itemListElement") for row in rows),
     ]
@@ -171,7 +176,10 @@ def test_every_candidate_is_the_normalized_value_its_locator_selects(
         # A list field's candidate holds every value its property reaches and is located at the first.
         (raw,) = candidate.raw if isinstance(candidate.raw, list) else [candidate.raw]
         assert select(path, document) == [(path, raw)]
-        assert candidate.normalized == normalize(candidate.raw, schema.fields[candidate.field], CTX)
+        # A text value holding markup (a job description's HTML) reads as the fragment's text.
+        fragment = fragment_text(candidate.raw) if isinstance(candidate.raw, str) else None
+        read = candidate.raw if fragment is None else html.escape(fragment, quote=False)
+        assert candidate.normalized == normalize(read, schema.fields[candidate.field], CTX)
         assert path.startswith(candidate.entity_id.removeprefix(f"adapter:{adapter.name}:"))
 
 
@@ -310,7 +318,7 @@ def test_fields_of_several_types_are_read_from_nested_nodes_each_owned_by_its_no
 
     result = _collect(_StandIn(product), "detail", body, schema)
 
-    assert [(e.id, e.kind, e.parent, e.via) for e in result.entities] == [
+    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
         ("adapter:stand-in:$", "Product", None, None),
         ("adapter:stand-in:$['offer']", "Offer", "adapter:stand-in:$", "offers"),
     ]

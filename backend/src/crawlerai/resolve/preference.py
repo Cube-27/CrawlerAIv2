@@ -13,7 +13,7 @@ Evidence buckets, confidence and τ are the next stage's (`resolve.evidence`); t
 """
 
 import json
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
@@ -28,7 +28,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
-from crawlerai.normalize.dispatch import equal, resource_key
+from crawlerai.normalize.dispatch import equal, equality_key, resource_key
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.ownership import OFFER, EntityGraph
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -210,7 +210,7 @@ class Resolver:
     def _offer_split(self, spec: FieldSpec, kept: list[Candidate], anchor: str) -> str | None:
         """§4.8: several Offers publish a field only when all agree, and only from the anchor Offer."""
         offered = [c for c in kept if self._offer_of(c) is not None]
-        if any(a.entity_id != b.entity_id and not _equal(a, b, spec) for a, b in combinations(offered, 2)):
+        if _offers_disagree(offered, spec):
             return "offers_disagree"
         if all(c.entity_id != anchor for c in kept):
             return "offer_split"
@@ -224,7 +224,7 @@ class Resolver:
         kind = next((k for k in order if any(c.source_kind == k for c in choosable)), None)
         if kind is None:
             return _all_rejected("missing", "unranked", kept, rejected)
-        chosen = _winner(spec, kind, kept, choosable)
+        chosen = _winner(spec, kind, kept, choosable, order)
         if chosen is None:
             return _all_rejected("conflict", "disagree", kept, rejected)
         agreeing: list[Candidate] = []
@@ -256,36 +256,62 @@ def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rej
     return Chosen(chosen, tuple(c for c in kept if c is not chosen), tuple(rejected), tuple(kept))
 
 
-def _winner(spec: FieldSpec, kind: SourceKind, kept: list[Candidate], choosable: list[Candidate]) -> Candidate | None:
+def _winner(
+    spec: FieldSpec, kind: SourceKind, kept: list[Candidate], choosable: list[Candidate], order: Sequence[SourceKind]
+) -> Candidate | None:
     """The candidate of the winning kind that publishes. Two values from that kind leave the order nothing to decide
-    between (C7: decline, never guess), unless they are one entity's values and another kind names one of them."""
+    between (C7: decline, never guess), unless they are renditions of one image (`_one_file`), or one entity's values
+    and another kind names one of them."""
     winners = [c for c in kept if c.source_kind == kind]
-    if _all_agree(winners, spec):
+    if _all_agree(winners, spec) or _one_file(winners, spec):
         return next(c for c in choosable if c.source_kind == kind)
-    named = _named_member(spec, winners, kept)
+    named = _named_member(spec, winners, kept, order)
     return named if named is not None and any(c is named for c in choosable) else None
 
 
-def _named_member(spec: FieldSpec, members: list[Candidate], kept: list[Candidate]) -> Candidate | None:
-    """The one of an entity's several values for a field that an independent candidate of another source kind names.
+def _named_member(
+    spec: FieldSpec, members: list[Candidate], kept: list[Candidate], order: Sequence[SourceKind]
+) -> Candidate | None:
+    """The one of an entity's several values for a field that independent candidates of another source kind name.
 
     A property written with several values (JSON-LD 1.1 §4.3.1: an array is a set of values, in no significant
     order; HTML microdata: a repeated itemprop) gives a single-valued field several candidates of one entity, and
-    no order among them says which is meant. When the values that independent candidates of other kinds equal
-    (Open Graph's `og:image`, a field's one value) are one value, it is the one the page means; a namer equal to
-    none of them is then rejected by precedence as usual. With no equal one, an image_url value may name one by its
-    file (`resource_key`: the same image in another rendition). Anything else stays a conflict. Admitted state
-    values are never independent, so they never select (§8.1)."""
+    no order among them says which is meant. The other kinds' independent candidates name them kind by kind, in the
+    type's precedence order (kinds outside it last): the first kind that names any decides. The values it equals
+    (Open Graph's `og:image`, a field's one value) are the ones it names; with no equal one, an image_url value may
+    name one by its file (`resource_key`: the same image in another rendition). When what it names is one value, or
+    renditions of one file, that is the one the page means; anything else stays a conflict. Admitted state values
+    are never independent, so they never select (§8.1)."""
     if len({c.entity_id for c in members}) != 1:
         return None
     namers = [o for o in kept if o.independent and o.source_kind != members[0].source_kind]
-    named = [m for m in members if any(_equal(o, m, spec) for o in namers)] or _same_resource(spec, members, namers)
-    return named[0] if named and _all_agree(named, spec) else None
+    for kind in _ranked_kinds(namers, order):
+        named = _named_by(spec, members, [o for o in namers if o.source_kind == kind])
+        if named:
+            return named[0] if _all_agree(named, spec) or _one_file(named, spec) else None
+    return None
 
 
-def _same_resource(spec: FieldSpec, members: list[Candidate], namers: list[Candidate]) -> list[Candidate]:
+def _ranked_kinds(candidates: list[Candidate], order: Sequence[SourceKind]) -> list[SourceKind]:
+    """The candidates' source kinds, each once, in precedence order; kinds outside the order last, as they come."""
+    kinds = dict.fromkeys(c.source_kind for c in candidates)
+    return [*(k for k in order if k in kinds), *(k for k in kinds if k not in order)]
+
+
+def _named_by(spec: FieldSpec, members: list[Candidate], namers: list[Candidate]) -> list[Candidate]:
+    """The members `namers` equal, else those whose file they name (`resource_key`)."""
+    equal_ones = [m for m in members if any(_equal(o, m, spec) for o in namers)]
+    if equal_ones:
+        return equal_ones
     keys = {resource_key(_value(o), spec) for o in namers} - {None}
     return [m for m in members if resource_key(_value(m), spec) in keys]
+
+
+def _one_file(candidates: Sequence[Candidate], spec: FieldSpec) -> bool:
+    """Whether the candidates are image values (or lists of them) naming the same files, in other renditions: one
+    image as the page states it more than once (`resource_key`), so they agree."""
+    keys = {resource_key(_value(c), spec) for c in candidates}
+    return len(keys) == 1 and None not in keys
 
 
 def _all_rejected(
@@ -306,8 +332,28 @@ def rule_type(spec: FieldSpec) -> FieldType:
 
 
 def _all_agree(candidates: Sequence[Candidate], spec: FieldSpec) -> bool:
+    keys = _equality_keys(candidates, spec)
+    if keys is not None:
+        return len(set(keys)) <= 1
     # Every pair: the location type's equality is not transitive (SPEC-04 §4.5).
     return all(_equal(a, b, spec) for a, b in combinations(candidates, 2))
+
+
+def _offers_disagree(offered: Sequence[Candidate], spec: FieldSpec) -> bool:
+    """Whether candidates of two different Offers differ. With an equivalence, that is two distinct values while more
+    than one Offer states any: a candidate of another Offer than two different values' differs from one of them."""
+    keys = _equality_keys(offered, spec)
+    if keys is not None:
+        return len(set(keys)) > 1 and len({c.entity_id for c in offered}) > 1
+    return any(a.entity_id != b.entity_id and not _equal(a, b, spec) for a, b in combinations(offered, 2))
+
+
+def _equality_keys(candidates: Sequence[Candidate], spec: FieldSpec) -> list[Hashable] | None:
+    """The candidates' equality keys (`equality_key`: equal keys exactly when the values are equal), so that agreement
+    is one pass over them; `None` when a value has none and pairs must be compared."""
+    keys = [equality_key(_value(c), spec) for c in candidates]
+    keyed = [key for key in keys if key is not None]
+    return keyed if len(keyed) == len(keys) else None
 
 
 def _equal(a: Candidate, b: Candidate, spec: FieldSpec) -> bool:

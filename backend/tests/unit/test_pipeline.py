@@ -323,7 +323,7 @@ def test_required_fields_left_missing_go_to_role_c_once() -> None:
     role_c = FakeRoleC()
     result = _extract(_bundle(_html(_product(price=None))), role_c=role_c)
     assert [r.missing for r in role_c.requests] == [("price",)]
-    assert role_c.requests[0].target.kind == "Product"
+    assert role_c.requests[0].target.types == ("Product",)
     assert result.entity is not None
     assert (result.entity["price"].value, result.entity["price"].evidence) == (PRICE, "llm_grounded")
     assert result.llm_calls == (CALL,)
@@ -624,7 +624,7 @@ def _llm(field: str, owner: str, raw: str, start: int) -> Candidate:
 
 
 def _llm_row(position: int) -> Entity:
-    return Entity(id=f"llm:rows[{position}]", kind="page", urls=(), parent=None)
+    return Entity(id=f"llm:rows[{position}]", types=("page",), urls=(), parent=None)
 
 
 ROWS_REPLY = ListingGapReply(

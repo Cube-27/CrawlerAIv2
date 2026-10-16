@@ -127,6 +127,6 @@ class _Reading:
             # A row is a JSON object (RFC 8259 §4); an item of another kind holds no fields.
             if isinstance(row, dict):
                 owner = f"api:{self.recipe_id}:{path}"
-                entities.append(Entity(id=owner, kind=ROW_KIND, urls=(), parent=None))
+                entities.append(Entity(id=owner, types=(ROW_KIND,), urls=(), parent=None))
                 candidates.extend(self.candidates(fields, row, path, owner))
         return entities, candidates

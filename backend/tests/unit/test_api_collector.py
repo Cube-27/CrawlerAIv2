@@ -107,9 +107,9 @@ def test_a_listing_reads_row_fields_relative_to_each_row_and_page_fields_at_the_
 
     executed = _collect(document, LISTING, collector)
 
-    assert [(row.id, row.kind, row.parent) for row in executed.rows] == [
-        ("api:cfg1:$['items'][0]", "ListItem", None),
-        ("api:cfg1:$['items'][2]", "ListItem", None),
+    assert [(row.id, row.types, row.parent) for row in executed.rows] == [
+        ("api:cfg1:$['items'][0]", ("ListItem",), None),
+        ("api:cfg1:$['items'][2]", ("ListItem",), None),
     ]
     assert _values(executed) == [
         ("category", PAGE, "api:cfg1:$['category']", "Lamps"),

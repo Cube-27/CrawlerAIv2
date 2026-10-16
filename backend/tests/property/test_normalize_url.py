@@ -211,10 +211,11 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
         ("HTTPS://CDN.example.test:443/i/%61.jpg", "https://cdn.example.test/i/a.jpg#zoom", True),
         ("https://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/b.jpg", False),
         ("https://cdn.example.test/i/a.jpg", "https://img.example.test/i/a.jpg", False),
-        ("http://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/a.jpg", False),
+        # RFC 3986 §3.2-§3.3: the authority and path name the resource; http and https only reach it.
+        ("http://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/a.jpg?w=1", True),
     ],
 )
-def test_the_resource_key_ignores_only_the_query(a: str, b: str, same: bool) -> None:
+def test_the_resource_key_ignores_only_the_scheme_and_the_query(a: str, b: str, same: bool) -> None:
     key_a, key_b = url.resource_key(a), url.resource_key(b)
 
     assert key_a is not None

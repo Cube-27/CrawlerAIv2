@@ -36,7 +36,7 @@ class EntityGraph:
         """Every collector's entities as one result: ids unique, parents resolved, a tree (`CollectResult`)."""
         merged = list(entities)
         if all(entity.id != PAGE for entity in merged):
-            merged.append(Entity(id=PAGE, kind=PAGE, urls=(), parent=None))
+            merged.append(Entity(id=PAGE, types=(PAGE,), urls=(), parent=None))
         result = CollectResult(entities=tuple(merged), candidates=())
         return cls({entity.id: entity for entity in result.entities}, vocabulary)
 
@@ -54,7 +54,7 @@ class EntityGraph:
             yield entity
 
     def is_a(self, entity: Entity, type_: str) -> bool:
-        return self.vocabulary.is_a(entity.kind, type_)
+        return any(self.vocabulary.is_a(t, type_) for t in entity.types)
 
     def owned_by(self, candidate: Candidate, target: Entity, *, page_values: bool = True) -> bool:
         """Whether the candidate is the target's. `page_values`: whether the page's own values are, as they are for

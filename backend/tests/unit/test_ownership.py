@@ -12,22 +12,24 @@ from crawlerai.resolve.ownership import EntityGraph
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 
-PRODUCT = Entity(id="jsonld:0:$", kind="Product", urls=(), parent=None)
-OFFER = Entity(id="jsonld:0:$['offers']", kind="Offer", urls=(), parent=PRODUCT.id, via="offers")
-AGGREGATE = Entity(id="jsonld:0:$['offers'][1]", kind="AggregateOffer", urls=(), parent=PRODUCT.id, via="offers")
-INNER_OFFER = Entity(id="jsonld:0:$['offers'][1]['offers']", kind="Offer", urls=(), parent=AGGREGATE.id, via="offers")
-BRAND = Entity(id="jsonld:0:$['brand']", kind="Brand", urls=(), parent=PRODUCT.id, via="brand")
-RELATED = Entity(id="jsonld:0:$['isRelatedTo']", kind="Product", urls=(), parent=PRODUCT.id, via="isRelatedTo")
-RELATED_OFFER = Entity(id="jsonld:0:$['isRelatedTo']['offers']", kind="Offer", urls=(), parent=RELATED.id)
-OTHER = Entity(id="jsonld:1:$", kind="Product", urls=(), parent=None)
-GROUP = Entity(id="jsonld:2:$", kind="ProductGroup", urls=(), parent=None)
-VARIANT = Entity(id="jsonld:2:$['hasVariant'][0]", kind="Product", urls=(), parent=GROUP.id, via="hasVariant")
-VARIANT_OFFER = Entity(
-    id="jsonld:2:$['hasVariant'][0]['offers']", kind="Offer", urls=(), parent=VARIANT.id, via="offers"
+PRODUCT = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None)
+OFFER = Entity(id="jsonld:0:$['offers']", types=("Offer",), urls=(), parent=PRODUCT.id, via="offers")
+AGGREGATE = Entity(id="jsonld:0:$['offers'][1]", types=("AggregateOffer",), urls=(), parent=PRODUCT.id, via="offers")
+INNER_OFFER = Entity(
+    id="jsonld:0:$['offers'][1]['offers']", types=("Offer",), urls=(), parent=AGGREGATE.id, via="offers"
 )
-VARIANT_BRAND = Entity(id="jsonld:2:$['hasVariant'][0]['brand']", kind="Brand", urls=(), parent=VARIANT.id)
-GROUP_OFFER = Entity(id="jsonld:2:$['offers']", kind="Offer", urls=(), parent=GROUP.id, via="offers")
-OG_PAGE = Entity(id=PAGE, kind=PAGE, urls=("https://shop.example.test/p/1",), parent=None)
+BRAND = Entity(id="jsonld:0:$['brand']", types=("Brand",), urls=(), parent=PRODUCT.id, via="brand")
+RELATED = Entity(id="jsonld:0:$['isRelatedTo']", types=("Product",), urls=(), parent=PRODUCT.id, via="isRelatedTo")
+RELATED_OFFER = Entity(id="jsonld:0:$['isRelatedTo']['offers']", types=("Offer",), urls=(), parent=RELATED.id)
+OTHER = Entity(id="jsonld:1:$", types=("Product",), urls=(), parent=None)
+GROUP = Entity(id="jsonld:2:$", types=("ProductGroup",), urls=(), parent=None)
+VARIANT = Entity(id="jsonld:2:$['hasVariant'][0]", types=("Product",), urls=(), parent=GROUP.id, via="hasVariant")
+VARIANT_OFFER = Entity(
+    id="jsonld:2:$['hasVariant'][0]['offers']", types=("Offer",), urls=(), parent=VARIANT.id, via="offers"
+)
+VARIANT_BRAND = Entity(id="jsonld:2:$['hasVariant'][0]['brand']", types=("Brand",), urls=(), parent=VARIANT.id)
+GROUP_OFFER = Entity(id="jsonld:2:$['offers']", types=("Offer",), urls=(), parent=GROUP.id, via="offers")
+OG_PAGE = Entity(id=PAGE, types=(PAGE,), urls=("https://shop.example.test/p/1",), parent=None)
 
 ENTITIES = (PRODUCT, OFFER, AGGREGATE, INNER_OFFER, BRAND, RELATED, RELATED_OFFER, OTHER)
 GROUP_ENTITIES = (GROUP, VARIANT, VARIANT_OFFER, VARIANT_BRAND, GROUP_OFFER)
@@ -54,7 +56,7 @@ def test_the_owner_is_the_candidates_entity() -> None:
 
 def test_a_page_entity_is_there_without_a_collector_stating_it() -> None:
     graph = EntityGraph.of(ENTITIES, VOCABULARY)
-    assert graph.page == Entity(id=PAGE, kind=PAGE, urls=(), parent=None)
+    assert graph.page == Entity(id=PAGE, types=(PAGE,), urls=(), parent=None)
     assert graph.owner_of(_candidate(PAGE)) == graph.page
 
 
@@ -132,9 +134,18 @@ def test_a_parent_names_an_entity() -> None:
 def test_parents_form_a_tree() -> None:
     # The entity below the cycle comes first, so the check walks into a cycle it is not part of.
     entities = (
-        Entity(id="microdata:/c", kind="Offer", urls=(), parent="microdata:/a"),
-        Entity(id="microdata:/a", kind="Product", urls=(), parent="microdata:/b"),
-        Entity(id="microdata:/b", kind="Product", urls=(), parent="microdata:/a"),
+        Entity(id="microdata:/c", types=("Offer",), urls=(), parent="microdata:/a"),
+        Entity(id="microdata:/a", types=("Product",), urls=(), parent="microdata:/b"),
+        Entity(id="microdata:/b", types=("Product",), urls=(), parent="microdata:/a"),
     )
     with pytest.raises(ValueError, match="its own ancestor"):
         EntityGraph.of(entities, VOCABULARY)
+
+
+def test_an_offer_of_an_entity_of_several_types_is_its_offer() -> None:
+    # JSON-LD 1.1 §3.5: a node typed ["CreativeWork", "Product"] is a Product, and its Offer offers it.
+    work = Entity(id="jsonld:3:$", types=("CreativeWork", "Product"), urls=(), parent=None)
+    offer = Entity(id="jsonld:3:$['offers']", types=("Offer",), urls=(), parent=work.id, via="offers")
+    graph = EntityGraph.of((work, offer), VOCABULARY)
+    assert graph.offers(work) == (offer,)
+    assert graph.owned_by(_candidate(offer), work)
