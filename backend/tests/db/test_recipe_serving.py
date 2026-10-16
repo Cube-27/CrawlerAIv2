@@ -67,7 +67,8 @@ PRODUCT = {"data": {"name": "Desk Lamp", "price": 19.5, "currency": "EUR"}}
 @dataclass
 class Web:
     """Answers each URL from `pages` over HTTP, and each endpoint from `endpoints` as JSON; anything else is a 404.
-    The browser is never used."""
+    The browser renders a page as it is served: the lamp page holds no offer data, so a fetch that extracts a price
+    renders it once (owner #49)."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, bytes] = field(default_factory=dict)
@@ -82,7 +83,7 @@ class Web:
         return self.fetch_result(url, 200, self.pages[url])
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("these pages never need a browser")
+        return self.fetch_result(url, 200, self.pages[url], method="browser")
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request)

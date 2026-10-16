@@ -40,9 +40,12 @@ from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
     FetchOptions,
+    OfferCheck,
     SiteRow,
     fetch_policy,
     new_capture,
+    offer_check,
+    parsed_page,
     record_fetch_usage,
     site_row,
     store_page_record,
@@ -98,6 +101,12 @@ class FetchedPage:
     standing: RecordId | None
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
+    check: OfferCheck | None = None
+
+    @property
+    def parsed(self) -> ParsedPage:
+        """The page's one parse (INV-26): the one its fetch's offer check read, when it read this capture."""
+        return parsed_page(self.result.bundle, self.check)
 
 
 @dataclass(frozen=True)
@@ -130,7 +139,8 @@ async def fetch_page(
     §4.2).
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
-    serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`)."""
+    serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
+    the offer data their schema reads is rendered once more (`OfferCheck`, owner #49)."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -143,6 +153,7 @@ async def fetch_page(
     attempts: list[AttemptRecord] = []
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
+    check = None if served is None else offer_check(served.schema, served.data, served.config)
 
     async def page(url: str, admit_next: Admit) -> FetchResult | Unchanged:
         # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6).
@@ -158,6 +169,7 @@ async def fetch_page(
                 validators=sent,
                 admit_next=admit_next,
                 send=send,
+                needs_render=check,
             )
             attempts.extend(result.attempts)
             return result
@@ -171,7 +183,7 @@ async def fetch_page(
     if isinstance(fetched, FetchResult):
         if (refused := refusal(fetched)) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
-            return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool)
+            return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool, check)
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)

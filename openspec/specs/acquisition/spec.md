@@ -19,9 +19,15 @@ recipe, else the page rung: `policy.method_hint` when `http`/`browser`, else the
 a new site). Every attempt is listed in the result and manifest. Refs: §7.1, D-0090; see [adapters](../adapters/spec.md).
 
 ### Requirement: Browser on evidence
-In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` result other than 429/503, keep the
-browser outcome only when `ok`, and send any later request of a fetch only when `admit_next` allows. The browser MUST
-NOT be the default. Refs: §7.1, D-0009, D-0203, D-0865, D-0900.
+In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` result other than 429/503, keeping the
+browser outcome only when `ok`; and an HTTP `ok` detail page whose schema requires a `money` field and whose capture
+holds no Offer entity and no `money` candidate, keeping the browser outcome only when `ok` and it holds either. Any
+later request of a fetch is sent only when `admit_next` allows. The browser MUST NOT be the default. Refs: §7.1,
+D-0009, D-0203, D-0865, D-0900, owner #49, D-1202.
+#### Scenario: Client-rendered offer
+- **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with no Offer and no price, and the browser render
+  holds an Offer
+- **THEN** the browser capture is kept and the result lists both attempts
 
 ### Requirement: Remembered fetch method and re-check
 The system SHALL set `fetch_method='browser'` only when a browser `ok` followed an HTTP `shell`/`blocked` in the same
@@ -31,8 +37,11 @@ reset it to `http` on `ok`. Refs: §7.1, D-0204, D-0205.
 ### Requirement: HTTP and browser rungs
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`), at most 5 manual redirects, and
 record headers without cookies or proxy credentials. The browser rung SHALL use Patchright headless Chromium, a fresh
-context per fetch, one navigation, no scripted actions, capped by `browser_timeout_s`. The JSON rung (`fetch_json`,
-`httpx`, method `api`) shares the HTTP rung's guard, caps, cookie jar and reasons. Refs: §7.1, D-0130, D-0251, D-0268.
+context per fetch, one navigation, no scripted actions, capped by `browser_timeout_s`; it reads the page after `load`
+once the DOM's structure and text are unchanged for 2 s or, for a 2xx/3xx document, the network is idle, and keeps
+the main frame's latest document, following a navigation the document starts itself. The JSON rung (`fetch_json`,
+`httpx`, method `api`) shares the HTTP rung's guard, caps, cookie jar and reasons. Refs: §7.1, D-0130, D-0251,
+D-0268, owner #49, D-1200, D-1201.
 
 ### Requirement: Network JSON capture
 When `capture_network_json` is set, the browser rung SHALL save JSON response bodies from any origin, in order, with

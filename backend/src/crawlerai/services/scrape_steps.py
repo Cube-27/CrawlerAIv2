@@ -6,11 +6,13 @@ These steps write in the caller's transaction and never settle the task themselv
 queue, a worker handler returns the result for the worker loop to settle.
 """
 
+import asyncio
 import logging
 import math
 from collections.abc import Iterable
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal, Self, TypedDict
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import Row, select
@@ -20,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
+from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
@@ -50,7 +53,7 @@ from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normalize_prompt
 from crawlerai.normalize.url import canonical_url
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.pipeline import EngineData, lacks_offer_data
 from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
@@ -58,7 +61,7 @@ from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import NewSchema
 from crawlerai.storage.base import ObjectStore
-from crawlerai.storage.capture_bundle import CaptureManifest
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
 log = logging.getLogger(__name__)
 
@@ -241,6 +244,42 @@ def fetch_policy(
         robots_override_reason=options.robots_override_reason,
         locale_hint=locale,
     )
+
+
+@dataclass
+class OfferCheck:
+    """The `needs_render` check of a fetch that extracts with `schema`: an HTTP page that lacks offer data
+    (`lacks_offer_data`, with the site's active `config`) is rendered once (owner #49). It keeps the parse of each
+    page it read, so the extraction of the one kept parses it no second time (INV-26)."""
+
+    schema: SchemaDef
+    data: EngineData
+    config: ConfigExecutor | None = None
+    _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
+
+    async def __call__(self, result: FetchResult) -> bool:
+        page = self._parsed.setdefault(result.bundle.manifest.capture_id, ParsedPage.of(result.bundle))
+        # Parsing and collecting are CPU work: a thread keeps the event loop free.
+        return await asyncio.to_thread(
+            lacks_offer_data, result.bundle, self.schema, self.data, config=self.config, parsed=page
+        )
+
+    def parse(self, bundle: CaptureBundle) -> ParsedPage:
+        """The bundle's parse: the one this check read, when it read this bundle."""
+        return self._parsed.get(bundle.manifest.capture_id) or ParsedPage.of(bundle)
+
+
+def offer_check(schema: SchemaDef | None, data: EngineData | None, config: ActiveConfig | None) -> OfferCheck | None:
+    """The `OfferCheck` of a fetch that extracts with `schema` and the site's active `config`; None without a schema
+    or the engine's data."""
+    if schema is None or data is None:
+        return None
+    return OfferCheck(schema, data, None if config is None else config.executor)
+
+
+def parsed_page(bundle: CaptureBundle, check: OfferCheck | None) -> ParsedPage:
+    """The page's one parse (INV-26): the check's when it read it, else a new one."""
+    return ParsedPage.of(bundle) if check is None else check.parse(bundle)
 
 
 async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:

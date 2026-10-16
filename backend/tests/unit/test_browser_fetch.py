@@ -56,8 +56,17 @@ _SEARCH = b"""<html><body><p id="done"></p><script>
 fetch('/api/search', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{"q": "lamp"}'})
   .then(r => r.json()).then(() => { document.getElementById('done').textContent = 'searched'; });
 </script></body></html>"""
-_BUSY = b"""<html><body><p>Polling page</p><script>
+_BUSY = b"""<html><body><p>Polling page</p><p id="tick"></p><script>
+let n = 0;
+setInterval(() => { fetch('/api/n/0'); document.getElementById('tick').textContent = String(n++); }, 100);
+</script></body></html>"""
+# Network traffic that never stops under a DOM that stops changing once its text is in.
+_STILL = b"""<html><body><p>Polling page with settled content</p><script>
 setInterval(() => fetch('/api/n/0'), 100);
+</script></body></html>"""
+# An error document that replaces itself (`location.replace`, HTML Standard §7.2.4) after a countdown.
+_REPLACES_ITSELF = b"""<html><body><p>One moment</p><script>
+setTimeout(() => location.replace('/app'), 1000);
 </script></body></html>"""
 
 
@@ -129,6 +138,8 @@ def server() -> Iterator[Server]:
             "/search": Reply(body=_SEARCH),
             "/api/search": Reply(content_type=_JSON, body=b'{"hits": []}'),
             "/busy": Reply(body=_BUSY),
+            "/still": Reply(body=_STILL),
+            "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
             "/hop-private": Reply(302, headers=(("Location", "http://internal.example.com/"),)),
@@ -386,6 +397,35 @@ def test_a_page_that_never_goes_idle_is_read_at_the_hard_cap(browser: Browser, s
     assert result.attempts[0].error is None
     assert b"Polling page" in result.bundle.body
     assert 2_000 <= result.duration_ms < 3_500
+
+
+def test_a_page_whose_content_settles_is_read_without_waiting_for_its_network(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/still"), FetchPolicy(browser_timeout_s=20, capture_network_json=False))
+
+    assert result.attempts[0].error is None
+    assert b"Polling page with settled content" in result.bundle.body
+    # Two quiet seconds after `load`, not 90% of the 20 s cap.
+    assert 2_000 <= result.duration_ms < 8_000
+
+
+def test_an_error_document_that_navigates_itself_is_read_where_the_navigation_ends(
+    browser: Browser, server: Server
+) -> None:
+    result = browser.fetch(server.url("/replaces-itself"), FetchPolicy(browser_timeout_s=15))
+
+    manifest = result.bundle.manifest
+    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
+    assert result.bundle.raw_body == _APP
+    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
+
+
+def test_an_error_document_that_stays_is_read_with_its_own_status(browser: Browser, server: Server) -> None:
+    server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
+
+    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=15))
+
+    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
+    assert result.duration_ms < 8_000
 
 
 def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, server: Server) -> None:

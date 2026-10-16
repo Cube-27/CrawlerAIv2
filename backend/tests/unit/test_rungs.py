@@ -287,3 +287,80 @@ def test_a_page_after_a_failed_recipe_not_admitted_in_time_keeps_the_recipe_outc
 
     assert log == ["api", "admit"]
     assert (result.method, result.block_class) == ("api", "not_found")
+
+
+# --- owner #49: the browser for an HTTP `ok` page the caller finds lacking --------------------------------------------
+
+
+@dataclass
+class Lacking:
+    """A `needs_render` check that finds the captures of `methods` lacking, recording each one it was asked about."""
+
+    methods: tuple[CaptureMethod, ...] = ()
+    asked: list[CaptureMethod] = field(default_factory=list)
+
+    async def __call__(self, result: FetchResult) -> bool:
+        self.asked.append(result.method)
+        return result.method in self.methods
+
+
+def _acquire_checked(stubs: Web, check: Lacking, policy: FetchPolicy | None = None) -> FetchResult:
+    rungs = Rungs(http=stubs.http, browser=stubs.browser)
+    return asyncio.run(acquire(URL, policy or FetchPolicy(), "http", rungs, needs_render=check))
+
+
+def test_an_ok_page_lacking_what_the_caller_reads_is_rendered_and_the_render_kept_when_it_holds_it() -> None:
+    stubs = web("ok", "ok")
+
+    result = _acquire_checked(stubs, Lacking(("http",)))
+
+    assert (result.method, result.block_class) == ("browser", "ok")
+    assert _attempts(result) == [("http", "ok"), ("browser", "ok")]
+    assert result.duration_ms == 2
+
+
+@pytest.mark.parametrize(
+    ("browser", "lacking"),
+    [
+        pytest.param("ok", ("http", "browser"), id="render-lacks-it-too"),
+        pytest.param("blocked", ("http",), id="blocked"),
+    ],
+)
+def test_the_http_page_is_kept_when_the_render_does_no_better(
+    browser: BlockClass, lacking: tuple[CaptureMethod, ...]
+) -> None:
+    stubs = web("ok", browser)
+
+    result = _acquire_checked(stubs, Lacking(lacking))
+
+    assert (result.method, result.block_class) == ("http", "ok")
+    assert _attempts(result) == [("http", "ok"), ("browser", browser)]
+
+
+def test_an_ok_page_the_caller_finds_complete_is_not_rendered() -> None:
+    stubs = web("ok")
+
+    result = _acquire_checked(stubs, Lacking())
+
+    assert _attempts(result) == [("http", "ok")]
+    assert stubs.browser.calls == []
+
+
+@pytest.mark.parametrize("hint", ["http", "browser"])
+def test_only_auto_renders_a_lacking_page(hint: Literal["http", "browser"]) -> None:
+    stubs = web("ok")
+    check = Lacking(("http",))
+
+    result = _acquire_checked(stubs, check, FetchPolicy(method_hint=hint))
+
+    assert [a.method for a in result.attempts] == [hint]
+
+
+def test_a_not_modified_answer_is_neither_checked_nor_rendered() -> None:
+    stubs = web("ok", http_status=304)
+    check = Lacking(("http",))
+
+    result = _acquire_checked(stubs, check)
+
+    assert _attempts(result) == [("http", "ok")]
+    assert check.asked == []

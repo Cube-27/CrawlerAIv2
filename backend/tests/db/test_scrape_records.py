@@ -206,6 +206,34 @@ async def test_a_page_without_a_required_field_is_partial_and_keeps_its_record(
     assert tuple(task) == ("done", "partial")
 
 
+async def test_a_detail_page_whose_offer_only_a_render_holds_is_read_from_the_browser(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # Owner #49: the HTTP page holds no Offer and no price; its scripts would render them.
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, _product_page(url, offers=False), "ok")
+
+    async def browser(target: str, policy: FetchPolicy) -> FetchResult:
+        return fetch_result(target, 200, _product_page(target), method="browser")
+
+    rendering = Fetching(Rungs(http=web.http, browser=browser), fetching.connector, fetching.store, HostLimiter())
+
+    result = await scrape(engine, rendering, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
+
+    assert result.fetch is not None
+    assert (result.outcome, result.fetch.method) == ("extracted", "browser")
+    assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
+    assert result.records is not None
+    (record,) = result.records
+    assert record.fields["price"].value == {"amount": "19.90", "currency": "EUR"}
+
+
 async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     engine: AsyncEngine,
     fetching: Fetching,
