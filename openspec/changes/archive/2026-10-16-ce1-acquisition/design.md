@@ -24,7 +24,8 @@
 - Date: 2026-10-16 · Change/PR: ce1-acquisition (#228) · Status: decided
 - Trigger, decided on the capture before extraction (so role C is not paid first): `auto`, HTTP `ok` (not 304), a
   detail schema that requires a `money` field, and no Offer entity (or subtype) and no `money` candidate from any
-  collector (`resolve.pipeline.lacks_offer_data`). A conflicting or abstained price has candidates, so never fires.
+  collector or the site's active config (`resolve.pipeline.lacks_offer_data`). A conflicting or abstained price has
+  candidates, so never fires.
 - The caller passes the check to `acquire` (`needs_render`), since the schema sits above `acquire`. "More complete"
   is read at the same level: the render is kept when it is `ok` and holds offer data; else the HTTP page is kept.
 - `site.fetch_method` is not changed (HTTP was `ok`), so every fetch of such a page pays one render.
@@ -32,5 +33,5 @@
 
 ### D-1203 — The offer check shares the page's parse
 - Date: 2026-10-16 · Change/PR: ce1-acquisition (#228) · Status: decided
-- `services.scrape_steps.OfferCheck` keeps the parse of the capture it read, and the scrape, batch and crawl
+- `services.scrape_steps.OfferCheck` keeps the parse of each capture it read, and the scrape, batch and crawl
   extractions read that parse (INV-26: one parse per page).
