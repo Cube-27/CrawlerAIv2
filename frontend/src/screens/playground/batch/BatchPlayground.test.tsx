@@ -358,6 +358,22 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
     expect(await saved[0]?.text).toBe("title\nBlue mug\n");
   });
 
+  it("tells a refused export in a toast, leaving the run's summary where it is", async () => {
+    batchApi({
+      [`GET ${JOB}/results`]: ({ query }) =>
+        new URLSearchParams(query).get("format") === "csv_records"
+          ? problem(409, { title: "No records", detail: "This job has no schema." })
+          : valuesPage([FIRST]),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+
+    expect(await screen.findByText("This job has no schema.")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Output" })).queryByRole("alert")).toBeNull();
+  });
+
   it("shows the run's activity, collapsed, as plain-language lines grouped by page, newest first", async () => {
     batchApi({
       [`GET ${JOB}/events`]: () =>

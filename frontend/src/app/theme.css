@@ -24,7 +24,7 @@
   --height-page-view: 70dvh;
   /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
    * (no layout shift on paging). */
-  --height-table-page: 66rem;
+  --height-table-page: 72rem;
   /* The playground's output area (SPEC-14 §4.2): a run's pending, failed and done states fill at least this box, so
    * a run moves nothing around it. */
   --height-playground-output: 36rem;

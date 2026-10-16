@@ -80,7 +80,7 @@ export function RecordsScreen() {
         }}
       />
       {filters.schema_id === "" ? (
-        <EmptyView title="Choose a schema">
+        <EmptyView title="No schema chosen yet">
           Records are listed by schema, with a column for each of its fields.
         </EmptyView>
       ) : (
