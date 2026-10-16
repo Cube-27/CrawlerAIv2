@@ -259,6 +259,27 @@ def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
     assert (outcome.status, outcome.reason) == ("missing", "row_key_conflict")
 
 
+def test_variants_that_state_only_a_gtin_sub_property_are_keyed_by_it() -> None:
+    # RDF Schema `rdfs:subPropertyOf`: `gtin13` is a sub-property of `gtin`, so a variant stating only `gtin13` states
+    # its GTIN and has a row key (eval: variants dropped `no_row_key`).
+    first = {"@type": "Product", "gtin13": "4006381333931", "offers": _offer("10.00")}
+    second = {"@type": "Product", "gtin13": "9780306406157", "offers": _offer("12.00")}
+
+    outcome = _variants(_group(first, second))
+
+    assert [row["gtin"] for row in _rows(outcome)] == [
+        {"scheme": "gtin", "value": "4006381333931"},
+        {"scheme": "gtin", "value": "9780306406157"},
+    ]
+
+
+def test_variants_that_state_no_identifier_and_no_own_url_still_drop() -> None:
+    # §4.4, C7: a colour tells two variants apart for a reader, but it is no key; nothing is guessed.
+    outcome = _variants(_group({"@type": "Product", "color": "Red", "offers": _offer("10.00")}))
+
+    assert (outcome.status, outcome.reason) == ("missing", "no_row_key")
+
+
 def test_rows_whose_key_sub_fields_are_all_below_tau_make_the_field_abstain() -> None:
     # §4.5: a key sub-field's row bucket (`list.<type>|<evidence>`) calibrated below τ drops each variant as
     # `key_unpublished`; when every variant went that way the field abstains, it is not missing.

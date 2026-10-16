@@ -63,6 +63,12 @@ def test_identifiers_are_identifier_and_its_sub_properties(vocabulary: Vocabular
     assert vocabulary.identifiers == frozenset({"identifier", "sku", "gtin", "gtin13"})
 
 
+def test_sub_properties_are_the_narrower_properties_transitively(vocabulary: Vocabulary) -> None:
+    assert vocabulary.sub_properties("identifier") == frozenset({"sku", "gtin", "gtin13"})
+    assert vocabulary.sub_properties("gtin") == frozenset({"gtin13"})
+    assert vocabulary.sub_properties("gtin13") == frozenset()
+
+
 def test_a_missing_file_says_how_to_fetch_it(tmp_path: Path) -> None:
     with pytest.raises(VocabularyMissing, match="crawlerai data fetch"):
         Vocabulary.read(tmp_path / "absent.jsonld")
@@ -255,3 +261,20 @@ def test_a_row_mapped_field_gives_its_sub_fields_candidates_and_its_rows_none() 
         ("variants.sku", "offer-a", "jsonld:0:$.offer-a.sku[0]"),
         ("variants.price", "offer-a", "jsonld:0:$.offer-a.price[0]"),
     ]
+
+
+GTIN = FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin", description="d", schema_org="Product.gtin")
+IMAGE = FieldSpec(type=FieldType.IMAGE_URL, description="d", schema_org="Product.image")
+BRANDED = _JsonNode("item", {"gtin13": ["4006381333931"], "logo": ["https://cdn.example.test/logo.png"]})
+
+
+def test_an_identifier_field_reaches_its_property_s_sub_properties() -> None:
+    # RDF Schema `rdfs:subPropertyOf`: a `gtin13` value is a `gtin` value.
+    assert _found((Typed("item", ("Product",), BRANDED),), _schema(gtin=GTIN)) == [
+        ("gtin", "item", "jsonld:0:$.item.gtin13[0]"),
+    ]
+
+
+def test_another_field_reaches_only_its_own_property() -> None:
+    # A logo is an image of the thing, but not the picture of the item an image field means.
+    assert _found((Typed("item", ("Product",), BRANDED),), _schema(image=IMAGE)) == []

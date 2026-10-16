@@ -9,7 +9,7 @@ read as fields of their own, named `<field>.<sub-field>` (SPEC-13 §4.2).
 
 import json
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 from typing import NamedTuple, Protocol
@@ -53,10 +53,11 @@ class VocabularyMissing(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class Vocabulary:
     """The schema.org types, each with itself and every type it is a subclass of, transitively; and the properties
-    that identify a thing: `identifier` and its sub-properties, transitively (`sku`, `gtin13`)."""
+    that identify a thing: `identifier` and its sub-properties, transitively (`sku`, `gtin13`); and each property's
+    sub-properties, transitively (`narrower`)."""
 
     supertypes: Mapping[str, frozenset[str]]
-    identifiers: frozenset[str] = frozenset()
+    narrower: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
     @classmethod
     def read(cls, path: Path) -> "Vocabulary":
@@ -80,14 +81,27 @@ class Vocabulary:
                 parents[name] = frozenset(_schema_names(node.get(_SUB_CLASS_OF)))
             elif (name := _term_name(node, _RDF_PROPERTY)) is not None:
                 broader[name] = frozenset(_schema_names(node.get(_SUB_PROPERTY_OF)))
-        identifiers = frozenset(name for name in broader if _IDENTIFIER in _ancestors(name, broader))
-        return cls({name: _ancestors(name, parents) for name in parents}, identifiers)
+        narrower: dict[str, set[str]] = {}
+        for name in broader:
+            for ancestor in _ancestors(name, broader) - {name}:
+                narrower.setdefault(ancestor, set()).add(name)
+        return cls(
+            {name: _ancestors(name, parents) for name in parents},
+            {name: frozenset(names) for name, names in narrower.items()},
+        )
+
+    @property
+    def identifiers(self) -> frozenset[str]:
+        return self.sub_properties(_IDENTIFIER) | {_IDENTIFIER}
 
     def __contains__(self, type_: object) -> bool:
         return type_ in self.supertypes
 
     def is_a(self, type_: str, ancestor: str) -> bool:
         return ancestor in self.supertypes.get(type_, frozenset())
+
+    def sub_properties(self, prop: str) -> frozenset[str]:
+        return self.narrower.get(prop, frozenset())
 
     def specific_first(self, names: Sequence[str]) -> tuple[str, ...]:
         """The vocabulary's types among `names`, each once, most specific first: a type that another listed type is a
@@ -249,6 +263,8 @@ def field_candidates(
     rows, which resolution finds (SPEC-13 §4.3); each of its sub-fields is read as a field of its own."""
     for name, spec, paths in mapped_fields(schema):
         as_list = spec.type is FieldType.LIST
+        if spec.type is FieldType.IDENTIFIER:
+            paths = _with_sub_properties(paths, vocabulary)
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
             found = candidate(name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
             if found is not None:
@@ -266,6 +282,22 @@ def mapped_fields(schema: SchemaDef) -> Iterator[tuple[str, FieldSpec, tuple[Map
                     yield f"{name}.{sub_name}", sub, parse_paths(sub.schema_org)
         elif spec.schema_org is not None:
             yield name, spec, parse_paths(spec.schema_org)
+
+
+def _with_sub_properties(paths: Sequence[MappedPath], vocabulary: Vocabulary) -> tuple[MappedPath, ...]:
+    """Each alternative, then the same path ending in each sub-property of its last property. RDF Schema 1.1 §3.5
+    (`rdfs:subPropertyOf`): a value of a sub-property is a value of the property, so a `gtin13` is a `gtin`. Only an
+    identifier field reads them: an identifier's sub-properties name its schemes (GTIN-13 of GTIN), while others
+    narrow what the value is (`logo` of `image`), which the field's own property does not mean."""
+    return tuple(
+        widened
+        for path in paths
+        for widened in (path, *(_ending_in(path, sub) for sub in sorted(vocabulary.sub_properties(path.steps[-1]))))
+    )
+
+
+def _ending_in(path: MappedPath, prop: str) -> MappedPath:
+    return path._replace(steps=(*path.steps[:-1], prop))
 
 
 def _selections(

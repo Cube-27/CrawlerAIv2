@@ -172,3 +172,16 @@ def test_a_page_without_canonical_or_og_url_publishes_its_final_url_as_derived()
     assert result.entity is not None
     url = result.entity["url"]
     assert (url.status, url.value, url.evidence, url.derived_by) == ("published", PAGE_URL, "derived", "final_url")
+
+
+def test_a_variant_page_beside_its_group_publishes_its_canonical_url_as_derived() -> None:
+    # Eval class 16: the page's Product states no url of its own and the group beside it names the group's page, so
+    # the url is the canonical link's (D-0355), not the group's and not missing.
+    group_url = "https://shop.example.test/p/group"
+    product = _product(name="Widget One", sku="W-1", offers=_offer("10.00", "https://schema.org/InStock", url=PAGE_URL))
+    group = _product(**{"@type": "ProductGroup"}, name="Widget", url=group_url, hasVariant=[{"@type": "Product"}])
+    result = _extract(_jsonld(product, group) + f'<link rel="canonical" href="{PAGE_URL}">')
+
+    assert result.entity is not None
+    url = result.entity["url"]
+    assert (url.status, url.value, url.evidence, url.derived_by) == ("published", PAGE_URL, "derived", "canonical_link")

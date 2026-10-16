@@ -512,3 +512,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: none; `Record<FieldType, …>` fails the build without it.
 - Why: generated types are the authority.
 - Reversible: yes
+
+### D-0967 — `apply_url` stays `JobPosting.url` (eval class 13)
+- Date: 2026-10-16 · Spec/PR: reference-eval follow-ups (#209) · Status: decided
+- Decision: No change to the mapping (D-0015). The eval's JobPosting states `directApply: true` and no `url`; its external link is in the DOM only, told apart only by its text; no dev page states an `ApplyAction`.
+- Alternatives: Map `potentialAction.target`; pick the link by its text.
+- Why: Link text is a word list (C4) and a DOM heuristic is the §22 structural-collector candidate (D-0946); `directApply: true` agrees with the posting URL. `ApplyAction` waits for a dev page that shows it (C5).
+- Reversible: yes.
