@@ -1,6 +1,5 @@
 import { Table, Typography } from "@heroui/react";
 import { useSchemas } from "../../api/hooks/schemas";
-import { schemaVersionLabel } from "../../api/schemas";
 import type { ConfigDetail, ConfigSummary, FieldConfigStatus } from "../../api/configs";
 import { confidenceText } from "../../components/ConfidenceCell";
 import { ConfigStatusLabel, FieldConfigStatusLabel } from "../../components/ConfigStatusLabel";
@@ -17,14 +16,11 @@ const FIELD_STATUSES: readonly FieldConfigStatus[] = [
   "suspended",
 ];
 
-/** Names a config's schema version by the schemas the API lists; by its version number until they are read. */
+/** Names a config's schema by the schemas the API lists; "—" until they are read. */
 export function useSchemaLabel(): (config: ConfigSummary) => string {
   const schemas = useSchemas();
-  const labels = new Map(
-    (schemas.data ?? []).map((schema) => [schema.id, schemaVersionLabel(schema)]),
-  );
-  return (config) =>
-    labels.get(config.schema_id) ?? `schema version ${String(config.schema_version)}`;
+  const labels = new Map((schemas.data ?? []).map((schema) => [schema.id, schema.name]));
+  return (config) => labels.get(config.schema_id) ?? "—";
 }
 
 /** How many of a config's fields have each status, in one line: "2 corroborated, 1 operator". */
@@ -38,7 +34,7 @@ function fieldStatusCounts(fieldStatus: ConfigSummary["field_status"]): string {
     : counts.map(([status, count]) => `${String(count)} ${status}`).join(", ");
 }
 
-/** Config versions, one row each; a row opens that version. `schemaLabel` names a schema version by its id. */
+/** Config versions, one row each; a row opens that version. `schemaLabel` names a schema by its id. */
 export function ConfigVersionsTable({
   label,
   configs,

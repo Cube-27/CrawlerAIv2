@@ -45,6 +45,7 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.db.queue import complete_task, insert_claimed
+from crawlerai.recurring.record_fp import document_digest
 from crawlerai.recurring.versions import link_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
@@ -69,7 +70,6 @@ def _document(name: str) -> SchemaDocument:
     text = FieldSpec(type=FieldType.TEXT, description="d")
     return SchemaDocument(
         name=name,
-        version=1,
         page_kind="detail",
         fields={"title": text.model_copy(update={"required": True}), "colour": text},
     )
@@ -172,7 +172,7 @@ class World:
                 "job_id": job_id,
                 "site_id": self.site_id,
                 "schema_id": self.schema.id,
-                "schema_version": self.schema.version,
+                "schema_digest": document_digest(self.schema),
                 "entity_key": entity_key,
                 "data": dict(data),
                 "field_meta": dict(field_meta),

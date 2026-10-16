@@ -264,7 +264,7 @@ async def test_the_scheduler_starts_learning_for_a_state_with_eight_extracted_pa
     engine: AsyncEngine, tmp_path: Path, own_origin: str, schema_name: str
 ) -> None:
     default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
-    schema = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {}, "origin": "user"}
+    schema = {"name": schema_name, "page_kind": "detail", "fields": {}, "origin": "user"}
     async with engine.begin() as conn:
         host = own_origin.removeprefix("https://")
         site_id = (
@@ -273,7 +273,7 @@ async def test_the_scheduler_starts_learning_for_a_state_with_eight_extracted_pa
         schema_id = (
             await conn.execute(insert(SchemaDef).values(**schema, status="active").returning(SchemaDef.id))
         ).scalar_one()
-        key = {"site_id": site_id, "schema_id": schema_id, "schema_version": 1, "page_kind": "detail"}
+        key = {"site_id": site_id, "schema_id": schema_id, "page_kind": "detail"}
         await conn.execute(insert(ProgressiveState).values(**key, pages_extracted=8))
 
     async def learn_job() -> bool:

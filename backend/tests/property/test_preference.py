@@ -36,9 +36,7 @@ URL = FieldSpec(type=FieldType.URL, description="d", schema_org="Product.url")
 
 
 def _schema(**fields: FieldSpec) -> SchemaDef:
-    return SchemaDef(
-        id=SchemaId(uuid7()), origin="user", status="active", name="s", version=1, page_kind="detail", fields=fields
-    )
+    return SchemaDef(id=SchemaId(uuid7()), origin="user", status="active", name="s", page_kind="detail", fields=fields)
 
 
 def _candidate(field: str, value: object, entity_id: str, kind: SourceKind, n: int) -> Candidate:

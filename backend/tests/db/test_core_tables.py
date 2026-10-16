@@ -37,7 +37,7 @@ def _task(job_id: JobId, url: str) -> Insert:
 
 
 def _schema(**columns: Any) -> Insert:
-    values = {"name": "s", "version": 1, "page_kind": "detail", "fields": {}, "origin": "user", "status": "active"}
+    values = {"name": "s", "page_kind": "detail", "fields": {}, "origin": "user", "status": "active"}
     return insert(SchemaDef).values(**{**values, **columns})
 
 
@@ -72,12 +72,11 @@ async def test_site_host_must_be_lowercase(conn: AsyncConnection) -> None:
         await conn.execute(statement)
 
 
-async def test_schema_def_name_and_version_are_unique(conn: AsyncConnection) -> None:
-    await conn.execute(_schema(name="commerce_detail", version=1))
-    await conn.execute(_schema(name="commerce_detail", version=2))
+async def test_schema_def_name_is_unique(conn: AsyncConnection) -> None:
+    await conn.execute(_schema(name="commerce_detail"))
 
-    duplicate = _schema(name="commerce_detail", version=1)
-    with pytest.raises(IntegrityError, match="uq_schema_def_name_version"):
+    duplicate = _schema(name="commerce_detail")
+    with pytest.raises(IntegrityError, match="uq_schema_def_name"):
         await conn.execute(duplicate)
 
 

@@ -6,7 +6,7 @@ import { FormActions } from "../../components/FormActions";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { SchemaSelect } from "../../components/SchemaSelect";
 
-/** "Learn now" for a site and schema version (`POST /v1/sites/{host}/learn`, D-0592). The server refuses while a
+/** "Learn now" for a site and schema (`POST /v1/sites/{host}/learn`, D-0592). The server refuses while a
  * config is active or a run is in flight (409); after a refusal, "Learn anyway" asks again with `force`. The screen
  * shows `learn.error`. */
 export function useLearn({ site, schemaId }: Readonly<{ site: string; schemaId: string }>) {

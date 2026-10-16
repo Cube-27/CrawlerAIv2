@@ -499,7 +499,7 @@ SHOP = ".".join(["shop", "example", "com"])
 
 def schema_document(fields: dict[str, object], **extra: object) -> str:
     """A JSON schema document (SPEC-04 §4.2) with the given fields, on one line."""
-    return json.dumps({"name": "p", "version": 1, "page_kind": "listing", "fields": fields, **extra}) + "\n"
+    return json.dumps({"name": "p", "page_kind": "listing", "fields": fields, **extra}) + "\n"
 
 
 PRESET = schema_document(
@@ -546,7 +546,7 @@ def test_schema_org_shapes_no_schema_document_defines_are_hosts(tmp_path: Path) 
     "document",
     [
         pytest.param(json.dumps({"schema_org": OFFER_NAME}), id="not-a-schema-document"),
-        pytest.param(json.dumps({"fields": {"a": {"schema_org": OFFER_NAME}}}), id="no-name-version-page-kind"),
+        pytest.param(json.dumps({"fields": {"a": {"schema_org": OFFER_NAME}}}), id="no-name-page-kind"),
         pytest.param(schema_document({}, schema_org=OFFER_NAME), id="outside-a-field"),
         pytest.param(schema_document({"a": {"description": {"schema_org": OFFER_NAME}}}), id="not-a-field-key"),
     ],

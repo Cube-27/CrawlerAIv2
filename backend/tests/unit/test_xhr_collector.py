@@ -19,7 +19,6 @@ SCHEMA = SchemaDef(
     origin="user",
     status="active",
     name="synthetic",
-    version=1,
     page_kind="detail",
     fields={"url": FieldSpec(type=FieldType.URL, description="d", schema_org="Product.url")},
 )

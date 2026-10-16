@@ -41,7 +41,6 @@ def _schema(page_kind: PageKind = "detail", **fields: FieldSpec) -> SchemaDef:
         origin="user",
         status="active",
         name="synthetic",
-        version=1,
         page_kind=page_kind,
         fields=fields,
     )

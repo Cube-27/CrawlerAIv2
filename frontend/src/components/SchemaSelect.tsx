@@ -1,13 +1,13 @@
 import { problemOf } from "../api/hooks/query";
 import { useSchemas } from "../api/hooks/schemas";
-import { schemaVersionLabel, type SchemaDef } from "../api/schemas";
+import type { SchemaDef } from "../api/schemas";
 import { isOptionOf, OptionSelect } from "./OptionSelect";
 import { ProblemAlert } from "./ProblemAlert";
 
 /** The option key for "no schema": schema ids are UUIDs, so it names none of them. */
 const NONE = "none";
 
-/** A choice of one stored schema version, by id; `onChange` also gets the chosen version. Required unless `noneLabel`
+/** A choice of one stored schema, by id; `onChange` also gets the chosen schema. Required unless `noneLabel`
  * names an option for no schema, which reports the id "". */
 export function SchemaSelect({
   label = "Schema",
@@ -29,7 +29,7 @@ export function SchemaSelect({
   const schemas = query.data ?? [];
   const options: Record<string, string> = {
     ...(noneLabel === undefined ? {} : { [NONE]: noneLabel }),
-    ...Object.fromEntries(schemas.map((schema) => [schema.id, schemaVersionLabel(schema)])),
+    ...Object.fromEntries(schemas.map((schema) => [schema.id, schema.name])),
   };
   const empty = noneLabel === undefined ? null : NONE;
   return (

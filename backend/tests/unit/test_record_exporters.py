@@ -15,7 +15,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 
 _TEXT = FieldSpec(type=FieldType.TEXT, description="d")
 # Declared out of name order: columns follow the names, not the declaration (or JSONB's storage order).
-SCHEMA = SchemaDocument(name="thing", version=1, page_kind="detail", fields={"title": _TEXT, "price": _TEXT})
+SCHEMA = SchemaDocument(name="thing", page_kind="detail", fields={"title": _TEXT, "price": _TEXT})
 
 
 def _meta(status: FieldStatus) -> FieldMeta:

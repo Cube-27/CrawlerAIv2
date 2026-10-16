@@ -1,6 +1,5 @@
-"""`/v1/schemas` (SPEC-07 §4.6): create, read, list, edit (a new version) and delete (retire), and a draft from field
-names (SPEC-14 §4.10). The rules are the schemas service's; this router translates HTTP to it and its errors to
-problems."""
+"""`/v1/schemas` (SPEC-07 §4.6): create, read, list, edit (in place) and delete (retire), and a draft from field names
+(SPEC-14 §4.10). The rules are the schemas service's; this router translates HTTP to it and its errors to problems."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -49,7 +48,7 @@ async def _transaction(request: Request) -> AsyncIterator[AsyncConnection]:
 
 @router.post("", status_code=201, responses={409: PROBLEM_RESPONSE})
 async def create_schema(body: NewSchema, request: Request, response: Response) -> SchemaDef:
-    """A `user` schema at version 1."""
+    """A new `user` schema."""
     async with _transaction(request) as conn:
         created = await schemas.create(conn, body)
     response.headers["Location"] = f"{router.prefix}/{created.id}"
@@ -79,7 +78,7 @@ async def list_schemas(
     name: Annotated[Name | None, Query()] = None,
     status: Annotated[SchemaStatus | None, Query()] = None,
 ) -> SchemaList:
-    """Every version of every schema; only those of `name` and in `status` when given."""
+    """Every schema, by name; only `name` and those in `status` when given."""
     async with _transaction(request) as conn:
         return SchemaList(items=await schemas.list_all(conn, name=name, status=status))
 
@@ -92,14 +91,14 @@ async def get_schema(schema_id: SchemaId, request: Request) -> SchemaDef:
 
 @router.put("/{schema_id}", responses=_CHANGES)
 async def update_schema(schema_id: SchemaId, body: SchemaContent, request: Request) -> SchemaDef:
-    """Adds the next version with `body` as its whole document and returns it. `schema_id` must be the latest
-    version, active and not a preset; otherwise 409."""
+    """Replaces the schema's document with `body`, in place, and returns it. Its active site configs are suspended
+    and its sites learn again. A retired schema or a preset is refused (409)."""
     async with _transaction(request) as conn:
         return await schemas.update(conn, schema_id, body)
 
 
 @router.delete("/{schema_id}", status_code=204, responses=_CHANGES)
 async def retire_schema(schema_id: SchemaId, request: Request) -> None:
-    """Retires this version. The row stays, since records and configs reference it; a preset is refused (409)."""
+    """Retires the schema. The row stays, since records and configs reference it; a preset is refused (409)."""
     async with _transaction(request) as conn:
         await schemas.retire(conn, schema_id)

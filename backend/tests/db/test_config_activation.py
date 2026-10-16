@@ -34,9 +34,9 @@ async def _key(conn: AsyncConnection) -> tuple[StateKey, str, str]:
     host = f"shop-{uuid.uuid4().hex[:12]}.example.test"
     site_id = (await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))).scalar_one()
     name = f"s_{uuid.uuid4().hex[:12]}"
-    values = {"name": name, "version": 1, "page_kind": "detail", "fields": FIELDS, "origin": "user", "status": "active"}
+    values = {"name": name, "page_kind": "detail", "fields": FIELDS, "origin": "user", "status": "active"}
     schema_id = (await conn.execute(insert(SchemaDef).values(**values).returning(SchemaDef.id))).scalar_one()
-    return StateKey(site_id=site_id, schema_id=schema_id, schema_version=1, page_kind="detail"), host, name
+    return StateKey(site_id=site_id, schema_id=schema_id, page_kind="detail"), host, name
 
 
 def _validated(host: str, name: str, *, pages: int = 3) -> Validated:
@@ -44,7 +44,7 @@ def _validated(host: str, name: str, *, pages: int = 3) -> Validated:
         {
             "ir_version": "1",
             "site": host,
-            "schema": {"name": name, "version": 1},
+            "schema": {"name": name},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "uncorroborated"}},
@@ -57,8 +57,7 @@ def _validated(host: str, name: str, *, pages: int = 3) -> Validated:
         }
     )
     schema = SchemaDefinition.model_validate(
-        {"id": uuid7(), "origin": "user", "status": "active", "name": name, "version": 1, "page_kind": "detail"}
-        | {"fields": FIELDS}
+        {"id": uuid7(), "origin": "user", "status": "active", "name": name, "page_kind": "detail"} | {"fields": FIELDS}
     )
     held_out = [
         HeldOutPage(CaptureId(uuid7()), ParsedPage(f"<h1>Item {n}</h1>"), CTX, Facts(published={"title": f"Item {n}"}))

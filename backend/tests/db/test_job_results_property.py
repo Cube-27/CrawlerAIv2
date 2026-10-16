@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.config_ir.exporters.records import RecordFormat
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Extraction, Job, JobId, Project, Record, SchemaDef, Site, UrlTask
+from crawlerai.recurring.record_fp import document_digest
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.records import FieldMeta
 from crawlerai.schemas import registry
@@ -82,7 +83,7 @@ async def _store(conn: AsyncConnection, schema: Schema, records: list[dict[str, 
         extraction_id = (await conn.execute(extraction.returning(Extraction.id))).scalar_one()
         field_meta = {name: meta.model_dump() for name, meta in _metas(data).items()}
         values = {"data": data, "field_meta": field_meta, "complete": False, "mode": "adhoc", "entity_key": url}
-        values |= {"schema_id": schema.id, "schema_version": schema.version}
+        values |= {"schema_id": schema.id, "schema_digest": document_digest(schema)}
         record = insert(Record).values(extraction_id=extraction_id, job_id=job_id, site_id=site_id, **values)
         await link_records(conn, task_id, [(await conn.execute(record.returning(Record.id))).scalar_one()])
     return job_id
@@ -174,7 +175,7 @@ async def _check(database_url: str, records: list[dict[str, JsonValue]]) -> None
     engine = create_async_engine(database_url)
     name = f"synthetic_{uuid.uuid4().hex[:12]}"
     text = FieldSpec(type=FieldType.TEXT, description="d")
-    document = SchemaDocument(name=name, version=1, page_kind="detail", fields=dict.fromkeys(FIELDS, text))
+    document = SchemaDocument(name=name, page_kind="detail", fields=dict.fromkeys(FIELDS, text))
     async with engine.begin() as conn:
         schema = await registry.create(conn, document, "user")
         job_id = await _store(conn, schema, records)

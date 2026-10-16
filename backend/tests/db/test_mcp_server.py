@@ -140,7 +140,7 @@ async def session(app_client: httpx.AsyncClient) -> AsyncIterator[ClientSession]
 @pytest.fixture
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
     document = SchemaDocument.model_validate(
-        {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+        {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     )
     async with engine.begin() as conn:
         return await registry.create(conn, document, "user")
@@ -240,7 +240,7 @@ async def test_a_created_schema_is_listed(session: ClientSession, schema_name: s
     created = await _call(session, "create_schema", schema=document)
     listed = await _call(session, "list_schemas", name=schema_name)
 
-    assert (created["name"], created["version"], created["origin"]) == (schema_name, 1, "user")
+    assert (created["name"], created["origin"]) == (schema_name, "user")
     assert listed["items"] == [created]
 
 

@@ -71,9 +71,8 @@ async def test_a_draft_is_stored_as_version_1_of_the_prompt_name(drafts: AsyncEn
         drafts, MeteredClient([provider], drafts), prompt=prompt, samples=["Spring fair, 2 May"], job_id=job_id
     )
 
-    assert (schema.name, schema.version, schema.origin, schema.status) == (
+    assert (schema.name, schema.origin, schema.status) == (
         draft_name(prompt),
-        1,
         "prompt_draft",
         "active",
     )

@@ -11,20 +11,9 @@ export type FieldType = components["schemas"]["FieldType"];
 export type FieldsDraft = components["schemas"]["FieldsDraft"];
 export type SchemaPageKind = SchemaDef["page_kind"];
 
-/** A schema version as people name it: "<name> version <n>". */
-export function schemaVersionLabel({ name, version }: Pick<SchemaDef, "name" | "version">): string {
-  return `${name} version ${String(version)}`;
-}
-
-/** Every version of every schema; with `name`, every version of that one. */
-export async function listSchemas(
-  client: ApiClient,
-  name?: string,
-): Promise<ApiResult<SchemaDef[]>> {
-  const result = await apiResult(
-    () => client.GET("/v1/schemas", { params: { query: name === undefined ? {} : { name } } }),
-    "Listing the schemas",
-  );
+/** Every schema, one per name. */
+export async function listSchemas(client: ApiClient): Promise<ApiResult<SchemaDef[]>> {
+  const result = await apiResult(() => client.GET("/v1/schemas"), "Listing the schemas");
   return result.kind === "done" ? { kind: "done", value: result.value.items } : result;
 }
 
@@ -35,12 +24,12 @@ export function getSchema(client: ApiClient, id: string): Promise<ApiResult<Sche
   );
 }
 
-/** Creates a `user` schema at version 1. */
+/** Creates a `user` schema. */
 export function createSchema(client: ApiClient, body: NewSchema): Promise<ApiResult<SchemaDef>> {
   return apiResult(() => client.POST("/v1/schemas", { body }), "Creating the schema");
 }
 
-/** Adds the version after `id`, with `body` as its whole document. */
+/** Replaces the document of schema `id` with `body`, in place; its site configs go back to learning. */
 export function updateSchema(
   client: ApiClient,
   id: string,
@@ -58,7 +47,7 @@ export function draftSchema(client: ApiClient, body: FieldsDraft): Promise<ApiRe
   return apiResult(() => client.POST("/v1/schemas/draft", { body }), "Drafting the schema");
 }
 
-/** Retires the version `id`; the row stays. */
+/** Retires the schema `id`; the row stays. */
 export function retireSchema(client: ApiClient, id: string): Promise<ApiResult<null>> {
   return apiDone(
     () => client.DELETE("/v1/schemas/{schema_id}", { params: { path: { schema_id: id } } }),

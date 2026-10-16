@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.http import fetch_http
@@ -136,7 +136,7 @@ async def env(database_url: str, tmp_path: Path, request: pytest.FixtureRequest)
             name: (
                 await conn.execute(
                     insert(SchemaDef)
-                    .values(name=name, version=1, page_kind=kind, fields={}, origin="user", status="active")
+                    .values(name=name, page_kind=kind, fields={}, origin="user", status="active")
                     .returning(SchemaDef.id)
                 )
             ).scalar_one()
@@ -312,27 +312,15 @@ async def test_an_unknown_schema_is_refused_before_any_fetch(env: Env, server: S
     assert server.requests == []
 
 
-async def test_the_newest_active_version_of_a_schema_is_used(env: Env, server: Server, engine: AsyncEngine) -> None:
+async def test_a_retired_schema_is_refused_before_any_fetch(env: Env, server: Server, engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
-        newer = (
-            await conn.execute(
-                insert(SchemaDef)
-                .values(name=SCHEMA, version=2, page_kind="detail", fields={}, origin="user", status="active")
-                .returning(SchemaDef.id)
-            )
-        ).scalar_one()
-        await conn.execute(
-            insert(SchemaDef).values(
-                name=SCHEMA, version=3, page_kind="detail", fields={}, origin="user", status="retired"
-            )
-        )
-    server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE)}
+        await conn.execute(update(SchemaDef).where(SchemaDef.name == SCHEMA).values(status="retired"))
+    requests, connector = _requests(server, "/p/1"), LoopbackConnector(server.port)
 
-    (outcome,) = await run_capture(env.settings, "dev", _requests(server, "/p/1"), None, LoopbackConnector(server.port))
+    with pytest.raises(EvalCliError, match=f"no active schema named {SCHEMA}"):
+        await run_capture(env.settings, "dev", requests, None, connector)
 
-    assert isinstance(outcome, Captured)
-    async with aclosing(get_store("dev", env.settings)) as store:
-        assert (await store.get_page(outcome.page_id)).schema_id == newer
+    assert server.requests == []
 
 
 async def _seed(env: Env, split: Split, host: str, fetch_result: Callable[..., FetchResult]) -> None:

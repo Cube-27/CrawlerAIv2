@@ -1,6 +1,5 @@
 {
   "name": "commerce_listing",
-  "version": 1,
   "page_kind": "listing",
   "fields": {
     "title": {

@@ -132,7 +132,7 @@ def fetching(web: Web, tmp_path: Path) -> Fetching:
 
 @pytest.fixture
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
@@ -352,7 +352,7 @@ def _calibration(precision: float) -> Calibration:
 
 
 @pytest.mark.usefixtures("site")
-async def test_a_job_runs_with_the_schema_version_and_engine_data_pinned_at_submit(
+async def test_a_job_runs_with_the_schema_and_engine_data_pinned_at_submit(
     engine: AsyncEngine,
     fetching: Fetching,
     web: Web,
@@ -365,32 +365,34 @@ async def test_a_job_runs_with_the_schema_version_and_engine_data_pinned_at_subm
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, _page("Blue kettle"))
     pinned = await submit_batch(engine, fetching.connector, _records([url], kettle_schema), data=before)
-    # Then a new schema version replaces the one the job named, and the engine's data changes.
+    # Then the schema the job named is edited in place, dropping `title`, and the engine's data changes.
     async with engine.begin() as conn:
-        changes = SchemaChanges.model_validate(
-            {"fields": {"title": {**TITLE, "description": "The box's name"}, "price": PRICE}}
+        edited = await registry.update_schema(
+            conn, kettle_schema, SchemaChanges.model_validate({"fields": {"price": PRICE}})
         )
-        newer = await registry.new_version(conn, kettle_schema.name, changes, "user")
-        await registry.retire(conn, kettle_schema.id)
-    later = await submit_batch(engine, fetching.connector, _records([url], newer), data=after)
+    later = await submit_batch(engine, fetching.connector, _records([url], edited), data=after)
 
     # Both run in a worker whose own data is the new one.
     await _run(engine, fetching, after, pinned.job_id, later.job_id)
 
     async with engine.connect() as conn:
         rows = await conn.execute(
-            select(Record.job_id, Record.schema_version, Record.data, Record.field_meta).where(
+            select(Record.job_id, Record.schema_id, Record.data, Record.field_meta).where(
                 Record.job_id.in_((pinned.job_id, later.job_id))
             )
         )
         by_job = {row.job_id: row for row in rows}
     old, new = by_job[pinned.job_id], by_job[later.job_id]
-    # The pinned job: version 1, a ranked title, the old calibration.
-    assert (old.schema_version, old.data["title"], old.field_meta["price"]["confidence"]) == (1, "Blue kettle", 0.99)
-    # The later job: version 2, the title unranked (no fitted order), the new calibration.
-    assert (new.schema_version, new.field_meta["title"]["status"], new.field_meta["price"]["confidence"]) == (
-        2,
-        "missing",
+    # The pinned job: the schema as submitted, with a ranked title, and the old calibration.
+    assert (old.schema_id, old.data["title"], old.field_meta["price"]["confidence"]) == (
+        kettle_schema.id,
+        "Blue kettle",
+        0.99,
+    )
+    # The later job: the edited schema, without a title, and the new calibration.
+    assert (new.schema_id, sorted(new.field_meta), new.field_meta["price"]["confidence"]) == (
+        kettle_schema.id,
+        ["price"],
         0.97,
     )
 

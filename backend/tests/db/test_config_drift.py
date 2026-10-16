@@ -41,7 +41,7 @@ NEW = "<html><body><h2 class='heading'>A lamp</h2></body></html>"
 IR: dict[str, Any] = {
     "ir_version": "1",
     "site": "shop.example.test",
-    "schema": {"name": "synthetic", "version": 1},
+    "schema": {"name": "synthetic"},
     "page_kind": "detail",
     "fetch": {"method": "http"},
     "fields": {
@@ -60,7 +60,6 @@ SCHEMA = Schema.model_validate(
         "origin": "user",
         "status": "active",
         "name": "synthetic",
-        "version": 1,
         "page_kind": "detail",
         "fields": {"title": FieldSpec(type=FieldType.TEXT, description="d")},
     }
@@ -71,11 +70,11 @@ async def _active_config(conn: AsyncConnection) -> tuple[StateKey, ExtractionCon
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     host = f"shop-{uuid.uuid4().hex[:12]}.example.test"
     site_id = (await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))).scalar_one()
-    values = {"name": f"s_{uuid.uuid4().hex[:12]}", "version": 1, "page_kind": "detail", "fields": {}}
+    values = {"name": f"s_{uuid.uuid4().hex[:12]}", "page_kind": "detail", "fields": {}}
     schema_id = (
         await conn.execute(insert(SchemaDef).values(**values, origin="user", status="active").returning(SchemaDef.id))
     ).scalar_one()
-    key = StateKey(site_id=site_id, schema_id=schema_id, schema_version=1, page_kind="detail")
+    key = StateKey(site_id=site_id, schema_id=schema_id, page_kind="detail")
     await request_learning(conn, key)
     config = {**key.columns(), "version": 1, "ir": IR, "origin": "induced", "status": "active"}
     config_id = (

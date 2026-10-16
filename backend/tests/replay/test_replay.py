@@ -51,7 +51,6 @@ SCHEMA = SchemaDef(
     origin="user",
     status="active",
     name="synthetic_detail",
-    version=1,
     page_kind="detail",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
@@ -413,7 +412,7 @@ def test_without_a_config_snapshot_the_page_replays_cold() -> None:
 IR: dict[str, JsonValue] = {
     "ir_version": "1",
     "site": "shop.example.com",
-    "schema": {"name": SCHEMA.name, "version": 1},
+    "schema": {"name": SCHEMA.name},
     "page_kind": "detail",
     "fetch": {"method": "http"},
     "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
@@ -609,7 +608,6 @@ LISTING = SchemaDef(
     origin="user",
     status="active",
     name="synthetic_listing",
-    version=1,
     page_kind="listing",
     fields={
         "title": SCHEMA.fields["title"],
@@ -760,7 +758,6 @@ OFFER_SCHEMA = SchemaDef(
     origin="user",
     status="active",
     name="synthetic_offer",
-    version=1,
     page_kind="detail",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),

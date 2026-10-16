@@ -127,7 +127,7 @@ describe("batch playground: the command bar", () => {
     await openPlayground("/batch");
     await typeUrls("https://shop.test/a\n https://shop.test/b ");
     await toggleFormats("Links");
-    await pick(/Schema/, "item_detail version 2");
+    await pick(/Schema/, "item_detail");
     const options = await openOptions();
     await userEvent.type(
       options.getByRole("textbox", { name: "Webhook URL" }),

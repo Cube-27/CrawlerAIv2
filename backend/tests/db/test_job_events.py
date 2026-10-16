@@ -37,6 +37,7 @@ from crawlerai.db.models import (
     WebhookDelivery,
 )
 from crawlerai.db.queue import cancel_task, claim_tasks, complete_task, fail_task
+from crawlerai.recurring.record_fp import document_digest
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 from crawlerai.services import events, jobs
@@ -99,7 +100,7 @@ async def _page(conn: AsyncConnection, job_id: JobId, *, stored: bool = True) ->
         extraction_ids.append((await conn.execute(extraction.returning(Extraction.id))).scalar_one())
     text = FieldSpec(type=FieldType.TEXT, description="d")
     fields = {"title": text, "price": text, "brand": text}
-    document = SchemaDocument(name=f"synthetic_{task.id.hex}", version=1, page_kind="detail", fields=fields)
+    document = SchemaDocument(name=f"synthetic_{task.id.hex}", page_kind="detail", fields=fields)
     schema = await registry.create(conn, document, "user")
     meta = {"title": {"status": "published"}, "price": {"status": "abstained"}, "brand": {"status": "abstained"}}
     record = {
@@ -107,7 +108,7 @@ async def _page(conn: AsyncConnection, job_id: JobId, *, stored: bool = True) ->
         "job_id": job_id,
         "site_id": site_id,
         "schema_id": schema.id,
-        "schema_version": schema.version,
+        "schema_digest": document_digest(schema),
         "entity_key": URL,
         "data": {"title": "Kettle"},
         "field_meta": meta,

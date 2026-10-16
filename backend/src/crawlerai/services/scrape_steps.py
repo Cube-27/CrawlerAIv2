@@ -212,7 +212,7 @@ async def named_schema(
 
 def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
     if schema.status == "retired":
-        raise SchemaUnusable(f"schema {schema.name} version {schema.version} is retired")
+        raise SchemaUnusable(f"schema {schema.name} is retired")
     if schema.page_kind != page_kind:
         raise SchemaUnusable(f"schema {schema.name} is for {schema.page_kind} pages, not {page_kind}")
 
@@ -318,7 +318,7 @@ def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "
 
 
 async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
-    """An extracted or partial page counts toward the progressive state of its site, schema version and page kind
+    """An extracted or partial page counts toward the progressive state of its site, schema and page kind
     (ARCHITECTURE §8.3; SPEC-08 reads it)."""
     state = ProgressiveState
     await conn.execute(
@@ -326,12 +326,11 @@ async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef)
         .values(
             site_id=site_id,
             schema_id=schema.id,
-            schema_version=schema.version,
             page_kind=schema.page_kind,
             pages_extracted=1,
         )
         .on_conflict_do_update(
-            index_elements=[state.site_id, state.schema_id, state.schema_version, state.page_kind],
+            index_elements=[state.site_id, state.schema_id, state.page_kind],
             set_={"pages_extracted": state.pages_extracted + 1},
         )
     )

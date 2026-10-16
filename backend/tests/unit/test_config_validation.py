@@ -35,7 +35,7 @@ TITLE = {"xpath": "normalize-space(//h1[@id='t'])"}
 
 
 def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
-    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic", "version": 1}
+    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic"}
     return SchemaDef.model_validate({**document, "page_kind": page_kind, "fields": fields or {"title": TEXT}})
 
 
@@ -46,7 +46,7 @@ def _ir(
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": "detail" if listing is None else "listing",
             "fetch": {"method": "http"},
             "fields": {name: {"steps": [step], "status": status} for name, step in fields.items()},

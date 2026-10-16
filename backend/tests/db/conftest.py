@@ -15,7 +15,7 @@ or, when several connections must see each other's work, commits through `engine
 import json
 import os
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime
 from ipaddress import ip_address
 from pathlib import Path
@@ -34,6 +34,7 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir.progressive import StateKey
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.keys import create_key
@@ -41,7 +42,9 @@ from crawlerai.db.models import (
     ApiKey,
     Candidate,
     Capture,
+    ConfigStatus,
     Extraction,
+    ExtractionConfig,
     Job,
     JobEvent,
     ProgressiveState,
@@ -147,14 +150,14 @@ async def own_origin(database_url: str) -> AsyncIterator[str]:
 
 
 async def _delete_schemas(engine: AsyncEngine, name: str) -> None:
-    """Every version of schema `name`, with the records and progressive state of it; jobs that named it keep a
-    NULL."""
+    """Schema `name` and those whose names start with it, with their records and progressive state; jobs that named
+    them keep a NULL."""
     async with engine.begin() as conn:
-        ids = select(SchemaDef.id).where(SchemaDef.name == name).scalar_subquery()
+        ids = select(SchemaDef.id).where(SchemaDef.name.startswith(name)).scalar_subquery()
         await conn.execute(update(Job).where(Job.schema_id.in_(ids)).values(schema_id=None))
         for model in (Record, ProgressiveState):
             await conn.execute(delete(model).where(model.schema_id.in_(ids)))
-        await conn.execute(delete(SchemaDef).where(SchemaDef.name == name))
+        await conn.execute(delete(SchemaDef).where(SchemaDef.name.startswith(name)))
 
 
 @pytest.fixture
@@ -167,7 +170,7 @@ async def prompt(engine: AsyncEngine) -> AsyncIterator[str]:
 
 @pytest.fixture
 async def schema_name(engine: AsyncEngine) -> AsyncIterator[str]:
-    """A schema name no other test uses; every version of it is deleted afterwards."""
+    """A schema name no other test uses, and a prefix for more; those schemas are deleted afterwards."""
     name = f"synthetic_{uuid.uuid4().hex[:12]}"
     yield name
     await _delete_schemas(engine, name)
@@ -229,6 +232,32 @@ async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
     return site_id
 
 
+async def learned_site(
+    conn: AsyncConnection, schema: schema_types.SchemaDef, statuses: Sequence[ConfigStatus]
+) -> StateKey:
+    """A new site with configs of `statuses` (versions 1, 2, ...) for `schema`, and its progressive state: `active` on
+    the last active config, else `cold`; 12 pages extracted, a run in flight and a retry pending."""
+    project = select(Project.id).where(Project.name == "default").scalar_subquery()
+    host = f"shop-{uuid.uuid4().hex[:12]}.example.test"
+    site_id = (await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))).scalar_one()
+    key = StateKey(site_id, schema.id, schema.page_kind)
+    rows = [
+        {**key.columns(), "version": n, "status": s, "ir": {}, "origin": "induced"} for n, s in enumerate(statuses, 1)
+    ]
+    ids = (await conn.execute(insert(ExtractionConfig).returning(ExtractionConfig.id), rows)).scalars().all()
+    active = [config_id for config_id, status in zip(ids, statuses, strict=True) if status == "active"]
+    state: dict[str, Any] = {"mode": "active", "active_config_id": active[-1]} if active else {"mode": "cold"}
+    values = {
+        **key.columns(),
+        **state,
+        "pages_extracted": 12,
+        "learning_started_at": datetime.now(UTC),
+        "retry_at_pages": 20,
+    }
+    await conn.execute(insert(ProgressiveState).values(values))
+    return key
+
+
 @pytest.fixture
 def heading_config() -> Callable[[SiteId, schema_types.SchemaDef, int], dict[str, Any]]:
     """A factory for an active `extraction_config` row of a detail schema, version `version`, whose one field, the
@@ -238,7 +267,7 @@ def heading_config() -> Callable[[SiteId, schema_types.SchemaDef, int], dict[str
         ir = {
             "ir_version": "1",
             "site": "unused.example.test",
-            "schema": {"name": schema.name, "version": schema.version},
+            "schema": {"name": schema.name},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
@@ -252,7 +281,6 @@ def heading_config() -> Callable[[SiteId, schema_types.SchemaDef, int], dict[str
         return {
             "site_id": site_id,
             "schema_id": schema.id,
-            "schema_version": schema.version,
             "page_kind": "detail",
             "version": version,
             "status": "active",

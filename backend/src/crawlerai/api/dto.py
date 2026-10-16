@@ -48,7 +48,7 @@ class Health(Model):
 
 
 class SchemaList(Model):
-    items: list[SchemaDef]  # by name, then version
+    items: list[SchemaDef]  # by name
 
 
 class ReplayRequest(Model):
@@ -61,7 +61,7 @@ class ReplayResult(Model):
 
 
 class ConfigList(Model):
-    items: list[ConfigSummary]  # by schema version, page kind, then version
+    items: list[ConfigSummary]  # by schema, page kind, then version
 
 
 class LearnStarted(Model):

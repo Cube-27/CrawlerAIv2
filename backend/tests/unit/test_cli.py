@@ -187,14 +187,14 @@ def test_data_fetch_reports_each_fetched_entry(
 
     def fetch_data(directory: Path) -> DataReport:
         calls.append(directory)
-        return DataReport(written=["present geonames/countryInfo.txt", "fetched geonames/cities15000.zip"], refused=[])
+        return DataReport(written=["present schemaorg/vocabulary.jsonld", "fetched publicsuffix/list.dat"], refused=[])
 
     monkeypatch.setattr(cli, "fetch_data", fetch_data)
 
     main(["data", "fetch"])
 
     assert calls == [tmp_path]
-    assert capsys.readouterr().out == "present geonames/countryInfo.txt\nfetched geonames/cities15000.zip\n"
+    assert capsys.readouterr().out == "present schemaorg/vocabulary.jsonld\nfetched publicsuffix/list.dat\n"
 
 
 def test_data_fetch_reports_every_entry_then_exits_2_on_a_refused_one(
@@ -202,8 +202,8 @@ def test_data_fetch_reports_every_entry_then_exits_2_on_a_refused_one(
 ) -> None:
     monkeypatch.setattr(cli, "_data_dir", lambda: tmp_path)
     report = DataReport(
-        written=["fetched geonames/countryInfo.txt"],
-        refused=["geonames/cities15000.zip: sha256 0 does not match the manifest", "other.txt: download failed: x"],
+        written=["fetched schemaorg/vocabulary.jsonld"],
+        refused=["publicsuffix/list.dat: sha256 0 does not match the manifest", "other.txt: download failed: x"],
     )
     monkeypatch.setattr(cli, "fetch_data", lambda _directory: report)
 
@@ -212,8 +212,8 @@ def test_data_fetch_reports_every_entry_then_exits_2_on_a_refused_one(
 
     assert exit_info.value.code == 2
     assert capsys.readouterr() == (
-        "fetched geonames/countryInfo.txt\n",
-        "crawlerai data fetch: geonames/cities15000.zip: sha256 0 does not match the manifest\n"
+        "fetched schemaorg/vocabulary.jsonld\n",
+        "crawlerai data fetch: publicsuffix/list.dat: sha256 0 does not match the manifest\n"
         "crawlerai data fetch: other.txt: download failed: x\n",
     )
 

@@ -286,7 +286,7 @@ def _induced(run: _Run, induction: Induction) -> ExtractionConfigIR:
     return ExtractionConfigIR(
         ir_version="1",
         site=run.host,
-        schema_=SchemaRef(name=run.schema.name, version=run.schema.version),
+        schema_=SchemaRef(name=run.schema.name),
         page_kind=run.schema.page_kind,
         fetch=Fetch(method=run.fetch),
         fields=induction.fields,

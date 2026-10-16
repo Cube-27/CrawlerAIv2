@@ -99,7 +99,7 @@ describe("crawl playground", () => {
     const calls = crawlApi();
     await openPlayground("/crawl");
     await typeUrl("https://shop.test/");
-    await pick(/Schema/, "item_detail version 2");
+    await pick(/Schema/, "item_detail");
     const options = await openOptions();
     await userEvent.click(options.getByRole("button", { name: "Add rule" }));
     await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
@@ -122,7 +122,7 @@ describe("crawl playground", () => {
     const calls = crawlApi();
     await openPlayground("/crawl");
     await typeUrl("https://shop.test/");
-    await pick(/Schema/, "item_detail version 2");
+    await pick(/Schema/, "item_detail");
 
     await start();
 

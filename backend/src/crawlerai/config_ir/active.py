@@ -26,10 +26,10 @@ from crawlerai.schemas.types import SchemaDef
 async def active_config(
     conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, vocabulary: Vocabulary
 ) -> ActiveConfig | None:
-    """The active config of `site_id` for `schema`'s version and page kind, bound to its executor; None in cold mode."""
+    """The active config of `site_id` for `schema` and its page kind, bound to its executor; None in cold mode."""
     configs = ExtractionConfig
-    key = StateKey(site_id, schema.id, schema.version, schema.page_kind)
-    active = (*key.config_scope(), configs.schema_version == schema.version, configs.status == "active")
+    key = StateKey(site_id, schema.id, schema.page_kind)
+    active = (*key.config_scope(), configs.status == "active")
     row = (await conn.execute(select(configs.id, configs.version, configs.ir).where(*active))).one_or_none()
     if row is None:
         return None

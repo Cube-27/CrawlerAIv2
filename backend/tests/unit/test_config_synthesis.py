@@ -36,7 +36,7 @@ WRONG = {"xpath": "normalize-space(//h2)"}
 
 
 def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
-    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic", "version": 1}
+    document = {"id": SchemaId(uuid7()), "origin": "user", "status": "active", "name": "synthetic"}
     return SchemaDef.model_validate({**document, "page_kind": page_kind, "fields": fields or {"title": TEXT}})
 
 
@@ -45,7 +45,7 @@ def _ir(page_kind: str = "detail", fields: dict[str, Any] | None = None) -> Extr
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": page_kind,
             "fetch": {"method": "http"},
             "fields": fields or {},

@@ -51,9 +51,7 @@ DETAIL_RECIPE = ApiRecipe(
 
 
 def _schema(page_kind: PageKind, **fields: FieldSpec) -> SchemaDef:
-    return SchemaDef(
-        id=SchemaId(uuid7()), origin="user", status="active", name="s", version=1, page_kind=page_kind, fields=fields
-    )
+    return SchemaDef(id=SchemaId(uuid7()), origin="user", status="active", name="s", page_kind=page_kind, fields=fields)
 
 
 DETAIL = _schema(

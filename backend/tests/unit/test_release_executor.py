@@ -26,7 +26,7 @@ def _ir(fields: dict[str, Any], listing: dict[str, Any] | None = None) -> Extrac
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": "detail" if listing is None else "listing",
             "fetch": {"method": "http"},
             "fields": {

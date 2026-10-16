@@ -78,7 +78,6 @@ def _schema(groups: list[list[str]] | None = None) -> SchemaDef:
         origin="user",
         status="active",
         name="s",
-        version=1,
         page_kind="detail",
         required_groups=groups or [],
         fields={"sku": spec(required=True), "gtin": spec(), "mpn": spec()},
@@ -224,7 +223,6 @@ def _listing_schema() -> SchemaDef:
         origin="user",
         status="active",
         name="l",
-        version=1,
         page_kind="listing",
         fields={
             "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),

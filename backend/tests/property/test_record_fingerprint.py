@@ -16,7 +16,6 @@ _TEXT = FieldSpec(type=FieldType.TEXT, description="d")
 _REQUIRED = FieldSpec(type=FieldType.TEXT, description="d", required=True)
 SCHEMA = SchemaDocument(
     name="synthetic_product",
-    version=1,
     page_kind="detail",
     required_groups=[["sku", "gtin"]],
     fields={"title": _REQUIRED, "price": _REQUIRED, "sku": _TEXT, "gtin": _TEXT, "colour": _TEXT, "notes": _TEXT},

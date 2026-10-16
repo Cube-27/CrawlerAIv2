@@ -1,5 +1,5 @@
 """Role S's request and names (SPEC-06 §4.5): one name per prompt, a deterministic request, and an output schema that
-accepts a schema document without its name and version."""
+accepts a schema document without its name."""
 
 import json
 import re
@@ -108,12 +108,11 @@ def test_an_empty_prompt_is_refused() -> None:
         draft_request(" \n ", ["text"], JOB)
 
 
-def test_the_output_schema_accepts_a_document_without_name_and_version() -> None:
+def test_the_output_schema_accepts_a_document_without_a_name() -> None:
     validator = Draft202012Validator(output_schema())
 
     assert list(validator.iter_errors(to_wire(DRAFT))) == []
     assert not validator.is_valid({**to_wire(DRAFT), "name": "chosen_by_the_model"})
-    assert not validator.is_valid({**to_wire(DRAFT), "version": 2})
 
 
 def test_the_wire_form_has_no_recursion_and_unrolls_nesting_to_the_depth_limit() -> None:

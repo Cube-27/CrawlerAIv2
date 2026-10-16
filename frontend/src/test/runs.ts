@@ -15,7 +15,6 @@ export function schemaList(): Response {
       {
         id: SCHEMA_ID,
         name: "item_detail",
-        version: 2,
         origin: "user",
         status: "active",
         page_kind: "detail",

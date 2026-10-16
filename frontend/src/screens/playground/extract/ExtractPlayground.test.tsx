@@ -34,7 +34,7 @@ describe("extract playground", () => {
     const calls = extractApi();
     await openPlayground("/extract");
     await fill(screen.getByRole("textbox", { name: "URL" }), "shop.test/items/1");
-    await pick(/Schema$/, "item_detail version 2");
+    await pick(/Schema$/, "item_detail");
     const options = await openOptions();
     await fill(
       options.getByRole("textbox", { name: "More URLs or globs" }),

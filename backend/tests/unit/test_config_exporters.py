@@ -23,7 +23,6 @@ SCHEMA = SchemaDef.model_validate(
         "origin": "user",
         "status": "active",
         "name": "synthetic",
-        "version": 2,
         "page_kind": "listing",
         "fields": {
             "heading": {"type": "text", "description": "d", "scope": "page"},
@@ -38,7 +37,7 @@ IR = ExtractionConfigIR.model_validate(
     {
         "ir_version": "1",
         "site": "catalog.example.test",
-        "schema": {"name": "synthetic", "version": 2},
+        "schema": {"name": "synthetic"},
         "page_kind": "listing",
         "fetch": {"method": "browser"},
         "fields": {
@@ -95,7 +94,7 @@ def test_platform_draft_carries_every_step_in_order_as_xpath_regex_or_jsonpath()
         "regex_flags": "u",
         "ir_version": "1",
         "site": "catalog.example.test",
-        "schema": {"name": "synthetic", "version": 2},
+        "schema": {"name": "synthetic"},
         "page_kind": "listing",
         "fetch": {"method": "browser"},
         "fields": {

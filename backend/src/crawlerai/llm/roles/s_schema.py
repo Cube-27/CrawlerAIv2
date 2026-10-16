@@ -1,12 +1,12 @@
 """Role S: a draft schema from a prompt (SPEC-06 §4.5, ARCHITECTURE §5.4, §11).
 
 The model reads the caller's prompt, the cleaned text of one to three sample pages, the field types and the presets as
-examples, and replies with a schema document without its name and version, in the wire form every provider's
+examples, and replies with a schema document without its name, in the wire form every provider's
 structured output accepts (`s_wire`). The client checks the reply against the wire form's JSON Schema and then,
 through the role's reply check, read back as a `SchemaDocument`, whose rules (every field described, nesting, required
 groups) JSON Schema does not express; either failure takes the client's one retry.
 
-The draft is stored as `draft_<sha256(prompt)[:12]>` version 1 with `origin='prompt_draft'`, and the same prompt
+The draft is stored as `draft_<sha256(prompt)[:12]>` with `origin='prompt_draft'`, and the same prompt
 (after whitespace normalization) returns the stored row without a call: one prompt gives one stable schema (§5.4).
 The schema is data: it is validated, stored and interpreted, never executed (§18).
 
@@ -55,7 +55,7 @@ TYPE_DEFINITIONS: Final[dict[FieldType, str]] = {
     FieldType.IDENTIFIER: "an identifier of a `scheme`: gtin, isbn, mpn, sku or custom",
     FieldType.DATE: "an ISO 8601 date",
     FieldType.DATETIME: "an ISO 8601 date and time",
-    FieldType.LOCATION: "a place: locality, region, ISO 3166 country, and whether it is remote",
+    FieldType.LOCATION: "a place as the page states it: text, locality, region, ISO 3166 country code, and if remote",
     FieldType.RANGE: "a minimum and maximum with a currency or unit and a period, such as a salary",
     FieldType.COUNT: "a whole number of items, zero or more, such as a stock quantity",
     FieldType.NUMBER: "a decimal number as the page states it, such as a rating value",
@@ -77,16 +77,16 @@ def draft_name(prompt: str) -> str:
 
 @cache
 def output_schema() -> dict[str, JsonValue]:
-    """A schema document without `name` and `version`, which are ours to set, in the wire form (`s_wire`)."""
+    """A schema document without `name`, which is ours to set, in the wire form (`s_wire`)."""
     return wire_schema()
 
 
 @cache
 def _examples() -> str:
-    """The field types, one line each, and the presets as documents without name and version (fixed per process)."""
+    """The field types, one line each, and the presets as documents without their name (fixed per process)."""
     types = "\n".join(f"- {kind.value}: {definition}" for kind, definition in TYPE_DEFINITIONS.items())
     presets = "\n".join(
-        json.dumps(to_wire(p.model_dump(mode="json", exclude={"name", "version"}, exclude_none=True)))
+        json.dumps(to_wire(p.model_dump(mode="json", exclude={"name"}, exclude_none=True)))
         for p in registry.load_presets()
     )
     return f"Field types:\n{types}\n\nExample schemas (presets):\n{presets}"
@@ -182,19 +182,16 @@ async def _drafted(
     except SchemaExists:
         # Another request drafted the same prompt meanwhile; its row is the one schema for this prompt.
         async with engine.connect() as conn:
-            return await registry.get(conn, name, 1)
+            return await registry.get(conn, name)
 
 
 async def _stored(engine: AsyncEngine, name: str) -> SchemaDef | None:
     async with engine.connect() as conn:
-        try:
-            return await registry.get(conn, name, 1)
-        except SchemaNotFound:
-            return None
+        return await registry.find(conn, name)
 
 
 def _document(data: dict[str, JsonValue], name: str) -> SchemaDocument:
-    return SchemaDocument.model_validate({**from_wire(data), "name": name, "version": 1})
+    return SchemaDocument.model_validate({**from_wire(data), "name": name})
 
 
 def _parsed(data: dict[str, JsonValue], name: str) -> SchemaDocument | str:

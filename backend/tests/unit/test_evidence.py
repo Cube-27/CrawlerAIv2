@@ -226,7 +226,6 @@ def _schema() -> SchemaDef:
         origin="user",
         status="active",
         name="s",
-        version=1,
         page_kind="detail",
         required_groups=[["gtin", "mpn"]],
         fields={"sku": spec(required=True), "gtin": spec(), "mpn": spec(), "note": spec()},

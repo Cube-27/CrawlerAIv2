@@ -8,7 +8,12 @@ export function PageHeader({
   description,
   children,
   actions,
-}: Readonly<{ title: string; description?: string; children?: ReactNode; actions?: ReactNode }>) {
+}: Readonly<{
+  title: string;
+  description?: string | undefined;
+  children?: ReactNode;
+  actions?: ReactNode;
+}>) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 flex-col gap-1">

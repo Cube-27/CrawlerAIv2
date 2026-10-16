@@ -448,13 +448,13 @@ export interface paths {
         };
         /**
          * List Schemas
-         * @description Every version of every schema; only those of `name` and in `status` when given.
+         * @description Every schema, by name; only `name` and those in `status` when given.
          */
         get: operations["list_schemas_v1_schemas_get"];
         put?: never;
         /**
          * Create Schema
-         * @description A `user` schema at version 1.
+         * @description A new `user` schema.
          */
         post: operations["create_schema_v1_schemas_post"];
         delete?: never;
@@ -497,14 +497,14 @@ export interface paths {
         get: operations["get_schema_v1_schemas__schema_id__get"];
         /**
          * Update Schema
-         * @description Adds the next version with `body` as its whole document and returns it. `schema_id` must be the latest
-         *     version, active and not a preset; otherwise 409.
+         * @description Replaces the schema's document with `body`, in place, and returns it. Its active site configs are suspended
+         *     and its sites learn again. A retired schema or a preset is refused (409).
          */
         put: operations["update_schema_v1_schemas__schema_id__put"];
         post?: never;
         /**
          * Retire Schema
-         * @description Retires this version. The row stays, since records and configs reference it; a preset is refused (409).
+         * @description Retires the schema. The row stays, since records and configs reference it; a preset is refused (409).
          */
         delete: operations["retire_schema_v1_schemas__schema_id__delete"];
         options?: never;
@@ -844,8 +844,6 @@ export interface components {
              * Format: uuid
              */
             schema_id: string;
-            /** Schema Version */
-            schema_version: number;
             /** Site */
             site: string;
             /**
@@ -878,7 +876,7 @@ export interface components {
         };
         /**
          * ConfigSummary
-         * @description One version of a site's config for one schema version and page kind, without its IR.
+         * @description One version of a site's config for one schema and page kind, without its IR.
          */
         ConfigSummary: {
             /** Field Status */
@@ -905,8 +903,6 @@ export interface components {
              * Format: uuid
              */
             schema_id: string;
-            /** Schema Version */
-            schema_version: number;
             /** Site */
             site: string;
             /**
@@ -1713,7 +1709,7 @@ export interface components {
         };
         /**
          * LearnRequest
-         * @description `schema_id` names the schema version, and so the page kind, to learn for; `force` re-learns an active one.
+         * @description `schema_id` names the schema, and so the page kind, to learn for; `force` re-learns an active one.
          */
         LearnRequest: {
             /**
@@ -2369,7 +2365,7 @@ export interface components {
         };
         /**
          * SchemaContent
-         * @description A schema document as a caller writes it, without the name and version the registry assigns.
+         * @description A schema document as a caller writes it, without its name.
          */
         SchemaContent: {
             /** Fields */
@@ -2389,8 +2385,8 @@ export interface components {
         };
         /**
          * SchemaDef
-         * @description A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. Rows are
-         *     immutable per (name, version); a change is a new version.
+         * @description A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
+         *     name, edited in place.
          */
         SchemaDef: {
             /** Fields */
@@ -2424,8 +2420,6 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "retired";
-            /** Version */
-            version: number;
         };
         /**
          * SchemaFields
@@ -2453,8 +2447,6 @@ export interface components {
         SchemaRef: {
             /** Name */
             name: string;
-            /** Version */
-            version: number;
         };
         /**
          * ScrapeRequest

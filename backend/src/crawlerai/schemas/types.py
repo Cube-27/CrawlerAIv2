@@ -133,7 +133,7 @@ _PARAMETER_OWNER = {
 
 
 class SchemaContent(_Model):
-    """A schema document as a caller writes it, without the name and version the registry assigns."""
+    """A schema document as a caller writes it, without its name."""
 
     page_kind: PageKind
     required_groups: list[list[Name]] = []
@@ -149,7 +149,6 @@ class SchemaDocument(SchemaContent):
     """
 
     name: Name
-    version: int = Field(ge=1)
 
     @model_validator(mode="after")
     def _rules(self) -> Self:
@@ -177,8 +176,8 @@ def _check_field(path: str, spec: FieldSpec, *, depth: int, described: bool) -> 
 
 
 class SchemaDef(SchemaDocument):
-    """A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. Rows are
-    immutable per (name, version); a change is a new version."""
+    """A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
+    name, edited in place."""
 
     id: SchemaId
     origin: SchemaOrigin
@@ -186,7 +185,7 @@ class SchemaDef(SchemaDocument):
 
 
 class SchemaChanges(_Model):
-    """What the registry's `new_version` changes; anything left `None` is carried over from the latest version."""
+    """What the registry's `update_schema` changes; anything left `None` is kept as stored."""
 
     page_kind: PageKind | None = None
     fields: dict[Name, FieldSpec] | None = None

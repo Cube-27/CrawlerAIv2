@@ -76,7 +76,7 @@ StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` 
 def _document(name: str) -> SchemaDocument:
     title = FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name")
     price = FieldSpec(type=FieldType.MONEY, description="d", required=True, schema_org="Offer.price+priceCurrency")
-    return SchemaDocument(name=name, version=1, page_kind="detail", fields={"title": title, "price": price})
+    return SchemaDocument(name=name, page_kind="detail", fields={"title": title, "price": price})
 
 
 def _page(n: int) -> bytes:
@@ -185,7 +185,7 @@ class LearnSite:
 
     @property
     def key(self) -> StateKey:
-        return StateKey(self.site_id, self.schema.id, self.schema.version, "detail")
+        return StateKey(self.site_id, self.schema.id, "detail")
 
     async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False) -> Stored:
         """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one; with
@@ -474,7 +474,7 @@ async def _operator_config(conn: AsyncConnection, site: LearnSite) -> Extraction
     ir = {
         "ir_version": "1",
         "site": site.origin.removeprefix("https://"),
-        "schema": {"name": site.schema.name, "version": 1},
+        "schema": {"name": site.schema.name},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"price": {"steps": [PRICE_STEP], "status": "operator"}},
@@ -571,8 +571,8 @@ async def test_a_learn_job_that_cannot_start_fails_and_is_not_picked_again(site:
     await site.pages(3)
     await _forced(site)
     async with site.engine.begin() as conn:
-        # A request naming a schema version the state does not have: `_start` cannot read its state.
-        request = Job.request.op("||")(func.jsonb_build_object("schema_version", 99))
+        # A request naming a page kind the state does not have: `_start` cannot read its state.
+        request = Job.request.op("||")(func.jsonb_build_object("page_kind", "listing"))
         await conn.execute(update(Job).where(Job.kind == "learn").values(request=request))
 
     job_id, learned = await site.learn(RoleA())
@@ -679,7 +679,7 @@ async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: LearnSi
         assert job_id is not None
         started = func.now() - LEARN_RUN_TIMEOUT - timedelta(minutes=1)
         await conn.execute(update(Job).where(Job.id == job_id).values(status="running", started_at=started))
-        recent = await request_learning(conn, StateKey(site.site_id, site.schema.id, 1, "listing"), force=True)
+        recent = await request_learning(conn, StateKey(site.site_id, site.schema.id, "listing"), force=True)
         await conn.execute(update(Job).where(Job.id == recent).values(status="running", started_at=func.now()))
 
     async with site.engine.begin() as conn:

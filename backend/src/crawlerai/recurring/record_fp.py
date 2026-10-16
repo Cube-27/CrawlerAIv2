@@ -14,7 +14,7 @@ from pydantic import JsonValue
 from crawlerai.schemas.types import SchemaDocument
 from crawlerai.storage.capture_bundle import sha256_hex
 
-__all__ = ["changed_fields", "record_fingerprint"]
+__all__ = ["changed_fields", "document_digest", "record_fingerprint"]
 
 
 def record_fingerprint(record_data: Mapping[str, JsonValue], schema: SchemaDocument) -> str:
@@ -23,6 +23,13 @@ def record_fingerprint(record_data: Mapping[str, JsonValue], schema: SchemaDocum
     left out, so it differs from one that published `null`."""
     keyed = {name: record_data[name] for name in _fingerprinted(schema) if name in record_data}
     return sha256_hex(_canonical(keyed).encode())
+
+
+def document_digest(schema: SchemaDocument) -> str:
+    """`sha256(canonical_json(...))`, hex, over the schema's document (ARCHITECTURE §5.2): what a record was extracted
+    with. A schema is edited in place, so equal digests are the same document."""
+    document = schema.model_dump(mode="json", include=set(SchemaDocument.model_fields), exclude_none=True)
+    return sha256_hex(_canonical(document).encode())
 
 
 def changed_fields(

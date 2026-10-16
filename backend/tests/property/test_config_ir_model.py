@@ -85,7 +85,7 @@ _ir = st.builds(
     lambda fields, listing, origin, kind, method, recipe: {
         "ir_version": "1",
         "site": "shop.example.com",
-        "schema": {"name": "commerce_detail", "version": 2},
+        "schema": {"name": "commerce_detail"},
         "page_kind": kind,
         "fetch": {"method": method},
         "fields": fields,
@@ -140,7 +140,7 @@ def test_ir_refuses_a_recipe_the_recipe_model_refuses(recipe: dict[str, Any]) ->
     document = {
         "ir_version": "1",
         "site": "shop.example.test",
-        "schema": {"name": "commerce_detail", "version": 1},
+        "schema": {"name": "commerce_detail"},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {},
@@ -161,7 +161,7 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
         {
             "ir_version": "1",
             "site": "example.com",
-            "schema": {"name": "commerce_detail", "version": 1},
+            "schema": {"name": "commerce_detail"},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {
@@ -180,7 +180,7 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
         }
     )
     dumped = ir.model_dump(mode="json")
-    assert dumped["schema"] == {"name": "commerce_detail", "version": 1}
+    assert dumped["schema"] == {"name": "commerce_detail"}
     assert dumped["fields"]["price"] == {
         "steps": [
             {
@@ -350,7 +350,7 @@ def test_malformed_fields_are_refused(fields: dict[str, Any]) -> None:
     document = {
         "ir_version": "1",
         "site": "example.com",
-        "schema": {"name": "s", "version": 1},
+        "schema": {"name": "s"},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": fields,

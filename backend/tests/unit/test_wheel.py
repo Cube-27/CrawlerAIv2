@@ -43,7 +43,7 @@ def _project(root: Path) -> Path:
     (data / "calibration.json").write_bytes(CALIBRATION)
     (data / "drift_margins.json").write_text('{"source_split": "dev"}')
     (data / "stray.txt").write_text("not in the manifest\n")
-    entries = [{"path": "listed/words.txt"}, {"path": "fetched/big.zip", "fetched": True}]
+    entries = [{"path": "listed/words.txt"}, {"path": "fetched/big.txt", "fetched": True}]
     (data / "manifest.json").write_text(json.dumps({"entries": entries}))
     return root
 

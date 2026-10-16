@@ -92,7 +92,7 @@ class World:
         ir = {
             "ir_version": "1",
             "site": self.origin.removeprefix("https://"),
-            "schema": {"name": self.schema.name, "version": self.schema.version},
+            "schema": {"name": self.schema.name},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {name: {"steps": [step], "status": "uncorroborated"} for name, step in fields.items()},
@@ -106,7 +106,6 @@ class World:
         row = {
             "site_id": self.site_id,
             "schema_id": self.schema.id,
-            "schema_version": self.schema.version,
             "page_kind": "detail",
             "version": 1,
             "status": "active",
@@ -131,7 +130,6 @@ async def world(
 ) -> AsyncIterator[World]:
     document = SchemaDocument(
         name=schema_name,
-        version=1,
         page_kind="detail",
         fields={"title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name")},
     )

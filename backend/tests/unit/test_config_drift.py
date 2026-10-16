@@ -46,7 +46,7 @@ def _ir(
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic", "version": 1},
+            "schema": {"name": "synthetic"},
             "page_kind": page_kind,
             "fetch": {"method": "http"},
             "fields": fields,
@@ -72,7 +72,6 @@ def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
             "origin": "user",
             "status": "active",
             "name": "synthetic",
-            "version": 1,
             "page_kind": page_kind,
             "fields": fields,
         }

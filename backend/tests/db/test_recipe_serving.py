@@ -108,7 +108,7 @@ def fetching(web: Web, tmp_path: Path) -> Fetching:
 
 @pytest.fixture
 async def lamp_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "version": 1, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
     async with engine.begin() as conn:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
@@ -118,7 +118,7 @@ def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
     return {
         "ir_version": "1",
         "site": origin.removeprefix("https://"),
-        "schema": {"name": schema.name, "version": schema.version},
+        "schema": {"name": schema.name},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
@@ -146,7 +146,6 @@ async def recipe_config(
     values = {
         "site_id": site,
         "schema_id": lamp_schema.id,
-        "schema_version": lamp_schema.version,
         "page_kind": "detail",
         "version": 1,
         "status": "active",

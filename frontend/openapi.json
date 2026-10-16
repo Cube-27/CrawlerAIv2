@@ -547,10 +547,6 @@
             "title": "Schema Id",
             "type": "string"
           },
-          "schema_version": {
-            "title": "Schema Version",
-            "type": "integer"
-          },
           "site": {
             "title": "Site",
             "type": "string"
@@ -583,7 +579,6 @@
           "id",
           "site",
           "schema_id",
-          "schema_version",
           "page_kind",
           "version",
           "status",
@@ -649,7 +644,7 @@
       },
       "ConfigSummary": {
         "additionalProperties": false,
-        "description": "One version of a site's config for one schema version and page kind, without its IR.",
+        "description": "One version of a site's config for one schema and page kind, without its IR.",
         "properties": {
           "field_status": {
             "additionalProperties": {
@@ -692,10 +687,6 @@
             "title": "Schema Id",
             "type": "string"
           },
-          "schema_version": {
-            "title": "Schema Version",
-            "type": "integer"
-          },
           "site": {
             "title": "Site",
             "type": "string"
@@ -728,7 +719,6 @@
           "id",
           "site",
           "schema_id",
-          "schema_version",
           "page_kind",
           "version",
           "status",
@@ -2896,7 +2886,7 @@
       },
       "LearnRequest": {
         "additionalProperties": false,
-        "description": "`schema_id` names the schema version, and so the page kind, to learn for; `force` re-learns an active one.",
+        "description": "`schema_id` names the schema, and so the page kind, to learn for; `force` re-learns an active one.",
         "properties": {
           "force": {
             "default": false,
@@ -4649,7 +4639,7 @@
       },
       "SchemaContent": {
         "additionalProperties": false,
-        "description": "A schema document as a caller writes it, without the name and version the registry assigns.",
+        "description": "A schema document as a caller writes it, without its name.",
         "properties": {
           "fields": {
             "minProperties": 1,
@@ -4691,7 +4681,7 @@
       },
       "SchemaDef": {
         "additionalProperties": false,
-        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. Rows are\nimmutable per (name, version); a change is a new version.",
+        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. One row per\nname, edited in place.",
         "properties": {
           "fields": {
             "minProperties": 1,
@@ -4749,18 +4739,12 @@
             ],
             "title": "Status",
             "type": "string"
-          },
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
           "page_kind",
           "fields",
           "name",
-          "version",
           "id",
           "origin",
           "status"
@@ -4840,16 +4824,10 @@
             "pattern": "^[a-z][a-z0-9_]{0,63}$",
             "title": "Name",
             "type": "string"
-          },
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
-          "name",
-          "version"
+          "name"
         ],
         "title": "SchemaRef",
         "type": "object"
@@ -8340,7 +8318,7 @@
     },
     "/v1/schemas": {
       "get": {
-        "description": "Every version of every schema; only those of `name` and in `status` when given.",
+        "description": "Every schema, by name; only `name` and those in `status` when given.",
         "operationId": "list_schemas_v1_schemas_get",
         "parameters": [
           {
@@ -8449,7 +8427,7 @@
         ]
       },
       "post": {
-        "description": "A `user` schema at version 1.",
+        "description": "A new `user` schema.",
         "operationId": "create_schema_v1_schemas_post",
         "requestBody": {
           "content": {
@@ -8658,7 +8636,7 @@
     },
     "/v1/schemas/{schema_id}": {
       "delete": {
-        "description": "Retires this version. The row stays, since records and configs reference it; a preset is refused (409).",
+        "description": "Retires the schema. The row stays, since records and configs reference it; a preset is refused (409).",
         "operationId": "retire_schema_v1_schemas__schema_id__delete",
         "parameters": [
           {
@@ -8859,7 +8837,7 @@
         ]
       },
       "put": {
-        "description": "Adds the next version with `body` as its whole document and returns it. `schema_id` must be the latest\nversion, active and not a preset; otherwise 409.",
+        "description": "Replaces the schema's document with `body`, in place, and returns it. Its active site configs are suspended\nand its sites learn again. A retired schema or a preset is refused (409).",
         "operationId": "update_schema_v1_schemas__schema_id__put",
         "parameters": [
           {

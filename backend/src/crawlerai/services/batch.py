@@ -3,9 +3,9 @@
 (`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns what they made.
 
 Submitting checks every target with the SSRF guard (INV-16) and resolves the schema, then stores the job and its tasks
-in one transaction. The job pins what its pages run with (INV-28): the schema version (`job.schema_id`) and, for
-`records`, the precedence orders and calibration of this process's engine data, and the active config each URL's site
-has for the schema version and page kind (`job.pinned`, `JobPins`). A URL given twice
+in one transaction. The job pins what its pages run with (INV-28): for `records`, the schema's document as it is
+at submit, the precedence orders and calibration of this process's engine data, and the active config each URL's site
+has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 (the same once canonicalized) is one task. URLs are caller-supplied: a page whose required fields don't all publish
 keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10).
 """
@@ -91,12 +91,14 @@ class BatchScrapeRequest(Input):
 
 
 class JobPins(BaseModel):
-    """What a records job pins when it is submitted (INV-28): the engine data's precedence orders and calibration,
-    and per host the config that was active for the job's schema version and page kind. A host without one has its
-    pages extracted cold (`adhoc`) for the whole job, even if a config activates while it runs."""
+    """What a records job pins when it is submitted (INV-28): the job's schema as it is then, so an edit made while
+    the job runs applies to later jobs only; the engine data's precedence orders and calibration; and per host the
+    config that was active for the schema and page kind. A host without one has its pages extracted cold (`adhoc`) for
+    the whole job, even if a config activates while it runs."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
+    schema_: SchemaDef = Field(alias="schema")
     engine_data: PinnedData
     configs: dict[str, ExtractionConfigId]
 
@@ -203,12 +205,12 @@ async def insert_job(
 
 async def job_pins(conn: AsyncConnection, data: EngineData, urls: list[str], schema: SchemaDef) -> dict[str, Any]:
     """What a records job of `schema` over `urls` pins (INV-28, `JobPins`), as `job.pinned` stores it."""
-    pins = JobPins(engine_data=data.pin(), configs=await active_configs(conn, urls, schema))
+    pins = JobPins(schema_=schema, engine_data=data.pin(), configs=await active_configs(conn, urls, schema))
     return pins.model_dump(mode="json")
 
 
 async def active_configs(conn: AsyncConnection, urls: list[str], schema: SchemaDef) -> dict[str, ExtractionConfigId]:
-    """Per host of `urls`, the config active for `schema`'s version and page kind, where its site has one."""
+    """Per host of `urls`, the config active for `schema` and its page kind, where its site has one."""
     hosts = {urlsplit(url).hostname or "" for url in urls}
     configs = ExtractionConfig
     rows = await conn.execute(
@@ -217,7 +219,6 @@ async def active_configs(conn: AsyncConnection, urls: list[str], schema: SchemaD
         .where(
             Site.host.in_(hosts),
             configs.schema_id == schema.id,
-            configs.schema_version == schema.version,
             configs.page_kind == schema.page_kind,
             configs.status == "active",
         )

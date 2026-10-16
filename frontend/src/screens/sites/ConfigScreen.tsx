@@ -15,7 +15,7 @@ import { LearnButtons, useLearn } from "./LearnAction";
 import { sitePath } from "./paths";
 import { ValidationReportView } from "./ValidationReportView";
 
-/** The other versions of this config: the same site, schema version and page kind. */
+/** The other versions of this config: the same site, schema and page kind. */
 function SiblingVersions({ config }: Readonly<{ config: ConfigDetail }>) {
   const configs = useSiteConfigs(config.site);
   const schemaLabel = useSchemaLabel();

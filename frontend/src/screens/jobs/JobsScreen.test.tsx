@@ -28,7 +28,6 @@ function job(overrides: Partial<JobSummary> = {}): JobSummary {
 const schema: SchemaDef = {
   id: SCHEMA_ID,
   name: "item_detail",
-  version: 1,
   origin: "user",
   status: "active",
   page_kind: "detail",

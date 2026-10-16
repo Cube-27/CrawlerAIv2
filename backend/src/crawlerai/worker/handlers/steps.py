@@ -32,7 +32,7 @@ from crawlerai.recurring.state import record_fetch, standing_record, stored_vali
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig
-from crawlerai.schemas.registry import get_by_id
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import JobPins
 from crawlerai.services.fetching import Fetching, endpoint_rules, recipe_rung, recording, refusal
 from crawlerai.services.scrape_steps import (
@@ -57,10 +57,10 @@ _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 @dataclass(frozen=True)
 class Records:
-    """What a records task extracts with: the job's schema version, the engine data its pins give, the config they
-    name for the task's host bound to its executor (None: cold), and the drift margins of this worker."""
+    """What a records task extracts with: the job's schema, the engine data and the config for the task's host its
+    pins give, the config bound to its executor (None: cold), and the drift margins of this worker."""
 
-    schema_id: SchemaId
+    schema: SchemaDef
     data: EngineData
     config: ActiveConfig | None
     margins: DriftMargins | None
@@ -83,7 +83,7 @@ async def load_job(
     pinned = data.pinned(pins.engine_data)
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
-    return job.request, Records(job.schema_id, pinned, config, margins)
+    return job.request, Records(pins.schema_, pinned, config, margins)
 
 
 @dataclass(frozen=True)
@@ -190,7 +190,7 @@ async def _standing(conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, r
     """The record that stands for the page while it is unchanged (`standing_record`), for the config the job pinned
     (None: `adhoc`)."""
     version = None if records.config is None else records.config.version
-    return await standing_record(conn, site_id, task.canonical_url, records.schema_id, version)
+    return await standing_record(conn, site_id, task.canonical_url, records.schema, version)
 
 
 def unreached(page: FetchedPage) -> TaskResult | None:
@@ -216,7 +216,7 @@ async def extract_records(
     pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13);
     None binds no role C. `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered
     page may end `no_match`."""
-    schema = await get_by_id(conn, records.schema_id)
+    schema = records.schema
     config = None
     if records.config is not None:
         config = records.config.for_capture(page.result.bundle.manifest, records.data.adapters)
