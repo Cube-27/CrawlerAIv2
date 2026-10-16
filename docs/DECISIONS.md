@@ -879,3 +879,17 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Recommendation: (a): it uses the structure the engine already finds for map and crawl, publishes only a link the page attaches to that item, and declines when the title matches no block or several.
 - Blocked: listing row URLs on pages without structured data; nothing else.
 - Reversible: yes
+
+### D-1096 — The main image is not a decorative, fallback or link-card image
+- Date: 2026-10-16 · Spec/PR: reference eval round 3, SPEC-05 §4.5 (#220) · Status: decided
+- Decision: The DOM collector's main image also skips decorative images (empty `alt`, HTML Standard §4.8.4.4; roles `none`/`presentation`, WAI-ARIA 1.2), a media element's fallback content (`video`, `audio`, `object`, `canvas`, §4.8), and link-card images: the nearest block around the image holding a hyperlink holds no other image, and its hyperlinks lead to exactly one other web document (`canonical_url`, not this page, not an `image/*` resource by the stdlib's built-in extension map).
+- Alternatives: skip images inside form controls and option pickers (`label`, `fieldset`, ARIA `radio`/`option`/`listbox`): the round-3 image was not in one (it was a comparison card linking to another collection), and two eval pages' correct images sit in gallery `button`s; skip any image near any link (drops single-image pages whose region holds breadcrumbs).
+- Why: Round 3 published a comparison card's image; with these rules that page gets no DOM image (its og:image is malformed, D-1022), one page's DOM candidate moves from an `alt=""` banner to the image its JSON-LD names, a job page's logo (in a link to the employer) is dropped from a schema without an image field, and 20 of 25 captured detail pages are unchanged.
+- Reversible: yes
+
+### D-1097 — Role C claims say whether the page shows each field
+- Date: 2026-10-16 · Spec/PR: reference eval round 3, SPEC-06 §4.4 (#220) · Status: decided
+- Decision: The claim form is `{shown: bool, value, start, end}`, `shown` first; the prompt has the model decide `shown` field by field. A claim gives a candidate only when `shown` is true and the value is not empty. Effort stays `low`.
+- Alternatives: `medium` effort (same 68 values, 3x output tokens, max 3545 of the 4096 cap); a nullable value (a union, outside both providers' subsets); unchanged.
+- Why: The empty span was every field's easiest valid claim. Live probes, `claude-haiku-5-5`, six eval pages' recorded gap requests (5 to 17 fields), 3 runs each: grounded values 55 (old) vs 68 (flag); pages whose count varied across runs 5 vs 1; mean output tokens 687 vs 718. The shipped prompt measured 67, 2 pages varying, 645 tokens. A 55-field request is accepted (D-1008). No all-empty reply in 72 calls, so the round-3 all-empty page is not reproduced from its captures.
+- Reversible: yes
