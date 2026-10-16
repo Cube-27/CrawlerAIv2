@@ -6,16 +6,19 @@ served with 200 that has text enough not to be a shell is told by its shape inst
 are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms it holds,
 is not one of them.
 
-A page fetched as a listing is a shell too when nothing on it lists items (`_lists_items`): its grid loads by script
-after the page (an XHR), so the browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
+A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`_lists_items`) and no
+structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
+browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
 browser is the last rung, and its page is extracted whatever its links.
 """
+
+import json
 
 from lxml import etree
 from lxml import html as lxml_html
 from selectolax.lexbor import LexborHTMLParser
 
-from crawlerai.acquire.items import item_blocks
+from crawlerai.acquire.items import MIN_ITEMS, item_blocks
 from crawlerai.acquire.types import BlockClass
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
@@ -35,14 +38,13 @@ _SHELL_MAX_TEXT_CHARS = 200
 _SHELL_MAX_LINKS = 5
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _HYPERLINKS = "a[href], area[href]"
-# Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): microdata items (HTML Standard
-# §5.2), and JSON-LD script data blocks (W3C JSON-LD 1.1 §7.3) whose media type, before parameters and in any case
-# (RFC 9110 §8.3.1), is `_JSON_LD`.
+# Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): as many microdata items (HTML
+# Standard §5.2) as a grid's items (`MIN_ITEMS`), or a schema.org ItemList in a JSON-LD script data block (W3C JSON-LD
+# 1.1 §7.3) whose media type, before parameters and in any case (RFC 9110 §8.3.1), is `_JSON_LD`.
 _MICRODATA = "[itemscope]"
 _JSON_LD = "application/ld+json"
-# JSON script data blocks (RFC 8259 §11, the `application/json` media type): the page's script state, which the
-# js_state collector reads rows from (SPEC-05 §4.5).
-_JSON = "application/json"
+_ITEM_LIST = "ItemList"
+_TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
 
 
 def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
@@ -57,7 +59,7 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
         return "ok"
     tree = LexborHTMLParser(body)
     # Read before the shell rule strips script data blocks from the tree.
-    structured = page_kind == "listing" and _has_structured_data(tree)
+    structured = page_kind == "listing" and _structured_rows(tree)
     if _is_shell(tree):
         return "shell"
     # After the shell rule: hyperlinks inside a `template` are not in the document, and the rule strips them.
@@ -85,11 +87,37 @@ def _is_shell(tree: LexborHTMLParser) -> bool:
     return len("".join(text.split())) < _SHELL_MAX_TEXT_CHARS
 
 
-def _has_structured_data(tree: LexborHTMLParser) -> bool:
-    if tree.css_first(_MICRODATA) is not None:
+def _structured_rows(tree: LexborHTMLParser) -> bool:
+    if len(tree.css(_MICRODATA)) >= MIN_ITEMS:
         return True
-    types = (script.attributes.get("type") or "" for script in tree.css("script[type]"))
-    return any(type_.split(";", 1)[0].strip().lower() in (_JSON_LD, _JSON) for type_ in types)
+    blocks = (s.text() for s in tree.css("script[type]") if _media_type(s.attributes.get("type")) == _JSON_LD)
+    return any(_lists(_json(block)) for block in blocks)
+
+
+def _media_type(value: str | None) -> str:
+    return (value or "").split(";", 1)[0].strip().lower()
+
+
+def _json(text: str) -> object:
+    try:
+        return json.loads(text)
+    except ValueError:  # a block that is not JSON states nothing
+        return None
+
+
+def _lists(document: object) -> bool:
+    """Whether a JSON-LD document holds a node typed ItemList, at any depth (walked with a stack, not recursion)."""
+    stack = [document]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            types = value.get(_TYPE)
+            if types == _ITEM_LIST or (isinstance(types, list) and _ITEM_LIST in types):
+                return True
+            stack.extend(value.values())
+        elif isinstance(value, list):
+            stack.extend(value)
+    return False
 
 
 def _lists_items(body: bytes) -> bool:

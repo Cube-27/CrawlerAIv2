@@ -181,17 +181,38 @@ def test_a_listing_without_repeated_linked_items_is_a_shell_for_the_listing_kind
             + "".join(f'<div class="card order-{i}"><a href="/p/{i}">Kettle {i}</a></div>' for i in range(4))
             + "</div>"
         ),
-        # Rows published as structured data are read without the grid (SPEC-05 §4.7).
+        # Rows published as structured data are read without the grid (SPEC-05 §4.7): a JSON-LD ItemList, found at any
+        # depth and in a type list, or at least as many microdata items as a grid's.
         _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "ItemList"}</script>'),
+        _listing(
+            _SCRIPT_GRID,
+            head='<script type="application/ld+json">{"@graph": [{"@type": ["CollectionPage"], "mainEntity": '
+            '{"@type": ["ItemList"]}}]}</script>',
+        ),
         # A media type is compared before its parameters, in any case (RFC 9110 §8.3.1).
-        _listing(_SCRIPT_GRID, head='<script type="Application/LD+JSON; charset=utf-8">{}</script>'),
-        # A JSON data block, which the page's script state is read from (RFC 8259 media type).
-        _listing(_SCRIPT_GRID + '<script type="application/json">{"items": []}</script>'),
-        _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/Product"></div>'),
+        _listing(
+            _SCRIPT_GRID, head='<script type="Application/LD+JSON; charset=utf-8">[{"@type": "ItemList"}]</script>'
+        ),
+        _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/Product"></div>' * 3),
     ],
 )
 def test_a_listing_with_repeated_linked_items_or_structured_rows_is_ok(page: bytes) -> None:
     assert classify(200, _HTML, page, page_kind="listing") == "ok"
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        # Structured data about the site or the page, not a list of its items: the grid still loads by script.
+        _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "WebSite"}</script>'),
+        _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "ItemList"</script>'),
+        _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/WebSite"></div>' * 2),
+        # Script state may hold the rows or not; the browser renders the grid from it either way.
+        _listing(_SCRIPT_GRID + '<script type="application/json">{"items": []}</script>'),
+    ],
+)
+def test_a_listing_whose_structured_data_lists_no_items_is_a_shell(page: bytes) -> None:
+    assert classify(200, _HTML, page, page_kind="listing") == "shell"
 
 
 @pytest.mark.parametrize(
