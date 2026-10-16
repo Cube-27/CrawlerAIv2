@@ -2,7 +2,8 @@
 (`crawlerai.worker.handlers.steps`), settle it, and add the URLs it leads to to the frontier
 (`crawlerai.crawl.frontier`).
 
-A reached page contributes its links and next-page candidates at its depth plus one. The start URL's task also reads
+A reached page contributes its links and next-page candidates at its depth plus one. The scope is on the host the
+start page is on: when the site redirects the start URL to another host, the crawl follows it there (D-0991). The start URL's task also reads
 the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else `/sitemap.xml`) and adds their
 URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that ends the task: an attempt that
 is postponed or retried leaves them to the next, so they are read once. Sitemaps are fetched over HTTP, politely: the
@@ -22,15 +23,18 @@ from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Final
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.robots import site_robots
 from crawlerai.acquire.types import AttemptRecord
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.content.page import ParsedPage
+from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.frontier import Frontier, discovered
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import record_event
+from crawlerai.db.models import Capture, UrlTask
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
@@ -58,12 +62,11 @@ SITEMAP_TIMEOUT_S: Final = TIMEOUT_S  # as long as a `map` reads a site's sitema
 
 @dataclass(frozen=True)
 class _Crawl:
-    """A task of a crawl: the request, its frontier, what the task extracts records with (None: formats), and the
-    client role C runs on (None: no role C)."""
+    """A task of a crawl: the request, what the task extracts records with (None: formats), and the client role C runs
+    on (None: no role C)."""
 
     task: ClaimedTask
     request: CrawlRequest
-    frontier: Frontier
     records: Records | None
     llm: LLMClient | None
 
@@ -80,7 +83,7 @@ def crawl_handler(
         if isinstance(job, Failed):
             return job
         request, records = CrawlRequest.model_validate(job[0]), job[1]
-        return await _run(conn, fetching, _Crawl(task, request, request.frontier(), records, llm))
+        return await _run(conn, fetching, _Crawl(task, request, records, llm))
 
     return handle
 
@@ -88,18 +91,38 @@ def crawl_handler(
 async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> TaskResult:
     task = crawl.task
     # A page whose links the crawl reads is fetched itself: an API recipe's JSON has none (SPEC-09 §4.8).
-    reads_links = task.depth < crawl.frontier.max_depth or task.page_kind is None
+    reads_links = task.depth < crawl.request.max_depth or task.page_kind is None
     served = None if reads_links else crawl.records
     page = await fetch_page(conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served)
     result, found = (page.task_result, ()) if isinstance(page, Ended) else await _visit(conn, crawl, page)
+    located = await _located(conn, crawl, page)
+    frontier = crawl.request.frontier(located)
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
     # task commits: a cancel, which locks that row, never waits for the reading (up to `SITEMAP_TIMEOUT_S`).
     reads_sitemaps = task.canonical_url == crawl.request.start and ends_task(task, result)
-    seeds = await _sitemap_seeds(conn, fetching, crawl) if reads_sitemaps else []
+    seeds = await _sitemap_seeds(conn, fetching, crawl, frontier, located) if reads_sitemaps else []
     await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
-    await crawl.frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
-    await crawl.frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
+    await frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
+    await frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
     return result
+
+
+async def _located(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | Ended) -> str:
+    """Where the crawl's start page is, in canonical form: the URL its capture's redirects ended at, which the crawl's
+    scope follows (RFC 9110 §15.4: a redirect names the resource's location; D-0991). The start URL itself when it
+    has no page capture: not fetched, or served as an API recipe's JSON, whose final URL is its endpoint."""
+    start = crawl.request.start
+    if crawl.task.canonical_url == start:
+        manifest = None if isinstance(page, Ended) else page.result.bundle.manifest
+        capture = None if manifest is None else (manifest.method, manifest.final_url)
+    else:
+        # Every other task was added by the start task or after it, which stored its capture's id with its outcome.
+        of_start = (UrlTask.job_id == crawl.task.job_id, UrlTask.canonical_url == start)
+        query = select(Capture.method, Capture.final_url).join(UrlTask, UrlTask.capture_id == Capture.id)
+        capture = (await conn.execute(query.where(*of_start))).one_or_none()
+    if capture is None or capture[0] == "api":
+        return start
+    return canonicalize(capture[1]) or start
 
 
 async def _visit(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage) -> tuple[TaskResult, tuple[str, ...]]:
@@ -111,7 +134,7 @@ async def _visit(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage) -> tup
     parsed = ParsedPage.of(bundle)
     found: tuple[str, ...] = ()
     # A page at `max_depth` leads nowhere the crawl goes, so its links are not read.
-    if crawl.task.depth < crawl.frontier.max_depth:
+    if crawl.task.depth < crawl.request.max_depth:
         # One parse serves the links and the extraction (INV-26); parsing is CPU work, so it runs in a thread.
         found = await asyncio.to_thread(discovered, parsed, bundle.manifest.final_url)
     if crawl.task.page_kind is None and crawl.request.page_kind_rules:
@@ -124,23 +147,26 @@ async def _visit(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage) -> tup
     return result, found
 
 
-async def _sitemap_seeds(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> list[str]:
-    """The URLs of the site's sitemaps the crawl takes, in the order read, up to its `limit`. The fetches count as
-    the job's usage."""
-    task, frontier = crawl.task, crawl.frontier
+async def _sitemap_seeds(
+    conn: AsyncConnection, fetching: Fetching, crawl: _Crawl, frontier: Frontier, located: str
+) -> list[str]:
+    """The URLs of the sitemaps of the site the start page is on, `located` there, that the crawl takes, in the order
+    read, up to its `limit`. The fetches count as the job's usage."""
+    task = crawl.task
     site = await site_row(conn, frontier.scope.host)
     policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool)
     attempts: list[AttemptRecord] = []
     robots = None
     if policy.respect_robots:
-        # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching.
+        # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
+        # redirected to another host.
         fetch_robots = recording(fetching.rungs.http, policy, attempts)
-        robots = await site_robots(conn, site.id, site.robots_snapshot, task.url, fetch_robots)
+        robots = await site_robots(conn, site.id, site.robots_snapshot, located, fetch_robots)
         if robots is None:
             return []
     polite = PoliteHttp(fetching, frontier.scope.host, site.crawl_delay_ms, robots, policy, attempts)
     reader = SitemapReader(polite.sitemap_body, frontier.scope.host)
-    start = roots(task.canonical_url, () if robots is None else robots.sitemaps)
+    start = roots(located, () if robots is None else robots.sitemaps)
     seeds: dict[str, None] = {}
     capped = False
     try:

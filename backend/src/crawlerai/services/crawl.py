@@ -89,8 +89,10 @@ class CrawlRequest(Input):
         """The start URL in canonical form (the validator refuses one without)."""
         return canonicalize(self.url) or self.url
 
-    def frontier(self) -> Frontier:
-        scope = Scope(urlsplit(self.start).hostname or "", tuple(self.include), tuple(self.exclude))
+    def frontier(self, located: str | None = None) -> Frontier:
+        """The crawl's frontier, on the host of `located`, where the start page is after the site's own redirects
+        (RFC 9110 §15.4; D-0991), else on the start URL's."""
+        scope = Scope(urlsplit(located or self.start).hostname or "", tuple(self.include), tuple(self.exclude))
         return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit)
 
 
