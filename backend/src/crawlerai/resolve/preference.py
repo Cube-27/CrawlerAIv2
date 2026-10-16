@@ -287,7 +287,7 @@ def _winner(spec: FieldSpec, kind: SourceKind, kept: list[Candidate], choosable:
     if _all_agree(winners, spec):
         return next(c for c in choosable if c.source_kind == kind)
     named = _named_member(spec, winners, kept)
-    return named if named is not None and named in choosable else None
+    return named if named is not None and any(c is named for c in choosable) else None
 
 
 def _named_member(spec: FieldSpec, members: list[Candidate], kept: list[Candidate]) -> Candidate | None:

@@ -309,12 +309,15 @@ def candidate(
 
 def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
     """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its own (`item_urls`) and its offers'
-    `url`."""
-    written: list[JsonValue] = _item_names(node)
-    for value in node.values("offers"):
-        if value.node is not None:
-            written.extend(v.raw for v in value.node.values("url"))
-    return canonical_urls(written, ctx)
+    (`offer_urls`)."""
+    return tuple(dict.fromkeys((*item_urls(node, ctx), *offer_urls(node, ctx))))
+
+
+def offer_urls(node: Node, ctx: Context) -> tuple[str, ...]:
+    """The canonical `url` values of the entity's offers."""
+    return canonical_urls(
+        (v.raw for value in node.values("offers") if value.node is not None for v in value.node.values("url")), ctx
+    )
 
 
 def item_urls(node: Node, ctx: Context) -> tuple[str, ...]:

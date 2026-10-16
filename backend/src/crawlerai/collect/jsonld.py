@@ -12,7 +12,7 @@ Root nodes of one type that share an identity are one entity, the first of them 
 resolved against the document base (JSON-LD 1.1 node map generation merges node objects with one `@id`; RFC 3986
 §5), or the same value of a schema.org identifier property (`identifier` and its sub-properties, such as `sku` and
 `gtin13`, identify the item). The later nodes' values and their nested nodes become the first's, so resolution sees
-one entity, whose agreeing values publish and whose disagreeing ones, its Offers' included, are a conflict.
+one entity and applies its rules to all of them: agreeing values publish, Offers that disagree are a conflict.
 """
 
 from collections import defaultdict
@@ -30,9 +30,9 @@ from crawlerai.collect.schema_org_map import (
     Typed,
     Value,
     Vocabulary,
-    entity_urls,
     field_candidates,
     item_urls,
+    offer_urls,
     schema_term,
 )
 from crawlerai.content.page import ParsedPage
@@ -185,24 +185,25 @@ class JsonLdCollector:
         entities = [found for found in graph.objects if found.types]
         parents, vias = _parents(entities, graph)
         typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
+        own = {t.id: item_urls(t.node, ctx) for t in typed}
         roots = [found for found in entities if parents[found.id] is None]
-        same = _same_nodes(roots, graph, self.vocabulary, {f.id: item_urls(_Node(f, graph), ctx) for f in roots})
+        same = _same_nodes(roots, graph, self.vocabulary, own)
         diagnostics.extend(
             f"jsonld: {node} is the node {first} (same @id or identifier)" for node, first in same.items()
         )
         candidates = field_candidates(
             typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
         )
-        urls: dict[str, tuple[str, ...]] = {}
+        urls: dict[str, dict[str, None]] = {}
         for t in typed:
-            owner = same.get(t.id, t.id)
-            urls[owner] = tuple(dict.fromkeys((*urls.get(owner, ()), *entity_urls(t.node, ctx))))
+            # SPEC-05 §4.2: an entity's URLs are its own and its offers'; a merged node adds its members'.
+            urls.setdefault(same.get(t.id, t.id), {}).update(dict.fromkeys((*own[t.id], *offer_urls(t.node, ctx))))
         return CollectResult(
             entities=tuple(
                 Entity(
                     id=t.id,
                     kind=t.types[0],
-                    urls=urls[t.id],
+                    urls=tuple(urls[t.id]),
                     parent=same.get(parent, parent) if (parent := parents[t.id]) is not None else None,
                     via=vias[t.id],
                 )
@@ -299,8 +300,12 @@ def _member_via(holder: _Object, key: str, via: str | None) -> str | None:
     """The property a member of `holder` is under: an entity's member is under the entity's property of that name (a
     full schema.org IRI anywhere, a bare term other than a keyword where schema.org is the vocabulary; JSON-LD 1.1
     §4.1.2); a member of a plain object is under the property the object is under."""
-    if not holder.types:
-        return via
+    return _term(holder, key) if holder.types else via
+
+
+def _term(holder: _Object, key: str) -> str | None:
+    """The schema.org property a member key names: a full schema.org IRI anywhere, a bare term other than a keyword
+    where schema.org is the vocabulary (JSON-LD 1.1 §4.1.2)."""
     return schema_term(key) or (key if holder.in_schema and not key.startswith("@") else None)
 
 
@@ -326,7 +331,7 @@ class _Groups:
     """Disjoint sets of root nodes, each named by its first member, with the URLs its members state."""
 
     urls: list[frozenset[str]]
-    parent: list[int] = field(default_factory=list)
+    parent: list[int] = field(init=False)
 
     def __post_init__(self) -> None:
         self.parent = list(range(len(self.urls)))
@@ -355,8 +360,7 @@ def _identity(found: _Object, graph: _Graph, vocabulary: Vocabulary) -> Iterator
     if node_id is not None and not node_id.startswith("_:"):
         yield "@id", node_id
     for key, written in found.data.items():
-        term = schema_term(key) or (key if found.in_schema and not key.startswith("@") else None)
-        if term in vocabulary.identifiers:
+        if (term := _term(found, key)) in vocabulary.identifiers:
             for scalar in _scalars(written):
                 if text := str(scalar).strip():
                     yield term, text

@@ -63,6 +63,22 @@ def _fetch_with(
     return cookie
 
 
+@pytest.mark.parametrize(
+    ("host", "registrable"),
+    [
+        ("www.site.shared.test", "site.shared.test"),
+        ("site.test", "site.test"),
+        ("a.b.any.wild.test", "b.any.wild.test"),
+        ("www.keep.wild.test", "keep.wild.test"),
+        ("Shop.Example.", "shop.example"),
+        ("shared.test", None),
+        ("test", None),
+    ],
+)
+def test_the_registrable_domain_is_the_public_suffix_and_one_label(host: str, registrable: str | None) -> None:
+    assert SUFFIXES.registrable_domain(host) == registrable
+
+
 def test_a_cookie_for_a_public_suffix_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _fetch_with(SUFFIXES, "track=1; Domain=shared.test", monkeypatch) is None
 

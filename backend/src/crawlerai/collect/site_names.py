@@ -62,22 +62,13 @@ def _runs(name: str) -> Iterator[str]:
 
 
 def _host_label(page_url: str | None) -> str | None:
-    """The folded label left of the host's public suffix; an IP address host has none."""
+    """The folded first label of the host's registrable domain; an IP address host has none."""
     host = urlsplit(page_url).hostname if page_url else None
-    if not host or _is_ip(host):
+    if not host:
         return None
-    labels = host.split(".")
-    suffixes = default_suffixes()
-    # The first public suffix from the left is the longest; the label before it starts the registrable domain.
-    for i in range(1, len(labels)):
-        if suffixes.is_public_suffix(".".join(labels[i:])):
-            return fold(labels[i - 1]) or None
-    return None
-
-
-def _is_ip(host: str) -> bool:
     try:
         ipaddress.ip_address(host)
     except ValueError:
-        return False
-    return True
+        domain = default_suffixes().registrable_domain(host)
+        return (fold(domain.split(".")[0]) or None) if domain is not None else None
+    return None

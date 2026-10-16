@@ -54,7 +54,7 @@ _AMOUNT, _CURRENCY = "product:price:amount", "product:price:currency"
 # OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
 _SITE_NAME = "og:site_name"
 _READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY, _SITE_NAME}
-SITE_TITLE = "og: og:title names the site, so og:title and og:image are not read"
+_SITE_TITLE = "og: og:title names the site, so og:title and og:image are not read"
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,10 +106,12 @@ def _metas(page: ParsedPage) -> list[_Meta]:
 def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta], tuple[str, ...]]:
     """The metas the fields read: without `og:title` and `og:image` when the (first) title names the site, else with
     each title read without its trailing site segments."""
-    site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
     title = next((m.content for m in metas if m.property == _TITLE), None)
-    if title is not None and site.names(title):
-        return [m for m in metas if m.property not in (_TITLE, *_IMAGES)], (SITE_TITLE,)
+    if title is None:
+        return metas, ()
+    site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
+    if site.names(title):
+        return [m for m in metas if m.property not in (_TITLE, *_IMAGES)], (_SITE_TITLE,)
     return [replace(m, reading=site.strip(m.content)) if m.property == _TITLE else m for m in metas], ()
 
 
