@@ -208,3 +208,19 @@ def test_a_shop_that_may_show_another_currency_lists_its_products_without_prices
     assert [_published(row) for row in result.rows] == [
         {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"} for n in (0, 1)
     ]
+
+
+def test_a_variant_barcode_is_its_gtin_only_with_a_valid_gs1_check_digit() -> None:
+    # A barcode is "ISBN, UPC, or GTIN" or any text the shop types; the gtin normalizer declines a wrong check digit.
+    valid, wrong = "4006381333931", "4006381333932"
+    answer = _product(_variant(1, "5.00") | {"barcode": valid}, _variant(2, "5.00") | {"barcode": wrong})
+
+    result = _extract(f"{SHOP}/products/widget", answer, DETAIL)
+
+    assert result.entity is not None
+    rows = result.entity["variants"].value
+    assert isinstance(rows, list)
+    assert [(row["sku"], row.get("gtin")) for row in rows if isinstance(row, dict)] == [
+        ({"scheme": "sku", "value": "W-1"}, {"scheme": "gtin", "value": valid}),
+        ({"scheme": "sku", "value": "W-2"}, None),
+    ]
