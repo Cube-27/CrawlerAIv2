@@ -220,6 +220,6 @@ def test_a_decorative_fallback_or_link_card_image_is_not_the_main_image(other: s
     ],
 )
 def test_an_image_linked_to_itself_this_page_or_several_documents_stays_the_main_image(wrapper: str) -> None:
-    found = _collect(f'<main>{wrapper.format(chr(60) + "img src=/p/1.jpg alt=Product>")}</main>')
+    found = _collect(f"<main>{wrapper.format(chr(60) + 'img src=/p/1.jpg alt=Product>')}</main>")
 
     assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
