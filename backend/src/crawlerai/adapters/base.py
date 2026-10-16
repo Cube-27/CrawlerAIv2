@@ -37,12 +37,18 @@ Members = tuple[str, ...]  # member names from a JSON object to a value; `ALL` t
 class Shape:
     """A schema.org node the API's JSON holds (SPEC-15 §4.4): its type; `at`, the members from the enclosing node's
     object (the document, for a root) to this node's object; `properties`, the members from that object to each
-    schema.org property's values; `nodes`, the shapes of the nodes each property's values are; and `anchor`, the
-    members that name a node sharing its enclosing node's object (`at=()`), so that it is an entity of its own."""
+    schema.org property's values; `also`, further members to values of a property in `properties`, read after its
+    own in order (an API that keeps a primary value apart from the others: a primary location and the further ones);
+    `prefixes`, text that goes before each string value of a property, for an API that states the value relative to a
+    root the page's URL names (a job's path under its career site); `nodes`, the shapes of the nodes each property's
+    values are; and `anchor`, the members that name a node sharing its enclosing node's object (`at=()`), so that it
+    is an entity of its own."""
 
     type: str
     at: Members = ()
     properties: Mapping[str, Members] = field(default_factory=dict)
+    also: Mapping[str, tuple[Members, ...]] = field(default_factory=dict)
+    prefixes: Mapping[str, str] = field(default_factory=dict)
     nodes: Mapping[str, tuple["Shape", ...]] = field(default_factory=dict)
     anchor: Members = ()
 
@@ -74,6 +80,6 @@ class Adapter(Protocol):
         that does not serve the page is an `error` outcome with reason `NOT_PLATFORM` or `NOT_SERVED`."""
         ...
 
-    def shapes(self, page_kind: PageKind, answer: JsonValue, /) -> tuple[Shape, ...]:
-        """The root nodes of `answer`, the API's JSON for a page of `page_kind`."""
+    def shapes(self, match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
+        """The root nodes of `answer`, the API's JSON for the page this adapter detected as `match`."""
         ...

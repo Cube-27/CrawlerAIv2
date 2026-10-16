@@ -16,23 +16,22 @@ from functools import cache
 
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import ALL, Adapter, Members, Shape
+from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Shape
 from crawlerai.collect.base import CollectResult, Entity
 from crawlerai.collect.json_doc import ROOT, member, parse, select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, entity_urls, field_candidates
 from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import PageKind
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
 
 class AdapterCollector:
-    """The collector of a capture `adapter` fetched, for a page whose kind the adapter detected as `page_kind`."""
+    """The collector of a capture `adapter` fetched, for a page the adapter detected as `match`."""
 
-    def __init__(self, adapter: Adapter, page_kind: PageKind, vocabulary: Vocabulary) -> None:
+    def __init__(self, adapter: Adapter, match: AdapterMatch, vocabulary: Vocabulary) -> None:
         self._adapter = adapter
-        self._page_kind = page_kind
+        self._match = match
         self._vocabulary = vocabulary
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
@@ -42,7 +41,7 @@ class AdapterCollector:
         except ValueError as e:
             return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{name}: not JSON ({e})",))
         nodes: list[_Node] = []
-        for shape in self._adapter.shapes(self._page_kind, document):
+        for shape in self._adapter.shapes(self._match, document):
             nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
         entities = tuple(
             Entity(id=n.id, kind=n.shape.type, urls=entity_urls(n, ctx), parent=n.parent, via=n.via) for n in nodes
@@ -60,7 +59,7 @@ class AdapterCollector:
 
     def _rows_schema(self, schema: SchemaDef) -> SchemaDef:
         """A listing's page-scoped fields describe the page, not a row (SPEC-05 §4.7): the API's rows hold none."""
-        if self._page_kind == "detail":
+        if self._match.page_kind == "detail":
             return schema
         rows = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
         return schema.model_copy(update={"fields": rows})
@@ -87,16 +86,21 @@ class _Node:
 
     def values(self, prop: str) -> Sequence[Value]:
         if (members := self.shape.properties.get(prop)) is not None:
-            return self._read(members)
+            prefix = self.shape.prefixes.get(prop, "")
+            return [value for at in (members, *self.shape.also.get(prop, ())) for value in self._read(at, prefix)]
         return [
             Value(node.data, self._locator(node.path), node)
             for shape in self.shape.nodes.get(prop, ())
             for node in _reach(self.adapter, shape, self.data, self.path, parent=self.id, via=prop, nested=False)
         ]
 
-    def _read(self, members: Members) -> list[Value]:
+    def _read(self, members: Members, prefix: str) -> list[Value]:
         # RFC 8259 `null`: the API states no value.
-        return [Value(raw, self._locator(at)) for at, raw in _select(members, self.data, self.path) if raw is not None]
+        return [
+            Value(prefix + raw if prefix and isinstance(raw, str) else raw, self._locator(at))
+            for at, raw in _select(members, self.data, self.path)
+            if raw is not None
+        ]
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)

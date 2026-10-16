@@ -93,7 +93,7 @@ def _adapter_collector(
         diagnostics.append("adapter: no active adapter reads this api capture")
         return None
     adapter, match = found
-    return AdapterCollector(adapter, match.page_kind, vocabulary)
+    return AdapterCollector(adapter, match, vocabulary)
 
 
 def _isolated[R](collector: object, run: Callable[[], R], diagnostics: list[str]) -> R | None:
