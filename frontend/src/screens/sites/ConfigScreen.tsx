@@ -11,7 +11,7 @@ import { ProblemAlert } from "../../components/ProblemAlert";
 import { ConfigFieldsTable, ConfigVersionsTable, useSchemaLabel } from "./ConfigTables";
 import { CorrectionForm } from "./CorrectionForm";
 import { ExportPanel } from "./ExportPanel";
-import { LearnButtons, useLearn } from "./LearnAction";
+import { LearnButtons, LearnRun, useLearn } from "./LearnAction";
 import { sitePath } from "./paths";
 import { ValidationReportView } from "./ValidationReportView";
 
@@ -76,11 +76,13 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
   const learnProblem = problemOf(learning.learn.error);
   const schemaLabel = useSchemaLabel();
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title={config.site} actions={<LearnButtons {...learning} />}>
         <Chip>v{config.version}</Chip>
         <Chip>{config.origin}</Chip>
         <ConfigStatusLabel status={config.status} />
+        {/* In the header's badge row, beside the button that started it: nothing below moves (D-0983). */}
+        {learning.jobId === null ? null : <LearnRun jobId={learning.jobId} />}
       </PageHeader>
       {learnProblem === null ? null : <ProblemAlert problem={learnProblem} />}
       <div className="flex flex-wrap gap-4">

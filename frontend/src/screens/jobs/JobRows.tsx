@@ -1,6 +1,9 @@
-import { Table, Typography } from "@heroui/react";
+import { Table } from "@heroui/react";
+import { ChevronRight } from "@gravity-ui/icons";
 import type { ReactNode } from "react";
 import type { JobSummary } from "../../api/jobs";
+import { plural } from "../../components/activityText";
+import { DurationText } from "../../components/Duration";
 import { JobStatusLabel } from "../../components/JobStatusLabel";
 import { TaskCountsText } from "../../components/OutcomeCounts";
 import { Timestamp } from "../../components/Timestamp";
@@ -11,19 +14,37 @@ import { jobPath } from "./paths";
 /** What a run was started on: its start URL, or how many URLs it had. */
 function target({ start_url, url_count }: JobSummary): string {
   if (start_url !== null) return start_url;
-  const count = url_count ?? 0;
-  return `${String(count)} ${count === 1 ? "URL" : "URLs"}`;
+  return plural(url_count ?? 0, "URL");
+}
+
+/** The last column's cue that a row opens its run: the whole row is the link (React Aria row `href`), so this is text,
+ * not a second control. */
+function OpenCue() {
+  return (
+    <span className="flex items-center justify-end gap-1 text-accent">
+      Open
+      <ChevronRight aria-hidden="true" />
+    </span>
+  );
 }
 
 /** A column a jobs table can show: its header and its cell. */
 const COLUMNS = {
   kind: { header: "Kind", cell: (job: JobSummary): ReactNode => KIND_LABELS[job.kind] },
-  run: { header: "Run", cell: target },
+  target: { header: "Target", cell: target },
   status: { header: "Status", cell: (job: JobSummary) => <JobStatusLabel status={job.status} /> },
   tasks: { header: "Tasks", cell: (job: JobSummary) => <TaskCountsText counts={job.counts} /> },
   started: { header: "Started", cell: (job: JobSummary) => <Timestamp value={job.started_at} /> },
   created: { header: "Created", cell: (job: JobSummary) => <Timestamp value={job.created_at} /> },
-} satisfies Record<string, { header: string; cell: (job: JobSummary) => ReactNode }>;
+  duration: {
+    header: "Duration",
+    cell: (job: JobSummary) => (
+      <DurationText startedAt={job.started_at} finishedAt={job.finished_at} />
+    ),
+  },
+  // Named for screen readers only: the cue says it in each row.
+  open: { header: <span className="sr-only">Open</span>, cell: () => <OpenCue /> },
+} satisfies Record<string, { header: ReactNode; cell: (job: JobSummary) => ReactNode }>;
 
 export type JobColumn = keyof typeof COLUMNS;
 
@@ -39,13 +60,10 @@ export function JobRows({
   label,
   jobs,
   columns,
-  empty = null,
 }: Readonly<{
   label: string;
   jobs: readonly JobSummary[];
   columns: readonly (readonly [JobColumn, string])[];
-  /** What an empty list says; null when the caller says it instead. */
-  empty?: string | null;
 }>) {
   return (
     <Table>
@@ -58,16 +76,7 @@ export function JobRows({
               </Table.Column>
             ))}
           </Table.Header>
-          <Table.Body
-            items={jobs}
-            {...(empty === null
-              ? {}
-              : {
-                  renderEmptyState: () => (
-                    <Typography.Paragraph color="muted">{empty}</Typography.Paragraph>
-                  ),
-                })}
-          >
+          <Table.Body items={jobs}>
             {(job) => (
               <Table.Row id={job.id} href={rowPath(job)}>
                 {columns.map(([id]) => (

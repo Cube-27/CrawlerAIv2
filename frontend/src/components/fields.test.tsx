@@ -7,6 +7,8 @@ import { ConfidenceCell } from "./ConfidenceCell";
 import { FieldStatusBadge } from "./FieldStatusBadge";
 import { FieldValue } from "./FieldValue";
 import { LocatorText } from "./LocatorText";
+import { RecordFieldsTable } from "./RecordFields";
+import { recordField } from "../test/records";
 
 describe("FieldStatusBadge", () => {
   it.each<FieldStatus>(["published", "missing", "conflict", "abstained"])(
@@ -154,6 +156,26 @@ describe("FieldValue", () => {
     );
 
     expect(container).toHaveTextContent("name: Widget; price: 5 EUR");
+  });
+});
+
+describe("RecordFieldsTable", () => {
+  it("shows a missing field's status once, in its Status column", () => {
+    render(
+      <RecordFieldsTable
+        label="Fields"
+        record={{
+          complete: false,
+          mode: "adhoc",
+          confidence: null,
+          fields: { price: recordField({ status: "missing", value: null }) },
+        }}
+        fieldTypes={{ price: { type: "money" } }}
+      />,
+    );
+
+    expect(screen.getAllByText("missing")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "No value" })).toHaveTextContent("—");
   });
 });
 

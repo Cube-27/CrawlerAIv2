@@ -16,7 +16,7 @@ export function CancelJobAction({
     <>
       <ConfirmDialog
         trigger={
-          <Button variant="danger" isPending={cancel.isPending} isDisabled={isDisabled}>
+          <Button variant="danger-soft" isPending={cancel.isPending} isDisabled={isDisabled}>
             Cancel job
           </Button>
         }

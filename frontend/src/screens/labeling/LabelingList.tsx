@@ -80,7 +80,7 @@ export function LabelingList() {
   const pages = useEvalPages();
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-stack">
       <PageHeader title="Labeling">
         <SplitBadge split="dev" />
       </PageHeader>

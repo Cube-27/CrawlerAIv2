@@ -2,6 +2,7 @@ import { Button, Drawer, Tabs, Typography } from "@heroui/react";
 import { Code, Copy } from "@gravity-ui/icons";
 import { useMemo, useState, type Key } from "react";
 import { copyText } from "../../../app/clipboard";
+import { Collapsible } from "../../../components/Collapsible";
 import type { ModeId } from "../modes";
 import { ENDPOINTS, type Endpoint } from "./endpoints";
 import { agentPrompts } from "./prompts";
@@ -85,10 +86,10 @@ function CodeBlock({
   );
 }
 
+/** The prompts for coding agents (SPEC-14 §4.7), collapsed under the code: most readers want the code itself. */
 function Prompts({ mode }: Readonly<{ mode: ModeId }>) {
   return (
-    <section aria-label="Prompts for coding agents" className="flex flex-col gap-3">
-      <Typography.Heading level={3}>Prompts for coding agents</Typography.Heading>
+    <Collapsible title="Prompts for coding agents">
       {agentPrompts(mode).map((prompt) => (
         <div key={prompt.name} className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -110,27 +111,27 @@ function Prompts({ mode }: Readonly<{ mode: ModeId }>) {
           </Button>
         </div>
       ))}
-    </section>
+    </Collapsible>
   );
 }
 
+/** Where the snippets' key comes from: the UI holds none (SPEC-14 §4.1), so this says how to make one. */
 function ApiKey() {
   return (
-    <section aria-label="API key" className="flex flex-col gap-2">
-      <Typography.Heading level={3}>API key</Typography.Heading>
-      <Typography.Paragraph size="sm">
-        Create a key with <Typography.Code>crawlerai apikey create</Typography.Code>. The snippets
-        read it from <Typography.Code>${KEY_VARIABLE}</Typography.Code>; this page never holds or
-        shows a key.
+    <section aria-label="API key">
+      <Typography.Paragraph size="sm" color="muted">
+        The snippets read your API key from <Typography.Code>${KEY_VARIABLE}</Typography.Code>.
+        Create one with <Typography.Code>crawlerai apikey create</Typography.Code>; this page never
+        holds or shows a key.
       </Typography.Paragraph>
     </section>
   );
 }
 
+/** What the code calls: the endpoint's method and path, then its one-sentence summary. */
 function EndpointSummary({ endpoint }: Readonly<{ endpoint: Endpoint }>) {
   return (
-    <section aria-label="Endpoint" className="flex flex-col gap-2">
-      <Typography.Heading level={3}>{endpoint.title}</Typography.Heading>
+    <section aria-label="Endpoint" className="flex flex-col gap-1">
       <Typography.Paragraph size="sm">
         <Typography.Code>POST {endpoint.path}</Typography.Code>
       </Typography.Paragraph>
@@ -187,9 +188,9 @@ function CodeTabs({ endpoint, request }: Readonly<{ endpoint: Endpoint; request:
   );
 }
 
-/** The toolbar's Get code button and its drawer from the right (SPEC-14 §4.7): prompts for coding agents, where the
- * API key comes from, the endpoint, then `request` (the body the primary action sends; null while the form can't be
- * sent) as cURL, Python and an MCP tool call. */
+/** The toolbar's Get code button and its drawer from the right (SPEC-14 §4.7, D-0974): the endpoint, then `request`
+ * (the body the primary action sends; null while the form can't be sent) as cURL, Python and an MCP tool call, where
+ * the API key comes from, and the prompts for coding agents, collapsed. */
 export function GetCode({ mode, request }: Readonly<{ mode: ModeId; request: object | null }>) {
   const endpoint = ENDPOINTS[mode];
   return (
@@ -203,13 +204,18 @@ export function GetCode({ mode, request }: Readonly<{ mode: ModeId; request: obj
           <Drawer.Dialog>
             <Drawer.CloseTrigger />
             <Drawer.Header>
-              <Drawer.Heading>Get code</Drawer.Heading>
+              <Drawer.Heading>Get code: {endpoint.title}</Drawer.Heading>
+              <Typography.Paragraph size="sm" color="muted">
+                This request as code, to run from your own program or agent.
+              </Typography.Paragraph>
             </Drawer.Header>
             <Drawer.Body className="flex flex-col gap-6">
-              <Prompts mode={mode} />
-              <ApiKey />
               <EndpointSummary endpoint={endpoint} />
-              <CodeTabs endpoint={endpoint} request={request} />
+              <div className="flex flex-col gap-3">
+                <CodeTabs endpoint={endpoint} request={request} />
+                <ApiKey />
+              </div>
+              <Prompts mode={mode} />
             </Drawer.Body>
           </Drawer.Dialog>
         </Drawer.Content>

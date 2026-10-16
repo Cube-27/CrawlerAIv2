@@ -3,7 +3,7 @@ import { Magnifier } from "@gravity-ui/icons";
 import { useState } from "react";
 
 /** One field and its button on a single row, to open something by its key (a job id, a site host). The submitted
- * value is trimmed. */
+ * value is trimmed; the button is off until there is one (D-0977), so the field needs no required mark. */
 export function LookupForm({
   label,
   placeholder,
@@ -18,13 +18,14 @@ export function LookupForm({
   const [value, setValue] = useState("");
   return (
     <Form
-      className="flex w-full max-w-xl items-end gap-2"
+      className="flex w-full max-w-md items-end gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onOpen(value.trim());
+        // Enter in an empty field sends the form too.
+        if (value.trim() !== "") onOpen(value.trim());
       }}
     >
-      <TextField isRequired className="min-w-0 flex-1" value={value} onChange={setValue}>
+      <TextField className="min-w-0 flex-1" value={value} onChange={setValue}>
         <Label>{label}</Label>
         <InputGroup>
           <InputGroup.Prefix>
@@ -33,7 +34,7 @@ export function LookupForm({
           <InputGroup.Input placeholder={placeholder} autoComplete="off" spellCheck={false} />
         </InputGroup>
       </TextField>
-      <Button type="submit" variant="secondary">
+      <Button type="submit" variant="secondary" isDisabled={value.trim() === ""}>
         {submitLabel}
       </Button>
     </Form>

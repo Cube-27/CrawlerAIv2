@@ -46,7 +46,7 @@ export function PlaygroundLayout({
 }>) {
   const readOnly = onEdit !== null;
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title="Playground" />
       <ModeSwitch current={mode} />
       <ReadOnlyContext value={readOnly}>

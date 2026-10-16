@@ -17,7 +17,7 @@ export function SiteScreen() {
   const problem = problemOf(configs.error);
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title={host} />
       {configs.isPending ? <LoadingView label="Loading the site's configs" /> : null}
       {problem === null ? null : <ProblemAlert problem={problem} />}

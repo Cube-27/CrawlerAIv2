@@ -110,7 +110,7 @@ export function SchemaScreen() {
     });
   };
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       {retireProblem === null ? null : <ProblemAlert problem={retireProblem} />}
       <SchemaDetailView schema={schema.data} onRetire={onRetire} />
     </section>

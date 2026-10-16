@@ -107,7 +107,7 @@ describe("records screen: the list", () => {
     const calls = stubApi({ "GET /v1/schemas": schemaList });
     await open("/records");
 
-    expect(await screen.findByText("Choose a schema")).toBeInTheDocument();
+    expect(await screen.findByText("No schema chosen yet")).toBeInTheDocument();
     await waitFor(() => {
       expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual(["GET /v1/schemas"]);
     });
@@ -166,6 +166,42 @@ describe("records screen: the list", () => {
     ).toEqual(["title", "price", "Mode", "Version", "Changed", "Confidence"]);
     const [, second] = await recordRows();
     expect(second?.textContent).toBe("Red kettle19.90 EURadhoc1——");
+  });
+
+  it("shows six fields of a wide schema, scalar fields first, and says the rest are in the inspector", async () => {
+    const names = ["tags", "a", "b", "c", "d", "e", "f", "g"];
+    const wide: SchemaDef = {
+      ...schema,
+      fields: Object.fromEntries(
+        names.map((name) => [
+          name,
+          name === "tags"
+            ? {
+                type: "list",
+                item: { type: "text", required: false, scope: "row" },
+                required: false,
+                scope: "row",
+              }
+            : { type: "text", required: false, scope: "row" },
+        ]),
+      ),
+    };
+    stubApi({
+      "GET /v1/schemas": schemaList,
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(wide),
+      "GET /v1/records": page([storedRecord()]),
+    });
+    await open(RECORDS_PATH);
+
+    const table = await screen.findByRole("grid", { name: "Records" });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["a", "b", "c", "d", "e", "f", "Mode", "Version", "Changed", "Confidence"]);
+    expect(
+      screen.getByText("Showing 6 of 8 fields. Open a record to see all of them."),
+    ).toBeInTheDocument();
   });
 
   it("renders a conflict field as — with its reason and status, and no value", async () => {
@@ -360,7 +396,8 @@ describe("records screen: the inspector", () => {
     );
     const price = within(fields.getByRole("row", { name: /price/ }));
     expect(price.getByText("uncalibrated")).toBeInTheDocument();
-    expect(price.getAllByText("conflict")).toHaveLength(2);
+    // The status shows once, in its own column; the value cell has the dash.
+    expect(price.getAllByText("conflict")).toHaveLength(1);
     expect(price.getByText("0.41")).toBeInTheDocument();
   });
 

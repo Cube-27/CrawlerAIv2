@@ -1,27 +1,55 @@
-import { Button, Fieldset, Form, toast } from "@heroui/react";
+import { Button, Fieldset, Form, Link, toast, Typography } from "@heroui/react";
 import { useState } from "react";
+import { useNavigate } from "react-router";
+import { useJobEvents } from "../../api/hooks/events";
+import { useJob } from "../../api/hooks/jobs";
 import { useLearnSite } from "../../api/hooks/configs";
 import { problemOf } from "../../api/hooks/query";
 import { FormActions } from "../../components/FormActions";
+import { JobStatusLabel } from "../../components/JobStatusLabel";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { SchemaSelect } from "../../components/SchemaSelect";
+import { jobPath } from "../jobs/paths";
 
 /** "Learn now" for a site and schema (`POST /v1/sites/{host}/learn`, D-0592). The server refuses while a
  * config is active or a run is in flight (409); after a refusal, "Learn anyway" asks again with `force`. The screen
  * shows `learn.error`. */
 export function useLearn({ site, schemaId }: Readonly<{ site: string; schemaId: string }>) {
   const learn = useLearnSite(site);
+  const navigate = useNavigate();
+  // The learning job this screen started, shown by `LearnRun` until the screen is left (D-0983).
+  const [jobId, setJobId] = useState<string | null>(null);
   const start = (force: boolean) => {
     learn.mutate(
       { schema_id: schemaId, force },
       {
-        onSuccess: (jobId) => {
-          toast.success(`Learning started as job ${jobId}.`);
+        onSuccess: (id) => {
+          setJobId(id);
+          toast.success(`Learning started as job ${id}.`, {
+            actionProps: {
+              children: "Open job",
+              onPress: () => void navigate(jobPath(id)),
+            },
+          });
         },
       },
     );
   };
-  return { learn, start };
+  return { learn, start, jobId };
+}
+
+/** The learning job started here: its status as it runs (its events read the job again, D-0702) and a link to its
+ * page, so a run that fails says so where it was started. */
+export function LearnRun({ jobId }: Readonly<{ jobId: string }>) {
+  const job = useJob(jobId);
+  useJobEvents(jobId);
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Typography.Paragraph size="sm">Learning job</Typography.Paragraph>
+      {job.data === undefined ? null : <JobStatusLabel status={job.data.status} />}
+      <Link href={jobPath(jobId)}>Open the job</Link>
+    </div>
+  );
 }
 
 /** "Learn anyway" after a refusal, then "Learn now"; `submits` makes "Learn now" its form's submit button. */
@@ -79,8 +107,9 @@ export function SiteLearnForm({ site }: Readonly<{ site: string }>) {
       <FormActions>
         <LearnButtons {...learning} submits />
       </FormActions>
-      {/* Under the buttons: a refusal moves nothing above them. */}
+      {/* Under the buttons: a refusal or a run moves nothing above them. */}
       {problem === null ? null : <ProblemAlert problem={problem} />}
+      {learning.jobId === null ? null : <LearnRun jobId={learning.jobId} />}
     </Form>
   );
 }

@@ -7,9 +7,9 @@ import { CancelJobAction } from "../../components/CancelJobAction";
 import { EventLog } from "../../components/EventLog";
 import { JobStatusLabel } from "../../components/JobStatusLabel";
 import { LoadingView } from "../../components/LoadingView";
-import { OutcomeCounts } from "../../components/OutcomeCounts";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
+import { RunProgress } from "../../components/RunProgress";
 import { Section } from "../../components/Section";
 import { StatusLabel } from "../../components/StatusLabel";
 import { Timestamp } from "../../components/Timestamp";
@@ -34,7 +34,7 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
   // A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2), which a dead worker's lease delays.
   const cancel = cancelState(job);
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader
         title={`${KIND_LABELS[job.kind]} job`}
         actions={cancel === "cancellable" ? <CancelJobAction id={job.id} /> : undefined}
@@ -43,8 +43,8 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
         {cancel === "requested" ? <StatusLabel text="cancel requested" tone="warning" /> : null}
       </PageHeader>
       <JobTimes job={job} />
-      <Section title="Tasks">
-        <OutcomeCounts counts={job.counts} outcomes={job.outcomes} />
+      <Section title="Progress">
+        <RunProgress job={job} />
       </Section>
       <Section title="Usage">
         <UsageSummary usage={job.usage} />
@@ -65,7 +65,7 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
 }
 
 /** One job. A job a playground mode runs redirects to its run there (SPEC-14 §4.8); a `learn` job keeps this page
- * (SPEC-12 §4.3): its status and counts, usage, live events, results with exports, and a cancel. */
+ * (SPEC-12 §4.3): its status and progress, usage, live events, results with exports, and a cancel. */
 export function JobScreen() {
   const { id = "" } = useParams();
   const job = useJob(id);

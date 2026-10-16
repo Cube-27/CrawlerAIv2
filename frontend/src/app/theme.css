@@ -24,7 +24,7 @@
   --height-page-view: 70dvh;
   /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
    * (no layout shift on paging). */
-  --height-table-page: 66rem;
+  --height-table-page: 72rem;
   /* The playground's output area (SPEC-14 §4.2): a run's pending, failed and done states fill at least this box, so
    * a run moves nothing around it. */
   --height-playground-output: 36rem;
@@ -34,7 +34,24 @@
    * switching tabs moves nothing. */
   --height-code-view: 28rem;
   /* The live activity feed's box: new lines scroll inside it (SPEC-14 §4.5). */
-  --height-activity-feed: 40rem;
+  --height-activity-feed: 24rem;
+  /* A side drawer's width (DESIGN.md, Side drawer): wide enough for a code block or a page's JSON without clipping. */
+  --width-drawer: 44rem;
+
+  /* Spacing (DESIGN.md, Spacing): the few distances the screens repeat, so padding is set once here. Each is a
+   * Tailwind spacing variable, used through the utilities it generates (`gap-stack`, `p-panel`). */
+  /* The content area's gutters from `sm` (at phone width they stay 16px, DESIGN.md Layout). */
+  --spacing-gutter-x: 2.5rem;
+  --spacing-gutter-y: 2.25rem;
+  /* Between a screen's parts: header, command bar, sections. */
+  --spacing-stack: 2rem;
+  /* Inside a surface: cards, panels, drawers. */
+  --spacing-panel: 1.5rem;
+  /* Inside a table cell, across and down. */
+  --spacing-cell-x: 1.25rem;
+  --spacing-cell-y: 0.875rem;
+  /* Inside an empty state's box. */
+  --spacing-empty: 2.5rem;
 }
 
 /* A neutral palette with one indigo accent, borders over shadows (DESIGN.md, Reference). */
@@ -141,6 +158,11 @@
   .checkbox-group [data-slot="checkbox"] {
     @apply mt-0;
   }
+  /* A required group marks its own label only: HeroUI's rule also reaches each option's label through the option's
+   * `data-required`, so every radio read "Detail *". */
+  .radio-group .radio .radio__content[data-required="true"] > .label::after {
+    content: none;
+  }
 
   /* A form's sections (HeroUI Fieldset): fields inside a section sit closer than the sections do, and a hairline
    * above a heading-weight legend opens each section, so the groups read without boxes (DESIGN.md, Field groups). A
@@ -156,10 +178,46 @@
     @apply mt-2 border-t border-separator pt-5;
   }
 
-  /* Surfaces are outlined, not raised. */
+  /* Surfaces are outlined, not raised, with room inside (DESIGN.md, Spacing). */
   .card {
-    @apply border border-border shadow-none;
+    @apply border border-border p-panel shadow-none;
     border-radius: calc(var(--radius) * 1.5);
+  }
+
+  /* Table cells keep clear of the table's edges and of each other (DESIGN.md, Spacing); at phone width the columns
+   * need the room more than the cells do. */
+  .table__column {
+    @apply px-3 sm:px-cell-x;
+  }
+  .table__cell {
+    @apply px-3 py-cell-y sm:px-cell-x;
+  }
+
+  /* A table of fixed column widths (DESIGN.md, Data tables) keeps a minimum width, so at phone width it scrolls inside
+   * its own container instead of squeezing its columns until a button or a status is cut off. */
+  table.table-fixed {
+    @apply min-w-xl;
+  }
+
+  /* A side drawer (DESIGN.md, Side drawer): wide enough for its content, with the panel's padding. At phone width it
+   * takes the whole width. */
+  .drawer__dialog {
+    @apply p-panel;
+    &[data-placement="right"] {
+      @apply w-drawer max-w-full;
+    }
+  }
+  .drawer__header {
+    @apply gap-1 pe-10;
+  }
+  .drawer__header + .drawer__body {
+    @apply mt-6;
+  }
+
+  /* An empty state (DESIGN.md, Empty state): centred in a dashed box, so "nothing here" reads as a state, not as a
+   * missing part of the page. */
+  .empty-state {
+    @apply flex flex-col items-center gap-1 rounded-xl border border-dashed border-border p-empty text-center;
   }
 
   /* The app shell: the sidebar on the page background, the content on a panel beside it. */
@@ -196,13 +254,18 @@
 
   /* The playground's options panel (DESIGN.md, Playground options): an outlined region under the command bar. */
   .options-panel {
-    @apply rounded-xl border border-border;
+    @apply rounded-xl border border-border p-panel;
   }
 
   /* A JSON view (SPEC-14 §4.3) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */
   .json-view,
   .code-view {
-    @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-3 font-mono text-[0.8125rem] leading-5;
+    @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 font-mono text-[0.8125rem] leading-5;
+  }
+  /* JSON wraps its long lines (a URL, a description) inside the box rather than clipping them; code keeps its lines, as
+   * their numbers count them. */
+  .json-view {
+    @apply break-words whitespace-pre-wrap;
   }
   .json-key {
     color: var(--json-key);

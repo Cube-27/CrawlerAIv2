@@ -70,7 +70,7 @@ export function RecordsScreen() {
   const filters = filtersOf(params);
   const key = new URLSearchParams(activeFilters(filters)).toString();
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title="Records" />
       <RecordFiltersForm
         key={key}
@@ -80,7 +80,7 @@ export function RecordsScreen() {
         }}
       />
       {filters.schema_id === "" ? (
-        <EmptyView title="Choose a schema">
+        <EmptyView title="No schema chosen yet">
           Records are listed by schema, with a column for each of its fields.
         </EmptyView>
       ) : (

@@ -57,7 +57,7 @@ export function SchemasScreen() {
   const problem = problemOf(query.error);
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-stack">
       <PageHeader title="Schemas" actions={<NewSchemaButton />} />
       {query.isPending ? <LoadingView label="Loading schemas" /> : null}
       {problem === null ? null : <ProblemAlert problem={problem} />}

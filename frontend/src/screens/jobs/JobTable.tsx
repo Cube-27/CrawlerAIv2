@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { useJobs } from "../../api/hooks/jobs";
 import { problemOf } from "../../api/hooks/query";
@@ -69,10 +70,12 @@ function JobFilterFields({
 
 /** The Jobs screen's columns and their widths. */
 const JOB_COLUMNS = [
-  ["kind", "w-1/6"],
-  ["status", "w-1/6"],
-  ["tasks", "w-5/12"],
-  ["created", "w-1/4"],
+  ["kind", "w-1/10"],
+  ["target", "w-3/10"],
+  ["status", "w-3/20"],
+  ["tasks", "w-1/5"],
+  ["created", "w-1/6"],
+  ["open", "w-1/12"],
 ] as const;
 
 /** The page's rows; an empty first page says why there are none. */
@@ -109,18 +112,22 @@ function JobPages({ filters }: Readonly<{ filters: JobFilters }>) {
   );
 }
 
-/** The jobs, newest first (`GET /v1/jobs`), filtered by kind and status, a page at a time; a row opens its job. */
-export function JobTable() {
+/** The jobs, newest first (`GET /v1/jobs`), filtered by kind and status, a page at a time; a row opens its job.
+ * `tools` sit at the right of the filters' row. */
+export function JobTable({ tools }: Readonly<{ tools: ReactNode }>) {
   const [params, setParams] = useSearchParams();
   const filters = filtersOf(params);
   return (
-    <div className="flex flex-col gap-3">
-      <JobFilterFields
-        filters={filters}
-        onChange={(next) => {
-          setParams(paramsOf(next), { replace: true });
-        }}
-      />
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <JobFilterFields
+          filters={filters}
+          onChange={(next) => {
+            setParams(paramsOf(next), { replace: true });
+          }}
+        />
+        {tools}
+      </div>
       {/* Keyed by the filters: other filters page from their own first page. */}
       <JobPages key={`${String(filters.kind)}/${String(filters.status)}`} filters={filters} />
     </div>

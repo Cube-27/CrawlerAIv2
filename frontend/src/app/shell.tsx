@@ -153,7 +153,7 @@ export function Shell() {
       <div className="flex min-h-dvh flex-col bg-background text-foreground sm:flex-row">
         <Sidebar />
         <main className="app-main min-w-0 flex-1">
-          <div className="mx-auto max-w-content px-4 py-6 sm:px-8 sm:py-8">
+          <div className="mx-auto max-w-content px-4 py-6 sm:px-gutter-x sm:py-gutter-y">
             <Outlet />
           </div>
         </main>

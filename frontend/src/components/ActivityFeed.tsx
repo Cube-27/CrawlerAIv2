@@ -1,9 +1,8 @@
 import { Typography } from "@heroui/react";
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 import type { JobEvents } from "../api/hooks/events";
-import type { JobSummary } from "../api/jobs";
 import { activityEntry } from "./activityText";
-import { ElapsedTime } from "./ElapsedTime";
+import { Collapsible } from "./Collapsible";
 import { ProblemAlert } from "./ProblemAlert";
 import { StreamStateLabel } from "./StreamStateLabel";
 
@@ -35,60 +34,46 @@ export function activityGroups(events: JobEvents["events"]): Group[] {
   return [...groups.values()].reverse();
 }
 
-/** How many of the job's tasks have ended, of all of them. */
-function progressText({ counts }: JobSummary): string {
-  const ended = counts.done + counts.failed + counts.cancelled;
-  const total = ended + counts.queued + counts.claimed;
-  return `${String(ended)} of ${String(total)} pages done`;
+/** The activity's lines, newest group first, in a fixed-height box that scrolls. */
+function ActivityLines({ events }: Readonly<{ events: JobEvents["events"] }>) {
+  const groups = useMemo(() => activityGroups(events), [events]);
+  return (
+    <ol aria-label="Activity" className="flex h-activity-feed flex-col gap-3 overflow-y-auto">
+      {groups.length === 0 ? (
+        <li>
+          <Typography.Paragraph size="sm" color="muted">
+            No activity yet.
+          </Typography.Paragraph>
+        </li>
+      ) : null}
+      {groups.map((group) => (
+        <li key={group.url ?? ""} className="flex flex-col gap-1">
+          <Typography.Paragraph size="sm" weight="medium" className="truncate">
+            {group.url ?? "This run"}
+          </Typography.Paragraph>
+          <ul aria-label={group.url ?? "This run"} className="flex flex-col gap-0.5">
+            {group.lines.map((line) => (
+              <li key={line.key}>
+                <Typography.Paragraph size="sm" color="muted">
+                  {line.text}
+                </Typography.Paragraph>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
-/** A run's live activity (SPEC-14 §4.5): its events as plain-language lines grouped by task URL, the newest group
- * first, under its progress and elapsed time, in a fixed-height box that scrolls. */
-export function ActivityFeed({
-  job,
-  activity,
-}: Readonly<{ job: JobSummary; activity: JobEvents }>) {
-  const headingId = useId();
-  // Only a new event changes the lines; the summary above re-renders the feed on every progress event.
-  const groups = useMemo(() => activityGroups(activity.events), [activity.events]);
+/** A run's live activity (SPEC-14 §4.5, D-0975): its events as plain-language lines grouped by task URL, collapsed
+ * under the results with the stream's state beside it. The run's progress is in its header, so the lines are detail a
+ * reader opens when they want it. */
+export function ActivityFeed({ activity }: Readonly<{ activity: JobEvents }>) {
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Typography.Heading level={2} id={headingId}>
-          Activity
-        </Typography.Heading>
-        <StreamStateLabel state={activity.state} />
-      </div>
-      <div className="flex flex-wrap gap-x-3">
-        <Typography.Paragraph size="sm">{progressText(job)}</Typography.Paragraph>
-        <ElapsedTime startedAt={job.started_at} finishedAt={job.finished_at} />
-      </div>
+    <Collapsible title="Activity" aside={<StreamStateLabel state={activity.state} />}>
       {activity.problem === null ? null : <ProblemAlert problem={activity.problem} />}
-      <ol aria-label="Activity" className="flex h-activity-feed flex-col gap-3 overflow-y-auto">
-        {groups.length === 0 ? (
-          <li>
-            <Typography.Paragraph size="sm" color="muted">
-              No activity yet.
-            </Typography.Paragraph>
-          </li>
-        ) : null}
-        {groups.map((group) => (
-          <li key={group.url ?? ""} className="flex flex-col gap-1">
-            <Typography.Paragraph size="sm" weight="medium" className="truncate">
-              {group.url ?? "This run"}
-            </Typography.Paragraph>
-            <ul aria-label={group.url ?? "This run"} className="flex flex-col gap-0.5">
-              {group.lines.map((line) => (
-                <li key={line.key}>
-                  <Typography.Paragraph size="sm" color="muted">
-                    {line.text}
-                  </Typography.Paragraph>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ol>
-    </section>
+      <ActivityLines events={activity.events} />
+    </Collapsible>
   );
 }

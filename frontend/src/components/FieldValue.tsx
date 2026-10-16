@@ -88,16 +88,18 @@ function NoValue({ reason }: Readonly<{ reason: string | null }>) {
 }
 
 /** A field's value, shown by its type (SPEC-12 §4.2); `spec` is null when the type is unknown. A field that did not
- * publish shows "—", its reason and its status, and never a value. */
+ * publish shows "—", its reason and, unless the caller shows it in a column of its own (`withStatus` false), its
+ * status, and never a value. */
 export function FieldValue({
   field,
   spec,
-}: Readonly<{ field: FieldResult; spec: FieldTypeSpec | null }>) {
+  withStatus = true,
+}: Readonly<{ field: FieldResult; spec: FieldTypeSpec | null; withStatus?: boolean }>) {
   if (field.status !== "published") {
     return (
       <span className="inline-flex items-center gap-2">
         <NoValue reason={field.reason} />
-        <FieldStatusBadge status={field.status} />
+        {withStatus ? <FieldStatusBadge status={field.status} /> : null}
       </span>
     );
   }
