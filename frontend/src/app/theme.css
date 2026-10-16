@@ -193,6 +193,12 @@
     @apply px-3 py-cell-y sm:px-cell-x;
   }
 
+  /* A table of fixed column widths (DESIGN.md, Data tables) keeps a minimum width, so at phone width it scrolls inside
+   * its own container instead of squeezing its columns until a button or a status is cut off. */
+  table.table-fixed {
+    @apply min-w-xl;
+  }
+
   /* A side drawer (DESIGN.md, Side drawer): wide enough for its content, with the panel's padding. At phone width it
    * takes the whole width. */
   .drawer__dialog {
