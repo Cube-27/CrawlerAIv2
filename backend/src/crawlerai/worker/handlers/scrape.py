@@ -93,7 +93,7 @@ async def _settle(
         return ended
     if records is None:
         return Finished("extracted", capture_id=page.capture_id)
-    parsed = ParsedPage.of(page.result.bundle)
+    parsed = page.parsed
     changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed)
     if not changed and page.standing is not None:
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)

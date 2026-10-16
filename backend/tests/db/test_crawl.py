@@ -85,8 +85,8 @@ def robots(*lines: str) -> Page:
 class Web:
     """Answers each URL from `pages` over HTTP; anything else is a 404. A URL of `redirects` answers as its target,
     reached through the site's redirect. A URL in `refused` redirects to a private address: the rung reports the
-    guard's refusal as the attempt's error. A URL in `held` answers once its event is set. The browser is never
-    used."""
+    guard's refusal as the attempt's error. A URL in `held` answers once its event is set. The browser renders a page
+    as it is served (`rendered` lists the URLs): a page without offer data is rendered once (owner #48)."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, Page] = field(default_factory=dict)
@@ -94,6 +94,7 @@ class Web:
     refused: set[str] = field(default_factory=set)
     held: dict[str, asyncio.Event] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
+    rendered: list[str] = field(default_factory=list)
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
         if url in self.refused:
@@ -106,7 +107,9 @@ class Web:
         return self.fetch_result(url, status, body, block_class=block_class, final_url=final_url)
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("a crawl of these pages never needs a browser")
+        self.rendered.append(url)
+        status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
+        return self.fetch_result(url, status, body, block_class=block_class, method="browser")
 
 
 @pytest.fixture
@@ -317,6 +320,8 @@ async def test_role_c_completes_a_discovered_page_whose_price_is_only_in_its_tex
     await run(engine, fetching, engine_data, submitted.job_id, MeteredClient([FakeProvider([reply])], engine))
 
     assert [task.outcome for task in (await tasks(engine, submitted.job_id)).values()] == ["extracted"]
+    # The page states its price in text only: no structured offer data, so it is rendered once, to no better effect.
+    assert web.rendered == [url]
     async with engine.connect() as conn:
         usage: dict[str, int] = (await conn.execute(select(Job.usage).where(Job.id == submitted.job_id))).scalar_one()
     assert usage["llm_calls"] == 1

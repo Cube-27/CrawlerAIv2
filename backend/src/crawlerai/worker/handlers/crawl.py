@@ -31,7 +31,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.robots import site_robots
 from crawlerai.acquire.types import AttemptRecord
 from crawlerai.config_ir.drift import DriftMargins
-from crawlerai.content.page import ParsedPage
 from crawlerai.crawl.frontier import Frontier, discovered
 from crawlerai.crawl.rules import located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
@@ -130,7 +129,7 @@ async def _visit(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage) -> tup
     if ended is not None:
         return ended, ()
     bundle = page.result.bundle
-    parsed = ParsedPage.of(bundle)
+    parsed = page.parsed
     found: tuple[str, ...] = ()
     # A page at `max_depth` leads nowhere the crawl goes, so its links are not read.
     if crawl.task.depth < crawl.request.max_depth:

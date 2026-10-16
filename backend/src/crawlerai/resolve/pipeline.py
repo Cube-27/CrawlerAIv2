@@ -43,7 +43,7 @@ from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
-from crawlerai.resolve.ownership import EntityGraph
+from crawlerai.resolve.ownership import OFFER, EntityGraph
 from crawlerai.resolve.pagination import next_page_candidates
 from crawlerai.resolve.preference import (
     PRECEDENCE_FILE,
@@ -534,3 +534,23 @@ def _result(
         record_confidence=None,
         diagnostics=diagnostics,
     )
+
+
+def lacks_offer_data(
+    bundle: CaptureBundle, schema: SchemaDef, data: EngineData, parsed: ParsedPage | None = None
+) -> bool:
+    """Whether a reached detail page for a schema that requires a `money` field holds nothing an offer could be read
+    from: no Offer entity (schema.org `Offer` or a subtype) and no candidate for any `money` field, from any collector.
+    A render may hold what the page's scripts fill in (owner #48, D-1202). A page that fails to read is never one.
+    `parsed` is the bundle's parse when the caller has one (INV-26)."""
+    money = {name for name, spec in schema.fields.items() if spec.type is FieldType.MONEY}
+    if schema.page_kind != "detail" or not any(schema.fields[name].required for name in money):
+        return False
+    try:
+        page = _Page.read(_Source(bundle, schema, data, parsed, None))
+    except Exception:  # §4.14: the extraction that follows reports the failure
+        log.exception(_FAILED)
+        return False
+    if any(page.graph.is_a(entity, OFFER) for entity in page.graph.entities.values()):
+        return False
+    return not any(candidate.field in money for candidate in page.candidates)

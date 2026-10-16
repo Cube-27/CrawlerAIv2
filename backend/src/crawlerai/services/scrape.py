@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.politeness import refuse
 from crawlerai.acquire.robots import Robots
-from crawlerai.acquire.rungs import acquire
+from crawlerai.acquire.rungs import RenderCheck, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.active import active_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
@@ -76,6 +76,7 @@ from crawlerai.services.scrape_steps import (
     FetchOptions,
     Formats,
     Input,
+    OfferCheck,
     PageFormat,
     PageOutcome,
     SchemaPrompt,
@@ -88,7 +89,9 @@ from crawlerai.services.scrape_steps import (
     format_member,
     named_schema,
     new_capture,
+    offer_check,
     page_formats,
+    parsed_page,
     record_fetch_usage,
     records_outcome,
     site_row,
@@ -333,15 +336,18 @@ async def _run(
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
     attempts: list[AttemptRecord] = []
+    check = _offer_check(work, request)
     if recent is None:
-        page = await polite_fetch(engine, fetching, request.url, host, policy, site, attempts, recipe=recipe)
+        page = await polite_fetch(
+            engine, fetching, request.url, host, policy, site, attempts, recipe=recipe, needs_render=check
+        )
     else:
         page = recent.result
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
     if isinstance(page, FetchResult) and page.block_class == "ok":
-        derived = await _derive(engine, work, request, task, page, config)
+        derived = await _derive(engine, work, request, task, (page, parsed_page(page.bundle, check)), config)
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
@@ -365,6 +371,11 @@ async def _run(
         **members,
         **derived.formats,
     )
+
+
+def _offer_check(work: _Work, request: ScrapeRequest) -> OfferCheck | None:
+    """The check that renders an HTTP page lacking the offer data `records` reads (owner #48); None without it."""
+    return offer_check(work.schema, work.data) if "records" in request.formats else None
 
 
 _CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
@@ -419,12 +430,12 @@ async def _derive(
     work: _Work,
     request: ScrapeRequest,
     task: ClaimedTask,
-    result: FetchResult,
+    reached: tuple[FetchResult, ParsedPage],
     config: ActiveConfig | None,
 ) -> _Derived:
-    """The requested formats, the draft of a prompt, and the extraction for `records`, from one parse of the page
+    """The requested formats, the draft of a prompt, and the extraction for `records`, from the page's one parse
     (INV-26), with the site's active `config` when there is one."""
-    page = ParsedPage.of(result.bundle)
+    result, page = reached
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     manifest = result.bundle.manifest
     formats, sample = await asyncio.to_thread(_content, page, manifest, request.formats, sample=prompt is not None)
@@ -471,9 +482,11 @@ async def polite_fetch(
     attempts: list[AttemptRecord],
     *,
     recipe: ApiRecipe | None = None,
+    needs_render: RenderCheck | None = None,
 ) -> FetchResult | str:
     """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
-    (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`). The attempts
+    (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`), and rendered
+    once more when `needs_render` finds its HTTP page lacking (owner #48). The attempts
     of every fetch made, robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a
     request of the fetch (INV-16)."""
     robots: Robots | None = None
@@ -493,7 +506,14 @@ async def polite_fetch(
     admit_next = refuse if disallowed else partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
     send = adapter_send(fetching, host, rules)
     result = await acquire(
-        url, policy, site.fetch_method, fetching.rungs, recipe=rung, admit_next=admit_next, send=send
+        url,
+        policy,
+        site.fetch_method,
+        fetching.rungs,
+        recipe=rung,
+        admit_next=admit_next,
+        send=send,
+        needs_render=needs_render,
     )
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:

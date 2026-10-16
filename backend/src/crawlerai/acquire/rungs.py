@@ -34,6 +34,9 @@ from crawlerai.db.models import FetchMethod, Site, SiteId
 from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
+# Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (owner #48): the caller's, since
+# what a page should hold depends on the schema, which sits above `acquire`.
+RenderCheck = Callable[[FetchResult], Awaitable[bool]]
 # A fetch so far: the outcome kept, every attempt and their duration.
 Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
 
@@ -44,6 +47,7 @@ class ConditionalRung(Protocol):
     def __call__(self, url: str, policy: FetchPolicy, *, validators: Validators | None) -> Awaitable[FetchResult]: ...
 
 
+_NOT_MODIFIED = 304
 # ARCHITECTURE §7.1: the HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 
@@ -81,6 +85,7 @@ async def acquire(
     validators: Validators | None = None,
     admit_next: Admit | None = None,
     send: JsonFetcher | None = None,
+    needs_render: RenderCheck | None = None,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
     without it); a page an adapter does not serve skips the recipe (SPEC-15 §4.6). Otherwise through `recipe`, the
@@ -88,12 +93,13 @@ async def acquire(
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
     were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered`
     method. In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if
-    it is `ok`. Each request after the first (the page after an adapter or a recipe, the browser retry) waits for
-    `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and is not sent when `admit_next` refuses it: the fetch
-    keeps the outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with the
-    HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no adapter detected whose canonical link
-    is its URL without the query, which an adapter detects, is fetched again by that adapter on its own turn
-    (SPEC-15 §4.2)."""
+    it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept only if it is `ok`
+    and `needs_render` no longer holds (owner #48). Each request after the first (the page after an adapter or a
+    recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and is not sent
+    when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
+    manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no
+    adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
+    that adapter on its own turn (SPEC-15 §4.2)."""
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
     # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
     # rate, which `admit_next` waits out (SPEC-15 §4.9). A recipe's may be the page's own (its HTML page request).
@@ -104,7 +110,7 @@ async def acquire(
         served.block_class == "ok" or (by_recipe and slow_down(served)) or not await _admitted(admit_next)
     ):
         return served
-    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next)
+    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next, needs_render)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
     if send is not None:
@@ -181,6 +187,7 @@ async def _page(
     rungs: Rungs,
     validators: Validators | None,
     admit_next: Admit | None,
+    needs_render: RenderCheck | None,
 ) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
@@ -188,12 +195,29 @@ async def _page(
         result = await rungs.conditional(url, policy, validators=validators)
     else:
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
-    retried = policy.method_hint == "auto" and method == "http" and _browser_may_pass(result)
+    retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
     if not retried or not await _admitted(admit_next):
         return result, result.attempts, result.duration_ms
     retry = await rungs.browser(url, policy)
-    kept = retry if retry.block_class == "ok" else result
+    kept = retry if await _better(retry, result, needs_render) else result
     return kept, result.attempts + retry.attempts, result.duration_ms + retry.duration_ms
+
+
+async def _browser_may_help(result: FetchResult, needs_render: RenderCheck | None) -> bool:
+    if _browser_may_pass(result):
+        return True
+    # RFC 9110 §15.4.5: a 304 has no content, so there is nothing to check.
+    if result.block_class != "ok" or result.bundle.manifest.status_code == _NOT_MODIFIED or needs_render is None:
+        return False
+    return await needs_render(result)
+
+
+async def _better(retry: FetchResult, result: FetchResult, needs_render: RenderCheck | None) -> bool:
+    """Whether the browser's `retry` is kept over the HTTP `result`: it is `ok` and, when HTTP was `ok` too, it holds
+    what HTTP lacked."""
+    if retry.block_class != "ok":
+        return False
+    return result.block_class != "ok" or needs_render is None or not await needs_render(retry)
 
 
 async def _admitted(admit_next: Admit | None) -> bool:
