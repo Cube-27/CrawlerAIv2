@@ -2,17 +2,19 @@
 
 - `schema:<Enumeration>`: the input is a string or a JSON-LD node reference (`{"@id": …}`) naming a member by IRI
   (`https://schema.org/InStock`, `http://schema.org/InStock`), compact IRI (`schema:InStock`) or name (`InStock`).
-  The value is the member name. Other text, not an IRI, is matched as the `type:` path does against each type
-  vocabulary whose codes are all members of the enumeration (`type:availability` for `ItemAvailability`), so a page
-  that states "In stock" in its text gives `InStock`.
-- `type:<name>`: the input is a string; a phrase of the vocabulary matches when its tokens are a contiguous run of
-  the input's tokens (`crawlerai.normalize.vocab`). The value is the phrase's code.
+  The value is the member name. Other text, not an IRI, is read as the `type:` path reads it, against each type
+  vocabulary whose codes are all members of the enumeration (`type:availability` for `ItemAvailability`), and a
+  member name in any case also counts (`instock`), so a page that states "In stock (5 available)" gives `InStock`.
+- `type:<name>`: the input is a string; it states a code when the tokens of its first clause are exactly one of the
+  code's phrases (`crawlerai.normalize.vocab`), and no other code's phrase appears later in it. "Not in stock" states
+  nothing (D-0782).
 
 No match is `Invalid`; two members in one input are `Ambiguous`.
 """
 
 import re
-from collections.abc import Hashable
+import unicodedata
+from collections.abc import Hashable, Mapping
 
 from pydantic import JsonValue
 
@@ -26,6 +28,9 @@ _SCHEMA_PREFIXES = ("https://schema.org/", "http://schema.org/", "schema:")
 # An absolute IRI starts with its scheme and a colon (RFC 3987 §2.2, RFC 3986 §3.1) and holds no white space; it names
 # a resource, so it is never read as text.
 _IRI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S*")
+# Unicode general categories (UAX #44) that join the words of one clause besides spaces: dash punctuation ("pre-order")
+# and connector punctuation ("in_stock").
+_CLAUSE_JOINERS = frozenset({"Zs", "Pd", "Pc"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -62,11 +67,12 @@ def _schema_member(raw: Raw, enumeration: str, ctx: Context) -> NormalizeResult:
 
 
 def _stated_member(text: str, members: frozenset[str], ctx: Context) -> NormalizeResult:
-    """The member that `text` states through the type vocabularies whose codes are all `members`: their phrases
-    name members of this enumeration and nothing else (the structural property the match rests on)."""
-    words = vocab.tokens(text)
-    found = [vocab.find_codes(v, words, ctx) for v in vocab.type_vocabularies_within(members)]
-    return _one_code(frozenset().union(*(c for c in found if c is not None)), "not_a_member")
+    """The member that `text` states through the type vocabularies whose codes are all `members` (their phrases name
+    members of this enumeration and nothing else, the structural property the match rests on), or by a member name
+    in any case: `instock`, as Open Graph `product:availability` writes it."""
+    entries = [e for v in vocab.type_vocabularies_within(members) for e in _page_entries(v, ctx)]
+    names = {member.casefold(): member for member in members}
+    return _one_code(_stated_codes(text, entries, names), "not_a_member")
 
 
 def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
@@ -77,13 +83,50 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
         return Invalid("not_a_string")
     if has_surrogate(raw):
         return Invalid("surrogate")
-    words = vocab.tokens(raw)
-    if not words:
+    if not vocab.tokens(raw):
         return Invalid("empty")
-    codes = vocab.find_codes(by_language, words, ctx)
-    if codes is None:
+    entries = _page_entries(by_language, ctx)
+    if not entries:
         return Invalid("no_vocabulary_for_language")
-    return _one_code(codes, "no_match")
+    return _one_code(_stated_codes(raw, entries, {}), "no_match")
+
+
+def _page_entries(by_language: Mapping[str, vocab.Entries], ctx: Context) -> list[vocab.Entries]:
+    return vocab.entries_for(by_language, vocab.context_languages(ctx))
+
+
+def _stated_codes(text: str, entries: list[vocab.Entries], names: Mapping[str, str]) -> frozenset[str]:
+    """The codes `text` states: the code whose phrase (or name) is the text's whole first clause, with every code a
+    phrase names anywhere else in the text. A phrase with other words in its clause ("not in stock", "in stock soon")
+    states nothing: a word before or after it may negate or qualify it, and no standard lists which words do (C4,
+    C7: decline rather than guess). A different code later in the text makes the statement ambiguous."""
+    clause = " ".join(vocab.tokens(_first_clause(text)))
+    opening = {e.phrases[clause] for e in entries if clause in e.phrases}
+    if clause in names:
+        opening.add(names[clause])
+    if not opening:
+        return frozenset()
+    words = vocab.tokens(text)
+    return frozenset(opening).union(*(e.find(words) for e in entries))
+
+
+def _first_clause(text: str) -> str:
+    """The text's first clause: from its first letter, through letters, marks, spaces, dashes and connectors (Unicode
+    general categories L, M, Zs, Pd, Pc, UAX #44), up to the first other character: a punctuation mark, symbol, digit
+    or line break ends it. Leading spaces, punctuation and symbols ("✓ In stock") are skipped; a leading digit is
+    not ("0 in stock"), so the clause is then empty."""
+    start = next((i for i, char in enumerate(text) if not _leads(char)), len(text))
+    end = next((i for i in range(start, len(text)) if not _continues(text[i])), len(text))
+    return text[start:end]
+
+
+def _leads(char: str) -> bool:
+    return char.isspace() or unicodedata.category(char)[0] in "PS"
+
+
+def _continues(char: str) -> bool:
+    category = unicodedata.category(char)
+    return category[0] in "LM" or category in _CLAUSE_JOINERS
 
 
 def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
