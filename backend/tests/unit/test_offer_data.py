@@ -1,4 +1,4 @@
-"""The check that sends an HTTP detail page to the browser (owner #48): a page for a schema that requires a price, with
+"""The check that sends an HTTP detail page to the browser (owner #49): a page for a schema that requires a price, with
 no Offer and no price candidate in its capture.
 
 Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic fixture (C3, C9).

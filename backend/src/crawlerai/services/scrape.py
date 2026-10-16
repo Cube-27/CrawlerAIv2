@@ -374,7 +374,7 @@ async def _run(
 
 
 def _offer_check(work: _Work, request: ScrapeRequest) -> OfferCheck | None:
-    """The check that renders an HTTP page lacking the offer data `records` reads (owner #48); None without it."""
+    """The check that renders an HTTP page lacking the offer data `records` reads (owner #49); None without it."""
     return offer_check(work.schema, work.data) if "records" in request.formats else None
 
 
@@ -486,7 +486,7 @@ async def polite_fetch(
 ) -> FetchResult | str:
     """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
     (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`), and rendered
-    once more when `needs_render` finds its HTTP page lacking (owner #48). The attempts
+    once more when `needs_render` finds its HTTP page lacking (owner #49). The attempts
     of every fetch made, robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a
     request of the fetch (INV-16)."""
     robots: Robots | None = None

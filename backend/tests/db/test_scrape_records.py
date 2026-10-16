@@ -215,7 +215,7 @@ async def test_a_detail_page_whose_offer_only_a_render_holds_is_read_from_the_br
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
 ) -> None:
-    # Owner #48: the HTTP page holds no Offer and no price; its scripts would render them.
+    # Owner #49: the HTTP page holds no Offer and no price; its scripts would render them.
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, _product_page(url, offers=False), "ok")
 

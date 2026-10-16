@@ -248,7 +248,7 @@ def fetch_policy(
 @dataclass
 class OfferCheck:
     """The `needs_render` check of a fetch that extracts with `schema`: an HTTP page that lacks offer data
-    (`lacks_offer_data`) is rendered once (owner #48). It keeps the parse of the last page it read, so that page's
+    (`lacks_offer_data`) is rendered once (owner #49). It keeps the parse of the last page it read, so that page's
     extraction parses it no second time (INV-26)."""
 
     schema: SchemaDef

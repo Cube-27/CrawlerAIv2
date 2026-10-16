@@ -541,7 +541,7 @@ def lacks_offer_data(
 ) -> bool:
     """Whether a reached detail page for a schema that requires a `money` field holds nothing an offer could be read
     from: no Offer entity (schema.org `Offer` or a subtype) and no candidate for any `money` field, from any collector.
-    A render may hold what the page's scripts fill in (owner #48, D-1202). A page that fails to read is never one.
+    A render may hold what the page's scripts fill in (owner #49, D-1202). A page that fails to read is never one.
     `parsed` is the bundle's parse when the caller has one (INV-26)."""
     money = {name for name, spec in schema.fields.items() if spec.type is FieldType.MONEY}
     if schema.page_kind != "detail" or not any(schema.fields[name].required for name in money):

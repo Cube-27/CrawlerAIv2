@@ -34,7 +34,7 @@ from crawlerai.db.models import FetchMethod, Site, SiteId
 from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
-# Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (owner #48): the caller's, since
+# Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (owner #49): the caller's, since
 # what a page should hold depends on the schema, which sits above `acquire`.
 RenderCheck = Callable[[FetchResult], Awaitable[bool]]
 # A fetch so far: the outcome kept, every attempt and their duration.
@@ -94,7 +94,7 @@ async def acquire(
     were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered`
     method. In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if
     it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept only if it is `ok`
-    and `needs_render` no longer holds (owner #48). Each request after the first (the page after an adapter or a
+    and `needs_render` no longer holds (owner #49). Each request after the first (the page after an adapter or a
     recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and is not sent
     when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
     manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no

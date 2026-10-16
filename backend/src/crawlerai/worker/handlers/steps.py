@@ -140,7 +140,7 @@ async def fetch_page(
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
     serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
-    the offer data their schema reads is rendered once more (`OfferCheck`, owner #48)."""
+    the offer data their schema reads is rendered once more (`OfferCheck`, owner #49)."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
