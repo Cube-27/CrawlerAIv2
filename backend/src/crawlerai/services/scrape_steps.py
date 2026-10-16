@@ -10,7 +10,7 @@ import asyncio
 import logging
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal, Self, TypedDict
 from uuid import UUID
 
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
+from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
@@ -248,29 +249,32 @@ def fetch_policy(
 @dataclass
 class OfferCheck:
     """The `needs_render` check of a fetch that extracts with `schema`: an HTTP page that lacks offer data
-    (`lacks_offer_data`) is rendered once (owner #49). It keeps the parse of the last page it read, so that page's
-    extraction parses it no second time (INV-26)."""
+    (`lacks_offer_data`, with the site's active `config`) is rendered once (owner #49). It keeps the parse of each
+    page it read, so the extraction of the one kept parses it no second time (INV-26)."""
 
     schema: SchemaDef
     data: EngineData
-    _last: tuple[UUID, ParsedPage] | None = None
+    config: ConfigExecutor | None = None
+    _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
 
     async def __call__(self, result: FetchResult) -> bool:
-        page = ParsedPage.of(result.bundle)
-        self._last = (result.bundle.manifest.capture_id, page)
+        page = self._parsed.setdefault(result.bundle.manifest.capture_id, ParsedPage.of(result.bundle))
         # Parsing and collecting are CPU work: a thread keeps the event loop free.
-        return await asyncio.to_thread(lacks_offer_data, result.bundle, self.schema, self.data, page)
+        return await asyncio.to_thread(
+            lacks_offer_data, result.bundle, self.schema, self.data, config=self.config, parsed=page
+        )
 
     def parse(self, bundle: CaptureBundle) -> ParsedPage:
         """The bundle's parse: the one this check read, when it read this bundle."""
-        if self._last is not None and self._last[0] == bundle.manifest.capture_id:
-            return self._last[1]
-        return ParsedPage.of(bundle)
+        return self._parsed.get(bundle.manifest.capture_id) or ParsedPage.of(bundle)
 
 
-def offer_check(schema: SchemaDef | None, data: EngineData | None) -> OfferCheck | None:
-    """The `OfferCheck` of a fetch that extracts with `schema`; None without a schema or the engine's data."""
-    return None if schema is None or data is None else OfferCheck(schema, data)
+def offer_check(schema: SchemaDef | None, data: EngineData | None, config: ActiveConfig | None) -> OfferCheck | None:
+    """The `OfferCheck` of a fetch that extracts with `schema` and the site's active `config`; None without a schema
+    or the engine's data."""
+    if schema is None or data is None:
+        return None
+    return OfferCheck(schema, data, None if config is None else config.executor)
 
 
 def parsed_page(bundle: CaptureBundle, check: OfferCheck | None) -> ParsedPage:

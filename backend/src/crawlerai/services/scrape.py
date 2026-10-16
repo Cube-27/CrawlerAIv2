@@ -336,7 +336,7 @@ async def _run(
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
     attempts: list[AttemptRecord] = []
-    check = _offer_check(work, request)
+    check = _offer_check(work, request, config)
     if recent is None:
         page = await polite_fetch(
             engine, fetching, request.url, host, policy, site, attempts, recipe=recipe, needs_render=check
@@ -373,9 +373,9 @@ async def _run(
     )
 
 
-def _offer_check(work: _Work, request: ScrapeRequest) -> OfferCheck | None:
+def _offer_check(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> OfferCheck | None:
     """The check that renders an HTTP page lacking the offer data `records` reads (owner #49); None without it."""
-    return offer_check(work.schema, work.data) if "records" in request.formats else None
+    return offer_check(work.schema, work.data, config) if "records" in request.formats else None
 
 
 _CaptureRow = Row[CaptureId, str, int, dict[str, Any]]

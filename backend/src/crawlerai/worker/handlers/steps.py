@@ -153,7 +153,7 @@ async def fetch_page(
     attempts: list[AttemptRecord] = []
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
-    check = None if served is None else offer_check(served.schema, served.data)
+    check = None if served is None else offer_check(served.schema, served.data, served.config)
 
     async def page(url: str, admit_next: Admit) -> FetchResult | Unchanged:
         # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6).
