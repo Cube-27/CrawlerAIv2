@@ -1,7 +1,7 @@
 # SPEC-08 decisions
 
-Decisions for [SPEC-08 — Config IR, executor, learning, progressive mode, drift and exporters](../specs/SPEC-08-config-ir-learning-progressive.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-08 — Config IR, executor, learning, progressive mode, drift and exporters](../../specs/archive/SPEC-08-config-ir-learning-progressive.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0460 — IR `attr` step is its own selector key
 - Date: 2026-10-13 · Spec/PR: SPEC-08 PR 1 (#95) · Status: decided

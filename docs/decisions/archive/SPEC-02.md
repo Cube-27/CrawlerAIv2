@@ -1,7 +1,7 @@
 # SPEC-02 decisions
 
-Decisions for [SPEC-02 — Acquisition: HTTP, browser, adapters, politeness, SSRF, captures](../specs/SPEC-02-acquisition.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-02 — Acquisition: HTTP, browser, adapters, politeness, SSRF, captures](../../specs/archive/SPEC-02-acquisition.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0112 — Visible text counts non-whitespace characters of `<body>`
 - Date: 2026-10-13 · Spec/PR: SPEC-02 PR 1 (#16) · Status: decided

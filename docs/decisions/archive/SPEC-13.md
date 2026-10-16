@@ -1,7 +1,7 @@
 # SPEC-13 decisions
 
-Decisions for [SPEC-13 — Variant matrix: per-variant rows from structured data](../specs/SPEC-13-variant-matrix.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-13 — Variant matrix: per-variant rows from structured data](../../specs/archive/SPEC-13-variant-matrix.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0786 — SPEC-13 variant matrix approved
 - Date: 2026-10-15 · Spec/PR: SPEC-13; ARCHITECTURE §5.2, §5.3, §10, §22, Appendix A #37, rev 16 (#169) · Status: decided

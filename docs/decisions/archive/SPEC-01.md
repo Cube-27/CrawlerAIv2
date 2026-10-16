@@ -1,7 +1,7 @@
 # SPEC-01 decisions
 
-Decisions for [SPEC-01 — Persistence, job queue and capture storage](../specs/SPEC-01-persistence-queue-storage.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-01 — Persistence, job queue and capture storage](../../specs/archive/SPEC-01-persistence-queue-storage.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0088 — UUIDv7 generated in-repo
 - Date: 2026-10-12 · Spec/PR: SPEC-01 PR 1 (#11) · Status: decided

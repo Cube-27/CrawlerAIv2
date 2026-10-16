@@ -1,7 +1,7 @@
 # SPEC-14 decisions
 
-Decisions for [SPEC-14 — Playground workspace](../specs/SPEC-14-playground-workspace.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-14 — Playground workspace](../../specs/archive/SPEC-14-playground-workspace.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0809 — The UI becomes one playground; the server attaches the API key
 - Date: 2026-10-15 · Spec/PR: SPEC-14 · Status: decided (owner)

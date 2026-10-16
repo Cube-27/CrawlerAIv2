@@ -1,7 +1,7 @@
 # SPEC-06 decisions
 
-Decisions for [SPEC-06 — LLM layer: provider-agnostic client, grounding, roles C and S](../specs/SPEC-06-llm-layer.md).
-Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
+Decisions for [SPEC-06 — LLM layer: provider-agnostic client, grounding, roles C and S](../../specs/archive/SPEC-06-llm-layer.md).
+Template, statuses and rules: [DECISIONS.md](../../DECISIONS.md).
 
 ### D-0346 — Usage is committed in its own transaction
 - Date: 2026-10-13 · Spec/PR: SPEC-06 PR 1 (#69) · Status: decided

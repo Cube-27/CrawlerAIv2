@@ -20,7 +20,7 @@ ENTRY = re.compile(r"### (D-\d+)\b")
 
 def log_files(root: Path) -> list[Path]:
     main = root / "docs" / "DECISIONS.md"
-    return [*([main] if main.is_file() else []), *sorted((root / "docs" / "decisions").glob("*.md"))]
+    return [*([main] if main.is_file() else []), *sorted((root / "docs" / "decisions").rglob("*.md"))]
 
 
 def entries(root: Path, file: Path) -> Iterator[tuple[str, str]]:

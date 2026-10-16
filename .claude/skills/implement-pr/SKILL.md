@@ -1,6 +1,6 @@
 ---
 name: implement-pr
-description: Implement one batch of related rows of a spec's PR plan (docs/plans/ACTIVE.md) as one PR, end to end — worktree, tests first, code, /simplify once, verification, tracker commit, PR, review, fixes in one push, READY. Use when assigned "SPEC-NN PRs A-B" (or one row) or asked to implement the next PR.
+description: Implement one batch of related rows of a spec's PR plan (docs/plans/ACTIVE.md) as one PR, end to end — worktree, tests first, code, verification, tracker commit, PR, review, fixes in one push, READY. Use when assigned "SPEC-NN PRs A-B" (or one row) or asked to implement the next PR.
 ---
 
 # Implement one PR
@@ -17,8 +17,9 @@ You own one batch of rows of `docs/plans/ACTIVE.md` (its size, branch and worktr
    lands in `<main>/../CrawlerAIv2-worktrees/`). Never work in the main checkout.
 3. **Shared files.** `ACTIVE.md` and the decisions log change only in your tracker commit, the last commit before
    you open the PR (§5). Collect your decisions in the PR draft until then.
-4. Read the spec: the design sections your rows touch, its invariants, testing strategy, acceptance criteria and
+4. Read only what the change needs: for spec rows, the design sections they touch, their acceptance criteria and
    your PR-plan rows; then the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items 3-4 name, by section.
+   Don't open archived specs unless you need the design of code you change, and never edit them.
 
 ## 1. Frame
 
@@ -48,16 +49,6 @@ Stop and re-read `CLAUDE.md` §2 if you are about to:
 - build something from ARCHITECTURE §22.
 
 Stay in scope. Work outside the batch becomes a follow-up line in your tracker commit, not code.
-
-## 2a. Simplify (mandatory, once)
-
-Once the batch's behaviour is implemented and its tests pass, run the `/simplify` skill on your diff against
-`origin/main` and apply what it finds: reuse over duplication, fewer layers, no speculative options. Re-run the
-tests and commit (`refactor(scope): simplify …`). If the skill is unavailable, do the same pass by hand with
-ENGINEERING's "Changing code". Say in the PR body's Verification section that the pass ran and what it changed (or
-"no changes").
-
-This is the PR's one `/simplify` pass; a later prompt to re-run it, or a review, gets "already ran" (`CLAUDE.md` §3).
 
 ## 3. Verify
 
@@ -108,7 +99,7 @@ Review your own diff as a hostile reviewer, then fix what you find:
   - `## Why`: 1–3 sentences; link the spec rows.
   - `## What changed`: 1–3 bullets per row.
   - `## Scope`: what it covers and what it deliberately leaves out.
-  - `## Verification`: real commands and their outcomes; acceptance criteria → proof; the simplify pass; the dev
+  - `## Verification`: real commands and their outcomes; acceptance criteria → proof; the dev
     eval delta when relevant.
   - `## Decisions`: the IDs of the decisions your tracker commit logs, one line each with its status (`decided` or
     `needs-owner`); or "none".
@@ -123,7 +114,7 @@ or gate is fixed in code, never with `NOSONAR`, exclusions or a weaker threshold
 Keep going until you comment `READY`; never stop to ask the orchestrator to "resume" or "proceed". Never merge your
 own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orchestrator, is the only merge path.
 
-1. **Review once, when complete.** Implemented, simplified and green: start one reviewer in this worktree:
+1. **Review once, when complete.** Implemented and green: start one reviewer in this worktree:
    `tools/orchestrator/start_agent.sh reviewer-pr<n> <worktree> "Run /review-pr <n>. The implementor is <your agent
    name>."`. Then wait for its verdict yourself, without ending your turn: poll `gh pr view <n> --comments` (as a
    tracked background task, or `herdr agent wait reviewer-pr<n>`) until the verdict comment is on the PR. Read the
