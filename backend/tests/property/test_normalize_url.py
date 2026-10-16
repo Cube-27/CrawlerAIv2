@@ -137,6 +137,14 @@ def test_unparsable_urls_are_invalid(raw: str, reason: str) -> None:
     assert url.normalize(raw, URL, CTX) == Invalid(reason)
 
 
+@pytest.mark.parametrize("raw", ["https:////cdn.example.test/i.png", "https:///i.png", "http:////example.test/"])
+def test_an_empty_authority_is_declined_not_repaired(raw: str) -> None:
+    # D-1022: RFC 3986 §3.2 reads the authority between `//` and the next `/` as empty, and RFC 9110 §4.2.1 has a
+    # recipient reject an http(s) URI with an empty host. The WHATWG parser would skip the extra slashes and read
+    # the next segment as the host, which is the host only when the slashes were a mistake (C7).
+    assert url.normalize(raw, IMAGE, CTX) == Invalid("no_host")
+
+
 # WHATWG URL Standard, forbidden domain code points: the forbidden host code points, C0 controls, `%` and DELETE.
 _FORBIDDEN_IN_DOMAIN = " #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in range(0x20))
 

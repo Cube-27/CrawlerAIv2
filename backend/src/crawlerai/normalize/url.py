@@ -116,6 +116,9 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
     # (RFC 3986 §3.1: schemes are case-insensitive).
     if parts.scheme not in _DEFAULT_PORT:
         return Invalid("not_http")
+    # RFC 9110 §4.2.1: a recipient rejects an http(s) URI with an empty host, as `https:////host/path` has (RFC 3986
+    # §3.2: the authority between `//` and the next `/` is empty). It is not repaired by skipping slashes as the WHATWG
+    # parser does: the next segment is the host only when the slashes were a mistake (D-1022, C7).
     if not parts.hostname:
         return Invalid("no_host")
     host = _host(parts.hostname)
