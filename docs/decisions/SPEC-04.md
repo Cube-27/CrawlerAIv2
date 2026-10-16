@@ -491,3 +491,24 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: none; `Record<FieldType, …>` fails the build without it.
 - Why: generated types are the authority (ENGINEERING "Type-system discipline").
 - Reversible: yes
+
+### D-0960 — A `number` field type
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 12 (#208) · Status: decided
+- Decision: A decimal as the page states it, from a JSON number or the one number in a text, read through `normalize.numbers.stated` (shared with count). The value is a fixed-point string with its digits as written, and equality compares decimals. No number, two numbers ("4.5 out of 5") or a minus set apart from the digits decline; a number the locales read differently is `Ambiguous`. Not checkable.
+- Alternatives: `count` (refuses fractions); `text` (4.5 ≠ 4.50); rescaling ratings to a common scale (enrichment, C7).
+- Why: `rating` (`aggregateRating.ratingValue`) needs a decimal; ARCHITECTURE §5.1 (Appendix A #42).
+- Reversible: yes
+
+### D-0961 — `commerce_detail` optional fields the page states, edited in place
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 12 (#208) · Status: decided
+- Decision: Optional `description`, `additional_images`, `color`, `material`, `gender`, `condition` (OfferItemCondition members added), `rating`, `review_count`, `mpn` and `product_id`, and `variant_id` per variant row, each mapped to its schema.org path. The preset is edited in place with no version bump. Nothing derived (no variant or image counts).
+- Alternatives: a version 5; a separate preset.
+- Why: owner, 2026-10-16: greenfield, extract don't enrich (Appendix A #42).
+- Reversible: yes
+
+### D-0962 — The frontend lists the `number` type
+- Date: 2026-10-16 · Spec/PR: SPEC-04 PR 12 (#208) · Status: decided
+- Decision: The regenerated `FieldType` adds `number` to `schemaDocument.ts` and the `field.ts` scalar list, as D-0924 did for `count`.
+- Alternatives: none; `Record<FieldType, …>` fails the build without it.
+- Why: generated types are the authority.
+- Reversible: yes

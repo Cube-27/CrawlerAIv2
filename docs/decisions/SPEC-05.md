@@ -637,3 +637,38 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Build them here.
 - Why: Out of this batch's authority; recorded as follow-ups with the eval evidence.
 - Reversible: yes
+
+### D-0955 — Structural DOM collector admitted: label–value pairs and the main image
+- Date: 2026-10-16 · Spec/PR: SPEC-05 PR 14 (#208) · Status: decided
+- Decision: The owner admitted the ARCHITECTURE §22 structural DOM candidate in part, from the reference eval (round 1b class 14, round-1 class 10): label–value pairs (two-cell table rows, `dl` groups) and the main region's first image, on detail pages only. Repeated structure and typed value spotting are not admitted. Appendix A #42.
+- Alternatives: wait for role C coverage evidence on fresh sites (the §22 trigger); admit all three collectors.
+- Why: owner admission, 2026-10-16 (C13).
+- Reversible: yes
+
+### D-0956 — `dom`: its own source kind, locator scheme and evidence bucket
+- Date: 2026-10-16 · Spec/PR: SPEC-05 PR 14 (#208) · Status: decided
+- Decision: DOM values are candidates of source kind `dom` (migration 0020), with a `dom:<xpath>` locator and a `dom` bucket, independent, entity `page`. In the initial precedence they rank after `og` and before `config`. Induction reads `dom:` locators as it reads `microdata:` ones.
+- Alternatives: reuse `structured` (mixes standards-based and structural precision); rank below `config`.
+- Why: a DOM label follows no structured-data standard, so its precision is measured on its own (§10); ranking it like `og` keeps the page's own values ahead of learned selectors until `fit-precedence` runs on dev (follow-up).
+- Reversible: yes
+
+### D-0957 — A label names a field by the schema's own words
+- Date: 2026-10-16 · Spec/PR: SPEC-05 PR 14 (#208) · Status: decided
+- Decision: A label matches a field when its words equal the words of the field's name, or of the schema.org property its path names (the step before a final `.name`). Words are NFKC, case-folded, split on non-alphanumerics and lowerCamelCase. List and object fields get no pair. The value must be visible. An image fills `image_url` fields whose path names `image`.
+- Alternatives: a synonym or translation vocabulary (C4: none is pinned); substring matching.
+- Why: the words come from the schema and the pinned schema.org file (C2, C4). Labels in other words or languages do not match, by design.
+- Reversible: yes
+
+### D-0958 — JSON-LD strings may hold raw control characters
+- Date: 2026-10-16 · Spec/PR: SPEC-05 PR 14 (#208) · Status: decided
+- Decision: JSON-LD blocks are decoded with raw U+0000–U+001F accepted inside strings (`strict=False`), in the jsonld collector, page metadata and the release executor. Nothing else is repaired, and a block that still fails is dropped as before. API, XHR and js_state JSON stay strict.
+- Alternatives: repair other lax forms (trailing commas, single quotes); keep dropping the block.
+- Why: RFC 8259 §7 requires the escape and §9 allows the extension; a raw newline in a string is unambiguous (eval class 15).
+- Reversible: yes
+
+### D-0959 — A page-level candidate needs no page entity in its `CollectResult`
+- Date: 2026-10-16 · Spec/PR: SPEC-05 PR 14 (#208) · Status: decided
+- Decision: `CollectResult` accepts candidates owned by `page` without a `page` entity in the same result, as `Executed` already did; `EntityGraph.of` always adds the page entity. The DOM collector runs in the standard collector list.
+- Alternatives: a separate wiring path for page-only collectors; DOM emitting its own `page` entity (duplicates og's).
+- Why: one collector protocol (C8).
+- Reversible: yes
