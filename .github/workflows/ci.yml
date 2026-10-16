@@ -78,8 +78,8 @@ jobs:
       # C11: cognitive complexity of at most 15 per function, for src, tests, migrations and ../tools
       # ([tool.complexipy] in pyproject.toml). `--no-ignore`: an inline suppression does not exempt a function.
       - run: uv run --no-sync --no-build complexipy --no-ignore
-      # Headless Chromium for the `browser`-marked tests (SPEC-02 §6), at the build this Patchright version pins.
-      - run: uv run --no-sync --no-build patchright install --with-deps --only-shell chromium
+      # Full Chromium, run headless, for the `browser`-marked tests (SPEC-02 §6), at the build this Patchright version pins.
+      - run: uv run --no-sync --no-build patchright install --with-deps --no-shell chromium
       - name: Create databases and roles
         working-directory: .
         run: psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql

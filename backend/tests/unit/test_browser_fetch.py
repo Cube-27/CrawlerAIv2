@@ -1,5 +1,5 @@
 """Browser fetch (SPEC-02 §4.8, §4.5): a JS-only page is rendered, the JSON it loads is captured within the caps, every
-connection passes the SSRF guard, and the browser presents one consistent identity.
+connection passes the SSRF guard, and the page and its workers present Chromium's own identity.
 
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. The connector admits only
 those hosts (and the server's own address) at the server's port; every other name goes through the real guard with
@@ -68,6 +68,22 @@ setInterval(() => fetch('/api/n/0'), 100);
 _REPLACES_ITSELF = b"""<html><body><p>One moment</p><script>
 setTimeout(() => location.replace('/app'), 1000);
 </script></body></html>"""
+
+# A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own.
+_WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js');</script></body></html>"""
+
+# A 403 document with no site structure (a shell) that navigates on after longer than the 2 s DOM quiet.
+_INTERSTITIAL = b"""<html><body><p>One moment</p><script>
+setTimeout(() => location.replace('/app'), 4000);
+</script></body></html>"""
+# A 403 document that is a site page: enough text and hyperlinks (`acquire/classify.py`).
+_REFUSAL_PAGE = (
+    b"<html><body><nav>"
+    + b"".join(b'<a href="/c/%d">Section %d</a>' % (i, i) for i in range(6))
+    + b"</nav><p>"
+    + b"This page is not available to you. " * 8
+    + b"</p></body></html>"
+)
 
 
 @dataclass(frozen=True)
@@ -140,6 +156,10 @@ def server() -> Iterator[Server]:
             "/busy": Reply(body=_BUSY),
             "/still": Reply(body=_STILL),
             "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
+            "/with-worker": Reply(body=_WITH_WORKER),
+            "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
+            "/interstitial": Reply(403, body=_INTERSTITIAL),
+            "/refusal": Reply(403, body=_REFUSAL_PAGE),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
             "/hop-private": Reply(302, headers=(("Location", "http://internal.example.com/"),)),
@@ -212,7 +232,7 @@ def browser(server: Server) -> Iterator[Browser]:
         except PlaywrightError as e:
             if os.environ.get("CI") or "Executable doesn't exist" not in e.message:
                 raise
-            pytest.skip("Chromium is not installed: run `uv run patchright install chromium`")
+            pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
         try:
             yield Browser(runner, session, server.port)
             # Each fetch closes its own context, so none is left open between tests.
@@ -419,13 +439,31 @@ def test_an_error_document_that_navigates_itself_is_read_where_the_navigation_en
     assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
 
 
-def test_an_error_document_that_stays_is_read_with_its_own_status(browser: Browser, server: Server) -> None:
-    server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
-
-    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=15))
+def test_an_error_document_that_is_a_site_page_is_read_once_quiet(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/refusal"), FetchPolicy(browser_timeout_s=15))
 
     assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    assert result.duration_ms < 8_000
+    assert result.duration_ms < 5_000
+
+
+def test_an_interstitial_is_read_where_its_navigation_ends_after_the_quiet_time(
+    browser: Browser, server: Server
+) -> None:
+    result = browser.fetch(server.url("/interstitial"), FetchPolicy(browser_timeout_s=20))
+
+    manifest = result.bundle.manifest
+    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
+    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
+
+
+def test_an_interstitial_that_stays_is_read_after_its_share_of_the_budget(browser: Browser, server: Server) -> None:
+    server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
+
+    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=20))
+
+    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
+    # 40% of the 20 s budget waiting for a navigation, then the 2 s DOM quiet; never the 90% settle share.
+    assert 8_000 <= result.duration_ms < 14_000
 
 
 def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, server: Server) -> None:
@@ -509,15 +547,16 @@ def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body(
     assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
 
 
-def test_user_agent_and_client_hints_name_chrome_and_agree(browser: Browser, server: Server) -> None:
-    # 127.0.0.1 is a secure context (W3C Secure Contexts §3.2), where Chromium sends client hints.
-    browser.fetch(server.url("/app", host="127.0.0.1"))
+def test_the_page_and_its_worker_present_chromiums_own_identity(browser: Browser, server: Server) -> None:
+    # No override (D-1205): the document and a dedicated worker's request carry the same user agent, and its major
+    # version is the one the client-hint brands name. 127.0.0.1 is a secure context (W3C Secure Contexts §3.2), where
+    # Chromium sends client hints.
+    browser.fetch(server.url("/with-worker", host="127.0.0.1"))
 
-    sent = next(h for host, path, h in server.requests if path == "/app" and host.startswith("127.0.0.1"))
-    agent = sent["User-Agent"]
-    assert "HeadlessChrome" not in agent
-    brands = dict(re.findall(r'"([^"]+)";v="(\d+)"', sent["sec-ch-ua"]))
-    assert "HeadlessChrome" not in brands
-    chrome_major = re.search(r" Chrome/(\d+)\.", agent)
+    sent = {path: h for host, path, h in server.requests if host.startswith("127.0.0.1")}
+    agent = sent["/with-worker"]["User-Agent"]
+    assert sent["/api/n/7"]["User-Agent"] == agent
+    brands = dict(re.findall(r'"([^"]+)";v="(\d+)"', sent["/with-worker"]["sec-ch-ua"]))
+    chrome_major = re.search(r"Chrome/(\d+)\.", agent)
     assert chrome_major is not None
     assert brands["Chromium"] == chrome_major.group(1)

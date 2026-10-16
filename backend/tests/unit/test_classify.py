@@ -2,7 +2,7 @@
 
 import pytest
 
-from crawlerai.acquire.classify import classify
+from crawlerai.acquire.classify import classify, lacks_site_structure
 from crawlerai.acquire.types import BlockClass
 from crawlerai.db.models import PageKind
 
@@ -234,3 +234,13 @@ def test_a_listing_whose_structured_data_lists_no_items_is_a_shell(page: bytes) 
 )
 def test_too_few_items_unlinked_items_or_only_chrome_links_are_no_listing(page: bytes) -> None:
     assert classify(200, _HTML, page, page_kind="listing") == "shell"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [(_EMPTY_APP, True), (_page(199, 4), True), (_page(400, 0), True), (_page(200, 1), False), (_FULL, False)],
+)
+def test_site_structure_is_judged_by_the_2xx_rules_whatever_the_status(body: bytes, expected: bool) -> None:
+    # The browser reads it on a 403/429/503 document (D-1206), where `classify` answers by status alone.
+    assert lacks_site_structure(body) is expected
+    assert lacks_site_structure(body) is (classify(200, _HTML, body) != "ok")

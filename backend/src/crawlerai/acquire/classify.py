@@ -62,14 +62,27 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
     tree = LexborHTMLParser(body)
     # Read before the shell rule strips script data blocks from the tree.
     structured = page_kind == "listing" and _structured_rows(tree)
+    unstructured = _no_site_page(tree)
+    if unstructured is not None:
+        return unstructured
+    if page_kind == "listing" and not structured and not _lists_items(body):
+        return "shell"
+    return "ok"
+
+
+def lacks_site_structure(body: bytes) -> bool:
+    """Whether an HTML body is no site page by its structure alone, whatever its status: a shell, or a document that
+    links nowhere (the rules `classify` applies to a 2xx page)."""
+    return _no_site_page(LexborHTMLParser(body)) is not None
+
+
+def _no_site_page(tree: LexborHTMLParser) -> BlockClass | None:
     if _is_shell(tree):
         return "shell"
     # After the shell rule: hyperlinks inside a `template` are not in the document, and the rule strips them.
     if tree.css_first(_HYPERLINKS) is None:
         return "blocked"
-    if page_kind == "listing" and not structured and not _lists_items(body):
-        return "shell"
-    return "ok"
+    return None
 
 
 def _is_html(headers: HeaderList) -> bool:

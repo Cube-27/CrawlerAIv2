@@ -131,7 +131,7 @@ def _captures(urls: list[str], port: int) -> list[CaptureBundle]:
         except PlaywrightError as e:
             if os.environ.get("CI") or "Executable doesn't exist" not in e.message:
                 raise
-            pytest.skip("Chromium is not installed: run `uv run patchright install chromium`")
+            pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
 
 
 def test_discovery_finds_the_endpoint_of_browser_captures_and_binding_templates_it(port: int) -> None:
