@@ -19,6 +19,7 @@ modules =
     crawlerai.normalize.location
     crawlerai.normalize.range
     crawlerai.normalize.count
+    crawlerai.normalize.number
 
 # The dispatcher imports the type modules; the type modules import only `vocab` (vocabularies, their matcher),
 # `numbers` (CLDR number reading) and `base` (results, context) from normalize.
@@ -28,7 +29,7 @@ name = Normalizer internals
 type = layers
 layers =
     crawlerai.normalize.dispatch
-    crawlerai.normalize.text : crawlerai.normalize.money : crawlerai.normalize.enum : crawlerai.normalize.url : crawlerai.normalize.identifier : crawlerai.normalize.date : crawlerai.normalize.location : crawlerai.normalize.range : crawlerai.normalize.count
+    crawlerai.normalize.text : crawlerai.normalize.money : crawlerai.normalize.enum : crawlerai.normalize.url : crawlerai.normalize.identifier : crawlerai.normalize.date : crawlerai.normalize.location : crawlerai.normalize.range : crawlerai.normalize.count : crawlerai.normalize.number
     crawlerai.normalize.vocab : crawlerai.normalize.numbers
     crawlerai.normalize.base
 

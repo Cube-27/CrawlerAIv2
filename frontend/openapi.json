@@ -2127,6 +2127,7 @@
           "location",
           "range",
           "count",
+          "number",
           "list",
           "object"
         ],

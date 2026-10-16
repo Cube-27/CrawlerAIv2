@@ -94,6 +94,7 @@ describe("FieldValue", () => {
       "10–20 EUR per HOUR",
     ],
     ["count", { type: "count" }, 5, "5"],
+    ["decimal number", { type: "number" }, "4.50", "4.50"],
     ["number", { type: "text" }, 42, "42"],
   ] as const)("renders a published %s value", (_name, spec, value, text) => {
     const { container } = render(

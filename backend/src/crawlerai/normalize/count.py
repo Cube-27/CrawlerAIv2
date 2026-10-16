@@ -11,14 +11,13 @@ Nothing is defaulted (C7): a fraction, a negative number, a range, another unit,
 is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
 """
 
-import unicodedata
 from collections.abc import Hashable, Mapping
 from decimal import Decimal
 
 from pydantic import JsonValue
 
 from crawlerai.normalize import numbers
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
+from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # UN/CEFACT Recommendation 20 common code for "one" (a unit count), the unit schema.org `unitCode` names for a count.
@@ -55,21 +54,12 @@ def _quantitative_value(raw: Mapping[str, JsonValue], ctx: Context) -> Normalize
 
 
 def _text(raw: str, ctx: Context) -> NormalizeResult:
-    if has_surrogate(raw):
-        return Invalid("surrogate")
-    # Unicode NFKC (UAX #15): fullwidth digits and no-break spaces read as their plain form, as CLDR symbols are.
-    text = unicodedata.normalize("NFKC", raw).strip()
-    if not text:
-        return Invalid("empty")
-    runs = list(numbers.AMOUNT_RUN.finditer(text))
-    if not runs:
-        return Invalid("no_number")
-    if len(runs) > 1:
-        return Invalid("several_numbers")
-    run = runs[0]
-    if numbers.negative(text[: run.start()]):
+    found = numbers.stated(raw)
+    if isinstance(found, str):
+        return Invalid(found)
+    if numbers.negative(found.before):
         return Invalid("negative")
-    values = numbers.readings(run.group(), numbers.locale_set(ctx))
+    values = numbers.readings(found.written, numbers.locale_set(ctx))
     if not values:
         return Invalid("not_a_count")  # a run no CLDR convention parses strictly ("1,2,3")
     if len(values) == 1:

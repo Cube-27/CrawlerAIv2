@@ -58,6 +58,7 @@ TYPE_DEFINITIONS: Final[dict[FieldType, str]] = {
     FieldType.LOCATION: "a place: locality, region, ISO 3166 country, and whether it is remote",
     FieldType.RANGE: "a minimum and maximum with a currency or unit and a period, such as a salary",
     FieldType.COUNT: "a whole number of items, zero or more, such as a stock quantity",
+    FieldType.NUMBER: "a decimal number as the page states it, such as a rating value",
     FieldType.LIST: "a list of values of one type (`item`)",
     FieldType.OBJECT: "named sub-fields (`fields`)",
 }

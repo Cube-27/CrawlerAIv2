@@ -1425,7 +1425,7 @@ export interface components {
          * @description The §5.1 field types. A type is added here only together with its normalizer module (C8).
          * @enum {string}
          */
-        FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "count" | "list" | "object";
+        FieldType: "text" | "long_text" | "money" | "enum" | "url" | "image_url" | "identifier" | "date" | "datetime" | "location" | "range" | "count" | "number" | "list" | "object";
         /**
          * FieldsDraft
          * @description Field names and the page kind of the pages they are read from.
