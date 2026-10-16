@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "../../app/auth";
 import {
   cancelJob,
+  exportJobOutputs,
   exportJobPage,
   exportJobValues,
   getJob,
@@ -65,12 +66,17 @@ export function useJobRequest(id: string | null) {
   });
 }
 
-/** The job's results at `cursor`. */
-export function useJobResults(id: string, page: { cursor: string | null; limit: number }) {
+/** The job's results at `cursor`; nothing is read unless `enabled`. */
+export function useJobResults(
+  id: string,
+  page: { cursor: string | null; limit: number },
+  enabled = true,
+) {
   const client = useApiClient();
   return useQuery({
     queryKey: [...jobResultsKey(id), page],
     queryFn: () => unwrap(listJobResults(client, id, page)),
+    enabled,
   });
 }
 
@@ -93,6 +99,12 @@ export function useExportJobValues(id: string) {
   return useMutation({
     mutationFn: (withMetadata: boolean) => unwrap(exportJobValues(client, id, withMetadata)),
   });
+}
+
+/** Every page output of a job without a schema, for its JSON download. */
+export function useExportJobOutputs(id: string) {
+  const client = useApiClient();
+  return useMutation({ mutationFn: () => unwrap(exportJobOutputs(client, id)) });
 }
 
 /** The answer is the job after the cancel: shown without a read. */

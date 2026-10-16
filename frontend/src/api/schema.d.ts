@@ -721,10 +721,12 @@ export interface components {
          * @description The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
          *     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
          *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
-         *     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10).
-         *     `webhook_url` is called when the job ends (§4.2).
+         *     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
+         *     `budget.llm_calls` bounds the job's calls, and without a `budget` they are not bounded, as a crawl's are not
+         *     (D-1006). `webhook_url` is called when the job ends (§4.2).
          */
         BatchScrapeRequest: {
+            budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
              *       "method_hint": "auto",

@@ -1,6 +1,6 @@
 import { Button, Link, Table, Typography } from "@heroui/react";
 import { useState } from "react";
-import { useJobValues } from "../../../api/hooks/jobs";
+import { useJobResults, useJobValues } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { JsonValuesItem } from "../../../api/jobs";
 import { useCursorPages } from "../../../components/cursors";
@@ -118,15 +118,19 @@ function PagesTable({
 }
 
 /** A batch's or crawl's pages (SPEC-14 §4.3), one row each in task order, from `results?format=json_values`; each
- * row's JSON opens in a drawer. The job's events read the page shown again as tasks end. With `selectable` (a crawl's
- * pages), rows are selected by URL across pages, and the selected URLs open as a batch (SPEC-14 §2.8). */
+ * row's JSON opens in a drawer. With `outputs` (a job without a schema), the drawer shows the page's outputs, read
+ * from `format=json` at the same cursor, whose pages hold the same tasks in the same order (SPEC-10 §4.2). The job's
+ * events read the page shown again as tasks end. With `selectable` (a crawl's pages), rows are selected by URL across
+ * pages, and the selected URLs open as a batch (SPEC-14 §2.8). */
 export function ResultsTable({
   jobId,
   withMetadata,
   selectable,
-}: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean }>) {
+  outputs,
+}: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean; outputs: boolean }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
   const values = useJobValues(jobId, { cursor, limit: PAGE_SIZE, withMetadata });
+  const pageOutputs = useJobResults(jobId, { cursor, limit: PAGE_SIZE }, outputs).data;
   // The open drawer's row, by its place: its item is read from the page shown, so a refresh updates it.
   const [openId, setOpenId] = useState<number | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -154,7 +158,10 @@ export function ResultsTable({
       </PagedTable>
       {open === undefined ? null : (
         <ItemDrawer
-          item={open.item}
+          url={open.item.url}
+          value={
+            pageOutputs?.kind === "pages" ? pageOutputs.page.items[open.id - first] : open.item
+          }
           position={open.id}
           onClose={() => {
             setOpenId(null);

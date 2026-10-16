@@ -205,6 +205,27 @@ export async function exportJobValues(
   return { kind: "done", value: items };
 }
 
+/** Every page output of a job without a schema (`format=json`, SPEC-10 §4.2), at the largest page size, read in turn
+ * by cursor: what its JSON export saves, as its drawers show them. */
+export async function exportJobOutputs(
+  client: ApiClient,
+  id: string,
+): Promise<ApiResult<PageOutput[]>> {
+  const items: PageOutput[] = [];
+  let cursor: string | null = null;
+  do {
+    // Sequential: each page's cursor comes from the page before it (SPEC-07 §4.6).
+    const page: ApiResult<ResultsPage> = await listJobResults(client, id, {
+      cursor,
+      limit: EXPORT_LIMIT,
+    });
+    if (page.kind === "failed") return page;
+    if (page.value.kind === "pages") items.push(...page.value.page.items);
+    cursor = page.value.page.next_cursor;
+  } while (cursor !== null);
+  return { kind: "done", value: items };
+}
+
 /** One page of the job's records exported as `format`, at the largest page size. */
 export async function exportJobPage(
   client: ApiClient,

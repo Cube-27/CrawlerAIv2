@@ -1,6 +1,6 @@
 import { Card, Typography } from "@heroui/react";
 import { useJobEvents } from "../../../api/hooks/events";
-import { useJob } from "../../../api/hooks/jobs";
+import { useJob, useJobRequest } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { cancelState, type JobKind, type JobSummary } from "../../../api/jobs";
 import { ActivityFeed } from "../../../components/ActivityFeed";
@@ -13,10 +13,15 @@ import { OutputArea, type OutputState } from "../OutputArea";
 import { RecentRuns } from "./RecentRuns";
 import { ResultsTable } from "./ResultsTable";
 import { RunExports } from "./RunExports";
+import { pageOutputs } from "./storedRequest";
 
 /** A run's summary (SPEC-14 §4.3, D-0975), one outlined surface: its status with Cancel and the exports on the right,
  * kept in place as the run goes, then its progress and outcomes. */
-function RunSummary({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
+function RunSummary({
+  job,
+  withMetadata,
+  outputs,
+}: Readonly<{ job: JobSummary; withMetadata: boolean; outputs: boolean }>) {
   const cancel = cancelState(job);
   return (
     <Card>
@@ -30,7 +35,7 @@ function RunSummary({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
           <div className="flex flex-wrap items-start gap-2">
             {/* A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2). */}
             <CancelJobAction id={job.id} isDisabled={cancel !== "cancellable"} />
-            <RunExports jobId={job.id} withMetadata={withMetadata} />
+            <RunExports jobId={job.id} withMetadata={withMetadata} outputs={outputs} />
           </div>
         </div>
         <RunProgress job={job} />
@@ -43,11 +48,19 @@ function RunSummary({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
  * its live activity, collapsed. The run's events feed the activity and read the summary and the table again. */
 function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
   const activity = useJobEvents(job.id);
+  // A job without a schema has page outputs, not records (SPEC-10 §4.2): its request says which.
+  const request = useJobRequest(job.id).data;
+  const outputs = request !== undefined && pageOutputs(request);
   return (
     <>
-      <RunSummary job={job} withMetadata={withMetadata} />
+      <RunSummary job={job} withMetadata={withMetadata} outputs={outputs} />
       {/* A crawl's pages open as a batch (SPEC-14 §2.8); a batch's or extract's are its own input. */}
-      <ResultsTable jobId={job.id} withMetadata={withMetadata} selectable={job.kind === "crawl"} />
+      <ResultsTable
+        jobId={job.id}
+        withMetadata={withMetadata}
+        selectable={job.kind === "crawl"}
+        outputs={outputs}
+      />
       <ActivityFeed activity={activity} />
     </>
   );
