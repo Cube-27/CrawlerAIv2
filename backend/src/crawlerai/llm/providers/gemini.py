@@ -23,6 +23,9 @@ from crawlerai.llm.client import (
     redacted,
 )
 
+# The bound on one model lookup of the setup check (`crawlerai.llm.setup`): a probe, not a call.
+CHECK_TIMEOUT_MS = 10_000
+
 
 class GeminiProvider:
     name = "gemini"
@@ -63,3 +66,17 @@ class GeminiProvider:
             tokens_out=(usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0),
             cut=any(candidate.finish_reason == types.FinishReason.MAX_TOKENS for candidate in candidates),
         )
+
+    async def check_models(self) -> tuple[str, ...]:
+        """What the models endpoint says is wrong with the configured model ids (`crawlerai.llm.setup`)."""
+        problems: list[str] = []
+        config = types.GetModelConfig(http_options=types.HttpOptions(timeout=CHECK_TIMEOUT_MS))
+        for model in sorted(set(self.models.values())):
+            try:
+                await self._sdk.aio.models.get(model=model, config=config)
+            except httpx.TransportError as error:
+                problems.append(f"{self.name} did not answer for model {model} ({type(error).__name__})")
+            except errors.APIError as error:
+                reason = redacted(error.message or "", self._key)
+                problems.append(f"{self.name} answered HTTP {error.code} for model {model}: {reason}")
+        return tuple(problems)

@@ -1,6 +1,7 @@
 """What the services run with in one process: the database, the fetching rungs, the LLM client and the engine's data
 files. The API app and the MCP server's stdio process open one each from the settings (SPEC-10 §4.7)."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -17,9 +18,11 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import Settings
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.providers.from_settings import client_from_settings
+from crawlerai.llm.setup import LLMSetup
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
@@ -33,6 +36,9 @@ class Runtime:
     llm: LLMClient
     engine_data: EngineData | None  # None without the data files: no `records`
     drift_margins: DriftMargins | None
+    # The LLM setup check, run in the background from when `open_runtime` opens (`crawlerai.llm.setup`); None for a
+    # runtime built from another's parts, which its opener checked.
+    llm_setup: LLMSetup | None = None
 
 
 def fetching_from_settings(settings: Settings) -> Fetching:
@@ -58,7 +64,10 @@ def fetching_from_settings(settings: Settings) -> Fetching:
 
 @asynccontextmanager
 async def open_runtime(settings: Settings) -> AsyncIterator[Runtime]:
+    quiet_peer_resets(asyncio.get_running_loop())
     engine = create_async_engine(settings.database_url.get_secret_value())
+    setup = LLMSetup.of(settings)
+    check = asyncio.create_task(setup.verify())
     try:
         yield Runtime(
             database=engine,
@@ -66,6 +75,8 @@ async def open_runtime(settings: Settings) -> AsyncIterator[Runtime]:
             llm=client_from_settings(settings, engine),
             engine_data=load_engine_data(),
             drift_margins=load_drift_margins(),
+            llm_setup=setup,
         )
     finally:
+        check.cancel()
         await engine.dispose()

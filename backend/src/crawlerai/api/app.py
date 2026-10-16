@@ -39,6 +39,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.llm = runtime.llm
         app.state.engine_data = runtime.engine_data
         app.state.drift_margins = runtime.drift_margins
+        app.state.llm_setup = runtime.llm_setup  # `open_runtime` always checks it
         yield
 
 

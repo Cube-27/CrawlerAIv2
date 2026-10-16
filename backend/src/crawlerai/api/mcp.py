@@ -44,6 +44,7 @@ async def _bind(ctx: AnyContext) -> Caller:
         llm=state.llm,
         engine_data=state.engine_data,
         drift_margins=state.drift_margins,
+        llm_setup=state.llm_setup,
     )
     return Caller(runtime, request.state.api_key_id)
 

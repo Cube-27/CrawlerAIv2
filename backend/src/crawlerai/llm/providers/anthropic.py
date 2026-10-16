@@ -28,6 +28,9 @@ from crawlerai.llm.client import (
     redacted,
 )
 
+# The bound on one model lookup of the setup check (`crawlerai.llm.setup`): a probe, not a call.
+CHECK_TIMEOUT_S = 10.0
+
 
 class AnthropicProvider:
     name = "anthropic"
@@ -70,3 +73,16 @@ class AnthropicProvider:
             tokens_out=message.usage.output_tokens,
             cut=message.stop_reason == "max_tokens",
         )
+
+    async def check_models(self) -> tuple[str, ...]:
+        """What the Models API says is wrong with the configured model ids (`crawlerai.llm.setup`)."""
+        problems: list[str] = []
+        for model in sorted(set(self.models.values())):
+            try:
+                await self._sdk.models.retrieve(model, timeout=CHECK_TIMEOUT_S)
+            except APIConnectionError as error:
+                problems.append(f"{self.name} did not answer for model {model} ({type(error).__name__})")
+            except APIStatusError as error:
+                reason = redacted(error.message, self._key)
+                problems.append(f"{self.name} answered HTTP {error.status_code} for model {model}: {reason}")
+        return tuple(problems)

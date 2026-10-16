@@ -1444,6 +1444,11 @@ export interface components {
             /** Eval Ui */
             eval_ui: boolean;
             /**
+             * Llm
+             * @enum {string}
+             */
+            llm: "checking" | "ok" | "unavailable";
+            /**
              * Status
              * @default ok
              * @constant

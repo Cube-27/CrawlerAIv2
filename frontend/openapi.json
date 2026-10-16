@@ -2170,6 +2170,15 @@
             "title": "Eval Ui",
             "type": "boolean"
           },
+          "llm": {
+            "enum": [
+              "checking",
+              "ok",
+              "unavailable"
+            ],
+            "title": "Llm",
+            "type": "string"
+          },
           "status": {
             "const": "ok",
             "default": "ok",
@@ -2178,7 +2187,8 @@
           }
         },
         "required": [
-          "eval_ui"
+          "eval_ui",
+          "llm"
         ],
         "title": "Health",
         "type": "object"
