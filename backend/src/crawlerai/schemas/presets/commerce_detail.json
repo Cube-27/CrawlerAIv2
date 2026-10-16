@@ -57,6 +57,60 @@
       "description": "GS1 trade item number (GTIN-8, -12, -13 or -14) of the selected or default variant",
       "schema_org": "Product.gtin"
     },
+    "mpn": {
+      "type": "identifier",
+      "scheme": "mpn",
+      "description": "Manufacturer part number of the product, as the page states it",
+      "schema_org": "Product.mpn"
+    },
+    "product_id": {
+      "type": "identifier",
+      "scheme": "custom",
+      "description": "Product identifier the page states in its own scheme (schema.org productID), other than the sku, gtin or mpn",
+      "schema_org": "Product.productID"
+    },
+    "description": {
+      "type": "long_text",
+      "description": "Description of the product as the page states it",
+      "schema_org": "Product.description"
+    },
+    "additional_images": {
+      "type": "list",
+      "item": { "type": "image_url" },
+      "description": "Every product image URL the page states for the product, in page order, the main image included",
+      "schema_org": "Product.image"
+    },
+    "color": {
+      "type": "text",
+      "description": "Colour of the selected or default variant, as the page states it",
+      "schema_org": "Product.color"
+    },
+    "material": {
+      "type": "text",
+      "description": "Material the product is made of, as the page states it",
+      "schema_org": "Product.material.name"
+    },
+    "gender": {
+      "type": "text",
+      "description": "Gender the product is meant for, as the page states it",
+      "schema_org": "Product.audience.suggestedGender"
+    },
+    "condition": {
+      "type": "enum",
+      "vocab": "schema:OfferItemCondition",
+      "description": "Condition of the item offered: new, used, refurbished or damaged",
+      "schema_org": "Offer.itemCondition|Product.itemCondition"
+    },
+    "rating": {
+      "type": "number",
+      "description": "Average rating of the product as the page states it, on the page's own scale",
+      "schema_org": "Product.aggregateRating.ratingValue"
+    },
+    "review_count": {
+      "type": "count",
+      "description": "Number of reviews the page says the product's rating is based on",
+      "schema_org": "Product.aggregateRating.reviewCount"
+    },
     "variants": {
       "type": "list",
       "description": "Every variant the buyer can choose (for example a size or colour), one entry each, with its own identifiers, price, availability and stock quantity",
@@ -65,6 +119,12 @@
       "item": {
         "type": "object",
         "fields": {
+        "variant_id": {
+          "type": "identifier",
+          "scheme": "custom",
+          "description": "Identifier the page states for this variant in its own scheme (schema.org productID)",
+          "schema_org": "Product.productID"
+        },
         "sku": {
           "type": "identifier",
           "scheme": "sku",
