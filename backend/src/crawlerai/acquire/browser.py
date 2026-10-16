@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from patchright.async_api import Browser, Page, Request, Response, async_playwright
+from patchright.async_api import Browser, Frame, Page, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
@@ -182,13 +182,15 @@ async def _render(
 
 class _MainFrame:
     """The main frame's document navigations (D-1201): the latest request (one per redirect hop), whether one is in
-    flight, and the response of the latest document, which the frame shows once the navigation commits."""
+    flight, the response of the latest document, which the frame shows once the navigation commits, and how many
+    navigations have committed."""
 
     def __init__(self, page: Page, first_url: str) -> None:
         self._page = page
         self.last_hop = first_url
         self.pending = False
         self.latest: Response | None = None
+        self.commits = 0
 
     def _ours(self, request: Request) -> bool:
         return request.is_navigation_request() and request.frame == self._page.main_frame
@@ -205,6 +207,10 @@ class _MainFrame:
         if self._ours(request):
             self.pending = False
 
+    def on_navigated(self, frame: Frame) -> None:
+        if frame == self._page.main_frame:
+            self.commits += 1
+
 
 async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
@@ -220,6 +226,7 @@ async def _navigate(
     page.on("request", frame.on_request)
     page.on("response", frame.on_response)
     page.on("requestfailed", frame.on_failed)
+    page.on("framenavigated", frame.on_navigated)
     if policy.capture_network_json:
         page.on("response", on_response)
 
@@ -290,9 +297,10 @@ async def _interstitial(page: Page, frame: _MainFrame) -> bool:
 
 
 async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool:
-    """Whether the main frame showed another document and it loaded before `deadline`."""
-    shown = frame.latest
-    while frame.latest is shown:
+    """Whether the main frame committed another navigation and its document loaded before `deadline`. The commit, not
+    the response: until then the frame still shows the interstitial, whose `load` has fired."""
+    shown = frame.commits
+    while frame.commits == shown:
         if time.monotonic() >= deadline:
             return False
         await asyncio.sleep(_POLL_S)
