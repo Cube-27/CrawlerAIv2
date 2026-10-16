@@ -1,0 +1,79 @@
+# Persistence and Storage Specification
+
+## Purpose
+
+Where CrawlerAI v2 keeps its state: two PostgreSQL databases, the data model in one baseline migration, capture
+bundles in two object stores, retention, deterministic replay and the engine version stamp. Rationale: ARCHITECTURE
+§6, §15, Appendix A #43 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history:
+SPEC-01. Queue and job state are in [jobs](../jobs/spec.md); split access rules in
+[evaluation](../evaluation/spec.md).
+
+## Requirements
+
+### Requirement: Two databases with separate roles
+The system SHALL use the main database `crawlerai` (role `app`) and `crawlerai_eval_private` (role `custodian`), both
+created by `infra/postgres/init.sql`; the `app` role MUST NOT connect to the private database. Refs: §6, D-0067.
+#### Scenario: App role refused
+- **WHEN** a connection to `crawlerai_eval_private` uses `app` credentials
+- **THEN** it fails (`tests/db/test_eval_private_database.py`)
+
+### Requirement: Main data model tables
+The main database SHALL hold the §6 tables as defined in the baseline migration, with `site.host` exact, lowercased
+and UNIQUE (no public-suffix logic), `schema_def.name` and `project.name` UNIQUE, and at most one `active`
+`extraction_config` per (site, schema, page kind). Refs: §6, D-0089, D-0091, D-0138.
+#### Scenario: Second active config refused
+- **WHEN** a second `active` `extraction_config` is written for the same site, schema and page kind
+- **THEN** the insert fails on `uq_extraction_config_active`
+
+### Requirement: Enumerations and column conventions
+Every §6 enumeration SHALL be a `text` column with a CHECK constraint. IDs SHALL be UUIDv7 from
+`crawlerai.core.ids.uuid7()` (RFC 9562, monotonic within one process), times `timestamptz` UTC, JSON `jsonb`, money
+`numeric`, never a float. Refs: §6, D-0088, D-0102, D-0103, D-0140.
+
+### Requirement: One baseline migration (greenfield)
+Each database SHALL have exactly one Alembic baseline revision (`0001_baseline`, private `p0001`); a model change
+edits it and databases are recreated, never migrated with data steps or compatibility shims. Refs: Appendix A #43,
+D-0954.
+#### Scenario: Migration round trip
+- **WHEN** CI runs upgrade head, downgrade base, upgrade head on an empty database
+- **THEN** all three succeed and constraint names match `test_baseline_migration.py`
+
+### Requirement: Capture bundle format
+Each capture SHALL be one deterministic zstd tar (manifest, body as received, browser network bodies) as defined in
+the bundle codec; `decode(encode(b)) == b`, and an inconsistent bundle raises `CorruptBundle`. Replay reads only the
+bundle, never the `capture` row. Refs: §15, D-0097, D-0098.
+#### Scenario: Round trip
+- **WHEN** any valid bundle is encoded and decoded (Hypothesis property test)
+- **THEN** the result equals the original and re-encoding gives the same bytes
+
+### Requirement: Object stores and key layout
+Bundles SHALL go through the `ObjectStore` protocol (`fs` and `s3` backends, S3 via boto3's environment chain, no
+MinIO); escaping or malformed keys raise `ValueError`. Hidden and fresh bundles go only under the private root,
+which the main `capture` table never references. Refs: §15, D-0094, D-0095, D-0096.
+#### Scenario: Escaping key refused
+- **WHEN** `put("../x", data)` is called on either backend
+- **THEN** it raises `ValueError` and writes nothing
+
+### Requirement: Retention
+Production captures and candidates SHALL expire after 30 days; eval captures never expire. `expire_captures` deletes
+only expired rows under `captures/`, in batches, nulling `capture_id` on tasks and extractions, which are kept.
+Refs: §15, D-0137, D-0154, D-0157.
+
+### Requirement: Deterministic replay (INV-10)
+Replay SHALL be a pure function `(capture, engine_version, config, schema) → record` sharing the live code path, with
+LLM calls replayed from recorded responses, so the same inputs give byte-identical records with no network.
+Enforced by: replay tests that run twice and diff (`tests/replay/`); active. Refs: §15, G7, D-0217.
+#### Scenario: Two replays
+- **WHEN** the synthetic dev split is replayed twice with recorded LLM responses
+- **THEN** the two JSON results are byte-identical
+
+### Requirement: Engine version stamp
+`ENGINE_VERSION` SHALL be `<git sha>+cal.<12 hex of sha256(calibration.json)>` (`unknown` without `VERSION`, `none`
+without calibration), stamped on `job`, `extraction`, the capture manifest and `eval_run`. Refs: §15, D-0152.
+#### Scenario: No calibration fitted
+- **WHEN** `backend/data/calibration.json` does not exist
+- **THEN** the engine version ends in `+cal.none`
+
+### Requirement: Nothing stored in the repo
+Captures, evaluation data and secrets MUST NOT enter the public repository; tests build synthetic bundles on RFC 2606
+hosts, and secrets come from the environment and are redacted in logs. Refs: §15, §18, Appendix A #26.

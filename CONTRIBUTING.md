@@ -1,15 +1,19 @@
 # Contributing
 
-CrawlerAI v2 is built mostly by coding agents working from the specs, and the same rules apply to every
-contributor. Read `CLAUDE.md` before changing anything: its §2 (the generalization contract, ARCHITECTURE §2) is
-binding on every change, and breaking it is a defect even when it fixes a site.
+CrawlerAI v2 is built mostly by coding agents working from OpenSpec changes, and the same rules apply to every
+contributor. Read `CLAUDE.md` before changing anything: the generalization contract C1–C13
+(`openspec/project.md`, applied in `CLAUDE.md` §2) is binding on every change, and breaking it is a defect even when
+it fixes a site.
 
 ## Before you start
 
-- What is in progress and what is next: `docs/plans/ACTIVE.md`.
-- One PR covers a batch of related rows of a spec's PR plan (`docs/specs/`): one branch, one PR (`CLAUDE.md` §3).
-- How to write code here: `docs/ENGINEERING.md`. The invariants your change must keep: `docs/INVARIANTS.md`.
-  Frontend conventions: `docs/DESIGN.md`.
+- What is in progress and what is next: the change folders in `openspec/changes/` and `openspec/backlog.md`.
+- The current behaviour, as requirements: `openspec/specs/<capability>/spec.md`, invariants (`INV-NN`) included.
+- One PR covers a batch of related tasks of one change (`openspec/changes/<change-id>/tasks.md`): one branch, one PR
+  (`CLAUDE.md` §3). New work starts as a change folder (proposal, tasks, spec deltas); a PR that completes a change
+  applies its deltas to `openspec/specs/` and archives it.
+- How to write code here: `openspec/conventions/ENGINEERING.md`. Frontend conventions:
+  `openspec/conventions/DESIGN.md`.
 
 ## Setup and checks
 
@@ -27,7 +31,7 @@ fails if one appears in a workflow, a hook or a tool config.
 - Title in Conventional Commits form: `type(scope): subject`, for example
   `feat(normalize): decline ambiguous dollar symbols`.
 - Fill in `.github/pull_request_template.md`: why, what changed, scope, verification, the evaluation report and
-  decisions.
+  decisions. Behaviour changes come with a spec delta in the change folder.
 - Tests come first: behaviour tests, Hypothesis properties for normalizers, replays of stored captures for
   extraction. No test is named after a site or asserts one site's output (C9). Fixtures are synthetic and use
   reserved names (`example.com`, `.test`).
@@ -44,7 +48,7 @@ Every PR answers these (the template carries them):
 - Aggregate report attached, required if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/`
   changed: dev delta shown, hidden gate passed, no improvement claimed from hidden (C10).
 - Property or replay tests added, no site-named tests (C9).
-- Decisions recorded in `docs/DECISIONS.md`.
+- Decisions recorded in the change's `design.md` or `openspec/decisions/log.md` (`openspec/decisions/README.md`).
 
 ### Where the evaluation report comes from
 
@@ -54,13 +58,15 @@ Every PR answers these (the template carries them):
 - **Improvement claims** come only from fresh results, never from hidden (C10).
 
 Until milestone M (ARCHITECTURE §21) there are no labels: the protected job reports `no_baseline`, and acceptance
-rests on tests, replays and review. SPEC-03 builds the replay and the reports.
+rests on tests, replays and review. The `evaluation` capability (`openspec/specs/evaluation/spec.md`) defines the
+replay and the reports.
 
 ## Decisions and escalation
 
-Implementation choices within a spec's scope are decided and logged in `docs/DECISIONS.md` (or in the PR body
-under `## Decisions` while an orchestrator runs). Changes to `docs/ARCHITECTURE.md` or `docs/OPEN_QUESTIONS.md`,
-§22 candidates, evaluation access and secrets are escalated to the owner. `CLAUDE.md` §4–§5 has the procedure.
+Implementation choices within a change's scope are decided and logged (the change's `design.md` or
+`openspec/decisions/log.md`; listed in the PR body under `## Decisions`). Changes to `openspec/design/` (the
+former ARCHITECTURE.md), the contract or `openspec/OPEN_QUESTIONS.md`, §22 candidates, evaluation access and secrets
+are escalated to the owner. `CLAUDE.md` §4–§5 has the procedure.
 
 ## Licensing and the public repo
 

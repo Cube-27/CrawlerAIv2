@@ -1,0 +1,100 @@
+# Learning and Configs Specification
+
+## Purpose
+
+Everything learned about a site is one portable, executable config IR per (site, schema, page kind), learned,
+validated, drift-checked, corrected and exported here (`backend/src/crawlerai/config_ir/`). Rationale: ARCHITECTURE
+§8.3–§8.4, §12 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-08.
+The LLM client is in [llm](../llm/spec.md); `api_recipe` is in [adapters](../adapters/spec.md).
+
+## Requirements
+
+### Requirement: Config IR
+A config SHALL be an `ExtractionConfigIR` (`config_ir/model.py`) with extra keys refused; it may hold site strings
+because it is per-site data (C3), the package holds none. Refs: §12.1, D-0462, D-0465.
+
+### Requirement: Portable steps
+Each step SHALL have exactly one selector key, limited to forms both executors run: XPath 1.0 only (`xpath1.py`), CSS
+stored with its pinned cssselect translation, a regex subset Python and PCRE both accept (`portable_regex.py`), and
+the post ops in `model.py`. LLM output is never executed (INV-17, [llm](../llm/spec.md)). Refs: §12.1, D-0034, D-0460.
+#### Scenario: Non-portable selector
+- **WHEN** a step uses `matches()` in its `xpath`, or a bump changes a pinned translation in `css_translations.json`
+- **THEN** the IR is refused, or CI fails before stored IRs stop loading
+
+### Requirement: Engine executor
+The engine executor SHALL run each field's steps in order over the shared `ParsedPage` (no second parse, INV-26); the
+first step giving an `Ok` value becomes `Candidate(source_kind='config', independent=False)`. A config for another
+schema or page kind raises `ConfigMismatch`. Refs: §12.1, D-0475, D-0480.
+#### Scenario: First step fails, second valid
+- **WHEN** step 0's value is declined and step 1 gives an `Ok` value
+- **THEN** the candidate is step 1's value
+
+### Requirement: Progressive mode
+Each (site, schema, page kind) SHALL have a `progressive_state` in mode `cold`, `learning` (pages still served cold)
+or `active`; a record has `mode=config` exactly when a config executor ran, else `adhoc`. A schema edit suspends its
+active configs and sends its states to `cold`, keeping `pages_extracted`. Refs: §8.4, §5.2, D-0546, D-0614, D-0950.
+#### Scenario: Eighth page
+- **WHEN** a cold state's eighth `extracted` or `partial` page is stored
+- **THEN** a `learn` job is created and the mode becomes `learning`
+
+### Requirement: Learning trigger, sample and job
+Learning SHALL start when 8 pages are extracted (or 8 more after a failed run), or on `POST /v1/sites/{host}/learn`;
+5 pages form the sample and the rest (≥ 3) are held out. A run is a `job(kind='learn')` charged for role A; every
+non-activating end (failure, budget, expiry, shutdown, cancel, schema edit) returns the state to cold with a retry.
+Refs: §8.3, D-0030, D-0547, D-0549, D-0622.
+
+### Requirement: Induction, then role A synthesis
+Fields published on all sample pages SHALL first be induced without an LLM from their locators, anchoring only on
+stable attributes (`induction.py`); the rest go to role A (`strong`), which returns selectors only, verified on the
+sample with up to 3 repair rounds; a field still failing gets no steps. Refs: §8.3, D-0031, D-0551, D-0585.
+
+### Requirement: Held-out validation and corroboration
+On ≥ 3 held-out pages a field SHALL be kept only when its values are `Ok` and both the engine and release executors
+reproduce the engine's published value; others are dropped and listed in the `validation_report`. A kept field is
+`corroborated` when it matches every structured or adapter reference on ≥ 3 comparable pages (≥ 90% from 10 on), else
+`uncorroborated`; operator fields are `operator`. Refs: §8.3, §10, D-0563, D-0565, D-0567.
+#### Scenario: Release executor disagrees
+- **WHEN** the engine executor reproduces a value and the release executor does not
+- **THEN** the field is dropped from the config
+
+### Requirement: Activation and active-mode extraction
+A validated config with at least one field SHALL become version max+1 and the one `active` config (the previous one
+`suspended`). In `active` mode a field the config runs SHALL NOT be asked of role C, even when its step misses.
+Refs: §8.3, §8.4, D-0569, D-0615.
+#### Scenario: Covered field missing
+- **WHEN** a covered field's steps match nothing on a page
+- **THEN** it stays `missing` and no LLM call is made for it
+
+### Requirement: Drift suspension
+Config-mode pages SHALL feed a per-field 50-page window; from 3 pages, a field whose yield or validity falls below its
+baseline minus the margins in `backend/data/drift_margins.json` (INV-02, owned by
+[evaluation](../evaluation/spec.md)) is `suspended`, falls back to cold extraction and triggers re-learning.
+Refs: §8.3, D-0032, D-0571.
+#### Scenario: Layout change
+- **WHEN** a field matches on 1 of the last 10 pages after validating at yield 1.0
+- **THEN** it is suspended, role C may fill it, and a learn job runs
+
+### Requirement: Operator corrections and config API
+The system SHALL serve config list, read and `PUT /v1/configs/{id}` on the latest version (else 409). A correction is
+version+1 with `origin=operator`, validated on the 8 latest pages; it activates only if every operated field is kept,
+else it is stored `draft` while the previous version serves (C5). Refs: §13.1, D-0033, D-0593.
+#### Scenario: Correction fails validation
+- **WHEN** an operator's new steps are not reproduced on the held-out pages
+- **THEN** a `draft` version with the report is returned and the active version is unchanged
+
+### Requirement: Config and record exporters
+`POST /v1/configs/{id}/export` SHALL return `json` (the IR) or `platform_draft` (`draft: true` until OPEN_QUESTIONS
+#1) with the release-check report. Record exports (`exporters/records.py`) keep values as published (INV-27);
+`csv_safe=true` prefixes `'` to formula-like cells, default unchanged. Refs: §12.2, D-0606, D-0879.
+#### Scenario: Formula-like cell
+- **WHEN** a published value is `=1+1`
+- **THEN** the CSV cell is `'=1+1` with `csv_safe=true` and `=1+1` without
+
+### Requirement: Release check (INV-20)
+An exported field SHALL reproduce the engine's value on every held-out page while fewer than 10, and on ≥ 95% from 10
+on, or be marked `manual` (INV-20). The release executor imports nothing from `crawlerai` but the IR model and is the
+one allowed second parse (INV-26). Enforced by: `tests/unit/test_release_check.py`, `test_release_executor.py`
+(unit and property); active. Refs: §12.3, D-0527, D-0605.
+#### Scenario: 94% of 20 pages
+- **WHEN** a field reproduces on 18 of 20 held-out pages
+- **THEN** the export marks it `manual: true`

@@ -1,30 +1,40 @@
 ---
 name: implement-pr
-description: Implement one batch of related rows of a spec's PR plan (docs/plans/ACTIVE.md) as one PR, end to end — worktree, tests first, code, verification, tracker commit, PR, review, fixes in one push, READY. Use when assigned "SPEC-NN PRs A-B" (or one row) or asked to implement the next PR.
+description: Implement a batch of tasks of one OpenSpec change (openspec/changes/<id>/tasks.md), or a backlog item, as one PR, end to end — worktree, change folder, tests first, code, verification, tracker commit (applying the spec deltas and archiving the change when it completes), PR, review, fixes in one push, READY. Use when assigned "change <id> tasks A-B" or a backlog item, or asked to implement the next PR.
 ---
 
 # Implement one PR
 
-You own one batch of rows of `docs/plans/ACTIVE.md` (its size, branch and worktree names: `CLAUDE.md` §3), from
-`todo` to a `READY` PR. Rules: `CLAUDE.md` (binding) and `docs/ENGINEERING.md`. Adapted from pstack (MIT, see `NOTICE`).
+You own one batch of tasks of one change in `openspec/changes/<change-id>/tasks.md`, or one backlog item (its size,
+branch and worktree names: `CLAUDE.md` §3), from unchecked to a `READY` PR. Rules: `CLAUDE.md` (binding) and
+`openspec/conventions/ENGINEERING.md`. Adapted from pstack (MIT, see `NOTICE`).
 
 ## 0. Claim
 
-1. Read `CLAUDE.md`, then the parts of `docs/plans/ACTIVE.md` that `CLAUDE.md` §1 names. Take the assigned rows, or
-   the ready `todo` rows of the first spec with any, by the per-row rule in `/run-plan` §1.1.
-2. If an orchestrator assigned you the rows, your cwd is already their worktree: use it. Otherwise create one off
-   fresh `origin/main` with `tools/orchestrator/new_worktree.sh spec-NN-pr-A-B spec-NN/pr-A-B-<short-name>` (it
-   lands in `<main>/../CrawlerAIv2-worktrees/`). Never work in the main checkout.
-3. **Shared files.** `ACTIVE.md` and the decisions log change only in your tracker commit, the last commit before
-   you open the PR (§5). Collect your decisions in the PR draft until then.
-4. Read only what the change needs: for spec rows, the design sections they touch, their acceptance criteria and
-   your PR-plan rows; then the ARCHITECTURE sections and decisions that `CLAUDE.md` §1 items 3-4 name, by section.
-   Don't open archived specs unless you need the design of code you change, and never edit them.
+1. Read `CLAUDE.md` and `openspec/project.md`. Take the assigned tasks, or the ready unchecked tasks of the first
+   change with any, by the per-task rule in `/run-plan` §1.1.
+2. If an orchestrator assigned you the work, your cwd is already its worktree: use it. Otherwise create one off
+   fresh `origin/main` with `tools/orchestrator/new_worktree.sh <change-id> change/<change-id>` (it lands in
+   `<main>/../CrawlerAIv2-worktrees/`). Never work in the main checkout.
+3. **No change folder yet** (a backlog item, or new work): write `openspec/changes/<change-id>/` first, as the PR's
+   first commit: `proposal.md` (`## Why`, `## What Changes`, `## Impact`), `tasks.md` (numbered `- [ ] N.M`
+   checkboxes, small enough for one PR in total), `design.md` only for a real design choice, and a delta
+   `specs/<capability>/spec.md` per touched capability (`## ADDED`, `## MODIFIED` with the whole new requirement text
+   and `(Previously: …)`, or `## REMOVED Requirements`; each requirement 1–3 lines of SHALL, with a `#### Scenario:`
+   only where a test or invariant enforces it; `CLAUDE.md` §6).
+   A fix that only restores behaviour a requirement already states needs no change folder. A change that would
+   contradict `openspec/design/` or the contract is escalated (`CLAUDE.md` §4), not written.
+4. **Shared files.** `tasks.md` checkboxes, `openspec/backlog.md`, decision entries and the archive move change only
+   in your tracker commit, the last commit before you open the PR (§5). Collect your decisions in the PR draft until
+   then.
+5. Read only what the change needs (`CLAUDE.md` §1): your change folder, the capability specs it touches, and the
+   design sections and decisions they link, by section. Open archived specs (`openspec/changes/archive/`) only when
+   you need the history of code you change, and never edit them.
 
 ## 1. Frame
 
 Write the exit predicate as a checklist in the PR draft (a local file is fine until the PR opens):
-- each row's acceptance criteria, quoted from the spec;
+- each task, and each scenario of the change's deltas (or of the requirements the task implements), quoted;
 - `make check` green (locally, only the targeted checks of §3 for what you touched; CI runs the full suite);
 - for extraction behaviour changes: the dev eval delta, with no regression on required field types.
 
@@ -39,21 +49,22 @@ For each unit:
 2. Run it and confirm it fails for the intended reason.
 3. Make the smallest change that passes it.
 4. Run the unit's tests plus the fast checks, then commit. Use Conventional Commits:
-   `feat(normalize): decline ambiguous dollar symbols`. Commit row by row.
+   `feat(normalize): decline ambiguous dollar symbols`. Commit task by task.
 
 Stop and re-read `CLAUDE.md` §2 if you are about to:
 - write a hostname or brand name outside `adapters/`;
 - add a list of phrases;
 - add a default value;
 - add a DOM selector to generic code;
-- build something from ARCHITECTURE §22.
+- build something from the candidates register (§22, `openspec/design/overview.md`).
 
-Stay in scope. Work outside the batch becomes a follow-up line in your tracker commit, not code.
+Stay in scope. Work outside the batch becomes a follow-up line in `openspec/backlog.md` in your tracker commit, not
+code.
 
 ## 3. Verify
 
 - Run the checks for what you touched (`CLAUDE.md` §7). Read the output; don't infer it.
-- Go through each acceptance criterion and point to the test or command that proves it.
+- Go through each task and scenario and point to the test or command that proves it.
 - If extraction behaviour changed, run the dev eval and capture the delta per field type.
 - If a check fails twice for the same reason, apply "attack the premise" (ENGINEERING). After three honest
   attempts, escalate (`CLAUDE.md` §5).
@@ -72,11 +83,12 @@ Stay in scope. Work outside the batch becomes a follow-up line in your tracker c
 Review your own diff as a hostile reviewer, then fix what you find:
 - **Contract:** C1–C13, line by line, against the diff.
 - **Tests:** would each test still pass if the function returned a wrong value? If so, rewrite it.
-- **Scope:** anything outside the batch's rows gets removed.
+- **Scope:** anything outside the batch's tasks gets removed.
 - **Comments:** remove comments that restate the code. Keep the ones that state a *why* or a standard (C2
   justifications).
-- **Analysers:** `docs/ENGINEERING.md` "Patterns the analysers flag": write each pattern the right way.
-- **Recurring findings:** go through `docs/plans/RECURRING.md`. These mistakes reached review more than once; don't
+- **Analysers:** `openspec/conventions/ENGINEERING.md` "Patterns the analysers flag": write each pattern the right
+  way.
+- **Recurring findings:** go through `openspec/conventions/RECURRING.md`. These mistakes reached review more than once; don't
   repeat them. In particular:
   - a path taken from a CLI argument is resolved and refused outside its base directory, with a test (S8707);
   - a `pytest.raises` block contains exactly one call: build its arguments before the `with` (S5778).
@@ -87,17 +99,28 @@ Review your own diff as a hostile reviewer, then fix what you find:
   up-to-date branch, and each push reruns CI. Rebase only when `git merge-tree --write-tree origin/main HEAD` (after
   `git fetch`) reports a conflict. Small, ordered commits, with failing tests before fixes where it tells the story.
 - **Tracker commit, last before opening** (owner, 2026-10-16), so the reviewer reviews it with the code and no
-  docs-only push reruns CI later: `chore(plan): done SPEC-NN PRs A-B (#n)`, with every row of the batch `done (#n)`
-  in `ACTIVE.md`, the follow-ups you leave as lines under "Follow-ups" (and "Current focus" only if the orchestrator
-  asked), and your decisions in the decisions log under your IDs (the orchestrator's range, or solo the next free
-  IDs; `DECISIONS.md` "Where an entry goes"; `needs-owner` entries also go in its index of open items). `#n` is the
+  docs-only push reruns CI later: `chore(openspec): done <change-id> tasks A-B (#n)`, with:
+  - every task of the batch checked and suffixed ` (#n)` in `tasks.md`;
+  - the follow-ups you leave as lines under "Follow-ups" in `openspec/backlog.md` (and "Current focus" only if the
+    orchestrator asked), and the backlog lines your PR closes deleted;
+  - your decisions under your IDs (the orchestrator's range, or solo the next free IDs), in the change's `design.md`
+    under `## Decisions`, or in `openspec/decisions/log.md` for cross-cutting ones and PRs without a change
+    (`openspec/decisions/README.md`); `needs-owner` entries go in the log and in "Open owner items" of
+    `openspec/project.md`;
+  - **when this PR checks the change's last task, archive it in the same commit:** apply each delta to
+    `openspec/specs/<capability>/spec.md` (ADDED appended, MODIFIED replaced by name, REMOVED deleted; a new capability
+    gets `# <Title> Specification`, `## Purpose`, `## Requirements`; a new invariant takes the next free `INV-` ID),
+    then `git mv openspec/changes/<change-id> openspec/changes/archive/<YYYY-MM-DD>-<change-id>` (today's date) and add
+    its row to `openspec/changes/archive/README.md`. Fix the links that move breaks.
+
+  `#n` is the
   number the PR will get: `gh api "repos/{owner}/{repo}/issues?state=all&per_page=1" --jq '.[0].number + 1'`. If
   `gh pr create` hands out another number, amend the commit and push it with `--force-with-lease` at once (the
   first CI run is cancelled).
 - Title: `type(scope): subject` (Conventional Commits).
 - Body: use the repo PR template. Keep it a one-minute briefing:
-  - `## Why`: 1–3 sentences; link the spec rows.
-  - `## What changed`: 1–3 bullets per row.
+  - `## Why`: 1–3 sentences; link the change (`openspec/changes/<change-id>/proposal.md`) and its tasks.
+  - `## What changed`: 1–3 bullets per task, and the requirements added or modified.
   - `## Scope`: what it covers and what it deliberately leaves out.
   - `## Verification`: real commands and their outcomes; acceptance criteria → proof; the dev
     eval delta when relevant.

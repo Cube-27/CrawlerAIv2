@@ -3,9 +3,9 @@
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
 
-> **Status: early implementation.** The project foundations ([SPEC-00](docs/specs/archive/SPEC-00-project-setup.md)) are
-> in place: toolchains, CI, a database baseline, an API with only `GET /healthz`, and a frontend shell. Nothing
-> extracts anything yet. Progress is tracked in [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md).
+> **Status: implemented, not yet measured.** The core pipeline, API, MCP server and UI are built (16 specs done,
+> [openspec/changes/archive/](openspec/changes/archive/README.md)). Accuracy is unknown until labels exist (milestone
+> M). Work in progress: [openspec/changes/](openspec/changes/) and [openspec/backlog.md](openspec/backlog.md).
 
 **Agents: read CLAUDE.md before changing anything.**
 
@@ -29,7 +29,7 @@ that a deterministic crawler can run.
 ## Why v2 is built this way
 
 Two earlier versions did well on the sites they were tuned against and produced garbage on new ones. v2 is built
-around a [generalization contract](docs/ARCHITECTURE.md#2-generalization-contract):
+around a [generalization contract](openspec/project.md#generalization-contract-c1c13):
 - accuracy is measured on hidden and fresh sites that developers and agents never see;
 - generic code may encode only standards, types and HTML structure;
 - site knowledge lives in data;
@@ -37,17 +37,20 @@ around a [generalization contract](docs/ARCHITECTURE.md#2-generalization-contrac
 
 ## Documentation
 
+The docs follow the [OpenSpec](https://github.com/Fission-AI/OpenSpec) layout: current behaviour as requirements per
+capability, in-flight work as change folders, done work archived.
+
 | Document | Purpose |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The single design reference |
-| [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
-| [docs/specs/](docs/specs/README.md) | Implementation specs in build order, each with a PR plan |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Log of decisions made during implementation: cross-cutting and owner items; per-spec entries in [docs/decisions/](docs/decisions/) |
-| [docs/plans/ACTIVE.md](docs/plans/ACTIVE.md) | Current implementation state |
-| [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, and every command |
-| [docs/ENGINEERING.md](docs/ENGINEERING.md) | Engineering principles for agents |
-| [docs/INVARIANTS.md](docs/INVARIANTS.md) | The testable invariants, each with what enforces it |
-| [docs/DESIGN.md](docs/DESIGN.md) | Frontend conventions (HeroUI v3, theming, accessibility) |
+| [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, what to read, and every command |
+| [openspec/project.md](openspec/project.md) | Project context, the generalization contract C1–C13, open owner items |
+| [openspec/specs/](openspec/specs/) | The current behaviour, one `spec.md` of requirements per capability (invariants `INV-NN` included) |
+| [openspec/changes/](openspec/changes/) | In-flight changes (proposal, tasks, spec deltas); [archive/](openspec/changes/archive/README.md) holds the done specs SPEC-00 … SPEC-15 |
+| [openspec/backlog.md](openspec/backlog.md) | Current focus, follow-ups and human-only tasks |
+| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register) and the owner decisions; the full former ARCHITECTURE.md is archived |
+| [openspec/decisions/](openspec/decisions/README.md) | How decisions are logged, and the cross-cutting log |
+| [openspec/OPEN_QUESTIONS.md](openspec/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
+| [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
 | [.claude/skills/](.claude/skills/) | Agent procedures: `run-plan`, `implement-pr`, `review-pr`, `pickup` |
 
@@ -86,14 +89,14 @@ backend/                Python package `crawlerai` (src/crawlerai/), tests, alem
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
 tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
-docs/                   architecture, open questions, specs, decisions, tracker, invariants, design
+openspec/               project context, capability specs, changes and archive, design, decisions, conventions
 .github/                CI workflows (ci.yml, eval-protected.yml) and the pull request template
 .claude/skills/         agent procedures
 ```
 
 The backend packages follow the pipeline: `acquire`, `collect`, `normalize`, `resolve`, `llm`, `config_ir`,
 `content`, `crawl`, `recurring`, `eval`, `api`, `mcp_server`, `worker`, `scheduler`, on top of `core`, `db`,
-`storage` and `schemas`. Most are still empty; [SPEC-00 §4.1](docs/specs/archive/SPEC-00-project-setup.md#41-repo-layout)
+`storage` and `schemas`. [SPEC-00 §4.1](openspec/changes/archive/2026-10-12-spec-00-project-setup/SPEC-00-project-setup.md#41-repo-layout)
 describes each.
 
 ## License

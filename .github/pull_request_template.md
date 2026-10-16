@@ -2,7 +2,7 @@
 
 ## Why
 
-<!-- 1–3 sentences. Link the spec rows: docs/specs/SPEC-NN-*.md §8, PRs A-B. -->
+<!-- 1–3 sentences. Link the change and its tasks: openspec/changes/<change-id>/proposal.md, tasks A-B. -->
 
 ## What changed
 
@@ -14,7 +14,7 @@
 
 ## Verification
 
-<!-- Real commands and their outcomes. Map each acceptance criterion of the row to the test or command that proves it. -->
+<!-- Real commands and their outcomes. Map each task and each scenario of the spec deltas to the test or command that proves it. -->
 
 ## Evaluation report
 
@@ -38,4 +38,5 @@ or acquire/ (C10, INV-19). Otherwise write "Not applicable".
 - [ ] No §22 candidate implemented (C13).
 - [ ] Aggregate report attached, if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/` changed: dev delta shown, hidden gate passed, no improvement claimed from hidden (C10).
 - [ ] Property or replay tests added; no test is named after a site or asserts one site's output (C9).
-- [ ] Decisions listed above, and added to the decisions log (`docs/DECISIONS.md`, "Where an entry goes") in the tracker commit.
+- [ ] Behaviour changes have a spec delta in the change folder; if this PR completes the change, the deltas are applied to `openspec/specs/` and the change is archived.
+- [ ] Decisions listed above, and logged in the tracker commit (`openspec/decisions/README.md`, "Where an entry goes").

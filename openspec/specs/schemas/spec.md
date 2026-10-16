@@ -1,0 +1,91 @@
+# Schemas Specification
+
+## Purpose
+
+A schema is a database row naming the fields to extract, each with a field type; code knows field types, never
+page-specific fields. Values are read by [normalization](../normalization/spec.md); `/v1/schemas` is
+[rest-api](../rest-api/spec.md). Rationale: ARCHITECTURE §5 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-04.
+
+## Requirements
+
+### Requirement: Field types
+The system SHALL support exactly the field types of `FieldType` in `backend/src/crawlerai/schemas/types.py`; a new
+type SHALL be added only when a schema needs it, with its one normalizer module (C8). Refs: §5.1, D-0921, D-0960.
+#### Scenario: Unknown type
+- **WHEN** a schema document declares a field of a type not in `FieldType`
+- **THEN** the document is refused as invalid
+
+### Requirement: Schema document shape
+A document SHALL have a `name`, a `page_kind` (`detail` or `listing`), at least one field and optional
+`required_groups`; names match `^[a-z][a-z0-9_]{0,63}$`, nesting is at most 3 levels, type parameters match the
+type, and every field and object sub-field carries a non-empty `description`. Validation: `schemas/types.py`. Refs: §5.2, D-0241.
+#### Scenario: Invalid documents
+- **WHEN** a document nests four levels deep, names a field `Price-EUR`, or omits a description
+- **THEN** it is refused with the field path and reason
+
+### Requirement: Required fields and required groups
+Core fields SHALL be the `required: true` fields plus `required_groups` (at least one member of each group must
+publish); a group names only top-level fields of the document. `required` defaults to false. Refs: §5.2, §9.
+#### Scenario: Group naming an unknown field
+- **WHEN** `required_groups` names a field the document lacks
+- **THEN** the document is refused naming that field
+
+### Requirement: Field scope and page kind
+`scope` SHALL be `row` (default) or `page`; a `detail` document has only `row` fields, and on a `listing` document
+`page` fields publish once per page. The caller chooses the page kind per request, or per URL pattern in crawls. Refs: §5.2, §5.5, §13.2.
+#### Scenario: Page scope on a detail schema
+- **WHEN** a `detail` document has a `scope: "page"` field
+- **THEN** it is refused
+
+### Requirement: schema.org paths
+`schema_org` SHALL be a dotted path from a schema.org type through properties; `+` joins a second property into one
+atomic value and `|` separates up to four pooled, equal-ranked alternatives. Paths and `vocab` references are
+checked for syntax only. Refs: §5.2, D-0240.
+#### Scenario: Five alternatives
+- **WHEN** a path has five `|`-separated alternatives
+- **THEN** the document is refused
+
+### Requirement: Row-mapped lists and key
+A `list` of `object` with a `schema_org` path SHALL be row-mapped: leaf sub-fields only, and a `key` of 1–3
+`identifier` or `url` sub-fields; `key` is required there and refused elsewhere. Row resolution is
+[variants](../variants/spec.md). Refs: §5.2, SPEC-13 §4.2.
+#### Scenario: Misplaced key or nested row field
+- **WHEN** a `text` field declares `key`, or a row item has a `list` sub-field
+- **THEN** the document is refused
+
+### Requirement: Presets
+The system SHALL ship the four presets under `backend/src/crawlerai/schemas/presets/`, every field mapped to a
+schema.org path and described; "when shown" fields are optional and no preset holds a derived field (such as a
+count of variants or images). Refs: §5.3, D-0015, D-0245, D-0961, D-0967.
+
+### Requirement: Preset sync
+`crawlerai schemas sync` (run by `make migrate`) SHALL insert a missing preset and edit a changed one in place,
+sending its sites back to learning; a preset name held by a non-preset schema fails with `PresetConflict` and
+writes nothing. Preset files are named after their schema and carry no version. Refs: §5.3, D-0242, D-0950.
+#### Scenario: Name taken
+- **WHEN** a user schema is named `job_detail` and sync runs
+- **THEN** sync fails and writes nothing
+
+### Requirement: Custom schemas
+Callers SHALL create `user` schemas through the API or UI; a taken or preset name, or an edit or retirement of a
+preset, is a 409 conflict. Retiring sets `status` to `retired` and keeps the row. An inline schema never edits a
+stored one. Refs: §5.4, SPEC-07 §4.6.
+#### Scenario: Retire a preset
+- **WHEN** a caller deletes a preset
+- **THEN** the request is refused with 409
+
+### Requirement: Edit in place, no versions
+There SHALL be one schema per name, edited in place. A changed document suspends the schema's active configs and
+sets its progressive states to `cold`; an unchanged one changes nothing. A record counts for the current document
+only when its `schema_digest` matches; a job runs with the document pinned at submit. Refs: §5.2, D-0950.
+#### Scenario: Edit triggers relearning
+- **WHEN** a user schema with an active config gains a field
+- **THEN** the config becomes `suspended` and the site's progressive state `cold`
+
+### Requirement: Prompt and field-name drafts
+A prompt (scrape, extract) or a list of 1–50 field names (scrape, batch, crawl, extract) SHALL be drafted by role S
+([llm](../llm/spec.md)) into a stored `prompt_draft` schema named `draft_` + 12 hex digits of a digest of the
+normalized input, reused without a new call; `POST /v1/schemas/draft` returns it for editing. Refs: §5.4, D-0771, D-0925–D-0929.
+#### Scenario: Same input twice
+- **WHEN** two requests send the same prompt, or the same field names in another order
+- **THEN** both use one stored draft and the second makes no role S call

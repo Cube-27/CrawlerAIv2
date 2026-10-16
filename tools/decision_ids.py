@@ -1,8 +1,9 @@
-"""Fail when a decision ID heads more than one entry of the decisions log (D-0823, `docs/DECISIONS.md` "Where an entry
-goes": D-IDs are one sequence across all files).
+"""Fail when a decision ID heads more than one entry of the decisions log (D-0823, `openspec/decisions/README.md`
+"Where an entry goes": D-IDs are one sequence across all files).
 
-The log is `docs/DECISIONS.md` and every `docs/decisions/*.md`. An entry starts with a level-3 Markdown heading
-`### D-NNNN`; the same ID heading two entries, in one file or in two, is a duplicate. Prints each duplicate with every
+The log is every Markdown file under `openspec/` (D-1136): the cross-cutting `openspec/decisions/log.md`, a change's
+`design.md`, and the archived changes' `decisions.md`. An entry starts with a level-3 Markdown heading `### D-NNNN`;
+the same ID heading two entries, in one file or in two, is a duplicate. Prints each duplicate with every
 `path:line` it heads, and exits 1; exits 0 with one summary line when there is none.
 
 Checks the repository this file is in; it takes no arguments.
@@ -19,8 +20,7 @@ ENTRY = re.compile(r"### (D-\d+)\b")
 
 
 def log_files(root: Path) -> list[Path]:
-    main = root / "docs" / "DECISIONS.md"
-    return [*([main] if main.is_file() else []), *sorted((root / "docs" / "decisions").rglob("*.md"))]
+    return sorted((root / "openspec").rglob("*.md"))
 
 
 def entries(root: Path, file: Path) -> Iterator[tuple[str, str]]:
