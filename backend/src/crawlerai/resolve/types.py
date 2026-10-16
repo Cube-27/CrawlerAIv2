@@ -11,7 +11,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.locator import LocatorText
+from crawlerai.collect.locator import LocatorText, PageUrlDerivation
 from crawlerai.db.models import ExtractionMode, SourceKind
 
 # ARCHITECTURE §10 evidence buckets.
@@ -20,7 +20,7 @@ Evidence = Literal[
 ]
 FieldStatus = Literal["published", "missing", "conflict", "abstained"]
 # SPEC-05 §4.8: the derivations core has, each a named function in `resolve/derive.py`.
-Derivation = Literal["canonical_link", "final_url", "absolutize"]
+Derivation = Literal[PageUrlDerivation, "absolutize"]
 # `url_task.outcome` (§6), except that `error` is stored as `failed`.
 Outcome = Literal["extracted", "partial", "no_match", "blocked", "shell", "not_found", "error"]
 # Outcomes of a page that was not served (INV-11): no candidates and nothing published.
