@@ -375,3 +375,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: trafilatura's recall mode (drops titles, duplicates items on synthetic grids); rendering items in place; detecting items on every page.
 - Why: trafilatura reads link-dense blocks as boilerplate (reference eval class 6); a format stays a function of the capture (§15, INV-26).
 - Reversible: yes
+
+### D-0994 — Markdown whitespace after an inline element in a `div` is left to trafilatura
+- Date: 2026-10-16 · Spec/PR: UAT follow-up (#213) · Status: decided
+- Decision: No change. trafilatura 2.3.1 trims the leading whitespace of the text after an inline element (`strong`, `em`, `b`, `a`) whose parent is a `div`, `td` or `li`, so `<div><strong>Warning!</strong> This</div>` becomes `**Warning!**This`; in a `p` it is kept.
+- Alternatives: Rename phrasing-only `div`s to `p` before extraction (changes which blocks trafilatura keeps, with no dev evidence); post-process the Markdown (cannot tell a lost space from source text).
+- Why: The bug is generic but inside the library; a workaround in our tree copy changes extraction beyond whitespace. Left as a follow-up.
+- Reversible: yes

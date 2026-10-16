@@ -395,3 +395,10 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: re-fetch in the browser after resolution finds no rows.
 - Why: reference eval class 5; the rule stays structural (SPEC-02 §4.3). A genuinely empty listing fetched with `method_hint: http` ends `shell`.
 - Reversible: yes
+
+### D-0993 — Repeated items group by the class tokens most siblings share
+- Date: 2026-10-16 · Spec/PR: UAT follow-up (#213) · Status: decided
+- Decision: `acquire.items` groups link-holding siblings by parent and tag, then by shape: the siblings carrying every class token that more than half of them carry are one group, and each other class list is a group of its own (as before). The largest group still wins (D-0934). `classify`'s listing rule (D-0933) and the listing markdown read the same groups.
+- Alternatives: The exact class list (a per-item token such as an order or position class makes every tile a group of one, so the listing lists nothing and is a `shell`); tag only (blocks of different templates would group).
+- Why: One template renders every item, so the tokens it writes are on most of them (structural property, HTML Standard §2.3.2 tokens); no class name is read (C4).
+- Reversible: yes

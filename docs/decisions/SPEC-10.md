@@ -401,3 +401,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: read the schema row per task (an edit would change a running job's records).
 - Why: INV-28 named the schema version; with versions gone the document itself is pinned.
 - Reversible: yes
+
+### D-0991 — `map` and `crawl` scope follows the start page's redirect
+- Date: 2026-10-16 · Spec/PR: UAT follow-up (#213) · Status: decided
+- Decision: The exact host of D-0037 is the host the start page is on: the host of the start page's capture's final URL, after the site's own redirects, in canonical form. `map` always fetches the start page (also with `use_links: false`) and, when it is on another host, reads that host's site row, robots.txt and sitemaps. A crawl's frontier, sitemap seeds and robots.txt take the host from the start task's capture (the start task's own fetch, or a lookup of its `url_task.capture_id` by later tasks that add URLs). An API recipe's capture, whose final URL is its endpoint, and a start page with no capture keep the start URL's host. SPEC-10 §4.4's "same exact host as the start URL" reads as this host.
+- Alternatives: Keep the request URL's host (an apex that redirects to `www` maps 0 URLs); admit both hosts; follow a redirect only within one registrable domain (needs the Public Suffix List, not in `backend/data/manifest.json`); store the located host on the job row (a schema change for one indexed query per task).
+- Why: RFC 9110 §15.4: a redirect names where the resource is, and the site, not the caller, chose it. Every fetch stays on one site's robots.txt and rate, as D-0037 and D-0650 require. A start URL that redirects off-site (to a login host) moves the scope with it; no dev page shows that yet.
+- Reversible: yes
+
+### D-0992 — Canonical URLs do not fold a directory index file
+- Date: 2026-10-16 · Spec/PR: UAT follow-up (#213) · Status: decided
+- Decision: `crawl.canonical` keeps `/index.html` and `/` apart, so a crawl may fetch both.
+- Alternatives: Fold `/index.html` (and other index names) into the directory; fold by the page's `rel=canonical`.
+- Why: No standard makes them equivalent: RFC 3986 §6.2 normalizes syntax and scheme, and which file serves a directory is server configuration. A name list would be C4. A page's `rel=canonical` is known only after the fetch, where SPEC-05's entity key already reads it.
+- Reversible: yes
