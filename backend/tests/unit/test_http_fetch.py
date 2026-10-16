@@ -194,6 +194,22 @@ def test_the_final_response_is_classified(server: Server, reply: Reply, expected
     assert outcome(fetch(server, server.url("/p"))) == expected
 
 
+def test_a_page_fetched_as_a_listing_is_classified_as_one(server: Server) -> None:
+    # Text and a link but no repeated linked items: complete as a detail page, a shell as a listing. `_PAGE` lists
+    # its items.
+    server.route(
+        "/p", html(f"<html><body><h1>About</h1><p>{'words ' * 60}</p><a href='/'>Home</a></body></html>".encode())
+    )
+    server.route("/c", html(_PAGE))
+
+    detail = fetch(server, server.url("/p"), FetchPolicy(page_kind="detail"))
+    listing = fetch(server, server.url("/p"), FetchPolicy(page_kind="listing"))
+    items = fetch(server, server.url("/c"), FetchPolicy(page_kind="listing"))
+
+    assert (outcome(detail)[1], outcome(listing)[1], outcome(items)[1]) == ("ok", "shell", "ok")
+    assert listing.bundle.manifest.fetch_policy["page_kind"] == "listing"
+
+
 # --- redirects ---------------------------------------------------------------------------------------------------
 
 

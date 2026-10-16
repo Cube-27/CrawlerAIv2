@@ -27,6 +27,7 @@ from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
 from crawlerai.core.data import fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
+from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
 from crawlerai.db.models import EvalCategory, EvalRunId, JobKind, PageKind, Split
@@ -39,7 +40,7 @@ from crawlerai.eval.store import (
     dev_store,
     private_store,
 )
-from crawlerai.llm.providers.from_settings import client_from_settings
+from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict, sync_presets
@@ -74,6 +75,7 @@ def _stop_on_signals() -> asyncio.Event:
 
 
 async def _work() -> None:
+    quiet_peer_resets(asyncio.get_running_loop())
     settings = Settings()
     connector = SafeConnector()
     pools = settings.proxy_pools
@@ -95,7 +97,7 @@ async def _work() -> None:
             rungs = Rungs(http=http, browser=browser.fetch, conditional=http, json=json)
             store = open_store(settings.object_store)
             fetching = Fetching(rungs, connector, store, HostLimiter())
-            llm = client_from_settings(settings, engine)
+            llm, setup = llm_from_settings(settings, engine)
             data, margins = load_engine_data(), load_drift_margins()
             handlers: dict[JobKind, TaskHandler] = {
                 "batch_scrape": scrape_handler(fetching, data, margins, llm=None),  # a batch binds no role C (D-0631)
@@ -104,7 +106,7 @@ async def _work() -> None:
             }
             stop = _stop_on_signals()
             # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
-            work = [run_worker(settings, handlers, stop, ending=close_run)]
+            work = [run_worker(settings, handlers, stop, ending=close_run), setup.verify()]
             if data is not None:  # learning reads the vocabulary from the data files
                 learner = run_learner(
                     engine,

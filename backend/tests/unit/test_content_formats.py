@@ -41,6 +41,49 @@ def test_markdown_is_the_main_content_with_its_links_and_images() -> None:
     )
 
 
+def _tile(i: int) -> str:
+    return (
+        f'<li class="tile"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="Chair {i} photo"></a>'
+        f'<h3><a href="/p/{i}" title="Chair {i}">Chair {i}</a></h3><p class="price">{i}9.90 EUR</p>'
+        "<button>Add to basket</button></li>"
+    )
+
+
+LISTING = (
+    '<!doctype html><html lang="en"><head><title>Chairs</title></head><body>'
+    "<header><nav><ul>"
+    + "".join(f'<li><a href="/c/{i}">Section {i}</a></li>' for i in range(6))
+    + "</ul></nav></header>"
+    "<main><h1>Folding chairs</h1><p>Chairs that fold flat, for rooms where space is short and guests are many.</p>"
+    '<ol class="grid">' + "".join(_tile(i) for i in range(1, 13)) + "</ol></main>"
+    "<footer>Copyright notice and terms of use.</footer></body></html>"
+)
+
+
+def test_listing_markdown_keeps_every_item_with_its_link_image_and_text() -> None:
+    made = markdown(ParsedPage(LISTING), FINAL_URL, page_kind="listing")
+
+    assert made.startswith("# Folding chairs\n\nChairs that fold flat")
+    items = [line for line in made.splitlines() if line.startswith("- ")]
+    assert items[0] == (
+        "- [![Chair 1 photo](https://shop.example.test/i/1.jpg)](https://shop.example.test/p/1)"
+        " [Chair 1](https://shop.example.test/p/1) 19.90 EUR"
+    )
+    assert len(items) == 12
+    assert all(f"[Chair {i}](https://shop.example.test/p/{i}) {i}9.90 EUR" in items[i - 1] for i in range(1, 13))
+    # Buttons are controls, not content (HTML Standard §4.10.6); the site's navigation is not an item.
+    assert "basket" not in made
+    assert "Section" not in made
+
+
+def test_markdown_of_a_page_not_fetched_as_a_listing_is_unchanged() -> None:
+    page = ParsedPage(LISTING)
+    trafilatura_only = markdown(page, FINAL_URL)
+
+    assert markdown(page, FINAL_URL, page_kind="detail") == trafilatura_only
+    assert markdown(ParsedPage(ARTICLE), FINAL_URL, page_kind="listing") == markdown(ParsedPage(ARTICLE), FINAL_URL)
+
+
 def test_markdown_of_a_page_without_content_is_empty() -> None:
     assert markdown(ParsedPage(""), FINAL_URL) == ""
 

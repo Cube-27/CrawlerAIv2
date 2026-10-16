@@ -107,10 +107,10 @@ def test_records_need_a_page_kind() -> None:
     ]
 
 
-def test_refuses_listing_records_until_they_are_available() -> None:
+def test_takes_listing_records() -> None:
     body = {"url": URL, "formats": ["records"], "schema": {"id": SCHEMA_ID}, "page_kind": "listing"}
 
-    assert _messages(body) == ["Value error, records of listing pages are not available yet"]
+    assert ScrapeRequest.model_validate(body).page_kind == "listing"
 
 
 def test_refuses_an_inline_schema_of_another_page_kind() -> None:

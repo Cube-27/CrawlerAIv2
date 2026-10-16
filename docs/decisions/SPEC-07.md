@@ -354,3 +354,24 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: Answer 409 (#105's review).
 - Why: Two identical requests should never get a conflict.
 - Reversible: yes
+
+### D-0930 — A caller-supplied listing without rows is `partial` with no record
+- Date: 2026-10-16 · Spec/PR: reference eval round 1 (#206) · Status: decided
+- Decision: listing records are served by every endpoint; a caller-supplied listing that lists no row ends `partial` with no record, while a detail page without a record stays `failed` (`store_page_record`).
+- Alternatives: `failed` (`extraction_error`); `no_match`.
+- Why: the page was read and listed nothing, which is no resolution error; `no_match` is the crawl outcome (SPEC-05 §4.10).
+- Reversible: yes
+
+### D-0931 — Each scraped listing record carries the page's record confidence
+- Date: 2026-10-16 · Spec/PR: reference eval round 1 (#206) · Status: decided
+- Decision: every record a listing scrape returns carries `ExtractionResult.record_confidence`, the least confident row's (§10).
+- Alternatives: a confidence per row.
+- Why: the pipeline computes confidence per page; the least confident row bounds every row. Confirm on dev once the gate has a baseline.
+- Reversible: yes — a per-row field in `ExtractionResult`.
+
+### D-0934 — Listing markdown lists the repeated items after trafilatura's content
+- Date: 2026-10-16 · Spec/PR: reference eval round 1 (#206) · Status: decided
+- Decision: for a capture fetched as a listing (its manifest's `page_kind`), the largest group of repeated linked items (`acquire.items`) is taken out of trafilatura's tree copy and appended as a Markdown list (links, images, text); other pages' markdown is unchanged.
+- Alternatives: trafilatura's recall mode (drops titles, duplicates items on synthetic grids); rendering items in place; detecting items on every page.
+- Why: trafilatura reads link-dense blocks as boilerplate (reference eval class 6); a format stays a function of the capture (§15, INV-26).
+- Reversible: yes

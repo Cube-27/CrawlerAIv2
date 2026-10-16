@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveFloat, PositiveInt, model_validator
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 __all__ = [
@@ -40,6 +41,7 @@ class FetchPolicy(_Frozen):
     max_decompressed_bytes: PositiveInt = 50_000_000
     capture_network_json: bool = True  # browser only
     locale_hint: str | None = None  # request locale, for the normalizers' context
+    page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> "FetchPolicy":
@@ -89,3 +91,14 @@ def policy_with_attempts(
     """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it
     (SPEC-02 §4.4)."""
     return {**fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
+
+
+def fetched_as(fetch_policy: dict[str, JsonValue]) -> PageKind | None:
+    """The page kind a capture was fetched as (the `page_kind` of its `FetchPolicy`, which its manifest keeps); None
+    for one fetched without a page kind, or before the manifest kept it."""
+    match fetch_policy.get("page_kind"):
+        case "detail":
+            return "detail"
+        case "listing":
+            return "listing"
+    return None

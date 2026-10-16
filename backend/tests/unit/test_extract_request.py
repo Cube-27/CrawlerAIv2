@@ -63,7 +63,6 @@ def test_refuses_a_url_or_glob_without_one_http_host(url: str, message: str) -> 
 @pytest.mark.parametrize(
     ("members", "message"),
     [
-        ({"page_kind": "listing"}, "Value error, records of listing pages are not available yet"),
         (
             {"schema": {"inline": {"name": "s", "page_kind": "listing", "fields": {"title": TITLE}}}},
             "Value error, the inline schema is for listing pages, not detail",
@@ -72,6 +71,10 @@ def test_refuses_a_url_or_glob_without_one_http_host(url: str, message: str) -> 
 )
 def test_the_schema_is_for_detail_pages_of_the_page_kind(members: dict[str, Any], message: str) -> None:
     assert _errors(BODY | members) == [((), message)]
+
+
+def test_takes_listing_records() -> None:
+    assert ExtractRequest.model_validate(BODY | {"page_kind": "listing"}).page_kind == "listing"
 
 
 def test_the_guard_checks_each_url_and_each_globs_origin() -> None:

@@ -22,7 +22,6 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import Capture, Job, Site, UrlTask, UsageEvent
 from crawlerai.llm.client import (
@@ -381,7 +380,7 @@ async def test_a_timeout_while_the_formats_are_computed_fails_the_job(
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    def slow_markdown(page: ParsedPage, final_url: str) -> str:
+    def slow_markdown(*_args: object) -> str:
         time.sleep(1)
         return ""
 

@@ -10,34 +10,47 @@ renders indentation and line breaks as one space (CSS Text Level 3, `white-space
 indent of four spaces starts a code block and a run of blank lines means one (CommonMark §4.4, §4.9). So a line's
 leading whitespace is dropped unless it nests a list item or continues one, and blank-line runs become one; fenced
 code is kept as written.
+
+trafilatura reads a listing's item grid as boilerplate (link-dense repeated blocks), so for a page fetched as a listing
+the items (`acquire.items.item_blocks`) are taken out of its copy of the tree and written as a Markdown list after the
+rest of the content (`_items`): each item's links, images and text, in document order. Other pages are unchanged.
 """
 
 import re
+from collections.abc import Iterator
 from copy import deepcopy
 
 import trafilatura
 from lxml.html import HtmlElement
 
+from crawlerai.acquire.items import is_hyperlink, item_blocks
 from crawlerai.content.dom import document_base_url
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.text import NOT_RENDERED
+from crawlerai.db.models import PageKind
 
 # CommonMark §4.5: a fenced code block opens and closes with a run of three or more backticks or tildes.
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 # CommonMark §5.2: a list item starts with a bullet (`-`, `+`, `*`) or an ordered marker (digits, then `.` or `)`),
 # then whitespace; its indentation is what nests it, and its content starts after that whitespace.
 _LIST_ITEM = re.compile(r"^([ \t]*(?:[-+*]|\d{1,9}[.)]))([ \t]+)")
+# Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
+# Standard §4.10), which a reader of the page uses rather than reads.
+_NOT_TEXT = NOT_RENDERED | {"button", "select", "input", "textarea", "option"}
 
 
-def markdown(page: ParsedPage, final_url: str) -> str:
-    """The main content as Markdown, with its links and images; `""` when trafilatura finds none."""
+def markdown(page: ParsedPage, final_url: str, page_kind: PageKind | None = None) -> str:
+    """The main content as Markdown, with its links and images, and a listing's items; `""` when there is none.
+    `page_kind` is the kind the capture was fetched as."""
+    tree = _absolute(page, final_url)
+    items = item_blocks(tree) if page_kind == "listing" else ()
+    for item in items:
+        item.drop_tree()  # lxml keeps the item's tail text in the tree
     extracted = trafilatura.extract(
-        _absolute(page, final_url),
-        output_format="markdown",
-        include_links=True,
-        include_images=True,
-        favor_precision=True,
+        tree, output_format="markdown", include_links=True, include_images=True, favor_precision=True
     )
-    return _tidy(extracted or "")
+    listed = "\n".join(f"- {line}" for line in map(_item, items) if line)
+    return _tidy("\n\n".join(part for part in (extracted, listed) if part))
 
 
 def _absolute(page: ParsedPage, final_url: str) -> HtmlElement:
@@ -47,6 +60,45 @@ def _absolute(page: ParsedPage, final_url: str) -> HtmlElement:
     tree = deepcopy(page.lxml_tree)
     tree.make_links_absolute(document_base_url(page, final_url), resolve_base_href=False, handle_failures="ignore")
     return tree
+
+
+def _item(item: HtmlElement) -> str:
+    """One item on one line: its hyperlinks as Markdown links (an image link's image as its text), its other images,
+    and its other visible text, in document order, whitespace collapsed (CSS Text Level 3, `white-space: normal`)."""
+    return " ".join("".join(_parts(item)).split())
+
+
+def _parts(element: HtmlElement) -> Iterator[str]:
+    """The element's content as Markdown pieces, without its tail, which follows it in its parent."""
+    if is_hyperlink(element):
+        yield f" {_link(element)} "
+    elif element.tag == "img":
+        yield f" {_image(element)} "
+    elif isinstance(element.tag, str) and element.tag not in _NOT_TEXT:  # not a comment or processing instruction
+        yield element.text or ""
+        for child in element:
+            yield from _parts(child)
+            yield child.tail or ""
+
+
+def _link(link: HtmlElement) -> str:
+    text = " ".join(link.text_content().split()) or link.get("title", "")
+    label = _escaped(text) if text else " ".join(_image(image) for image in link.iter("img"))
+    return f"[{label}]({_target(link.get('href', ''))})"
+
+
+def _image(image: HtmlElement) -> str:
+    return f"![{_escaped(' '.join(image.get('alt', '').split()))}]({_target(image.get('src', ''))})"
+
+
+def _escaped(text: str) -> str:
+    # CommonMark §6.3: brackets in link text are escaped with a backslash, as is the backslash.
+    return text.replace("\\", "\\\\").replace("[", r"\[").replace("]", r"\]")
+
+
+def _target(url: str) -> str:
+    # CommonMark §6.3: a link destination holds no spaces or unbalanced parentheses; RFC 3986 §2.1 percent-encodes them.
+    return url.strip().replace(" ", "%20").replace("(", "%28").replace(")", "%29")
 
 
 def _tidy(text: str) -> str:

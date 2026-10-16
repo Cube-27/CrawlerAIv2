@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
@@ -57,6 +57,7 @@ from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import NewSchema
 from crawlerai.storage.base import ObjectStore
+from crawlerai.storage.capture_bundle import CaptureManifest
 
 log = logging.getLogger(__name__)
 
@@ -160,16 +161,14 @@ class FetchOptions(Input):
 
 
 def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
-    """`records` needs a schema and a `page_kind`, the schema's page kind must be that one, and listing records wait
-    for SPEC-05 PR 12 (SPEC-07 §4.4). Raises `ValueError`, for a request model's validator."""
+    """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one (SPEC-07 §4.4). Raises
+    `ValueError`, for a request model's validator."""
     if "records" not in formats:
         return
     if schema is None:
         raise ValueError("the records format needs a schema")
     if page_kind is None:
         raise ValueError("the records format needs a page_kind")
-    if page_kind == "listing":
-        raise ValueError("records of listing pages are not available yet")
     if isinstance(schema, SchemaInline) and schema.inline.page_kind != page_kind:
         raise ValueError(f"the inline schema is for {schema.inline.page_kind} pages, not {page_kind}")
 
@@ -230,8 +229,11 @@ async def site_row(conn: AsyncConnection, host: str) -> SiteRow:
     return (await conn.execute(select(*columns).where(Site.host == host))).one()
 
 
-def fetch_policy(options: FetchOptions, locale: str | None, site_pool: str | None) -> FetchPolicy:
+def fetch_policy(
+    options: FetchOptions, locale: str | None, site_pool: str | None, *, page_kind: PageKind | None = None
+) -> FetchPolicy:
     return FetchPolicy(
+        page_kind=page_kind,
         method_hint=options.method_hint,
         proxy_pool=options.proxy_pool or site_pool,
         respect_robots=options.respect_robots,
@@ -283,11 +285,12 @@ async def store_page_record(
     margins: DriftMargins | None,
     caller_supplied: bool = True,
 ) -> Stored:
-    """Store the extraction of a detail page and what it keeps: a caller-supplied page keeps its record, complete or
-    not (`partial`, ARCHITECTURE §10), and a crawl-discovered one only a complete record (else `no_match`, §23); none
-    when resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied page without a
-    record. A page with a record counts toward its progressive state. A page `config` ran on joins the config's drift
-    window (SPEC-08 §4.9)."""
+    """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
+    (`partial`, ARCHITECTURE §10), and a crawl-discovered one only complete records (else `no_match`, §23); none when
+    resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied detail page without a
+    record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
+    page with a record counts toward its progressive state. A page `config` ran on joins the config's drift window
+    (SPEC-08 §4.9)."""
     stored = await store_extraction(
         conn,
         task,
@@ -304,12 +307,14 @@ async def store_page_record(
     if stored.records:
         await _count_page(conn, site_id, schema)
     elif caller_supplied:
-        return replace(stored, outcome="failed")
+        listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
+        return replace(stored, outcome="partial" if listed_nothing else "failed")
     return stored
 
 
-def record_outcome(record: StoredRecord) -> Literal["extracted", "partial"]:
-    return "extracted" if record.draft.complete else "partial"
+def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "partial"]:
+    """A caller-supplied page's outcome: `extracted` when it kept records and every one is complete (§10)."""
+    return "extracted" if records and all(record.draft.complete for record in records) else "partial"
 
 
 async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
@@ -356,11 +361,13 @@ class Formats(TypedDict, total=False):
     metadata: PageMetadata
 
 
-def page_formats(page: ParsedPage, final_url: str, requested: list[PageFormat]) -> Formats:
-    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26)."""
+def page_formats(page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat]) -> Formats:
+    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26) and its
+    capture's manifest: a format is a function of the capture alone (§15), the page kind it was fetched as included."""
     formats: Formats = {}
+    final_url = manifest.final_url
     if "markdown" in requested:
-        formats["markdown"] = markdown(page, final_url)
+        formats["markdown"] = markdown(page, final_url, fetched_as(manifest.fetch_policy))
     if "html" in requested:
         formats["html"] = cleaned_html(page)
     if "raw_html" in requested:

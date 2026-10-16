@@ -12,6 +12,7 @@ The database is migrated to head once per session. Each test runs in a transacti
 or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
 """
 
+import json
 import os
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -58,6 +59,7 @@ from crawlerai.db.models import (
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.schemas import registry
 from crawlerai.schemas import types as schema_types
 from crawlerai.services.fetching import Fetching
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
@@ -184,6 +186,7 @@ def fetch_result() -> Callable[..., FetchResult]:
         block_class: BlockClass = "ok",
         error: str | None = None,
         method: CaptureMethod = "http",
+        policy: FetchPolicy | None = None,
     ) -> FetchResult:
         manifest = CaptureManifest(
             capture_id=uuid7(),
@@ -197,7 +200,7 @@ def fetch_result() -> Callable[..., FetchResult]:
             timings_ms={"total": 1},
             html_sha256=sha256_hex(body),
             network_bodies=(),
-            fetch_policy=FetchPolicy().model_dump(mode="json"),
+            fetch_policy=(policy or FetchPolicy()).model_dump(mode="json"),
             engine_version="test",
         )
         attempt = AttemptRecord(
@@ -268,6 +271,38 @@ def engine_data() -> EngineData:
     return EngineData(
         vocabulary=Vocabulary.read(VOCABULARY), orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None
     )
+
+
+# A listing schema's row fields: the item's name and URL (the schema.org Thing properties `name` and `url`).
+LISTING_FIELDS: dict[str, Any] = {
+    "title": {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"},
+    "url": {"type": "url", "required": True, "description": "The product page", "schema_org": "Product.url"},
+}
+
+
+async def listing_schema(engine: AsyncEngine, name: str) -> schema_types.SchemaDef:
+    """A stored listing schema of `LISTING_FIELDS`, named `name`."""
+    document = {"name": name, "version": 1, "page_kind": "listing", "fields": LISTING_FIELDS}
+    async with engine.begin() as conn:
+        return await registry.create(conn, schema_types.SchemaDocument.model_validate(document), "user")
+
+
+def listing_page(
+    origin: str, names: list[str], *, priced: bool = True, first: int = 1, next_page: str | None = None
+) -> bytes:
+    """A synthetic listing whose rows are the items of a schema.org ItemList, one Product at `origin`/kettles/<n>
+    each from n = `first`, priced in EUR when `priced`; `next_page` is its `<link rel="next">` (HTML standard)."""
+    items = []
+    for position, name in enumerate(names, start=first):
+        product: dict[str, Any] = {"@type": "Product", "name": name, "url": f"{origin}/kettles/{position}"}
+        if priced:
+            product["offers"] = {"@type": "Offer", "price": f"{position}9.90", "priceCurrency": "EUR"}
+        items.append({"@type": "ListItem", "position": position, "item": product})
+    node = {"@context": "https://schema.org", "@type": "ItemList", "itemListElement": items}
+    head = f'<title>Kettles</title><script type="application/ld+json">{json.dumps(node)}</script>'
+    if next_page is not None:
+        head += f'<link rel="next" href="{next_page}">'
+    return f"<!doctype html><html><head>{head}</head><body></body></html>".encode()
 
 
 PRIVATE_HOST = "intranet.example.test"

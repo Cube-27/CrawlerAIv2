@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from crawlerai.db.models import JobId
+from crawlerai.llm.setup import LLMStatus
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.configs import ConfigSummary
 from crawlerai.services.records import ExtractedRecord
@@ -41,6 +42,9 @@ PROBLEM_RESPONSE: dict[str, object] = {
 class Health(Model):
     status: Literal["ok"] = "ok"
     eval_ui: bool  # the labeling endpoints are mounted (SPEC-12 §4.3 reads it for its navigation)
+    # The LLM setup check (`crawlerai.llm.setup`): `unavailable` when a listed provider has no key or refuses a
+    # configured model; the log names the problem. The API serves either way: only LLM calls are affected.
+    llm: LLMStatus
 
 
 class SchemaList(Model):

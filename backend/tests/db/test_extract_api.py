@@ -145,7 +145,6 @@ async def test_extract_problems(
         "no URL": await _post(client, [f"{own_origin}/q/*"], {"prompt": prompt}),
         "no sample": await _post(client, [f"{own_origin}/gone"], {"prompt": prompt}),
         "no budget": await _post(client, [f"{own_origin}/p/1"], {"prompt": prompt}, budget={"llm_calls": 0}),
-        "listing": await _post(client, [f"{own_origin}/p/1"], {"prompt": prompt}, page_kind="listing"),
     }
 
     problems = {name: (r.status_code, r.json()["type"]) for name, r in responses.items()}
@@ -153,7 +152,6 @@ async def test_extract_problems(
         "no URL": (422, "validation"),
         "no sample": (422, "validation"),
         "no budget": (422, "budget_exhausted"),
-        "listing": (422, "validation"),
     }
     assert [error["field"] for error in responses["no sample"].json()["errors"]] == ["urls"]
     assert provider.calls == []

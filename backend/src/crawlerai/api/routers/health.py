@@ -1,4 +1,5 @@
-"""`GET /healthz` (SPEC-07 §4.6): the API answers and its database does. Unauthenticated (§18)."""
+"""`GET /healthz` (SPEC-07 §4.6): the API answers and its database does, and what the LLM setup check found.
+Unauthenticated (§18)."""
 
 import asyncio
 from typing import Annotated
@@ -26,4 +27,4 @@ async def healthz(engine: Annotated[AsyncEngine, Depends(database)], request: Re
     except (OSError, SQLAlchemyError) as e:  # `asyncio.timeout` raises `TimeoutError`, an `OSError`
         # The error is left out: a connection error may name the database's address.
         raise ProblemError(503, "unavailable", "Unavailable", "the database did not answer") from e
-    return Health(eval_ui=request.app.state.eval_ui)
+    return Health(eval_ui=request.app.state.eval_ui, llm=request.app.state.llm_setup.status)

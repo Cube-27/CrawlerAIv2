@@ -50,6 +50,7 @@ from crawlerai.storage.fs import FsStore
 from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
+from tests.db.conftest import listing_page, listing_schema
 
 pytestmark = pytest.mark.anyio
 
@@ -317,6 +318,25 @@ async def test_records_are_stored_per_page_and_an_incomplete_page_is_partial(
     assert second.next_cursor is None
     titles = sorted((r.fields["title"].value, r.complete) for r in records)
     assert titles == [("Blue kettle", True), ("Plain kettle", False), ("Red kettle", True)]
+
+
+async def test_a_listing_page_keeps_a_record_per_row_and_one_without_rows_is_partial(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
+) -> None:
+    listed, empty = f"{own_origin}/kettles", f"{own_origin}/kettles/none"
+    web.pages[listed] = (200, listing_page(own_origin, ["Blue kettle", "Red kettle", "Green kettle"]))
+    web.pages[empty] = (200, _page("Blue kettle"))
+    schema = await listing_schema(engine, schema_name)
+    request = _batch([listed, empty], "records", schema={"id": str(schema.id)}, page_kind="listing")
+    submitted = await submit_batch(engine, fetching.connector, request, data=engine_data)
+
+    await _run(engine, fetching, engine_data, submitted.job_id)
+
+    summary = await _summary(engine, submitted.job_id)
+    results = await _results(engine, fetching, submitted.job_id)
+    assert (summary.outcomes.extracted, summary.outcomes.partial) == (1, 1)
+    assert isinstance(results, RecordPage)
+    assert sorted(str(r.fields["title"].value) for r in results.items) == ["Blue kettle", "Green kettle", "Red kettle"]
 
 
 # INV-28: settings pinned at submit.

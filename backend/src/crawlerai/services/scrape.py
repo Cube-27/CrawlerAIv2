@@ -11,14 +11,14 @@ draft is returned; the same prompt returns the stored draft without a call. A pa
 from. A draft the LLM could not give (no provider, no budget, an invalid reply) fails the job, like a timeout.
 `schema.fields` is drafted from the names before the job starts (SPEC-14 §4.10), so a draft that fails stores nothing.
 
-`records` extracts the page with `extract_page` (SPEC-05) against the schema named by id, given inline, or drafted,
-and stores the extraction and the record (`resolve.task`). A scrape URL is caller-supplied, so a page whose required
-fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10). A site with an
-active config for the schema version extracts in `config` mode (SPEC-08 §4.8), and the page joins the config's drift
-window (§4.9). A scrape that asks for the record only is served by the config's API recipe when it has one (SPEC-09
-§4.8): a JSON body has no markdown, links or metadata of the page, so other formats fetch the page. The formats,
-the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same canonical URL
-that reached its page within that many seconds is read again instead of fetching.
+`records` extracts the page with `extract_page` (SPEC-05) against the schema named by id, given inline, or drafted, and
+stores the extraction and the records (`resolve.task`: a listing has one per row). A scrape URL is caller-supplied, so a
+page whose required fields don't all publish keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE
+§10). A site with an active config for the schema version extracts in `config` mode (SPEC-08 §4.8), and the page joins
+the config's drift window (§4.9). A scrape that asks for the record only is served by the config's API recipe when it
+has one (SPEC-09 §4.8): a JSON body has no markdown, links or metadata of the page, so other formats fetch the page. The
+formats, the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same
+canonical URL that reached its page within that many seconds is read again instead of fetching.
 """
 
 import asyncio
@@ -53,7 +53,7 @@ from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_cla
 from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
 from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.task import ActiveConfig
+from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import (
@@ -88,12 +88,12 @@ from crawlerai.services.scrape_steps import (
     new_capture,
     page_formats,
     record_fetch_usage,
-    record_outcome,
+    records_outcome,
     site_row,
     store_page_record,
 )
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
-from crawlerai.storage.capture_bundle import decode
+from crawlerai.storage.capture_bundle import CaptureManifest, decode
 
 MAX_TIMEOUT_S: Final = 120  # D-0028
 # A scrape task's `last_error` when it failed for no reason the service declares.
@@ -108,9 +108,9 @@ class Budget(Input):
 
 class ScrapeRequest(Input):
     """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
-    must be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and
-    `budget.llm_calls` bounds its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age`
-    reuses a capture fetched within that many seconds."""
+    must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft;
+    `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched within that
+    many seconds."""
 
     url: str
     formats: list[PageFormat] = Field(min_length=1)
@@ -326,7 +326,7 @@ async def _run(
         if request.max_age:
             row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age, api=recipe is not None)
     recent = None if row is None else await _reread(fetching.store, row)
-    policy = fetch_policy(request.fetch, request.locale, site.proxy_pool)
+    policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
     attempts: list[AttemptRecord] = []
     if recent is None:
         page = await polite_fetch(engine, fetching, request.url, host, policy, site, attempts, recipe=recipe)
@@ -421,8 +421,8 @@ async def _derive(
     (INV-26), with the site's active `config` when there is one."""
     page = ParsedPage.of(result.bundle)
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
-    final_url = result.bundle.manifest.final_url
-    formats, sample = await asyncio.to_thread(_content, page, final_url, request.formats, sample=prompt is not None)
+    manifest = result.bundle.manifest
+    formats, sample = await asyncio.to_thread(_content, page, manifest, request.formats, sample=prompt is not None)
     drafted = None
     if prompt is not None and sample is not None:
         # Role S's one sample page is the page's cleaned text (SPEC-06 §4.5).
@@ -524,19 +524,21 @@ async def _finish(
     if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
         return "failed", None
-    # Records of a detail page only: requests refuse listing records (`check_records`).
-    kept = stored.records[0]
-    outcome = record_outcome(kept)
+    # A detail page's one record, or a listing's one per row (none when it listed nothing, SPEC-05 §4.10).
+    outcome = records_outcome(stored.records)
     await complete_task(conn, task, outcome, capture_id=capture_id)
-    record = ScrapedRecord.of(kept.id, kept.draft, mode=extraction.mode, confidence=extraction.record_confidence)
-    return outcome, [record]
+    return outcome, [_scraped(kept, extraction) for kept in stored.records]
+
+
+def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:
+    return ScrapedRecord.of(kept.id, kept.draft, mode=extraction.mode, confidence=extraction.record_confidence)
 
 
 def _content(
-    page: ParsedPage, final_url: str, requested: list[PageFormat], *, sample: bool
+    page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat], *, sample: bool
 ) -> tuple[Formats, str | None]:
     """The requested content formats of the page and, when `sample`, its cleaned text."""
-    return page_formats(page, final_url, requested), page.cleaned_text.text if sample else None
+    return page_formats(page, manifest, requested), page.cleaned_text.text if sample else None
 
 
 async def _usage(conn: AsyncConnection, job_id: JobId) -> Usage:

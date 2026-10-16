@@ -22,6 +22,7 @@ from crawlerai.llm.client import (
     is_transient,
     redacted,
 )
+from crawlerai.llm.setup import CHECK_TIMEOUT_S
 
 
 class GeminiProvider:
@@ -63,3 +64,17 @@ class GeminiProvider:
             tokens_out=(usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0),
             cut=any(candidate.finish_reason == types.FinishReason.MAX_TOKENS for candidate in candidates),
         )
+
+    async def check_model(self, model: str) -> str | None:
+        """What the models endpoint says is wrong with the model id `model`; None when it knows it
+        (`crawlerai.llm.setup`)."""
+        config = types.GetModelConfig(http_options=types.HttpOptions(timeout=round(CHECK_TIMEOUT_S * 1000)))
+        try:
+            await self._sdk.aio.models.get(model=model, config=config)
+        except httpx.TransportError as error:
+            return f"{self.name} did not answer for model {model} ({type(error).__name__})"
+        except errors.APIError as error:
+            return (
+                f"{self.name} answered HTTP {error.code} for model {model}: {redacted(error.message or '', self._key)}"
+            )
+        return None

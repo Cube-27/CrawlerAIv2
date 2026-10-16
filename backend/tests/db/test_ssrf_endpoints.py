@@ -68,9 +68,10 @@ UNRESOLVED = "nowhere.example.test"
 
 
 def html(content: str) -> str:
-    """A page with enough visible text to classify as a page, not a shell (SPEC-02 §4.3)."""
+    """A page with enough visible text to classify as a page, not a shell (SPEC-02 §4.3), and a style sheet, so that
+    without links it is not an error stub either."""
     text = "<p>A shop that sells kettles, teapots and cups, delivered within three working days.</p>" * 4
-    head = "<!doctype html><html lang='en'><head><title>Shop</title></head>"
+    head = "<!doctype html><html lang='en'><head><title>Shop</title><link rel='stylesheet' href='/s.css'></head>"
     return f"{head}<body><main>{text}{content}</main></body></html>"
 
 

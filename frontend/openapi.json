@@ -2170,6 +2170,15 @@
             "title": "Eval Ui",
             "type": "boolean"
           },
+          "llm": {
+            "enum": [
+              "checking",
+              "ok",
+              "unavailable"
+            ],
+            "title": "Llm",
+            "type": "string"
+          },
           "status": {
             "const": "ok",
             "default": "ok",
@@ -2178,7 +2187,8 @@
           }
         },
         "required": [
-          "eval_ui"
+          "eval_ui",
+          "llm"
         ],
         "title": "Health",
         "type": "object"
@@ -4843,7 +4853,7 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one; listing records wait for SPEC-05 PR 12. A `schema.prompt` is drafted and returned, and\n`budget.llm_calls` bounds its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age`\nreuses a capture fetched within that many seconds.",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` bounds its draft;\n`schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched within that\nmany seconds.",
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/Budget",

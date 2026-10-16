@@ -381,3 +381,17 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: libcurl with libpsl (not in the curl-impersonate wheels); filtering curl's cookie list afterwards.
 - Why: One policy (§5.3 steps 5 and 6) for both rungs.
 - Reversible: yes
+
+### D-0932 — A small terminal document answered with 2xx is `blocked`
+- Date: 2026-10-16 · Spec/PR: reference eval round 1 (#206) · Status: decided
+- Decision: a 2xx HTML body of at most 1024 bytes, with visible text enough not to be a shell, and no element that links, loads, runs or embeds anything (`a`/`area[href]`, `script`, `link`, embedded content, `form`), is `blocked`.
+- Alternatives: a phrase list (C4); `error`, which gets no browser retry.
+- Why: HTML element semantics (reference eval class 7). The byte bound is an unmeasured starting point like D-0008.
+- Reversible: yes
+
+### D-0933 — A page fetched over HTTP as a listing that lists nothing is a `shell`
+- Date: 2026-10-16 · Spec/PR: reference eval round 1 (#206) · Status: decided
+- Decision: `FetchPolicy.page_kind` (task or request) is kept in the manifest and reaches the HTTP rung's `classify`: a listing with no JSON-LD, microdata or `application/json` data block and no group of three or more same-shape linked siblings outside the chrome landmarks is `shell`, so `auto` retries it in the browser. The browser rung classifies without the page kind (it is the last rung).
+- Alternatives: re-fetch in the browser after resolution finds no rows.
+- Why: reference eval class 5; the rule stays structural (SPEC-02 §4.3). A genuinely empty listing fetched with `method_hint: http` ends `shell`.
+- Reversible: yes
