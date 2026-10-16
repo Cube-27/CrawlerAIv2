@@ -166,7 +166,11 @@ an empty result with a diagnostic).
   (§4.4.9, a `div` wrapping a group), and the main image, the first `img` of the one `main` element, else the one
   `role="main"` landmark (WAI-ARIA 1.2), else the one `article`, outside `nav`/`header`/`footer`/`aside` and
   dialogs (`dialog`, roles `dialog` and `alertdialog`), and shown by §4.4's cleaned-text rules (hidden subtrees,
-  inherited `visibility`; D-1023), whose `src` (else first `srcset` URL) is not `data:` (RFC 2397). A label names a field when its words (NFKC,
+  inherited `visibility`; D-1023), outside a media element's fallback content (`video`, `audio`, `object`,
+  `canvas`, §4.8), not decorative (empty `alt`, §4.8.4.4; roles `none`/`presentation`) and not a link card's (the
+  nearest block around it holding a hyperlink holds no other image and links to exactly one other web document, its
+  fragment dropped, not this page and not an `image/*` resource; D-1096), whose `src` (else first `srcset` URL) is
+  not `data:` (RFC 2397). A label names a field when its words (NFKC,
   case-folded, lowerCamelCase split) equal those of the field's name or of the schema.org property its path names
   (the step before a final `.name`): words come from the schema and the pinned vocabulary, never a list (C4). An
   image fills `image_url` fields whose path names `image`; list and object fields get no pair. The value must be
