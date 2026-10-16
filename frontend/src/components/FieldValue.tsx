@@ -24,12 +24,11 @@ function money(value: JsonObject): string {
   return joinParts([value.amount, value.currency], " ");
 }
 
-// SPEC-04 §4.4: location is `{locality, region, country, remote_flag}`; the flag is shown as text, not inferred.
+// SPEC-04 §4.4: location is `{text, locality, region, country, remote_flag}`. `text` is the place as the page writes
+// it and is shown as is; the parts stand in only when it is null. The flag is shown as text, not inferred.
 function location(value: JsonObject): string {
-  return joinParts(
-    [value.locality, value.region, value.country, value.remote_flag === true ? "remote" : null],
-    ", ",
-  );
+  const place = part(value.text) ?? joinParts([value.locality, value.region, value.country], ", ");
+  return joinParts([place, value.remote_flag === true ? "remote" : null], ", ");
 }
 
 // SPEC-04 §4.4: range is `{min, max, currency|unit, period}`.

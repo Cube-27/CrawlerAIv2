@@ -6,7 +6,7 @@ no hostname or tenant is written here (C3, C9).
 """
 
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,7 +26,6 @@ from crawlerai.collect.json_doc import select
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
-from crawlerai.normalize import location
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.registry import load_presets
@@ -43,15 +42,6 @@ async def _no_fetch(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
 GREENHOUSE, LEVER = Greenhouse(_no_fetch), Lever(_no_fetch)
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _no_gazetteer() -> Iterator[None]:
-    """Location values are read against an empty gazetteer: the collector passes them to the normalizer as written,
-    and the GeoNames snapshot is not needed to check that."""
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(location, "default_gazetteer", lambda: location.Gazetteer.parse("", "", []))
-        yield
-
-
 def _preset(name: str) -> SchemaDef:
     (document,) = (d for d in load_presets() if d.name == name)
     return SchemaDef(id=SchemaId(uuid7()), origin="preset", status="active", **document.model_dump())
@@ -63,7 +53,6 @@ def _schema(page_kind: PageKind, **fields: FieldSpec) -> SchemaDef:
         origin="user",
         status="active",
         name="synthetic",
-        version=1,
         page_kind=page_kind,
         fields=fields,
     )

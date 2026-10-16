@@ -16,8 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-bui
 # build hook puts the manifest's data files in the wheel (hatch_build.py). `crawlerai data fetch` without the CLI, which
 # needs the installed project: `core/data.py` imports the standard library only, so copied alone this layer re-runs
 # only when the data or the fetch changes, not on every `src/` change. A refused entry is printed and left out of the
-# image, which then reports it missing at run time: the GeoNames dump is rewritten daily, so its pin goes stale until
-# it has a stable source (D-0311).
+# image, which then reports it missing at run time.
 COPY data ./data
 COPY src/crawlerai/core/data.py ./fetch_data.py
 RUN python -c "from pathlib import Path; from fetch_data import fetch_data; \

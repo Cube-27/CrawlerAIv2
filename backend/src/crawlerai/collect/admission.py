@@ -7,10 +7,10 @@ each field's normalizer, the only filter, and becomes a candidate only when:
   then owned by that candidate's entity and is not independent: it agrees with a value it was admitted for, so it
   never counts toward `agreed` (§10);
 - the field has no candidate from another source kind, its type has a syntax the normalizer checks
-  (`normalize.dispatch.checkable`: money, enum, date, location, range, a check-digit identifier, an absolute URL), and
-  the value is visible in the page text. It is then owned by the page, like other page-level values, and is
-  independent. Text and other opaque types admit by equality only: any visible string normalizes as text, so
-  visibility alone says nothing of which field a leaf is (owner, accuracy Q2 option a).
+  (`normalize.dispatch.checkable`: money, enum, date, range, a check-digit identifier, an absolute URL), and the value
+  is visible in the page text. It is then owned by the page, like other page-level values, and is independent. Text,
+  location and other opaque types admit by equality only: any visible string normalizes as text or as a location's
+  text, so visibility alone says nothing of which field a leaf is (owner, accuracy Q2 option a).
 
 A field with candidates from other kinds admits values only by equality ("leaves are considered only for fields still
 lacking a candidate or for agreement checks"), so a value both equal and visible is not independent.

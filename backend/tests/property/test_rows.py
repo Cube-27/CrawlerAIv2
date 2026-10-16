@@ -159,9 +159,9 @@ _KEY_VALUES: dict[str, list[JsonValue]] = {
     "url": ["https://example.test/v/1", "HTTPS://example.test/v/1#a", "https://example.test/v/2"],
     # Location equality is not transitive: a place without a region equals both places with one.
     "place": [
-        {"locality": "Springfield", "region": None, "country": "DE", "remote_flag": False},
-        {"locality": "Springfield", "region": "BY", "country": "DE", "remote_flag": False},
-        {"locality": "Springfield", "region": "BE", "country": "DE", "remote_flag": False},
+        {"text": None, "locality": "Springfield", "region": None, "country": "DE", "remote_flag": False},
+        {"text": None, "locality": "Springfield", "region": "BY", "country": "DE", "remote_flag": False},
+        {"text": None, "locality": "Springfield", "region": "BE", "country": "DE", "remote_flag": False},
     ],
 }
 ROW_KEYS = st.lists(

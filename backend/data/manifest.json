@@ -10,36 +10,6 @@
       "justification": "Top-level domains for the C3 site-literal scan hostname pattern (SPEC-00 §4.7)."
     },
     {
-      "path": "geonames/cities15000.zip",
-      "url": "https://github.com/Cube-27/CrawlerAIv2/releases/download/data-geonames-2026-10-15/cities15000.zip",
-      "version": "GeoNames export dump as of 2026-10-15 (Last-Modified 2026-10-15), mirrored unchanged as a release asset of this repo (D-0311)",
-      "retrieved": "2026-10-16",
-      "sha256": "d5cc2af747cdb2defd31f7baa815240fb9cc0145902469de01d059eaceb23011",
-      "license": "CC BY 4.0 (GeoNames); attribution in NOTICE",
-      "justification": "Cities with a population over 15000: the localities the location normalizer matches in text (SPEC-04 §4.4).",
-      "fetched": true
-    },
-    {
-      "path": "geonames/admin1CodesASCII.txt",
-      "url": "https://github.com/Cube-27/CrawlerAIv2/releases/download/data-geonames-2026-10-15/admin1CodesASCII.txt",
-      "version": "GeoNames export dump as of 2026-10-15 (Last-Modified 2026-10-15), mirrored unchanged as a release asset of this repo (D-0311)",
-      "retrieved": "2026-10-16",
-      "sha256": "1da92a6323a5fec3176f3f743bf4cf4040fd56a876da55e46fbca23c863aa60a",
-      "license": "CC BY 4.0 (GeoNames); attribution in NOTICE",
-      "justification": "First-level administrative divisions: the regions the location normalizer matches and reports (SPEC-04 §4.4).",
-      "fetched": true
-    },
-    {
-      "path": "geonames/countryInfo.txt",
-      "url": "https://github.com/Cube-27/CrawlerAIv2/releases/download/data-geonames-2026-10-15/countryInfo.txt",
-      "version": "GeoNames export dump as of 2026-10-15 (Last-Modified 2026-10-15), mirrored unchanged as a release asset of this repo (D-0311)",
-      "retrieved": "2026-10-16",
-      "sha256": "c55f638cfaafb4fe45a9aa15120a0f1f78e8a34a8e1847d7b9320cf740fbc9ab",
-      "license": "CC BY 4.0 (GeoNames); attribution in NOTICE",
-      "justification": "ISO 3166-1 codes and country names for the location normalizer (SPEC-04 §4.4).",
-      "fetched": true
-    },
-    {
       "path": "schemaorg/schemaorg-all-https.jsonld",
       "url": "https://raw.githubusercontent.com/schemaorg/schemaorg/8adb51c91fc12adb271fc787a26cfab204e9d105/data/releases/30.1/schemaorg-all-https.jsonld",
       "version": "30.1",
