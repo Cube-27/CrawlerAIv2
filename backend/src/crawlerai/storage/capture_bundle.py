@@ -228,7 +228,9 @@ def _transport_encoding(headers: HeaderList) -> webencodings.Encoding | None:
 
 def _meta_encoding(body: bytes) -> webencodings.Encoding | None:
     match = _META_CHARSET.search(body, 0, _PRESCAN_BYTES)
-    encoding = None if match is None else webencodings.lookup(match.group(1).decode("ascii"))
+    # A label that is not ASCII names no encoding (Encoding Standard §4.2): `lookup` finds none, and it is skipped.
+    label = None if match is None else match.group(1).decode("ascii", errors="replace")
+    encoding = None if label is None else webencodings.lookup(label)
     if encoding is None:
         return None
     # HTML Standard §13.2.3.2 prescan: a `meta` declaration of UTF-16 means UTF-8 (the bytes it was read from are

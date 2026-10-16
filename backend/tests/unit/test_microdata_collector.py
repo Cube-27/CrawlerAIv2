@@ -159,6 +159,14 @@ def test_a_url_value_is_not_text(element: str) -> None:
     assert [c.field for c in result.candidates] == []
 
 
+def test_a_list_of_text_takes_no_url_values() -> None:
+    tags = FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.TEXT), schema_org="Product.keywords")
+    schema = SCHEMA.model_copy(update={"fields": {"tags": tags}})
+    markup = '<a itemprop="keywords" href="/t/1">one</a><a itemprop="keywords" href="/t/2">two</a>'
+    result = _collect(f'<div itemscope itemtype="https://schema.org/Product">{markup}</div>', schema)
+    assert [c.field for c in result.candidates] == []
+
+
 def test_an_rdfa_iri_value_is_not_text() -> None:
     # RDFa Core 1.1 §7.5 step 11: `href` makes the property's value an IRI.
     result = _collect(

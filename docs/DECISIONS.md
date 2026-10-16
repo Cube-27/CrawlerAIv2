@@ -933,7 +933,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Date: 2026-10-16 · Spec/PR: tough-site run, SPEC-05 §4.4 (#225) · Status: decided
 - Decision: In the cleaned text, an element whose text ends in an ellipsis (U+2026 or three full stops, its NFKC form) and whose `title` starts with that text without the ellipsis and goes on, shows its `title` (HTML Standard §3.2.6.1: advisory information for the element). Role C then reads and grounds the full name.
 - Alternatives: replace the value after grounding (the value would not be a span of the text, INV-12).
-- Why: two tough-run listings published half their row titles cut ("A Light in the ..."); their captures now read the full names.
+- Why: two tough-run listings published half their row titles cut short with an ellipsis; their captures now read the full names.
 - Reversible: yes
 
 ### D-1155 — A robots.txt answered with 429 is unreachable

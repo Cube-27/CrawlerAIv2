@@ -258,6 +258,12 @@ class Typed:
 _TEXT_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT})
 
 
+def _holds_text(spec: FieldSpec) -> bool:
+    """Whether the field's values are prose: a text type, or a list of one."""
+    item = spec.item if spec.type is FieldType.LIST else spec
+    return item is not None and item.type in _TEXT_TYPES
+
+
 def field_candidates(
     entities: Sequence[Typed],
     schema: SchemaDef,
@@ -274,7 +280,7 @@ def field_candidates(
         if spec.type is FieldType.IDENTIFIER:
             paths = _with_sub_properties(paths, vocabulary)
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
-            if selected.url and spec.type in _TEXT_TYPES:
+            if selected.url and _holds_text(spec):
                 continue
             found = candidate(name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics)
             if found is not None:

@@ -207,6 +207,13 @@ def test_a_listing_with_repeated_linked_items_or_structured_rows_is_ok(page: byt
         _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "WebSite"}</script>'),
         _listing(_SCRIPT_GRID, head='<script type="application/ld+json">{"@type": "ItemList"</script>'),
         _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/WebSite"></div>' * 2),
+        # Nested items are properties of their holder, not items the page lists.
+        _listing(
+            _SCRIPT_GRID
+            + '<ol itemscope itemtype="https://schema.org/BreadcrumbList">'
+            + '<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">x</li>' * 3
+            + "</ol>"
+        ),
         # Script state may hold the rows or not; the browser renders the grid from it either way.
         _listing(_SCRIPT_GRID + '<script type="application/json">{"items": []}</script>'),
     ],

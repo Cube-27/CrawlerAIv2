@@ -91,6 +91,12 @@ def test_the_body_decodes_as_the_encoding_sniffing_algorithm_says(
     assert ParsedPage.of(_bundle(body, headers)).cleaned_text.text == "a \u2013 b"
 
 
+def test_a_meta_charset_label_that_is_not_ascii_is_skipped() -> None:
+    # Curly quotes around the label: no encoding has that name, so the body is decoded as UTF-8.
+    body = "<meta charset=\u201cwindows-1252\u201d><p>a \u2013 b</p>".encode()
+    assert ParsedPage.of(_bundle(body, ())).cleaned_text.text == "a \u2013 b"
+
+
 def test_a_browser_capture_is_utf8_whatever_the_server_declared() -> None:
     # The browser body is the rendered DOM, serialized by the fetcher as UTF-8 (`acquire.browser`); the server's
     # declaration was for the bytes it sent, which the browser already decoded.

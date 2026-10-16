@@ -41,7 +41,9 @@ _HYPERLINKS = "a[href], area[href]"
 # Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): as many microdata items (HTML
 # Standard §5.2) as a grid's items (`MIN_ITEMS`), or a schema.org ItemList in a JSON-LD script data block (W3C JSON-LD
 # 1.1 §7.3) whose media type, before parameters and in any case (RFC 9110 §8.3.1), is `_JSON_LD`.
-_MICRODATA = "[itemscope]"
+# Top-level microdata items (HTML Standard §5.2.2): an item that is no property of another (a breadcrumb's entries,
+# a product's offer are).
+_MICRODATA = "[itemscope]:not([itemprop])"
 _JSON_LD = "application/ld+json"
 _ITEM_LIST = "ItemList"
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
