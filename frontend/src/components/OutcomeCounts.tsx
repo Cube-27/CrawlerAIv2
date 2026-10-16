@@ -90,3 +90,28 @@ export function OutcomeCounts({
     </div>
   );
 }
+
+/** A job's outcomes on one line, each outcome some task reached with its count (the run header's summary, D-0975), or
+ * a muted line while none has. */
+export function OutcomeSummary({ outcomes }: Readonly<{ outcomes: Outcomes }>) {
+  const reached = OUTCOMES.filter((outcome) => outcomes[outcome] > 0);
+  if (reached.length === 0) {
+    return (
+      <Typography.Paragraph size="sm" color="muted">
+        No outcome yet
+      </Typography.Paragraph>
+    );
+  }
+  return (
+    <ul aria-label="Outcomes" className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {reached.map((outcome) => (
+        <li key={outcome} className="flex items-center gap-1.5">
+          <OutcomeLabel outcome={outcome} />
+          <Typography.Paragraph size="sm" weight="medium">
+            {outcomes[outcome]}
+          </Typography.Paragraph>
+        </li>
+      ))}
+    </ul>
+  );
+}

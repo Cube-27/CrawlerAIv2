@@ -1,6 +1,8 @@
 import { Table, Typography } from "@heroui/react";
+import { ChevronRight } from "@gravity-ui/icons";
 import type { ReactNode } from "react";
 import type { JobSummary } from "../../api/jobs";
+import { DurationText } from "../../components/ElapsedTime";
 import { JobStatusLabel } from "../../components/JobStatusLabel";
 import { TaskCountsText } from "../../components/OutcomeCounts";
 import { Timestamp } from "../../components/Timestamp";
@@ -15,14 +17,32 @@ function target({ start_url, url_count }: JobSummary): string {
   return `${String(count)} ${count === 1 ? "URL" : "URLs"}`;
 }
 
+/** The last column's cue that a row opens its run: the whole row is the link (React Aria row `href`), so this is text,
+ * not a second control. */
+function OpenCue() {
+  return (
+    <span className="flex items-center justify-end gap-1 text-accent">
+      Open
+      <ChevronRight aria-hidden="true" />
+    </span>
+  );
+}
+
 /** A column a jobs table can show: its header and its cell. */
 const COLUMNS = {
   kind: { header: "Kind", cell: (job: JobSummary): ReactNode => KIND_LABELS[job.kind] },
-  run: { header: "Run", cell: target },
+  target: { header: "Target", cell: target },
   status: { header: "Status", cell: (job: JobSummary) => <JobStatusLabel status={job.status} /> },
   tasks: { header: "Tasks", cell: (job: JobSummary) => <TaskCountsText counts={job.counts} /> },
   started: { header: "Started", cell: (job: JobSummary) => <Timestamp value={job.started_at} /> },
   created: { header: "Created", cell: (job: JobSummary) => <Timestamp value={job.created_at} /> },
+  duration: {
+    header: "Duration",
+    cell: (job: JobSummary) => (
+      <DurationText startedAt={job.started_at} finishedAt={job.finished_at} />
+    ),
+  },
+  open: { header: "Open", cell: () => <OpenCue /> },
 } satisfies Record<string, { header: string; cell: (job: JobSummary) => ReactNode }>;
 
 export type JobColumn = keyof typeof COLUMNS;
@@ -54,7 +74,12 @@ export function JobRows({
           <Table.Header>
             {columns.map(([id, width], i) => (
               <Table.Column key={id} id={id} isRowHeader={i === 0} className={width}>
-                {COLUMNS[id].header}
+                {/* The open cue's column is named for screen readers only: the cue says it in each row. */}
+                {id === "open" ? (
+                  <span className="sr-only">{COLUMNS[id].header}</span>
+                ) : (
+                  COLUMNS[id].header
+                )}
               </Table.Column>
             ))}
           </Table.Header>

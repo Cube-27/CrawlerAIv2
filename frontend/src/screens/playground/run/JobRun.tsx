@@ -1,4 +1,4 @@
-import { Typography } from "@heroui/react";
+import { Card, Typography } from "@heroui/react";
 import { useJobEvents } from "../../../api/hooks/events";
 import { useJob } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
@@ -6,7 +6,7 @@ import { cancelState, type JobKind, type JobSummary } from "../../../api/jobs";
 import { ActivityFeed } from "../../../components/ActivityFeed";
 import { CancelJobAction } from "../../../components/CancelJobAction";
 import { JobStatusLabel } from "../../../components/JobStatusLabel";
-import { OutcomeCounts } from "../../../components/OutcomeCounts";
+import { RunProgress } from "../../../components/RunProgress";
 import { StatusLabel } from "../../../components/StatusLabel";
 import type { Problem } from "../../../api/problem";
 import { OutputArea, type OutputState } from "../OutputArea";
@@ -14,46 +14,41 @@ import { RecentRuns } from "./RecentRuns";
 import { ResultsTable } from "./ResultsTable";
 import { RunExports } from "./RunExports";
 
-/** A run's status line: its status, Cancel and the exports (its progress and elapsed time are in the activity), on one row that keeps its controls in place
- * as the run goes. */
-function RunHeader({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
+/** A run's summary (SPEC-14 §4.3, D-0975), one outlined surface: its status with Cancel and the exports on the right,
+ * kept in place as the run goes, then its progress and outcomes. */
+function RunSummary({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
   const cancel = cancelState(job);
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Typography.Heading level={2}>Run</Typography.Heading>
-        <JobStatusLabel status={job.status} />
-        {cancel === "requested" ? <StatusLabel text="cancel requested" tone="warning" /> : null}
-      </div>
-      <div className="flex flex-wrap items-start gap-2">
-        {/* A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2). */}
-        <CancelJobAction id={job.id} isDisabled={cancel !== "cancellable"} />
-        <RunExports jobId={job.id} withMetadata={withMetadata} />
-      </div>
-    </div>
+    <Card>
+      <Card.Content className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Typography.Heading level={2}>Run</Typography.Heading>
+            <JobStatusLabel status={job.status} />
+            {cancel === "requested" ? <StatusLabel text="cancel requested" tone="warning" /> : null}
+          </div>
+          <div className="flex flex-wrap items-start gap-2">
+            {/* A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2). */}
+            <CancelJobAction id={job.id} isDisabled={cancel !== "cancellable"} />
+            <RunExports jobId={job.id} withMetadata={withMetadata} />
+          </div>
+        </div>
+        <RunProgress job={job} />
+      </Card.Content>
+    </Card>
   );
 }
 
-/** A job's run on the page (SPEC-14 §4.3, §4.5): its status line and counts, then the results table with the live
- * activity beside it from `lg` and under it below. The run's events feed the activity and read the summary and the
- * table again. */
+/** A job's run on the page (SPEC-14 §4.3, §4.5): one flow down the page, its summary, then its results table, then
+ * its live activity, collapsed. The run's events feed the activity and read the summary and the table again. */
 function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
   const activity = useJobEvents(job.id);
   return (
     <>
-      <RunHeader job={job} withMetadata={withMetadata} />
-      <OutcomeCounts counts={job.counts} outcomes={job.outcomes} />
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 lg:col-span-2">
-          {/* A crawl's pages open as a batch (SPEC-14 §2.8); a batch's or extract's are its own input. */}
-          <ResultsTable
-            jobId={job.id}
-            withMetadata={withMetadata}
-            selectable={job.kind === "crawl"}
-          />
-        </div>
-        <ActivityFeed job={job} activity={activity} />
-      </div>
+      <RunSummary job={job} withMetadata={withMetadata} />
+      {/* A crawl's pages open as a batch (SPEC-14 §2.8); a batch's or extract's are its own input. */}
+      <ResultsTable jobId={job.id} withMetadata={withMetadata} selectable={job.kind === "crawl"} />
+      <ActivityFeed activity={activity} />
     </>
   );
 }

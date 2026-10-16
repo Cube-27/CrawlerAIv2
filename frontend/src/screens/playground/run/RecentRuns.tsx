@@ -1,42 +1,47 @@
-import { Typography } from "@heroui/react";
+import { Link } from "@heroui/react";
 import { useJobs } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { JobKind } from "../../../api/jobs";
+import { EmptyView } from "../../../components/EmptyView";
 import { LoadingView } from "../../../components/LoadingView";
 import { ProblemAlert } from "../../../components/ProblemAlert";
+import { Section } from "../../../components/Section";
 import { JobRows } from "../../jobs/JobRows";
 
 /** How many runs the list shows (SPEC-14 §4.6). */
 const RECENT = 10;
 
-/** Recent runs' columns and their widths. */
+/** Recent runs' columns and their widths (D-0976): what the run was started on, its status, when, how long, and the
+ * cue that the row opens it. */
 const RUN_COLUMNS = [
-  ["run", "w-1/2"],
-  ["status", "w-1/4"],
-  ["started", "w-1/4"],
+  ["target", "w-5/12"],
+  ["status", "w-1/6"],
+  ["started", "w-1/6"],
+  ["duration", "w-1/8"],
+  ["open", "w-1/8"],
 ] as const;
 
 /** The last runs of a mode's `kind` (SPEC-14 §4.6), newest first, shown before any run on the page; a row opens its
- * run here (`?job=`). Every state fills the output area's box, so a run that replaces the list moves nothing. */
+ * run here (`?job=`), and "All runs" opens the Jobs screen on this kind. Every state fills the output area's box, so a
+ * run that replaces the list moves nothing. */
 export function RecentRuns({ kind }: Readonly<{ kind: JobKind }>) {
   const jobs = useJobs({ filters: { kind, status: null }, cursor: null, limit: RECENT });
   const problem = problemOf(jobs.error);
   let content;
   if (problem !== null) content = <ProblemAlert problem={problem} />;
-  else if (jobs.isSuccess)
+  else if (!jobs.isSuccess) content = <LoadingView label="Loading recent runs" />;
+  else if (jobs.data.items.length === 0)
     content = (
-      <JobRows
-        label="Recent runs"
-        jobs={jobs.data.items}
-        columns={RUN_COLUMNS}
-        empty="No runs yet."
-      />
+      <EmptyView title="No runs yet">
+        Each run you start here is listed here, and opens again with its results.
+      </EmptyView>
     );
-  else content = <LoadingView label="Loading recent runs" />;
+  else content = <JobRows label="Recent runs" jobs={jobs.data.items} columns={RUN_COLUMNS} />;
   return (
-    <section aria-label="Recent runs" className="flex min-h-playground-output flex-col gap-3">
-      <Typography.Heading level={2}>Recent runs</Typography.Heading>
-      {content}
-    </section>
+    <div className="min-h-playground-output">
+      <Section title="Recent runs" action={<Link href={`/jobs?kind=${kind}`}>All runs</Link>}>
+        {content}
+      </Section>
+    </div>
   );
 }

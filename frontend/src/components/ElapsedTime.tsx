@@ -33,16 +33,24 @@ function useNow(ticking: boolean): number {
   return now;
 }
 
-/** How long a job has run: from its start to its end, or to now while it runs; a dash before it starts. */
-export function ElapsedTime({
+/** How long a job has run, as text: from its start to its end, or to now while it runs; a dash before it starts. */
+export function DurationText({
   startedAt,
   finishedAt,
 }: Readonly<{ startedAt: string | null; finishedAt: string | null }>) {
   const now = useNow(startedAt !== null && finishedAt === null);
   const end = finishedAt === null ? now : Date.parse(finishedAt);
+  return <>{startedAt === null ? "—" : elapsedText(end - Date.parse(startedAt))}</>;
+}
+
+/** A job's elapsed time as a muted line: "Elapsed 12s". */
+export function ElapsedTime({
+  startedAt,
+  finishedAt,
+}: Readonly<{ startedAt: string | null; finishedAt: string | null }>) {
   return (
     <Typography.Paragraph size="sm" color="muted">
-      Elapsed {startedAt === null ? "—" : elapsedText(end - Date.parse(startedAt))}
+      Elapsed <DurationText startedAt={startedAt} finishedAt={finishedAt} />
     </Typography.Paragraph>
   );
 }

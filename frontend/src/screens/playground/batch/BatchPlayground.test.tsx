@@ -170,7 +170,7 @@ describe("batch playground: the command bar", () => {
 });
 
 describe("batch playground: the run", () => {
-  it("shows the run on the page: status, counts and a row per page in task order", async () => {
+  it("shows the run on the page: status, progress, outcomes and a row per page in task order", async () => {
     batchApi();
     await openPlayground("/batch");
     await typeUrls("https://shop.test/a");
@@ -189,7 +189,16 @@ describe("batch playground: the run", () => {
     expect(first.getByText("1")).toBeInTheDocument();
     expect(within(rows[2] ?? grid).getByText("—")).toBeInTheDocument();
     expect(screen.getByText("running")).toBeInTheDocument();
-    expect(screen.getByRole("grid", { name: "Tasks by outcome" })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Pages done" })).toHaveAttribute(
+      "aria-valuenow",
+      "2",
+    );
+    expect(screen.getByText("2 of 3 pages done")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Outcomes" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["extracted1", "blocked1"]);
   });
 
   it("opens a run from ?job= and asks its results as json_values, with metadata only with Metadata in JSON", async () => {
@@ -349,7 +358,7 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
     expect(await saved[0]?.text).toBe("title\nBlue mug\n");
   });
 
-  it("shows the run's activity as plain-language lines grouped by page, newest first, with its progress", async () => {
+  it("shows the run's activity, collapsed, as plain-language lines grouped by page, newest first", async () => {
     batchApi({
       [`GET ${JOB}/events`]: () =>
         sse(
@@ -365,6 +374,9 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
     });
     await openPlayground(`/batch?job=${JOB_ID}`);
     await pagesGrid();
+    expect(screen.queryByRole("list", { name: "Activity" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Activity" }));
 
     const feed = screen.getByRole("list", { name: "Activity" });
     await within(feed).findByText("Extracted: extracted (config). Used 1 LLM call.");
@@ -379,7 +391,6 @@ data: ${JSON.stringify({ url, attempts: 1, last_error: null })}
         .map((line) => line.textContent),
     ).toEqual(["Fetched over HTTP.", "Extracted: extracted (config). Used 1 LLM call."]);
     expect(within(feed).getByText("Failed after 3 attempts: timeout")).toBeInTheDocument();
-    expect(screen.getByText("2 of 3 pages done")).toBeInTheDocument();
   });
 
   it("keeps Cancel in place, disabled, once the run has ended", async () => {
@@ -399,7 +410,12 @@ describe("batch playground: runs", () => {
       "GET /v1/jobs": () =>
         Response.json({
           items: [
-            job({ status: "completed", start_url: "https://shop.test/a", url_count: null }),
+            job({
+              status: "completed",
+              start_url: "https://shop.test/a",
+              url_count: null,
+              finished_at: "2026-10-14T09:00:13Z",
+            }),
             job({ id: OLDER, started_at: null }),
           ],
           next_cursor: null,
@@ -410,11 +426,22 @@ describe("batch playground: runs", () => {
     const grid = await screen.findByRole("grid", { name: "Recent runs" });
     const rows = within(grid).getAllByRole("row").slice(1);
     expect(rows.map((row) => row.textContent)).toEqual([
-      "https://shop.test/a" + "completed" + "Oct 14, 2026, 09:00",
-      "3 URLs" + "running" + "—",
+      "https://shop.test/a" + "completed" + "Oct 14, 2026, 09:00" + "12s" + "Open",
+      "3 URLs" + "running" + "—" + "—" + "Open",
     ]);
     expect(rows[0]).toHaveAttribute("data-href", `/batch?job=${JOB_ID}`);
     expect(calls.find(({ path }) => path === "/v1/jobs")?.query).toBe("kind=batch_scrape&limit=10");
+  });
+
+  it("says there are no runs yet, and links every run of the mode on the Jobs screen", async () => {
+    batchApi({ "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }) });
+    await openPlayground("/batch");
+
+    expect(await screen.findByText("No runs yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All runs" })).toHaveAttribute(
+      "href",
+      "/jobs?kind=batch_scrape",
+    );
   });
 
   it("shows a run's request read-only, and edit and re-run starts a new job, keeping the old one", async () => {

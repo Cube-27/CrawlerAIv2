@@ -98,20 +98,23 @@ export function RecordFiltersForm({
         onSubmit(draft);
       }}
     >
-      <SchemaSelect value={draft.schema_id} onChange={set("schema_id")} />
-      <OptionalText
-        label="Job ID"
-        description="Only the records this job extracted."
-        value={draft.job_id}
-        onChange={set("job_id")}
-      />
-      <OptionalText
-        label="Site"
-        description="Only the records of this host."
-        value={draft.site}
-        onChange={set("site")}
-      />
-      <ChangedSinceField value={draft.changed_since} onChange={set("changed_since")} />
+      {/* A list's filters (DESIGN.md, Filters): two columns from `md`, so the list starts higher on the page. */}
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+        <SchemaSelect value={draft.schema_id} onChange={set("schema_id")} />
+        <OptionalText
+          label="Site"
+          description="Only the records of this host."
+          value={draft.site}
+          onChange={set("site")}
+        />
+        <OptionalText
+          label="Job ID"
+          description="Only the records this job extracted."
+          value={draft.job_id}
+          onChange={set("job_id")}
+        />
+        <ChangedSinceField value={draft.changed_since} onChange={set("changed_since")} />
+      </div>
       <FormActions>
         <Button type="submit">Show records</Button>
       </FormActions>

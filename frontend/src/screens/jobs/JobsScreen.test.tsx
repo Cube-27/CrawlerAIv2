@@ -360,7 +360,7 @@ describe("Jobs screen", () => {
     await open("/jobs", "Jobs");
 
     expect(
-      screen.getByText("Every run, newest first. A run opens in its playground mode."),
+      screen.getByText("Every run, newest first. Open a row to see its results in the playground."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /New|Map URLs/ })).not.toBeInTheDocument();
   });
@@ -382,7 +382,7 @@ describe("Jobs screen", () => {
 });
 
 describe("Jobs table", () => {
-  it("lists the jobs with their kind, status, task counts and creation time", async () => {
+  it("lists the jobs with their kind, target, status, task counts and creation time", async () => {
     jobApi({
       "GET /v1/jobs": jobPage([
         job(),
@@ -392,6 +392,8 @@ describe("Jobs table", () => {
           status: "failed",
           counts: { queued: 0, claimed: 0, done: 0, failed: 3, cancelled: 1 },
           created_at: "2026-10-13T08:00:00Z",
+          start_url: "https://shop.example.test/",
+          url_count: null,
         }),
       ]),
     });
@@ -399,8 +401,13 @@ describe("Jobs table", () => {
 
     const table = await screen.findByRole("grid", { name: "Jobs" });
     expect(rowsOf(table)).toEqual([
-      "Learn" + "running" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00",
-      "Crawl" + "failed" + "4 tasks: 3 failed, 1 cancelled" + "Oct 13, 2026, 08:00",
+      "Learn" + "3 URLs" + "running" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00" + "Open",
+      "Crawl" +
+        "https://shop.example.test/" +
+        "failed" +
+        "4 tasks: 3 failed, 1 cancelled" +
+        "Oct 13, 2026, 08:00" +
+        "Open",
     ]);
   });
 
@@ -494,7 +501,12 @@ describe("Jobs table", () => {
 
     await waitFor(() => {
       expect(rowsOf(screen.getByRole("grid", { name: "Jobs" }))).toEqual([
-        "Crawl" + "failed" + "3 tasks: 1 queued, 2 done" + "Oct 14, 2026, 09:00",
+        "Crawl" +
+          "3 URLs" +
+          "failed" +
+          "3 tasks: 1 queued, 2 done" +
+          "Oct 14, 2026, 09:00" +
+          "Open",
       ]);
     });
     expect(screen.getByText("Page 1")).toBeInTheDocument();
@@ -537,9 +549,10 @@ describe("Jobs table", () => {
     expect(await screen.findByText("Database unavailable")).toBeInTheDocument();
   });
 
-  it("opens a job by its id", async () => {
+  it("opens a job by its id, once one is entered", async () => {
     jobApi();
     await open("/jobs", "Jobs");
+    expect(screen.getByRole("button", { name: "Open job" })).toBeDisabled();
 
     await userEvent.type(screen.getByLabelText("Job ID"), JOB_ID);
     await userEvent.click(screen.getByRole("button", { name: "Open job" }));
