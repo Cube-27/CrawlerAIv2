@@ -88,6 +88,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Config IR: `SchemaRef` names the schema only, so an operator can still activate a draft learned before a schema edit; a document digest in the IR would refuse it (D-0950) [#210].
 - Normalize: `iso_3166_alpha2` keeps CLDR's EU, EZ and UN, which ISO 3166-1 reserves exceptionally rather than assigning to countries; exclude the exceptionally reserved codes [#210].
 - Schemas: an edit's `relearn_schema` scans `progressive_state` by `schema_id`, which no index leads; add one if edits become frequent [#210].
+- Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)
 
