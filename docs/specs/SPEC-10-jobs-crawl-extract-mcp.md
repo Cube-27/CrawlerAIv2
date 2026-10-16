@@ -90,7 +90,8 @@ Out of scope:
 
 ### 4.3 `POST /v1/batch/scrape`
 
-`{urls: [...≤ 1000], formats, schema?, page_kind?, fetch?, budget?, webhook_url?}` → `{job_id}` (`job.kind =
+`{urls: [...≤ 1000], formats, schema?, page_kind?, fetch?, budget?, webhook_url?}` (`schema` by id, inline or `fields`,
+SPEC-07 §4.4) → `{job_id}` (`job.kind =
 batch_scrape`); one `url_task` per URL; handler = SPEC-07's scrape function; results via `/results`. URLs are
 caller-supplied: incomplete pages return records with `complete=false`, outcome `partial` (§10).
 
@@ -108,7 +109,7 @@ sources: {sitemap: n, links: n}, truncated: bool}`.
 ```jsonc
 { "url": "https://…", "include": ["https://…/products/*"], "exclude": [], "max_depth": 3, "limit": 500,
   "formats": ["markdown"],
-  "schema": { "id": "…" } | { "prompt": "…" } | null,
+  "schema": { "id": "…" } | { "inline": { … } } | { "fields": ["…"] } | null,   // fields: drafted for the rules' one page kind
   "page_kind_rules": [ { "pattern": "https://…/p/*", "page_kind": "detail" }, { "pattern": "https://…/c/*", "page_kind": "listing" } ],
   "fetch": {...}, "budget": {...}, "webhook_url": null }
 ```
@@ -124,7 +125,7 @@ sources: {sitemap: n, links: n}, truncated: bool}`.
 
 ### 4.6 `POST /v1/extract`
 
-`{urls: ["https://…/p/*", "https://…/p/123"], schema | prompt, page_kind, limit, fetch?, budget?, webhook_url?}`
+`{urls: ["https://…/p/*", "https://…/p/123"], schema (id, inline, prompt or fields), page_kind, limit, fetch?, budget?, webhook_url?}`
 → `{job_id, schema}` (draft returned immediately when a prompt is used; role S runs synchronously on the first
 1–3 concrete URLs). Globs are expanded through `map` on their host; every task is extracted with the given
 page kind in the site's progressive mode (cold → learning → active, SPEC-08). `extract` URLs are
