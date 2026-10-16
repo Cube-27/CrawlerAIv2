@@ -93,6 +93,7 @@ describe("FieldValue", () => {
       { min: "10", max: "20", currency: "EUR", unit: null, period: "HOUR" },
       "10–20 EUR per HOUR",
     ],
+    ["count", { type: "count" }, 5, "5"],
     ["number", { type: "text" }, 42, "42"],
   ] as const)("renders a published %s value", (_name, spec, value, text) => {
     const { container } = render(

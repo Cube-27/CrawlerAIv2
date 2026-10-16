@@ -26,6 +26,7 @@ class FieldType(StrEnum):
     DATETIME = "datetime"
     LOCATION = "location"
     RANGE = "range"
+    COUNT = "count"
     LIST = "list"
     OBJECT = "object"
 

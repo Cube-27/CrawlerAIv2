@@ -4,7 +4,7 @@
 root_package = crawlerai
 include_external_packages = True
 
-# The eight field-type normalizers (SPEC-04 §4.1). A new type module is added here and to normalize-internals in
+# The nine field-type normalizers (SPEC-04 §4.1). A new type module is added here and to normalize-internals in
 # the PR that creates it.
 [importlinter:contract:normalize-independence]
 name = One module per field type
@@ -18,17 +18,18 @@ modules =
     crawlerai.normalize.date
     crawlerai.normalize.location
     crawlerai.normalize.range
+    crawlerai.normalize.count
 
-# The dispatcher imports the type modules; the type modules import only `vocab` (vocabularies, their matcher) and
-# `base` (results, context) from normalize.
+# The dispatcher imports the type modules; the type modules import only `vocab` (vocabularies, their matcher),
+# `numbers` (CLDR number reading) and `base` (results, context) from normalize.
 # Independence between the type modules is the contract above, so they are `:` siblings here.
 [importlinter:contract:normalize-internals]
 name = Normalizer internals
 type = layers
 layers =
     crawlerai.normalize.dispatch
-    crawlerai.normalize.text : crawlerai.normalize.money : crawlerai.normalize.enum : crawlerai.normalize.url : crawlerai.normalize.identifier : crawlerai.normalize.date : crawlerai.normalize.location : crawlerai.normalize.range
-    crawlerai.normalize.vocab
+    crawlerai.normalize.text : crawlerai.normalize.money : crawlerai.normalize.enum : crawlerai.normalize.url : crawlerai.normalize.identifier : crawlerai.normalize.date : crawlerai.normalize.location : crawlerai.normalize.range : crawlerai.normalize.count
+    crawlerai.normalize.vocab : crawlerai.normalize.numbers
     crawlerai.normalize.base
 
 # Indirect imports are allowed: callers use the normalizers, which use these libraries.

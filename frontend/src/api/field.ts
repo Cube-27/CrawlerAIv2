@@ -27,6 +27,7 @@ const SCALAR_FIELD_TYPES = [
   "datetime",
   "location",
   "range",
+  "count",
 ] as const;
 
 export type ScalarFieldType = (typeof SCALAR_FIELD_TYPES)[number];

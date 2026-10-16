@@ -2117,6 +2117,7 @@
           "datetime",
           "location",
           "range",
+          "count",
           "list",
           "object"
         ],
