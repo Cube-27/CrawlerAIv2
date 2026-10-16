@@ -267,3 +267,108 @@ def test_declined_hosts_are_bounded_and_the_oldest_is_forgotten_first() -> None:
     assert asyncio.run(served(urls[1])) is False
     assert asyncio.run(served(urls[-1])) is False
     assert asyncio.run(served(urls[0])) is True
+
+
+SHOP_LIST = "https://shop.example.test/list"
+
+
+@dataclass
+class ListAdapter(StubAdapter):
+    """Detects `SHOP_LIST` only, without a query: the adapter routes a query changes the meaning of."""
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="tenant", page_kind="listing") if url == SHOP_LIST else None
+
+
+@dataclass
+class PageRung:
+    """Answers every URL over HTTP with `html`."""
+
+    html: str
+    calls: list[str] = field(default_factory=list)
+
+    async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
+        self.calls.append(url)
+        return fetch_result(
+            url=url,
+            method="http",
+            policy=policy,
+            engine_version="test",
+            fetched_at=datetime.now(UTC),
+            started=time.monotonic(),
+            exchange=Exchange(
+                url=url, status=200, request_headers=(), response_headers=(("Content-Type", "text/html"),)
+            ),
+            content=Content(body=self.html.encode()),
+            block_class="ok",
+            error=None,
+        )
+
+
+def _canonical(href: str, base: str = "") -> str:
+    base_element = f'<base href="{base}">' if base else ""
+    return f'<html><head>{base_element}<link rel="canonical" href="{href}"></head><body>Items</body></html>'
+
+
+def _by_canonical(page: PageRung, adapter: StubAdapter, asked: list[bool], url: str) -> FetchResult:
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={adapter.name}))
+    return asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(True, asked)))
+
+
+@pytest.mark.parametrize(
+    "html", [_canonical(SHOP_LIST), _canonical("/list"), _canonical("list", base="https://shop.example.test/")]
+)
+def test_a_page_whose_canonical_drops_only_its_query_is_served_by_the_adapter_of_the_canonical(html: str) -> None:
+    # RFC 6596, HTML Standard §4.6.7.3: the page names the URL without its query as its own; the parameters it drops
+    # do not identify the page. The adapter's answer is recorded under that URL, on the page's next turn.
+    adapter, page, asked = ListAdapter("list", ""), PageRung(html), list[bool]()
+
+    result = _by_canonical(page, adapter, asked, f"{SHOP_LIST}?from=newsletter")
+
+    assert (result.method, result.bundle.manifest.url, adapter.rung.calls, asked) == (
+        "api",
+        SHOP_LIST,
+        [SHOP_LIST],
+        [True],
+    )
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "ok")]
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        _canonical(f"{SHOP_LIST}?page=2"),  # the query identifies the page
+        _canonical("https://other.example.test/list"),  # another origin
+        _canonical("http://shop.example.test/list"),
+        _canonical("https://shop.example.test/other"),
+        "<html><body>No canonical</body></html>",
+    ],
+)
+def test_a_page_whose_canonical_is_not_its_url_without_the_query_is_kept(html: str) -> None:
+    adapter, page, asked = ListAdapter("list", ""), PageRung(html), list[bool]()
+    url = f"{SHOP_LIST}?page=2"
+
+    result = _by_canonical(page, adapter, asked, url)
+
+    assert (result.method, result.bundle.manifest.url, adapter.rung.calls, asked) == ("http", url, [], [])
+
+
+def test_a_canonical_the_adapter_does_not_serve_keeps_the_page_and_lists_both_attempts() -> None:
+    adapter = ListAdapter("list", "", Rung("api", reason=NOT_SERVED))
+    page, asked = PageRung(_canonical(SHOP_LIST)), list[bool]()
+    url = f"{SHOP_LIST}?from=newsletter"
+
+    result = _by_canonical(page, adapter, asked, url)
+
+    assert (result.method, result.bundle.manifest.url, asked) == ("http", url, [True])
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "error")]
+
+
+def test_a_canonical_request_the_site_rate_refuses_is_not_sent() -> None:
+    adapter, page, asked = ListAdapter("list", ""), PageRung(_canonical(SHOP_LIST)), list[bool]()
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={"list"}))
+    url = f"{SHOP_LIST}?from=newsletter"
+
+    result = asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, asked)))
+
+    assert (result.method, adapter.rung.calls, asked) == ("http", [], [False])

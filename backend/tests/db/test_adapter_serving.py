@@ -151,6 +151,23 @@ async def test_a_scrape_of_a_storefront_collection_is_served_over_the_platform_a
     assert price.value == {"amount": "19.50", "currency": "EUR"}
 
 
+async def test_a_collection_url_with_a_query_its_canonical_drops_is_served_over_the_platform_api(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
+) -> None:
+    # SPEC-15 §4.2: the page names the collection without the query as its canonical (RFC 6596).
+    canonical = f"{own_origin}/collections/lamps"
+    url = f"{canonical}?ref=footer"
+    web.pages[url] = PAGE.replace(b"</title>", f'</title><link rel="canonical" href="{canonical}">'.encode())
+
+    result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+
+    assert result.fetch is not None
+    assert (result.outcome, result.fetch.method, web.page_fetches()) == ("extracted", "api", [url])
+    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("api", 200)]
+    assert result.records is not None
+    assert [record.fields["title"].value for record in result.records] == ["Desk Lamp"]
+
+
 async def test_a_page_of_a_host_that_is_not_the_platform_is_fetched_as_a_page_and_the_host_declined(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
