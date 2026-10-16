@@ -2,10 +2,12 @@ import type { BatchRequest } from "../../../api/jobs";
 import type { MethodHint, PageKind } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
+import { badUrlLine } from "./urls";
 import {
-  canSend,
   hasSchema,
   lines,
+  NO_ERRORS,
+  pageKindErrors,
   requestFormats,
   requestPageKind,
   requestSchema,
@@ -65,10 +67,18 @@ export function initialBatch(urls: string): BatchFormState {
   return { ...INITIAL_BATCH, urls };
 }
 
-/** The batch request for `form`, or null when it can't be sent (`canSend`). A batch's results are records or page
+/** Why `form` can't be sent, by field: a line of the list that is not a web URL (checked here, so the line is named
+ * before the server refuses the batch, D-0982), then what `pageKindErrors` finds. */
+export function batchErrors(form: BatchFormState): Readonly<Record<string, string>> {
+  const bad = badUrlLine(form.urls);
+  if (bad !== null) return { urls: `Line ${String(bad.line)} is not a web address: ${bad.text}` };
+  return pageKindErrors(form);
+}
+
+/** The batch request for `form`, or null when it can't be sent (`batchErrors`). A batch's results are records or page
  * outputs (SPEC-10 §4.5), so with a schema or field names it asks for `records` alone, as a crawl does (D-0980). */
 export function buildBatch(form: BatchFormState): BatchRequest | null {
-  if (!canSend(form)) return null;
+  if (batchErrors(form) !== NO_ERRORS) return null;
   return {
     urls: lines(form.urls),
     formats: hasSchema(form) ? ["records"] : requestFormats(form),

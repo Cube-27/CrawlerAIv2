@@ -2,6 +2,21 @@ import { lines } from "../pageRequest";
 
 /** The URL list of the Batch command bar (SPEC-14 §4.2): one URL per line, filled by hand or from a CSV file. */
 
+/** The first line of `list` that is not an absolute `http` or `https` URL (WHATWG URL Standard: it parses, with one
+ * of the schemes the fetcher takes), with its line number from 1; null when every line is one. */
+export function badUrlLine(list: string): { line: number; text: string } | null {
+  const urls = lines(list);
+  const index = urls.findIndex((url) => !isWebUrl(url));
+  const text = urls[index];
+  return text === undefined ? null : { line: index + 1, text };
+}
+
+function isWebUrl(text: string): boolean {
+  if (!URL.canParse(text)) return false;
+  const { protocol } = new URL(text);
+  return protocol === "http:" || protocol === "https:";
+}
+
 /** `list` (one URL per line) with `added` appended, leaving out a URL already listed, by exact string. */
 export function appendUrls(list: string, added: readonly string[]): string {
   const urls = lines(list);

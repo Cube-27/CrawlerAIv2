@@ -150,6 +150,20 @@ describe("batch playground: the command bar", () => {
     });
   });
 
+  it("names a line that is not a web address on the list, and sends nothing", async () => {
+    const calls = batchApi();
+    await openPlayground("/batch");
+    await typeUrls(["https://shop.test/a", "shop dot test"].join("\n"));
+
+    await start();
+
+    const list = screen.getByRole("textbox", { name: "URLs" });
+    expect(list).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Line 2 is not a web address: shop dot test")).toBeInTheDocument();
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+    expect(screen.queryByRole("region", { name: "Options" })).not.toBeInTheDocument();
+  });
+
   it("shows the server's per-field problem in the output and on the list", async () => {
     batchApi({
       "POST /v1/batch/scrape": () =>

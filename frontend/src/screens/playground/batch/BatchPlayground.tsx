@@ -4,7 +4,7 @@ import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { BatchRequest } from "../../../api/jobs";
 import { useFieldsReview } from "../fields/useFieldsReview";
-import { hasSchema, optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
+import { hasSchema, optionsChanged, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobModeOutput } from "../run/JobRun";
@@ -12,7 +12,7 @@ import { batchUrls } from "../run/scrapeAsBatch";
 import { useShownJob } from "../run/useShownJob";
 import { usePageForm } from "../usePageForm";
 import { BatchOptions } from "./BatchOptions";
-import { batchForm, buildBatch, DEFAULT_BATCH_OPTIONS, initialBatch } from "./form";
+import { batchErrors, batchForm, buildBatch, DEFAULT_BATCH_OPTIONS, initialBatch } from "./form";
 import { UrlList } from "./UrlList";
 
 /** The Batch playground at `/batch` (SPEC-14 §4.2): a URL list, the same formats, schema and options for every URL
@@ -26,7 +26,7 @@ export function BatchPlayground() {
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
     initialBatch(batchUrls(state)),
     problem,
-    pageKindErrors,
+    batchErrors,
   );
   const { jobId, onEdit, show } = useShownJob(batchForm, setForm);
 
