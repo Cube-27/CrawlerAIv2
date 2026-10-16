@@ -9,11 +9,11 @@ PR of the spec merged (SPEC-03: the day it was archived).
 A later change is archived by its implementor in the PR that completes it: its deltas are applied to
 `openspec/specs/`, then its folder moves here as `<YYYY-MM-DD>-<change-id>/` (`/implement-pr` §5).
 
-## The architecture, rev 25
+## The architecture, rev 26
 
-[2026-10-16-architecture-rev25/ARCHITECTURE.md](2026-10-16-architecture-rev25/ARCHITECTURE.md) is the design
-document the specs were written from, frozen at rev 25 by the OpenSpec conversion (D-1136), with
-[INVARIANTS.md](2026-10-16-architecture-rev25/INVARIANTS.md), the invariants table of that date. Code comments cite
+[2026-10-16-architecture-rev26/ARCHITECTURE.md](2026-10-16-architecture-rev26/ARCHITECTURE.md) is the design
+document the specs were written from, frozen at rev 26 by the OpenSpec conversion (D-1136), with
+[INVARIANTS.md](2026-10-16-architecture-rev26/INVARIANTS.md), the invariants table of that date. Code comments cite
 it as `ARCHITECTURE §N`. Its live parts moved to `../../project.md` (contract C1–C13, §2.2), `../../design/overview.md`
 (§1, §2.1, §2.3, §20–§23) and `../../design/owner-decisions.md` (Appendix A); its behaviour lives in `../../specs/`.
 

@@ -5,7 +5,7 @@
 Measuring extraction quality without overfitting: three splits with separate storage, two-pass labels, a replay
 harness, suppressed aggregates, the merge gate, dev-only fitting and the protected CI job. Until milestone M the gate
 reports `no_baseline`. Rationale: ARCHITECTURE §16, §21, Appendix A #29, #30
-([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-03. Storage is in
+([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-03. Storage is in
 [persistence-storage](../persistence-storage/spec.md); the labeling screen in [frontend](../frontend/spec.md).
 
 ## Requirements

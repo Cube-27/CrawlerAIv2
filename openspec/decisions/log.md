@@ -3,8 +3,9 @@
 Cross-cutting and process decisions (tooling, CI, orchestration, UAT and review fixes, rules for every capability),
 and every `needs-owner` or `pending-owner` entry. Statuses, template and where an entry goes:
 [README.md](README.md). Open owner items are indexed in [../project.md](../project.md#open-owner-items).
-Entries up to D-1135 were written when this file was `docs/DECISIONS.md`; their paths (`docs/...`) and
-`ARCHITECTURE §N` refs are historical and resolve in the [archived ARCHITECTURE.md](../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md).
+Entries written before the OpenSpec conversion (#223), when this file was `docs/DECISIONS.md`, keep their paths
+(`docs/...`) and `ARCHITECTURE §N` refs as history; §N resolves in the
+[archived ARCHITECTURE.md](../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md).
 
 ## Entries
 
@@ -860,7 +861,7 @@ Entries up to D-1135 were written when this file was `docs/DECISIONS.md`; their 
 
 ### D-1136 — Documentation in the OpenSpec layout
 - Date: 2026-10-16 · Change/PR: OpenSpec conversion (#223) · Status: decided (owner asked for the layout, 2026-10-16)
-- Decision: `openspec/` holds `project.md` (context, contract C1–C13 verbatim), `specs/<capability>/spec.md` (14 capabilities, ≤ 100 lines each, current behaviour as requirements; INV-NN kept in their requirements), `changes/` (in-flight work; `archive/` holds SPEC-00…SPEC-15 as-is with their logs), `design/` (`overview.md`: goals, contract evidence, milestone M, candidates register; `owner-decisions.md`: Appendix A, live); ARCHITECTURE.md and INVARIANTS.md frozen verbatim in `changes/archive/2026-10-16-architecture-rev25/`, `decisions/`, `conventions/` (ENGINEERING, DESIGN, RECURRING), `backlog.md` (was ACTIVE.md) and `OPEN_QUESTIONS.md`. `CLAUDE.md` stays the agent entry point.
+- Decision: `openspec/` holds `project.md` (context, contract C1–C13 verbatim), `specs/<capability>/spec.md` (14 capabilities, ≤ 100 lines each, current behaviour as requirements; INV-NN kept in their requirements), `changes/` (in-flight work; `archive/` holds SPEC-00…SPEC-15 as-is with their logs), `design/` (`overview.md`: goals, contract evidence, milestone M, candidates register; `owner-decisions.md`: Appendix A, live); ARCHITECTURE.md and INVARIANTS.md frozen verbatim in `changes/archive/2026-10-16-architecture-rev26/`, `decisions/`, `conventions/` (ENGINEERING, DESIGN, RECURRING), `backlog.md` (was ACTIVE.md) and `OPEN_QUESTIONS.md`. `CLAUDE.md` stays the agent entry point.
 - Alternatives: keep ARCHITECTURE.md live (over 1000 lines, duplicating the specs); split it into design files (first draft of #223: grew the docs to ~5,000 lines, owner pushback); move project.md's role into CLAUDE.md; rewrite code comments that cite `ARCHITECTURE §N`, `SPEC-NN §x` (about 800 files).
 - Why: an agent reads by default only CLAUDE.md, project.md, the capability specs it touches and its change folder; code citations (`ARCHITECTURE §N`, `SPEC-NN §x`, `INV-NN`) keep resolving in the archive, so no code changes; nothing is held twice as live text.
 - Reversible: yes — a docs move.

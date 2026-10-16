@@ -17,7 +17,7 @@ Goals G1–G7 and non-goals: [design/overview.md](design/overview.md) (§1).
 Python 3.12 (FastAPI, pydantic v2, SQLAlchemy async + asyncpg, Alembic, curl_cffi, httpx, Patchright headless,
 selectolax, lxml, Babel/CLDR, trafilatura), PostgreSQL 16 (also the queue), S3-compatible object storage;
 TypeScript (Vite+, React, HeroUI v3). One Docker image with three roles: `api`, `worker`, `scheduler`.
-Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)). Commands: `CLAUDE.md` §7.
+Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)). Commands: `CLAUDE.md` §7.
 
 ## Layout of `openspec/`
 
@@ -28,7 +28,7 @@ Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/arch
 | `changes/<change-id>/` | In-flight work: `proposal.md` (why, what), `tasks.md` (the checklist; one PR implements a batch of tasks), `design.md` (only when needed; holds the change's decisions), `specs/<capability>/spec.md` deltas (`## ADDED`, `## MODIFIED`, `## REMOVED Requirements`) | Your change |
 | `changes/archive/<date>-<name>/` | Done changes, frozen: the 16 original SPEC-NN specs with their decision logs. Index: [changes/archive/README.md](changes/archive/README.md) | When a ref (`SPEC-NN §x`, `D-NNNN`) points there |
 | `backlog.md` | Follow-ups left by merged PRs, current focus, human-only tasks not tied to a change | When choosing work |
-| `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides. The full ARCHITECTURE rev 25 (cited in code as `ARCHITECTURE §N`) and the old INVARIANTS table are frozen in [the archive](changes/archive/2026-10-16-architecture-rev25/) | When a spec or a ref points there |
+| `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides. The full ARCHITECTURE rev 26 (cited in code as `ARCHITECTURE §N`) and the old INVARIANTS table are frozen in [the archive](changes/archive/2026-10-16-architecture-rev26/) | When a spec or a ref points there |
 | `decisions/` | How decisions are logged ([README](decisions/README.md)) and the cross-cutting log ([log.md](decisions/log.md)) | When logging a decision |
 | `OPEN_QUESTIONS.md` | Questions only the owner or a user can answer, with recommended defaults | When escalating |
 | `conventions/` | `ENGINEERING.md` (how to write code here), `DESIGN.md` (frontend conventions), `RECURRING.md` (repeated agent mistakes and their checks) | Implementors and reviewers, once per session |
@@ -130,4 +130,3 @@ Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md` §5). Keep t
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
-| D-1024 | Listing rows without structured data take no item URL | needs-owner |

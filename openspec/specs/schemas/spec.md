@@ -4,7 +4,7 @@
 
 A schema is a database row naming the fields to extract, each with a field type; code knows field types, never
 page-specific fields. Values are read by [normalization](../normalization/spec.md); `/v1/schemas` is
-[rest-api](../rest-api/spec.md). Rationale: ARCHITECTURE §5 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-04.
+[rest-api](../rest-api/spec.md). Rationale: ARCHITECTURE §5 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-04.
 
 ## Requirements
 

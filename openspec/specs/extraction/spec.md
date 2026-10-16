@@ -4,7 +4,7 @@
 
 Extraction turns one capture into owned, located candidates from standards-based collectors (`collect/`), finds
 listing rows and next pages, and renders page content formats; what publishes is [resolution](../resolution/spec.md).
-Rationale: ARCHITECTURE §8 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-05, SPEC-07.
+Rationale: ARCHITECTURE §8 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-05, SPEC-07.
 
 ## Requirements
 
@@ -19,8 +19,9 @@ Enforced by: a test counting parser constructions in `extract_page` and `scrape`
 
 ### Requirement: Cleaned text and visibility index
 The system SHALL render cleaned text in one walk that drops non-rendered and HTML-hidden elements and joins inline text
-per CSS Text 3 (`content/text.py`); `visible(value)` is a whole-word match on that text plus shown elements' `alt`,
-`title`, `value` and `content`. Refs: SPEC-05 §4.4, D-0334..D-0339.
+per CSS Text 3 (`content/text.py`); an element whose text ends in an ellipsis and whose `title` extends it reads as
+that title; `visible(value)` is a whole-word match on that text plus shown elements' `alt`, `title`, `value` and
+`content`. Refs: SPEC-05 §4.4, D-0334..D-0339, D-1154.
 #### Scenario: Price split across inline elements
 - **WHEN** the page shows `$<span>19</span>.99`
 - **THEN** the cleaned text holds `$19.99` and `visible("9.99")` is false
@@ -40,7 +41,8 @@ Enforced by: unit tests on the pipeline entry; active.
 
 ### Requirement: Structured-data collectors
 The system SHALL read JSON-LD (RFC 8259, `@graph`/`@id` resolved, schema.org terms only under a schema.org context,
-`rdfs:subPropertyOf` for identifiers), microdata and RDFa Lite (HTML Standard item and value rules) and Open Graph
+`rdfs:subPropertyOf` for identifiers), microdata and RDFa Lite (HTML Standard item and value rules; a URL-attribute or
+RDFa IRI value is a URL, never text, D-1153) and Open Graph
 (one fixed table, no translation, site-default blocks skipped) through the field's `schema_org` path. Refs: §8.1, D-0388..D-0406, D-0940.
 #### Scenario: gtin13 for a gtin field
 - **WHEN** a Product states `gtin13` and the schema's identifier field maps `Product.gtin`
@@ -87,7 +89,9 @@ Enforced by: resolver test; active.
 
 ### Requirement: Cold listing rows and pagination
 On a listing the system SHALL take rows from `ItemList`/`ListItem` entities, else from 3 or more top-level primary
-entities, else from role C (rows without item URL, D-1024 open); next pages come from `rel=next`, then the current+1
+entities, else from role C; a role C row whose grounded text lies in exactly one repeated item block, linking to one
+document only, takes that block's link as a `dom` item-URL candidate (`collect/item_links.py`, Appendix A #47,
+D-1122); next pages come from `rel=next`, then the current+1
 integer link, then a config's `listing.next` (`resolve/listing.py`, `resolve/pagination.py`). Refs: §8.6, D-0509, D-0514.
 
 ### Requirement: Page content formats

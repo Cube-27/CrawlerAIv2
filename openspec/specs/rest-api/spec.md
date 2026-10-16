@@ -5,7 +5,7 @@
 The FastAPI app under `/v1` and the MCP server: auth, rate limits, problem responses, the synchronous scrape, schema,
 config, record, replay and usage endpoints, and the ten MCP tools, all thin calls into `crawlerai.services`. Job
 endpoints, `map` and `crawl` are in [jobs](../jobs/spec.md). Rationale: ARCHITECTURE §13, §17, §18
-([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-07, SPEC-10.
+([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-07, SPEC-10.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ committed as `frontend/openapi.json`. Refs: D-0365, D-0366, D-0935.
 ### Requirement: Synchronous scrape
 `POST /v1/scrape` SHALL fetch one URL inline under a `job(kind='scrape')` with one task and return one member per
 requested format (unrequested ones omitted); past `timeout_s` (≤ 120) it is 504 `timeout` and the job `failed`.
-`budget.llm_calls` defaults to 10. With `max_age > 0` it reuses the latest `ok`, unexpired capture of the canonical URL
+`budget` is optional, with no default ([jobs](../jobs/spec.md)). With `max_age > 0` it reuses the latest `ok`, unexpired capture of the canonical URL
 that recent, with no fetch, robots.txt check or usage. Refs: §13.1, D-0028, D-0427, D-0431, D-0503.
 
 ### Requirement: Scrape outcomes, not errors, for page failures
@@ -72,6 +72,10 @@ values serialized unchanged (INV-22, INV-27), and `usage` SHALL count every fetc
 `/v1/schemas/draft`; config endpoints expose [learning-configs](../learning-configs/spec.md); `GET /v1/records` pages
 newest first by keyset cursor (≤ 200) with `changed_since` (see [jobs](../jobs/spec.md)); `POST
 /v1/captures/{id}/replay` runs the current engine cold and persists nothing. Refs: §13.1, §15, D-0396, D-0523, D-0950.
+
+### Requirement: Project settings
+`GET/PATCH /v1/project/settings` SHALL read and set `llm_call_cap`, the LLM calls a job may make when its request sets
+no `budget.llm_calls` (null: no cap). Refs: §13.1, Appendix A #47, D-1121.
 
 ### Requirement: LLM usage endpoints
 `GET /v1/usage/llm?start&end` SHALL report estimated LLM cost per UTC day, provider, model and prompt kind with the 10

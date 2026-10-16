@@ -3,18 +3,18 @@
 ## Purpose
 
 Platform adapters (Greenhouse, Lever, Shopify) and learned API recipes fetch a page's values as JSON instead of HTML.
-Rationale: ARCHITECTURE §7.1, §7.2, C6 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md));
+Rationale: ARCHITECTURE §7.1, §7.2, C6 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md));
 history: SPEC-02 §4.9, SPEC-09, SPEC-15. The JSON rung and politeness are [acquisition](../acquisition/spec.md).
 
 ## Requirements
 
 ### Requirement: Adapters only for measured multi-tenant platforms (C6)
-The system SHALL ship adapters only for multi-tenant platforms and run one only when `CRAWLERAI_ADAPTERS` names it
-(default empty; unknown or repeated names refuse startup), after measurement on at least 3 tenants not used to build
-it. API and worker processes build one registry each. Refs: §7.1, C6, D-0011, D-1084, D-1117.
+The system SHALL ship adapters only for multi-tenant platforms, measured on at least 3 tenants not used to build
+them, and run every registered adapter unless `CRAWLERAI_DISABLED_ADAPTERS` names it (default empty; unknown or
+repeated names refuse startup). API and worker processes build one registry each. Refs: §7.1, C6, D-0011, D-1119, Appendix A #47.
 #### Scenario: Default deployment
-- **WHEN** `CRAWLERAI_ADAPTERS` is unset
-- **THEN** no adapter runs and every page takes the page rungs
+- **WHEN** `CRAWLERAI_DISABLED_ADAPTERS` is unset
+- **THEN** every registered adapter runs, and a page no adapter serves takes the page rungs
 
 ### Requirement: Adapter protocol
 Each adapter SHALL implement the protocol in `adapters/base.py` (`detect`, `fetch`, `shapes`, `serves`) and MUST NOT
@@ -26,8 +26,8 @@ A page an adapter does not serve SHALL be fetched by the page rungs when `admit_
 attempt first; an adapter 429/5xx pauses the endpoint host (`Retry-After`, else 30 s, at most 15 min) and is not kept.
 A host answering without the platform signal is declined for 24 h (in memory); `not_served` and 429/5xx never decline.
 Enforced by: `tests/unit/test_adapter_registry.py`, `tests/db/test_adapter_serving.py`; active. Refs: §7.1, D-1082, D-1111.
-#### Scenario: Unserved product page
-- **WHEN** the adapter's answer for `https://shop.example/products/mug` is `not_served`
+#### Scenario: Unserved collection page
+- **WHEN** the adapter's answer for `https://shop.example/collections/mugs` is `not_served`
 - **THEN** the page is fetched over HTTP on its turn and the result lists the `api` attempt then the `http` attempt
 
 ### Requirement: Polite adapter requests
@@ -53,14 +53,16 @@ fields as in `adapters/greenhouse.py` and `adapters/lever.py`; filtered Lever li
 regional hosts fall through to the page rungs. Refs: D-0267, D-0307, D-0310.
 
 ### Requirement: Shopify adapter
-It SHALL detect product and collection paths, `POST` the tokenless Storefront GraphQL endpoint on the page's host with
-the handle as a variable, and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no item,
-GraphQL errors) or `ok`, as in `adapters/shopify.py`. Refs: Appendix A #46, D-1077, D-1078, D-1114.
+It SHALL detect collection paths only (product pages take the page path, D-1118), `POST` the tokenless Storefront
+GraphQL endpoint on the page's host with the handle as a variable, and class answers `not_platform` (no
+`X-Shopify-API-Version`), `not_served` (no item, GraphQL errors) or `ok`, as in `adapters/shopify.py`. A fetched `ok`
+page whose URL has a query is served by the adapter that detects it without the query when the page's canonical link
+is that URL (RFC 6596, D-1120). Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120.
 
 ### Requirement: Shopify values
-Products SHALL read as a `ProductGroup` with variants under `hasVariant` (no default variant chosen; see
-[variants](../variants/spec.md)), availability from `availableForSale`/`currentlyNotInStock`, and prices only when the
-shop presents exactly one currency, never inferred from the URL (C7). Refs: D-1080, D-1081, D-1085, D-1114.
+Collection items SHALL read as schema.org products (variants under `hasVariant`, no default variant; see
+[variants](../variants/spec.md)), with prices only when the shop presents exactly one currency, never inferred from
+the URL (C7). Refs: D-1080, D-1081, D-1085, D-1114, D-1118.
 
 ### Requirement: Recipe model
 An `api_recipe` SHALL be data (`config_ir/api_recipe/`): a request spec, a `map` of JSONPath-subset queries and a

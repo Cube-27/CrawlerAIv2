@@ -4,7 +4,7 @@
 
 Where CrawlerAI v2 keeps its state: two PostgreSQL databases, the data model in one baseline migration, capture
 bundles in two object stores, retention, deterministic replay and the engine version stamp. Rationale: ARCHITECTURE
-§6, §15, Appendix A #43 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history:
+§6, §15, Appendix A #43 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history:
 SPEC-01. Queue and job state are in [jobs](../jobs/spec.md); split access rules in
 [evaluation](../evaluation/spec.md).
 

@@ -4,7 +4,7 @@
 
 Async work and discovery: queue, worker, scheduler, batch scrape, extract, map, crawl, job endpoints and change
 detection for re-submitted runs; shared API rules in [rest-api](../rest-api/spec.md). Rationale: ARCHITECTURE §6-§17
-([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-01, SPEC-10, SPEC-11.
+([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-01, SPEC-10, SPEC-11.
 
 ## Requirements
 
@@ -39,8 +39,9 @@ browser is relaunched at most once per task. Refs: §17, D-0633, D-0715. Enforce
 `POST /v1/batch/scrape` (1–1000 URLs) and `POST /v1/extract` SHALL answer with a job id and run one task per URL with
 role C. Extract globs expand by one map per origin, `limit` ≤ 1000 counts every task, and globs matching nothing are 422.
 Extract alone takes `schema.prompt`, drafted from the first three reached URLs while the caller waits (none reached is
-422, past 120 s 504). `budget.llm_calls` defaults to 10 on `scrape` and `extract`, is unbounded on a batch without
-`budget`, absent on `crawl`/`map` (see [llm](../llm/spec.md)). Refs: §13.1, D-0628, D-0676, D-0681, D-0684, D-1044.
+422, past 120 s 504). No request kind has a default budget: a job whose request sets no `budget.llm_calls` (crawl
+included) is bounded by `project.llm_call_cap`, read when the job checks, null meaning no cap (see
+[llm](../llm/spec.md)). Refs: §13.1, D-0628, D-0676, D-0681, D-0684, D-1044, D-1121.
 
 ### Requirement: Job endpoints
 `GET /v1/jobs` SHALL page all jobs newest first; `/v1/jobs/{id}` returns the summary, `/request` the validated request,

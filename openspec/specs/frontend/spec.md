@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The web UI is a thin client over the REST API: an app shell, the playground (Scrape, Batch, Crawl, Map, Extract) and the data screens (Jobs, Records, Schemas, Sites and configs, Labeling, Settings); visual conventions are in [DESIGN.md](../../conventions/DESIGN.md). Rationale: ARCHITECTURE §1, §3, §13.1, §18, Appendix A #27, #38, #41, #45 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-12, SPEC-14.
+The web UI is a thin client over the REST API: an app shell, the playground (Scrape, Batch, Crawl, Map, Extract) and the data screens (Jobs, Records, Schemas, Sites and configs, Labeling, Settings); visual conventions are in [DESIGN.md](../../conventions/DESIGN.md). Rationale: ARCHITECTURE §1, §3, §13.1, §18, Appendix A #27, #38, #41, #45 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-12, SPEC-14.
 
 ## Requirements
 
@@ -52,7 +52,7 @@ The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map
 - **THEN** the URL returns to `/` and Scrape mode shows
 
 ### Requirement: Inputs and settings mirror the request DTOs
-A URL without a scheme SHALL be sent with `https://` prepended (RFC 3986 §3); Batch takes one URL per line or a CSV (`url` column else first, RFC 4180), each line checked with the WHATWG URL parser. Each Options setting MUST map to a request member (except Metadata in JSON), empty limits are omitted, and an empty LLM call limit omits `budget`. Refs: D-0408, D-0819, D-0982, D-1006, D-1044.
+A URL without a scheme SHALL be sent with `https://` prepended (RFC 3986 §3); Batch takes one URL per line or a CSV (`url` column else first, RFC 4180), each line checked with the WHATWG URL parser. Each Options setting MUST map to a request member (except Metadata in JSON), empty limits are omitted, and an empty LLM call limit omits `budget`, so the project's cap applies. Refs: D-0408, D-0819, D-0982, D-1006, D-1044, D-1121.
 #### Scenario: Host and port typed
 - **WHEN** the user types `example.com:8080/p`
 - **THEN** the request's `url` is `https://example.com:8080/p`
@@ -82,7 +82,7 @@ Get code SHALL show the endpoint (checked against `openapi.json` by a test), cUR
 - **THEN** each tab shows "Complete the request above to see its code." and Copy code is off
 
 ### Requirement: Data screens
-Jobs (`/jobs`, run history, filters in the URL), Records (one schema, at most six field columns, drawer inspector with Replay), Schemas (one form for create, adopt and edit; edit only on active non-preset), Sites and configs (host lookup, learn with `force`, correction via `PUT /v1/configs/{id}` with changed fields only) and Settings (LLM usage tables from `GET /v1/usage/llm`, unknown cost never guessed) SHALL live under `frontend/src/screens/`. Refs: D-0433, D-0656, D-0700, D-0978, D-0983.
+Jobs (`/jobs`, run history, filters in the URL), Records (one schema, at most six field columns, drawer inspector with Replay), Schemas (one form for create, adopt and edit; edit only on active non-preset), Sites and configs (host lookup, learn with `force`, correction via `PUT /v1/configs/{id}` with changed fields only) and Settings (the project's "LLM call limit per run" via `/v1/project/settings`; LLM usage tables from `GET /v1/usage/llm`, unknown cost never guessed) SHALL live under `frontend/src/screens/`. Refs: D-0433, D-0656, D-0700, D-0978, D-0983.
 #### Scenario: Correction round-trip
 - **WHEN** an operator edits a field's steps and submits
 - **THEN** `PUT /v1/configs/{id}` carries only changed and confirmed fields and the validation report shows inline

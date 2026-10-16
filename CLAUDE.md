@@ -18,7 +18,7 @@ fully before doing anything.
 Everything else is read on demand, by section (`grep -n "^#"`, then line ranges), when a spec or the code points
 to it: `openspec/design/` (goals, contract evidence, candidates register, owner decisions), decision entries
 (`grep -rn "### D-NNNN" openspec`), and the archive (`openspec/changes/archive/`): the done specs (`SPEC-NN §x`) and
-the frozen ARCHITECTURE.md rev 25 (`ARCHITECTURE §N`). Archived files are history: open one section only when you
+the frozen ARCHITECTURE.md rev 26 (`ARCHITECTURE §N`). Archived files are history: open one section only when you
 need the design of code you are changing, and never edit them. Reviewers read the same subset.
 
 The capability specs are the source of truth for behaviour. Where a spec, a change, `openspec/design/` or the

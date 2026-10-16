@@ -4,7 +4,7 @@
 
 Variants covers products with several variants: row-mapped `list<object>` fields, row discovery and key matching,
 per-row resolution, and the common-value rule for top-level offer fields (`resolve/rows.py`).
-Rationale: ARCHITECTURE §10 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-13.
+Rationale: ARCHITECTURE §10 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-13.
 
 ## Requirements
 

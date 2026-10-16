@@ -4,7 +4,7 @@
 
 Acquisition gets pages and records what happened: the HTTP and browser rungs, outcome classification, politeness,
 the SSRF guard, proxies, body bounds, per-fetch cookies and the capture bundle. Rationale: ARCHITECTURE §7, §15, §18
-([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-02.
+([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-02.
 
 ## Requirements
 
@@ -39,9 +39,11 @@ When `capture_network_json` is set, the browser rung SHALL save JSON response bo
 each request's method, body and cookie-free headers, within the caps in `acquire/browser.py`. Refs: §7.2, D-0010, D-0540.
 
 ### Requirement: Structural outcome classification (INV-24)
-The system SHALL classify each final response from status and structure only (the classes and the shell and
-small-terminal-document rules in `acquire/classify.py`); classification and `site.fetch_method` MUST NOT use vendor or
-challenge-page strings, and blocked and shell pages end with zero records. Refs: §7.1, C2, C3, D-0114, D-0932, D-0993.
+The system SHALL classify each final response from status and structure only (the classes and the shell, linkless
+page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell and has no hyperlink is
+`blocked`; a listing without repeated items is a shell unless its structured data lists items); classification and `site.fetch_method` MUST NOT
+use vendor or challenge-page strings, and blocked and shell pages end with zero records. Bodies are decoded by HTML
+encoding sniffing (D-1152). Refs: §7.1, C2, C3, D-0114, D-0932, D-0993, D-1157, D-1158.
 Enforced by: the site-literal scan (INV-03), classify tests and review; active.
 #### Scenario: Status classes
 - **WHEN** the final status is 410, 451 or 418
@@ -82,8 +84,11 @@ Enforced by: cross-fetch and cross-domain cookie tests; active. Refs: §7.1, D-0
 
 ### Requirement: robots.txt
 The system SHALL honour robots.txt by default per RFC 9309 for user agent `*`, cached per origin for 24 h in
-`site.robots_snapshot`; a disallowed URL is `blocked`/`robots` without a request, an unreachable one ends
-`blocked`/`robots_unreachable`, unless the job records a `respect_robots=false` override. Refs: §7.1, D-0159, D-0866.
+`site.robots_snapshot`; a disallowed URL is `blocked`/`robots` without a request, an unreachable one (5xx or 429)
+ends `blocked`/`robots_unreachable`, unless the job records a `respect_robots=false` override. A page an adapter would
+serve is not held back by its own robots.txt: the adapter's request obeys its host's robots.txt, the page rungs are
+not admitted, and an adapter answer that is not `ok` ends `robots`. Refs: §7.1, D-0159, D-0866,
+D-1155, D-1156.
 
 ### Requirement: Per-site rate and backoff
 The system SHALL space requests to a host by `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`,

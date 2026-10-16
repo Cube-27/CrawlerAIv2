@@ -5,7 +5,7 @@
 One provider-agnostic LLM client with constrained JSON output, per-job budgets, usage and estimated cost, plus roles C
 (grounded values) and S (schema drafts); roles A and D use the client but live in
 [learning-configs](../learning-configs/spec.md) and [adapters](../adapters/spec.md). Rationale: ARCHITECTURE §11, §17
-([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-06.
+([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-06.
 
 ## Requirements
 
@@ -38,9 +38,9 @@ stay `missing`, never guessed. Refs: D-0351, D-0371, D-0767, D-1009.
 - **THEN** the same request goes once to the next provider, and a 400 instead gives `llm_refused` with no failover
 
 ### Requirement: Per-job budgets
-Before each call and retry the client SHALL check the job's `llm_calls` budget and raise `BudgetExhausted`
-(`budget_exhausted`) when spent; a call with no job (pre-fill, eval recording, field-names draft) skips the budget.
-Refs: §17, D-0348, D-0723.
+Before each call and retry the client SHALL check the job's `llm_calls` budget, else the project's `llm_call_cap`
+(none by default), and raise `BudgetExhausted` (`budget_exhausted`) when spent; a call with no job (pre-fill, eval
+recording, field-names draft) skips the budget. Refs: §17, D-0348, D-0723, D-1121.
 
 ### Requirement: Usage event per call (INV-23)
 Every answered LLM call SHALL write a `usage_event` with its `prompt_kind` and tokens, in its own transaction, charged

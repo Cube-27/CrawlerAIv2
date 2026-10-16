@@ -4,7 +4,7 @@
 
 Normalization turns a raw candidate into a typed value for its field type, or declines, with one pure normalizer
 per type under `backend/src/crawlerai/normalize/`; it also gives per-type equality to the resolver and eval. Field
-types are [schemas](../schemas/spec.md); what publishes is [resolution](../resolution/spec.md). Rationale: ARCHITECTURE §9 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-04.
+types are [schemas](../schemas/spec.md); what publishes is [resolution](../resolution/spec.md). Rationale: ARCHITECTURE §9 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-04.
 
 ## Requirements
 

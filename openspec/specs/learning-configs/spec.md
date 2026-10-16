@@ -4,7 +4,7 @@
 
 Everything learned about a site is one portable, executable config IR per (site, schema, page kind), learned,
 validated, drift-checked, corrected and exported here (`backend/src/crawlerai/config_ir/`). Rationale: ARCHITECTURE
-§8.3–§8.4, §12 ([archived](../../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md)); history: SPEC-08.
+§8.3–§8.4, §12 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-08.
 The LLM client is in [llm](../llm/spec.md); `api_recipe` is in [adapters](../adapters/spec.md).
 
 ## Requirements

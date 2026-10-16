@@ -2,9 +2,9 @@
 
 Why the system is shaped as it is: goals, the evidence behind the generalization contract (the rules C1–C13 are in
 [../project.md](../project.md#generalization-contract-c1c13)), what must not reappear, the milestone-M rules and the
-candidates register. Sections are verbatim from ARCHITECTURE rev 25 with their numbers; the full rev-25 text, which
-code comments cite as `ARCHITECTURE §N`, is frozen in the [archive](../changes/archive/2026-10-16-architecture-rev25/ARCHITECTURE.md).
-Since rev 26 (2026-10-16, D-1136) the current behaviour lives in [../specs/](../specs/), owner decisions in
+candidates register. Sections are verbatim from ARCHITECTURE rev 26 with their numbers; the full rev-26 text, which
+code comments cite as `ARCHITECTURE §N`, is frozen in the [archive](../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md).
+Since rev 27 (2026-10-16, D-1136) the current behaviour lives in [../specs/](../specs/), owner decisions in
 [owner-decisions.md](owner-decisions.md), and this file changes only with owner approval (`CLAUDE.md` §6).
 
 ## 1. Goals and non-goals
@@ -139,7 +139,7 @@ is measured after it is added.
 | **LLM adjudication** among conflicting candidates | `conflict` abstentions on resolvable cases | The `conflict` rate on hidden required fields is material, and labels show one candidate was right. |
 | **Independent verifier** for configs | Wrong selectors that validate against themselves | Hidden precision of `uncorroborated` config fields is below τ, and they are a material share of fields. |
 | **Self-consistency sampling** for role C | LLM value errors | Hidden precision of the `llm_grounded` bucket is below τ. |
-| **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | Role C cost or coverage on DOM-only fresh sites misses target, and dev shows the collector would help. **Label–value pairs and the main image admitted 2026-10-16** by the owner from the reference eval (Appendix A #42); repeated structure and typed value spotting are not. |
+| **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | Role C cost or coverage on DOM-only fresh sites misses target, and dev shows the collector would help. **Label–value pairs and the main image admitted 2026-10-16** by the owner from the reference eval (Appendix A #42); repeated structure for listing row item URLs only (§8.6, Appendix A #47); other repeated structure and typed value spotting are not. |
 | **More platform adapters** (Workday CXS, iCIMS, ADP, Oracle CX; Shopify admitted, Appendix A #46) | Coverage or cost on those platforms | Results for the platform fall short through the generic path, or volume justifies it (OPEN_QUESTIONS #2). |
 | **Variant-matrix handling** | Per-variant price and availability; the multiple-Offer `conflict` | **Admitted 2026-10-15** by the owner ahead of labels (Appendix A #37); designed in SPEC-13. |
 | **Anti-bot measures**: allowlisting program, cookie handoff, vendor strategies, real Chrome with a behaviour layer (Appendix A #20 owner note: no Patchright on real Chrome), residential proxies, unblockers, CAPTCHA handling, detection bench | Blocked pages | The `blocked` or `shell` outcome rate for a category is material. The cheapest measure that fixes the blocked class is admitted first. |
