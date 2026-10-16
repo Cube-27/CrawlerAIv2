@@ -18,7 +18,7 @@ export function UrlList({
   return (
     <div className="relative">
       <TextField aria-label="URLs" isRequired name="urls" value={value} onChange={onChange}>
-        <TextArea rows={6} spellCheck={false} placeholder="One URL per line" />
+        <TextArea rows={2} spellCheck={false} placeholder="One URL per line" />
         <Description>
           {count} {count === 1 ? "URL" : "URLs"}
         </Description>

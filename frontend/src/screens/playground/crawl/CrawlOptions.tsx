@@ -4,12 +4,33 @@ import { FetchMethodRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from ".
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
 
-function AdvancedRows({
+/** Crawl's options (SPEC-14 §4.2): the scope globs; max depth, page limit, fetch method and Metadata in JSON; fields
+ * (§4.10) and the webhook; then the page-kind rules. With a schema, every rule is for its page kind,
+ * `schemaPageKind`. `CrawlRequest` has no `budget`, so there is no LLM call limit. */
+export function CrawlOptions({
   options,
+  schemaPageKind,
+  rulesError,
   onChange,
-}: Readonly<{ options: Options; onChange: (options: Options) => void }>) {
+}: Readonly<{
+  options: Options;
+  schemaPageKind: PageKind | null;
+  rulesError: string | undefined;
+  onChange: (options: Options) => void;
+}>) {
   return (
-    <>
+    <OptionsPanel
+      onReset={() => {
+        onChange(DEFAULT_CRAWL_OPTIONS);
+      }}
+    >
+      <ScopeRows
+        include={options.include}
+        exclude={options.exclude}
+        onChange={(scope) => {
+          onChange({ ...options, ...scope });
+        }}
+      />
       <NumberRow
         label="Max depth"
         help="How many links away from the start URL the crawl goes. Empty: the server default."
@@ -36,43 +57,6 @@ function AdvancedRows({
           onChange({ ...options, methodHint });
         }}
       />
-      <WebhookRow
-        value={options.webhookUrl}
-        onChange={(webhookUrl) => {
-          onChange({ ...options, webhookUrl });
-        }}
-      />
-    </>
-  );
-}
-
-/** Crawl's options panel (SPEC-14 §4.2): the scope globs, Metadata in JSON, fields (§4.10) and the page-kind rules,
- * then depth, page limit, fetch method and webhook under Advanced. With a schema, every rule is for its page kind, `schemaPageKind`. */
-export function CrawlOptions({
-  options,
-  schemaPageKind,
-  rulesError,
-  onChange,
-}: Readonly<{
-  options: Options;
-  schemaPageKind: PageKind | null;
-  rulesError: string | undefined;
-  onChange: (options: Options) => void;
-}>) {
-  return (
-    <OptionsPanel
-      advanced={<AdvancedRows options={options} onChange={onChange} />}
-      onReset={() => {
-        onChange(DEFAULT_CRAWL_OPTIONS);
-      }}
-    >
-      <ScopeRows
-        include={options.include}
-        exclude={options.exclude}
-        onChange={(scope) => {
-          onChange({ ...options, ...scope });
-        }}
-      />
       <MetadataRow
         isSelected={options.metadataInJson}
         onChange={(metadataInJson) => {
@@ -80,6 +64,12 @@ export function CrawlOptions({
         }}
       />
       <FieldsRow options={options} onChange={onChange} />
+      <WebhookRow
+        value={options.webhookUrl}
+        onChange={(webhookUrl) => {
+          onChange({ ...options, webhookUrl });
+        }}
+      />
       <RuleRows
         rules={options.rules}
         fixed={schemaPageKind}

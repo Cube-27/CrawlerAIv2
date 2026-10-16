@@ -3,7 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { Call } from "../../../test/api";
 import { runApi, SCHEMA_ID } from "../../../test/runs";
-import { fill, openOptions, openPlayground, pick, posted } from "../../../test/playground";
+import {
+  closeOptions,
+  fill,
+  openOptions,
+  openPlayground,
+  pick,
+  posted,
+} from "../../../test/playground";
 
 // `fetch` answers the extract, job, results and events endpoints with the shapes SPEC-10 §4.2, §4.6 and SPEC-14 §4.4
 // define.
@@ -37,10 +44,11 @@ describe("extract playground", () => {
     await pick(/Schema$/, "item_detail");
     const options = await openOptions();
     await fill(
-      options.getByRole("textbox", { name: "More URLs or globs" }),
+      options.getByRole("textbox", { name: "More URLs" }),
       "https://shop.test/items/*",
       true,
     );
+    await closeOptions();
 
     await extract();
 
@@ -61,8 +69,8 @@ describe("extract playground", () => {
     await pick(/Schema source/, "From a prompt");
     await fill(options.getByRole("textbox", { name: "Prompt" }), "title and price");
     await pick(/Page kind/, "Detail");
-    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
-    await fill(options.getByRole("textbox", { name: "LLM call budget" }), "3");
+    await fill(options.getByRole("textbox", { name: "LLM call limit" }), "3");
+    await closeOptions();
 
     await extract();
 
@@ -83,14 +91,16 @@ describe("extract playground", () => {
 
     await extract();
 
-    const options = within(await screen.findByRole("region", { name: "Options" }));
+    const options = within(await screen.findByRole("dialog", { name: "Options" }));
     expect(
       options.getByText("Choose a stored schema in the toolbar, or another source."),
     ).toBeInTheDocument();
     await pick(/Schema source/, "Inline JSON");
     await fill(options.getByRole("textbox", { name: "Schema JSON" }), '{"name": "x"}');
+    await closeOptions();
     await extract();
-    expect(await options.findByText("Choose the page kind of the records.")).toBeInTheDocument();
+    const reopened = within(await screen.findByRole("dialog", { name: "Options" }));
+    expect(await reopened.findByText("Choose the page kind of the records.")).toBeInTheDocument();
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
   });
 
@@ -113,7 +123,7 @@ describe("extract playground", () => {
     expect(options.getByRole("textbox", { name: "Schema JSON" })).toHaveValue(
       JSON.stringify({ name: "item", page_kind: "detail" }, null, 2),
     );
-    expect(options.getByRole("grid", { name: "More URLs or globs" })).toHaveTextContent(
+    expect(options.getByRole("grid", { name: "More URLs" })).toHaveTextContent(
       "https://shop.test/items/*",
     );
   });

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { expect } from "vite-plus/test";
@@ -46,13 +46,30 @@ export async function fill(field: HTMLElement, text: string, enter = false) {
 }
 
 export function optionsButton(): HTMLElement {
-  return screen.getByRole("button", { name: "Options" });
+  // While the popover is open, the page under it is hidden from assistive technology, the button too.
+  return screen.getByRole("button", { name: "Options", hidden: true });
 }
 
-/** Opens the options panel and returns it. */
+/** Opens the options popover and returns it. */
 export async function openOptions() {
   await userEvent.click(optionsButton());
-  return within(screen.getByRole("region", { name: "Options" }));
+  return within(await screen.findByRole("dialog", { name: "Options" }));
+}
+
+/** Closes the options popover with Escape, so the page under it can be used again. */
+export async function closeOptions() {
+  // A browser returns focus to a Select's trigger when its list closes; jsdom can leave it on the body, where Escape
+  // reaches no overlay. The popover gets it back first, as a user's Escape always starts inside it.
+  const dialog = screen.getByRole("dialog", { name: "Options" });
+  if (!dialog.contains(document.activeElement)) {
+    act(() => {
+      dialog.focus();
+    });
+  }
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Options" })).not.toBeInTheDocument();
+  });
 }
 
 /** The body of the one POST the page sent. */

@@ -2,10 +2,11 @@ import { Card } from "@heroui/react";
 import { use, type ReactNode } from "react";
 import { ReadOnlyContext } from "./readOnly";
 
-/** The command bar (SPEC-14 §4.2): one bordered surface with the mode's input on its first row and the toolbar under
- * it: the Options toggle and the tools on the left, the primary action on the right, so the action is at the top in
- * every mode. A read-only bar disables its input and tools (a disabled fieldset, HTML §4.10.15); the toggle and the
- * action stay usable. */
+/** The command bar (SPEC-14 §4.2): one bordered surface with the mode's input on top and the toolbar under it: the
+ * Options button and the tools on the left, the primary action on the right. The input sits in a box of at least
+ * `min-h-playground-input`, which holds a URL and its error as well as Batch's list, so switching modes or showing an
+ * error moves neither the toolbar nor the action. A read-only bar disables its input and tools (a disabled fieldset,
+ * HTML §4.10.15); Options and the action stay usable. */
 export function CommandBar({
   input,
   optionsToggle,
@@ -16,10 +17,11 @@ export function CommandBar({
   return (
     <Card>
       <Card.Content className="flex flex-col gap-3">
-        <fieldset disabled={readOnly} className="contents">
+        <fieldset disabled={readOnly} className="min-h-playground-input">
           {input}
         </fieldset>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* At least as tall as a select, so a mode without one (Map) keeps the action where the others have it. */}
+        <div className="flex min-h-10 flex-wrap items-center gap-2">
           {optionsToggle}
           <fieldset disabled={readOnly} className="contents">
             {tools}

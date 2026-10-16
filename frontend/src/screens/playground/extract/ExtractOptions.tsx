@@ -1,6 +1,6 @@
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, TagListRow, TextAreaRow } from "../OptionsPanel";
-import { FetchMethodRow, FieldsRow, PageKindRow, WebhookRow } from "../rows";
+import { FetchMethodRow, FieldsRow, LlmCallsRow, PageKindRow, WebhookRow } from "../rows";
 import { DEFAULT_EXTRACT_OPTIONS, type ExtractOptions as Options, type SchemaSource } from "./form";
 
 const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
@@ -11,45 +11,6 @@ const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
 ];
 
 type Change = (options: Options) => void;
-
-function AdvancedRows({ options, onChange }: Readonly<{ options: Options; onChange: Change }>) {
-  return (
-    <>
-      <NumberRow
-        label="Page limit"
-        help="The most pages the extract reads, globs expanded. Empty: the server default."
-        name="limit"
-        value={options.limit}
-        minValue={1}
-        onChange={(limit) => {
-          onChange({ ...options, limit });
-        }}
-      />
-      <FetchMethodRow
-        value={options.methodHint}
-        onChange={(methodHint) => {
-          onChange({ ...options, methodHint });
-        }}
-      />
-      <NumberRow
-        label="LLM call budget"
-        help="The most LLM calls drafting a schema from the prompt may make. Empty: the server default."
-        name="budget.llm_calls"
-        value={options.llmCalls}
-        minValue={0}
-        onChange={(llmCalls) => {
-          onChange({ ...options, llmCalls });
-        }}
-      />
-      <WebhookRow
-        value={options.webhookUrl}
-        onChange={(webhookUrl) => {
-          onChange({ ...options, webhookUrl });
-        }}
-      />
-    </>
-  );
-}
 
 /** The inline schema's JSON, the prompt or the field names, for the source that has one. */
 function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange: Change }>) {
@@ -83,8 +44,9 @@ function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange:
   return null;
 }
 
-/** Extract's options panel (SPEC-14 §4.2): more URLs or globs, the schema's source and page kind, then page limit,
- * fetch method, LLM budget and webhook under Advanced. A stored schema's page kind is its own, `schemaPageKind`. */
+/** Extract's options (SPEC-14 §4.2): more URLs or globs, the schema's source and page kind; page limit, fetch method,
+ * the LLM call limit and the webhook; then the source's JSON, prompt or field names. A stored schema's page kind is
+ * its own, `schemaPageKind`. */
 export function ExtractOptions({
   options,
   schemaPageKind,
@@ -97,14 +59,13 @@ export function ExtractOptions({
   const stored = options.schemaSource === "id";
   return (
     <OptionsPanel
-      advanced={<AdvancedRows options={options} onChange={onChange} />}
       onReset={() => {
         onChange(DEFAULT_EXTRACT_OPTIONS);
       }}
     >
       <TagListRow
-        label="More URLs or globs"
-        help="URLs read after the bar's; a URL with * is a glob over its site's map."
+        label="More URLs"
+        help="URLs or globs read after the bar's; a URL with * is a glob over its site's map."
         name="urls"
         values={options.urls}
         placeholder="https://example.com/items/*"
@@ -128,6 +89,37 @@ export function ExtractOptions({
         schemaPageKind={schemaPageKind}
         onChange={(pageKind) => {
           onChange({ ...options, pageKind });
+        }}
+      />
+      <NumberRow
+        label="Page limit"
+        help="The most pages the extract reads, globs expanded. Empty: the server default."
+        name="limit"
+        value={options.limit}
+        minValue={1}
+        onChange={(limit) => {
+          onChange({ ...options, limit });
+        }}
+      />
+      <FetchMethodRow
+        value={options.methodHint}
+        onChange={(methodHint) => {
+          onChange({ ...options, methodHint });
+        }}
+      />
+      {/* SPEC-10 §4.6: an extract's `budget.llm_calls` bounds a prompt's draft and defaults to 10. */}
+      <LlmCallsRow
+        value={options.llmCalls}
+        whenEmpty="10"
+        help="The most LLM calls drafting a schema from the prompt may make. Empty: 10, the server default."
+        onChange={(llmCalls) => {
+          onChange({ ...options, llmCalls });
+        }}
+      />
+      <WebhookRow
+        value={options.webhookUrl}
+        onChange={(webhookUrl) => {
+          onChange({ ...options, webhookUrl });
         }}
       />
       <SourceRow options={options} onChange={onChange} />

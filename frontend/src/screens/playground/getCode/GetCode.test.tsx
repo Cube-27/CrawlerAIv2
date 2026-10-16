@@ -2,7 +2,14 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { problem, stubApi, type Call } from "../../../test/api";
-import { fill, openOptions, openPlayground, pick, posted } from "../../../test/playground";
+import {
+  closeOptions,
+  fill,
+  openOptions,
+  openPlayground,
+  pick,
+  posted,
+} from "../../../test/playground";
 import { runApi, schemaList } from "../../../test/runs";
 import { curlBody } from "../../../test/shell";
 
@@ -59,6 +66,7 @@ const CASES: Readonly<Record<string, ModeCase>> = {
         `https://shop.test/it's/*`,
         true,
       );
+      await closeOptions();
     },
   },
   map: {
@@ -81,6 +89,7 @@ const CASES: Readonly<Record<string, ModeCase>> = {
       await pick(/Schema source/, "From a prompt");
       await fill(options.getByRole("textbox", { name: "Prompt" }), AWKWARD);
       await pick(/Page kind/, "Detail");
+      await closeOptions();
     },
   },
 };

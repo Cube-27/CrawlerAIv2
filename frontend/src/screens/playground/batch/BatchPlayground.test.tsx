@@ -7,6 +7,7 @@ import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
 import { quietEvents, runApi, SCHEMA_ID, valuesPage } from "../../../test/runs";
 import {
+  closeOptions,
   fill,
   openOptions,
   openPlayground,
@@ -158,8 +159,8 @@ describe("batch playground: the command bar", () => {
       options.getByRole("textbox", { name: "Webhook URL" }),
       "https://hooks.test/done",
     );
-    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
     await pick(/Fetch method/, "HTTP");
+    await closeOptions();
 
     await start();
 
@@ -174,6 +175,29 @@ describe("batch playground: the command bar", () => {
     });
   });
 
+  it("sends the LLM call limit as the batch's budget, and no budget while it is empty, which the field says is no limit", async () => {
+    const calls = batchApi();
+    await openPlayground("/batch");
+    await typeUrls("https://shop.test/a");
+    const options = await openOptions();
+    const limit = options.getByRole("textbox", { name: "LLM call limit" });
+    expect(limit).toHaveAttribute("placeholder", "No limit");
+
+    await userEvent.type(limit, "25");
+    await closeOptions();
+    await start();
+
+    await pagesGrid();
+    expect(posted(calls)).toEqual({
+      urls: ["https://shop.test/a"],
+      formats: ["markdown"],
+      schema: null,
+      page_kind: null,
+      fetch: { method_hint: "auto" },
+      budget: { llm_calls: 25 },
+    });
+  });
+
   it("names a line that is not a web address on the list, and sends nothing", async () => {
     const calls = batchApi();
     await openPlayground("/batch");
@@ -185,7 +209,7 @@ describe("batch playground: the command bar", () => {
     expect(list).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByText("Line 2 is not a web address: shop dot test")).toBeInTheDocument();
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-    expect(screen.queryByRole("region", { name: "Options" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Options" })).not.toBeInTheDocument();
   });
 
   it("shows the server's per-field problem in the output and on the list", async () => {
@@ -556,6 +580,7 @@ describe("batch playground: runs", () => {
           schema: null,
           page_kind: "listing",
           fetch: { method_hint: "browser", respect_robots: true },
+          budget: { llm_calls: 40 },
           webhook_url: null,
         }),
       "POST /v1/batch/scrape": () => Response.json({ job_id: OLDER }),
@@ -575,6 +600,8 @@ describe("batch playground: runs", () => {
     const options = await openOptions();
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeChecked();
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeDisabled();
+    expect(options.getByRole("textbox", { name: "LLM call limit" })).toHaveValue("40");
+    await closeOptions();
 
     await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
     await fill(list, "\nhttps://shop.test/c");
@@ -589,6 +616,7 @@ describe("batch playground: runs", () => {
       schema: null,
       page_kind: "listing",
       fetch: { method_hint: "browser" },
+      budget: { llm_calls: 40 },
     });
   });
 });

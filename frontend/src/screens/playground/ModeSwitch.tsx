@@ -1,11 +1,11 @@
 import { Tabs, Typography } from "@heroui/react";
 import { MODE_GROUPS, type ModeId } from "./modes";
 
-/** The mode switch: a tab per mode, each a link to its route, under its group's caption, so back and forward move
+/** The mode switch, centred over the command bar: a tab per mode, each a link to its route, under its group's caption, so back and forward move
  * between modes. */
 export function ModeSwitch({ current }: Readonly<{ current: ModeId }>) {
   return (
-    <nav aria-label="Mode" className="flex flex-wrap items-end gap-6">
+    <nav aria-label="Mode" className="flex flex-wrap items-end justify-center gap-6">
       {MODE_GROUPS.map((group) => (
         <div key={group.caption} className="flex flex-col gap-1">
           <Typography.Paragraph size="sm" color="muted">

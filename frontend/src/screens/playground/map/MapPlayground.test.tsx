@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { MapResult } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
-import { fill, openOptions, openPlayground, posted } from "../../../test/playground";
+import { closeOptions, fill, openOptions, openPlayground, posted } from "../../../test/playground";
 
 // `fetch` answers `POST /v1/map` with the shape SPEC-10 §4.4 defines.
 
@@ -48,8 +48,8 @@ describe("map playground", () => {
     const options = await openOptions();
     await fill(options.getByRole("textbox", { name: "Exclude" }), "https://shop.test/cart/*", true);
     await userEvent.click(options.getByRole("switch", { name: "Use links" }));
-    await userEvent.click(options.getByRole("button", { name: "Advanced" }));
     await fill(options.getByRole("textbox", { name: "Page limit" }), "100");
+    await closeOptions();
 
     await map();
 
