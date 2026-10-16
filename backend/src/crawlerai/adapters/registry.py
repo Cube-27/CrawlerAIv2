@@ -19,6 +19,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, Adapter
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
+from crawlerai.adapters.shopify import Shopify
 
 # How long a host stays declined, and how many declined hosts are remembered (the oldest is forgotten first).
 DECLINE_SECONDS: Final = 24 * 60 * 60
@@ -27,7 +28,7 @@ MAX_DECLINED: Final = 10_000
 
 def platform_adapters() -> tuple[Adapter, ...]:
     """Every adapter, active or not."""
-    return Greenhouse(), Lever()
+    return Greenhouse(), Lever(), Shopify()
 
 
 class Registry:
