@@ -254,3 +254,94 @@ Template, statuses and rules: [DECISIONS.md](../DECISIONS.md).
 - Alternatives: One column per task status; done/total only.
 - Why: Five count columns crowd the table at phone width, and done/total hides failures.
 - Reversible: yes
+
+### D-0973 — Spacing is a set of theme variables applied to HeroUI's own classes
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: theme.css holds the repeated distances as Tailwind spacing variables (`stack`, `panel`, `cell-x`/`cell-y`, `empty`, the content gutters) and applies them to `.card`, `.table__cell`/`.table__column`, `.drawer__dialog`, `.empty-state` and the options panel; screen roots use `gap-stack`. Drawers are `--width-drawer` (44rem) wide; the paged-table box grows to 72rem to hold 20 of the roomier rows.
+- Alternatives: Padding per screen or per component; a wrapper component around each HeroUI surface.
+- Why: The owner reported missing padding everywhere (2026-10-16); DESIGN.md puts every visual value in theme.css and forbids restyling wrappers.
+- Reversible: yes
+
+### D-0974 — Get code shows the endpoint and its code first; the prompts are collapsed
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: The drawer reads: a title with the endpoint's name, `POST path` and its sentence, the language tabs with the code, one line on where the key comes from, then "Prompts for coding agents" collapsed. SPEC-14 §4.7 keeps its four parts; only their order and the prompts' default state change.
+- Alternatives: SPEC-14's order (prompts, API key, endpoint, code).
+- Why: The owner found the drawer confusing: the code, which most readers open it for, was below the fold.
+- Reversible: yes
+
+### D-0975 — A run is one flow: summary card, results, collapsed activity
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: Batch, Crawl, Extract and a scrape's run show one `Card` (status, Cancel, exports; then `RunProgress`: a progress bar, "N of M pages done", the elapsed time and the outcomes reached on one line), then the results table at full width, then the activity collapsed. The two count tables go; the learn job page uses `RunProgress` too.
+- Alternatives: Keep the count tables and the activity beside the table from `lg` (SPEC-14 §4.3, §4.5).
+- Why: The owner and the UAT found too much happening at once; the count tables pushed the results below the fold.
+- Reversible: yes
+
+### D-0976 — Run lists show what a run was started on, its duration and an Open cue
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: Recent runs: target (start URL or URL count), status, started, duration, an "Open" cue; "All runs" opens Jobs filtered by the mode's kind, and an empty list is an `EmptyView`. Jobs: kind, target, status, tasks, created, Open. The row stays the link (React Aria row `href`); the cue is text.
+- Alternatives: A second link or button per row (nested interactive content in a link row).
+- Why: Run history was hard to read: rows had no identifier and nothing said a row opens.
+- Reversible: yes
+
+### D-0977 — `LookupForm`'s button is off until the field has a value
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: The field is not marked required; the button is disabled while the trimmed value is empty, and an empty submit does nothing.
+- Alternatives: Keep `isRequired` and its asterisk.
+- Why: An optional lookup beside a list read as a required form field (UAT).
+- Reversible: yes
+
+### D-0978 — A records table shows six fields, scalar ones first
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: `RecordTable` shows at most six field columns: scalar fields in schema order, then lists and objects, then mode, version, changed and confidence, with a line "Showing 6 of N fields. Open a record to see all of them." The inspector shows every field.
+- Alternatives: Every field with a horizontal scroll; a column picker.
+- Why: A 25-field schema gave each column a few pixels (UAT); a list or an object does not fit a cell (SPEC-04 §4.1 types).
+- Reversible: yes
+
+### D-0979 — A refused export is a toast
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: Export JSON and Export CSV report a refusal (`problem.title`, `problem.detail`) as `toast.danger`, not as an alert inside the run's header.
+- Alternatives: An alert in a reserved slot.
+- Why: The alert moved the run's summary and results down (UAT); the refusal is the outcome of the button just pressed (DESIGN.md, Notifications).
+- Reversible: yes
+
+### D-0980 — A batch with a schema or field names asks for `records` alone
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: As Crawl does, `buildBatch` sends `formats: ["records"]` with a schema or field names, and Format is disabled then. Closes the #205 follow-up.
+- Alternatives: Keep the page formats and let the server refuse.
+- Why: The server refuses records with other formats in a batch (SPEC-10 §4.5); the default form hit the 422 (UAT).
+- Reversible: yes
+
+### D-0981 — Cancelled pages are not counted as done
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: `RunProgress` reads "N of M pages done" with N = done + failed, then ", K cancelled" when any were; the bar shows every ended page.
+- Alternatives: Count cancelled pages as done (the previous text).
+- Why: A cancelled crawl read "20 of 20 pages done" with 10 cancelled (UAT).
+- Reversible: yes
+
+### D-0982 — Batch names a list line that is not a web address before sending
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: `batchErrors` checks each line with the WHATWG URL parser and the `http`/`https` schemes and puts "Line N is not a web address: ..." on the list; a command-bar error (`url`, `urls`, `formats`) does not open the options panel.
+- Alternatives: Leave it to the server's 422 (zero-based `urls[3]`, shown twice).
+- Why: The line is named where it is typed, counted from 1 (UAT).
+- Reversible: yes
+
+### D-0983 — A learning run started on a site or config page shows its status there
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: After Learn now, the page shows "Learning job", the job's status (kept current by its events) and a link to its job page; the toast gets an "Open job" action.
+- Alternatives: The toast alone.
+- Why: A failed learning run left the site page at "No configs yet" with no way to see why (UAT).
+- Reversible: yes
+
+### D-0984 — One `Collapsible` for collapsed detail, rendered only while open
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: `components/Collapsible.tsx` (a HeroUI `Disclosure` with a quiet trigger and an optional status beside it) holds the playground's Advanced options, a run's activity and Get code's prompts; its content mounts only while open.
+- Alternatives: Three copies of the Disclosure block.
+- Why: One composition per recurring job (DESIGN.md); a collapsed live activity list should not re-render on every event.
+- Reversible: yes
+
+### D-0985 — Fixed-width tables keep a minimum width and scroll inside their box
+- Date: 2026-10-16 · Spec/PR: SPEC-12 follow-up, UX polish (#214) · Status: decided
+- Decision: `table.table-fixed` has `min-w-xl` in theme.css: at phone width such a table scrolls inside its HeroUI scroll container, and the page does not.
+- Alternatives: Hide columns below `sm`.
+- Why: At 390px the pages table cut off its JSON button and outcome (UAT).
+- Reversible: yes

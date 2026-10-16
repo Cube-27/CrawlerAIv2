@@ -69,7 +69,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Normalize: `count` accepts `unitCode` `C62` with a contradicting `unitText` ("kg"); decide whether to decline any `unitText` beside C62 (D-0921) [#203].
 - Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
 - Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
-- Playground: Batch with a stored schema and a page format selected sends `records` with other formats, which the server refuses (records are asked alone); the UI could ask for `records` alone, as Crawl does [#205].
+- Playground: Extract's toolbar Schema and its "Schema source" option overlap, and a missing schema opens Options to show its message (UAT 2026-10-16) [#214].
+- Playground: a map's URLs are not kept, so a map result is not in the address and is lost on back navigation [#214].
+- Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
+- Playground: the options panel stays open while a run is shown; closing it on send would hide an options error [#214].
 - Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
