@@ -37,7 +37,7 @@ from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import check_targets
-from crawlerai.services.scrape import RecordsUnavailable
+from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
     FetchOptions,
@@ -58,8 +58,9 @@ class BatchScrapeRequest(Input):
     """The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
-    and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10).
-    `webhook_url` is called when the job ends (§4.2)."""
+    and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
+    `budget.llm_calls` bounds the job's calls, and without a `budget` they are not bounded, as a crawl's are not
+    (D-1006). `webhook_url` is called when the job ends (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     formats: list[PageFormat] = Field(min_length=1)
@@ -67,6 +68,7 @@ class BatchScrapeRequest(Input):
     page_kind: PageKind | None = None
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
+    budget: Budget | None = None
     webhook_url: str | None = None
 
     @field_validator("urls")

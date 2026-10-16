@@ -234,8 +234,18 @@
       },
       "BatchScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10).\n`webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10). Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` they are not bounded, as a crawl's are not\n(D-1006). `webhook_url` is called when the job ends (\u00a74.2).",
         "properties": {
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {

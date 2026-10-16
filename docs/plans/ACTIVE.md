@@ -32,7 +32,7 @@ a `no_baseline` placeholder, and tests run against local throwaway databases.
 - Data accuracy: SPEC-13 is complete. Next: re-run the Shopify baseline and decide the adapter; then option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
 - Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
-  field status), D-0915 (SimHash at Hamming 0 misses some edits).
+  field status), D-0915 (SimHash at Hamming 0 misses some edits), D-1009 (a provider refusal's reason).
 
 ## Done specs
 
@@ -94,6 +94,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Config IR: `SchemaRef` names the schema only, so an operator can still activate a draft learned before a schema edit; a document digest in the IR would refuse it (D-0950) [#210].
 - Normalize: `iso_3166_alpha2` keeps CLDR's EU, EZ and UN, which ISO 3166-1 reserves exceptionally rather than assigning to countries; exclude the exceptionally reserved codes [#210].
 - Schemas: an edit's `relearn_schema` scans `progressive_state` by `schema_id`, which no index leads; add one if edits become frequent [#210].
+- Worker: no production path passes `llm=None` to the page handlers any more (`task_handlers`); tests still use it to bind no role C. Make `llm` required and pass `NO_LLM` in tests [#215].
+- LLM: role A and role C each fixed the provider's grammar cap their own way (D-1008); a new role with a repeated subschema should hoist it to `$defs` or use a named list, and a client-level check of schema size could catch it before a 400 [#215].
+- LLM eval: role C's and role A's `request_hash` changed with their output schemas (D-1008), so recorded dev-eval replies are re-recorded on the next run [#215].
 - Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
 
 ## [SPEC-03 — Evaluation and measurement](../specs/SPEC-03-evaluation-and-measurement.md)

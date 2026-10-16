@@ -1,6 +1,6 @@
 import { Button, toast } from "@heroui/react";
 import { ArrowDownToLine } from "@gravity-ui/icons";
-import { useExportJob, useExportJobValues } from "../../../api/hooks/jobs";
+import { useExportJob, useExportJobJson } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { saveExportPages, saveJson } from "../../../app/download";
 
@@ -17,13 +17,15 @@ function notifyRefused(error: Error) {
 }
 
 /** A run's downloads (SPEC-14 §4.3–4.4): JSON is every page's `json_values` item in task order, saved as one array, so
- * it equals the drawers' items; CSV is the server's `csv_records` export (RFC 4180), one file per page of it. A job
- * without a schema has no records to export as CSV; the server's problem says so. */
+ * it equals the drawers' items; CSV is the server's `csv_records` export (RFC 4180), one file per page of it. With
+ * `outputs` (a job without a schema), JSON is every page's outputs, as its drawers show them, and CSV is disabled:
+ * there are no records to put in columns (SPEC-10 §4.2). */
 export function RunExports({
   jobId,
   withMetadata,
-}: Readonly<{ jobId: string; withMetadata: boolean }>) {
-  const json = useExportJobValues(jobId);
+  outputs,
+}: Readonly<{ jobId: string; withMetadata: boolean; outputs: boolean }>) {
+  const json = useExportJobJson(jobId, outputs);
   const csv = useExportJob(jobId);
   const busy = json.isPending || csv.isPending;
   return (
@@ -49,7 +51,7 @@ export function RunExports({
       <Button
         variant="secondary"
         isPending={csv.isPending}
-        isDisabled={busy}
+        isDisabled={busy || outputs}
         onPress={() => {
           csv.mutate("csv_records", {
             onSuccess: (pages) => {

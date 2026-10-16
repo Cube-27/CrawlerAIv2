@@ -53,6 +53,7 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
+| D-1009 | A provider's refusal of a request is labelled `llm_unavailable` | needs-owner |
 
 ---
 
@@ -800,3 +801,45 @@ Items with status `needs-owner` or `pending-owner`. Keep this list current.
 - Alternatives: keep a container per worktree (one Postgres start and ~100 MB per agent); share the dev compose database (its data must survive).
 - Why: Owner request: agents started a container each, and local runs competed for memory with up to four workers.
 - Reversible: yes.
+
+### D-1006 — A batch binds role C, bounded by an optional `budget`
+- Date: 2026-10-16 · Spec/PR: UAT fixes, SPEC-10 §4.3 (#215) · Status: decided · Supersedes the batch parts of D-0631, D-0635 and D-0714
+- Decision: The worker's `batch_scrape` handler binds role C on the worker's client, as `extract` and `crawl` do (`worker.handlers.table.task_handlers`). `BatchScrapeRequest` takes the optional `budget` SPEC-10 §4.3 lists; without one the job's `llm_calls` are not bounded, as a crawl's are not.
+- Alternatives: keep batch without role C (UAT: a batch's records lacked the title, price and description a scrape of the same URLs filled); default the budget to a scrape's 10 calls (a 1,000-URL batch would fill 10 pages).
+- Why: SPEC-10 §4.3 says the handler is SPEC-07's scrape function, and ARCHITECTURE §8.4 makes role C the cold-mode path for every caller-supplied page.
+- Reversible: yes
+
+### D-1007 — A later extraction that misses a field is a new record version
+- Date: 2026-10-16 · Spec/PR: UAT fixes (#215) · Status: decided
+- Decision: No change. A record version is what one extraction published; a field the new extraction did not publish is absent from it and listed in `changed_fields`, and no value is carried over from an earlier version.
+- Alternatives: carry the prior version's value forward (publishes a value this capture does not show, against §8.4 grounding and INV-27's "no layer after resolution changes a published value"); skip a version that only loses fields (hides a real removal).
+- Why: SPEC-11 §4.4 lists "fields that became published or abstained" in `changed_fields`. The UAT case (price lost in version 3) was a batch extracted without role C, fixed by D-1006.
+- Reversible: yes
+
+### D-1008 — LLM output schemas stay within a provider's compiled-grammar cap
+- Date: 2026-10-16 · Spec/PR: UAT fixes, SPEC-06 §4.2, SPEC-08 §4.6 (#215) · Status: decided
+- Decision: Role A replies `{fields: [{field, steps}]}`, `field` an enum of the asked names, so the step form appears once in the schema; a field without an entry has `no_steps`, one named twice gets both entries' steps. Role C keeps its closed object of one required claim per field, each a `$ref` to one claim form in `$defs`. SPEC-08 §4.6 is edited to match.
+- Alternatives: split the fields across several calls (more calls and budget per page or round); `$ref` for role A's steps too (refused as "Schema is too complex" at 50 fields).
+- Why: Anthropic refused role A on the 20-field `commerce_detail` preset, and role C from 18 fields on, with HTTP 400 "The compiled grammar is too large" (probe against the API, 2026-10-16); both new forms were accepted with 50 fields, and stay inside both providers' subsets (`llm.schema_subset`).
+- Reversible: yes
+
+### D-1009 — A provider's refusal of a request is labelled `llm_unavailable`
+- Date: 2026-10-16 · Spec/PR: UAT fixes (#215) · Status: needs-owner
+- Question: SPEC-06 §4.2 and §4.7 (D-0748) give `ProviderRefused` (any non-transient HTTP error, such as a 400 for a schema the provider will not compile) the reason and problem type `llm_unavailable`, the same as "no provider answered". UAT read a learn job's `llm_unavailable` as an outage when the request itself was refused. Relabelling changes a field reason and a public problem type.
+- Options: (a) a new code `llm_refused` (field reason, task `last_error`, problem 502) for `ProviderRefused`; (b) keep `llm_unavailable` and add the refusal's cause to the learn job's end event (the role C diagnostic already carries it); (c) leave as is.
+- Recommendation: (a): a refusal is the request's fault, and operators act on it differently from an outage.
+- Blocked: nothing; the grammar refusal itself is fixed by D-1008.
+- Reversible: yes
+
+### D-1010 — A run without a schema shows and exports its page outputs
+- Date: 2026-10-16 · Spec/PR: UAT fixes, SPEC-14 §4.3 (#215) · Status: decided
+- Decision: The playground reads whether a job has records from its stored request (`formats` without `records`). For a job without, the results table stays on `json_values` (URL, outcome), its drawer shows the page's outputs from `format=json` at the same cursor, Export JSON saves every page output, and Export CSV is disabled. The API is unchanged: `format=json` already returns page outputs and `csv_records` answers 409 for such a job, as its docs say.
+- Alternatives: add page formats to `json_values` items (`include=markdown`; an API shape beyond SPEC-14 §4.4).
+- Why: UAT found a markdown batch's and crawl's results unviewable in the UI (`records: []`).
+- Reversible: yes
+
+### D-1011 — UAT findings that are by design
+- Date: 2026-10-16 · Spec/PR: UAT fixes (#215) · Status: decided
+- Decision: No code change for: a markdown-only crawl making no LLM calls (no schema, nothing to extract); brand published from the page's JSON-LD `brand.name`, which states the site's name (extract, never enrich: Appendix A #43); price not taken from an `AggregateOffer`'s `lowPrice` (§10) and left to role C, which that run could not call (no provider key then); `rating` a decimal string as written (SPEC-04 §4.4 number, like money amounts); a `shell` page escalated to the browser in auto mode but kept from HTTP because the browser's result was a shell too (SPEC-02 §4.4, ARCHITECTURE §7.1).
+- Why: Each follows the cited rule; the captures and their manifests show it.
+- Reversible: yes

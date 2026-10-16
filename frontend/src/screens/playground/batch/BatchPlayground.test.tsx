@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
-import type { JobSummary, JsonValuesItem } from "../../../api/jobs";
+import type { JobSummary, JsonValuesItem, PageOutput } from "../../../api/jobs";
 import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
@@ -49,11 +49,35 @@ function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
       jobId: JOB_ID,
       kind: "batch_scrape",
       job: job(),
-      request: { urls: [FIRST.url], formats: ["markdown"] },
+      request: { urls: [FIRST.url], formats: ["records"], schema: { id: SCHEMA_ID } },
       items: [FIRST, SECOND, THIRD],
     },
     replies,
   );
+}
+
+/** The first page's outputs in a batch without a schema (SPEC-10 §4.2: a format job's results are page outputs). */
+const OUTPUT: PageOutput = {
+  task_id: "0192a000-0000-7000-8000-0000000000t1",
+  url: FIRST.url,
+  status: "done",
+  outcome: "extracted",
+  last_error: null,
+  capture_id: null,
+  final_url: FIRST.url,
+  fetched_at: null,
+  markdown: "# Blue mug",
+};
+
+/** A batch that asked for markdown only: `json_values` has no records, `format=json` has the page outputs. */
+function outputsApi(): Call[] {
+  return batchApi({
+    [`GET ${JOB}/request`]: () => Response.json({ urls: [FIRST.url], formats: ["markdown"] }),
+    [`GET ${JOB}/results`]: ({ query }) =>
+      new URLSearchParams(query).get("format") === "json_values"
+        ? valuesPage([{ ...FIRST, records: [] }])
+        : Response.json({ items: [OUTPUT], next_cursor: null }),
+  });
 }
 
 async function typeUrls(text: string) {
@@ -243,6 +267,38 @@ describe("batch playground: the run", () => {
     expect(
       JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
     ).toEqual(FIRST);
+  });
+
+  it("shows a page's outputs in the drawer when the batch has no schema", async () => {
+    outputsApi();
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 1" }));
+
+    const drawer = await screen.findByRole("dialog");
+    await waitFor(() => {
+      expect(
+        JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
+      ).toEqual(OUTPUT);
+    });
+  });
+
+  it("downloads a batch's page outputs when it has no schema, and has no CSV to export", async () => {
+    const saved = catchDownloads();
+    outputsApi();
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+
+    await waitFor(() => {
+      expect(saved.map(({ name }) => name)).toEqual([`job-${JOB_ID}.json`]);
+    });
+    expect(JSON.parse(await (saved[0]?.text ?? Promise.resolve("")))).toEqual([OUTPUT]);
   });
 
   it("updates an open drawer when the table reads its page again", async () => {

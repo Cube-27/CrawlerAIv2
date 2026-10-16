@@ -1,6 +1,7 @@
 """Every role's output schema stays inside every provider's structured-output subset (SPEC-06 §4.1, §4.2), for any
 fields a schema can ask for: a provider refuses a schema outside it with a 400, and the role then extracts nothing."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,9 @@ def test_a_role_c_detail_reply_holds_one_claim_per_field_asked_in_every_subset(f
 
     assert (_arrays(schema), sorted(claims["properties"]), claims["required"]) == (0, sorted(fields), sorted(fields))
     assert claims["additionalProperties"] is False
+    # One claim form, referenced by every field: a provider compiles the schema into a grammar whose size it caps, and
+    # the claim written out under each field outgrew it from 18 fields on Anthropic (D-1008).
+    assert json.dumps(schema).count('"start"') == 2
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
@@ -51,6 +55,7 @@ def test_a_role_c_listing_row_holds_one_claim_per_row_field_in_every_subset(rows
     row = schema["properties"]["rows"]["items"]
 
     assert (_arrays(schema), sorted(row["properties"]), row["additionalProperties"]) == (1, sorted(rows), False)
+    assert json.dumps(schema).count('"start"') == 2
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
@@ -58,6 +63,8 @@ def test_a_role_c_listing_row_holds_one_claim_per_row_field_in_every_subset(rows
 def test_role_a(page: list[str], row: bool, rows: list[str]) -> None:
     schema = synthesis.output_schema(page, row, rows)
 
+    # The step form appears once per list, whatever the number of fields: a provider caps its compiled grammar.
+    assert _arrays(schema) == 3 * bool(page) + row + 3 * bool(rows)
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 

@@ -183,26 +183,43 @@ export async function listJobValues(
   return { kind: "done", value: page };
 }
 
-/** Every page of the job's `json_values` items, at the largest page size, read in turn by cursor. */
-export async function exportJobValues(
-  client: ApiClient,
-  id: string,
-  withMetadata: boolean,
-): Promise<ApiResult<JsonValuesItem[]>> {
-  const items: JsonValuesItem[] = [];
+/** Every item of the pages `read` gives, at the largest page size, read in turn by cursor. */
+async function allItems<T>(
+  read: (cursor: string | null) => Promise<ApiResult<{ items: T[]; next_cursor: string | null }>>,
+): Promise<ApiResult<T[]>> {
+  const items: T[] = [];
   let cursor: string | null = null;
   do {
     // Sequential: each page's cursor comes from the page before it (SPEC-07 §4.6).
-    const page: ApiResult<JsonValuesPage> = await listJobValues(client, id, {
-      cursor,
-      limit: EXPORT_LIMIT,
-      withMetadata,
-    });
+    const page = await read(cursor);
     if (page.kind === "failed") return page;
     items.push(...page.value.items);
     cursor = page.value.next_cursor;
   } while (cursor !== null);
   return { kind: "done", value: items };
+}
+
+/** Every page of the job's `json_values` items. */
+export function exportJobValues(
+  client: ApiClient,
+  id: string,
+  withMetadata: boolean,
+): Promise<ApiResult<JsonValuesItem[]>> {
+  return allItems((cursor) =>
+    listJobValues(client, id, { cursor, limit: EXPORT_LIMIT, withMetadata }),
+  );
+}
+
+/** Every page output of a job without a schema (`format=json`, SPEC-10 §4.2): what its JSON export saves, as its
+ * drawers show them. */
+export function exportJobOutputs(client: ApiClient, id: string): Promise<ApiResult<PageOutput[]>> {
+  return allItems(async (cursor) => {
+    const page = await listJobResults(client, id, { cursor, limit: EXPORT_LIMIT });
+    if (page.kind === "failed") return page;
+    const { kind, page: results } = page.value;
+    const items = kind === "pages" ? results.items : [];
+    return { kind: "done", value: { items, next_cursor: results.next_cursor } };
+  });
 }
 
 /** One page of the job's records exported as `format`, at the largest page size. */

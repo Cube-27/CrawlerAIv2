@@ -161,16 +161,25 @@ class _Proposal:
 def _parse(data: Mapping[str, JsonValue], ask: _Ask, one_step: Collection[str]) -> _Proposal:
     """The reply's steps per target; `one_step` names the targets that take one step (a listing's `next`)."""
     proposal = _Proposal({}, {}, {})
-    page = cast(dict[str, JsonValue], data.get("fields", {}))  # the client checked the reply against the schema
-    listing = cast(dict[str, JsonValue], data.get("listing", {}))
-    row_fields = cast(dict[str, JsonValue], listing.get("fields", {}))
+    listing = cast(dict[str, JsonValue], data.get("listing", {}))  # the client checked the reply against the schema
+    page = _named_steps(data.get("fields", []))
+    row_fields = _named_steps(listing.get("fields", []))
     for name in ask.page:
-        _add(proposal, name, cast(dict[str, JsonValue], page[name])["steps"], one=name in one_step)
+        _add(proposal, name, page.get(name, []), one=name in one_step)
     for name in ask.rows:
-        _add(proposal, name, cast(dict[str, JsonValue], row_fields[name])["steps"])
+        _add(proposal, name, row_fields.get(name, []))
     if ask.row:
         _add(proposal, ROW, [listing["row"]])
     return proposal
+
+
+def _named_steps(entries: JsonValue) -> dict[str, list[JsonValue]]:
+    """Each field's steps from the reply's list of `{field, steps}` entries, in order; a field named twice gets the
+    steps of both entries, and one not named gets none (`no_steps`)."""
+    steps: dict[str, list[JsonValue]] = {}
+    for entry in cast(list[dict[str, JsonValue]], entries):
+        steps.setdefault(cast(str, entry["field"]), []).extend(cast(list[JsonValue], entry["steps"]))
+    return steps
 
 
 def _add(proposal: _Proposal, target: str, written: JsonValue, *, one: bool = False) -> None:
@@ -516,19 +525,27 @@ def _previous(failures: Mapping[str, _Failure]) -> str:
 
 def output_schema(page: Sequence[str], row: bool, rows: Sequence[str]) -> dict[str, JsonValue]:
     """Steps in the wire form (`step_wire`) for the asked page fields, the listing's row selector and its row
-    fields; no place for a value."""
+    fields; no place for a value. Fields are a list of `{field, steps}` entries, `field` one of the asked names, so
+    the step form appears once however many fields are asked: a provider compiles the schema into a grammar whose
+    size it caps, and a closed object with the step form under every field outgrew it (D-1008)."""
     properties: dict[str, JsonValue] = {}
     if page:
-        properties["fields"] = closed_object({name: _steps_schema() for name in page})
+        properties["fields"] = _entries_schema(page)
     listing: dict[str, JsonValue] = {}
     if row:
         listing["row"] = step_wire.STEP_SCHEMA
     if rows:
-        listing["fields"] = closed_object({name: _steps_schema() for name in rows})
+        listing["fields"] = _entries_schema(rows)
     if listing:
         properties["listing"] = closed_object(listing)
     return closed_object(properties)
 
 
-def _steps_schema() -> dict[str, JsonValue]:
-    return closed_object({"steps": {"type": "array", "items": step_wire.STEP_SCHEMA}})
+def _entries_schema(names: Sequence[str]) -> dict[str, JsonValue]:
+    entry = closed_object(
+        {
+            "field": {"type": "string", "enum": list[JsonValue](names)},
+            "steps": {"type": "array", "items": step_wire.STEP_SCHEMA},
+        }
+    )
+    return {"type": "array", "items": entry}

@@ -54,6 +54,11 @@ PREFILL_PROMPT_KIND: Final[PromptKind] = "c_prefill"
 # and bounds the reply by the fields asked (F29): Anthropic's subset has no `maxItems` to cap a list of claims, and
 # neither subset has `maxLength`, so a value's length is bounded only by the call's token cap.
 _ABSENT: Final = ""
+# The claim form is written once, in `$defs` (JSON Schema 2020-12 §8.2.4), and every field refers to it: a provider
+# compiles the schema into a grammar whose size it caps, and the form written out under each field outgrew Anthropic's
+# from 18 fields on (D-1008).
+_CLAIM: Final = closed_object({"value": {"type": "string"}, "start": {"type": "integer"}, "end": {"type": "integer"}})
+_CLAIM_REF: Final[dict[str, JsonValue]] = {"$ref": "#/$defs/claim"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +82,7 @@ class FilledListing(Filled):
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
     """`{fields: {<field>: {value, start, end}}}`: a claim per requested field, empty when the page does not show it
     (§4.4)."""
-    return closed_object({"fields": _claims(fields)})
+    return _with_claim(closed_object({"fields": _claims(fields)}))
 
 
 def listing_output_schema(row_fields: Sequence[str], page_fields: Sequence[str]) -> dict[str, JsonValue]:
@@ -86,7 +91,7 @@ def listing_output_schema(row_fields: Sequence[str], page_fields: Sequence[str])
     properties: dict[str, JsonValue] = {"rows": {"type": "array", "items": _claims(row_fields)}}
     if page_fields:
         properties["page"] = _claims(page_fields)
-    return closed_object(properties)
+    return _with_claim(closed_object(properties))
 
 
 def row_entity(position: int) -> Entity:
@@ -213,8 +218,11 @@ def _read_listing(
 
 
 def _claims(fields: Sequence[str]) -> dict[str, JsonValue]:
-    claim = closed_object({"value": {"type": "string"}, "start": {"type": "integer"}, "end": {"type": "integer"}})
-    return closed_object(dict.fromkeys(sorted(fields), claim))
+    return closed_object(dict.fromkeys(sorted(fields), _CLAIM_REF))
+
+
+def _with_claim(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    return {**schema, "$defs": {"claim": _CLAIM}}
 
 
 def _failed(failure: LLMFailure) -> str:

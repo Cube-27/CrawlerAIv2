@@ -122,7 +122,10 @@ A row-mapped field (SPEC-13 §4.9) is neither induced nor synthesized: the valid
   `id`, `class`, `data-*`, `itemprop`, `href`, `src`, `content`, `name`, `property`, truncated to
   `CRAWLERAI_LLM_A_MAX_CHARS` (120k) per page around the published values' locations; the published values and
   their `text:` offsets; for `jsonpath` targets, the keys of JSON state blocks (not values).
-- Output schema: `{fields: {<name>: {steps: [Step]}}}` — selectors only, never values (§11). Each step is written
+- Output schema: `{fields: [{field: <name>, steps: [Step]}]}` — selectors only, never values (§11). Fields are a
+  list of entries naming one of the asked fields, so the step form appears once in the schema however many fields
+  are asked: a provider caps the grammar it compiles from the schema, and a closed object with the step form under
+  each field was refused on a preset (D-1008). A field without an entry has no steps (`no_steps`). Each step is written
   in a wire form (`config_ir.step_wire`: `{selector, expression, when_type, source, post: [{op, pattern, repl}]}`,
   `""` for an absent parameter), which keeps the schema inside every provider's structured-output subset
   (SPEC-06 §4.2), and is read back into an IR `Step`.

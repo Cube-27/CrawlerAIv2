@@ -1,14 +1,15 @@
 import { Drawer, Typography } from "@heroui/react";
-import type { JsonValuesItem } from "../../../api/jobs";
 import { JsonView } from "../../../components/JsonView";
 
-/** One page's `json_values` item (SPEC-14 §4.3) in a drawer from the right, over the results table. `position` is the
- * page's place in the job (from 1), which names its file; `onClose` closes the drawer. */
+/** One page's JSON in a drawer from the right, over the results table: its `json_values` item (SPEC-14 §4.3), or its
+ * page output for a job without a schema (SPEC-10 §4.2). `position` is the page's place in the job (from 1), which
+ * names its file; `onClose` closes the drawer. */
 export function ItemDrawer({
-  item,
+  url,
+  value,
   position,
   onClose,
-}: Readonly<{ item: JsonValuesItem; position: number; onClose: () => void }>) {
+}: Readonly<{ url: string; value: unknown; position: number; onClose: () => void }>) {
   return (
     <Drawer
       isOpen
@@ -23,11 +24,15 @@ export function ItemDrawer({
             <Drawer.Header>
               <Drawer.Heading>Page {position}</Drawer.Heading>
               <Typography.Paragraph size="sm" color="muted" className="truncate">
-                {item.url}
+                {url}
               </Typography.Paragraph>
             </Drawer.Header>
             <Drawer.Body>
-              <JsonView label="Page JSON" value={item} filename={`page-${String(position)}.json`} />
+              <JsonView
+                label="Page JSON"
+                value={value}
+                filename={`page-${String(position)}.json`}
+              />
             </Drawer.Body>
           </Drawer.Dialog>
         </Drawer.Content>

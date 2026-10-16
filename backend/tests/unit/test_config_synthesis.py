@@ -3,6 +3,7 @@ every sample page; failing fields are repaired with diagnostics at most 3 times;
 The client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir import step_wire
+from crawlerai.config_ir import step_wire, synthesis
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, XPathStep
 from crawlerai.config_ir.synthesis import ROW, Synthesis, synthesize
@@ -85,12 +86,16 @@ def _wire(step: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _steps(steps: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"steps": [_wire(step) for step in steps]}
+def _steps(name: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"field": name, "steps": [_wire(step) for step in steps]}
+
+
+def _entries(steps: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    return [_steps(name, s) for name, s in steps.items()]
 
 
 def _fields(**steps: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"fields": {name: _steps(s) for name, s in steps.items()}}
+    return {"fields": _entries(steps)}
 
 
 def _run(
@@ -131,9 +136,31 @@ def test_the_output_schema_has_steps_for_the_asked_fields_and_no_place_for_a_val
     _run(client)
     validator = Draft202012Validator(client.requests[0].output_schema)
     assert validator.is_valid(_fields(title=[TITLE]))
-    assert not validator.is_valid({"fields": {"title": {**_steps([TITLE]), "value": "Item 1"}}})
-    assert not validator.is_valid({"fields": {"title": {"steps": [{**_wire(TITLE), "value": "Item 1"}]}}})
+    assert not validator.is_valid({"fields": [{**_steps("title", [TITLE]), "value": "Item 1"}]})
+    assert not validator.is_valid({"fields": [{"field": "title", "steps": [{**_wire(TITLE), "value": "Item 1"}]}]})
     assert not validator.is_valid(_fields(title=[TITLE], other=[TITLE]))
+
+
+def test_the_output_schema_holds_one_step_form_whatever_the_number_of_fields() -> None:
+    # A provider compiles the output schema into a grammar of bounded size (SPEC-06 §4.2): a schema that repeated the
+    # step form per field outgrew it on a preset with many fields (D-1008), so the fields are named in one list.
+    few = synthesis.output_schema(["title"], False, [])
+    many = synthesis.output_schema([f"field_{n}" for n in range(60)], False, [])
+    # `post` is named twice in the one step form: as a property and as required.
+    assert json.dumps(many).count('"post"') == json.dumps(few).count('"post"') == 2
+
+
+def test_a_field_named_twice_gets_the_steps_of_both_entries_and_one_not_named_none() -> None:
+    schema = _schema(title=TEXT, sku=FieldSpec(type=FieldType.TEXT, description="Code"))
+    sample = [
+        SamplePage(s.page, CTX, {**s.published, "sku": Published(f"S-{n}", "text:0-3")})
+        for n, s in enumerate(SAMPLE, 1)
+    ]
+    reply: dict[str, Any] = {"fields": [_steps("title", []), _steps("title", [TITLE])]}
+    client = ScriptedClient(reply, *[{"fields": []}] * 3)
+    result = _run(client, ("sku", "title"), sample=sample, schema=schema)
+    assert result.ir.fields["title"].steps == [XPathStep(xpath=TITLE["xpath"])]
+    assert result.unresolved == {"sku": ("no_steps",)}
 
 
 # --- verification and repair ---
@@ -179,7 +206,7 @@ def test_a_repair_asks_only_for_the_fields_that_failed() -> None:
     client = ScriptedClient(_fields(title=[TITLE], sku=[WRONG]), _fields(sku=[sku]))
     result = _run(client, ("sku", "title"), sample=sample, schema=schema)
     repair: Any = client.requests[1].output_schema
-    assert list(repair["properties"]["fields"]["properties"]) == ["sku"]
+    assert repair["properties"]["fields"]["items"]["properties"]["field"]["enum"] == ["sku"]
     assert sorted(result.ir.fields) == ["sku", "title"]
 
 
@@ -272,7 +299,7 @@ LISTING_SAMPLE = [_listing_page(n) for n in range(1, 6)]
 
 
 def _listing_reply(row: dict[str, Any] | None = None, **fields: list[dict[str, Any]]) -> dict[str, Any]:
-    listing: dict[str, Any] = {"fields": {name: _steps(steps) for name, steps in fields.items()}}
+    listing: dict[str, Any] = {"fields": _entries(fields)}
     if row is not None:
         listing["row"] = _wire(row)
     return listing
