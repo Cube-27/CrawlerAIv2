@@ -62,6 +62,7 @@ candidates (Appendix A #37, #46).
 | — | [Fixes from the 40-page site test](2026-10-17-site-test-40-fixes/proposal.md) ([tasks](2026-10-17-site-test-40-fixes/tasks.md), [decisions](2026-10-17-site-test-40-fixes/design.md)) | §8.6, §9 | 04, 05 | L1 | tasks 1.1–4.1 (#240) |
 | — | [Listing browser actions](2026-10-17-listing-browser-actions/proposal.md) ([tasks](2026-10-17-listing-browser-actions/tasks.md), [decisions](2026-10-17-listing-browser-actions/design.md)) | §7.1, §8.6, §22, Appendix A #52 | 02, 05, 07, 14 | L1 (acquisition) | tasks 1.1–6.1 (#241) |
 | — | [Listing render on no rows](2026-10-17-listing-render-once/proposal.md) ([tasks](2026-10-17-listing-render-once/tasks.md), [decisions](2026-10-17-listing-render-once/design.md)) | §7.1, §8.6, Appendix A #49, #54 | 02, 05 | L1 (acquisition) | tasks 1.1–3.1 (#242) |
+| — | [Structural ownership of array rows](2026-10-17-array-row-ownership/proposal.md) ([tasks](2026-10-17-array-row-ownership/tasks.md), [decisions](2026-10-17-array-row-ownership/design.md)) | §8.1, §8.2 rule 3, Appendix A #34, #55 | 05 | L1 | tasks 1.1–3.1 (#243) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.

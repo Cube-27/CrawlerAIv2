@@ -27,7 +27,7 @@ another product); state has no keys to read, so its rows are told apart by struc
 
 ## Impact
 
-- Capabilities: [extraction](../../specs/extraction/spec.md) ("Embedded JSON state and XHR admission"),
-  [resolution](../../specs/resolution/spec.md) ("Validity, intent and ownership").
+- Capabilities: [extraction](../../../specs/extraction/spec.md) ("Embedded JSON state and XHR admission"),
+  [resolution](../../../specs/resolution/spec.md) ("Validity, intent and ownership").
 - Design: Appendix A #34, #55; D-0419, D-0780, D-1250–D-1255.
 - Files: `backend/src/crawlerai/collect/{admission,base,run}.py`, `resolve/{ownership,intent,pipeline}.py`.

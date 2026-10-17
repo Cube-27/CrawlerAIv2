@@ -7,8 +7,8 @@ commit and delete the lines their PR closes; a follow-up that grows into work be
 
 ## Current focus
 
-- Data accuracy: SPEC-13 and SPEC-15 (Shopify adapter: collections; on by default with every adapter) are complete. Next: option (b),
-  structural ownership of array rows, for checkable types inside related-item arrays.
+- Data accuracy: SPEC-13, SPEC-15 and structural ownership of state array rows (#243) are complete. Next: identity
+  merge across collectors in `EntityGraph` (D-0942), then a standalone variant Product beside its ProductGroup (D-0966).
 - Data sources, later (owner #53): discover the network/API calls a page makes for its data and read the data from
   them, generically, as a learned layer (the way listing pagination was probed before #52). Not started; needs a probe
   and the owner's admission like #52.
@@ -78,6 +78,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
 - Collect: identifier widening (D-0965) also applies to a field mapped to `T.identifier` itself, pooling every scheme; stop at `identifier` or keep sub-properties of the field's `scheme` [#209].
 - Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows, nor its colour, gender or material; one eval page and one site-test page show it, see SPEC-13 §9 (D-0966) [#209].
+- Array rows (#243): a related item alone in an array (one object) stays in its holder's scope and its visible state
+  value is still the page's; a state variant row naming the page only with a variant query, or no URL, is `not_owned`
+  (D-1250, D-1253). `dom` label-value pairs inside repeated page structures (a comparison table) stay page values (D-1255).
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 - Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
