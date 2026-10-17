@@ -1295,6 +1295,8 @@ export interface components {
         };
         /** FetchOptions */
         FetchOptions: {
+            /** Max Rows */
+            max_rows?: number | null;
             /**
              * Method Hint
              * @default auto

@@ -1,0 +1,29 @@
+{
+  "uuid": "00000000-0000-4000-8000-0000000000b1",
+  "name": " Synthetic Engineer ",
+  "description": {
+    "company": "<p>About Example Co.</p>",
+    "role": "<p>Build things.</p>"
+  },
+  "workLocations": [
+    "Northtown",
+    "Eastport"
+  ],
+  "employmentType": {
+    "label": "SALARIED_FT",
+    "id": "Salaried, full-time"
+  },
+  "createdOn": "2026-09-30T16:36:07.947000-07:00",
+  "url": "https://ats.example.test/example-board/jobs/00000000-0000-4000-8000-0000000000b1",
+  "companyName": "Example Co",
+  "payRangeDetails": [
+    {
+      "location": "ZZ",
+      "currency": "USD",
+      "frequency": "YEAR",
+      "rangeStart": 100000.0,
+      "rangeEnd": 150000.0,
+      "isRemote": false
+    }
+  ]
+}

@@ -33,6 +33,15 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
+- ATS adapters (#248): the range normalizer does not read an Ashby interval written as "1 YEAR" (structured `unitText` is
+  exact `YEAR`, `MONTH`, ...) and the date normalizer does not read Recruitee's `2026-10-15 09:31:36 UTC`, so those two
+  fields stay unpublished on those platforms until the normalizers read the text (the adapters map them as stated, D-1305).
+- ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
+  is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
+  HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
+  render: measure how often. Descriptions are the main section only (D-1308). `fetch.max_rows` is not in the playground.
+- ATS adapters, later: UKG, ADP, BambooHR, Personio, Teamtailor and Workable's per-job endpoint publish public JSON the same
+  way; each is admitted on measurement of at least 3 tenants (C6), Personio's feed needs an XML reader.
 - Listing browser actions (#241): a load-more or scroll listing whose rows come from a JSON-LD ItemList keeps the
   first batch only (the script is not updated as items load); rows of the grown DOM need role C or a config. Not
   validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment

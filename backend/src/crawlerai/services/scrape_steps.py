@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal, Self, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
 from sqlalchemy import Row, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -157,6 +157,7 @@ class FetchOptions(Input):
     respect_robots: bool = True
     robots_override_reason: str | None = None
     proxy_pool: str | None = None
+    max_rows: PositiveInt | None = None  # `FetchPolicy.max_rows`
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> Self:
@@ -243,6 +244,7 @@ def fetch_policy(
         respect_robots=options.respect_robots,
         robots_override_reason=options.robots_override_reason,
         locale_hint=locale,
+        max_rows=options.max_rows,
     )
 
 

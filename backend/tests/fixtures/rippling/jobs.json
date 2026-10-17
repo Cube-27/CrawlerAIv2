@@ -1,0 +1,28 @@
+[
+  {
+    "uuid": "00000000-0000-4000-8000-0000000000b1",
+    "name": " Synthetic Engineer ",
+    "department": {
+      "id": "Eng",
+      "label": "Eng"
+    },
+    "url": "https://ats.example.test/example-board/jobs/00000000-0000-4000-8000-0000000000b1",
+    "workLocation": {
+      "label": "Northtown",
+      "id": "Northtown"
+    }
+  },
+  {
+    "uuid": "00000000-0000-4000-8000-0000000000b2",
+    "name": "Placeholder Analyst",
+    "department": {
+      "id": "Eng",
+      "label": "Eng"
+    },
+    "url": "https://ats.example.test/example-board/jobs/00000000-0000-4000-8000-0000000000b2",
+    "workLocation": {
+      "label": "Remote (Exampleland)",
+      "id": "Remote (Exampleland)"
+    }
+  }
+]

@@ -9,6 +9,8 @@ verified against live answers of several tenants, unauthenticated:
 - `GET /hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?finder=ById;siteNumber={site},Id="{id}"`
   answers one requisition: `{"items": [{"Id", "Title", "ExternalDescriptionStr", "ExternalPostedStartDate",
   "JobSchedule", "PrimaryLocation", "secondaryLocations", "LegalEmployer", ...}]}`.
+The list pages by `limit` and `offset`; its first item states `TotalJobsCount` (the outer `hasMore` is always false), so
+the pages follow until the offset reaches it.
 
 A career site is `https://{pod}.fa[.{data center}].oraclecloud.com/hcmUI/CandidateExperience/{language}/sites/{site}`,
 its list that URL or `.../requisitions` or `.../jobs`, a job page `.../job/{id}` or `.../preview/{id}`, under the
@@ -18,6 +20,7 @@ a requisition's page is `/job/{Id}`.
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 from urllib.parse import quote, urlsplit
@@ -28,11 +31,13 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, NOT_SERVED, AdapterMatch, Shape
+from crawlerai.adapters.paging import fetch_pages
+from crawlerai.storage.capture_bundle import HeaderList
 
 DOMAIN: Final = "oraclecloud.com"
 RESOURCES: Final = "/hcmRestApi/resources/latest"
-# The size of the first page the career site's own list asks for.
-PAGE_SIZE: Final = 25
+# The size of a page of the list: the resource answers 100 requisitions, more than the career site's own 25.
+PAGE_SIZE: Final = 100
 
 # A Fusion pod's host: `{pod}.fa.oraclecloud.com` or `{pod}.fa.{data center}.oraclecloud.com`, labels per RFC 1123 §2.1
 # as `urlsplit` gives them (lowercase).
@@ -109,17 +114,23 @@ class OracleRecruiting:
         page = _page(url)
         if page is None:
             raise ValueError("not a career site URL this adapter detects")
-        base = f"https://{page.host}{RESOURCES}"
-        if page.match.item is None:
-            query = f"{_finder('findReqs', page.site)},limit={PAGE_SIZE},offset=0"
-            # The search's `requisitionList` is a child collection, in the answer only when expanded.
-            endpoint = f"{base}/recruitingCEJobRequisitions?{query}&expand=requisitionList"
-        else:
-            item = quote(json.dumps(page.match.item))  # the finder's string argument, double-quoted
-            endpoint = f"{base}/recruitingCEJobRequisitionDetails?{_finder('ById', page.site)},Id={item}&expand=all"
         # RFC 9110 §12.5.4: the answer in the language of the page.
-        request = JsonRequest(url=endpoint, page_url=url, headers=(("Accept-Language", page.language),))
-        return _verdict(await send(request, policy))
+        headers = (("Accept-Language", page.language),)
+        if page.match.item is None:
+            return _verdict(
+                await fetch_pages(
+                    _list_request(page, url, headers, 0),
+                    policy,
+                    send,
+                    next_page=lambda answers: _next_page(page, url, headers, answers),
+                    merge=_merge,
+                    rows=_rows,
+                )
+            )
+        base = f"https://{page.host}{RESOURCES}"
+        item = quote(json.dumps(page.match.item))  # the finder's string argument, double-quoted
+        endpoint = f"{base}/recruitingCEJobRequisitionDetails?{_finder('ById', page.site)},Id={item}&expand=all"
+        return _verdict(await send(JsonRequest(url=endpoint, page_url=url, headers=headers), policy))
 
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         prefix = {"url": f"{match.tenant}/job/"}
@@ -127,6 +138,43 @@ class OracleRecruiting:
             return (replace(_REQUISITION, prefixes=prefix),)
         listed = replace(_LISTED, prefixes=prefix)
         return (Shape(type="ItemList", nodes={"itemListElement": (listed,)}),)
+
+
+def _list_request(page: _Page, url: str, headers: HeaderList, offset: int) -> JsonRequest:
+    query = f"{_finder('findReqs', page.site)},limit={PAGE_SIZE},offset={offset}"
+    # The search's `requisitionList` is a child collection, in the answer only when expanded.
+    endpoint = f"https://{page.host}{RESOURCES}/recruitingCEJobRequisitions?{query}&expand=requisitionList"
+    return JsonRequest(url=endpoint, page_url=url, headers=headers)
+
+
+def _search(answer: JsonValue) -> dict[str, JsonValue]:
+    items = answer.get("items") if isinstance(answer, dict) else None
+    first = items[0] if isinstance(items, list) and items else None
+    return first if isinstance(first, dict) else {}
+
+
+def _requisitions(answer: JsonValue) -> list[JsonValue]:
+    listed = _search(answer).get("requisitionList")
+    return listed if isinstance(listed, list) else []
+
+
+def _rows(answer: JsonValue) -> int:
+    return len(_requisitions(answer))
+
+
+def _next_page(page: _Page, url: str, headers: HeaderList, answers: Sequence[JsonValue]) -> JsonRequest | None:
+    """The page after `answers`, until the offset reaches the `TotalJobsCount` of the first item of the first page."""
+    offset = sum(_rows(answer) for answer in answers)
+    total = _search(answers[0]).get("TotalJobsCount")
+    if _rows(answers[-1]) == 0 or not isinstance(total, int) or offset >= total:
+        return None
+    return _list_request(page, url, headers, offset)
+
+
+def _merge(answers: Sequence[JsonValue]) -> JsonValue:
+    first = answers[0]
+    search = {**_search(first), "requisitionList": [r for a in answers for r in _requisitions(a)]}
+    return {**(first if isinstance(first, dict) else {}), "items": [search]}
 
 
 def _finder(name: str, site: str) -> str:

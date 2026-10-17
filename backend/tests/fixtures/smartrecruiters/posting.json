@@ -1,0 +1,41 @@
+{
+  "id": "1001",
+  "name": "Synthetic Platform Engineer",
+  "refNumber": "REF1001",
+  "releasedDate": "2026-09-30T10:00:00.000Z",
+  "company": {
+    "identifier": "ExampleCo",
+    "name": "Example Co"
+  },
+  "location": {
+    "city": "Northtown",
+    "country": "zz",
+    "fullLocation": "Northtown, Exampleland"
+  },
+  "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+  },
+  "postingUrl": "https://jobs.example.test/ExampleCo/1001-synthetic-platform-engineer",
+  "applyUrl": "https://jobs.example.test/ExampleCo/1001/apply",
+  "jobAd": {
+    "sections": {
+      "companyDescription": {
+        "title": "Company",
+        "text": "<p>About Example Co.</p>"
+      },
+      "jobDescription": {
+        "title": "Job",
+        "text": "<p>Build example platforms.</p>"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": "<p>Three years.</p>"
+      },
+      "additionalInformation": {
+        "title": "More",
+        "text": "<p>Extra.</p>"
+      }
+    }
+  }
+}

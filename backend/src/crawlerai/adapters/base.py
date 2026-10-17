@@ -10,7 +10,7 @@ appear only in this package (C3). Nothing here interprets values: the adapter co
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Final, Protocol
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import JsonValue
 
@@ -62,6 +62,15 @@ class AdapterMatch:
     item: str | None = None
 
 
+@dataclass(frozen=True)
+class PageRefs:
+    """What an HTML page states about itself and links to: `own`, the URLs that name the page itself, strongest first
+    (its final URL, canonical link, `og:url`), and `links`, the absolute targets of its links."""
+
+    own: tuple[str, ...]
+    links: tuple[str, ...]
+
+
 class Adapter(Protocol):
     @property
     def name(self) -> str: ...
@@ -82,4 +91,15 @@ class Adapter(Protocol):
 
     def shapes(self, match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
         """The root nodes of `answer`, the API's JSON for the page this adapter detected as `match`."""
+        ...
+
+
+@runtime_checkable
+class Referring(Protocol):
+    """An adapter whose platform serves sites on tenants' own hosts, which tell their platform page only by what the
+    site's own page states (SPEC-15 §4.2)."""
+
+    def referred(self, refs: PageRefs, kind: PageKind | None, /) -> str | None:
+        """The platform page URL (one `detect` accepts) that the page with `refs` stands for, as the page kind `kind`
+        (None: any); None when its references do not say, or say several."""
         ...

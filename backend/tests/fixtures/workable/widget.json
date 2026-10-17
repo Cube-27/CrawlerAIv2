@@ -1,0 +1,48 @@
+{
+  "name": "Example Co",
+  "jobs": [
+    {
+      "title": "Synthetic Engineer",
+      "shortcode": "AAA111",
+      "employment_type": "Full-time",
+      "telecommuting": false,
+      "published_on": "2026-09-30",
+      "url": "https://jobs.example.test/j/AAA111",
+      "description": "<p>Synthetic Engineer duties.</p>",
+      "locations": [
+        {
+          "country": "Exampleland",
+          "countryCode": "ZZ",
+          "city": "Northtown",
+          "region": "North Region",
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "title": "Placeholder Analyst",
+      "shortcode": "BBB222",
+      "employment_type": "Full-time",
+      "telecommuting": false,
+      "published_on": "2026-09-30",
+      "url": "https://jobs.example.test/j/BBB222",
+      "description": "<p>Placeholder Analyst duties.</p>",
+      "locations": [
+        {
+          "country": "Exampleland",
+          "countryCode": "ZZ",
+          "city": "Eastport",
+          "region": "East Region",
+          "hidden": false
+        },
+        {
+          "country": "Otherland",
+          "countryCode": "YY",
+          "city": "Westham",
+          "region": "",
+          "hidden": false
+        }
+      ]
+    }
+  ]
+}
