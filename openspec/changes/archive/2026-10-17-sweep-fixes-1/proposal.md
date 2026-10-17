@@ -19,7 +19,7 @@ cannot tell from a disallow, although the task records `robots_unreachable` (RFC
 
 ## Impact
 
-- Capabilities: [extraction](../../specs/extraction/spec.md), [rest-api](../../specs/rest-api/spec.md) (deltas in
+- Capabilities: [extraction](../../../specs/extraction/spec.md), [rest-api](../../../specs/rest-api/spec.md) (deltas in
   `specs/`).
 - Files: `backend/src/crawlerai/content/page.py`, `content/links.py`, `services/scrape.py`, `frontend/openapi.json`,
   `frontend/src/api/schema.d.ts`, `frontend/src/screens/playground/output/ScrapeOutput.tsx`, `sdk/`.
