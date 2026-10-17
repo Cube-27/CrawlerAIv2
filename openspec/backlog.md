@@ -32,9 +32,6 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
-- ATS adapters (#248): the range normalizer does not read an Ashby interval written as "1 YEAR" (structured `unitText` is
-  exact `YEAR`, `MONTH`, ...) and the date normalizer does not read Recruitee's `2026-10-15 09:31:36 UTC`, so those two
-  fields stay unpublished on those platforms until the normalizers read the text (the adapters map them as stated, D-1305).
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
@@ -68,8 +65,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Anti-bot stack (#249): challenge labels are counted only as log records; per-category counts in the eval report
   need the hidden-cell suppression review (D-1326). The adaptive rate's 20-answer run and 10% recovery are unmeasured
   (D-1327).
-- Acquisition hardening (#244): `db.queue.BACKOFF_BASE` and `acquire.politeness.BACKOFF_MIN` are both SPEC-02's first
-  backoff (30 s); the queue could import the politeness constant (D-1263).
 - ATS adapters (#226): UKG Pro (UltiPro), ADP, Rippling and Paycom are not built yet; Workday and Oracle Recruiting serve each list's first page only (20 and 25 rows), and Workday sites on a tenant's own domain are not detected.
 - Playground (#257): at phone width a toolbar select's error line, in a `w-64` column, can sit over the tool wrapped under it (Format's over Schema); a reserved line would move the layout whenever none shows, so measure on a phone before changing it (D-1397).
 - Fetch trail (#257): a task robots.txt kept from its page has no capture, so its drawer has no attempts and `last_error` (`robots`) is shown nowhere; the `network` evidence label was checked in component tests only, since no public page of the live check published a value of a captured call.
@@ -93,28 +88,19 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 - Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
 - Precedence: `dom` ranks above `config` for text, long_text, url and image_url, so a config or operator field cannot override a DOM label value; re-check when `fit-precedence` first runs on dev (D-0956) [#208].
-- Normalize: money still reads its amount with its own copy of the surrogate/NFKC/one-run steps that `numbers.stated` now holds for count and number; move it there, mapping its reason codes (D-0960) [#208].
-- Config IR: `SchemaRef` names the schema only, so an operator can still activate a draft learned before a schema edit; a document digest in the IR would refuse it (D-0950) [#210].
-- Normalize: `iso_3166_alpha2` keeps CLDR's EU, EZ and UN, which ISO 3166-1 reserves exceptionally rather than assigning to countries; exclude the exceptionally reserved codes [#210].
+- Schemas: role S's drafted schemas are stored without the vocabulary check (their paths come from the LLM, so a reply
+  check against the pinned file would let the LLM correct a wrong path); the engine executor does not compare a config's
+  schema digest per page (D-1374, D-1375) [#255].
 - Schemas: an edit's `relearn_schema` scans `progressive_state` by `schema_id`, which no index leads; add one if edits become frequent [#210].
-- Worker: no production path passes `llm=None` to the page handlers any more (`task_handlers`); tests still use it to bind no role C. Make `llm` required and pass `NO_LLM` in tests [#215].
 - LLM: role A and role C each fixed the provider's grammar cap their own way (D-1008); a new role with a repeated subschema should hoist it to `$defs` or use a named list, and a client-level check of schema size could catch it before a 400 [#215].
 - LLM eval: role C's and role A's `request_hash` changed with their output schemas (D-1008), so recorded dev-eval replies are re-recorded on the next run [#215].
-- LLM setup: the setup.py:1-3 docstring should say `llm_unavailable` or `llm_refused` (a missing key still raises ProviderUnavailable) [#216].
 - LLM eval: role C's `request_hash` changed with its message order (D-1021); recorded dev-eval replies are re-recorded on the next run [#217].
 - Collect: a banner whose block links to several documents (a promotion with category links) still passes the link-card rule and can be the main image (round 3: one page, its field already `conflict`); measure before widening it (D-1096) [#220].
 - LLM eval: role C's `request_hash` changed with its claim form (D-1097); recorded dev-eval replies are re-recorded on the next run. Round 3's all-empty role C page did not reproduce from its capture; re-check in round 4 [#220].
 - Collect: the main image is still the first shown image of the main region; on pages whose structured data names an image, measure whether a `dom` image that disagrees costs precision (D-1023) [#217].
 - Workflow tooling: `cleanup_worktree.sh` still removes per-worktree `crawlerai-<wt>-*` Postgres containers; drop that loop once none are left, since DB tests use `test_db.sh` (D-0971) [#212].
 - Shopify adapter: on detail pages the generic path publishes page-only fields the API does not state (rating, review count, condition); compare both paths on dev labels before turning the adapter on for detail pages (D-1088) [#219].
-- Shopify adapter: `Shopify._transient` (429, 5xx) and `llm.client.is_transient` (adds 408) are two transient-status rules; share one in `acquire/politeness` if a third appears [#221].
-- Jobs: INV-28 says a job pins its LLM settings, but `JobPins` holds only the schema, engine data and configs (D-0631 left LLM settings out when batch had no role C; batch runs role C since D-1006); pin them or amend INV-28 [#223].
-- Schemas: SPEC-04 §4.2 says `schema_org` paths and `vocab` refs are validated against the pinned schema.org file; only their syntax is checked (D-0240) [#223].
-- API: the `fetch_failed` problem type (SPEC-07 §4.3) is listed but nothing raises it, since fetch errors are outcomes; drop it from the spec or use it [#223].
 - API recipes: the paged executor (`RecipeRung.pages`) has no caller; recipe pagination comes only from an operator correction [#223].
-- Normalize: a location's `remote_flag` is `false` when the page does not state it, so "not stated" and "not remote" read alike; a tri-state (`null` when unstated) changes the value shape [#240].
 - Role C: one site-test listing whose HTTP body holds 20 item blocks gave one role C row; not reproducible without the LLM recording, re-check on the next run [#240].
 - Resolve: adapter entities (`collect/adapter.py`) carry no identity, so an adapter item and the page's JSON-LD
   statement of it stay two entities (D-1290) [#247].
-- Specs: `specs/resolution/spec.md` is 119 lines, past the ~100-line guide; split identity and intent from
-  preference into their own capability [#247].

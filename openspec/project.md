@@ -42,7 +42,8 @@ Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/arch
 | [schemas](specs/schemas/spec.md) | Field types, schema documents, presets, custom schemas, prompt and field-name drafts, page kind |
 | [normalization](specs/normalization/spec.md) | One normalizer per field type; decline rather than guess |
 | [extraction](specs/extraction/spec.md) | Parse once, collectors, locators, ownership, listings and pagination, content formats |
-| [resolution](specs/resolution/spec.md) | Validity, ownership, intent, preference, atomic offers, evidence buckets, confidence, incomplete pages |
+| [identity-and-intent](specs/identity-and-intent/spec.md) | Entity identity, target selection (intent), ownership of candidates, the entity key |
+| [resolution](specs/resolution/spec.md) | Candidate validity, preference, atomic offers, evidence buckets, confidence, incomplete pages |
 | [variants](specs/variants/spec.md) | The variant matrix: row-mapped lists, per-variant rows, common variant fields |
 | [llm](specs/llm/spec.md) | The LLM client, budgets, usage and cost, roles C, A, D and S, grounding |
 | [learning-configs](specs/learning-configs/spec.md) | Config IR, learning, validation, corroboration, progressive mode, drift, exporters, release check |
