@@ -2549,8 +2549,14 @@ export interface components {
             /** Prompt */
             prompt: string;
         };
-        /** SchemaRef */
+        /**
+         * SchemaRef
+         * @description The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema
+         *     is edited in place (D-0950), so only the digest says which document the config was learned for.
+         */
         SchemaRef: {
+            /** Digest */
+            digest: string;
             /** Name */
             name: string;
         };
