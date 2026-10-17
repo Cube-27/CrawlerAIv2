@@ -21,7 +21,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.greenhouse import BOARD_HOSTS
 from crawlerai.core.settings import AcquireSettings
-from crawlerai.services.fetching import Fetching, adapter_send
+from crawlerai.services.fetching import Fetching, adapter_send, page_host_first
 from crawlerai.storage.capture_bundle import HeaderList
 from crawlerai.storage.fs import FsStore
 
@@ -202,3 +202,30 @@ def test_an_unknown_or_repeated_adapter_name_is_refused(monkeypatch: pytest.Monk
     monkeypatch.setenv("CRAWLERAI_DISABLED_ADAPTERS", "shopify,shopify")
     with pytest.raises(ValueError, match="listed twice"):
         AcquireSettings()
+
+
+def test_a_request_on_the_page_host_goes_by_the_rules_read_for_the_page_without_reading_them_again() -> None:
+    # D-1384: the caller read the page host's robots.txt before the fetch; only another host's rules are read.
+    read: list[str] = []
+
+    async def rules(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
+        read.append(url)
+        return 1000, None
+
+    robots = Robots("User-agent: *\nDisallow: /private/\n")
+    first = page_host_first(PAGE_HOST, (250, robots), rules)
+
+    overridden = FetchPolicy(respect_robots=False, robots_override_reason="synthetic")
+
+    async def run() -> list[object]:
+        return [
+            await first(f"https://{PAGE_HOST}/api/products", FetchPolicy()),
+            await first(f"https://{PAGE_HOST}/private/x", FetchPolicy()),
+            await first(f"https://{PAGE_HOST}/private/x", overridden),
+            await first(f"https://{GREENHOUSE_BOARD}/v1/boards/x/jobs", FetchPolicy()),
+        ]
+
+    answers = asyncio.run(run())
+
+    assert answers == [(250, robots), "robots", (250, None), (1000, None)]
+    assert read == [f"https://{GREENHOUSE_BOARD}/v1/boards/x/jobs"]

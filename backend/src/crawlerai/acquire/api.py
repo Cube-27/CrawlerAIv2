@@ -135,6 +135,7 @@ async def fetch_json(
         block_class=block_class,
         error=error,
         challenge=challenge,
+        transferred=sent.transferred,
     )
     report_proxy(sent.pool, sent.proxy, result)
     if sessions is not None:

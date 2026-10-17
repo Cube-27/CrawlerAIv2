@@ -20,7 +20,7 @@ from crawlerai.collect.api import read_map
 from crawlerai.config_ir.api_recipe.binding import PageData, Sample, render_body, render_url, resolve_params
 from crawlerai.config_ir.api_recipe.model import PAGE_URL, Pagination, RequestSpec
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
-from crawlerai.db.models import PageKind
+from crawlerai.db.models import JobId, PageKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import SchemaDef
@@ -33,6 +33,8 @@ Scalar = str | int | float
 # the document states kept, none when the page was not reached or may not be fetched. Learning renders the pages whose
 # captures hold no calls to learn from.
 Render = Callable[[str, PageKind], Awaitable[Sequence[CaptureBundle]]]
+# A learning run's `Replay`, for its job (whose usage the requests count as) and the site's proxy pool (D-1381).
+Replays = Callable[[JobId, str | None], Replay]
 # Appendix A #59: a listing recipe is validated on its first two pages, the one the page loaded and the next.
 REPLAYED_PAGES: Final = 2
 

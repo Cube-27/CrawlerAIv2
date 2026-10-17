@@ -454,6 +454,27 @@ async def test_the_crawl_follows_the_start_page_s_redirect_to_another_host(
     assert stored == f"{www_origin}/"
 
 
+async def test_a_page_another_task_was_redirected_to_is_not_fetched_again_as_its_own_task(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    # D-1382: /p/old redirects to /p/new; the category page found later links /p/new, already that task's page.
+    web.redirects[f"{own_origin}/p/old"] = f"{own_origin}/p/new"
+    web.pages |= {
+        f"{own_origin}/": page("/p/old", "/c/kettles"),
+        f"{own_origin}/c/kettles": page("/p/new", "/p/2"),
+        f"{own_origin}/p/new": page(product="Blue kettle"),
+        f"{own_origin}/p/2": page(product="Red kettle"),
+    }
+    submitted = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/"), data=None)
+
+    await run(engine, fetching, None, submitted.job_id)
+
+    found = await tasks(engine, submitted.job_id)
+    assert set(found) == {f"{own_origin}/", f"{own_origin}/p/old", f"{own_origin}/c/kettles", f"{own_origin}/p/2"}
+    assert found[f"{own_origin}/p/old"].final_url == f"{own_origin}/p/new"
+    assert f"{own_origin}/p/new" not in web.fetched
+
+
 async def test_a_crawl_that_is_not_redirected_stores_its_start_url_as_where_it_is(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
@@ -702,17 +723,20 @@ async def test_enqueueing_takes_new_urls_in_scope_once_in_order(conn: AsyncConne
     ]
 
 
-async def test_a_page_already_fetched_after_a_redirect_is_never_a_task_of_its_own(
+async def test_a_url_a_task_was_fetched_at_after_a_redirect_is_never_a_task_of_its_own(
     conn: AsyncConnection, job: JobId
 ) -> None:
-    fetched = Frontier(Scope("www.shop.example.test"), (), 3, 10, fetched="https://www.shop.example.test/")
-    urls = ["https://www.shop.example.test/", "https://www.shop.example.test/c/1"]
+    # D-1382: the task of /old was redirected to /new; /new's page is that task's.
+    moved = "https://shop.example.test/old"
+    await conn.execute(
+        insert(UrlTask).values(job_id=job, url=moved, canonical_url=moved, final_url="https://shop.example.test/new")
+    )
+    urls = ["https://shop.example.test/new", "https://shop.example.test/c/1"]
 
-    added = await fetched.enqueue(conn, job, urls, depth=1, parent=None)
+    added = await frontier().enqueue(conn, job, urls, depth=1, parent=None)
 
     assert added == 1
-    assert [url for url, _, _ in await _urls(conn, job)] == ["https://shop.example.test/", urls[1]]
-    assert fetched.admits(urls[0]) is False
+    assert [url for url, _, _ in await _urls(conn, job)] == ["https://shop.example.test/", moved, urls[1]]
 
 
 async def test_the_limit_counts_every_task_of_the_job(conn: AsyncConnection, job: JobId) -> None:

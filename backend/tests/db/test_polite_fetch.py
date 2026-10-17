@@ -23,7 +23,7 @@ from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import LEASE, ClaimedTask, claim_tasks
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult, run_worker
-from crawlerai.worker.polite import fetch_politely
+from crawlerai.worker.polite import HostRules, fetch_politely
 
 pytestmark = pytest.mark.anyio
 
@@ -52,7 +52,7 @@ class Web:
     pages: dict[str, tuple[int, bytes, tuple[tuple[str, str], ...]]] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
 
-    async def __call__(self, url: str, _admit: Admit | None = None) -> FetchResult:
+    async def __call__(self, url: str, _admit: Admit | None = None, _known: HostRules | None = None) -> FetchResult:
         self.fetched.append(url)
         status, body, headers = self.pages.get(url, (404, b"no such page", ()))
         return self.fetch_result(url, status, body, headers, block_class="ok" if status < 400 else "blocked")
@@ -124,6 +124,25 @@ async def test_an_allowed_page_is_fetched_after_robots(conn: AsyncConnection, we
 
     assert isinstance(result, FetchResult)
     assert (result.bundle.manifest.url, result.bundle.body) == (f"{ORIGIN}/item/1", PAGE)
+    assert web.fetched == [f"{ORIGIN}/robots.txt", f"{ORIGIN}/item/1"]
+
+
+async def test_the_page_fetch_is_given_the_rules_read_for_its_host(conn: AsyncConnection, web: Web) -> None:
+    # D-1384: an adapter request on the page's host goes by these, without reading robots.txt again.
+    site_id = await _site(conn, crawl_delay_ms=250)
+    [task] = await _tasks(conn, "/item/1")
+    given: list[HostRules] = []
+
+    async def page(url: str, _admit: Admit, known: HostRules) -> FetchResult:
+        given.append(known)
+        return await web(url)
+
+    await fetch_politely(conn, task, site_id, FetchPolicy(), page, HostLimiter(), fetch_robots=web)
+
+    [(crawl_delay_ms, robots)] = given
+    assert crawl_delay_ms == 250
+    assert robots is not None
+    assert (robots.allows(f"{ORIGIN}/item/1"), robots.allows(f"{ORIGIN}/private/a")) == (True, False)
     assert web.fetched == [f"{ORIGIN}/robots.txt", f"{ORIGIN}/item/1"]
 
 
@@ -310,7 +329,7 @@ async def test_an_api_requests_slow_down_does_not_slow_the_pages_host(conn: Asyn
     clock = Clock()
     limiter = HostLimiter(clock)
 
-    async def after_an_endpoint(url: str, admit: Admit) -> FetchResult:
+    async def after_an_endpoint(url: str, admit: Admit, _known: HostRules) -> FetchResult:
         page = await web(url)
         endpoint = AttemptRecord(method="api", status=429, block_class="blocked", duration_ms=1)
         return page.model_copy(update={"attempts": (endpoint, *page.attempts)})
@@ -330,7 +349,7 @@ async def test_a_further_request_of_the_fetch_takes_a_turn_at_the_sites_rate(con
     clock = Clock()
     limiter = HostLimiter(clock)
 
-    async def retried(url: str, admit: Admit) -> FetchResult:
+    async def retried(url: str, admit: Admit, _known: HostRules) -> FetchResult:
         # The first request takes a second; its retry is admitted as it ends, at the next turn.
         clock.now += 1.0
         await admit()
@@ -354,7 +373,7 @@ async def test_a_slow_down_answering_a_request_whose_outcome_was_not_kept_backs_
     limiter = HostLimiter(clock)
     browser = AttemptRecord(method="browser", status=503, block_class="blocked", duration_ms=1)
 
-    async def retried(url: str, _admit: Admit) -> FetchResult:
+    async def retried(url: str, _admit: Admit, _known: HostRules) -> FetchResult:
         # The HTTP outcome is kept; the browser retry was answered 503.
         kept = await web(url)
         return kept.model_copy(update={"attempts": (*kept.attempts, browser)})
@@ -375,7 +394,7 @@ async def test_a_page_kept_ok_after_a_slow_down_to_an_earlier_request_is_the_tas
     (task,) = await _tasks(conn, "/item/1")
     endpoint = AttemptRecord(method="api", status=429, block_class="blocked", duration_ms=1)
 
-    async def fallen_back(url: str, _admit: Admit) -> FetchResult:
+    async def fallen_back(url: str, _admit: Admit, _known: HostRules) -> FetchResult:
         page = await web(url)
         return page.model_copy(update={"attempts": (endpoint, *page.attempts)})
 
@@ -397,7 +416,7 @@ async def test_a_retry_after_answering_a_request_whose_outcome_was_not_kept_is_r
     asked = timedelta(seconds=120)
     browser = AttemptRecord(method="browser", status=429, block_class="blocked", duration_ms=1, retry_after=asked)
 
-    async def retried(url: str, _admit: Admit) -> FetchResult:
+    async def retried(url: str, _admit: Admit, _known: HostRules) -> FetchResult:
         kept = await web(url)
         return kept.model_copy(update={"attempts": (*kept.attempts, browser)})
 
@@ -417,7 +436,7 @@ async def test_a_further_request_whose_turn_would_outlast_the_claim_is_not_waite
     clock = Clock()
     answers: list[bool] = []
 
-    async def retried(url: str, admit: Admit) -> FetchResult:
+    async def retried(url: str, admit: Admit, _known: HostRules) -> FetchResult:
         answers.append(await admit())
         return await web(url)
 
@@ -503,7 +522,7 @@ async def test_a_page_an_adapter_serves_first_is_fetched_with_no_fallback_robots
     [task] = await _tasks(conn, "/private/a")
     admitted: list[bool] = []
 
-    async def adapter_first(url: str, admit: Admit) -> FetchResult:
+    async def adapter_first(url: str, admit: Admit, _known: HostRules) -> FetchResult:
         admitted.append(await admit())
         return await web(url)
 

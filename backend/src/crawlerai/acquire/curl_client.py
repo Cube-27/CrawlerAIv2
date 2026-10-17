@@ -17,13 +17,19 @@ from functools import partial
 from typing import Literal, cast
 
 from curl_cffi import Curl, CurlECode, CurlOpt
-from curl_cffi.curl import CURL_WRITEFUNC_ERROR, CURLINFO_HEADER_OUT
+from curl_cffi.curl import (
+    CURL_WRITEFUNC_ERROR,
+    CURLINFO_DATA_IN,
+    CURLINFO_DATA_OUT,
+    CURLINFO_HEADER_IN,
+    CURLINFO_HEADER_OUT,
+)
 from curl_cffi.requests import AsyncSession, BrowserTypeLiteral, Response
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.cookies import FetchCookies
 from crawlerai.acquire.headers import recorded
-from crawlerai.acquire.outcome import Exchange
+from crawlerai.acquire.outcome import Exchange, Traffic
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.session import SiteSession
@@ -48,6 +54,9 @@ __all__ = [
 ]
 
 _CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYTYPE)
+# The debug callback's kinds that carry HTTP message bytes (curl_debug_callback, CURLOPT_DEBUGFUNCTION): the headers and
+# the body as transferred, proxy CONNECT exchanges included, without the TLS records or HTTP/2 framing around them.
+_MESSAGE_BYTES = frozenset({CURLINFO_HEADER_IN, CURLINFO_HEADER_OUT, CURLINFO_DATA_IN, CURLINFO_DATA_OUT})
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
     CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
@@ -110,13 +119,14 @@ Redirected = Callable[[Hop, int, Target], Hop]
 @dataclass(frozen=True)
 class Sent:
     """What a fetch's requests got: the last response (None when none arrived), the failure, if any, the pool
-    endpoint they went through and the site session they carried."""
+    endpoint they went through, the site session they carried and the bytes they moved (`Traffic`)."""
 
     last: Wire | None
     error: str | None
     pool: ProxyPool | None = None
     proxy: ProxyEndpoint | None = None
     session: SiteSession | None = None
+    transferred: int = 0
 
 
 async def send(
@@ -143,10 +153,11 @@ async def send(
     session = _usable(session, pool)
     proxy = session.proxy if session is not None else pool_endpoint(pool, url)
     limits = Limits(policy.max_body_bytes, policy.max_decompressed_bytes, started + policy.timeout_s)
+    traffic = Traffic()
     try:
         async with AsyncExitStack() as stack:
             if transport is None:
-                transport = await stack.enter_async_context(curl_transport(impersonate, proxy, limits))
+                transport = await stack.enter_async_context(curl_transport(impersonate, proxy, limits, traffic))
             last = await follow(
                 url,
                 first,
@@ -157,8 +168,8 @@ async def send(
                 session=session,
             )
     except Failed as failed:
-        return Sent(failed.last, failed.error, pool, proxy, session)
-    return Sent(last, None, pool, proxy, session)
+        return Sent(failed.last, failed.error, pool, proxy, session, traffic.bytes)
+    return Sent(last, None, pool, proxy, session, traffic.bytes)
 
 
 def _usable(session: SiteSession | None, pool: ProxyPool | None) -> SiteSession | None:
@@ -243,20 +254,26 @@ class _Session(AsyncSession[Response]):
 
 @asynccontextmanager
 async def curl_transport(
-    impersonate: BrowserTypeLiteral, proxy: ProxyEndpoint | None, limits: Limits
+    impersonate: BrowserTypeLiteral, proxy: ProxyEndpoint | None, limits: Limits, traffic: Traffic
 ) -> AsyncIterator[Transport]:
-    """A transport over one curl_cffi session for one fetch, through `proxy` when a pool carries it."""
+    """A transport over one curl_cffi session for one fetch, through `proxy` when a pool carries it, adding the bytes
+    each request moves to `traffic`."""
     # Cookies are kept by `FetchCookies`, not libcurl's engine, which this build runs without the public-suffix list
     # (RFC 6265 §5.3 step 5): the session discards what curl parsed, and each request clears curl's list before
     # sending only the cookies passed in. `trust_env=False` stops curl_cffi reading the proxy environment variables;
     # libcurl reads them itself, so each request also sets CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY:
     # proxies come only from the pools.
     async with _Session(impersonate=impersonate, trust_env=False, discard_cookies=True) as session:
-        yield partial(_request, session, proxy, limits)
+        yield partial(_request, session, proxy, limits, traffic)
 
 
 async def _request(
-    session: AsyncSession[Response], proxy: ProxyEndpoint | None, limits: Limits, target: Target, hop: Hop
+    session: AsyncSession[Response],
+    proxy: ProxyEndpoint | None,
+    limits: Limits,
+    traffic: Traffic,
+    target: Target,
+    hop: Hop,
 ) -> Wire:
     remaining = limits.deadline - time.monotonic()
     if remaining <= 0:
@@ -277,6 +294,8 @@ async def _request(
     sent: list[bytes] = []
 
     def on_debug(kind: int, data: bytes) -> None:
+        if kind in _MESSAGE_BYTES:
+            traffic.bytes += len(data)
         if kind == CURLINFO_HEADER_OUT:
             sent.append(data)
 

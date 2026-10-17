@@ -145,18 +145,32 @@ def upgrade() -> None:
         sa.Column("project_id", sa.Uuid(), nullable=False),
         sa.Column("host", sa.Text(), nullable=False),
         sa.Column("platform", sa.Text(), nullable=True),
-        sa.Column("fetch_method", sa.Text(), server_default=sa.text("'http'"), nullable=False),
         sa.Column("proxy_pool", sa.Text(), nullable=True),
         sa.Column("robots_snapshot", sa.Text(), nullable=True),
         sa.Column("crawl_delay_ms", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("fetch_method_checked_at", sa.DateTime(timezone=True), nullable=True),
-        sa.CheckConstraint("fetch_method IN ('http', 'browser')", name=op.f("ck_site_fetch_method")),
+        sa.Column(
+            "adapter_declined",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=False,
+        ),
         sa.CheckConstraint("crawl_delay_ms >= 0", name=op.f("ck_site_crawl_delay_ms_non_negative")),
         sa.CheckConstraint("host = lower(host)", name=op.f("ck_site_host_lowercase")),
         sa.ForeignKeyConstraint(["project_id"], ["project.id"], name=op.f("fk_site_project_id_project")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_site")),
         sa.UniqueConstraint("host", name=op.f("uq_site_host")),
+    )
+    op.create_table(
+        "site_fetch_method",
+        sa.Column("site_id", sa.Uuid(), nullable=False),
+        sa.Column("page_kind", sa.Text(), nullable=False),
+        sa.Column("method", sa.Text(), nullable=False),
+        sa.Column("checked_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("method IN ('http', 'browser')", name=op.f("ck_site_fetch_method_method")),
+        sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_site_fetch_method_page_kind")),
+        sa.ForeignKeyConstraint(["site_id"], ["site.id"], name=op.f("fk_site_fetch_method_site_id_site")),
+        sa.PrimaryKeyConstraint("site_id", "page_kind", name=op.f("pk_site_fetch_method")),
     )
     op.create_table(
         "capture",
@@ -386,6 +400,7 @@ def upgrade() -> None:
         sa.Column("priority", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("depth", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("parent_task_id", sa.Uuid(), nullable=True),
+        sa.Column("final_url", sa.Text(), nullable=True),
         sa.CheckConstraint(
             "outcome IN ('extracted', 'partial', 'unchanged', 'links_only', 'blocked', 'shell', 'not_found',"
             " 'no_match', 'failed')",
@@ -418,6 +433,13 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_url_task_job_id_id"), "url_task", ["job_id", "id"], unique=False)
     op.create_index(
+        op.f("ix_url_task_job_id_final_url"),
+        "url_task",
+        ["job_id", "final_url"],
+        unique=False,
+        postgresql_where=sa.text("final_url IS NOT NULL"),
+    )
+    op.create_index(
         op.f("ix_url_task_status_next_attempt_at_priority"),
         "url_task",
         ["status", "next_attempt_at", "priority"],
@@ -431,7 +453,6 @@ def upgrade() -> None:
         sa.Column("last_modified", sa.Text(), nullable=True),
         sa.Column("content_digest", sa.Text(), nullable=True),
         sa.Column("content_fingerprint", sa.Text(), nullable=True),
-        sa.Column("record_fingerprint", sa.Text(), nullable=True),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("missing_runs", sa.Integer(), server_default=sa.text("0"), nullable=False),
@@ -593,6 +614,7 @@ def downgrade() -> None:
         "job_event",
         "extraction_config",
         "capture",
+        "site_fetch_method",
         "site",
         "job",
         "schema_def",

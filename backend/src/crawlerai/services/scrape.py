@@ -66,9 +66,12 @@ from crawlerai.services.fetching import (
     check_target,
     engine_rules,
     observed,
+    page_host_first,
     recipe_rung,
     refusal,
     site_rules,
+    site_rungs,
+    store_declines,
 )
 from crawlerai.services.records import ScrapedRecord
 from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
@@ -327,7 +330,7 @@ async def _run(
     host = urlsplit(request.url).hostname or ""
     records_only = set(request.formats) == {"records"}
     async with engine.begin() as conn:
-        site = await site_row(conn, host)
+        site = await site_row(conn, host, request.page_kind)
         config = await _config(conn, site.id, work)
         recipe = recipe_of(config) if config is not None and records_only else None
         row = None
@@ -607,10 +610,12 @@ async def polite_fetch(
     # SPEC-15 §4.6: an adapter that serves the URL requests its API, whose own robots.txt `send` reads; the page's
     # governs only the page rungs it would fall back to, which a disallow then admits none of.
     disallowed = robots is not None and not robots.allows(url)
-    if disallowed and not fetching.rungs.adapters.would_serve(url):
+    rungs = site_rungs(fetching, host, site)
+    if disallowed and not rungs.adapters.would_serve(url):
         return "robots"
     await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    rules = engine_rules(engine, fetching.rungs.http, attempts)
+    # The page's host goes by the rules just read for the page (D-1384); another host's are read on first use.
+    rules = page_host_first(host, (site.crawl_delay_ms, robots), engine_rules(engine, fetching.rungs.http, attempts))
     rung = None if recipe is None else recipe_rung(fetching, recipe, host, rules)
     admit_next = refuse if disallowed else partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
     send = adapter_send(fetching, host, rules)
@@ -618,13 +623,15 @@ async def polite_fetch(
         url,
         policy,
         site.fetch_method,
-        fetching.rungs,
+        rungs,
         recipe=rung,
         admit_next=admit_next,
         send=send,
         needs_render=needs_render,
     )
     observed(fetching.limiter, host, site.crawl_delay_ms, robots, result, page=True)
+    async with engine.begin() as conn:
+        await store_declines(conn, site, host, rungs)
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)
