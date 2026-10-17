@@ -36,7 +36,7 @@ from crawlerai.acquire.browser import (
     rendered,
 )
 from crawlerai.acquire.challenge import count
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result, report_proxy
+from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
@@ -275,7 +275,8 @@ async def fetch_listing(
     """Render the listing at `url` as `fetch_browser` does and, when it is reached (`ok`), let `drive` act on it; the
     answer holds the document states the driver kept (at least one) and its report. A page not reached is the one
     page, with no report, labelled with the challenge it presents. The navigation is bounded by
-    `policy.browser_timeout_s`; the driver bounds its own actions. The pool endpoint is told how the navigation went."""
+    `policy.browser_timeout_s`; the driver bounds its own actions. The pool endpoint is told how the navigation went,
+    and the navigation's attempt (the first page's) carries the bytes the whole run moved (`Traffic`)."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     try:
@@ -283,9 +284,13 @@ async def fetch_listing(
     except UnknownProxyPool as unknown:
         return _failed(url, policy, engine_version, fetched_at, started, str(unknown), None)
     proxy = pool_endpoint(pool, url)
-    paged = await _listing(url, policy, drive, session, engine_version, connector or SafeConnector(), proxy)
-    report_proxy(pool, proxy, paged.pages[0])
-    return paged
+    traffic = Traffic()
+    paged = await _listing(url, policy, drive, session, engine_version, connector or SafeConnector(), proxy, traffic)
+    first = paged.pages[0]
+    navigation = first.attempts[0].model_copy(update={"transferred": traffic.bytes})
+    carried = first.model_copy(update={"attempts": (navigation, *first.attempts[1:])})
+    report_proxy(pool, proxy, carried)
+    return paged.model_copy(update={"pages": (carried, *paged.pages[1:])})
 
 
 async def _listing(
@@ -296,6 +301,7 @@ async def _listing(
     engine_version: str,
     connector: SafeConnector,
     proxy: ProxyEndpoint | None,
+    traffic: Traffic,
 ) -> PagedFetch:
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
@@ -303,7 +309,9 @@ async def _listing(
     try:
         async with AsyncExitStack() as stack:
             async with asyncio.timeout(policy.browser_timeout_s):
-                page = await stack.enter_async_context(rendered(url, policy, session, connector, proxy, started, {}))
+                page = await stack.enter_async_context(
+                    rendered(url, policy, session, connector, proxy, started, {}, traffic)
+                )
                 exchange, content = await read_state(page)
                 block_class = await classified(exchange, content)
             if block_class != "ok":

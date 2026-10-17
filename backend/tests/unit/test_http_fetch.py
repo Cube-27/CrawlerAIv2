@@ -81,9 +81,17 @@ def test_a_page_is_fetched_into_a_bundle_through_the_pinned_address(server: Serv
     assert (manifest.method, manifest.status_code, manifest.block_class) == ("http", 200, "ok")
     assert (manifest.url, manifest.final_url) == (server.url("/p"), server.url("/p"))
     assert result.bundle.body == _PAGE
+    attempt = result.attempts[0]
     assert result.attempts == (
-        AttemptRecord(method="http", status=200, block_class="ok", duration_ms=result.attempts[0].duration_ms),
+        AttemptRecord(
+            method="http",
+            status=200,
+            block_class="ok",
+            duration_ms=attempt.duration_ms,
+            transferred=attempt.transferred,
+        ),
     )
+    assert attempt.transferred > len(_PAGE)  # the body and both header blocks (D-1381)
     assert manifest.engine_version == "test"
     assert manifest.fetch_policy == FetchPolicy().model_dump(mode="json")
     assert decode(encode(result.bundle)) == result.bundle

@@ -327,23 +327,29 @@ async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId
 async def record_fetch_usage(
     conn: AsyncConnection, job_id: JobId, attempts: Iterable[AttemptRecord], proxy_pool: str | None
 ) -> None:
-    """Count the fetch `attempts` as the job's usage. Attempts, not fetch results, so that a caller keeps no page body
-    only to count it."""
+    """Count the fetch `attempts` as the job's usage: a request or the browser's seconds per attempt, and, for a fetch
+    through `proxy_pool`, the bytes each attempt moved through it (`proxy_bytes`, D-1381). Attempts, not fetch results,
+    so that a caller keeps no page body only to count it."""
     for attempt in attempts:
         resource: UsageResource
         if attempt.method in _REQUEST_METHODS:
             resource, quantity = "http_requests", 1
         else:
             resource, quantity = "browser_seconds", math.ceil(attempt.duration_ms / 1000)
+        metadata = {"method": attempt.method}
         await record_usage(
-            conn,
-            job_id,
-            resource,
-            provider=None,
-            model_or_pool=proxy_pool,
-            quantity=quantity,
-            metadata={"method": attempt.method},
+            conn, job_id, resource, provider=None, model_or_pool=proxy_pool, quantity=quantity, metadata=metadata
         )
+        if proxy_pool is not None and attempt.transferred:
+            await record_usage(
+                conn,
+                job_id,
+                "proxy_bytes",
+                provider=None,
+                model_or_pool=proxy_pool,
+                quantity=attempt.transferred,
+                metadata=metadata,
+            )
 
 
 # The error of a reached caller-supplied page that has no record: resolution failed (SPEC-05 §4.14).

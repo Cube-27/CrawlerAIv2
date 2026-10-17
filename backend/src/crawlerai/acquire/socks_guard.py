@@ -23,6 +23,7 @@ from ipaddress import IPv4Address, IPv6Address
 from types import TracebackType
 from typing import Self, cast
 
+from crawlerai.acquire.outcome import Traffic
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target, authority, bracketed
 from crawlerai.acquire.tunnel import TunnelRefused, open_tunnel
 from crawlerai.core.proxy import ProxyEndpoint
@@ -54,14 +55,19 @@ class _Refused(Exception):
 class SocksGuard:
     """`async with SocksGuard(connector) as guard:` listens on `guard.url` until the block ends, then closes the
     listener and every tunnel. `checked` targets were checked by the caller already and are used as they are.
-    `upstream` is the proxy pool every connection goes through, if any. `rejections` maps each refused (host, port) to
-    the guard's reason."""
+    `upstream` is the proxy pool every connection goes through, if any; `traffic` counts the bytes relayed both ways.
+    `rejections` maps each refused (host, port) to the guard's reason."""
 
     def __init__(
-        self, connector: SafeConnector, checked: Iterable[Target] = (), upstream: ProxyEndpoint | None = None
+        self,
+        connector: SafeConnector,
+        checked: Iterable[Target] = (),
+        upstream: ProxyEndpoint | None = None,
+        traffic: Traffic | None = None,
     ) -> None:
         self._connector = connector
         self._upstream = upstream
+        self._traffic = traffic or Traffic()
         self._targets: dict[tuple[str, int], asyncio.Future[Target]] = {}
         for target in checked:
             done: asyncio.Future[Target] = asyncio.get_running_loop().create_future()
@@ -125,7 +131,9 @@ class SocksGuard:
                 return
             writer.write(_reply(_SUCCEEDED))
             await writer.drain()
-            await asyncio.gather(_relay(reader, upstream), _relay(upstream_reader, writer))
+            await asyncio.gather(
+                _relay(reader, upstream, self._traffic), _relay(upstream_reader, writer, self._traffic)
+            )
         except (OSError, asyncio.IncompleteReadError):
             pass  # the browser or the site went away; the browser sees its connection close
         finally:
@@ -200,9 +208,10 @@ def _reply(code: int) -> bytes:
     return bytes([_VERSION, code, 0, _IPV4]) + bytes(4) + struct.pack("!H", 0)
 
 
-async def _relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+async def _relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, traffic: Traffic) -> None:
     with contextlib.suppress(OSError):
         while data := await reader.read(_CHUNK):
+            traffic.bytes += len(data)
             writer.write(data)
             await writer.drain()
     # Either side ending ends the tunnel: neither the browser nor the site waits on a half-closed connection.
