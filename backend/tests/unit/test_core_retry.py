@@ -11,7 +11,7 @@ from crawlerai.db.queue import retry_delay
 
 
 def test_the_queue_and_a_host_that_asked_for_fewer_requests_start_from_the_same_backoff() -> None:
-    attempt = AttemptRecord.model_construct(retry_after=None)
+    attempt = AttemptRecord(method="http", status=429, block_class="blocked", duration_ms=1)
 
     assert retry_delay(1) == FIRST_BACKOFF == asked_pause(attempt) == timedelta(seconds=30)
     assert retry_delay(3) == FIRST_BACKOFF * 4

@@ -42,6 +42,7 @@ from crawlerai.api.app import create_app
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import ApiKey, Job, JobId, JobKind, UrlTask
+from crawlerai.llm.client import NO_LLM
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDocument
@@ -218,9 +219,9 @@ async def run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, job
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     handlers: dict[JobKind, TaskHandler] = {
-        "batch_scrape": scrape_handler(fetching, data, None, llm=None),
-        "crawl": crawl_handler(fetching, data, None, llm=None),
-        "extract": scrape_handler(fetching, data, None, llm=None),
+        "batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM),
+        "crawl": crawl_handler(fetching, data, None, llm=NO_LLM),
+        "extract": scrape_handler(fetching, data, None, llm=NO_LLM),
     }
     stop = asyncio.Event()
     loop = asyncio.create_task(run_worker(settings, handlers, stop))

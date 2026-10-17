@@ -34,7 +34,7 @@ from crawlerai.db import queue
 from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
 from crawlerai.db.queue import MAX_ATTEMPTS
 from crawlerai.db.usage import budget_remaining
-from crawlerai.llm.client import LLMClient, MeteredClient, ProviderReply
+from crawlerai.llm.client import NO_LLM, LLMClient, MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT, close_run
 from crawlerai.resolve.pipeline import EngineData
@@ -146,7 +146,7 @@ def records_crawl(url: str, schema: SchemaDef, pattern: str, **members: Any) -> 
 
 
 async def run(
-    engine: AsyncEngine, fetching: Fetching, data: EngineData | None, job_id: JobId, llm: LLMClient | None = None
+    engine: AsyncEngine, fetching: Fetching, data: EngineData | None, job_id: JobId, llm: LLMClient = NO_LLM
 ) -> None:
     """Run a worker loop until the job has ended; role C runs on `llm`."""
     url = engine.url.render_as_string(hide_password=False)

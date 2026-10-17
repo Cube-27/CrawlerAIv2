@@ -129,7 +129,7 @@ async def fetch_page(
     *,
     recurring: Records | None = None,
     served: Records | None = None,
-    llm: LLMClient | None = None,
+    llm: LLMClient,
 ) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
@@ -143,7 +143,7 @@ async def fetch_page(
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
     serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
     the offer data or the rows their schema reads is rendered once more (`ContentCheck`, owner #49, #54), with role C
-    on `llm` (None: no role C), charged to the task's job."""
+    on `llm`, charged to the task's job."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -243,12 +243,12 @@ async def extract_records(
     records: Records,
     *,
     caller_supplied: bool,
-    llm: LLMClient | None,
+    llm: LLMClient,
     parsed: ParsedPage | None = None,
 ) -> TaskResult:
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
-    pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13);
-    None binds no role C. `parsed` is the page's parse when the handler already has one (INV-26); a listing its fetch's
+    pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13).
+    `parsed` is the page's parse when the handler already has one (INV-26); a listing its fetch's
     check extracted is not extracted again (owner #54). A crawl-discovered page may end `no_match`."""
     schema = records.schema
     config = None
@@ -275,6 +275,6 @@ async def extract_records(
     return Finished(stored.outcome, capture_id=page.capture_id)
 
 
-def _role_c(task: ClaimedTask, llm: LLMClient | None) -> RoleC | None:
-    """Role C on `llm`, charged to the task's job; None without a client."""
-    return None if llm is None else role_c(llm, job_id=task.job_id)
+def _role_c(task: ClaimedTask, llm: LLMClient) -> RoleC:
+    """Role C on `llm`, charged to the task's job."""
+    return role_c(llm, job_id=task.job_id)
