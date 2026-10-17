@@ -47,4 +47,5 @@
 - At most 40 actions; the time cap is min(60 s, half the scrape's `timeout_s`), so extraction of the kept states
   still fits in the scrape's budget (`timeout_s` ≤ 120, D-0028).
 - Stop reasons: `records`, `end` (two no-growth rounds, or a pager with no further page), `no_items`,
-  `no_mechanism`, `action_cap`, `time_cap`, `click_intercepted`, `robots`, `error`.
+  `no_mechanism`, `action_cap`, `time_cap`, `click_intercepted`, `not_admitted` (robots.txt, or a next page on
+  another host), `error`.

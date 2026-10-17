@@ -11,11 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import fetch_browser, open_browser
+from crawlerai.acquire.browser_tab import Drive, fetch_listing
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.event_loop import quiet_peer_resets
@@ -52,12 +53,24 @@ def fetching_from_settings(settings: Settings) -> Fetching:
                 url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
             )
 
+    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
+        # As `browser`: launched for the one scrape that asks for browser actions (owner #52).
+        async with open_browser() as session:
+            return await fetch_listing(
+                url, policy, drive, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
+            )
+
     http = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
     )
     json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
     rungs = Rungs(
-        http=http, browser=browser, adapters=adapter_registry(settings.disabled_adapters), conditional=http, json=json
+        http=http,
+        browser=browser,
+        adapters=adapter_registry(settings.disabled_adapters),
+        conditional=http,
+        json=json,
+        listing=listing,
     )
     return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
 

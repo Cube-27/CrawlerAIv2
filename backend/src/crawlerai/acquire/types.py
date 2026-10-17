@@ -112,10 +112,10 @@ def fetched_as(fetch_policy: dict[str, JsonValue]) -> PageKind | None:
 # Owner #52: the paging mechanisms a caller may name for a listing scrape's browser actions.
 PagingHint = Literal["load_more", "show_more", "pagination", "next", "scroll"]
 # Why a listing's browser actions stopped (`crawl.paging`): the row target was reached, the list ended, the page showed
-# no item group, no mechanism grew it, a cap was reached, an overlay took a click, robots.txt refused the next page,
-# or a document state could not be kept.
+# no item group, no mechanism grew it, a cap was reached, an overlay took a click, the next page was not admitted
+# (robots.txt, or another host), or a document state could not be kept.
 StopReason = Literal[
-    "records", "end", "no_items", "no_mechanism", "action_cap", "time_cap", "click_intercepted", "robots", "error"
+    "records", "end", "no_items", "no_mechanism", "action_cap", "time_cap", "click_intercepted", "not_admitted", "error"
 ]
 
 

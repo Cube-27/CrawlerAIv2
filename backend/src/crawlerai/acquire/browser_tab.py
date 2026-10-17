@@ -29,7 +29,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 
-__all__ = ["Click", "Drive", "Ref", "Tab", "fetch_listing"]
+__all__ = ["Click", "Drive", "ListingRung", "Ref", "Tab", "fetch_listing"]
 
 # An element of the serialized document: its element-index XPath path (`/*[1]/*[2]`) and its tag.
 Ref = tuple[str, str]
@@ -128,6 +128,8 @@ class Tab(Protocol):
 
 # The driver: what to do with the tab, answering what it did. The caller binds the request's settings to it.
 Drive = Callable[[Tab], Awaitable[ActionsReport]]
+# `fetch_listing` bound to a process's browser, guard and proxy pools: a listing's URL, its policy and the driver.
+ListingRung = Callable[[str, FetchPolicy, Drive], Awaitable[PagedFetch]]
 
 
 class _PatchrightTab:

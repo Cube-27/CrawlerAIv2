@@ -314,7 +314,7 @@ def test_robots_refusing_the_next_page_stops_the_run_with_the_first_page_kept(br
     fetched = browser.run("/rel?cursor=k7f", BrowserActions(hint="next"), refuse="q2m")
 
     # Nothing grew the list, so no mechanism is reported.
-    assert _summary(fetched) == (None, "robots", 1, 10)
+    assert _summary(fetched) == (None, "not_admitted", 1, 10)
 
 
 def test_an_ajax_pager_is_clicked_by_its_integers_and_every_page_is_kept(browser: Browser) -> None:

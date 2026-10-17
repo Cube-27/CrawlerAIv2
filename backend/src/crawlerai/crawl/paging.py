@@ -264,7 +264,7 @@ class _Run:
         if not await self._keep(view):
             return "error"
         if not await self.gate(link.url):
-            return "robots"
+            return "not_admitted"
         self.actions += 1
         self.visited.add(_page_url(link.url))
         if not await self.tab.goto(link.url):

@@ -70,3 +70,10 @@ def test_refuses_a_prompt() -> None:
         ("schema", "SchemaInline"),
         ("schema", "SchemaFields"),
     }
+
+
+def test_has_no_browser_actions() -> None:
+    # Owner #52: browser actions are for a single-URL listing scrape only.
+    body = {"urls": [URL], "formats": ["markdown"], "page_kind": "listing", "browser_actions": {}}
+
+    assert _errors(body) == [(("browser_actions",), "Extra inputs are not permitted")]

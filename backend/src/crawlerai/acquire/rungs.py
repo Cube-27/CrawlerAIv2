@@ -20,6 +20,7 @@ from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
+from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.politeness import SLOW_DOWN, Admit
 from crawlerai.acquire.types import (
     AttemptRecord,
@@ -62,6 +63,8 @@ class Rungs:
     # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with
     # (SPEC-09 §4.8); without it no recipe serves a page.
     json: JsonFetcher | None = None
+    # A listing with browser actions (`acquire.browser_tab.fetch_listing`, owner #52); the API process sets it.
+    listing: ListingRung | None = None
 
 
 def adapter_registry(disabled: Collection[str]) -> Registry:

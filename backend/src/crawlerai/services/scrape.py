@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.politeness import refuse
 from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.rungs import RenderCheck, acquire
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.active import active_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
@@ -69,6 +69,7 @@ from crawlerai.services.fetching import (
     site_rules,
 )
 from crawlerai.services.records import ScrapedRecord
+from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     DEFAULT_PROJECT,
@@ -118,7 +119,7 @@ class ScrapeRequest(Input):
     """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
-    within that many seconds."""
+    within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52)."""
 
     url: str
     formats: list[PageFormat] = Field(min_length=1)
@@ -129,6 +130,7 @@ class ScrapeRequest(Input):
     locale: str | None = None
     timeout_s: float = Field(default=60, gt=0, le=MAX_TIMEOUT_S)
     budget: Budget | None = None
+    browser_actions: BrowserActions | None = None
 
     @field_validator("url")
     @classmethod
@@ -140,6 +142,7 @@ class ScrapeRequest(Input):
     @model_validator(mode="after")
     def _records_have_a_schema(self) -> Self:
         check_records(self.formats, self.schema_, self.page_kind)
+        check_browser_actions(self.browser_actions, self.page_kind, self.max_age, self.fetch)
         return self
 
 
@@ -182,6 +185,7 @@ class ScrapeResult(BaseModel):
     metadata: PageMetadata | None = format_member()
     schema_: SchemaDef | None = format_member(alias="schema")
     records: list[ScrapedRecord] | None = format_member()
+    browser_actions: ActionsReport | None = format_member()
     usage: Usage
 
 
@@ -337,22 +341,32 @@ async def _run(
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
     attempts: list[AttemptRecord] = []
     check = _offer_check(work, request, config)
-    if recent is None:
+    more: tuple[FetchResult, ...] = ()
+    report: ActionsReport | None = None
+    page: FetchResult | str
+    if recent is not None:
+        page = recent.result
+    elif request.browser_actions is not None:
+        paged = await paged_fetch(
+            engine, fetching, request.url, host, policy, site, attempts, request.browser_actions, request.timeout_s
+        )
+        page, more, report = _pages(paged)
+    else:
         page = await polite_fetch(
             engine, fetching, request.url, host, policy, site, attempts, recipe=recipe, needs_render=check
         )
-    else:
-        page = recent.result
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
     if isinstance(page, FetchResult) and page.block_class == "ok":
         derived = await _derive(engine, work, request, task, (page, parsed_page(page.bundle, check)), config)
+    extra = await _extract_more(work, task, derived, config, more)
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
-            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins)
+            stored_more = await _store_more(conn, fetching.store, task, site.id, derived, extra, work.margins)
+            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, stored_more)
             members = _fetch_members(page, capture_id)
         else:
             outcome = "blocked"
@@ -368,9 +382,70 @@ async def _run(
         usage=usage,
         schema_=derived.drafted,
         records=records,
+        browser_actions=report,
         **members,
         **derived.formats,
     )
+
+
+def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:
+    """The first page of a paged fetch (the scrape's capture and formats), the other kept states, and the report."""
+    if isinstance(paged, str):
+        return paged, (), None
+    return paged.pages[0], paged.pages[1:], paged.report
+
+
+# A further kept state of a listing, its extraction, and the site's active config as it ran on it.
+_Extracted = tuple[FetchResult, ExtractionResult, ActiveConfig | None]
+
+
+async def _extract_more(
+    work: _Work, task: ClaimedTask, derived: _Derived, config: ActiveConfig | None, pages: tuple[FetchResult, ...]
+) -> list[_Extracted]:
+    """The extraction of each further kept state that was reached, with the first page's schema, as `_derive`'s."""
+    schema, data = derived.schema, work.data
+    if derived.extraction is None or schema is None or data is None:
+        return []
+    extracted: list[_Extracted] = []
+    for page in pages:
+        if page.block_class != "ok":
+            continue
+        own = None if config is None else config.for_capture(page.bundle.manifest, data.adapters)
+        executor = None if own is None else own.executor
+        gap_fill = role_c(work.llm, job_id=task.job_id)
+        parsed = ParsedPage.of(page.bundle)
+        extraction = await extract_page(page.bundle, schema, executor, gap_fill, data=data, parsed=parsed)
+        extracted.append((page, extraction, own))
+    return extracted
+
+
+async def _store_more(
+    conn: AsyncConnection,
+    store: ObjectStore,
+    task: ClaimedTask,
+    site_id: SiteId,
+    derived: _Derived,
+    extracted: list[_Extracted],
+    margins: DriftMargins | None,
+) -> tuple[StoredRecord, ...]:
+    """Store each further kept state: its capture, its extraction and its records, under the scrape's task."""
+    if derived.schema is None:
+        return ()
+    stored: list[StoredRecord] = []
+    for page, extraction, config in extracted:
+        capture_id = await new_capture(conn, store, site_id, page)
+        kept = await store_page_record(
+            conn,
+            task,
+            extraction,
+            capture_id=capture_id,
+            site_id=site_id,
+            schema=derived.schema,
+            config=config,
+            margins=margins,
+        )
+        stored.extend(kept.records)
+    return tuple(stored)
 
 
 def _offer_check(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> OfferCheck | None:
@@ -529,9 +604,11 @@ async def _finish(
     capture_id: CaptureId,
     derived: _Derived,
     margins: DriftMargins | None,
+    more: tuple[StoredRecord, ...] = (),
 ) -> tuple[PageOutcome, list[ScrapedRecord] | None]:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
-    the page's run of an active config in its drift window."""
+    the page's run of an active config in its drift window. `more` are the records of a listing's further kept
+    states (owner #52), stored already: the answer lists every record once."""
     outcome = BLOCK_OUTCOMES[result.block_class]
     if outcome == "failed":
         error = result.attempts[-1].error or outcome
@@ -555,9 +632,10 @@ async def _finish(
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
         return "failed", None
     # A detail page's one record, or a listing's one per row (none when it listed nothing, SPEC-05 §4.10).
-    outcome = records_outcome(stored.records)
+    kept = {record.id: record for record in (*stored.records, *more)}
+    outcome = records_outcome(tuple(kept.values()))
     await complete_task(conn, task, outcome, capture_id=capture_id)
-    return outcome, [_scraped(kept, extraction) for kept in stored.records]
+    return outcome, [_scraped(record, extraction) for record in kept.values()]
 
 
 def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:
