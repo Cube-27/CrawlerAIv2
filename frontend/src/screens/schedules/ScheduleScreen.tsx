@@ -27,10 +27,10 @@ function Facts({ schedule }: Readonly<{ schedule: Schedule }>) {
     ["Created", <Timestamp key="created" value={schedule.created_at} />],
   ];
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
+    <dl className="flex flex-col gap-2">
       {facts.map(([term, value]) => (
-        <div key={term} className="contents">
-          <dt className="text-muted">{term}</dt>
+        <div key={term} className="flex flex-wrap gap-x-6">
+          <dt className="w-28 shrink-0 text-muted">{term}</dt>
           <dd className="min-w-0 break-words">{value}</dd>
         </div>
       ))}
