@@ -27,7 +27,13 @@ def test_takes_the_documented_defaults() -> None:
         "schema": None,
         "page_kind": None,
         "max_age": 0,
-        "fetch": {"method_hint": "auto", "respect_robots": True, "robots_override_reason": None, "proxy_pool": None},
+        "fetch": {
+            "method_hint": "auto",
+            "respect_robots": True,
+            "robots_override_reason": None,
+            "proxy_pool": None,
+            "max_rows": None,
+        },
         "locale": None,
         "timeout_s": 60.0,
         "budget": None,
@@ -43,6 +49,17 @@ def test_refuses_a_url_that_is_not_absolute_http(url: str) -> None:
 @pytest.mark.parametrize("timeout_s", [0, 120.5])
 def test_refuses_a_timeout_outside_0_to_120_seconds(timeout_s: float) -> None:
     assert _errors({"url": URL, "formats": ["markdown"], "timeout_s": timeout_s}) == [("timeout_s",)]
+
+
+@pytest.mark.parametrize("max_rows", [0, -5])
+def test_refuses_a_row_target_that_is_not_positive(max_rows: int) -> None:
+    assert _errors({"url": URL, "formats": ["markdown"], "fetch": {"max_rows": max_rows}}) == [("fetch", "max_rows")]
+
+
+def test_takes_a_row_target_for_the_adapters_lists() -> None:
+    request = ScrapeRequest.model_validate({"url": URL, "formats": ["markdown"], "fetch": {"max_rows": 40}})
+
+    assert request.fetch.max_rows == 40
 
 
 def test_refuses_no_format_and_unknown_formats() -> None:
