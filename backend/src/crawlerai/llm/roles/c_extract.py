@@ -45,10 +45,11 @@ LISTING_MAX_ROWS: Final = 200
 MAX_OUTPUT_TOKENS: Final = 4_096
 # A listing's reply holds up to 200 rows of spans.
 LISTING_MAX_OUTPUT_TOKENS: Final = 16_384
-# D-1478: the output tokens one claim of a listing row takes, rounded up from the 43 to 69 measured on four listings
-# of the QA sweep (#263). A view of a listing's items is cut to the rows whose claims fit `LISTING_MAX_OUTPUT_TOKENS`:
-# a reply cut at its cap is invalid and gives no row at all.
-_ROW_CLAIM_TOKENS: Final = 64
+# D-1478: the output tokens budgeted for one claim of a listing row: about twice the 37 to 69 measured on four
+# listings of the QA sweep (#263), as a reply's length varies from run to run (one of five replies to one 85-row request
+# ran to the cap). A view of a listing's items is cut to the rows whose claims fit `LISTING_MAX_OUTPUT_TOKENS`: a reply
+# cut at its cap is invalid and gives no row at all.
+ROW_CLAIM_TOKENS: Final = 96
 PROMPT_KIND: Final[PromptKind] = "c_extract_detail"
 LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 PREFILL_PROMPT_KIND: Final[PromptKind] = "c_prefill"
@@ -257,7 +258,7 @@ def _failed(failure: LLMFailure) -> str:
 
 def _fitted(view: TextView, row_fields: int) -> tuple[TextView, tuple[str, ...]]:
     """The view's first items whose rows' claims fit the reply's token cap, and the diagnostic that records a cut."""
-    rows = min(LISTING_MAX_ROWS, LISTING_MAX_OUTPUT_TOKENS // (max(row_fields, 1) * _ROW_CLAIM_TOKENS))
+    rows = min(LISTING_MAX_ROWS, LISTING_MAX_OUTPUT_TOKENS // (max(row_fields, 1) * ROW_CLAIM_TOKENS))
     fitted = view.first(rows)
     if len(fitted.pieces) == len(view.pieces):
         return view, ()

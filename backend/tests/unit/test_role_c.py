@@ -38,6 +38,7 @@ from crawlerai.llm.roles.c_extract import (
     LISTING_MAX_OUTPUT_TOKENS,
     LISTING_MAX_ROWS,
     MAX_OUTPUT_TOKENS,
+    ROW_CLAIM_TOKENS,
     Filled,
     FilledListing,
     detail_request,
@@ -596,7 +597,7 @@ def test_a_view_holds_no_more_items_than_their_claims_fit_the_reply() -> None:
 
     filled = asyncio.run(extract_listing(client, view, fields, PAGE_SPECS, CTX, job_id=JOB))
 
-    rows = LISTING_MAX_OUTPUT_TOKENS // (4 * 64)
+    rows = LISTING_MAX_OUTPUT_TOKENS // (4 * ROW_CLAIM_TOKENS)
     assert filled.diagnostics == (f"role C read the first {rows} of 150 items",)
     assert f"Item {rows}" in client.requests[0].user
     assert f"Item {rows + 1}" not in client.requests[0].user
