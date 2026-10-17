@@ -1,5 +1,5 @@
 import { Toast } from "@heroui/react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { FieldStatus } from "../api/field";
@@ -7,7 +7,7 @@ import { ConfidenceCell } from "./ConfidenceCell";
 import { FieldStatusBadge } from "./FieldStatusBadge";
 import { FieldValue } from "./FieldValue";
 import { LocatorText } from "./LocatorText";
-import { RecordFieldsTable } from "./RecordFields";
+import { RecordFieldsTable, RecordSummary } from "./RecordFields";
 import { recordField } from "../test/records";
 
 describe("FieldStatusBadge", () => {
@@ -180,26 +180,118 @@ describe("RecordFieldsTable", () => {
 });
 
 describe("ConfidenceCell", () => {
-  it("shows the confidence with two decimals and no badge when calibrated", () => {
-    const { container } = render(<ConfidenceCell confidence={0.9} calibrated={true} />);
+  it("shows the confidence with two decimals, never a bar or a badge", () => {
+    const { container } = render(<ConfidenceCell confidence={0.456} />);
 
-    expect(container).toHaveTextContent("0.90");
+    expect(container).toHaveTextContent("0.46");
     expect(screen.queryByText("uncalibrated")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("meter")).not.toBeInTheDocument();
   });
 
-  it("shows a visible uncalibrated badge", () => {
-    const { container } = render(<ConfidenceCell confidence={0.456} calibrated={false} />);
-
-    expect(container).toHaveTextContent("0.46");
-    expect(screen.getByText("uncalibrated")).toBeInTheDocument();
-  });
-
   it("shows an em dash when there is no confidence", () => {
-    const { container } = render(<ConfidenceCell confidence={null} calibrated={true} />);
+    const { container } = render(<ConfidenceCell confidence={null} />);
 
     expect(container).toHaveTextContent("—");
+  });
+});
+
+describe("one uncalibrated badge per record", () => {
+  const uncalibrated = { calibrated: false, confidence: 0.4 };
+
+  it("shows it once for a record with several uncalibrated published fields", () => {
+    const record = {
+      complete: true,
+      mode: "adhoc" as const,
+      confidence: null,
+      fields: {
+        title: recordField(uncalibrated),
+        price: recordField(uncalibrated),
+        brand: recordField(uncalibrated),
+      },
+    };
+    render(
+      <>
+        <RecordSummary record={record} />
+        <RecordFieldsTable label="Fields" record={record} fieldTypes={{}} />
+      </>,
+    );
+
+    expect(screen.getAllByText("uncalibrated")).toHaveLength(1);
+    expect(screen.getAllByText("0.40")).toHaveLength(3);
+  });
+
+  it("shows none when every published field is calibrated, even if an unpublished one is not", () => {
+    const record = {
+      complete: false,
+      mode: "adhoc" as const,
+      confidence: 0.97,
+      fields: {
+        title: recordField({}),
+        brand: recordField({ status: "abstained", value: null, ...uncalibrated }),
+      },
+    };
+    render(<RecordSummary record={record} />);
+
+    expect(screen.queryByText("uncalibrated")).not.toBeInTheDocument();
+  });
+});
+
+describe("evidence and source kind", () => {
+  it.each([
+    ["network", "xhr", "Page network call", "Network call"],
+    ["adapter", "adapter", "Platform API", "Platform API"],
+    ["structured", "jsonld", "Structured data", "JSON-LD"],
+  ] as const)(
+    "reads %s evidence from %s in words, the codes on hover",
+    (evidence, kind, words, source) => {
+      render(
+        <RecordFieldsTable
+          label="Fields"
+          record={{
+            complete: true,
+            mode: "adhoc",
+            confidence: 0.9,
+            fields: { title: recordField({ evidence, source_kind: kind }) },
+          }}
+          fieldTypes={{}}
+        />,
+      );
+
+      const cells = within(screen.getByRole("row", { name: /title/ })).getAllByRole("gridcell");
+      // Value, status, confidence, evidence, source.
+      const [evidenceCell, sourceCell] = [cells[3], cells[4]];
+      expect(evidenceCell).toHaveTextContent(words);
+      expect(within(evidenceCell as HTMLElement).getByTitle(evidence)).toBeInTheDocument();
+      expect(sourceCell).toHaveTextContent(source);
+      expect(within(sourceCell as HTMLElement).getByTitle(kind)).toBeInTheDocument();
+    },
+  );
+
+  it("shows a dash for a field with neither", () => {
+    render(
+      <RecordFieldsTable
+        label="Fields"
+        record={{
+          complete: false,
+          mode: "adhoc",
+          confidence: null,
+          fields: {
+            price: recordField({
+              status: "missing",
+              value: null,
+              confidence: null,
+              evidence: null,
+              source_kind: null,
+              locator: null,
+            }),
+          },
+        }}
+        fieldTypes={{}}
+      />,
+    );
+
+    expect(screen.getByRole("row", { name: /price/ }).textContent).toBe("price—missing—————");
   });
 });
 

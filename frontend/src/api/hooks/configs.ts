@@ -7,6 +7,7 @@ import {
   getConfig,
   learnSite,
   listSiteConfigs,
+  rejectConfig,
   type Correction,
   type ExportFormat,
 } from "../configs";
@@ -46,17 +47,28 @@ export function useCorrectConfig(id: string) {
   });
 }
 
-/** The answer is the approved version; the version active before it is suspended, so every config is read again. */
-export function useApproveConfig(id: string) {
+/** A person's decision on a config waiting for approval: the answer is that version, and the version active before it
+ * may be suspended, so every config is read again. */
+function useDecideConfig(decide: typeof approveConfig, id: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => unwrap(approveConfig(client, id)),
-    onSuccess: (approved) => {
-      queryClient.setQueryData([...CONFIGS, "one", approved.id], approved);
+    mutationFn: () => unwrap(decide(client, id)),
+    onSuccess: (decided) => {
+      queryClient.setQueryData([...CONFIGS, "one", decided.id], decided);
       return queryClient.invalidateQueries({ queryKey: CONFIGS });
     },
   });
+}
+
+/** Approves the config: it becomes the active version. */
+export function useApproveConfig(id: string) {
+  return useDecideConfig(approveConfig, id);
+}
+
+/** Rejects the config: it is suspended. */
+export function useRejectConfig(id: string) {
+  return useDecideConfig(rejectConfig, id);
 }
 
 /** An export changes nothing on the server, so nothing is read again. */

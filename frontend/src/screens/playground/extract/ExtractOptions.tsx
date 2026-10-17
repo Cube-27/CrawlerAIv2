@@ -1,6 +1,13 @@
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, TagListRow, TextAreaRow } from "../OptionsPanel";
-import { FetchMethodRow, FieldsRow, LlmCallsRow, PageKindRow, WebhookRow } from "../rows";
+import {
+  FetchMethodRow,
+  MaxRowsRow,
+  FieldsRow,
+  LlmCallsRow,
+  PageKindRow,
+  WebhookRow,
+} from "../rows";
 import { DEFAULT_EXTRACT_OPTIONS, type ExtractOptions as Options, type SchemaSource } from "./form";
 
 type Change = (options: Options) => void;
@@ -94,6 +101,12 @@ export function ExtractOptions({
         value={options.methodHint}
         onChange={(methodHint) => {
           onChange({ ...options, methodHint });
+        }}
+      />
+      <MaxRowsRow
+        value={options.maxRows}
+        onChange={(maxRows) => {
+          onChange({ ...options, maxRows });
         }}
       />
       {/* SPEC-10 §4.6: an extract's `budget.llm_calls` bounds a prompt's draft. */}

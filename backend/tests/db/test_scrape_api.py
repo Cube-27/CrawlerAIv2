@@ -160,6 +160,7 @@ async def test_answers_the_requested_formats_and_only_those(
         "method": "http",
         "status_code": 200,
         "block_class": "ok",
+        "adapter": None,
         "attempts": [
             {"method": "http", "status": 200, "block_class": "ok", "duration_ms": 1, "error": None, "challenge": None}
         ],

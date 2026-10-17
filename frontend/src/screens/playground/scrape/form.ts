@@ -3,6 +3,7 @@ import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
   canSend,
+  fetchMember,
   llmBudget,
   optionalNumber,
   requestFormats,
@@ -12,6 +13,7 @@ import {
 import {
   count,
   llmCalls,
+  maxRows,
   member,
   methodHint,
   pageFormats,
@@ -33,6 +35,8 @@ export interface ScrapeOptions {
   maxAge: number;
   timeoutS: number;
   llmCalls: number;
+  /** `fetch.max_rows`: NaN while empty (every page, up to the server's cap). */
+  maxRows: number;
   /** Browser actions (owner #52): sent only for listing pages. `records` is NaN while empty (the server's 100), and a
    * null `pagingHint` lets the server detect the mechanism. */
   browserActions: boolean;
@@ -49,6 +53,7 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   maxAge: Number.NaN,
   timeoutS: Number.NaN,
   llmCalls: Number.NaN,
+  maxRows: Number.NaN,
   browserActions: false,
   records: Number.NaN,
   pagingHint: null,
@@ -81,7 +86,7 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
     formats: requestFormats(form),
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: { method_hint: options.methodHint },
+    fetch: fetchMember(options.methodHint, options.maxRows),
     ...optionalNumber("max_age", options.maxAge),
     ...optionalNumber("timeout_s", options.timeoutS),
     ...llmBudget(options.llmCalls),
@@ -149,6 +154,7 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
       maxAge: count(request, "max_age"),
       timeoutS: count(request, "timeout_s"),
       llmCalls: llmCalls(request),
+      maxRows: maxRows(request),
       ...storedBrowserActions(request),
     },
   };

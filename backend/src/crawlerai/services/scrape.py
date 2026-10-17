@@ -40,13 +40,13 @@ from crawlerai.acquire.politeness import refuse
 from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.rungs import RenderCheck, acquire
 from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
+from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.active import active_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
@@ -78,6 +78,7 @@ from crawlerai.services.scrape_steps import (
     EXTRACTION_ERROR,
     ContentCheck,
     FetchOptions,
+    FetchSummary,
     Formats,
     Input,
     PageFormat,
@@ -91,6 +92,7 @@ from crawlerai.services.scrape_steps import (
     checked_extraction,
     content_check,
     fetch_policy,
+    fetch_summary,
     format_member,
     named_schema,
     new_capture,
@@ -147,15 +149,6 @@ class ScrapeRequest(Input):
         check_records(self.formats, self.schema_, self.page_kind)
         check_browser_actions(self.browser_actions, self.page_kind, self.max_age, self.fetch)
         return self
-
-
-class FetchSummary(BaseModel):
-    """The fetch of the page: the method, status and class of the kept attempt, and every attempt made."""
-
-    method: CaptureMethod
-    status_code: int | None  # None when no response arrived
-    block_class: BlockClass
-    attempts: tuple[AttemptRecord, ...]
 
 
 class Usage(BaseModel):
@@ -382,7 +375,7 @@ async def _run(
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
             outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
-            members = _fetch_members(page, capture_id)
+            members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
             outcome = "blocked"
             await complete_task(conn, task, outcome, reason=page)
@@ -570,17 +563,20 @@ async def _derive(
     return _Derived(formats, drafted, schema, extraction, config)
 
 
-def _fetch_members(result: FetchResult, capture_id: CaptureId) -> _FetchMembers:
+def _fetch_members(result: FetchResult, capture_id: CaptureId, adapters: Adapters) -> _FetchMembers:
     manifest = result.bundle.manifest
     return _FetchMembers(
         capture_id=capture_id,
         final_url=manifest.final_url,
         fetched_at=manifest.fetched_at,
-        fetch=FetchSummary(
-            method=manifest.method,
-            status_code=manifest.status_code or None,
-            block_class=manifest.block_class,
-            attempts=result.attempts,
+        fetch=fetch_summary(
+            manifest.method,
+            manifest.status_code or None,
+            manifest.block_class,
+            result.attempts,
+            adapters=adapters,
+            url=manifest.url,
+            final_url=manifest.final_url,
         ),
     )
 
