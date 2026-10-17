@@ -629,20 +629,20 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Owner answer: 2026-10-16, "build it": availability and stock quantity are separate fields; availability in words or codes ("in stock", "instock", "available", "In stock (5 available)") normalizes to schema.org `ItemAvailability`, one convention in the repo; stock quantity is its own field (5); variants carry them when the page states them per variant, otherwise publish what the page shows. Built in #203 (D-0920–D-0924, ARCHITECTURE Appendix A #39).
 
 ### D-0783 — Investigate: approving a learned config before it becomes a reusable recipe
-- Date: 2026-10-15 · Spec/PR: accuracy Q4 (#167) · Status: needs-owner (area to investigate, not a decision)
+- Date: 2026-10-15 · Spec/PR: accuracy Q4 (#167) · Status: answered (owner delegation 2026-10-17, D-1342)
 - Decision: Question: should a learned config need human approval before it becomes a reusable recipe, at least where sources conflict or several sources compete, or can another mechanism make approval unnecessary? Ideas from the classification: corroboration only by a reference from a different source than the step reads (a `jsonld` step not corroborated by `jsonld`, §10's independence applied to §8.3 step 4); learning reports per-entity fields that are constant across the sample entities, or share an affix, as `suspect`. Owner direction: approval is probably needed; this changes the architecture, so corroboration does not change now.
 - Alternatives: See ideas; keep corroboration as is.
 - Why: Evidence: on one site the config's JSON-LD steps were "corroborated" by the same JSON-LD values (circular); a title kept the site-name suffix on every page; an image URL was one placeholder shared by every product on two sites. Blocked: nothing; values are unchanged meanwhile.
 - Reversible: yes
-- Owner answer: owner 2026-10-16: not now; stays an investigate item (needs-owner, open).
+- Owner answer: owner 2026-10-16: not now. Answered 2026-10-17 under owner delegation: optional approval by the project setting `require_config_approval` (D-1342, owner decision #60, #252).
 
 ### D-0784 — Investigate: an "absent" field status so role C stops asking
-- Date: 2026-10-15 · Spec/PR: accuracy Q1 option C (#167) · Status: needs-owner (area to investigate, not a decision)
+- Date: 2026-10-15 · Spec/PR: accuracy Q1 option C (#167) · Status: answered (owner delegation 2026-10-17, D-1341)
 - Decision: Question: should learning record a required field as `absent` for a (site, schema, page kind) when role C returned no grounded value on every held-out page, so the §4.13 gap rule skips it until drift, a re-learn or a page showing a value re-tests it? It changes ARCHITECTURE §8.3 and §8.4 (a field status), SPEC-05 §4.13 and SPEC-08 §4.7–§4.9. Owner direction: part of the learned-config investigation (D-0783); not built.
 - Alternatives: Keep asking role C on every page for a required field the site never shows; make more fields optional per preset (as `brand`, D-0781).
 - Why: Evidence: with `brand` and `url` absent on several UAT sites, role C ran once per page on every page, in config mode too. Blocked: nothing; the gap rule is unchanged.
 - Reversible: yes
-- Owner answer: owner 2026-10-16: not now; stays an investigate item (needs-owner, open).
+- Owner answer: owner 2026-10-16: not now. Answered 2026-10-17 under owner delegation: an `absent` field status learned from the run's pages (D-1341, owner decision #60, #252).
 
 ### D-0810 — Additional fields: how typed field names become an extraction
 - Date: 2026-10-15 · Spec/PR: SPEC-14 PR 11 · Status: confirmed
@@ -718,11 +718,12 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Reversible: yes — change the manifest entries.
 
 ### D-0915 — SimHash at Hamming 0 still misses some one-word edits
-- Date: 2026-10-16 · Spec/PR: owner answers, D-0665 (#204) · Status: needs-owner
+- Date: 2026-10-16 · Spec/PR: owner answers, D-0665 (#204) · Status: answered (owner delegation 2026-10-17, D-1340)
 - Decision: Question: with `UNCHANGED_BITS = 0`, a one-word edit of a 500-word text leaves the SimHash unchanged on 10 of 100 fixed seeds (`test_simhash.py`), so on those pages a new price is skipped as `unchanged`, although ARCHITECTURE §14 now says a one-token change runs extraction. Options: (a) keep SimHash at Hamming 0 and amend §14's wording; (b) an exact hash (e.g. blake2b) of the visible text after nonce and whitespace stripping, which sees every edit; (c) both, SimHash kept for near-duplicate reporting only. Recommendation: (b). Blocked: nothing; recurring crawls run as built.
 - Alternatives: See options.
 - Why: SimHash flips a bit only where a vote total was near zero, so it is not a bound (D-0665's evidence); changing §14 is the owner's call. Copied to OPEN_QUESTIONS #30.
 - Reversible: yes — one function and the stored fingerprint format.
+- Owner answer: answered 2026-10-17 under owner delegation: option (c), the exact digest decides and SimHash reports (D-1340, owner decision #60, #252).
 
 ### D-0968 — `REBASE` only on a conflict
 - Date: 2026-10-16 · Spec/PR: workflow (owner request, #212) · Status: decided · Supersedes D-0823's "behind `main`" trigger

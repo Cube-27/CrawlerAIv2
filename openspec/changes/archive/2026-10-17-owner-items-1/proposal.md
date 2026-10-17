@@ -32,10 +32,10 @@ a related item alone in its state array still lends its visible price to the pag
 
 ## Impact
 
-- Capabilities: [jobs](../../specs/jobs/spec.md), [learning-configs](../../specs/learning-configs/spec.md),
-  [llm](../../specs/llm/spec.md), [resolution](../../specs/resolution/spec.md),
-  [extraction](../../specs/extraction/spec.md), [variants](../../specs/variants/spec.md),
-  [rest-api](../../specs/rest-api/spec.md), [frontend](../../specs/frontend/spec.md).
-- Design: owner decision #58 (owner delegation 2026-10-17); D-0783, D-0784, D-0915 answered; D-1340–D-1349.
+- Capabilities: [jobs](../../../specs/jobs/spec.md), [learning-configs](../../../specs/learning-configs/spec.md),
+  [llm](../../../specs/llm/spec.md), [resolution](../../../specs/resolution/spec.md),
+  [extraction](../../../specs/extraction/spec.md), [variants](../../../specs/variants/spec.md),
+  [rest-api](../../../specs/rest-api/spec.md), [frontend](../../../specs/frontend/spec.md).
+- Design: owner decision #60 (owner delegation 2026-10-17); D-0783, D-0784, D-0915 answered; D-1340–D-1349.
 - Database: `url_state.content_digest`, `project.require_config_approval`, config status `pending_approval` (baseline
   migration, greenfield).

@@ -12,8 +12,7 @@ commit and delete the lines their PR closes; a follow-up that grows into work be
 - Data sources, later (owner #53): discover the network/API calls a page makes for its data and read the data from
   them, generically, as a learned layer (the way listing pagination was probed before #52). Not started; needs a probe
   and the owner's admission like #52.
-- Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
-  field status), D-0915 (SimHash at Hamming 0 misses some edits).
+- Open owner items: none (D-0783, D-0784 and D-0915 answered under owner delegation, #252).
 
 ## Human-only tasks
 
@@ -25,7 +24,7 @@ throwaway databases.
 | # | Task | Needed by | Status |
 |---|---|---|---|
 | H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | Live LLM runs | deferred (owner, 2026-10-13: not needed yet) |
-| H5 | Answer the `needs-owner` entries in the open owner items in `project.md`. | As they come up | open: see Open owner items in `project.md` |
+| H5 | Answer the `needs-owner` entries in the open owner items in `project.md`. | As they come up | none open (#252) |
 | H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | Proxy use in production | todo |
 | H8 | Create the GitHub release `data-geonames-2026-10-15` holding the three GeoNames files the manifest pins, with the CC BY 4.0 attribution in its notes (D-0311, D-0914; command in #204). Until then `crawlerai data fetch` gets a 404 for them. | `crawlerai data fetch`, SPEC-05's first real run | obsolete: GeoNames dropped (D-0953, #210) |
 
@@ -50,7 +49,11 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   first batch only (the script is not updated as items load); rows of the grown DOM need role C or a config. Not
   validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment
   (`page-2.html`) is not a +1 integer link, so such pages turn by their pager only. Measure on dev before changing.
-- ce1 extraction (#227): `js_state` admission stores thousands of duplicate price candidates on a page with a large state blob (6,561 on one); deduplicating them needs a provenance decision (which locator stays).
+- Absent fields (#252): a config-mode page missing an absent required field is still `partial`; listings never get
+  `absent` fields (D-1347); a field the previous config covered was not asked of role C on its pages, yet a run reading
+  them may list it absent when another field made a call (D-1341). Measure on dev once LLM keys exist.
+- Config approval (#252): there is no reject endpoint or MCP tool; a waiting config is replaced by a forced run or an
+  operator correction (D-1342).
 - Acquisition hardening (#244): pages behind a challenge that does not clear headless stay `blocked` after the 40%
   interstitial wait (5 real 403 challenge pages waited ~20 s each and stayed blocked in the live check); measure the
   share that clears on a dev run before lowering `_INTERSTITIAL_SHARE` (D-1262). A 429 challenge page gets no browser
@@ -78,9 +81,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Shopify product pages take the page path; joining the adapter's answer to the page's collectors needs a capture holding both and a measure of cross-source conflicts (D-1118) [#224].
 - Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
-- Array rows (#243): a related item alone in an array (one object) stays in its holder's scope and its visible state
-  value is still the page's; a state variant row naming the page only with a variant query, or no URL, is `not_owned`
-  (D-1250, D-1253). `dom` label-value pairs inside repeated page structures (a comparison table) stay page values (D-1255).
+- Array rows (#243, #252): a state variant row, or a lone object, naming the page only with a variant query is
+  `not_owned`, and a row with no URL is too (D-1250, D-1253, D-1345). `dom` label-value pairs inside repeated page
+  structures (a comparison table) stay page values (D-1255).
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 - Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
@@ -108,11 +111,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Schemas: SPEC-04 §4.2 says `schema_org` paths and `vocab` refs are validated against the pinned schema.org file; only their syntax is checked (D-0240) [#223].
 - API: the `fetch_failed` problem type (SPEC-07 §4.3) is listed but nothing raises it, since fetch errors are outcomes; drop it from the spec or use it [#223].
 - API recipes: the paged executor (`RecipeRung.pages`) has no caller; recipe pagination comes only from an operator correction [#223].
-- Recurring: `worker/handlers/scrape.py` docstring still says "within a few SimHash bits"; only Hamming 0 means unchanged (D-0665) [#223].
 - Normalize: a location's `remote_flag` is `false` when the page does not state it, so "not stated" and "not remote" read alike; a tri-state (`null` when unstated) changes the value shape [#240].
 - Role C: one site-test listing whose HTTP body holds 20 item blocks gave one role C row; not reproducible without the LLM recording, re-check on the next run [#240].
-- Resolve: a Product that names its group only by `isVariantOf` keeps the group as its child, so the group's
-  variants are no rows (SPEC-13 §9); inverting `isVariantOf` into `hasVariant` waits for a dev page (D-1293) [#247].
 - Resolve: adapter entities (`collect/adapter.py`) carry no identity, so an adapter item and the page's JSON-LD
   statement of it stay two entities (D-1290) [#247].
 - Specs: `specs/resolution/spec.md` is 119 lines, past the ~100-line guide; split identity and intent from
