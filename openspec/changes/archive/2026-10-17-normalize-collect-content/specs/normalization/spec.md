@@ -8,6 +8,12 @@ written, and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Inval
 of the page and request language tags (`numbers.py`), and locales that read a number differently give `Ambiguous`.
 A minus negates a money or count text only when it touches the number. Refs: §9, D-0275–D-0279, D-0302, D-0921, D-0922, D-0960, D-1184, D-1270, D-1271.
 (Previously: a minus anywhere before the number negated it, and any `unitText` beside `C62` passed.)
+#### Scenario: Rating with its scale
+- **WHEN** a `number` text is "4.5 out of 5"
+- **THEN** the result is `Invalid("several_numbers")`
+#### Scenario: No reviews
+- **WHEN** a `number` value is `{"ratingValue": 0, "reviewCount": 0}`
+- **THEN** the result is `Invalid("no_ratings")`
 #### Scenario: Spaced dash
 - **WHEN** a `count` text is "In stock - 5 left"
 - **THEN** the result is `Ok(5)`; "Stock: -5" is `Invalid("negative")`

@@ -121,3 +121,4 @@ Cross-cutting facts fixed by the specs (so later readers do not re-decide them):
   outcomes are architecture (§6), not plumbing.
 - Eval store separation (hidden/fresh never in the main DB or main object store): SPEC-01 §4.4, SPEC-03 §4.2.
 - Calibration and precedence files are dev-only artifacts stamped with their source split: SPEC-05 §4.9, §4.11.
+| — | [Normalize, collect and content follow-ups](2026-10-17-normalize-collect-content/proposal.md) ([tasks](2026-10-17-normalize-collect-content/tasks.md), [decisions](2026-10-17-normalize-collect-content/design.md)) | §8.5, §8.6, §9 | 04, 05, 07 | L1 | tasks 1.1–1.8 (#245) |
