@@ -132,21 +132,33 @@ def data_calls(page: ParsedPage) -> list[DataCall]:
     return sorted(found, key=lambda data: (-data.row_hits, -data.visible))
 
 
+# One listing's series: an endpoint, the literal origin and path its calls share, and the row query.
+_SeriesKey = tuple[EndpointKey, str, str]
+
+
 def row_series(calls: Sequence[DataCall]) -> list[tuple[DataCall, ...]]:
-    """The calls with rows grouped by endpoint and row query, each group in capture order: the pages of one listing a
-    page loaded (a first batch, then more on scrolling). A request sent again (same method, URL and body) answers with
-    the same items, so only its first call counts. Groups come in the order of their best call in `calls`."""
-    best: dict[tuple[EndpointKey, str], int] = {}  # each group's best rank in `calls`
+    """The calls with rows grouped into the pages of one listing a page loaded (a first batch, then more on scrolling):
+    one endpoint and row query, and the same origin and path, so that only query or body values vary (RFC 3986 §3.3,
+    §3.4: a path names the resource, a query the part of it asked for; a URL shape alone lets two resources' paths
+    meet). Each group is in capture order. A request sent again (same method, URL and body) answers with the same
+    items, so only its first call counts. Groups come in the order of their best call in `calls`."""
+    best: dict[_SeriesKey, int] = {}  # each group's best rank in `calls`
     for rank, data in enumerate(calls):
-        if data.rows is not None:
-            best.setdefault((data.call.endpoint, data.rows), rank)
-    groups: dict[tuple[EndpointKey, str], dict[tuple[str | None, str, str | None], DataCall]] = {}
+        if (key := _series_key(data)) is not None:
+            best.setdefault(key, rank)
+    groups: dict[_SeriesKey, dict[tuple[str | None, str, str | None], DataCall]] = {}
     for data in sorted(calls, key=lambda data: data.call.index):
-        if data.rows is not None:
+        if (key := _series_key(data)) is not None:
             entry = data.call.entry
-            group = groups.setdefault((data.call.endpoint, data.rows), {})
-            group.setdefault((entry.method, entry.url, entry.request_body), data)
+            groups.setdefault(key, {}).setdefault((entry.method, entry.url, entry.request_body), data)
     return [tuple(groups[key].values()) for key in sorted(groups, key=best.__getitem__)]
+
+
+def _series_key(data: DataCall) -> _SeriesKey | None:
+    if data.rows is None:
+        return None
+    parts = urlsplit(data.call.entry.url)
+    return data.call.endpoint, f"{parts.scheme}://{parts.netloc}{parts.path}", data.rows
 
 
 def _rows(document: JsonValue, page: ParsedPage, memo: dict[str, bool]) -> tuple[str | None, int]:

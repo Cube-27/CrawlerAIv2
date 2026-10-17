@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Listing rows from captured calls
-On a listing the `xhr` collector SHALL read rows from the calls of one endpoint and row query
+On a listing the `xhr` collector SHALL read rows from the calls of one endpoint, path and row query
 (`collect/network_match.py`: an array of `MIN_ITEMS` or more object items each holding a visible string of its own; a
 request sent again counts once), the first such series in which a row field's path, relative to a row, is admitted by
 the state admission rule in `MIN_ITEMS` rows or more; that path is read in every row through the API recipe row reader

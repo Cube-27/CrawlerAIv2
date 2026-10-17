@@ -50,7 +50,9 @@ Status: decided (owner-delegated 2026-10-17). A row field's path is proved on th
 (equality with another kind's candidate, or a checkable type shown on the page) admits its value in `MIN_ITEMS` rows or
 more; the proved path is then read in every row of the series, as a recipe's map is read, so a row the page has not
 scrolled into view keeps its values. The first series (best rows call first) with a proved field is read; its calls are
-read as rows only, and the other calls are admitted value by value as before. A request sent again counts once. Rows
+read as rows only, and the other calls are admitted value by value as before. A series' calls share their origin and
+path as well as their endpoint key: only query or body values vary (a URL shape alone lets two resources meet, review
+of #250). A request sent again counts once. Rows
 are `array_row` entities, not schema.org `ListItem`s, so structured-row selection never mistakes them for stated
 items. Text fields are admitted by equality only (owner accuracy Q2 option a), so cold rows carry checkable fields; a
 learned map (A2) reads text fields too.

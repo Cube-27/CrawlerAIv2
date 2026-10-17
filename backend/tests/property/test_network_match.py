@@ -128,3 +128,17 @@ def test_a_request_sent_again_counts_once_in_its_series(names: list[str]) -> Non
     )
 
     assert [[data.call.index for data in group] for group in row_series(data_calls(page))] == [[0]]
+
+
+@given(_names, _names)
+def test_calls_to_two_paths_of_one_shape_are_two_series(first: list[str], second: list[str]) -> None:
+    other = [f"o{name}" for name in second]
+    page = _page(
+        [f"Item {name}" for name in [*first, *other]],
+        (f"{API}/products?page=1", {"results": _items(first)}),
+        (f"{API}/categories?page=1", {"results": _items(other)}),
+    )
+
+    series = row_series(data_calls(page))
+
+    assert sorted([data.call.index for data in group] for group in series) == [[0], [1]]
