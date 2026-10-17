@@ -657,6 +657,26 @@ export interface components {
         AbsolutizeUrlOp: {
             absolutize_url: components["schemas"]["_NoParams"];
         };
+        /**
+         * ActionsReport
+         * @description What a listing's browser actions did: the mechanism that grew the list (None when none did), why they stopped,
+         *     the actions taken, the document states kept and the distinct items seen.
+         */
+        ActionsReport: {
+            /** Actions */
+            actions: number;
+            /** Items */
+            items: number;
+            /** Mechanism */
+            mechanism: ("load_more" | "show_more" | "pagination" | "next" | "scroll") | null;
+            /** Pages */
+            pages: number;
+            /**
+             * Stop
+             * @enum {string}
+             */
+            stop: "records" | "end" | "no_items" | "no_mechanism" | "action_cap" | "time_cap" | "click_intercepted" | "not_admitted" | "error";
+        };
         /** ApiRecipe */
         ApiRecipe: {
             body?: components["schemas"]["RequestBody"] | null;
@@ -779,6 +799,21 @@ export interface components {
              * Format: uuid
              */
             job_id: string;
+        };
+        /**
+         * BrowserActions
+         * @description A single-URL listing scrape's browser actions (owner #52). `records` is a soft target: the run stops once it
+         *     has seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is
+         *     detected.
+         */
+        BrowserActions: {
+            /** Hint */
+            hint?: ("load_more" | "show_more" | "pagination" | "next" | "scroll") | null;
+            /**
+             * Records
+             * @default 100
+             */
+            records: number;
         };
         /**
          * Budget
@@ -2485,9 +2520,10 @@ export interface components {
          * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
          *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
          *     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
-         *     within that many seconds.
+         *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52).
          */
         ScrapeRequest: {
+            browser_actions?: components["schemas"]["BrowserActions"] | null;
             budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
@@ -2523,6 +2559,7 @@ export interface components {
          *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None. `schema` is the draft of a `schema.prompt`.
          */
         ScrapeResult: {
+            browser_actions?: components["schemas"]["ActionsReport"];
             /** Capture Id */
             capture_id: string | null;
             fetch: components["schemas"]["FetchSummary"] | null;

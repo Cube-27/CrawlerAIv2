@@ -1,4 +1,4 @@
-import type { MethodHint, PageKind, ScrapeRequest } from "../../../api/scrape";
+import type { MethodHint, PageKind, PagingHint, ScrapeRequest } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
@@ -12,6 +12,7 @@ import {
 import {
   count,
   llmCalls,
+  member,
   methodHint,
   pageFormats,
   pageKind,
@@ -32,6 +33,11 @@ export interface ScrapeOptions {
   maxAge: number;
   timeoutS: number;
   llmCalls: number;
+  /** Browser actions (owner #52): sent only for listing pages. `records` is NaN while empty (the server's 100), and a
+   * null `pagingHint` lets the server detect the mechanism. */
+  browserActions: boolean;
+  records: number;
+  pagingHint: PagingHint | null;
 }
 
 export const DEFAULT_OPTIONS: ScrapeOptions = {
@@ -43,6 +49,9 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   maxAge: Number.NaN,
   timeoutS: Number.NaN,
   llmCalls: Number.NaN,
+  browserActions: false,
+  records: Number.NaN,
+  pagingHint: null,
 };
 
 /** What the command bar and the options panel hold. */
@@ -76,6 +85,43 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
     ...optionalNumber("max_age", options.maxAge),
     ...optionalNumber("timeout_s", options.timeoutS),
     ...llmBudget(options.llmCalls),
+    ...browserActions(options, requestPageKind(form)),
+  };
+}
+
+/** `browser_actions`, only for a listing (owner #52), with the members that are set. */
+function browserActions(
+  options: ScrapeOptions,
+  kind: PageKind | null,
+): { browser_actions?: { records?: number; hint?: PagingHint } } {
+  if (!options.browserActions || kind !== "listing") return {};
+  return {
+    browser_actions: {
+      ...optionalNumber("records", options.records),
+      ...(options.pagingHint === null ? {} : { hint: options.pagingHint }),
+    },
+  };
+}
+
+const PAGING_HINTS: readonly PagingHint[] = [
+  "load_more",
+  "show_more",
+  "pagination",
+  "next",
+  "scroll",
+];
+
+/** The stored request's `browser_actions` as the options show them. */
+function storedBrowserActions(
+  request: StoredRequest,
+): Pick<ScrapeOptions, "browserActions" | "records" | "pagingHint"> {
+  const actions = request["browser_actions"];
+  const stored = member(request, "browser_actions");
+  const hint = PAGING_HINTS.find((option) => option === stored["hint"]) ?? null;
+  return {
+    browserActions: actions !== undefined && actions !== null,
+    records: count(stored, "records"),
+    pagingHint: hint,
   };
 }
 
@@ -97,6 +143,7 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
       maxAge: count(request, "max_age"),
       timeoutS: count(request, "timeout_s"),
       llmCalls: llmCalls(request),
+      ...storedBrowserActions(request),
     },
   };
 }

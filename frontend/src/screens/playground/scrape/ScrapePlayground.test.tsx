@@ -263,6 +263,44 @@ describe("scrape playground: the request", () => {
     });
   });
 
+  it("sends a listing's browser actions with the records and paging hint that were set", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl();
+    const options = await openOptions();
+    await pick(/Page kind/, "Listing");
+    await userEvent.click(options.getByRole("switch", { name: "Browser actions" }));
+    await userEvent.type(options.getByRole("textbox", { name: "Records" }), "30");
+    await pick(/Paging hint/, "Scroll");
+    await closeOptions();
+
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).toMatchObject({
+      page_kind: "listing",
+      browser_actions: { records: 30, hint: "scroll" },
+    });
+  });
+
+  it("keeps the browser action rows in place, disabled, and sends none for a detail page", async () => {
+    const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await typeUrl();
+    const options = await openOptions();
+    await pick(/Page kind/, "Listing");
+    await userEvent.click(options.getByRole("switch", { name: "Browser actions" }));
+    await pick(/Page kind/, "Detail");
+
+    expect(options.getByRole("switch", { name: "Browser actions" })).toBeDisabled();
+    expect(options.getByRole("textbox", { name: "Records" })).toBeDisabled();
+    await closeOptions();
+    await submit();
+
+    await screen.findByText("extracted");
+    expect(posted(calls)).not.toHaveProperty("browser_actions");
+  });
+
   it("asks for the metadata format with Metadata in JSON", async () => {
     const calls = stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
     await openScrape();

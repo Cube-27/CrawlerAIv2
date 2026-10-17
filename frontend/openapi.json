@@ -15,6 +15,66 @@
         "title": "AbsolutizeUrlOp",
         "type": "object"
       },
+      "ActionsReport": {
+        "additionalProperties": false,
+        "description": "What a listing's browser actions did: the mechanism that grew the list (None when none did), why they stopped,\nthe actions taken, the document states kept and the distinct items seen.",
+        "properties": {
+          "actions": {
+            "title": "Actions",
+            "type": "integer"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "mechanism": {
+            "anyOf": [
+              {
+                "enum": [
+                  "load_more",
+                  "show_more",
+                  "pagination",
+                  "next",
+                  "scroll"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mechanism"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "stop": {
+            "enum": [
+              "records",
+              "end",
+              "no_items",
+              "no_mechanism",
+              "action_cap",
+              "time_cap",
+              "click_intercepted",
+              "not_admitted",
+              "error"
+            ],
+            "title": "Stop",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mechanism",
+          "stop",
+          "actions",
+          "pages",
+          "items"
+        ],
+        "title": "ActionsReport",
+        "type": "object"
+      },
       "ApiRecipe": {
         "additionalProperties": false,
         "properties": {
@@ -352,6 +412,38 @@
           "job_id"
         ],
         "title": "BatchSubmitted",
+        "type": "object"
+      },
+      "BrowserActions": {
+        "additionalProperties": false,
+        "description": "A single-URL listing scrape's browser actions (owner #52). `records` is a soft target: the run stops once it\nhas seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is\ndetected.",
+        "properties": {
+          "hint": {
+            "anyOf": [
+              {
+                "enum": [
+                  "load_more",
+                  "show_more",
+                  "pagination",
+                  "next",
+                  "scroll"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "records": {
+            "default": 100,
+            "exclusiveMinimum": 0.0,
+            "title": "Records",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserActions",
         "type": "object"
       },
       "Budget": {
@@ -4874,8 +4966,18 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds.",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52).",
         "properties": {
+          "browser_actions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrowserActions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "budget": {
             "anyOf": [
               {
@@ -4983,6 +5085,9 @@
       "ScrapeResult": {
         "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None. `schema` is the draft of a `schema.prompt`.",
         "properties": {
+          "browser_actions": {
+            "$ref": "#/components/schemas/ActionsReport"
+          },
           "capture_id": {
             "anyOf": [
               {

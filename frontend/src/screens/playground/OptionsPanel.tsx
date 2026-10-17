@@ -112,11 +112,13 @@ export function SwitchRow({
   label,
   help,
   isSelected,
+  isDisabled = false,
   onChange,
 }: Readonly<{
   label: string;
   help: string;
   isSelected: boolean;
+  isDisabled?: boolean;
   onChange: (isSelected: boolean) => void;
 }>) {
   // The label sits above the track like every cell's, so the help icon can follow it outside the clickable track.
@@ -128,6 +130,7 @@ export function SwitchRow({
         aria-labelledby={labelId}
         className="h-9 justify-center"
         isSelected={isSelected}
+        isDisabled={isDisabled}
         onChange={onChange}
       >
         <Switch.Content>
@@ -149,6 +152,7 @@ export function SelectRow<K extends string>({
   value,
   placeholder,
   disabled = [],
+  isDisabled = false,
   onChange,
 }: Readonly<{
   label: string;
@@ -158,6 +162,8 @@ export function SelectRow<K extends string>({
   value: K | null;
   placeholder?: string;
   disabled?: readonly K[];
+  /** The whole row: kept in place, unusable (a setting that does not apply now). */
+  isDisabled?: boolean;
   onChange: (value: K) => void;
 }>) {
   return (
@@ -167,6 +173,7 @@ export function SelectRow<K extends string>({
       value={value}
       {...(placeholder === undefined ? {} : { placeholder })}
       disabledKeys={disabled}
+      isDisabled={isDisabled}
       onChange={(key: Key | null) => {
         const chosen = options.find(([option]) => option === key);
         if (chosen !== undefined) onChange(chosen[0]);
@@ -202,6 +209,7 @@ export function NumberRow({
   minValue,
   maxValue,
   placeholder = "Default",
+  isDisabled = false,
   onChange,
 }: Readonly<{
   label: string;
@@ -211,6 +219,7 @@ export function NumberRow({
   minValue: number;
   maxValue?: number;
   placeholder?: string;
+  isDisabled?: boolean;
   onChange: (value: number) => void;
 }>) {
   return (
@@ -221,6 +230,7 @@ export function NumberRow({
       minValue={minValue}
       {...(maxValue === undefined ? {} : { maxValue })}
       formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
+      isDisabled={isDisabled}
       onChange={onChange}
     >
       <CellLabel label={label} help={help} />
