@@ -36,7 +36,9 @@ class CountingLimiter(HostLimiter):
         super().__init__()
         self.waits: list[str] = []
 
-    async def wait(self, host: str, interval: timedelta, bound: timedelta = timedelta.max) -> bool:
+    async def wait(
+        self, host: str, interval: timedelta, bound: timedelta = timedelta.max, *, after: timedelta = timedelta(0)
+    ) -> bool:
         self.waits.append(host)
         return True
 
