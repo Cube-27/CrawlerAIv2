@@ -24,7 +24,7 @@ The owner delegated the decision to admit them (2026-10-17, owner decision #57, 
 
 ## Impact
 
-- Capabilities: [adapters](../../specs/adapters/spec.md).
+- Capabilities: [adapters](../../../specs/adapters/spec.md).
 - Design: Appendix A #57; §22 "More platform adapters".
 - Files: `backend/src/crawlerai/adapters/` (paging, five adapters, Workday, Oracle, registry, base),
   `acquire/{rungs,page_refs,types}.py`, `collect/adapter.py`, `services/scrape_steps.py` (`FetchOptions.max_rows`),
