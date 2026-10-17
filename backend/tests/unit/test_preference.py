@@ -356,6 +356,41 @@ def test_a_list_names_the_list_of_the_same_files() -> None:
     assert result.candidate is lists[0]
 
 
+def test_a_list_stating_one_file_in_two_renditions_names_that_file_once() -> None:
+    # Two merged blocks: one lists the image once, the other in two sizes. Both name one file, so they agree and the
+    # first publishes.
+    base = "https://cdn.example.test/i/a.jpg"
+    lists = [_candidate("images", [f"{base}?w=1"]), _candidate("images", [f"{base}?w=800", f"{base}?w=400"], n=1)]
+
+    result = _prefer(_schema(images=IMAGES), *lists)["images"]
+
+    assert isinstance(result, Chosen)
+    assert result.candidate is lists[0]
+
+
+@pytest.mark.parametrize("field", ["image", "images"])
+def test_the_https_rendition_of_one_file_publishes_over_its_http_twin(field: str) -> None:
+    secure = _GALLERY[0]
+    plain = secure.replace("https:", "http:")
+    renditions = [_candidate(field, [v] if field == "images" else v, n=i) for i, v in enumerate((plain, secure))]
+
+    result = _prefer(_schema(image=IMAGE, images=IMAGES), *renditions)[field]
+
+    assert isinstance(result, Chosen)
+    assert result.candidate is renditions[1]
+
+
+def test_a_rendition_another_kind_states_agrees_with_the_published_image() -> None:
+    # og:image over http names the JSON-LD image's file: the two kinds agree on one image (evidence `agreed`).
+    jsonld = _candidate("image", _GALLERY[0])
+    og = _candidate("image", _GALLERY[0].replace("https:", "http:") + "?w=1200", PAGE, "og")
+
+    result = _prefer(_schema(image=IMAGE), jsonld, og)["image"]
+
+    assert isinstance(result, Chosen)
+    assert (result.candidate, result.agreeing) == (jsonld, (og,))
+
+
 def test_a_source_kind_outside_the_order_never_wins() -> None:
     state = _candidate("title", "Lamp", PAGE, "js_state")
 
