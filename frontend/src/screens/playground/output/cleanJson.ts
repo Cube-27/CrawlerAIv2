@@ -1,5 +1,9 @@
+import type { FieldTypes, FieldTypeSpec } from "../../../api/field";
 import type { JsonValuesItem } from "../../../api/jobs";
+import { isJsonObject, type JsonObject } from "../../../api/json";
 import type { ScrapeRecord, ScrapeResponse } from "../../../api/scrape";
+
+type CleanRecord = JsonValuesItem["records"][number];
 
 /** Code-unit order of two strings, the order Python's `sorted` gives the server. */
 function codeUnitOrder(a: string, b: string): number {
@@ -7,26 +11,62 @@ function codeUnitOrder(a: string, b: string): number {
   return a > b ? 1 : 0;
 }
 
-/** A clean record (SPEC-14 §4.4): each field's published value, or null, picked from the record the server sent. A
- * field's `value` is its published value or null (SPEC-07 §4.4), so nothing is decided here. Names are in name order
- * (D-0816), as `json_values` has them; schema names are ASCII (`NAME_PATTERN`), so code-unit order is that order. */
-function cleanRecord(record: ScrapeRecord): JsonValuesItem["records"][number] {
-  return Object.fromEntries(
-    Object.keys(record.fields)
-      .sort(codeUnitOrder)
-      .map((name) => [name, record.fields[name]?.value ?? null]),
-  );
+/** The key of a money field's currency, as the server's clean record names it (`config_ir/exporters/records.py`):
+ * `currency` beside `price` unless the schema has its own `currency` field. */
+function currencyKey(name: string, fields: FieldTypes): string {
+  return name === "price" && !("currency" in fields) ? "currency" : `${name}_currency`;
 }
 
-/** One scrape as the item `json_values` gives a job's page (SPEC-14 §4.4 Single scrape): its URL, outcome, clean
- * records and, with `withMetadata`, the page's metadata when the response carries it. */
-export function scrapeItem(response: ScrapeResponse, withMetadata: boolean): JsonValuesItem {
-  return {
-    url: response.url,
-    outcome: response.outcome,
-    records: (response.records ?? []).map(cleanRecord),
-    ...(withMetadata && response.metadata !== undefined ? { metadata: response.metadata } : {}),
-  };
+function cleanValue(value: unknown, spec: FieldTypeSpec | undefined): unknown {
+  if (spec?.type === "list" && Array.isArray(value)) {
+    return value.map((item: unknown) => cleanValue(item, spec.item));
+  }
+  if (spec?.type === "object" && isJsonObject(value)) return cleanObject(spec.fields, value);
+  return value;
+}
+
+/** `data` as a clean record (SPEC-14 §4.4), as the server writes one for `json_values`: its published fields in name
+ * order, a null one left out, and a money value flat as its amount beside its currency. Names are ASCII
+ * (`NAME_PATTERN`), so code-unit order is name order (D-0816). */
+function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
+  const clean: Record<string, unknown> = {};
+  for (const name of Object.keys(data).sort(codeUnitOrder)) {
+    const value = data[name];
+    if (value === null || value === undefined) continue;
+    const spec = fields[name];
+    if (spec?.type === "money" && isJsonObject(value)) {
+      clean[name] = value.amount;
+      clean[currencyKey(name, fields)] = value.currency;
+    } else {
+      clean[name] = cleanValue(value, spec);
+    }
+  }
+  return clean;
+}
+
+/** A record's clean form: each field's published value (SPEC-07 §4.4: `value` is null unless published). */
+function cleanRecord(record: ScrapeRecord, fieldTypes: FieldTypes): CleanRecord {
+  const data = Object.fromEntries(
+    Object.entries(record.fields).map(([name, field]) => [name, field.value ?? null]),
+  );
+  return cleanObject(fieldTypes, data);
+}
+
+/** A page's JSON as the playground shows it: its one record as an object, or its records as an array (none, or a
+ * listing's), with no URL or outcome around them. With `metadata` (Metadata in JSON) they sit under `data`. */
+export function pageJson(records: readonly CleanRecord[], metadata?: unknown): unknown {
+  const data = records.length === 1 ? records[0] : records;
+  return metadata === undefined || metadata === null ? data : { data, metadata };
+}
+
+/** One scrape's page JSON (`pageJson`), its records cleaned as the server cleans a job's (`json_values`). */
+export function scrapeJson(
+  response: ScrapeResponse,
+  fieldTypes: FieldTypes,
+  withMetadata: boolean,
+): unknown {
+  const records = (response.records ?? []).map((record) => cleanRecord(record, fieldTypes));
+  return pageJson(records, withMetadata ? response.metadata : undefined);
 }
 
 /** Whether a published field of `records` is uncalibrated (DESIGN.md, Showing extraction results). */

@@ -4,6 +4,7 @@ import { useJobResults, useJobValues } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { JsonValuesItem } from "../../../api/jobs";
 import { useCursorPages } from "../../../components/cursors";
+import { pageJson } from "../output/cleanJson";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
 import { PAGE_SIZE, PagedTable } from "../../../components/PagedTable";
 import { ItemDrawer } from "./ItemDrawer";
@@ -165,7 +166,9 @@ export function ResultsTable({
         <ItemDrawer
           url={open.item.url}
           value={
-            pageOutputs?.kind === "pages" ? pageOutputs.page.items[open.id - first] : open.item
+            pageOutputs?.kind === "pages"
+              ? pageOutputs.page.items[open.id - first]
+              : pageJson(open.item.records, open.item.metadata)
           }
           position={open.id}
           onClose={() => {

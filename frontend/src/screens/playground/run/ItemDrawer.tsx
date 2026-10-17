@@ -1,7 +1,7 @@
 import { Drawer, Typography } from "@heroui/react";
 import { JsonView } from "../../../components/JsonView";
 
-/** One page's JSON in a drawer from the right, over the results table: its `json_values` item (SPEC-14 §4.3), or its
+/** One page's JSON in a drawer from the right, over the results table: its clean records (SPEC-14 §4.3), or its
  * page output for a job without a schema (SPEC-10 §4.2). `position` is the page's place in the job (from 1), which
  * names its file; `onClose` closes the drawer. */
 export function ItemDrawer({

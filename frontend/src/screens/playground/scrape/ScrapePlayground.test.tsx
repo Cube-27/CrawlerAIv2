@@ -500,7 +500,7 @@ function shownJson(): unknown {
 }
 
 describe("scrape playground: JSON output", () => {
-  it("opens on the JSON tab with the page's clean JSON: fields in name order, null where none published", async () => {
+  it("opens on the JSON tab with the page's record alone: published fields in name order, money flat", async () => {
     stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
@@ -515,19 +515,12 @@ describe("scrape playground: JSON output", () => {
       "true",
     );
     expect(shownJson()).toEqual({
-      url: "https://store.test/items/1",
-      outcome: "extracted",
-      records: [
-        {
-          brand: null,
-          price: { amount: "19.90", currency: "EUR" },
-          tags: ["blue", "mug"],
-          title: "Blue mug",
-        },
-      ],
+      currency: "EUR",
+      price: "19.90",
+      tags: ["blue", "mug"],
+      title: "Blue mug",
     });
-    const record = (shownJson() as { records: object[] }).records[0] ?? {};
-    expect(Object.keys(record)).toEqual(["brand", "price", "tags", "title"]);
+    expect(Object.keys(shownJson() as object)).toEqual(["price", "currency", "tags", "title"]);
   });
 
   it("lists the tabs JSON, Table, each page format asked for, then Usage", async () => {
@@ -569,12 +562,7 @@ describe("scrape playground: JSON output", () => {
     await submit();
 
     await screen.findByRole("tab", { name: "JSON" });
-    expect(shownJson()).toEqual({
-      url: "https://store.test/items/1",
-      outcome: "extracted",
-      records: [],
-      metadata,
-    });
+    expect(shownJson()).toEqual({ data: [], metadata });
   });
 
   it("shows one uncalibrated badge exactly when a published field is uncalibrated", async () => {
@@ -607,7 +595,7 @@ describe("scrape playground: JSON output", () => {
     await submit();
 
     await waitFor(() => {
-      expect(shownJson()).toMatchObject({ records: [{ brand: null, title: "Blue mug" }] });
+      expect(shownJson()).toEqual({ title: "Blue mug" });
     });
     expect(
       within(screen.getByRole("tabpanel", { name: "JSON" })).queryByText("uncalibrated"),
@@ -626,11 +614,7 @@ describe("scrape playground: JSON output", () => {
     expect(saved.map(({ name }) => name)).toEqual([
       "job-0192a000-0000-7000-8000-0000000000j1.json",
     ]);
-    expect(JSON.parse(await (saved[0]?.text ?? Promise.resolve("")))).toEqual({
-      url: "https://store.test/items/1",
-      outcome: "extracted",
-      records: [],
-    });
+    expect(JSON.parse(await (saved[0]?.text ?? Promise.resolve("")))).toEqual([]);
   });
 });
 
