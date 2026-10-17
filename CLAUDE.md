@@ -179,37 +179,13 @@ make check           # every check below, locally; stops at the first failure. O
 uvx pre-commit install   # once per clone: the fast hooks on staged files (.pre-commit-config.yaml)
 ```
 
-The checks CI runs, by job. Every job must pass before merge.
-
-```sh
-# backend (cd backend)
-uv sync --frozen
-uv run ruff check && uv run ruff format --check
-uv run mypy src tests migrations
-uv run lint-imports                 # C8 import contracts
-uv run complexipy --no-ignore       # C11: cognitive complexity <= 15 (src, tests, migrations, ../tools)
-uv run patchright install --no-shell chromium   # once per Patchright version: the `browser`-marked tests
-uv run pytest
-uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
-# (needs `make db`, and CRAWLERAI_DATABASE_URL set as in .env.example; tests/db also need
-#  CRAWLERAI_TEST_DATABASE_URL, a database they own: never the dev one)
-
-# frontend (cd frontend); CI also runs `make api-client` and fails on a diff
-pnpm install --frozen-lockfile
-pnpm check && pnpm test && pnpm build   # Vite+: `pnpm check` (vp check) formats, lints (incl. C11 complexity)
-                                        # and type-checks
-
-# site-literals (cd backend): lint and test the repo tools, then the C3 scan
-uv run ruff check ../tools && uv run ruff format --check ../tools && uv run mypy --strict ../tools
-uv run pytest ../tools/tests
-uv run python ../tools/site_literal_scan.py --public
-
-# data-manifest, no-size-gates, licenses (repo root)
-python3 tools/data_manifest_check.py
-python3 tools/no_size_gates.py
-python3 tools/file_length.py        # C11: warns on source files over 800 lines; never fails
-tools/license_scan.sh               # after `pnpm install` in frontend/; writes license-report/
-```
+The checks CI runs, by job, are in `.github/workflows/ci.yml` and the Makefile's `check-*` targets; every job
+must pass before merge. What they don't show:
+- The `browser`-marked tests need `uv run patchright install --no-shell chromium` once per Patchright version.
+- DB tests need `make db` and `CRAWLERAI_DATABASE_URL` as in `.env.example`; `tests/db` also need
+  `CRAWLERAI_TEST_DATABASE_URL`, a database they own: never the dev one.
+- CI runs `make api-client` and fails on a diff.
+- `tools/license_scan.sh` runs after `pnpm install` in `frontend/`.
 
 Other commands: `uv run crawlerai --version`, `uv run crawlerai openapi` (backend); `pnpm dev`, `pnpm format`
 (`vp check --fix`) (frontend).
