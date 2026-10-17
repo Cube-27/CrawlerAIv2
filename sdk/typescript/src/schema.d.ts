@@ -3305,7 +3305,9 @@ export interface components {
         /**
          * ScrapeResult
          * @description The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
-         *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None. `schema` is the draft of a `schema.prompt`.
+         *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
+         *     does (SPEC-02 §4.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
+         *     9309 §2.3.1.4); None for a page that was fetched. `schema` is the draft of a `schema.prompt`.
          */
         ScrapeResult: {
             browser_actions?: components["schemas"]["ActionsReport"];
@@ -3340,6 +3342,8 @@ export interface components {
             pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;
+            /** Reason */
+            reason: string | null;
             /** Records */
             records?: components["schemas"]["ScrapedRecord"][];
             schema?: components["schemas"]["SchemaDef"];
