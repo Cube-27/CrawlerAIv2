@@ -12,7 +12,7 @@ from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError, invalid, target_refused
 from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId
-from crawlerai.llm.client import LLMClient
+from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import extract
 from crawlerai.services.extract import (
@@ -45,7 +45,7 @@ async def extract_records(
     draft is returned as `schema`. A target the API may not fetch, in `urls`, a glob's map or `webhook_url`, is a 422
     and nothing is queued."""
     fetching: Fetching = request.app.state.fetching
-    llm: LLMClient = request.app.state.llm
+    llm = KeyCapped(request.app.state.llm, database(request), key)
     data: EngineData | None = request.app.state.engine_data
     with submission_problems():
         try:

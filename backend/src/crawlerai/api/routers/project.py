@@ -18,13 +18,14 @@ router = APIRouter(
 @router.get("")
 async def get_project_settings(request: Request) -> ProjectSettings:
     """The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no
-    `budget.llm_calls`; null bounds none."""
+    `budget.llm_calls`, and `draft_call_cap` the uncharged field-name drafts of each API key; null bounds none."""
     async with database(request).connect() as conn:
         return await project_settings(conn)
 
 
 @router.patch("")
 async def patch_project_settings(settings: ProjectSettings, request: Request) -> ProjectSettings:
-    """Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call."""
+    """Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call, and a new
+    `draft_call_cap` from a key's next draft."""
     async with database(request).begin() as conn:
         return await update_project_settings(conn, settings)

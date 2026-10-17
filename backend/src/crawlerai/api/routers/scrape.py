@@ -1,6 +1,8 @@
 """`POST /v1/scrape` (SPEC-07 §4.4): the scrape service over HTTP. A page that could not be fetched is an outcome in
 a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems (§4.8)."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Request
 
 from crawlerai.api.auth import require_api_key
@@ -8,7 +10,9 @@ from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable, target_refused
 from crawlerai.config_ir.drift import DriftMargins
-from crawlerai.llm.client import LLMClient, LLMFailure
+from crawlerai.db.models import ApiKeyId
+from crawlerai.llm.client import LLMFailure
+from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import scrape as scrape_service
 from crawlerai.services.fetching import Fetching, TargetRejected
@@ -33,14 +37,16 @@ router = APIRouter(
     "",
     responses={409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE, 504: PROBLEM_RESPONSE},
 )
-async def scrape(body: ScrapeRequest, request: Request) -> ScrapeResult:
+async def scrape(
+    body: ScrapeRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
+) -> ScrapeResult:
     """Fetch `url`, or read a capture of it fetched within `max_age` seconds, and return the requested formats; only
     those are members of the answer. A `schema.prompt` is drafted into a schema, returned as `schema`. `records`
     holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to the
     stored schema of its name, and one that differs from it is a 409."""
     engine = database(request)
     fetching: Fetching = request.app.state.fetching
-    llm: LLMClient = request.app.state.llm
+    llm = KeyCapped(request.app.state.llm, engine, key)
     data: EngineData | None = request.app.state.engine_data
     margins: DriftMargins | None = request.app.state.drift_margins
     try:

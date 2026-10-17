@@ -428,7 +428,7 @@ export interface paths {
         /**
          * Get Project Settings
          * @description The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no
-         *     `budget.llm_calls`; null bounds none.
+         *     `budget.llm_calls`, and `draft_call_cap` the uncharged field-name drafts of each API key; null bounds none.
          */
         get: operations["get_project_settings_v1_project_settings_get"];
         put?: never;
@@ -438,7 +438,8 @@ export interface paths {
         head?: never;
         /**
          * Patch Project Settings
-         * @description Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call.
+         * @description Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call, and a new
+         *     `draft_call_cap` from a key's next draft.
          */
         patch: operations["patch_project_settings_v1_project_settings_patch"];
         trace?: never;
@@ -502,7 +503,8 @@ export interface paths {
          * @description The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
          *     `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
          *     one, stored. A client shows it for editing before the run (SPEC-14 §4.10). A draft the LLM could not give is a
-         *     problem typed with the LLM failure (502, 503); a retired draft is a 422.
+         *     problem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of
+         *     them; a retired draft is a 422.
          */
         post: operations["draft_schema_v1_schemas_draft_post"];
         delete?: never;
@@ -1031,11 +1033,12 @@ export interface components {
          * CrawlRequest
          * @description The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
          *     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
-         *     while the caller waits. `include` and `exclude`
-         *     globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is
-         *     called when the job ends (§4.2).
+         *     while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
+         *     (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
+         *     pages are extracted. `webhook_url` is called when the job ends (§4.2).
          */
         CrawlRequest: {
+            budget?: components["schemas"]["Budget"] | null;
             /** Exclude */
             exclude?: string[];
             /**
@@ -2226,8 +2229,11 @@ export interface components {
         /**
          * ProjectSettings
          * @description `llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.
+         *     `draft_call_cap`: the most uncharged role S calls (field-name drafts) one API key may make, in all; null: no cap.
          */
         ProjectSettings: {
+            /** Draft Call Cap */
+            draft_call_cap: number | null;
             /** Llm Call Cap */
             llm_call_cap: number | null;
         };

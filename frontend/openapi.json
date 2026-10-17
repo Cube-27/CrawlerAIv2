@@ -961,8 +961,18 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `include` and `exclude`\nglobs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is\ncalled when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. `webhook_url` is called when the job ends (\u00a74.2).",
         "properties": {
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exclude": {
             "items": {
               "type": "string"
@@ -4154,8 +4164,20 @@
       },
       "ProjectSettings": {
         "additionalProperties": false,
-        "description": "`llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.",
+        "description": "`llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.\n`draft_call_cap`: the most uncharged role S calls (field-name drafts) one API key may make, in all; null: no cap.",
         "properties": {
+          "draft_call_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Call Cap"
+          },
           "llm_call_cap": {
             "anyOf": [
               {
@@ -4170,7 +4192,8 @@
           }
         },
         "required": [
-          "llm_call_cap"
+          "llm_call_cap",
+          "draft_call_cap"
         ],
         "title": "ProjectSettings",
         "type": "object"
@@ -8297,7 +8320,7 @@
     },
     "/v1/project/settings": {
       "get": {
-        "description": "The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no\n`budget.llm_calls`; null bounds none.",
+        "description": "The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no\n`budget.llm_calls`, and `draft_call_cap` the uncharged field-name drafts of each API key; null bounds none.",
         "operationId": "get_project_settings_v1_project_settings_get",
         "responses": {
           "200": {
@@ -8367,7 +8390,7 @@
         ]
       },
       "patch": {
-        "description": "Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call.",
+        "description": "Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call, and a new\n`draft_call_cap` from a key's next draft.",
         "operationId": "patch_project_settings_v1_project_settings_patch",
         "requestBody": {
           "content": {
@@ -8825,7 +8848,7 @@
     },
     "/v1/schemas/draft": {
       "post": {
-        "description": "The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's\n`schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new\none, stored. A client shows it for editing before the run (SPEC-14 \u00a74.10). A draft the LLM could not give is a\nproblem typed with the LLM failure (502, 503); a retired draft is a 422.",
+        "description": "The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's\n`schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new\none, stored. A client shows it for editing before the run (SPEC-14 \u00a74.10). A draft the LLM could not give is a\nproblem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of\nthem; a retired draft is a 422.",
         "operationId": "draft_schema_v1_schemas_draft_post",
         "requestBody": {
           "content": {

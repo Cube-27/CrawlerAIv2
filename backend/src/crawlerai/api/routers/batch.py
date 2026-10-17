@@ -10,7 +10,7 @@ from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId
-from crawlerai.llm.client import LLMClient
+from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import batch
 from crawlerai.services.batch import BatchScrapeRequest, BatchSubmitted
@@ -36,6 +36,6 @@ async def batch_scrape(
     scraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued."""
     fetching: Fetching = request.app.state.fetching
     data: EngineData | None = request.app.state.engine_data
-    llm: LLMClient = request.app.state.llm
+    llm = KeyCapped(request.app.state.llm, database(request), key)
     with submission_problems():
         return await batch.submit_batch(database(request), fetching.connector, body, data=data, llm=llm, api_key_id=key)
