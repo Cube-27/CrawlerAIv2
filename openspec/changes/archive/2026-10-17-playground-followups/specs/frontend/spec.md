@@ -8,7 +8,7 @@ The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map
 - **THEN** the URL returns to `/` and Scrape mode shows
 
 ### Requirement: Schema, fields and format rules per mode
-A stored schema in Scrape SHALL add `records` and fix the page kind, of either page kind; Batch and Crawl with a schema or field names send `formats: ["records"]`; Extract's toolbar Schema chooses its source (a stored schema, inline JSON, a prompt or field names) and reports a missing one there; fields (1–50 names, `[a-z][a-z0-9_]{0,63}`) and a stored schema are never sent together, and a fields run first shows the `POST /v1/schemas/draft` result for confirmation. Drafting is owned by [schemas](../schemas/spec.md). Refs: Appendix A #41, D-0752, D-0818, D-0925, D-0980, D-1214, D-1217.
+A stored schema in Scrape SHALL add `records` and fix the page kind, of either page kind; Batch and Crawl with a schema or field names send `formats: ["records"]`; Extract's toolbar Schema chooses its source (a stored schema, inline JSON, a prompt or field names) and reports a missing one there; fields (1–50 names, `[a-z][a-z0-9_]{0,63}`) and a stored schema are never sent together, and a fields run first shows the `POST /v1/schemas/draft` result for confirmation. Drafting is owned by [schemas](../../../../../specs/schemas/spec.md). Refs: Appendix A #41, D-0752, D-0818, D-0925, D-0980, D-1214, D-1217.
 (Previously: listing records were refused, and Extract's source was an Options setting beside the toolbar's Schema.)
 #### Scenario: Batch with a schema
 - **WHEN** a batch is started with a stored schema

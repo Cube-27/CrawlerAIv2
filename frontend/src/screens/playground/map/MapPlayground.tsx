@@ -41,13 +41,14 @@ export function MapPlayground() {
     sendable,
   );
   const { jobId, onEdit } = useShownJob(mapForm, setForm);
-  const { run, keep } = useMapRun(setForm);
+  const { run, key, keep } = useMapRun(setForm);
   const request = buildMap({ ...form, url: requestUrl(form.url) });
 
   let state: OutputState | null = null;
   if (map.isPending) state = { kind: "pending", label: "Mapping the site" };
   else if (problem !== null) state = { kind: "failed", problem };
-  else if (run !== null) state = { kind: "done", content: <MapOutput result={run.result} /> };
+  else if (run !== null)
+    state = { kind: "done", content: <MapOutput key={key} result={run.result} /> };
   else if (jobId !== null) state = NOT_KEPT;
 
   return (
