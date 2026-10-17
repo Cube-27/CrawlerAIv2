@@ -74,6 +74,7 @@ async def fetch_http(
         block_class=block_class,
         error=sent.error,
         challenge=challenge,
+        transferred=sent.transferred,
     )
     report_proxy(sent.pool, sent.proxy, result)
     if sessions is not None:

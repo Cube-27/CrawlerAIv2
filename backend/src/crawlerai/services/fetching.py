@@ -21,11 +21,12 @@ from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.execute import RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
-from crawlerai.config_ir.api_recipe.replay import Replay
+from crawlerai.config_ir.api_recipe.replay import Replay, Replays
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
-from crawlerai.services.scrape_steps import SiteRow, site_row
+from crawlerai.db.models import JobId
+from crawlerai.services.scrape_steps import SiteRow, record_fetch_usage, site_row
 from crawlerai.storage.base import ObjectStore
 
 # D-1263: the longest pause a site asked for that a service waits out in place before its one further request: the
@@ -226,23 +227,30 @@ def _polite_send(fetching: Fetching, json: JsonFetcher, rules: SiteRules, turn: 
     return send
 
 
-def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replay | None:
+def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
     """A learning run's recipe replays (SPEC-09 §4.6, §4.7) over this process's JSON rung, as politely as a served
     recipe's request: only where the endpoint host's robots.txt allows it, at that host's rate (D-0731). A `learn` job
-    names no fetch policy, so replays go with the default one, which respects robots.txt. None without the JSON
-    rung."""
+    names no fetch policy, so replays go with the default one, which respects robots.txt, through the site's proxy
+    pool, as its pages are fetched; their requests, robots.txt's too, count as the job's usage (D-1381). None without
+    the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None
-    policy = FetchPolicy()
 
-    async def replay(request: JsonRequest) -> FetchResult:
-        # Nobody reads the attempts of a replay's robots.txt fetch: the run records only the replay's outcome. A list
-        # per replay, since the learner's replay lives as long as the worker.
-        rules = engine_rules(engine, fetching.rungs.http, [])
-        return await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
+    def replays(job_id: JobId, proxy_pool: str | None) -> Replay:
+        policy = FetchPolicy(proxy_pool=proxy_pool)
 
-    return replay
+        async def replay(request: JsonRequest) -> FetchResult:
+            attempts: list[AttemptRecord] = []
+            rules = engine_rules(engine, fetching.rungs.http, attempts)
+            result = await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
+            async with engine.begin() as conn:
+                await record_fetch_usage(conn, job_id, [*attempts, *result.attempts], proxy_pool)
+            return result
+
+        return replay
+
+    return replays
 
 
 async def _polite_json(

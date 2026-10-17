@@ -27,6 +27,7 @@ from pydantic import ValidationError
 
 from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.outcome import Traffic
 from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
@@ -95,6 +96,7 @@ class StubProxy:
     required: str | None = None
     tunnels: list[str] = field(default_factory=list)  # the authority of every tunnel opened
     authorizations: list[str | None] = field(default_factory=list)  # as received, one per CONNECT
+    moved: list[int] = field(default_factory=list)  # the bytes of each connection, both ways, CONNECT included
 
     def endpoint(self, credentials: tuple[str, str] | None = None) -> ProxyEndpoint:
         username, password = credentials or (None, None)
@@ -118,6 +120,8 @@ def _stub_proxy(origin: Origin) -> Iterator[StubProxy]:
         def handle(self) -> None:
             stub, client = state[0], self.request
             head = _read_head(client)
+            moved = [len(head) + 4]  # the head and its blank line (RFC 9112 §2.1)
+            stub.moved.append(0)
             request_line, *header_lines = head.decode("latin-1").split("\r\n")
             headers = {name.lower(): value.strip() for name, _, value in (h.partition(":") for h in header_lines)}
             stub.authorizations.append(headers.get("proxy-authorization"))
@@ -130,8 +134,11 @@ def _stub_proxy(origin: Origin) -> Iterator[StubProxy]:
                 return
             stub.tunnels.append(authority)
             with socket.create_connection(("127.0.0.1", stub.origin_port)) as upstream:
-                client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
-                _relay(client, upstream)
+                established = b"HTTP/1.1 200 Connection established\r\n\r\n"
+                client.sendall(established)
+                moved.append(len(established))
+                _relay(client, upstream, moved)
+            stub.moved[-1] = sum(moved)
 
     yield from _serve(
         _Threads(("127.0.0.1", 0), Handler),
@@ -163,10 +170,11 @@ def _read_head(sock: socket.socket) -> bytes:
     return head.split(b"\r\n\r\n", 1)[0]
 
 
-def _relay(client: socket.socket, upstream: socket.socket) -> None:
+def _relay(client: socket.socket, upstream: socket.socket, moved: list[int]) -> None:
     def pump(source: socket.socket, sink: socket.socket) -> None:
         with contextlib.suppress(OSError):
             while data := source.recv(65_536):
+                moved.append(len(data))
                 sink.sendall(data)
         # Either side ending ends the tunnel, as a proxy does.
         for sock in (source, sink):
@@ -298,6 +306,15 @@ def test_a_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, proxy: Stu
     assert proxy.tunnels == ["shop.example.test:80"]
     assert origin.hosts == ["shop.example.test"]
     assert result.bundle.manifest.fetch_policy["proxy_pool"] == "dc"
+
+
+def test_a_fetch_through_a_pool_counts_every_byte_it_moved_through_the_proxy(origin: Origin, proxy: StubProxy) -> None:
+    # D-1381: the HTTP messages both ways, the CONNECT exchange included, as the proxy relayed them.
+    result = _fetch("http://shop.example.test/hop", _pools(proxy.endpoint()))
+
+    assert _outcome(result) == (200, "ok", None)
+    assert len(proxy.moved) == 1  # one tunnel carried both hops
+    assert result.attempts[-1].transferred == proxy.moved[0]
 
 
 def test_the_environments_no_proxy_does_not_send_a_pool_fetch_direct(
@@ -617,12 +634,22 @@ async def _through_guard(guard: SocksGuard, host: str, port: int) -> tuple[int, 
         writer.close()
 
 
-def _guarded(proxy: StubProxy, endpoint: ProxyEndpoint, host: str) -> tuple[int, bytes]:
+def _guarded(proxy: StubProxy, endpoint: ProxyEndpoint, host: str, traffic: Traffic | None = None) -> tuple[int, bytes]:
     async def run() -> tuple[int, bytes]:
-        async with SocksGuard(StubConnector(), upstream=endpoint) as guard:
+        async with SocksGuard(StubConnector(), upstream=endpoint, traffic=traffic) as guard:
             return await _through_guard(guard, host, 80)
 
     return asyncio.run(run())
+
+
+def test_the_guard_counts_the_bytes_it_relays_both_ways(origin: Origin, proxy: StubProxy) -> None:
+    traffic = Traffic()
+
+    code, received = _guarded(proxy, proxy.endpoint(), "shop.example.test", traffic)
+
+    request = b"GET /p HTTP/1.1\r\nHost: shop.example.test\r\nConnection: close\r\n\r\n"
+    assert code == 0
+    assert traffic.bytes == len(request) + len(received)
 
 
 def test_the_guard_tunnels_through_the_pool_with_its_credentials(origin: Origin, proxy: StubProxy) -> None:

@@ -37,8 +37,8 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate, store_pending
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
-from crawlerai.config_ir.api_recipe.replay import Render, Replay
-from crawlerai.config_ir.api_recipe.validate import attach
+from crawlerai.config_ir.api_recipe.replay import Render, Replays
+from crawlerai.config_ir.api_recipe.validate import attach, refused
 from crawlerai.config_ir.held_out import StoredPage, load_pages
 from crawlerai.config_ir.induction import Induction, SamplePage, induce
 from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, Provenance, SchemaRef
@@ -110,6 +110,7 @@ class _Run:
     host: str
     fetch: FetchMethod
     serving: ExtractionConfigId | None
+    proxy_pool: str | None = None
     pages: Sequence[StoredPage] = ()
 
 
@@ -128,12 +129,13 @@ async def run_learn_job(
     *,
     vocabulary: Vocabulary,
     max_chars: int,
-    replay: Replay | None,
+    replay: Replays | None,
     render: Render | None = None,
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
-    learns no API recipe; `render` renders the pages whose captures hold no calls to learn a recipe from."""
+    learns no API recipe, with it, its recipe replays go through the site's proxy pool (D-1381); `render` renders the
+    pages whose captures hold no calls to learn a recipe from."""
     try:
         async with engine.begin() as conn:
             run = await _start(conn, job_id)
@@ -181,11 +183,11 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
         return Learned(None, "cancelled")
     await transition_job(conn, job_id, "running")
     schema = await registry.get_by_id(conn, key.schema_id)
-    host = (await conn.execute(select(Site.host).where(Site.id == key.site_id))).scalar_one()
+    site = (await conn.execute(select(Site.host, Site.proxy_pool).where(Site.id == key.site_id))).one()
     fetch = await remembered_method(conn, key.site_id, key.page_kind)
     serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
     await record_event(conn, job_id, LEARNING_STARTED)
-    return _Run(job_id, key, schema, host, fetch, serving)
+    return _Run(job_id, key, schema, site.host, fetch, serving, site.proxy_pool)
 
 
 async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
@@ -237,7 +239,7 @@ async def _learned(
     run: _Run,
     vocabulary: Vocabulary,
     max_chars: int,
-    replay: Replay | None,
+    replay: Replays | None,
     render: Render | None,
 ) -> Validated:
     """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
@@ -252,7 +254,22 @@ async def _learned(
     # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
     if validated.ir is None or replay is None:
         return validated
-    recipe = await learn_recipe(client, sample, held_out, run.schema, replay, job_id=run.job_id, render=render)
+    try:
+        recipe = await learn_recipe(
+            client,
+            sample,
+            held_out,
+            run.schema,
+            replay(run.job_id, run.proxy_pool),
+            job_id=run.job_id,
+            render=render,
+        )
+    except LLMFailure:
+        raise  # D-0738: role D's failure ends the run as role A's does
+    except Exception as e:
+        # D-1389: the recipe learner's own error refuses the recipe, not the config it would have joined.
+        log.exception("learn job %s: recipe learning failed", run.job_id)
+        recipe = refused(f"recipe_error: {type(e).__name__}")
     return attach(validated, recipe)
 
 

@@ -19,7 +19,7 @@ from typing import Any, Final
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.api_recipe.replay import Render, Replay
+from crawlerai.config_ir.api_recipe.replay import Render, Replays
 from crawlerai.config_ir.learning import next_learn_job, run_learn_job
 from crawlerai.llm.client import LLMClient
 from crawlerai.storage.base import ObjectStore
@@ -38,7 +38,7 @@ async def run_learner(
     *,
     vocabulary: Vocabulary,
     max_chars: int,
-    replay: Replay | None,
+    replay: Replays | None,
     render: Render | None = None,
 ) -> None:
     """Run queued `learn` jobs until `stop` is set, which cancels the run in progress. `max_chars` is role A's HTML

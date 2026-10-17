@@ -29,7 +29,7 @@ from crawlerai.collect.base import Candidate
 from crawlerai.config_ir import learning
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
-from crawlerai.config_ir.api_recipe.replay import Replay
+from crawlerai.config_ir.api_recipe.replay import Replays
 from crawlerai.config_ir.learning import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
@@ -234,7 +234,7 @@ class LearnSite:
         for n in range(1, count + 1):
             assert (await self.extract(n, role_c, api=api)).outcome == "extracted"
 
-    async def learn(self, role_a: RoleA, replay: Replay | None = None) -> tuple[JobId, Learned | None]:
+    async def learn(self, role_a: RoleA, replay: Replays | None = None) -> tuple[JobId, Learned | None]:
         async with self.engine.begin() as conn:
             job_id = await next_learn_job(conn)
         assert job_id is not None
@@ -445,7 +445,7 @@ async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_
     assert [r.prompt_kind for r in role_a.requests] == ["a_synth", "a_repair", "a_repair", "a_repair"]
 
 
-def _replay(stand_in_api: StandInApi, products: range, sent: list[str]) -> Replay:
+def _replay(stand_in_api: StandInApi, products: range, sent: list[str]) -> Replays:
     """The run's replays, answered by the stand-in API for `products`; each request's URL is added to `sent`."""
     fetcher = stand_in_api({f"{ENDPOINT}/{n}": _answer(n) for n in products})
 
@@ -453,7 +453,7 @@ def _replay(stand_in_api: StandInApi, products: range, sent: list[str]) -> Repla
         sent.append(request.url)
         return await fetcher(request, FetchPolicy(timeout_s=5))
 
-    return replay
+    return lambda _job_id, _proxy_pool: replay
 
 
 async def test_a_site_whose_values_come_from_an_api_is_learned_with_a_validated_recipe(
@@ -497,6 +497,23 @@ async def test_a_recipe_that_does_not_validate_leaves_the_config_without_one(
     assert await site.recipe(learned.config_id) is None
     status, payload = await site.finished(job_id)
     assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "not_reproduced: price, title")
+
+
+async def test_a_recipe_learning_error_refuses_the_recipe_and_the_config_still_activates(site: LearnSite) -> None:
+    # D-1389: an error of the recipe learner itself, not of the LLM, is reported as a refused recipe.
+    await site.pages(8, api=True)
+    await _forced(site)
+
+    async def broken(_request: JsonRequest) -> FetchResult:
+        raise RuntimeError("synthetic replay failure")
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY), lambda _job_id, _pool: broken)
+
+    assert learned is not None
+    assert learned.config_id is not None
+    assert await site.recipe(learned.config_id) is None
+    status, payload = await site.finished(job_id)
+    assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "recipe_error: RuntimeError")
 
 
 async def _forced(site: LearnSite) -> None:

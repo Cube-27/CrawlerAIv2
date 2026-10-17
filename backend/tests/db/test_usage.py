@@ -7,8 +7,11 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.types import AttemptRecord
+from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import Job, JobId, Project, UrlTask, UsageEvent, UsageResource
 from crawlerai.db.usage import budget_remaining, record_usage
+from crawlerai.services.scrape_steps import record_fetch_usage
 
 pytestmark = pytest.mark.anyio
 
@@ -143,3 +146,27 @@ async def test_the_page_budget_counts_tasks_that_ended(conn: AsyncConnection) ->
     await conn.execute(insert(UrlTask), rows)
 
     assert await budget_remaining(conn, job_id, "pages") == 2
+
+
+def _attempt(method: CaptureMethod, transferred: int, duration_ms: int = 1) -> AttemptRecord:
+    return AttemptRecord(method=method, status=200, block_class="ok", duration_ms=duration_ms, transferred=transferred)
+
+
+async def test_a_fetch_through_a_proxy_pool_counts_the_bytes_of_every_attempt(conn: AsyncConnection) -> None:
+    # D-1381: every rung's attempt through the pool, HTTP, browser and API alike.
+    job_id = await _job_id(conn)
+    attempts = [_attempt("http", 900), _attempt("browser", 52_000, duration_ms=2500), _attempt("api", 300)]
+
+    await record_fetch_usage(conn, job_id, attempts, "dc")
+
+    assert await _usage(conn, job_id) == {"http_requests": 2, "browser_seconds": 3, "proxy_bytes": 53_200}
+    pools = set((await conn.execute(select(UsageEvent.model_or_pool).where(UsageEvent.job_id == job_id))).scalars())
+    assert pools == {"dc"}
+
+
+async def test_a_fetch_without_a_proxy_pool_counts_no_proxy_bytes(conn: AsyncConnection) -> None:
+    job_id = await _job_id(conn)
+
+    await record_fetch_usage(conn, job_id, [_attempt("http", 900)], None)
+
+    assert await _usage(conn, job_id) == {"http_requests": 1}
