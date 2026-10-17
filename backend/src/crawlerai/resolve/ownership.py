@@ -2,15 +2,20 @@
 DOM subtree holds it, and the page's entities form a tree under their parents.
 
 A candidate is the target's when the target holds it, when the page holds it (page-level values describe what the
-page is about), or when an Offer of the target or of one of its variants holds it (atomic offers, §4.8). Any other
-candidate is not owned and never publishes.
+page is about), or when an Offer of the target or of one of its variants holds it (atomic offers, §4.8). A state
+array row's value (`collect.admission`) is the target's where page values are, when the row and every row enclosing it
+names the target: one of its URLs is a page URL or the target's (Appendix A #55). Any other candidate is not owned and
+never publishes.
 """
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import takewhile
 
-from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
+from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, CollectResult, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.normalize.dispatch import equal
+from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org: an Offer is the offer of an item (`offers` / `itemOffered`), so its price and availability are the
 # item's (§4.5: Offer values are owned by the Offer whose parent is the Product).
@@ -22,6 +27,7 @@ VARIANT = "hasVariant"
 # schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant (SPEC-13
 # §4.3), so it is never a variant holder.
 AGGREGATE_OFFER = "AggregateOffer"
+_URL = FieldSpec(type=FieldType.URL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,15 +36,16 @@ class EntityGraph:
 
     entities: Mapping[str, Entity]
     vocabulary: Vocabulary
+    page_urls: tuple[str, ...] = ()  # the request, final and canonical URLs: what a row names to be the page's subject
 
     @classmethod
-    def of(cls, entities: Iterable[Entity], vocabulary: Vocabulary) -> "EntityGraph":
+    def of(cls, entities: Iterable[Entity], vocabulary: Vocabulary, page_urls: Sequence[str] = ()) -> "EntityGraph":
         """Every collector's entities as one result: ids unique, parents resolved, a tree (`CollectResult`)."""
         merged = list(entities)
         if all(entity.id != PAGE for entity in merged):
             merged.append(Entity(id=PAGE, types=(PAGE,), urls=(), parent=None))
         result = CollectResult(entities=tuple(merged), candidates=())
-        return cls({entity.id: entity for entity in result.entities}, vocabulary)
+        return cls({entity.id: entity for entity in result.entities}, vocabulary, tuple(page_urls))
 
     @property
     def page(self) -> Entity:
@@ -62,10 +69,20 @@ class EntityGraph:
         owner = self.owner_of(candidate)
         if owner.id == target.id or (page_values and owner.id == PAGE):
             return True
+        if ARRAY_ROW in owner.types:
+            return page_values and self._names_target(owner, target)
         if owner.parent is None or not self.is_a(owner, OFFER):
             return False
         holder = self.entities[owner.parent]
         return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)
+
+    def _names_target(self, row: Entity, target: Entity) -> bool:
+        """Whether an array row and every row enclosing it names the page's subject: one of its URLs equals a page URL
+        or one of the target's. A row naming only other documents, or none, is one item among others, and a row inside
+        another page's item belongs to that item."""
+        subject = (*self.page_urls, *target.urls)
+        rows = [row, *takewhile(lambda e: ARRAY_ROW in e.types, self.ancestors(row))]
+        return all(names_any(e, subject) for e in rows)
 
     def offers(self, target: Entity) -> tuple[Entity, ...]:
         """The Offers directly under the target, an AggregateOffer excepted: it summarizes several offers, not an offer
@@ -78,3 +95,9 @@ class EntityGraph:
 
     def _single_offer(self, entity: Entity) -> bool:
         return self.is_a(entity, OFFER) and not self.is_a(entity, AGGREGATE_OFFER)
+
+
+def names_any(entity: Entity, urls: Sequence[str]) -> bool:
+    """Whether one of the entity's URLs is one of `urls`; URL equality is the url type's (SPEC-04 §4.5): equal after
+    canonicalization."""
+    return any(equal(own, url, _URL) for own in entity.urls for url in urls)

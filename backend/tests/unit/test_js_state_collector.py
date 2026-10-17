@@ -1,6 +1,7 @@
 """The embedded JSON state collector (SPEC-05 §4.5, ARCHITECTURE §8.1): JSON in inline scripts, admitted only by
 equality to another source kind's candidate (not independent, owned by that candidate's entity) or, for a field with no
-such candidate whose type has a checkable syntax, by visibility in the page text (independent, owned by the page)."""
+such candidate whose type has a checkable syntax, by visibility in the page text (independent, owned by the page, or by
+the array row holding it)."""
 
 import json
 from datetime import UTC, datetime
@@ -10,7 +11,7 @@ import pytest
 from pydantic import JsonValue
 
 from crawlerai.collect.admission import Admitted
-from crawlerai.collect.base import Candidate
+from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
 from crawlerai.collect.js_state import JsStateCollector, state_documents
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -265,3 +266,73 @@ def test_each_script_is_addressed_by_its_own_xpath() -> None:
     )
 
     assert [c.locator for c in _collect(page).candidates] == ["js_state:/html[1]/body[1]/script[1]:$['cost']"]
+
+
+# Array rows (Appendix A #55): an object item of an array of two or more objects is one of a set of items.
+ROWS = "js_state:0:$['items']"
+
+
+def test_a_visible_value_in_an_array_row_is_owned_by_its_row() -> None:
+    document: JsonValue = {
+        "items": [{"url": "/p/1", "cost": "€19.99"}, {"url": "https://other.example.test/p/2", "cost": "€5"}]
+    }
+
+    result = _collect(_state(document, body="Now €19.99, also €5.00"))
+
+    assert [(c.entity_id, c.independent) for c in result.candidates if c.field == "price"] == [
+        (f"{ROWS}[0]", True),
+        (f"{ROWS}[1]", True),
+    ]
+    assert result.entities == (
+        Entity(id=f"{ROWS}[0]", types=(ARRAY_ROW,), urls=(PAGE_URL,), parent=PAGE),
+        Entity(id=f"{ROWS}[1]", types=(ARRAY_ROW,), urls=("https://other.example.test/p/2",), parent=PAGE),
+    )
+
+
+def test_one_object_in_an_array_is_not_a_row() -> None:
+    result = _collect(_state({"offers": [{"cost": "€19.99"}], "tags": ["a", {"cost": "€5.00"}]}, body="€19.99 €5.00"))
+
+    assert _prices(_state({"offers": [{"cost": "€19.99"}]}, body="€19.99")) == [(PAGE, True)]
+    assert [c.entity_id for c in result.candidates] == [PAGE, PAGE]
+    assert result.entities == ()
+
+
+def test_a_value_admitted_by_equality_in_a_row_keeps_its_anchors_owner() -> None:
+    page = _state({"items": [{"cost": "€19.99"}, {"cost": "€5.00"}]}, body="€19.99 €5.00")
+
+    result = _collect(page, JSONLD_PRICE)
+
+    assert [(c.entity_id, c.independent) for c in result.candidates] == [("jsonld:0:$['offers']", False)]
+    assert result.entities == ()
+
+
+def test_a_rows_urls_stop_at_its_nested_rows_and_a_nested_row_names_its_parent() -> None:
+    document: JsonValue = {
+        "items": [
+            {"link": "/p/9", "image": "https://cdn.example.test/9.jpg", "sizes": [{"u": "/p/9?s=1"}, {"cost": "€7"}]},
+            {"link": "/p/8"},
+        ]
+    }
+
+    result = _collect(_state(document, body="€7.00"))
+
+    outer, inner = f"{ROWS}[0]", f"{ROWS}[0]['sizes'][1]"
+    assert [c.entity_id for c in result.candidates] == [inner]
+    assert result.entities == (
+        Entity(
+            id=outer,
+            types=(ARRAY_ROW,),
+            urls=("https://shop.example.test/p/9", "https://cdn.example.test/9.jpg"),
+            parent=PAGE,
+        ),
+        Entity(id=inner, types=(ARRAY_ROW,), urls=(), parent=outer),
+    )
+
+
+def test_rows_of_two_documents_in_one_script_are_two_entities() -> None:
+    script = 'window.a = [{"cost": "€5.00"}, {}]; window.b = [{"cost": "€5.00"}, {}];'
+
+    result = _collect(_page(script, body="€5.00"))
+
+    assert [c.entity_id for c in result.candidates] == ["js_state:0:$[0]", "js_state:1:$[0]"]
+    assert [e.id for e in result.entities] == ["js_state:0:$[0]", "js_state:1:$[0]"]

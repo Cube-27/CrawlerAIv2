@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.ownership import EntityGraph
@@ -37,6 +37,16 @@ GROUP_ENTITIES = (GROUP, VARIANT, VARIANT_OFFER, VARIANT_BRAND, GROUP_OFFER)
 
 def _candidate(entity: Entity | str) -> Candidate:
     entity_id = entity if isinstance(entity, str) else entity.id
+    if entity_id.startswith("js_state:"):  # a state row's value: its locator addresses the script, not the row's id
+        return Candidate(
+            field="price",
+            entity_id=entity_id,
+            source_kind="js_state",
+            raw="x",
+            normalized=Ok("x"),
+            locator="js_state:/html[1]/head[1]/script[1]:$['items'][0]['cost']",
+            independent=True,
+        )
     return Candidate(
         field="title",
         entity_id=entity_id,
@@ -149,3 +159,44 @@ def test_an_offer_of_an_entity_of_several_types_is_its_offer() -> None:
     graph = EntityGraph.of((work, offer), VOCABULARY)
     assert graph.offers(work) == (offer,)
     assert graph.owned_by(_candidate(offer), work)
+
+
+# State array rows (`collect.admission`, Appendix A #55).
+PAGE_URL = "https://shop.example.test/p/1"
+OTHER_URL = "https://shop.example.test/p/2"
+
+
+def _row(path: str, *urls: str, parent: str = PAGE) -> Entity:
+    return Entity(id=f"js_state:0:$['items']{path}", types=(ARRAY_ROW,), urls=urls, parent=parent)
+
+
+SELF_ROW = _row("[0]", PAGE_URL)
+OTHER_ROW = _row("[1]", OTHER_URL)
+BARE_ROW = _row("[2]")
+SELF_ROW_PART = _row("[0]['sizes'][0]", f"{PAGE_URL}?size=s", PAGE_URL, parent=SELF_ROW.id)
+OTHER_ROW_PART = _row("[1]['sizes'][0]", PAGE_URL, parent=OTHER_ROW.id)
+TARGET_ROW = _row("[3]", "https://shop.example.test/w-1")
+ROWS = (SELF_ROW, OTHER_ROW, BARE_ROW, SELF_ROW_PART, OTHER_ROW_PART, TARGET_ROW)
+
+
+@pytest.mark.parametrize(
+    ("owner", "owned"),
+    [
+        (SELF_ROW, True),  # it names the page URL
+        (OTHER_ROW, False),  # it names another document only
+        (BARE_ROW, False),  # it names nothing: one item among others
+        (SELF_ROW_PART, True),  # it and its enclosing row name the page
+        (OTHER_ROW_PART, False),  # inside another page's item, whatever it names
+        (TARGET_ROW, True),  # it names the target's own URL
+    ],
+)
+def test_a_state_row_is_the_targets_when_it_and_its_enclosing_rows_name_the_target(owner: Entity, owned: bool) -> None:
+    target = PRODUCT.model_copy(update={"urls": ("https://shop.example.test/w-1",)})
+    graph = EntityGraph.of((target, *ROWS), VOCABULARY, (PAGE_URL,))
+    assert graph.owned_by(_candidate(owner), target) is owned
+
+
+def test_a_state_row_is_never_a_listing_rows() -> None:
+    # A listing's rows take no page values (§4.7), so no state row is theirs, even one naming the page.
+    graph = EntityGraph.of((PRODUCT, SELF_ROW), VOCABULARY, (PAGE_URL,))
+    assert not graph.owned_by(_candidate(SELF_ROW), PRODUCT, page_values=False)

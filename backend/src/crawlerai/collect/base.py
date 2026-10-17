@@ -17,6 +17,9 @@ from crawlerai.schemas.types import SchemaDef
 
 # The page itself, as an entity: what page-level values (Open Graph, meta, cleaned text) belong to (§4.6).
 PAGE = "page"
+# An object item of a JSON array holding two or more objects, in JSON without standard keys (`js_state`, `xhr`): one of
+# a set of items, not its document's subject (`collect.admission`). It is no schema.org type.
+ARRAY_ROW = "array_row"
 
 
 class _Model(BaseModel):

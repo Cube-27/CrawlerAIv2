@@ -16,7 +16,12 @@ exception yields outcome `error` (stored `failed`) with no fields and no record.
 Every candidate SHALL pass its type normalizer ([normalization](../normalization/spec.md)), else it is rejected
 `invalid`/`ambiguous`. `select_target` picks one primary-type entity (`resolve/intent.py`) or none, which makes every
 field `conflict`/`intent_ambiguous`; a detail page's related items and its product's group do not make intent
-ambiguous (D-1151); candidates the target does not own are rejected `not_owned`. Refs: §8.2 rule 3, D-0413, D-0785, D-1151.
+ambiguous (D-1151); candidates the target does not own are rejected `not_owned`. An `array_row` entity's candidates
+are the target's only where page values are, when that row and every row enclosing it names a page URL or the
+target's URL (`resolve/ownership.py`). Refs: §8.2 rule 3, Appendix A #55, D-0413, D-0785, D-1151, D-1253, D-1255.
+#### Scenario: Related item's price in state
+- **WHEN** a detail page's state holds an array of two items, the related one with its own URL and a visible price
+- **THEN** that price is rejected `not_owned`, and a row naming the page URL keeps its price as the target's
 
 ### Requirement: Exact-match agreement (INV-14)
 For exact-match types the system SHALL publish only when every valid, owned, kept candidate agrees after
