@@ -334,7 +334,7 @@ async def _run(
     host = urlsplit(request.url).hostname or ""
     records_only = set(request.formats) == {"records"}
     async with engine.begin() as conn:
-        site = await site_row(conn, host)
+        site = await site_row(conn, host, request.page_kind)
         config = await _config(conn, site.id, work)
         recipe = recipe_of(config) if config is not None and records_only else None
         row = None

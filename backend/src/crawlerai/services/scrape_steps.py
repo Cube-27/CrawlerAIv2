@@ -15,12 +15,12 @@ from typing import Any, Final, Literal, Self, TypedDict
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
-from sqlalchemy import Row, select
+from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.rungs import remember_fetch_method
+from crawlerai.acquire.rungs import remember_fetch_method, remembered_as
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters
@@ -44,6 +44,7 @@ from crawlerai.db.models import (
     Project,
     SchemaId,
     Site,
+    SiteFetchMethod,
     SiteId,
     UsageResource,
 )
@@ -222,16 +223,29 @@ def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
         raise SchemaUnusable(f"schema {schema.name} is for {schema.page_kind} pages, not {page_kind}")
 
 
-SiteRow = Row[SiteId, FetchMethod, str | None, str | None, int | None]
+@dataclass(frozen=True, slots=True)
+class SiteRow:
+    """A site as a fetch reads it: its id, the fetch method remembered for the page kind fetched, its proxy pool,
+    robots.txt snapshot and interval setting."""
+
+    id: SiteId
+    fetch_method: FetchMethod
+    proxy_pool: str | None
+    robots_snapshot: str | None
+    crawl_delay_ms: int | None
 
 
-async def site_row(conn: AsyncConnection, host: str) -> SiteRow:
-    """The site of `host`, created in the default project the first time one of its pages is fetched."""
+async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None = None) -> SiteRow:
+    """The site of `host`, created in the default project the first time one of its pages is fetched, with the fetch
+    method remembered for its pages of `page_kind` (`rungs.remembered_as`; `http` when none is, SPEC-02 §4.4)."""
     await conn.execute(
         pg_insert(Site).values(project_id=DEFAULT_PROJECT, host=host).on_conflict_do_nothing(index_elements=[Site.host])
     )
-    columns = (Site.id, Site.fetch_method, Site.proxy_pool, Site.robots_snapshot, Site.crawl_delay_ms)
-    return (await conn.execute(select(*columns).where(Site.host == host))).one()
+    memory = and_(SiteFetchMethod.site_id == Site.id, SiteFetchMethod.page_kind == remembered_as(page_kind))
+    columns = (Site.id, SiteFetchMethod.method, Site.proxy_pool, Site.robots_snapshot, Site.crawl_delay_ms)
+    query = select(*columns).select_from(Site).outerjoin(SiteFetchMethod, memory).where(Site.host == host)
+    row = (await conn.execute(query)).one()
+    return SiteRow(row.id, row.method or "http", row.proxy_pool, row.robots_snapshot, row.crawl_delay_ms)
 
 
 def fetch_policy(

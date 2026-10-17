@@ -269,7 +269,7 @@ async def _samples(
     for url in urls:
         host = urlsplit(url).hostname or ""
         async with engine.begin() as conn:
-            site = await site_row(conn, host)
+            site = await site_row(conn, host, request.page_kind)
         policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
         attempts: list[AttemptRecord] = []
         try:

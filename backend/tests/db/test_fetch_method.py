@@ -1,5 +1,6 @@
-"""`site.fetch_method` memory (SPEC-02 §4.4, ARCHITECTURE §7.1): set to `browser` when HTTP fails, or lacks what the
-caller reads, and the browser passes, and back to `http` by the 7-day re-check when HTTP passes again.
+"""The remembered fetch method (SPEC-02 §4.4, ARCHITECTURE §7.1), per site and page kind (`site_fetch_method`, D-1380):
+set to `browser` when HTTP fails, or lacks what the caller reads, and the browser passes, and back to `http` by the
+7-day re-check when HTTP passes again.
 
 The web is a stub answering synthetic pages on RFC 2606 hosts; no network.
 """
@@ -16,8 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method, with_attempts
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.db.models import Capture, FetchMethod, Project, Site, SiteId
+from crawlerai.db.models import Capture, FetchMethod, PageKind, Project, Site, SiteFetchMethod, SiteId
 from crawlerai.scheduler.recheck import recheck_fetch_method
+from crawlerai.services.scrape_steps import site_row
 
 pytestmark = pytest.mark.anyio
 
@@ -59,13 +61,31 @@ def browser(fetch_result: Callable[..., FetchResult]) -> Web:
     return Web(fetch_result, "browser")
 
 
-async def _site(conn: AsyncConnection, host: str = "shop.example.test", **columns: Any) -> SiteId:
+async def _site(
+    conn: AsyncConnection,
+    host: str = "shop.example.test",
+    *,
+    browser_since: Any = None,
+    kind: PageKind = "detail",
+    **columns: Any,
+) -> SiteId:
+    """A site; with `browser_since`, its pages of `kind` remembered as `browser`, checked then."""
     values = {"project_id": DEFAULT_PROJECT, "host": host, **columns}
     site_id: SiteId = (await conn.execute(insert(Site).values(**values).returning(Site.id))).scalar_one()
+    if browser_since is not None:
+        row = {"site_id": site_id, "page_kind": kind, "method": "browser", "checked_at": browser_since}
+        await conn.execute(insert(SiteFetchMethod).values(**row))
     return site_id
 
 
-async def _capture(conn: AsyncConnection, site_id: SiteId, url: str, block_class: BlockClass, days_ago: int) -> None:
+async def _capture(
+    conn: AsyncConnection,
+    site_id: SiteId,
+    url: str,
+    block_class: BlockClass,
+    days_ago: int,
+    kind: PageKind | None = None,
+) -> None:
     await conn.execute(
         insert(Capture).values(
             site_id=site_id,
@@ -79,13 +99,27 @@ async def _capture(conn: AsyncConnection, site_id: SiteId, url: str, block_class
             html_sha256="0" * 64,
             size_bytes=1,
             duration_ms=1,
+            fetch_policy={} if kind is None else {"page_kind": kind},
         )
     )
 
 
-async def _memory(conn: AsyncConnection, site_id: SiteId) -> tuple[FetchMethod, datetime | None]:
-    row = (await conn.execute(select(Site.fetch_method, Site.fetch_method_checked_at).where(Site.id == site_id))).one()
-    return row.fetch_method, row.fetch_method_checked_at
+async def _memory(
+    conn: AsyncConnection, site_id: SiteId, kind: PageKind = "detail"
+) -> tuple[FetchMethod, datetime | None]:
+    query = select(SiteFetchMethod.method, SiteFetchMethod.checked_at).where(
+        SiteFetchMethod.site_id == site_id, SiteFetchMethod.page_kind == kind
+    )
+    row = (await conn.execute(query)).one_or_none()
+    return ("http", None) if row is None else (row.method, row.checked_at)
+
+
+async def _age(conn: AsyncConnection, site_id: SiteId, checked_at: Any, kind: PageKind = "detail") -> None:
+    await conn.execute(
+        update(SiteFetchMethod)
+        .where(SiteFetchMethod.site_id == site_id, SiteFetchMethod.page_kind == kind)
+        .values(checked_at=checked_at)
+    )
 
 
 async def _now(conn: AsyncConnection) -> datetime:
@@ -94,10 +128,18 @@ async def _now(conn: AsyncConnection) -> datetime:
 
 
 async def _acquire_and_remember(
-    conn: AsyncConnection, site_id: SiteId, http: Web, browser: Web, policy: FetchPolicy | None = None
+    conn: AsyncConnection,
+    site_id: SiteId,
+    http: Web,
+    browser: Web,
+    policy: FetchPolicy | None = None,
+    *,
+    url: str = PAGE,
+    needs_render: Callable[[FetchResult], Any] | None = None,
 ) -> FetchResult:
-    remembered = (await _memory(conn, site_id))[0]
-    result = await acquire(PAGE, policy or FetchPolicy(), remembered, Rungs(http=http, browser=browser))
+    policy = policy or FetchPolicy()
+    remembered = (await _memory(conn, site_id, policy.page_kind or "detail"))[0]
+    result = await acquire(url, policy, remembered, Rungs(http=http, browser=browser), needs_render=needs_render)
     await remember_fetch_method(conn, site_id, result)
     return result
 
@@ -208,7 +250,7 @@ async def test_more_evidence_for_a_site_already_on_browser_keeps_its_recheck_clo
     conn: AsyncConnection, http: Web, browser: Web
 ) -> None:
     checked = datetime(2026, 10, 1, tzinfo=UTC)
-    site_id = await _site(conn, fetch_method="browser", fetch_method_checked_at=checked)
+    site_id = await _site(conn, browser_since=checked)
     http.pages[PAGE], browser.pages[PAGE] = "shell", "ok"
 
     # A worker that read the site while it was still on `http`.
@@ -228,7 +270,7 @@ async def test_a_shell_then_browser_ok_then_a_passing_recheck_goes_http_browser_
     assert (await _memory(conn, site_id))[0] == "browser"
 
     assert await recheck_fetch_method(conn, http, batch=10) == 0  # not due for 7 days
-    await conn.execute(update(Site).where(Site.id == site_id).values(fetch_method_checked_at=LONG_AGO))
+    await _age(conn, site_id, LONG_AGO)
     http.pages[PAGE] = "ok"
     assert await recheck_fetch_method(conn, http, batch=10) == 1
 
@@ -241,7 +283,7 @@ async def test_a_shell_then_browser_ok_then_a_passing_recheck_goes_http_browser_
 async def test_a_recheck_that_fails_over_http_keeps_browser_until_the_next_turn(
     conn: AsyncConnection, http: Web
 ) -> None:
-    site_id = await _site(conn, fetch_method="browser", fetch_method_checked_at=LONG_AGO)
+    site_id = await _site(conn, browser_since=LONG_AGO)
     await _capture(conn, site_id, PAGE, "ok", days_ago=1)
     http.pages[PAGE] = "shell"
 
@@ -252,7 +294,7 @@ async def test_a_recheck_that_fails_over_http_keeps_browser_until_the_next_turn(
 
 
 async def test_the_recheck_tries_the_latest_ok_capture(conn: AsyncConnection, http: Web) -> None:
-    site_id = await _site(conn, fetch_method="browser")
+    site_id = await _site(conn, browser_since=LONG_AGO)
     await _capture(conn, site_id, f"{ORIGIN}/item/old", "ok", days_ago=5)
     await _capture(conn, site_id, f"{ORIGIN}/item/recent", "ok", days_ago=2)
     await _capture(conn, site_id, f"{ORIGIN}/item/gone", "not_found", days_ago=1)
@@ -266,18 +308,18 @@ async def test_the_recheck_tries_the_latest_ok_capture(conn: AsyncConnection, ht
 
 async def test_the_recheck_fetches_through_the_sites_proxy_pool(conn: AsyncConnection, http: Web) -> None:
     # ARCHITECTURE §7.1: a site with a pool is fetched through it on every rung, the re-check's included.
-    site_id = await _site(conn, fetch_method="browser", proxy_pool="dc")
+    site_id = await _site(conn, browser_since=LONG_AGO, proxy_pool="dc")
     await _capture(conn, site_id, PAGE, "ok", days_ago=1)
     http.pages[PAGE] = "ok"
 
     await recheck_fetch_method(conn, http, batch=10)
 
     assert http.fetched == [f"{ORIGIN}/robots.txt", PAGE]
-    assert http.policies == [FetchPolicy(proxy_pool="dc"), FetchPolicy(proxy_pool="dc")]
+    assert http.policies == [FetchPolicy(proxy_pool="dc", page_kind="detail")] * 2
 
 
 async def test_the_recheck_honours_robots(conn: AsyncConnection, http: Web) -> None:
-    site_id = await _site(conn, fetch_method="browser")
+    site_id = await _site(conn, browser_since=LONG_AGO)
     await _capture(conn, site_id, PAGE, "ok", days_ago=1)
     http.pages[PAGE], http.robots = "ok", "User-agent: *\nDisallow: /item/\n"
 
@@ -288,7 +330,7 @@ async def test_the_recheck_honours_robots(conn: AsyncConnection, http: Web) -> N
 
 
 async def test_a_site_without_an_ok_capture_is_marked_checked_without_a_fetch(conn: AsyncConnection, http: Web) -> None:
-    site_id = await _site(conn, fetch_method="browser")
+    site_id = await _site(conn, browser_since=LONG_AGO)
     await _capture(conn, site_id, PAGE, "blocked", days_ago=1)
 
     assert await recheck_fetch_method(conn, http, batch=10) == 1
@@ -297,24 +339,74 @@ async def test_a_site_without_an_ok_capture_is_marked_checked_without_a_fetch(co
     assert await _memory(conn, site_id) == ("browser", await _now(conn))
 
 
-async def test_the_recheck_takes_due_browser_sites_only_the_longest_unchecked_first_up_to_its_batch(
+async def test_the_recheck_takes_due_browser_memories_only_the_longest_unchecked_first_up_to_its_batch(
     conn: AsyncConnection, http: Web
 ) -> None:
-    never = await _site(conn, "never.example.test", fetch_method="browser")
-    oldest = await _site(conn, "oldest.example.test", fetch_method="browser", fetch_method_checked_at=LONG_AGO)
-    later = await _site(
-        conn, "later.example.test", fetch_method="browser", fetch_method_checked_at=func.now() - timedelta(days=7.5)
-    )
-    recent = await _site(
-        conn, "recent.example.test", fetch_method="browser", fetch_method_checked_at=func.now() - timedelta(days=6)
-    )
-    on_http = await _site(conn, "http.example.test", fetch_method="http")
+    oldest = await _site(conn, "oldest.example.test", browser_since=func.now() - timedelta(days=9))
+    older = await _site(conn, "older.example.test", browser_since=LONG_AGO)
+    later = await _site(conn, "later.example.test", browser_since=func.now() - timedelta(days=7.5))
+    recent = await _site(conn, "recent.example.test", browser_since=func.now() - timedelta(days=6))
+    on_http = await _site(conn, "http.example.test")
     now = await _now(conn)
 
     assert await recheck_fetch_method(conn, http, batch=2) == 2
-    assert [(await _memory(conn, site))[1] == now for site in (never, oldest, later)] == [True, True, False]
+    assert [(await _memory(conn, site))[1] == now for site in (oldest, older, later)] == [True, True, False]
     assert await recheck_fetch_method(conn, http, batch=2) == 1
 
     assert (await _memory(conn, later))[1] == now
     assert (await _memory(conn, recent))[1] != now
     assert await _memory(conn, on_http) == ("http", None)
+
+
+async def test_a_listing_render_sends_only_the_sites_listings_to_the_browser(
+    conn: AsyncConnection, http: Web, browser: Web
+) -> None:
+    # D-1380: a listing whose HTTP page had no rows was rendered; the site's detail pages still go over HTTP.
+    site_id = await _site(conn)
+    listing, detail = f"{ORIGIN}/category", PAGE
+    http.pages[listing] = browser.pages[listing] = "ok"
+    http.pages[detail] = "ok"
+
+    async def no_rows(result: FetchResult) -> bool:
+        return result.method == "http"
+
+    await _acquire_and_remember(
+        conn, site_id, http, browser, FetchPolicy(page_kind="listing"), url=listing, needs_render=no_rows
+    )
+    assert await _memory(conn, site_id, "listing") == ("browser", await _now(conn))
+    assert await _memory(conn, site_id, "detail") == ("http", None)
+
+    assert (await site_row(conn, "shop.example.test", "listing")).fetch_method == "browser"
+    detail_site = await site_row(conn, "shop.example.test", "detail")
+    browser.fetched.clear()
+    await acquire(detail, FetchPolicy(page_kind="detail"), detail_site.fetch_method, Rungs(http=http, browser=browser))
+    assert browser.fetched == []
+
+
+async def test_a_fetch_without_a_page_kind_shares_the_detail_memory(
+    conn: AsyncConnection, http: Web, browser: Web
+) -> None:
+    site_id = await _site(conn)
+    http.pages[PAGE], browser.pages[PAGE] = "shell", "ok"
+
+    await _acquire_and_remember(conn, site_id, http, browser, FetchPolicy())
+
+    assert (await _memory(conn, site_id, "detail"))[0] == "browser"
+    assert (await site_row(conn, "shop.example.test")).fetch_method == "browser"
+    assert (await site_row(conn, "shop.example.test", "listing")).fetch_method == "http"
+
+
+async def test_a_listing_recheck_tries_the_latest_ok_listing_capture_as_a_listing(
+    conn: AsyncConnection, http: Web
+) -> None:
+    listing = f"{ORIGIN}/category"
+    site_id = await _site(conn, browser_since=LONG_AGO, kind="listing")
+    await _capture(conn, site_id, listing, "ok", days_ago=3, kind="listing")
+    await _capture(conn, site_id, PAGE, "ok", days_ago=1, kind="detail")
+    http.pages[listing] = "ok"
+
+    assert await recheck_fetch_method(conn, http, batch=10) == 1
+
+    assert http.fetched == [f"{ORIGIN}/robots.txt", listing]
+    assert http.policies[-1] == FetchPolicy(page_kind="listing")
+    assert (await _memory(conn, site_id, "listing"))[0] == "http"

@@ -32,6 +32,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.rungs import remembered_method
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate, store_pending
@@ -179,10 +180,11 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
         return Learned(None, "cancelled")
     await transition_job(conn, job_id, "running")
     schema = await registry.get_by_id(conn, key.schema_id)
-    site = (await conn.execute(select(Site.host, Site.fetch_method).where(Site.id == key.site_id))).one()
+    host = (await conn.execute(select(Site.host).where(Site.id == key.site_id))).scalar_one()
+    fetch = await remembered_method(conn, key.site_id, key.page_kind)
     serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
     await record_event(conn, job_id, LEARNING_STARTED)
-    return _Run(job_id, key, schema, site.host, site.fetch_method, serving)
+    return _Run(job_id, key, schema, host, fetch, serving)
 
 
 async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
