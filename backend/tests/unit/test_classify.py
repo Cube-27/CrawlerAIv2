@@ -127,6 +127,34 @@ def test_a_document_that_links_nowhere_is_blocked_whatever_else_it_holds(extra: 
     assert classify(200, _HTML, _terminal(250, extra)) == "blocked"
 
 
+_REFRESH = '<meta http-equiv="Refresh" content="30;URL=/item/1">'
+_CONTACT = "".join(f'<a href="{href}">contact</a>' for href in ("mailto:help@example.com", "tel:+15550100") * 3)
+
+
+@pytest.mark.parametrize("refresh", [_REFRESH, _REFRESH.replace("Refresh", "refresh")])
+def test_a_self_refreshing_document_that_links_to_no_web_page_is_blocked(refresh: str) -> None:
+    # A stand-in while the site is busy: it navigates itself on (HTML Standard §4.2.5.3) and offers only a mail
+    # address and a phone number (RFC 6068, RFC 3966), never a page of any site.
+    body = _terminal(500, refresh + _CONTACT)
+
+    assert classify(200, _HTML, body) == "blocked"
+
+
+def test_a_refresh_header_counts_as_declaring_a_refresh() -> None:
+    headers = (*_HTML, ("Refresh", "30"))
+
+    assert classify(200, headers, _terminal(500, _CONTACT)) == "blocked"
+
+
+@pytest.mark.parametrize("link", ['<a href="/item/2">next</a>', '<a href="HTTPS://example.com/">home</a>'])
+def test_a_self_refreshing_document_with_a_web_link_is_ok(link: str) -> None:
+    assert classify(200, _HTML, _terminal(500, _REFRESH + _CONTACT + link)) == "ok"
+
+
+def test_a_document_linking_only_to_mail_and_phone_without_a_refresh_is_ok() -> None:
+    assert classify(200, _HTML, _terminal(500, _CONTACT)) == "ok"
+
+
 def test_a_small_terminal_document_without_enough_text_stays_a_shell() -> None:
     # The shell rule decides first: a browser retry may render what HTTP did not.
     assert classify(200, _HTML, _terminal(100)) == "shell"

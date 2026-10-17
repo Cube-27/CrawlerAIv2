@@ -29,8 +29,8 @@ from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, 
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
-from crawlerai.acquire.classify import INTERSTITIAL_STATUS, classify, interstitial
+from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
+from crawlerai.acquire.classify import INTERSTITIAL_STATUS, interstitial
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
@@ -286,7 +286,7 @@ async def classified(exchange: Exchange, content: Content) -> BlockClass:
     """The block class of a rendered document. classify parses HTML synchronously; a thread keeps the event loop
     free. Without the page kind: the listing rule calls a page a shell for the browser to render, and the browser is
     the last rung, so its page is extracted whatever its links (rows from captured JSON are read then)."""
-    return await asyncio.to_thread(classify, exchange.status, exchange.response_headers, content.body)
+    return await asyncio.to_thread(block_class_of, exchange.status, exchange.response_headers, content.body)
 
 
 @dataclass

@@ -3,7 +3,8 @@
 vendor whose signature the response shows (`adapters.challenges`, site data), else `STRUCTURAL` when the generic
 signal holds, else none.
 
-INV-24 holds: the block class comes from status and structure alone (`classify`), and a label changes neither it nor
+INV-24 (amended, D-1470): the block class comes from status and structure (`classify`) and, for a 2xx HTML document,
+from a vendor's stand-in marker (`block_class_of`), the only site data that selects it; a label changes neither it nor
 the remembered fetch method. Labels are recorded on the attempt (its manifest and `capture` row keep them), counted in
 the log per label and rung, and slow a host's adaptive rate as a 429 does (`politeness`).
 """
@@ -12,13 +13,14 @@ import logging
 from collections.abc import Iterable
 from typing import Final
 
-from crawlerai.acquire.classify import interstitial
+from crawlerai.acquire.classify import classify, interstitial, is_html
 from crawlerai.acquire.types import BlockClass
-from crawlerai.adapters.challenges import SIGNATURES, vendor_of
+from crawlerai.adapters.challenges import SIGNATURES, stand_in_vendor, vendor_of
 from crawlerai.core.capture import CaptureMethod
+from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["CHALLENGED", "STRUCTURAL", "challenge_label", "challenge_signal", "count", "portable"]
+__all__ = ["CHALLENGED", "STRUCTURAL", "block_class_of", "challenge_label", "challenge_signal", "count", "portable"]
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +29,16 @@ STRUCTURAL: Final = "structural"
 _SET_COOKIE = "set-cookie"  # RFC 6265 §4.1
 # The classes a challenge takes (`classify`): a refusal, or a document with nothing of the page in it.
 CHALLENGED: Final[frozenset[BlockClass]] = frozenset({"blocked", "shell"})
+
+
+def block_class_of(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
+    """The response's block class (`classify`), except that a 2xx HTML document (RFC 9110 §15.3) showing a vendor's
+    stand-in marker (`adapters.challenges`) is `blocked`: the vendor served it in place of the page, whatever its
+    status says, and the browser may pass it where HTTP did not."""
+    block_class = classify(status, headers, body, page_kind)
+    if block_class == "ok" and 200 <= status < 300 and is_html(headers) and stand_in_vendor(body) is not None:
+        return "blocked"
+    return block_class
 
 
 def challenge_signal(status: int, headers: HeaderList, body: bytes, url: str) -> bool:

@@ -4,7 +4,9 @@ No body text is ever compared with a string: challenge pages served with 200 are
 would need vendor strings, C3/C4). They mostly present as shells and get a browser retry. An error or challenge page
 served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A site's pages
 are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms it holds,
-is not one of them.
+is not one of them. Nor is a document that declares a refresh (it navigates itself on, HTML Standard §4.2.5.3) and whose
+hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the site is
+busy or checking the client.
 
 A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`_lists_items`) and no
 structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
@@ -54,6 +56,8 @@ INTERSTITIAL_STATUS = frozenset({403, 429, 503})
 # HTML Standard §4.2.5.3: the `refresh` pragma (`meta http-equiv`, an ASCII case-insensitive keyword), and §7.11.1:
 # the `Refresh` header, which the same declarative refresh steps read. Either makes the document navigate on.
 _REFRESH = "refresh"
+# RFC 9110 §4.2: the URI schemes of resources served over HTTP, which a site's pages are.
+_WEB_SCHEMES = ("http", "https")
 # HTML Standard §4.12.1: `script` elements; script is the only other way a document navigates itself (the `Location`
 # interface, §7.2.4, or a form it submits, §4.10.21).
 _SCRIPT = "script"
@@ -67,7 +71,7 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
         return "blocked"
     if status >= 400:
         return "error"
-    if not 200 <= status < 300 or not _is_html(headers):
+    if not 200 <= status < 300 or not is_html(headers):
         return "ok"
     tree = LexborHTMLParser(body)
     # Read before the shell rule strips script data blocks from the tree.
@@ -75,6 +79,8 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
     unstructured = _no_site_page(tree)
     if unstructured is not None:
         return unstructured
+    if _refreshes(tree, headers) and not _links_to_web(tree):
+        return "blocked"
     if page_kind == "listing" and not structured and not _lists_items(body):
         return "shell"
     return "ok"
@@ -92,7 +98,7 @@ def interstitial(status: int, headers: HeaderList, body: bytes, url: str) -> boo
     script) and it is no page of the site by structure: it declares a refresh, it lacks site structure
     (`lacks_site_structure`), or no hyperlink leads to another page of its own host. A document with neither a refresh
     nor a script can never replace itself, so waiting on it is time lost."""
-    if status not in INTERSTITIAL_STATUS or not _is_html(headers):
+    if status not in INTERSTITIAL_STATUS or not is_html(headers):
         return False
     tree = LexborHTMLParser(body)
     refresh = _refreshes(tree, headers)
@@ -107,6 +113,20 @@ def _refreshes(tree: LexborHTMLParser, headers: HeaderList) -> bool:
     return any((meta.attributes.get("http-equiv") or "").strip().lower() == _REFRESH for meta in tree.css("meta"))
 
 
+def _links_to_web(tree: LexborHTMLParser) -> bool:
+    """Whether a hyperlink leads to a web page: a relative reference, or an absolute one whose scheme is http or https
+    (RFC 3986 §4.2, §3.1, the scheme compared case-insensitively). A `mailto:` or `tel:` link starts a message or a
+    call, not a page of any site."""
+    for link in tree.css(_HYPERLINKS):
+        try:
+            scheme = urlsplit(link.attributes.get("href") or "").scheme.lower()
+        except ValueError:  # an authority no URL parser reads (RFC 3986 §3.2.2) leads nowhere
+            continue
+        if scheme in ("", *_WEB_SCHEMES):
+            return True
+    return False
+
+
 def _links_within(tree: LexborHTMLParser, url: str) -> bool:
     """Whether a hyperlink leads to another page of `url`'s host (RFC 3986 §5 reference resolution, the host compared
     case-insensitively, §6.2.2.1): a site's pages link to each other (HTML Standard §4.6), a page standing in for one
@@ -118,7 +138,7 @@ def _links_within(tree: LexborHTMLParser, url: str) -> bool:
         except ValueError:  # an authority no URL parser reads (RFC 3986 §3.2.2) leads nowhere
             continue
         elsewhere = (target.path or "/", target.query) != (here.path or "/", here.query)
-        if target.scheme in ("http", "https") and target.hostname == here.hostname and elsewhere:
+        if target.scheme in _WEB_SCHEMES and target.hostname == here.hostname and elsewhere:
             return True
     return False
 
@@ -132,7 +152,7 @@ def _no_site_page(tree: LexborHTMLParser) -> BlockClass | None:
     return None
 
 
-def _is_html(headers: HeaderList) -> bool:
+def is_html(headers: HeaderList) -> bool:
     # RFC 9110 §8.3: the media type is the Content-Type value before any parameters, case-insensitive.
     types = [value.split(";", 1)[0].strip().lower() for name, value in headers if name.lower() == "content-type"]
     return not types or types[-1] in _HTML_TYPES

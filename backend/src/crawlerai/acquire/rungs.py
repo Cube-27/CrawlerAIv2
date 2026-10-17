@@ -70,6 +70,10 @@ _NOT_MODIFIED = 304
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 # ARCHITECTURE §7.1: the HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
+# SPEC-02 §4.11: the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
+# HTTP/2 stream (curl 92) or connection. A filter may reset a client whose TLS or HTTP/2 fingerprint it does not trust;
+# the browser's own network stack may pass (D-1472). A timeout is not one: the site was slow, not refusing.
+_NETWORK_ERROR = "network_error"
 
 
 @dataclass(frozen=True)
@@ -118,16 +122,16 @@ async def acquire(
     active config's API recipe bound to its fetch (SPEC-09 §4.8), when the site has one. The adapter's result is kept
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
     were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered`
-    method. In `auto`, an HTTP shell or block is fetched again in the browser, and the browser's outcome is kept only if
-    it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept only if it is `ok`
-    and `needs_render` no longer holds (owner #49, #54). Each request after the first (the page after an adapter or a
-    recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and is not sent
-    when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
-    manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no
-    adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
-    that adapter on its own turn (SPEC-15 §4.2); an HTTP `ok` page that would be rendered only for lacking what the
-    caller reads asks it before the render, which runs only when no adapter serves it (D-1388). A policy that captures
-    the page (`screenshot`, `pdf`) uses neither an adapter nor a recipe."""
+    method. In `auto`, an HTTP shell, block or network error is fetched again in the browser, and the browser's outcome
+    is kept only if it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept
+    only if it is `ok` and `needs_render` no longer holds (owner #49, #54). Each request after the first (the page after
+    an adapter or a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and
+    is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its
+    bundle's manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A
+    page no adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched
+    again by that adapter on its own turn (SPEC-15 §4.2); an HTTP `ok` page that would be rendered only for lacking what
+    the caller reads asks it before the render, which runs only when no adapter serves it (D-1388). A policy that
+    captures the page (`screenshot`, `pdf`) uses neither an adapter nor a recipe."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
@@ -328,7 +332,12 @@ async def _admitted(admit_next: Admit | None, *, after: timedelta = timedelta(0)
 
 
 def _browser_may_pass(result: FetchResult) -> bool:
-    return result.block_class in _BROWSER_EVIDENCE and not slow_down(result)
+    return (result.block_class in _BROWSER_EVIDENCE and not slow_down(result)) or _unanswered(result)
+
+
+def _unanswered(result: FetchResult) -> bool:
+    error = result.attempts[-1].error
+    return result.block_class == "error" and error is not None and error.startswith(_NETWORK_ERROR)
 
 
 def slow_down(result: FetchResult) -> bool:

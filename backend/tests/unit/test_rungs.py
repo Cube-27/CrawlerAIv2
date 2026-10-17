@@ -40,6 +40,7 @@ class Rung:
     body: bytes | None = None  # PAGE for `ok`, else SHELL, by default
     headers: tuple[tuple[str, str], ...] = ()
     retry_after: timedelta | None = None
+    error: str | None = None
 
     async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.calls.append((url, policy))
@@ -66,6 +67,7 @@ class Rung:
             block_class=self.block_class,
             duration_ms=1,
             retry_after=self.retry_after,
+            error=self.error,
         )
         bundle = CaptureBundle(manifest=manifest, body=body, network=())
         return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
@@ -149,6 +151,34 @@ def test_a_missing_page_or_an_error_is_not_retried_in_the_browser() -> None:
 
     assert _attempts(result) == [("http", "not_found")]
     assert stubs.browser.calls == []
+
+
+def test_a_network_error_over_http_is_retried_in_the_browser_and_its_ok_kept() -> None:
+    stubs = Web(Rung("http", "error", error="network_error: curl 92"), Rung("browser", "ok"))
+
+    result = stubs.acquire()
+
+    assert (result.method, result.block_class, result.bundle.body) == ("browser", "ok", PAGE)
+    assert _attempts(result) == [("http", "error"), ("browser", "ok")]
+
+
+@pytest.mark.parametrize("error", ["timeout", "body_cap", "decode_error", "ssrf_rejected", None])
+def test_an_error_other_than_a_network_error_is_not_retried_in_the_browser(error: str | None) -> None:
+    stubs = Web(Rung("http", "error", error=error), Rung("browser", "ok"))
+
+    result = stubs.acquire()
+
+    assert _attempts(result) == [("http", "error")]
+    assert stubs.browser.calls == []
+
+
+def test_a_network_error_whose_render_fails_keeps_the_http_error() -> None:
+    stubs = Web(Rung("http", "error", error="network_error: curl 92"), Rung("browser", "blocked"))
+
+    result = stubs.acquire()
+
+    assert (result.method, result.block_class, result.attempts[0].error) == ("http", "error", "network_error: curl 92")
+    assert _attempts(result) == [("http", "error"), ("browser", "blocked")]
 
 
 def test_a_site_remembered_as_browser_goes_straight_to_the_browser() -> None:
