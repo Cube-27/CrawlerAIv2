@@ -6,7 +6,7 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolv
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from ipaddress import ip_address
 from pathlib import Path
@@ -41,13 +41,14 @@ from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.preference import PRECEDENCE_FILE, load_precedence
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import SchemaUnusable
 from crawlerai.storage.fs import FsStore
-from tests.db.conftest import listing_page, listing_schema
+from tests.db.conftest import LISTING_FIELDS, listing_page, listing_schema
 
 pytestmark = pytest.mark.anyio
 
@@ -271,6 +272,53 @@ async def test_a_listing_whose_rows_only_a_render_holds_is_read_from_the_browser
     async with engine.connect() as conn:
         stored = (await conn.execute(select(func.count()).select_from(Extraction))).scalar_one()
     assert stored == 1
+
+
+async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
+) -> None:
+    # D-1475, D-1476: no structured rows and no LLM provider; the page states its next page.
+    url = f"{own_origin}/c/kettles"
+    head = f'<title>Kettles</title><link rel="next" href="{own_origin}/c/kettles?page=2">'
+    web.pages[url] = (200, f"<!doctype html><html><head>{head}</head><body><p>Kettles</p></body></html>".encode(), "ok")
+    fields = {
+        **LISTING_FIELDS,
+        "next_page_url": {"type": "url", "description": "The next page", "scope": "page"},
+    }
+    document = SchemaDocument.model_validate({"name": schema_name, "page_kind": "listing", "fields": fields})
+    async with engine.begin() as conn:
+        schema = await registry.create(conn, document, "user")
+
+    # The committed precedence ranks `dom`, which states `rel=next` (the fixture's order does not).
+    data = replace(engine_data, orders=load_precedence(Path(__file__).parents[2] / "data" / PRECEDENCE_FILE))
+    scraped = request(url, "records", schema={"id": str(schema.id)}, page_kind="listing")
+
+    result = await scrape(engine, fetching, scraped, data=data)
+
+    assert (result.records, result.reason) == ([], "no_rows: llm_unavailable")
+    assert result.page is not None
+    assert result.page["next_page_url"].value == f"{own_origin}/c/kettles?page=2"
+    assert set(result.page) == {"next_page_url"}
+    task = await _row(engine, select(UrlTask.last_error).where(UrlTask.url == url))
+    assert task.last_error == "no_rows: llm_unavailable"
+    assert "page" in result.model_dump(by_alias=True)
+
+
+async def test_a_detail_page_answers_no_page_member(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles/1"
+    web.pages[url] = (200, _product_page(url), "ok")
+
+    result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
+
+    assert (result.outcome, result.reason, result.page) == ("extracted", None, None)
+    assert "page" not in result.model_dump(by_alias=True)
 
 
 async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(

@@ -131,6 +131,8 @@ class ExtractionResult(_Model):
     diagnostics: tuple[str, ...] = ()
     # A listing's next-page candidates (§4.12), for the crawl frontier (SPEC-10 §4.5).
     next_pages: tuple[str, ...] = ()
+    # Why a listing gave no rows (`resolve.pipeline.no_rows`); None for a listing with rows and for a detail page.
+    reason: str | None = None
 
     @model_validator(mode="after")
     def _outcome_fits(self) -> Self:

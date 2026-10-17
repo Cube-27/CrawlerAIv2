@@ -735,6 +735,30 @@ def test_a_listing_role_c_failure_leaves_the_asked_page_fields_missing_with_its_
     assert (result.rows, result.outcome, result.diagnostics) == ((), "partial", ("role C: x",))
 
 
+@pytest.mark.parametrize(
+    ("role_c", "reason"),
+    [
+        (None, "no_rows: not_asked"),
+        (FakeRoleC(), "no_rows: none_listed"),
+        (FakeRoleC(listing_reply=ListingGapReply((), (), failure="llm_unavailable")), "no_rows: llm_unavailable"),
+        (FakeRoleC(listing_reply=ListingGapReply((), (), failure="llm_budget")), "no_rows: llm_budget"),
+    ],
+)
+def test_a_listing_without_rows_says_why_and_keeps_its_page_fields(role_c: FakeRoleC | None, reason: str) -> None:
+    # D-1475: the next page the page states still resolves, and the reason names what role C did.
+    result = _listing(_html(head='<link rel="next" href="/c/widgets?page=3">'), role_c=role_c, data=COMMITTED)
+
+    assert (result.rows, result.reason) == ((), reason)
+    assert result.entity is not None
+    assert result.entity["next_page_url"].value == "https://shop.example.test/c/widgets?page=3"
+
+
+def test_a_listing_with_rows_or_a_detail_page_has_no_reason() -> None:
+    assert _listing(_html(_item_list(_row(1))), data=COMMITTED).reason is None
+    assert _listing(_html(body="<p>Widget 1</p>"), role_c=FakeRoleC(listing_reply=ROWS_REPLY)).reason is None
+    assert _extract(_bundle(_html(_product()))).reason is None
+
+
 def test_a_listing_schema_without_row_fields_does_not_call_role_c() -> None:
     role_c = FakeRoleC()
     schema = _schema("listing", page_title=LISTING.fields["page_title"])
