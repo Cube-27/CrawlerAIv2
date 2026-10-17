@@ -39,8 +39,12 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
   render: measure how often. Descriptions are the main section only (D-1308). `fetch.max_rows` is not in the playground.
-- ATS adapters, later: UKG, ADP, BambooHR, Personio, Teamtailor and Workable's per-job endpoint publish public JSON the same
-  way; each is admitted on measurement of at least 3 tenants (C6), Personio's feed needs an XML reader.
+- ATS adapters (#251): Workable's per-job endpoint is not built; Teamtailor and Personio serve lists only (a job page
+  takes the page rungs: a shape cannot pick one item of a feed). UKG's list is refused by the host's robots.txt, so it
+  serves only on an operator override (D-1334). Not read: UKG `FullTime`, BambooHR pay as text (`baseSalary` is mapped
+  as written; the range normalizer decides), ADP pay type (annual or hourly), Teamtailor's `jobs.rss` locations. UKG and ADP
+  were measured on one tenant each (their endpoints are the platform's own); add tenants as found. A re-scrape of a
+  listing keeps an earlier record of the same URL: check that a field newly mapped by an adapter reaches it.
 - Network data layer (#250): the paging driver (`crawl.paging`) counts linked DOM item blocks only, so a scroll listing whose items hold no item link stops `no_items` although its calls would load more rows.
 - Network data layer (#250): a render sometimes ends before the page's data call arrives (one of five renders of one listing kept no call); the settle wait does not wait for fetches in flight.
 - Network data layer (#250): structured rows that lack a field the page's call carries per item (microdata rows without a price) keep it unpublished; joining a call's rows to structured rows needs an item identity rule.
