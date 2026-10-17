@@ -13,7 +13,7 @@ requests; this module names no host (INV-03)."""
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import Text, any_, bindparam, func, select, union
+from sqlalchemy import Text, any_, bindparam, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -75,11 +75,9 @@ class Frontier:
         if room <= 0:
             return 0
         listed = bindparam("listed", taken, type_=ARRAY(Text))
-        known = union(
-            select(UrlTask.canonical_url).where(UrlTask.job_id == job_id, UrlTask.canonical_url == any_(listed)),
-            select(UrlTask.final_url).where(UrlTask.job_id == job_id, UrlTask.final_url == any_(listed)),
-        )
-        existing = set((await conn.execute(known)).scalars())
+        by_url = select(UrlTask.canonical_url).where(UrlTask.job_id == job_id, UrlTask.canonical_url == any_(listed))
+        by_final_url = select(UrlTask.final_url).where(UrlTask.job_id == job_id, UrlTask.final_url == any_(listed))
+        existing: set[str | None] = set((await conn.execute(by_url.union(by_final_url))).scalars())
         new = [url for url in taken if url not in existing][:room]
         if new:
             rows = [self.task_row(job_id, url, depth, parent) for url in new]

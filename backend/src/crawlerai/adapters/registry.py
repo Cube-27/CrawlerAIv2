@@ -5,12 +5,14 @@ the registry answers only for the active ones.
 
 A platform on tenants' own hosts (SPEC-15) can only tell a host is not its own from the host's answer. A host that
 answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a
-site that is not the platform's gets at most one adapter request per window from this process.
+site that is not the platform's gets at most one adapter request per window. A registry remembers the declines it
+made for as long as it lives; the processes that fetch take one per page (`for_host`) from the declines stored on the
+page's site row (`site.adapter_declined`, D-1384) and store the ones it made back (`declined_for`), so the window holds
+across processes and restarts.
 """
 
-import time
-from collections import OrderedDict
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Callable, Collection, Iterable, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -34,9 +36,8 @@ from crawlerai.adapters.workable import Workable
 from crawlerai.adapters.workday import Workday
 from crawlerai.db.models import PageKind
 
-# How long a host stays declined, and how many declined hosts are remembered (the oldest is forgotten first).
-DECLINE_SECONDS: Final = 24 * 60 * 60
-MAX_DECLINED: Final = 10_000
+# How long a host stays declined.
+DECLINE_FOR: Final = timedelta(hours=24)
 
 
 def platform_adapters() -> tuple[Adapter, ...]:
@@ -60,9 +61,13 @@ def platform_adapters() -> tuple[Adapter, ...]:
     )
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
 class Registry:
     def __init__(
-        self, adapters: Iterable[Adapter], active: Collection[str], *, clock: Callable[[], float] = time.monotonic
+        self, adapters: Iterable[Adapter], active: Collection[str], *, clock: Callable[[], datetime] = _now
     ) -> None:
         adapters = tuple(adapters)
         names = [adapter.name for adapter in adapters]
@@ -72,7 +77,21 @@ class Registry:
             raise ValueError(f"no adapter named {unknown}")
         self._active = tuple(adapter for adapter in adapters if adapter.name in active)
         self._clock = clock
-        self._declined: OrderedDict[tuple[str, str], float] = OrderedDict()  # (adapter, host) -> until
+        self._declined: dict[tuple[str, str], datetime] = {}  # (adapter, host) -> until
+
+    def for_host(self, host: str, stored: Mapping[str, str]) -> "Registry":
+        """A registry of the same active adapters knowing the declines `stored` for `host` (adapter name -> the ISO 8601
+        time until which it is declined, as `site.adapter_declined` holds them), and none it made itself."""
+        registry = Registry(self._active, {adapter.name for adapter in self._active}, clock=self._clock)
+        for name, until in stored.items():
+            registry._declined[(name, host)] = datetime.fromisoformat(until)
+        return registry
+
+    def declined_for(self, host: str) -> dict[str, str]:
+        """The declines this registry holds for `host` that still run, as `for_host` reads them."""
+        now = self._clock()
+        held = self._declined.items()
+        return {name: until.isoformat() for (name, declined), until in held if declined == host and until > now}
 
     def detect(self, url: str) -> Adapter | None:
         """The active adapter that detects `url`."""
@@ -120,16 +139,7 @@ class Registry:
 
     def _is_declined(self, adapter: Adapter, host: str) -> bool:
         until = self._declined.get((adapter.name, host))
-        if until is None:
-            return False
-        if until > self._clock():
-            return True
-        del self._declined[(adapter.name, host)]
-        return False
+        return until is not None and until > self._clock()
 
     def _decline(self, adapter: Adapter, host: str) -> None:
-        key = (adapter.name, host)
-        self._declined[key] = self._clock() + DECLINE_SECONDS
-        self._declined.move_to_end(key)
-        while len(self._declined) > MAX_DECLINED:
-            self._declined.popitem(last=False)
+        self._declined[(adapter.name, host)] = self._clock() + DECLINE_FOR

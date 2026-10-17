@@ -35,7 +35,17 @@ from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import JobPins
-from crawlerai.services.fetching import Fetching, adapter_send, endpoint_rules, recipe_rung, recording, refusal
+from crawlerai.services.fetching import (
+    Fetching,
+    adapter_send,
+    endpoint_rules,
+    page_host_first,
+    recipe_rung,
+    recording,
+    refusal,
+    site_rungs,
+    store_declines,
+)
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
@@ -52,7 +62,7 @@ from crawlerai.services.scrape_steps import (
     store_page_record,
 )
 from crawlerai.worker.loop import Failed, Finished, TaskResult
-from crawlerai.worker.polite import fetch_politely
+from crawlerai.worker.polite import HostRules, fetch_politely
 
 # The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
@@ -148,7 +158,9 @@ async def fetch_page(
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
         return Ended(Failed(str(e), transient=False))
-    site = await site_row(conn, urlsplit(task.url).hostname or "", task.page_kind)
+    host = urlsplit(task.url).hostname or ""
+    site = await site_row(conn, host, task.page_kind)
+    rungs = site_rungs(fetching, host, site)
     policy = fetch_policy(options, locale, site.proxy_pool, page_kind=task.page_kind)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6).
@@ -158,16 +170,18 @@ async def fetch_page(
     recipe = await _recipe(conn, fetching, task, served, robots)
     check = None if served is None else content_check(served.schema, served.data, served.config, _role_c(task, llm))
 
-    async def page(url: str, admit_next: Admit) -> FetchResult | Unchanged:
-        # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6).
-        send = adapter_send(fetching, urlsplit(url).hostname or "", partial(endpoint_rules, conn, fetch_robots=robots))
+    async def page(url: str, admit_next: Admit, known: HostRules) -> FetchResult | Unchanged:
+        # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6); the
+        # page's own host by the rules already read for the page (D-1384).
+        rules = page_host_first(host, known, partial(endpoint_rules, conn, fetch_robots=robots))
+        send = adapter_send(fetching, host, rules)
 
         async def fetch(sent: Validators | None) -> FetchResult:
             result = await acquire(
                 url,
                 policy,
                 site.fetch_method,
-                fetching.rungs,
+                rungs,
                 recipe=recipe,
                 validators=sent,
                 admit_next=admit_next,
@@ -179,10 +193,11 @@ async def fetch_page(
 
         return await fetch_unless_unchanged(fetch, validators, has_record=bool(standing))
 
-    by_adapter = fetching.rungs.adapters.would_serve(task.url)
+    by_adapter = rungs.adapters.would_serve(task.url)
     fetched = await fetch_politely(
         conn, task, site.id, policy, page, fetching.limiter, fetch_robots=robots, by_adapter=by_adapter
     )
+    await store_declines(conn, site, host, rungs)
     if isinstance(fetched, FetchResult):
         if (refused := refusal(fetched)) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
