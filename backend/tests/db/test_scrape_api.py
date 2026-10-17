@@ -143,10 +143,10 @@ async def test_answers_the_requested_formats_and_only_those(
     assert response.status_code == 200, response.text
     body = response.json()
     assert set(body) == {
-        *("job_id", "capture_id", "url", "final_url", "fetched_at", "outcome", "fetch", "usage"),
+        *("job_id", "capture_id", "url", "final_url", "fetched_at", "outcome", "reason", "fetch", "usage"),
         *("links", "metadata"),
     }
-    assert (body["url"], body["final_url"], body["outcome"]) == (url, url, "extracted")
+    assert (body["url"], body["final_url"], body["outcome"], body["reason"]) == (url, url, "extracted", None)
     assert body["links"] == [f"{own_origin}/kettles/red"]
     assert body["metadata"] == {
         "title": "Blue kettle",

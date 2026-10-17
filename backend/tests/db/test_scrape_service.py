@@ -288,7 +288,7 @@ async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
     result = await scrape(engine, fetching, request(url, "markdown"))
 
     assert web.page_fetches() == []
-    assert result.outcome == "blocked"
+    assert (result.outcome, result.reason) == ("blocked", "robots")
     assert (result.capture_id, result.fetch, result.final_url, result.markdown) == (None, None, None, None)
     task = await _row(
         engine, select(UrlTask.status, UrlTask.outcome, UrlTask.last_error).where(UrlTask.job_id == result.job_id)
@@ -306,7 +306,8 @@ async def test_an_unreachable_robots_txt_allows_nothing(
     result = await scrape(engine, fetching, request(url, "markdown"))
 
     assert web.page_fetches() == []
-    assert result.outcome == "blocked"
+    # The answer says why, as the task does: a disallow and an unreadable robots.txt are told apart.
+    assert (result.outcome, result.reason) == ("blocked", "robots_unreachable")
     task = await _row(engine, select(UrlTask.last_error).where(UrlTask.job_id == result.job_id))
     assert task.last_error == "robots_unreachable"
 
@@ -321,7 +322,7 @@ async def test_the_operator_override_skips_robots_txt(
     result = await scrape(engine, fetching, request(url, "raw_html", fetch=override))
 
     assert web.fetched == [("http", url)]
-    assert result.outcome == "extracted"
+    assert (result.outcome, result.reason) == ("extracted", None)
 
 
 async def test_a_private_target_is_rejected_before_any_job_or_fetch(

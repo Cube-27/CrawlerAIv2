@@ -187,7 +187,9 @@ class Usage(BaseModel):
 
 class ScrapeResult(BaseModel):
     """The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
-    `capture_id`, `final_url`, `fetched_at` and `fetch` are None. `schema` is the draft of a `schema.prompt`."""
+    `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
+    does (SPEC-02 §4.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
+    9309 §2.3.1.4); None for a page that was fetched. `schema` is the draft of a `schema.prompt`."""
 
     model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
 
@@ -197,6 +199,7 @@ class ScrapeResult(BaseModel):
     final_url: str | None
     fetched_at: datetime | None
     outcome: PageOutcome
+    reason: str | None
     fetch: FetchSummary | None
     markdown: str | None = format_member()
     markdown_fit: str | None = format_member()
@@ -388,7 +391,7 @@ async def _run(
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
     extra = await _extract_more(work, task, derived, config, further)
-    members, records = _NOT_FETCHED, None
+    members, records, reason = _NOT_FETCHED, None, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
@@ -396,8 +399,8 @@ async def _run(
             outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
-            outcome = "blocked"
-            await complete_task(conn, task, outcome, reason=page)
+            outcome, reason = "blocked", page
+            await complete_task(conn, task, outcome, reason=reason)
         await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
     if outcome == "failed":
@@ -406,6 +409,7 @@ async def _run(
         job_id=task.job_id,
         url=request.url,
         outcome=outcome,
+        reason=reason,
         usage=usage,
         schema_=derived.drafted,
         records=records,

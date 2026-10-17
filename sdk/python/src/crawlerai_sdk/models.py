@@ -2157,6 +2157,7 @@ class ScrapeResult(BaseModel):
     outcome: Annotated[Outcome2, Field(title="Outcome")]
     pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
+    reason: Annotated[str | None, Field(title="Reason")] = None
     records: Annotated[list[ScrapedRecord] | None, Field(title="Records")] = None
     schema_: Annotated[SchemaDef | None, Field(alias="schema")] = None
     screenshot: Artifact | None = None

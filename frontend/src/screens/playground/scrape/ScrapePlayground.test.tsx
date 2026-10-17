@@ -54,6 +54,7 @@ function scrapeResponse(overrides: Partial<ScrapeResponse> = {}): ScrapeResponse
     final_url: "https://store.test/items/1?ref=final",
     fetched_at: "2026-10-13T10:00:00Z",
     outcome: "extracted",
+    reason: null,
     fetch: {
       method: "browser",
       status_code: 200,
@@ -741,6 +742,29 @@ describe("scrape playground: formats and problems", () => {
     expect(
       within(usage.getByRole("row", { name: /LLM tokens in/ })).getByText("1200"),
     ).toBeVisible();
+  });
+
+  it("says why a page robots.txt kept from being fetched is blocked", async () => {
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({
+            outcome: "blocked",
+            reason: "robots_unreachable",
+            capture_id: null,
+            final_url: null,
+            fetched_at: null,
+            fetch: null,
+          }),
+        ),
+    });
+    await openScrape();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
+
+    await submit();
+
+    expect(await screen.findByText("blocked")).toBeInTheDocument();
+    expect(screen.getByText("robots_unreachable")).toBeVisible();
   });
 
   it("names the platform adapter that read the page, and each attempt's challenge label", async () => {

@@ -29,9 +29,17 @@ class ScriptBlock:
 
 class ParsedPage:
     def __init__(
-        self, html: str, network: tuple[bytes, ...] = (), network_entries: tuple[NetworkBody, ...] = ()
+        self,
+        html: str,
+        network: tuple[bytes, ...] = (),
+        network_entries: tuple[NetworkBody, ...] = (),
+        *,
+        json_body: bool = False,
     ) -> None:
         self.html = html
+        # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, SPEC-01 §4.5). Its text is
+        # still parsed as HTML for the readers of text, but it holds no HTML elements of its own (`content.links`).
+        self.json_body = json_body
         # The bundle's captured network bodies, in capture order (the `xhr:<n>` locator indexes them), and their
         # manifest entries (the request each answered), when the caller has them.
         self.network = network
@@ -39,7 +47,8 @@ class ParsedPage:
 
     @classmethod
     def of(cls, bundle: CaptureBundle) -> "ParsedPage":
-        return cls(decode_body(bundle), bundle.network, bundle.manifest.network_bodies)
+        manifest = bundle.manifest
+        return cls(decode_body(bundle), bundle.network, manifest.network_bodies, json_body=manifest.method == "api")
 
     @cached_property
     def tree(self) -> lexbor.LexborHTMLParser:

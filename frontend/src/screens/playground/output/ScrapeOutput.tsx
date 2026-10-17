@@ -144,7 +144,7 @@ function outputTabs(
   ];
 }
 
-/** What one scrape returned: its outcome and final URL, then its tabs, JSON first. `withMetadata` (Metadata in JSON)
+/** What one scrape returned: its outcome (with why, for a page robots.txt kept from being fetched) and final URL, then its tabs, JSON first. `withMetadata` (Metadata in JSON)
  * adds the page's metadata to the JSON. Memoized: the form above re-renders on every keystroke, and a result can hold
  * megabytes of page text. */
 export const ScrapeOutput = memo(function ScrapeOutput({
@@ -158,6 +158,7 @@ export const ScrapeOutput = memo(function ScrapeOutput({
       <div className="flex flex-wrap items-center gap-3">
         <Typography.Heading level={2}>Result</Typography.Heading>
         <OutcomeLabel outcome={response.outcome} />
+        {response.reason === null ? null : <Typography.Code>{response.reason}</Typography.Code>}
         {response.final_url === null ? null : (
           <Typography.Code>{response.final_url}</Typography.Code>
         )}

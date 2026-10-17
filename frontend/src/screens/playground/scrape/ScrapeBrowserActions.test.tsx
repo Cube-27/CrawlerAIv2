@@ -14,6 +14,7 @@ const response: ScrapeResponse = {
   final_url: "https://store.test/a",
   fetched_at: "2026-10-13T10:00:00Z",
   outcome: "extracted",
+  reason: null,
   fetch: {
     method: "browser",
     status_code: 200,

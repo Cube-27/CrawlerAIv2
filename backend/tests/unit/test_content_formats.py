@@ -1,19 +1,45 @@
 """The page content formats (SPEC-07 §4.5, ARCHITECTURE §8.5): markdown, cleaned html, links and metadata, each
 read from the shared `ParsedPage`."""
 
+import json
 import re
+from collections.abc import Iterator
 
 import pytest
 import trafilatura
+from hypothesis import given
+from hypothesis import strategies as st
 from lxml import etree
 
 from crawlerai.content.html import cleaned_html, is_javascript_url
-from crawlerai.content.links import links
+from crawlerai.content.links import anchor_texts, links
 from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import PageMetadata, metadata
 from crawlerai.content.page import ParsedPage
+from crawlerai.normalize.url import canonical_url
 
 FINAL_URL = "https://shop.example.test/catalog/chairs?page=2"
+URL_TEXT = st.sampled_from(
+    ("https://a.example.test/x", "HTTP://A.example.test:80/x#f", "/relative", "mailto:a@example.test", "plain words")
+)
+
+
+def _json_containers(children: st.SearchStrategy[object]) -> st.SearchStrategy[object]:
+    return st.lists(children | URL_TEXT, max_size=4) | st.dictionaries(
+        st.text(max_size=3), children | URL_TEXT, max_size=4
+    )
+
+
+def _strings_of(document: object) -> Iterator[str]:
+    if isinstance(document, str):
+        yield document
+    elif isinstance(document, dict):
+        for value in document.values():
+            yield from _strings_of(value)
+    elif isinstance(document, list):
+        for value in document:
+            yield from _strings_of(value)
+
 
 ARTICLE = (
     '<!doctype html><html lang="en"><head><title>Chairs</title></head><body>'
@@ -251,6 +277,46 @@ def test_links_resolve_against_the_first_base_href() -> None:
     page = ParsedPage('<base target=_top><base href="/files/"><base href="/other/"><a href="a.pdf">a</a>')
 
     assert links(page, FINAL_URL) == ("https://shop.example.test/files/a.pdf",)
+
+
+# An API answer whose string values hold markup with escaped quotes, as a JSON text writes them (RFC 8259 §7).
+API_ANSWER = json.dumps(
+    {
+        "jobs": [
+            {
+                "title": "Chair maker",
+                "url": "HTTPS://Jobs.example.test/board/1#apply",
+                "descriptionHtml": '<p>See <a href="https://www.example.com/about">us</a> or <a href="/x">x</a></p>',
+                "logo": "/img/logo.png",
+                "tags": ["mailto:jobs@example.test", "https://jobs.example.test/board/2"],
+            },
+            {"title": "Chair tester", "url": "https://jobs.example.test/board/1", "count": 3, "remote": None},
+        ]
+    }
+)
+
+
+def test_the_links_of_a_json_body_are_its_absolute_url_values_in_document_order() -> None:
+    page = ParsedPage(API_ANSWER, json_body=True)
+
+    # Markup inside a string value is text: its hrefs are no links, and no fragment of it is resolved as one.
+    assert links(page, "https://api.example.test/boards/1?full=true") == (
+        "https://jobs.example.test/board/1",
+        "https://jobs.example.test/board/2",
+    )
+    assert anchor_texts(page, "https://api.example.test/boards/1") == {}
+
+
+def test_a_json_body_that_does_not_parse_has_no_links() -> None:
+    assert links(ParsedPage('{"url": "https://jobs.example.test/1"', json_body=True), FINAL_URL) == ()
+
+
+@given(st.recursive(st.none() | st.booleans() | st.integers() | st.text(), _json_containers, max_leaves=20))
+def test_every_link_of_a_json_body_is_one_of_its_strings_canonicalized(document: object) -> None:
+    found = links(ParsedPage(json.dumps(document), json_body=True), FINAL_URL)
+
+    assert len(found) == len(set(found))
+    assert set(found) == {canonical_url(s, None) for s in _strings_of(document)} - {None}
 
 
 METADATA_PAGE = """<!doctype html><html lang=" de-CH "><head>

@@ -109,6 +109,17 @@ def test_a_browser_capture_is_utf8_whatever_the_server_declared() -> None:
     assert page.cleaned_text.text == "a \u2013 b"
 
 
+@pytest.mark.parametrize(("method", "json_body"), [("api", True), ("http", False), ("browser", False)])
+def test_only_an_api_capture_s_body_is_a_json_document(method: str, json_body: bool) -> None:
+    # SPEC-01 §4.5: an API capture keeps its answer as `body.json`; the other methods keep an HTML document.
+    plain = _bundle(b'{"a": 1}', (("content-type", "application/json"),))
+    manifest = plain.manifest.model_copy(update={"method": method})
+
+    page = ParsedPage.of(CaptureBundle(manifest=manifest, body=plain.body, network=()))
+
+    assert page.json_body is json_body
+
+
 def test_the_page_keeps_the_captured_network_bodies_in_request_order() -> None:
     bodies = (b'{"a": 1}', b"[2]")
     entries = tuple(
