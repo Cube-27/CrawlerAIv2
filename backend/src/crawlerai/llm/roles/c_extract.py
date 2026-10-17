@@ -25,9 +25,10 @@ from typing import Final, cast
 from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.content.item_text import TextView
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind, closed_object
-from crawlerai.llm.grounding import SpanClaim, align
+from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec
@@ -44,6 +45,10 @@ LISTING_MAX_ROWS: Final = 200
 MAX_OUTPUT_TOKENS: Final = 4_096
 # A listing's reply holds up to 200 rows of spans.
 LISTING_MAX_OUTPUT_TOKENS: Final = 16_384
+# D-1478: the output tokens one claim of a listing row takes, rounded up from the 43 to 69 measured on four listings
+# of the QA sweep (#263). A view of a listing's items is cut to the rows whose claims fit `LISTING_MAX_OUTPUT_TOKENS`:
+# a reply cut at its cap is invalid and gives no row at all.
+_ROW_CLAIM_TOKENS: Final = 64
 PROMPT_KIND: Final[PromptKind] = "c_extract_detail"
 LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 PREFILL_PROMPT_KIND: Final[PromptKind] = "c_prefill"
@@ -185,7 +190,7 @@ async def extract_detail(
 
 async def extract_listing(
     client: LLMClient,
-    text: str,
+    text: str | TextView,
     row_fields: Mapping[str, FieldSpec],
     page_fields: Mapping[str, FieldSpec],
     ctx: Context,
@@ -193,32 +198,37 @@ async def extract_listing(
     job_id: JobId | None,
     kind: PromptKind = LISTING_PROMPT_KIND,
 ) -> FilledListing:
-    """Role C's rows of a listing, and the page entity's candidates for `page_fields`, from the cleaned `text`. A row
-    whose every value is null or dropped is no row. `row_fields` is not empty: with none there are no rows to ask
-    for, so callers ask for the page fields with `extract_detail`."""
-    read, notes = _cut(text, LISTING_MAX_CHARS)
+    """Role C's rows of a listing, and the page entity's candidates for `page_fields`, from the cleaned `text`, or from
+    a view of it (`content.item_text`, D-1478): the model reads the view, and each span it grounds there is located in
+    the cleaned text; a view holds no more items than their rows' claims fit the reply. A row whose every value is null
+    or dropped is no row. `row_fields` is not empty: with none there are no rows to ask for, so callers ask for the page
+    fields with `extract_detail`."""
+    view, notes = _fitted(text, len(row_fields)) if isinstance(text, TextView) else (TextView.whole(text), ())
+    read, cut = _cut(view.text, LISTING_MAX_CHARS)
+    notes = (*notes, *cut)
     request = listing_request(read, row_fields, page_fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
         response = await client.complete_json(request)
     except LLMFailure as failure:
         return FilledListing((), failure, (*notes, _failed(failure)), ())
     # As for a detail page, reading the reply runs in a thread.
-    return await asyncio.to_thread(_read_listing, response, row_fields, page_fields, read, ctx, notes)
+    seen = TextView(read, view.pieces)
+    return await asyncio.to_thread(_read_listing, response, row_fields, page_fields, seen, ctx, notes)
 
 
 def _read_listing(
     response: LLMResponse,
     row_fields: Mapping[str, FieldSpec],
     page_fields: Mapping[str, FieldSpec],
-    read: str,
+    read: TextView,
     ctx: Context,
     notes: tuple[str, ...],
 ) -> FilledListing:
     replies = cast(list[JsonValue], response.data["rows"])  # the client checked it against the output schema
     if len(replies) > LISTING_MAX_ROWS:
         notes = (*notes, f"role C gave {len(replies)} rows; kept the first {LISTING_MAX_ROWS}")
-    page = _Reader(page_fields, read, ctx).read(_claims_of(response.data.get("page", {})), PAGE, "")
-    rows_reader = _Reader(row_fields, read, ctx)
+    page = _Reader(page_fields, read.text, ctx, read).read(_claims_of(response.data.get("page", {})), PAGE, "")
+    rows_reader = _Reader(row_fields, read.text, ctx, read)
     candidates, dropped, rows = list(page.candidates), list(page.dropped), list[Entity]()
     for position, reply in enumerate(replies[:LISTING_MAX_ROWS]):
         entity = row_entity(position)
@@ -243,6 +253,15 @@ def _failed(failure: LLMFailure) -> str:
     provider's refusal, a reply cut at its token cap) (F33)."""
     cause = failure.cause()
     return f"role C: {failure.field_reason}" + ("" if cause is None else f" ({cause})")
+
+
+def _fitted(view: TextView, row_fields: int) -> tuple[TextView, tuple[str, ...]]:
+    """The view's first items whose rows' claims fit the reply's token cap, and the diagnostic that records a cut."""
+    rows = min(LISTING_MAX_ROWS, LISTING_MAX_OUTPUT_TOKENS // (max(row_fields, 1) * _ROW_CLAIM_TOKENS))
+    fitted = view.first(rows)
+    if len(fitted.pieces) == len(view.pieces):
+        return view, ()
+    return fitted, (f"role C read the first {rows} of {len(view.pieces)} items",)
 
 
 def _cut(text: str, limit: int) -> tuple[str, tuple[str, ...]]:
@@ -290,6 +309,7 @@ class _Reader:
     fields: Mapping[str, FieldSpec]
     text: str
     ctx: Context
+    view: TextView | None = None  # the pieces of the cleaned text `text` is made of, when it is not the cleaned text
 
     def read(self, claims: Mapping[str, Mapping[str, JsonValue]], owner: str, path: str) -> _Read:
         candidates: list[Candidate] = []
@@ -307,7 +327,7 @@ class _Reader:
 
     def _candidate(self, claim: Mapping[str, JsonValue], name: str, owner: str) -> Candidate | None:
         """The claim's span as a candidate, or None when the text does not contain it (ungrounded, §4.3)."""
-        span = align(SpanClaim.model_validate({key: claim[key] for key in _SPAN}), self.text)
+        span = self._located(align(SpanClaim.model_validate({key: claim[key] for key in _SPAN}), self.text))
         if span is None:
             return None
         return Candidate(
@@ -319,3 +339,11 @@ class _Reader:
             locator=span.locator,
             independent=True,
         )
+
+    def _located(self, span: GroundedSpan | None) -> GroundedSpan | None:
+        """The span in the cleaned text: as aligned when `text` is the cleaned text, else mapped through the view;
+        None for a span that joins two of the view's pieces, which the cleaned text does not hold."""
+        if span is None or self.view is None:
+            return span
+        located = self.view.source_span(span.start, span.end)
+        return None if located is None else GroundedSpan(span.value, *located)

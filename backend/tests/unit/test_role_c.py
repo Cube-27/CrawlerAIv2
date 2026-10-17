@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.config_ir.role_c import role_c
+from crawlerai.content.item_text import TextView, item_text
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
@@ -34,6 +35,7 @@ from crawlerai.llm.providers.fake import FakeProvider, ScriptedClient
 from crawlerai.llm.roles.c_extract import (
     DETAIL_MAX_CHARS,
     LISTING_MAX_CHARS,
+    LISTING_MAX_OUTPUT_TOKENS,
     LISTING_MAX_ROWS,
     MAX_OUTPUT_TOKENS,
     Filled,
@@ -545,3 +547,66 @@ def test_the_listing_hook_asks_the_row_fields_and_missing_page_fields_and_record
     (call,) = answer.llm_calls
     assert (call.prompt_kind, call.request_hash) == ("c_extract_listing", request_hash(client.requests[0]))
     assert answer.failure is None
+
+
+# --- a listing read through its items' text (D-1478) ---
+
+MENU = "".join(f"<div><span>Section {n}</span></div>" for n in range(30))
+GRID = "".join(f'<li class="card"><a href="/p/{n}">Widget {n}</a><span>{n}.50</span></li>' for n in range(1, 5))
+ITEMS_PAGE = ParsedPage(f"<html><body>{MENU}<main><ul>{GRID}</ul></main></body></html>")
+
+
+def _view() -> TextView:
+    view = item_text(ITEMS_PAGE)
+    assert view is not None
+    return view
+
+
+def test_a_listing_view_is_what_the_model_reads_and_its_spans_ground_in_the_cleaned_text() -> None:
+    view = _view()
+    at = view.text.index("Widget 3")
+    client = ScriptedClient(rows_reply({"title": span("Widget 3", at), "sku": None}, heading=None))
+
+    filled = asyncio.run(extract_listing(client, view, ROW_SPECS, PAGE_SPECS, CTX, job_id=JOB))
+
+    assert f"<page_text>\n{view.text}\n</page_text>" in client.requests[0].user
+    assert "Section" not in client.requests[0].user
+    (candidate,) = filled.candidates
+    start, end = (int(part) for part in candidate.locator.removeprefix("text:").split("-"))
+    assert ITEMS_PAGE.cleaned_text.text[start:end] == "Widget 3"
+    assert start > ITEMS_PAGE.cleaned_text.text.index("Section 29")
+
+
+def test_a_span_joining_two_items_of_the_view_is_ungrounded() -> None:
+    view = _view()
+    joined = "1.50\nWidget 2"
+    client = ScriptedClient(rows_reply({"title": span(joined, view.text.index(joined)), "sku": None}, heading=None))
+
+    filled = asyncio.run(extract_listing(client, view, ROW_SPECS, PAGE_SPECS, CTX, job_id=JOB))
+
+    assert (filled.candidates, filled.diagnostics) == ((), ("role C: rows[0].title ungrounded",))
+
+
+def test_a_view_holds_no_more_items_than_their_claims_fit_the_reply() -> None:
+    cards = "".join(f'<li class="c"><a href="/p/{n}">Item {n}</a><span>{n}</span></li>' for n in range(1, 151))
+    view = item_text(ParsedPage(f"<html><body><main><ul>{cards}</ul></main></body></html>"))
+    assert view is not None
+    client = ScriptedClient(rows_reply(heading=None))
+    fields = dict.fromkeys(("a", "b", "c", "d"), ROW_SPECS["title"])
+
+    filled = asyncio.run(extract_listing(client, view, fields, PAGE_SPECS, CTX, job_id=JOB))
+
+    rows = LISTING_MAX_OUTPUT_TOKENS // (4 * 64)
+    assert filled.diagnostics == (f"role C read the first {rows} of 150 items",)
+    assert f"Item {rows}" in client.requests[0].user
+    assert f"Item {rows + 1}" not in client.requests[0].user
+
+
+def test_the_listing_hook_reads_the_items_text_of_a_page_that_shows_item_blocks() -> None:
+    schema = SCHEMA.model_copy(update={"page_kind": "listing", "fields": ROW_SPECS})
+    client = ScriptedClient({"rows": []})
+    request = ListingGapRequest(ITEMS_PAGE, schema, CTX, ("title", "sku"), ())
+
+    asyncio.run(role_c(client, job_id=JOB).listing(request))
+
+    assert f"<page_text>\n{_view().text}\n</page_text>" in client.requests[0].user
