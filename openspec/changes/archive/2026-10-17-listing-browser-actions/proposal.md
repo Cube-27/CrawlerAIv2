@@ -31,8 +31,8 @@ next pages, but no candidate reaches the field (0 of 18 listing outputs in a 40-
 
 ## Impact
 
-- Capabilities: [acquisition](../../specs/acquisition/spec.md), [extraction](../../specs/extraction/spec.md),
-  [rest-api](../../specs/rest-api/spec.md), [frontend](../../specs/frontend/spec.md).
+- Capabilities: [acquisition](../../../specs/acquisition/spec.md), [extraction](../../../specs/extraction/spec.md),
+  [rest-api](../../../specs/rest-api/spec.md), [frontend](../../../specs/frontend/spec.md).
 - Design: Appendix A #21 (amended by #52), §22, §7.1, §8.6.
 - Files: `backend/src/crawlerai/acquire/{browser,browser_tab,items,types}.py`, `crawl/paging.py`,
   `resolve/{pagination,pipeline}.py`, `services/{scrape,scrape_paging,runtime}.py`, `frontend/src/screens/playground/scrape/`,
