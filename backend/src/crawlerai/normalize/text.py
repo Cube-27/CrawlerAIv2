@@ -8,10 +8,12 @@ in the content layer); here it keeps its line breaks, with at most one blank lin
 import html
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Hashable
 
 from pydantic import JsonValue
 
+from crawlerai.normalize import vocab
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -41,6 +43,18 @@ def key(value: JsonValue, spec: FieldSpec) -> Hashable:
     """Equality as a key (SPEC-04 §4.5): equal after the text normalization, case-sensitive."""
     text = _text(value, spec.type)
     return ("text", text.value, text.reasons) if isinstance(text, Ok) else raw_key(value)
+
+
+def word_overlap(a: JsonValue, b: JsonValue) -> float | None:
+    """The Sørensen-Dice coefficient of two texts' word multisets (`vocab.tokens`: case, accents of form and
+    punctuation aside): 1 for the same words in any order, 0 for none in common; `None` unless both are strings with a
+    word. Linear in the texts' length, so a 100k-character long_text is cheap to compare."""
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return None
+    words_a, words_b = Counter(vocab.tokens(a)), Counter(vocab.tokens(b))
+    if not words_a or not words_b:
+        return None
+    return 2 * (words_a & words_b).total() / (words_a.total() + words_b.total())
 
 
 def compose(s: str) -> str:

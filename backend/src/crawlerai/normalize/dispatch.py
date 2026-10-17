@@ -90,6 +90,14 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
     return key is not None and key == equality_key(b, spec)
 
 
+def similarity(a: JsonValue, b: JsonValue, spec: FieldSpec) -> float | None:
+    """How close two text or long_text values are, from 0 to 1 (`text.word_overlap`); `None` for other types, or for
+    values that are not texts with words."""
+    if spec.type not in (FieldType.TEXT, FieldType.LONG_TEXT):
+        return None
+    return text.word_overlap(a, b)
+
+
 def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
     """A hashable key of `value` under `spec`'s equality (`equal(a, b, spec)` exactly when the keys are equal), or
     `None` when that equality is no equivalence (it involves location, which is not transitive): values then group by
