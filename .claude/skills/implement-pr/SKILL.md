@@ -142,8 +142,10 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
 2. **Over 10 files: review once, when complete.** Implemented and green: comment `/claude-review` on the PR
    (`gh pr comment <n> --body "/claude-review"`). It starts the `claude-review` workflow, which runs Anthropic's
    code-review plugin in CI (a few minutes, billed per run: start it once). Wait for that run yourself, as a tracked
-   background task: `gh run list --workflow claude-review.yml --event issue_comment --json databaseId,displayTitle`
-   finds it by your PR's title, then `gh run watch <run> --exit-status`. Read what it posted:
+   background task. Every PR comment (CodeRabbit, CodeAnt, Sonar) starts a run that ends `skipped`; yours is the
+   newest one under your PR's title that isn't: `gh run list --workflow claude-review.yml --event issue_comment
+   --json databaseId,displayTitle,conclusion --jq '.[] | select(.displayTitle == "<title>" and .conclusion !=
+   "skipped") | .databaseId' | head -1`, then `gh run watch <run> --exit-status`. Read what it posted:
    - inline findings: `gh api "repos/{owner}/{repo}/pulls/<n>/comments" --jq '.[] | select(.user.login ==
      "claude[bot]") | "\(.path):\(.line) \(.body)"'`;
    - or, with none, a comment from `claude` starting `## Code review`.
