@@ -16,17 +16,16 @@ import { FormActions } from "../../components/FormActions";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { Section } from "../../components/Section";
 
-/** What the form edits: the LLM call cap of a run whose request sets none, and whether a learned config waits for
- * approval before it serves (D-1342). */
-type Edited = { llmCallCap: number | null; requireApproval: boolean };
+/** What the form edits: the LLM call cap of a run whose request sets none, the draft call cap of an API key (D-1282),
+ * and whether a learned config waits for approval before it serves (D-1342). */
+type Edited = { llmCallCap: number | null; draftCallCap: number | null; requireApproval: boolean };
 
-/** The project's limits (`/v1/project/settings`): the LLM call cap of a run whose request sets none, and the approval
- * of learned configs. A save sends the key draft cap as loaded: only the API sets it. While the settings load, the
- * same form shows disabled, so loading moves nothing. */
+/** The project's limits (`/v1/project/settings`): the LLM call cap of a run whose request sets none, the uncharged
+ * field-name drafts one API key may make, and the approval of learned configs. While the settings load, the same form
+ * shows disabled, so loading moves nothing. */
 export function LimitsSection() {
   const settings = useProjectSettings();
   const save = useSaveProjectSettings();
-  const draftCap = settings.data?.draft_call_cap ?? null;
   return (
     <Section title="Limits">
       <LimitsForm
@@ -34,16 +33,17 @@ export function LimitsSection() {
         key={settings.isSuccess ? "loaded" : "loading"}
         saved={{
           llmCallCap: settings.data?.llm_call_cap ?? null,
+          draftCallCap: settings.data?.draft_call_cap ?? null,
           requireApproval: settings.data?.require_config_approval ?? false,
         }}
         isLoading={!settings.isSuccess}
         problem={problemOf(settings.error) ?? problemOf(save.error)}
         isPending={save.isPending}
-        onSave={({ llmCallCap, requireApproval }) => {
+        onSave={({ llmCallCap, draftCallCap, requireApproval }) => {
           save.mutate(
             {
               llm_call_cap: llmCallCap,
-              draft_call_cap: draftCap,
+              draft_call_cap: draftCallCap,
               require_config_approval: requireApproval,
             },
             {
@@ -55,6 +55,43 @@ export function LimitsSection() {
         }}
       />
     </Section>
+  );
+}
+
+/** A cap as a whole number of calls; empty (NaN) is no limit. */
+function CapField({
+  name,
+  label,
+  description,
+  value,
+  isDisabled,
+  onChange,
+}: Readonly<{
+  name: string;
+  label: string;
+  description: string;
+  value: number;
+  isDisabled: boolean;
+  onChange: (value: number) => void;
+}>) {
+  return (
+    <NumberField
+      name={name}
+      value={value}
+      minValue={0}
+      isDisabled={isDisabled}
+      formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
+      onChange={onChange}
+    >
+      <Label>{label}</Label>
+      <NumberField.Group>
+        <NumberField.DecrementButton />
+        <NumberField.Input placeholder="No limit" />
+        <NumberField.IncrementButton />
+      </NumberField.Group>
+      <Description>{description}</Description>
+      <FieldError />
+    </NumberField>
   );
 }
 
@@ -72,36 +109,38 @@ function LimitsForm({
   onSave: (edited: Edited) => void;
 }>) {
   // NaN is an empty NumberField: no limit.
-  const [value, setValue] = useState(saved.llmCallCap ?? Number.NaN);
+  const [llmCallCap, setLlmCallCap] = useState(saved.llmCallCap ?? Number.NaN);
+  const [draftCallCap, setDraftCallCap] = useState(saved.draftCallCap ?? Number.NaN);
   const [requireApproval, setRequireApproval] = useState(saved.requireApproval);
   return (
     <Form
       className="flex flex-col gap-4 sm:max-w-md"
       onSubmit={(event) => {
         event.preventDefault();
-        onSave({ llmCallCap: Number.isNaN(value) ? null : value, requireApproval });
+        onSave({
+          llmCallCap: Number.isNaN(llmCallCap) ? null : llmCallCap,
+          draftCallCap: Number.isNaN(draftCallCap) ? null : draftCallCap,
+          requireApproval,
+        });
       }}
     >
       {problem === null ? null : <ProblemAlert problem={problem} />}
-      <NumberField
+      <CapField
         name="llm_call_cap"
-        value={value}
-        minValue={0}
+        label="LLM call limit per run"
+        description="The most LLM calls a run may make when it sets no limit of its own. Empty: no limit."
+        value={llmCallCap}
         isDisabled={isLoading}
-        formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
-        onChange={setValue}
-      >
-        <Label>LLM call limit per run</Label>
-        <NumberField.Group>
-          <NumberField.DecrementButton />
-          <NumberField.Input placeholder="No limit" />
-          <NumberField.IncrementButton />
-        </NumberField.Group>
-        <Description>
-          The most LLM calls a run may make when it sets no limit of its own. Empty: no limit.
-        </Description>
-        <FieldError />
-      </NumberField>
+        onChange={setLlmCallCap}
+      />
+      <CapField
+        name="draft_call_cap"
+        label="Draft call limit per key"
+        description="The most field-name drafts one API key may make, counted in all, with no window. Empty: no limit."
+        value={draftCallCap}
+        isDisabled={isLoading}
+        onChange={setDraftCallCap}
+      />
       <div className="flex flex-col gap-1">
         <Switch
           name="require_config_approval"

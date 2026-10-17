@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { JobSummary, JsonValuesItem, PageOutput } from "../../../api/jobs";
+import type { FetchSummary } from "../../../api/scrape";
 import { problem, sse, stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
 import { jobSummary } from "../../../test/jobs";
@@ -579,7 +580,7 @@ describe("batch playground: runs", () => {
           formats: ["links", "metadata"],
           schema: null,
           page_kind: "listing",
-          fetch: { method_hint: "browser", respect_robots: true },
+          fetch: { method_hint: "browser", respect_robots: true, max_rows: 60 },
           budget: { llm_calls: 40 },
           webhook_url: null,
         }),
@@ -601,6 +602,7 @@ describe("batch playground: runs", () => {
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeChecked();
     expect(options.getByRole("switch", { name: "Metadata in JSON" })).toBeDisabled();
     expect(options.getByRole("textbox", { name: "LLM call limit" })).toHaveValue("40");
+    expect(options.getByRole("textbox", { name: "Max rows" })).toHaveValue("60");
     await closeOptions();
 
     await userEvent.click(screen.getByRole("button", { name: "Edit and re-run" }));
@@ -615,8 +617,90 @@ describe("batch playground: runs", () => {
       formats: ["links", "metadata"],
       schema: null,
       page_kind: "listing",
-      fetch: { method_hint: "browser" },
+      fetch: { method_hint: "browser", max_rows: 60 },
       budget: { llm_calls: 40 },
     });
+  });
+});
+
+describe("batch playground: how a page was fetched", () => {
+  it("shows how a page was fetched in its drawer: each attempt's rung, status, class, challenge and time", async () => {
+    const fetch: FetchSummary = {
+      method: "browser",
+      status_code: 200,
+      block_class: "ok",
+      adapter: null,
+      attempts: [
+        {
+          method: "http",
+          status: 403,
+          block_class: "blocked",
+          duration_ms: 120,
+          error: null,
+          challenge: "structural",
+        },
+        { method: "browser", status: 200, block_class: "ok", duration_ms: 2400, error: null },
+      ],
+    };
+    const calls = batchApi({
+      [`GET ${JOB}/results`]: ({ query }) =>
+        new URLSearchParams(query).getAll("include").includes("fetch")
+          ? valuesPage([{ ...FIRST, fetch }, SECOND, THIRD])
+          : valuesPage([FIRST, SECOND, THIRD]),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+    // The table does not ask for the attempts; the drawer does.
+    expect(resultQueries(calls)).toEqual(["format=json_values&limit=20"]);
+
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 1" }));
+
+    const drawer = within(await screen.findByRole("dialog"));
+    const attempts = await drawer.findByRole("grid", { name: "Fetch attempts" });
+    expect(
+      within(attempts)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.textContent),
+    ).toEqual(["http403blockedstructural120—", "browser200ok—2400—"]);
+    expect(drawer.getByText("Fetched by browser.")).toBeVisible();
+    expect(resultQueries(calls).at(-1)).toBe("format=json_values&limit=20&include=fetch");
+  });
+
+  it("names the platform adapter in the drawer of a page it read, and shows a page's outputs with their fetch", async () => {
+    const fetch: FetchSummary = {
+      method: "api",
+      status_code: 200,
+      block_class: "ok",
+      adapter: "board",
+      attempts: [{ method: "api", status: 200, block_class: "ok", duration_ms: 310, error: null }],
+    };
+    batchApi({
+      [`GET ${JOB}/request`]: () => Response.json({ urls: [FIRST.url], formats: ["markdown"] }),
+      [`GET ${JOB}/results`]: ({ query }) =>
+        new URLSearchParams(query).get("format") === "json_values"
+          ? valuesPage([{ ...FIRST, records: [] }])
+          : Response.json({ items: [{ ...OUTPUT, fetch }], next_cursor: null }),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 1" }));
+
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(await drawer.findByText("Read from the board platform adapter's API.")).toBeVisible();
+    expect(drawer.getByRole("grid", { name: "Fetch attempts" })).toBeInTheDocument();
+  });
+
+  it("shows no fetch section for a page whose capture kept no attempts", async () => {
+    batchApi();
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 2" }));
+
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(drawer.getByText(SECOND.url)).toBeVisible();
+    expect(drawer.queryByRole("heading", { name: "Fetch" })).not.toBeInTheDocument();
   });
 });

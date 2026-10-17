@@ -71,10 +71,3 @@ export function scrapeJson(
   const records = (response.records ?? []).map((record) => cleanRecord(record, fieldTypes));
   return pageJson(records, withMetadata ? response.metadata : undefined);
 }
-
-/** Whether a published field of `records` is uncalibrated (DESIGN.md, Showing extraction results). */
-export function hasUncalibrated(records: readonly ScrapeRecord[]): boolean {
-  return records.some((record) =>
-    Object.values(record.fields).some((field) => field.status === "published" && !field.calibrated),
-  );
-}

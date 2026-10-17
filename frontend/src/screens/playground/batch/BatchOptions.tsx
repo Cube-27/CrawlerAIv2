@@ -2,6 +2,7 @@ import type { PageKind } from "../../../api/scrape";
 import { OptionsPanel } from "../OptionsPanel";
 import {
   FetchMethodRow,
+  MaxRowsRow,
   FieldsRow,
   LlmCallsRow,
   MetadataRow,
@@ -41,6 +42,12 @@ export function BatchOptions({
         value={options.methodHint}
         onChange={(methodHint) => {
           onChange({ ...options, methodHint });
+        }}
+      />
+      <MaxRowsRow
+        value={options.maxRows}
+        onChange={(maxRows) => {
+          onChange({ ...options, maxRows });
         }}
       />
       <LlmCallsRow

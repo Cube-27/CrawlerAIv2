@@ -4,12 +4,14 @@ import type { ExtractedRecord } from "../api/records";
 import type { RecordField } from "../api/scrape";
 import { ConfidenceCell, confidenceText } from "./ConfidenceCell";
 import { EmptyView } from "./EmptyView";
+import { EvidenceText, SourceKindText } from "./FieldOrigin";
 import { FieldStatusBadge } from "./FieldStatusBadge";
 import { FieldValue } from "./FieldValue";
 import { LocatorText } from "./LocatorText";
 import { StatusLabel } from "./StatusLabel";
+import { UncalibratedBadge } from "./UncalibratedBadge";
 
-/** Whether a record is complete, with its mode and confidence. */
+/** Whether a record is complete, with its mode and confidence, and its one uncalibrated badge (D-1390). */
 export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>) {
   return (
     <>
@@ -17,6 +19,7 @@ export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>)
         text={record.complete ? "complete" : "incomplete"}
         tone={record.complete ? "success" : "warning"}
       />
+      <UncalibratedBadge records={[record]} />
       <Typography.Paragraph size="sm" color="muted">
         Mode {record.mode} · confidence {confidenceText(record.confidence)}
       </Typography.Paragraph>
@@ -66,10 +69,14 @@ export function RecordFieldsTable({
                   <FieldStatusBadge status={field.status} />
                 </Table.Cell>
                 <Table.Cell>
-                  <ConfidenceCell confidence={field.confidence} calibrated={field.calibrated} />
+                  <ConfidenceCell confidence={field.confidence} />
                 </Table.Cell>
-                <Table.Cell className="truncate">{field.evidence ?? "—"}</Table.Cell>
-                <Table.Cell className="truncate">{field.source_kind ?? "—"}</Table.Cell>
+                <Table.Cell className="truncate">
+                  <EvidenceText evidence={field.evidence} />
+                </Table.Cell>
+                <Table.Cell className="truncate">
+                  <SourceKindText kind={field.source_kind} />
+                </Table.Cell>
                 <Table.Cell className="truncate">
                   <LocatorText locator={field.locator} />
                 </Table.Cell>

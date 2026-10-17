@@ -226,6 +226,34 @@ describe("Settings screen", () => {
     ]);
   });
 
+  it("saves a changed draft call limit, and an empty one as no limit", async () => {
+    const calls = stubApi({
+      [SETTINGS]: () =>
+        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
+      [REPORT]: () => Response.json(empty),
+      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
+    });
+    await openSettings();
+    await savedLimit("25");
+    const draft = screen.getByRole("textbox", { name: "Draft call limit per key" });
+    expect(draft).toHaveValue("4");
+
+    await userEvent.clear(draft);
+    await userEvent.type(draft, "9");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Saved the limits.");
+    await userEvent.clear(draft);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(calls.filter(({ method }) => method === "PATCH")).toHaveLength(2);
+    });
+    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
+      { llm_call_cap: 25, draft_call_cap: 9, require_config_approval: false },
+      { llm_call_cap: 25, draft_call_cap: null, require_config_approval: false },
+    ]);
+  });
+
   it("turns on the approval of learned configs", async () => {
     const calls = stubApi({
       [SETTINGS]: () =>

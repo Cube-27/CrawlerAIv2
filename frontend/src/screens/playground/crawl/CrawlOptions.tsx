@@ -1,6 +1,6 @@
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel } from "../OptionsPanel";
-import { FetchMethodRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
+import { FetchMethodRow, MaxRowsRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
 
@@ -55,6 +55,12 @@ export function CrawlOptions({
         value={options.methodHint}
         onChange={(methodHint) => {
           onChange({ ...options, methodHint });
+        }}
+      />
+      <MaxRowsRow
+        value={options.maxRows}
+        onChange={(maxRows) => {
+          onChange({ ...options, maxRows });
         }}
       />
       <MetadataRow

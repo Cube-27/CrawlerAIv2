@@ -34,14 +34,14 @@ export type MapResult = Schemas["MapResult"];
  * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
  * it. */
 export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema"> & {
-  fetch: Pick<Schemas["FetchOptions"], "method_hint">;
+  fetch: Pick<Schemas["FetchOptions"], "method_hint" | "max_rows">;
   schema: JobSchemaRef | null;
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
   "fetch" | "schema" | "limit" | "max_depth"
 > & {
-  fetch: Pick<Schemas["FetchOptions"], "method_hint">;
+  fetch: Pick<Schemas["FetchOptions"], "method_hint" | "max_rows">;
   schema: JobSchemaRef | null;
   limit?: number;
   max_depth?: number;
@@ -50,7 +50,7 @@ export type ExtractRequest = Omit<
   Schemas["ExtractRequest"],
   "fetch" | "schema" | "budget" | "limit"
 > & {
-  fetch: Pick<Schemas["FetchOptions"], "method_hint">;
+  fetch: Pick<Schemas["FetchOptions"], "method_hint" | "max_rows">;
   schema: SchemaRef;
   budget?: Schemas["Budget"];
   limit?: number;
@@ -162,18 +162,31 @@ export async function listJobResults(
   return result.kind === "done" ? { kind: "done", value: resultsPage(result.value) } : result;
 }
 
+/** What a `json_values` read asks of each page beyond its records: its metadata (`include=metadata`) and how it was
+ * fetched (`include=fetch`, D-1392). */
+export interface ValuesPage {
+  cursor: string | null;
+  limit: number;
+  withMetadata: boolean;
+  withFetch: boolean;
+}
+
 /** One page of the job's tasks as `json_values` items (SPEC-14 §4.4) at `cursor` (the first page when null), `limit`
- * at most; `withMetadata` asks for each page's metadata (`include=metadata`). */
+ * at most. */
 export async function listJobValues(
   client: ApiClient,
   id: string,
-  { cursor, limit, withMetadata }: { cursor: string | null; limit: number; withMetadata: boolean },
+  { cursor, limit, withMetadata, withFetch }: ValuesPage,
 ): Promise<ApiResult<JsonValuesPage>> {
+  const include = [
+    ...(withMetadata ? ["metadata" as const] : []),
+    ...(withFetch ? ["fetch" as const] : []),
+  ];
   const query: ResultsQuery = {
     format: "json_values",
     limit,
     ...(cursor === null ? {} : { cursor }),
-    ...(withMetadata ? { include: "metadata" } : {}),
+    ...(include.length === 0 ? {} : { include }),
   };
   const result = await apiResult(() => results(client, id, query), "Listing the job's pages");
   if (result.kind === "failed") return result;
@@ -206,7 +219,7 @@ export function exportJobValues(
   withMetadata: boolean,
 ): Promise<ApiResult<JsonValuesItem[]>> {
   return allItems((cursor) =>
-    listJobValues(client, id, { cursor, limit: EXPORT_LIMIT, withMetadata }),
+    listJobValues(client, id, { cursor, limit: EXPORT_LIMIT, withMetadata, withFetch: false }),
   );
 }
 

@@ -1,20 +1,11 @@
-import { StatusLabel } from "./StatusLabel";
-
 /** A confidence, or a rate such as a config field's yield, as a number with two decimals; "—" when there is none. */
 export function confidenceText(confidence: number | null | undefined): string {
   return confidence == null ? "—" : confidence.toFixed(2);
 }
 
 /** A field's confidence as a number with two decimals, never a bar: a bar implies a calibration the value may not have
- * (DESIGN.md, Showing extraction results). An uncalibrated value carries a visible badge. */
-export function ConfidenceCell({
-  confidence,
-  calibrated,
-}: Readonly<{ confidence: number | null; calibrated: boolean }>) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      {confidenceText(confidence)}
-      {calibrated ? null : <StatusLabel text="uncalibrated" tone="warning" />}
-    </span>
-  );
+ * (DESIGN.md, Showing extraction results). Whether the engine is calibrated is said once per record, by
+ * `UncalibratedBadge`, not per field (D-1390). */
+export function ConfidenceCell({ confidence }: Readonly<{ confidence: number | null }>) {
+  return <span>{confidenceText(confidence)}</span>;
 }

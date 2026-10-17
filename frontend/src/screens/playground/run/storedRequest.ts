@@ -45,6 +45,11 @@ export function methodHint(request: StoredRequest): MethodHint {
   return METHOD_HINTS.find(([option]) => option === hint)?.[0] ?? "auto";
 }
 
+/** `fetch.max_rows`; NaN when absent. */
+export function maxRows(request: StoredRequest): number {
+  return count(member(request, "fetch"), "max_rows");
+}
+
 /** Whether the job's results are page outputs rather than records (SPEC-10 §4.2): its request asks for formats, and
  * `records` is not one. An extract's request has no formats: its results are records. */
 export function pageOutputs(request: StoredRequest): boolean {

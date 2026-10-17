@@ -63,6 +63,15 @@ export function approveConfig(client: ApiClient, id: string): Promise<ApiResult<
   );
 }
 
+/** Refuses a learned config waiting as `pending_approval` (D-1391): it becomes `suspended`, and what served before goes
+ * on serving. */
+export function rejectConfig(client: ApiClient, id: string): Promise<ApiResult<ConfigDetail>> {
+  return apiResult(
+    () => client.POST("/v1/configs/{config_id}/reject", { params: { path: { config_id: id } } }),
+    "Rejecting the config",
+  );
+}
+
 export function exportConfig(
   client: ApiClient,
   id: string,

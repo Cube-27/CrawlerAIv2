@@ -392,10 +392,11 @@ describe("records screen: the inspector", () => {
     expect(inspector.getByText(CAPTURE_ID)).toBeInTheDocument();
     const fields = within(inspector.getByRole("grid", { name: "Record fields" }));
     expect(fields.getByRole("row", { name: /title/ }).textContent).toBe(
-      "titleBlue kettlepublished0.97structuredjsonldjsonld:0:$.name—",
+      "titleBlue kettlepublished0.97Structured dataJSON-LDjsonld:0:$.name—",
     );
     const price = within(fields.getByRole("row", { name: /price/ }));
-    expect(price.getByText("uncalibrated")).toBeInTheDocument();
+    // The badge qualifies a published value: this record's uncalibrated field is a conflict, so there is none.
+    expect(inspector.queryByText("uncalibrated")).not.toBeInTheDocument();
     // The status shows once, in its own column; the value cell has the dash.
     expect(price.getAllByText("conflict")).toHaveLength(1);
     expect(price.getByText("0.41")).toBeInTheDocument();
