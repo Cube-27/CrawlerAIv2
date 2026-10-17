@@ -242,7 +242,8 @@ async def test_a_failed_fetch_fails_the_task_and_the_job(
 
     assert result.outcome == "failed"
     assert result.fetch is not None
-    assert [a.error for a in result.fetch.attempts] == ["network_error: ConnectError"]
+    # D-1472: a network error gets one browser attempt, which this site's fails too.
+    assert [a.error for a in result.fetch.attempts] == ["network_error: ConnectError"] * 2
     assert result.fetch.status_code is None
     task = await _row(engine, select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == result.job_id))
     assert tuple(task) == ("failed", "network_error: ConnectError")

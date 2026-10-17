@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import JsonValue
@@ -512,7 +512,7 @@ def test_a_job_listing_row_publishes_every_place_its_posting_states() -> None:
 
     result = _extract(bundle, schema, data=data)
 
-    places = [[place["text"] for place in row["locations"].value] for row in result.rows]
+    places = [[place["text"] for place in cast(list[dict[str, str]], row["locations"].value)] for row in result.rows]
     assert [row["locations"].status for row in result.rows] == ["published", "published"]
     assert places == [["Northtown", "Eastport", "Southville"], ["Eastport"]]
 
