@@ -75,10 +75,10 @@ from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
+    ContentCheck,
     FetchOptions,
     Formats,
     Input,
-    OfferCheck,
     PageFormat,
     PageOutcome,
     SchemaPrompt,
@@ -87,11 +87,12 @@ from crawlerai.services.scrape_steps import (
     SiteRow,
     check_records,
     check_usable,
+    checked_extraction,
+    content_check,
     fetch_policy,
     format_member,
     named_schema,
     new_capture,
-    offer_check,
     page_formats,
     parsed_page,
     record_fetch_usage,
@@ -341,7 +342,7 @@ async def _run(
     recent = None if row is None else await _reread(fetching.store, row)
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
     attempts: list[AttemptRecord] = []
-    check = _offer_check(work, request, config)
+    check = _content_check(work, request, config, task)
     further: tuple[FetchResult, ...] = ()
     report: ActionsReport | None = None
     page: FetchResult | str
@@ -360,7 +361,10 @@ async def _run(
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = _NOTHING
     if isinstance(page, FetchResult) and page.block_class == "ok":
-        derived = await _derive(engine, work, request, task, (page, parsed_page(page.bundle, check)), config)
+        reached = (page, parsed_page(page.bundle, check))
+        derived = await _derive(
+            engine, work, request, task, reached, config, known=checked_extraction(page.bundle, check)
+        )
     extra = await _extract_more(work, task, derived, config, further)
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
@@ -462,9 +466,14 @@ async def _store_more(
     return _More(tuple(records), failed)
 
 
-def _offer_check(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> OfferCheck | None:
-    """The check that renders an HTTP page lacking the offer data `records` reads (owner #49); None without it."""
-    return offer_check(work.schema, work.data, config) if "records" in request.formats else None
+def _content_check(
+    work: _Work, request: ScrapeRequest, config: ActiveConfig | None, task: ClaimedTask
+) -> ContentCheck | None:
+    """The check that renders an HTTP page lacking the offer data or the rows `records` reads (owner #49, #54), with
+    role C charged to the task's job; None without `records`."""
+    if "records" not in request.formats:
+        return None
+    return content_check(work.schema, work.data, config, role_c(work.llm, job_id=task.job_id))
 
 
 _CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
@@ -521,9 +530,12 @@ async def _derive(
     task: ClaimedTask,
     reached: tuple[FetchResult, ParsedPage],
     config: ActiveConfig | None,
+    *,
+    known: ExtractionResult | None = None,
 ) -> _Derived:
     """The requested formats, the draft of a prompt, and the extraction for `records`, from the page's one parse
-    (INV-26), with the site's active `config` when there is one."""
+    (INV-26), with the site's active `config` when there is one; `known` is the page's extraction when its fetch's
+    check already made it with the request's schema (a listing's, owner #54)."""
     result, page = reached
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     manifest = result.bundle.manifest
@@ -541,8 +553,10 @@ async def _derive(
     # here: the job was committed before the fetch, and the task is written after (D-0346).
     config = None if config is None else config.for_capture(result.bundle.manifest, work.data.adapters)
     executor = None if config is None else config.executor
-    gap_fill = role_c(work.llm, job_id=task.job_id)
-    extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
+    extraction = known
+    if extraction is None:
+        gap_fill = role_c(work.llm, job_id=task.job_id)
+        extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
     return _Derived(formats, drafted, schema, extraction, config)
 
 
@@ -575,7 +589,7 @@ async def polite_fetch(
 ) -> FetchResult | str:
     """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
     (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`), and rendered
-    once more when `needs_render` finds its HTTP page lacking (owner #49). The attempts
+    once more when `needs_render` finds its HTTP page lacking (owner #49, #54). The attempts
     of every fetch made, robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a
     request of the fetch (INV-16)."""
     robots: Robots | None = None

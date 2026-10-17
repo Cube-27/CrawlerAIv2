@@ -31,7 +31,7 @@ from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
 from crawlerai.recurring.state import record_fetch, standing_record, stored_validators
 from crawlerai.recurring.versions import link_records
-from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import JobPins
@@ -39,12 +39,13 @@ from crawlerai.services.fetching import Fetching, adapter_send, endpoint_rules, 
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
+    ContentCheck,
     FetchOptions,
-    OfferCheck,
     SiteRow,
+    checked_extraction,
+    content_check,
     fetch_policy,
     new_capture,
-    offer_check,
     parsed_page,
     record_fetch_usage,
     site_row,
@@ -101,11 +102,11 @@ class FetchedPage:
     standing: RecordId | None
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
-    check: OfferCheck | None = None
+    check: ContentCheck | None = None
 
     @property
     def parsed(self) -> ParsedPage:
-        """The page's one parse (INV-26): the one its fetch's offer check read, when it read this capture."""
+        """The page's one parse (INV-26): the one its fetch's content check read, when it read this capture."""
         return parsed_page(self.result.bundle, self.check)
 
 
@@ -128,6 +129,7 @@ async def fetch_page(
     *,
     recurring: Records | None = None,
     served: Records | None = None,
+    llm: LLMClient | None = None,
 ) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
@@ -140,7 +142,8 @@ async def fetch_page(
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
     serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
-    the offer data their schema reads is rendered once more (`OfferCheck`, owner #49)."""
+    the offer data or the rows their schema reads is rendered once more (`ContentCheck`, owner #49, #54), with role C
+    on `llm` (None: no role C), charged to the task's job."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -153,7 +156,7 @@ async def fetch_page(
     attempts: list[AttemptRecord] = []
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
-    check = None if served is None else offer_check(served.schema, served.data, served.config)
+    check = None if served is None else content_check(served.schema, served.data, served.config, _role_c(task, llm))
 
     async def page(url: str, admit_next: Admit) -> FetchResult | Unchanged:
         # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6).
@@ -240,15 +243,17 @@ async def extract_records(
 ) -> TaskResult:
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
     pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13);
-    None binds no role C. `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered
-    page may end `no_match`."""
+    None binds no role C. `parsed` is the page's parse when the handler already has one (INV-26); a listing its fetch's
+    check extracted is not extracted again (owner #54). A crawl-discovered page may end `no_match`."""
     schema = records.schema
     config = None
     if records.config is not None:
         config = records.config.for_capture(page.result.bundle.manifest, records.data.adapters)
     executor = None if config is None else config.executor
-    gap_fill = None if llm is None else role_c(llm, job_id=task.job_id)
-    extraction = await extract_page(page.result.bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)
+    extraction = checked_extraction(page.result.bundle, page.check)
+    if extraction is None:
+        bundle, gap_fill = page.result.bundle, _role_c(task, llm)
+        extraction = await extract_page(bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)
     stored = await store_page_record(
         conn,
         task,
@@ -263,3 +268,8 @@ async def extract_records(
     if stored.outcome == "failed":
         return Failed(EXTRACTION_ERROR, transient=False, capture_id=page.capture_id)
     return Finished(stored.outcome, capture_id=page.capture_id)
+
+
+def _role_c(task: ClaimedTask, llm: LLMClient | None) -> RoleC | None:
+    """Role C on `llm`, charged to the task's job; None without a client."""
+    return None if llm is None else role_c(llm, job_id=task.job_id)
