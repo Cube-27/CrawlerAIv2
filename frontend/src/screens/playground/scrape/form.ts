@@ -3,12 +3,19 @@ import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } fro
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
+  DEFAULT_FORMAT_SETTINGS,
+  formatMembers,
+  storedFormatSettings,
+  type FormatSettings,
+} from "../formatOptions";
+import {
   canSend,
   llmBudget,
   optionalNumber,
   requestFormats,
   requestPageKind,
   requestSchema,
+  screenshotArea,
 } from "../pageRequest";
 import {
   count,
@@ -26,7 +33,7 @@ import {
 
 /** The settings in the options panel (SPEC-14 §4.2): each is a `ScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format. `fields` are the names `schema.fields` drafts a schema from (§4.10). */
-export interface ScrapeOptions {
+export interface ScrapeOptions extends FormatSettings {
   pageKind: PageKind | null;
   metadataInJson: boolean;
   fields: readonly string[];
@@ -60,6 +67,7 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   browserActions: false,
   records: Number.NaN,
   pagingHint: null,
+  ...DEFAULT_FORMAT_SETTINGS,
 };
 
 /** What the command bar and the options panel hold. */
@@ -84,12 +92,19 @@ export const INITIAL_FORM: ScrapeFormState = {
 export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   const { options } = form;
   if (!canSend(form)) return null;
+  const formats = requestFormats(form);
   return {
     url: form.url.trim(),
-    formats: requestFormats(form),
+    formats,
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
+    fetch: fetchMember(
+      options.methodHint,
+      options.maxRows,
+      options.advanced,
+      screenshotArea(formats, options),
+    ),
+    ...formatMembers(formats, options),
     ...optionalNumber("max_age", options.maxAge),
     ...optionalNumber("timeout_s", options.timeoutS),
     ...llmBudget(options.llmCalls),
@@ -160,6 +175,7 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),
       ...storedBrowserActions(request),
+      ...storedFormatSettings(request),
     },
   };
 }

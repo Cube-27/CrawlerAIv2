@@ -33,16 +33,18 @@ export type MapResult = Schemas["MapResult"];
 /** The requests as the forms build them. The generated types mark every member with a default as required
  * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
  * it. */
-export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema"> & {
+export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema" | "chunking"> & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
+  chunking?: Partial<Schemas["ChunkOptions"]>;
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
-  "fetch" | "schema" | "limit" | "max_depth" | "strategy" | "allow_subdomains" | "allow_external"
+  "fetch" | "schema" | "limit" | "max_depth" | "chunking" | "strategy" | "allow_subdomains" | "allow_external"
 > & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
+  chunking?: Partial<Schemas["ChunkOptions"]>;
   limit?: number;
   max_depth?: number;
   strategy?: CrawlStrategy;

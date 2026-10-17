@@ -1,4 +1,4 @@
-import type { CacheMode, FetchMember, MethodHint, PageAction } from "../../api/scrape";
+import type { CacheMode, FetchMember, MethodHint, PageAction, ScreenshotArea } from "../../api/scrape";
 import { optionalNumber } from "./pageRequest";
 import { member, text, type StoredRequest } from "./run/storedRequest";
 
@@ -128,11 +128,12 @@ function selectorAction(type: ActionType, selector: string, typed: string): Page
 }
 
 /** The request's `fetch` member: the method hint, `max_rows` while filled, and each Advanced setting while it is set,
- * so an untouched form sends what it sent before. */
+ * so an untouched form sends what it sent before; `area` is the `screenshot` area when a screenshot is asked for. */
 export function fetchMember(
   methodHint: MethodHint,
   maxRows: number,
   advanced: AdvancedFetch = DEFAULT_ADVANCED,
+  area?: ScreenshotArea,
 ): FetchMember {
   const headers = pairs(advanced.headers, ":");
   const cookies = pairs(advanced.cookies, "=");
@@ -148,6 +149,7 @@ export function fetchMember(
     ...(wait === null ? {} : { wait_for: wait }),
     ...(actions.length === 0 ? {} : { actions }),
     ...(advanced.cache === "default" ? {} : { cache: advanced.cache }),
+    ...(area === undefined ? {} : { screenshot: area }),
   };
 }
 

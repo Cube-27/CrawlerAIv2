@@ -3,7 +3,7 @@ import { useSubmitCrawl } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { CrawlRequest } from "../../../api/jobs";
 import { useFieldsReview } from "../fields/useFieldsReview";
-import { optionsChanged } from "../pageRequest";
+import { jobFormats, optionsChanged } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobModeOutput } from "../run/JobRun";
@@ -62,6 +62,7 @@ export function CrawlPlayground() {
       options={
         <CrawlOptions
           options={form.options}
+          formats={jobFormats(form)}
           schemaPageKind={form.schemaId === "" ? null : form.schemaPageKind}
           rulesError={validationErrors["page_kind_rules"]}
           onChange={(options) => {

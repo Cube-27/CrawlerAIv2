@@ -1,5 +1,13 @@
-import type { MethodHint, PageKind } from "../../api/scrape";
+import type {
+  ChunkSource,
+  ChunkStrategy,
+  MethodHint,
+  PageKind,
+  ScrapeFormat,
+  ScreenshotArea,
+} from "../../api/scrape";
 import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
+import type { FormatSettings } from "./formatOptions";
 import { NumberRow, SelectRow, SwitchRow, TagListRow, TextRow } from "./OptionsPanel";
 
 /** Options rows more than one mode has (SPEC-14 §4.2), each named after its request member. */
@@ -185,5 +193,119 @@ export function FieldsRow<O extends { fields: readonly string[] }>({
         onChange({ ...options, fields });
       }}
     />
+  );
+}
+
+const AREAS: readonly (readonly [ScreenshotArea, string])[] = [
+  ["viewport", "Viewport"],
+  ["full_page", "Full page"],
+];
+const STRATEGIES: readonly (readonly [ChunkStrategy, string])[] = [
+  ["heading", "By heading"],
+  ["sentence", "By sentence"],
+  ["token", "By words"],
+];
+const SOURCES: readonly (readonly [ChunkSource, string])[] = [
+  ["markdown", "Markdown"],
+  ["markdown_fit", "Markdown (fit)"],
+];
+
+/** The options of the formats that take any (`formatOptions`): `fetch.screenshot`, `fit` and `chunking`. A row stays
+ * in place, disabled, while its format is not chosen, so the layout never moves when the Format changes. */
+export function FormatRows<O extends FormatSettings>({
+  options,
+  formats,
+  onChange,
+}: Readonly<{
+  options: O;
+  formats: readonly ScrapeFormat[];
+  onChange: (options: O) => void;
+}>) {
+  const screenshot = !formats.includes("screenshot");
+  const fit = !formats.includes("markdown_fit");
+  const chunks = !formats.includes("chunks");
+  return (
+    <>
+      <SelectRow<ScreenshotArea>
+        label="Screenshot of"
+        help="What the screenshot shows: the browser's window, or the whole page."
+        name="fetch.screenshot"
+        options={AREAS}
+        value={options.screenshot}
+        isDisabled={screenshot}
+        onChange={(area) => {
+          onChange({ ...options, screenshot: area });
+        }}
+      />
+      <TextRow
+        label="Fit query"
+        help="Markdown (fit) keeps only the blocks of the page's content that match these words. Empty: all its content."
+        name="fit.query"
+        value={options.fitQuery}
+        placeholder="None"
+        isDisabled={fit}
+        onChange={(fitQuery) => {
+          onChange({ ...options, fitQuery });
+        }}
+      />
+      <NumberRow
+        label="Fit max blocks"
+        help="With a query, keep at most this many of the best matching blocks. Empty: every matching block."
+        name="fit.max_blocks"
+        value={options.fitMaxBlocks}
+        minValue={1}
+        placeholder="All"
+        isDisabled={fit}
+        onChange={(fitMaxBlocks) => {
+          onChange({ ...options, fitMaxBlocks });
+        }}
+      />
+      <SelectRow<ChunkStrategy>
+        label="Chunk by"
+        help="How the markdown is split: a chunk per section, whole sentences packed up to the size, or windows of words."
+        name="chunking.strategy"
+        options={STRATEGIES}
+        value={options.chunkStrategy}
+        isDisabled={chunks}
+        onChange={(chunkStrategy) => {
+          onChange({ ...options, chunkStrategy });
+        }}
+      />
+      <NumberRow
+        label="Chunk size"
+        help="The most words in a chunk. Empty: 400."
+        name="chunking.size"
+        value={options.chunkSize}
+        minValue={1}
+        placeholder="400"
+        isDisabled={chunks}
+        onChange={(chunkSize) => {
+          onChange({ ...options, chunkSize });
+        }}
+      />
+      <NumberRow
+        label="Chunk overlap"
+        help="Words a chunk repeats from the one before it; less than the size. Empty: none."
+        name="chunking.overlap"
+        value={options.chunkOverlap}
+        minValue={0}
+        placeholder="0"
+        isDisabled={chunks}
+        onChange={(chunkOverlap) => {
+          onChange({ ...options, chunkOverlap });
+        }}
+      />
+      <SelectRow<ChunkSource>
+        label="Chunk source"
+        help="The markdown the chunks are cut from: the page's content, or the same pruned of boilerplate."
+        name="chunking.source"
+        options={SOURCES}
+        value={options.chunkSource}
+        isDisabled={chunks}
+        onChange={(chunkSource) => {
+          onChange({ ...options, chunkSource });
+        }}
+      />
+    </>
   );
 }

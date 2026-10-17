@@ -9,7 +9,7 @@ from crawlerai.api.auth import require_api_key
 from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import conflict, format_unavailable, not_found
-from crawlerai.config_ir.exporters.files import MEDIA_TYPES, FileFormat, FormatUnavailable
+from crawlerai.config_ir.exporters.files import FileFormat, FormatUnavailable
 from crawlerai.db.models import JobId
 from crawlerai.services import exports, jobs
 from crawlerai.services.fetching import Fetching
@@ -81,16 +81,10 @@ async def cancel_job(job_id: JobId, request: Request) -> JobSummary:
         raise conflict(str(e)) from e
 
 
-_FILES = {
-    "description": "`format=xlsx` or `format=parquet`: the job's records as one file.",
-    "content": {media_type: {"schema": {"type": "string", "format": "binary"}} for media_type in MEDIA_TYPES.values()},
-}
-
-
 @router.get(
     "/{job_id}/results",
     response_model=RecordPage | ExportPage | PageOutputPage | JsonValuesPage,
-    responses={200: _FILES, 409: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE},
+    responses={409: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE},
 )
 async def job_results(
     job_id: JobId, query: Annotated[ResultsQuery, Query()], request: Request
