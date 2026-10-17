@@ -304,3 +304,21 @@ async def test_a_failed_webhook_leaves_the_job_as_it_ended(engine: AsyncEngine, 
     async with engine.connect() as conn:
         status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
     assert (status, (await _delivery(engine, job_id))[0]) == ("cancelled", "failed")
+
+
+async def test_filling_batches_never_hold_up_a_due_job(engine: AsyncEngine, key: CreatedKey) -> None:
+    # More filling jobs than one run reads, all older than the due job: only due jobs are read, so it is formed, and
+    # the run reports only the jobs that got a delivery (a full count would rerun the entry at once).
+    batch = {"max_events": 5, "max_seconds": 3600}
+    filling = [await _running(engine, key.id, events=("page",), batch=batch) for _ in range(FORM_BATCH + 1)]
+    for job_id in filling:
+        await _pages(engine, job_id, 1)
+    unbatched = await _running(engine, key.id, events=("page",))
+    await _pages(engine, unbatched, 1)
+
+    formed = [await _form(engine), await _form(engine)]
+
+    async with engine.connect() as conn:
+        delivered = (await conn.execute(select(WebhookDelivery.job_id))).scalars().all()
+    assert formed == [1, 0]
+    assert list(delivered) == [unbatched]

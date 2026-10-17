@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.core.ids import uuid7
@@ -72,26 +72,27 @@ async def emit_job_event(conn: AsyncConnection, job_id: JobId, kind: str, payloa
 
 
 async def form_deliveries(conn: AsyncConnection, *, batch: int) -> int:
-    """Group the waiting events of up to `batch` jobs into the deliveries that are due, and return how many jobs had
-    events waiting. A job's events are locked as they are read (`SKIP LOCKED`), so two schedulers never put one event
-    in two deliveries."""
-    waiting = (
-        select(
-            WebhookEvent.job_id,
-            func.count().label("waiting"),
-            (func.min(WebhookEvent.created_at) < func.now() - _max_wait()).label("overdue"),
-            Job.status.in_(_ENDED).label("ended"),
-        )
+    """Group the waiting events of up to `batch` jobs whose delivery is due (the job ended, its oldest event waited
+    `max_seconds`, or `max_events` wait; any event without a batch) into deliveries, and return how many jobs got one.
+    Only due jobs are read, so a job whose batch is still filling never holds up the others, and a full batch means
+    more are due. A job's events are locked as they are read (`SKIP LOCKED`), so two schedulers never put one event in
+    two deliveries."""
+    overdue = func.min(WebhookEvent.created_at) < func.now() - _max_wait()
+    ended = Job.status.in_(_ENDED)
+    full = func.count() >= func.coalesce(Job.webhook_batch["max_events"].as_integer(), 1)
+    due = (
+        select(WebhookEvent.job_id, or_(ended, overdue).label("flush"))
         .join(Job, Job.id == WebhookEvent.job_id)
         .where(WebhookEvent.delivery_id.is_(None))
         .group_by(WebhookEvent.job_id, Job.status, Job.webhook_batch)
+        .having(or_(ended, overdue, full))
         .order_by(func.min(WebhookEvent.created_at))
         .limit(batch)
     )
-    jobs = (await conn.execute(waiting)).all()
-    for row in jobs:
-        await _form(conn, row.job_id, flush=row.ended or row.overdue)
-    return len(jobs)
+    formed = 0
+    for row in (await conn.execute(due)).all():
+        formed += await _form(conn, row.job_id, flush=row.flush) > 0
+    return formed
 
 
 def _max_wait() -> Any:
@@ -100,9 +101,9 @@ def _max_wait() -> Any:
     return func.make_interval(0, 0, 0, 0, 0, 0, seconds)
 
 
-async def _form(conn: AsyncConnection, job_id: JobId, *, flush: bool) -> None:
-    """Assign the job's waiting events to deliveries of its batch size, oldest first; a last, smaller group only when
-    `flush`."""
+async def _form(conn: AsyncConnection, job_id: JobId, *, flush: bool) -> int:
+    """Assign the job's waiting events to deliveries of its batch size, oldest first, a last, smaller group only when
+    `flush`; return how many deliveries were formed (none while another scheduler holds the events)."""
     raw: dict[str, Any] | None = (await conn.execute(select(Job.webhook_batch).where(Job.id == job_id))).scalar_one()
     size = 1 if raw is None else WebhookBatch.model_validate(raw).max_events
     events = (
@@ -112,10 +113,13 @@ async def _form(conn: AsyncConnection, job_id: JobId, *, flush: bool) -> None:
         .with_for_update(skip_locked=True)
     )
     ids = list((await conn.execute(events)).scalars())
+    formed = 0
     for start in range(0, len(ids), size):
         group = ids[start : start + size]
         if len(group) < size and not flush:
             break
+        formed += 1
         delivery = insert(WebhookDelivery).values(id=uuid7(), job_id=job_id).returning(WebhookDelivery.id)
         delivery_id = (await conn.execute(delivery)).scalar_one()
         await conn.execute(update(WebhookEvent).where(WebhookEvent.id.in_(group)).values(delivery_id=delivery_id))
+    return formed
