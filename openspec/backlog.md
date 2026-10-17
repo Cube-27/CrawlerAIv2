@@ -38,7 +38,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   remembered method stays `http`); remembering it needs a decision. Pages behind a challenge that does not clear
   itself headless stay `blocked` (§22).
 - Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
-- Tough-site run (#225): listings whose category or chrome-like tiles pass `acquire.items` stay `ok` at HTTP with no rows (about 7 pages); and a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
+- Tough-site run (#225): listings whose category or chrome-like tiles pass `acquire.items` stay `ok` at HTTP with no rows (about 7 pages; 2 more in the 40-page site test, owner question D-1245); and a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
 - Browser parity (#229): with Patchright's documented setup the 4 dev interstitial rows (403 challenge documents) still
   end `blocked`; two of them never navigate on within the 18 s wait and two are not judged interstitial by structure.
   The wait adds about 18 s to each structureless 403 (the blocked pages too); measure on the dev run and lower
@@ -72,7 +72,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Crawl: each task that adds URLs looks up the start task's capture for the site's host (D-0991); store the host on the job if the query shows in profiles. A redirected start page is usually linked from itself, so its target is fetched again as a task [#213].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
 - Collect: identifier widening (D-0965) also applies to a field mapped to `T.identifier` itself, pooling every scheme; stop at `identifier` or keep sub-properties of the field's `scheme` [#209].
-- Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows; one eval page shows it, see SPEC-13 §9 (D-0966) [#209].
+- Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows, nor its colour, gender or material; one eval page and one site-test page show it, see SPEC-13 §9 (D-0966) [#209].
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
 - For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 - Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
@@ -86,7 +86,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - LLM eval: role C's and role A's `request_hash` changed with their output schemas (D-1008), so recorded dev-eval replies are re-recorded on the next run [#215].
 - LLM setup: the setup.py:1-3 docstring should say `llm_unavailable` or `llm_refused` (a missing key still raises ProviderUnavailable) [#216].
 - LLM eval: role C's `request_hash` changed with its message order (D-1021); recorded dev-eval replies are re-recorded on the next run [#217].
-- Listings: rows without structured data carry no item URL (13 of 15 pages with rows, reference eval round 2); taking it from the repeated item's link is the §22 repeated-structure candidate, awaiting the owner (D-1024) [#217].
 - Collect: a banner whose block links to several documents (a promotion with category links) still passes the link-card rule and can be the main image (round 3: one page, its field already `conflict`); measure before widening it (D-1096) [#220].
 - LLM eval: role C's `request_hash` changed with its claim form (D-1097); recorded dev-eval replies are re-recorded on the next run. Round 3's all-empty role C page did not reproduce from its capture; re-check in round 4 [#220].
 - Collect: the main image is still the first shown image of the main region; on pages whose structured data names an image, measure whether a `dom` image that disagrees costs precision (D-1023) [#217].
@@ -102,4 +101,5 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - API: the `fetch_failed` problem type (SPEC-07 §4.3) is listed but nothing raises it, since fetch errors are outcomes; drop it from the spec or use it [#223].
 - API recipes: the paged executor (`RecipeRung.pages`) has no caller; recipe pagination comes only from an operator correction [#223].
 - Recurring: `worker/handlers/scrape.py` docstring still says "within a few SimHash bits"; only Hamming 0 means unchanged (D-0665) [#223].
-
+- Normalize: a location's `remote_flag` is `false` when the page does not state it, so "not stated" and "not remote" read alike; a tri-state (`null` when unstated) changes the value shape [#240].
+- Role C: one site-test listing whose HTTP body holds 20 item blocks gave one role C row; not reproducible without the LLM recording, re-check on the next run [#240].

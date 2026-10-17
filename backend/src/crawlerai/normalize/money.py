@@ -6,7 +6,8 @@ Accepts:
   the locales the page and the request state;
 - a JSON object from a structured source: schema.org `price` + `priceCurrency` (Offer, PriceSpecification), or the
   normalized form `amount` + `currency`. The amount is a JSON number or a string of digits with `.` as the decimal
-  point (schema.org `price`: no grouping, no currency sign).
+  point (schema.org `price`: no grouping, no currency sign); a `price` written as display text instead (`$1,295.99`)
+  is read like text, in the stated currency, which any sign it writes must denote (D-1240).
 
 Any other JSON value is `Invalid("not_money")`. Nothing is defaulted (C7): a sign that names several currencies, or
 an amount the locales read differently, is `Ambiguous`.
@@ -39,13 +40,13 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     if spec.type is not FieldType.MONEY:
         raise TypeError(f"the money normalizer does not handle type {spec.type}")
     if isinstance(raw, dict):
-        return _structured(raw)
+        return _structured(raw, ctx)
     if isinstance(raw, str):
         return _text(raw, ctx)
     return Invalid("not_money")
 
 
-def _structured(raw: Mapping[str, JsonValue]) -> NormalizeResult:
+def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
     amount_key, currency_key = ("price", "priceCurrency") if "price" in raw else ("amount", "currency")
     amount, currency = raw.get(amount_key), raw.get(currency_key)
     if amount is None:
@@ -58,12 +59,18 @@ def _structured(raw: Mapping[str, JsonValue]) -> NormalizeResult:
         value = number
     elif isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(stripped := amount.strip()):
         value = Decimal(stripped)
+    elif isinstance(amount, str) and amount_key == "price":
+        # schema.org `priceCurrency` states the currency of a `price` the page wrote as display text (a sign,
+        # grouping), so the text reader reads it with that currency stated (CLDR symbols and number symbols).
+        return _text(amount, ctx, stated=currency)
     else:
         return Invalid("unparsable_amount")
     return _money(value, currency)
 
 
-def _text(raw: str, ctx: Context) -> NormalizeResult:
+def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
+    """Money written as text; `stated` is the currency structured data states beside it, which any sign the text
+    writes must denote, and which a text without a sign is in."""
     if has_surrogate(raw):
         return Invalid("surrogate")
     # Unicode NFKC (UAX #15): compatibility forms (fullwidth digits and signs, no-break spaces) read as their plain
@@ -77,11 +84,8 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     before, after = text[: run.start()], text[run.end() :]
     if numbers.negative(before):
         return Invalid("not_positive")
-    signs = _signs(text, before, after)
-    if isinstance(signs, Invalid):
-        return signs
     locales = numbers.locale_set(ctx)
-    currencies = _agreed_currencies(signs, locales, ctx)
+    currencies = _currencies_of(text, before, after, locales, ctx, stated)
     if isinstance(currencies, Invalid):
         return currencies
     amounts = numbers.readings(run.group(), locales)
@@ -92,6 +96,22 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     options = [_value(a, c) for c in currencies for a in amounts]
     reason = "decimal_separator" if len(currencies) == 1 else "currency_symbol"
     return Ambiguous(reason, tuple(options))
+
+
+def _currencies_of(
+    text: str, before: str, after: str, locales: frozenset[str], ctx: Context, stated: str | None
+) -> list[str] | Invalid:
+    """The ISO 4217 codes the text's signs can denote; with a `stated` currency, that one when the signs can denote it
+    or the text writes none."""
+    signs = _signs(text, before, after)
+    if stated is None:
+        return signs if isinstance(signs, Invalid) else _agreed_currencies(signs, locales, ctx)
+    if isinstance(signs, Invalid):
+        return [stated] if signs.reason == "no_currency" else signs
+    agreed = _agreed_currencies(signs, locales, ctx.model_copy(update={"page_currencies": (stated,)}))
+    if isinstance(agreed, Invalid) or stated not in agreed:
+        return Invalid("currency_conflict")
+    return [stated]
 
 
 def _amount_run(text: str) -> re.Match[str] | Invalid:

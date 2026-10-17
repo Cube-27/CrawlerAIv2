@@ -29,8 +29,9 @@ _PRESET = next(p for p in load_presets() if p.name == "commerce_detail")
 SCHEMA = SchemaDef(**_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
 
 
-def _extract(head: str, body: str = "") -> ExtractionResult:
-    raw = f"<html><head>{head}</head><body>{body}</body></html>".encode()
+def _extract(head: str, body: str = "", schema: SchemaDef = SCHEMA, lang: str = "") -> ExtractionResult:
+    lang_attribute = f' lang="{lang}"' if lang else ""
+    raw = f"<html{lang_attribute}><head>{head}</head><body>{body}</body></html>".encode()
     manifest = CaptureManifest(
         capture_id=uuid7(),
         url=PAGE_URL,
@@ -47,7 +48,7 @@ def _extract(head: str, body: str = "") -> ExtractionResult:
         engine_version="0+cal.0",
     )
     return asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=DATA)
+        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), schema, None, None, data=DATA)
     )
 
 
@@ -185,3 +186,24 @@ def test_a_variant_page_beside_its_group_publishes_its_canonical_url_as_derived(
     assert result.entity is not None
     url = result.entity["url"]
     assert (url.status, url.value, url.evidence, url.derived_by) == ("published", PAGE_URL, "derived", "canonical_link")
+
+
+_LISTING_PRESET = next(p for p in load_presets() if p.name == "commerce_listing")
+LISTING = SchemaDef(**_LISTING_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
+
+
+def test_microdata_rows_with_prices_written_with_their_sign_publish_them() -> None:
+    # A listing's microdata Offers write `price` as display text beside `priceCurrency` (schema.org asks for digits
+    # only); each row publishes its price in the stated currency (D-1240).
+    card = (
+        '<div itemscope itemtype="https://schema.org/Product"><a itemprop="url" href="/item/{n}">p</a>'
+        '<h4 itemprop="name">Widget {n}</h4><div itemprop="offers" itemscope itemtype="https://schema.org/Offer">'
+        '<span itemprop="price">${n},299.50</span><meta itemprop="priceCurrency" content="USD"></div></div>'
+    )
+    body = "".join(card.format(n=n) for n in (1, 2, 3))
+
+    result = _extract('<meta charset="utf-8">', body, LISTING, lang="en")
+
+    assert [(row["title"].value, row["price"].value) for row in result.rows] == [
+        (f"Widget {n}", {"amount": f"{n}299.50", "currency": "USD"}) for n in (1, 2, 3)
+    ]

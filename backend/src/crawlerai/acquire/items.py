@@ -36,6 +36,16 @@ def _tokens(value: str | None) -> tuple[str, ...]:
 
 def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
     """The largest group of repeated items in the document `root`, in document order; empty when it shows none."""
+    largest: tuple[HtmlElement, ...] = ()
+    for items in item_groups(root):
+        if len(items) > len(largest):
+            largest = items
+    return largest
+
+
+def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:
+    """Every group of repeated items in the document `root` (at least `MIN_ITEMS` siblings of one shape, outside the
+    chrome), each in document order."""
     content = _content(root)
     # One walk up from each hyperlink gathers the link-holding elements by parent and tag; an element already
     # gathered had its ancestors gathered with it, so each element is gathered once.
@@ -46,12 +56,12 @@ def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
             gathered.add(node)
             siblings.setdefault((parent, node.tag), []).append(node)
             node = parent
-    largest: list[HtmlElement] = []
-    for (parent, _), nodes in siblings.items():
-        for items in _shapes(nodes):
-            if len(items) >= max(MIN_ITEMS, len(largest) + 1) and not _chrome(parent):
-                largest = items
-    return tuple(largest)
+    return tuple(
+        tuple(items)
+        for (parent, _), nodes in siblings.items()
+        for items in _shapes(nodes)
+        if len(items) >= MIN_ITEMS and not _chrome(parent)
+    )
 
 
 def _shapes(nodes: list[HtmlElement]) -> list[list[HtmlElement]]:
