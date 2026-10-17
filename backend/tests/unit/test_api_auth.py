@@ -140,9 +140,11 @@ def test_the_openapi_document_declares_the_bearer_key_on_every_operation_but_hea
     assert {k: v for k, v in security.items() if v != [{"HTTPBearer": []}]} == {}
 
 
-def test_every_api_operation_but_healthz_refuses_a_request_without_a_key() -> None:
+def test_every_api_operation_but_healthz_refuses_a_request_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     # SPEC-07 §4.2, SPEC-03 §4.10: every route takes the API key, which also rate-limits it; `/healthz` alone is public
-    # (ARCHITECTURE §18). A router added without the key dependency fails here.
+    # (ARCHITECTURE §18). A router added without the key dependency fails here. The burst covers every operation from
+    # one client, so the rate limit answers none of them.
+    monkeypatch.setenv("CRAWLERAI_API_RATE_BURST", "1000")
     app = create_app(eval_ui=True)
     operations = [
         (method.upper(), path.replace("{", "").replace("}", ""))
