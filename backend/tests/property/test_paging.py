@@ -55,7 +55,7 @@ class _LoadMoreTab:
     async def scroll(self) -> None:
         return None
 
-    async def goto(self, url: str) -> bool:
+    async def goto(self, url: str, timeout_s: float) -> bool:
         return False
 
     async def back(self) -> None:

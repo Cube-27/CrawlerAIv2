@@ -267,20 +267,34 @@ class _Run:
             return "not_admitted"
         self.actions += 1
         self.visited.add(_page_url(link.url))
-        if not await self.tab.goto(link.url):
+        if not await self.tab.goto(link.url, max(0.0, self.deadline - time.monotonic())):
             return _Still(view)
         return self._turned(await self._effect(view, "turn"), "next" if link.rel_next else "pagination")
 
     async def _click_turn(self, view: _View, control: HtmlElement) -> _Step:
         if not await self._keep(view):
             return "error"
-        await self.gate(None)
+        target = _target(view, control)
+        if not await self.gate(target):
+            return "not_admitted"
         self.actions += 1
         clicked = await self.tab.click(_ref(control))
         if clicked != "clicked":
             return _click_stop(clicked)
+        effect = await self._effect(view, "turn")
+        if not await self._landed(view, target):
+            return "not_admitted"
         self.visited.add(_page_url(self.tab.url))
-        return self._turned(await self._effect(view, "turn"), "pagination")
+        return self._turned(effect, "pagination")
+
+    async def _landed(self, view: _View, target: str | None) -> bool:
+        """Whether the document a click led to may be kept: the same one, the hyperlink's target the gate admitted, or
+        a page a script navigated to that the gate admits now; a page it refuses is left (`back`)."""
+        landed = _page_url(self.tab.url)
+        if landed in (_page_url(view.url), target) or await self.gate(landed):
+            return True
+        await self.tab.back()
+        return False
 
     def _turned(self, effect: tuple[_View, bool], kind: PagingHint) -> _Step:
         view, shown = effect
@@ -319,7 +333,8 @@ class _Run:
     async def _click_control(self, view: _View, control: HtmlElement) -> _Step:
         if self.replacing and not await self._keep(view):
             return "error"
-        await self.gate(None)
+        if not await self.gate(_target(view, control)):
+            return _Still(view)  # a hyperlink to a page the gate refuses is no control of this listing
         self.actions += 1
         url, requests = _page_url(self.tab.url), self.tab.data_requests()
         clicked = await self.tab.click(_ref(control))
@@ -330,6 +345,8 @@ class _Run:
         moved, shown = await self._effect(view, "grow")
         if _page_url(self.tab.url) != url:
             await self.tab.back()  # it left the listing: not a control that loads more of it
+            if _page_url(self.tab.url) != url:
+                return "error"  # the listing could not be got back
             return _Still(await self._read() or view)
         if not shown:
             return _Still(moved)
@@ -421,6 +438,15 @@ def _click_stop(clicked: Click) -> _Step:
 def _page_url(url: str) -> str:
     """`url` without its fragment, canonical (RFC 3986 §3.5: the fragment names a part of one document)."""
     return canonical_url(url, None) or url
+
+
+def _target(view: _View, control: HtmlElement) -> str | None:
+    """The document a hyperlink control navigates to (HTML Standard §4.6.4), for the gate to admit before the click;
+    None for a control that is no hyperlink or stays on the page (a fragment; a `javascript:` URL, no URL)."""
+    if not is_hyperlink(control):
+        return None
+    url = canonical_url(control.get("href") or "", document_base_url(view.page, view.url))
+    return None if url is None or url == _page_url(view.url) else url
 
 
 def _identities(items: Sequence[HtmlElement], base: str) -> tuple[str, ...]:

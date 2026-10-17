@@ -109,8 +109,9 @@ class Tab(Protocol):
         """Scroll the document to its end."""
         ...
 
-    async def goto(self, url: str) -> bool:
-        """Navigate to `url`; whether a document other than an error arrived."""
+    async def goto(self, url: str, timeout_s: float) -> bool:
+        """Navigate to `url`, waiting at most `timeout_s` (and the tab's own navigation cap); whether a document other
+        than an error arrived."""
         ...
 
     async def back(self) -> None:
@@ -135,7 +136,8 @@ ListingRung = Callable[[str, FetchPolicy, Drive], Awaitable[PagedFetch]]
 class _PatchrightTab:
     def __init__(self, page: Rendered, *, url: str, engine_version: str, started: float) -> None:
         self._page = page
-        self._url = url
+        self._url = url  # the URL the shown document was asked for; `_at` is where that navigation ended
+        self._at = page.page.url
         self._engine_version = engine_version
         self._since = started  # the time the next kept state's attempt is counted from
         self._json_from = 0
@@ -194,11 +196,14 @@ class _PatchrightTab:
             await asyncio.sleep(_SCROLL_STEP_S)
             await self._page.page.evaluate(_END_JS)
 
-    async def goto(self, url: str) -> bool:
+    async def goto(self, url: str, timeout_s: float) -> bool:
+        timeout_ms = max(1.0, min(_NAVIGATION_TIMEOUT_MS, 1000 * timeout_s))  # 0 would mean no timeout
         try:
-            response = await self._page.page.goto(url, wait_until="domcontentloaded", timeout=_NAVIGATION_TIMEOUT_MS)
+            response = await self._page.page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         except PlaywrightError:
             return False
+        finally:
+            self._url, self._at = url, self._page.page.url
         return response is not None and response.status < _ERROR_STATUS
 
     async def back(self) -> None:
@@ -210,21 +215,24 @@ class _PatchrightTab:
 
     async def keep(self) -> bool:
         fetched_at = datetime.now(UTC)
+        # The JSON responses up to now belong to this state; one arriving while it is read goes to the next.
+        json_to = len(self._page.json_responses)
         try:
-            exchange, content = await read_state(self._page, url=self.url, json_from=self._json_from)
+            exchange, content = await read_state(self._page, url=self.url, json=(self._json_from, json_to))
         except (Failed, PlaywrightError):
             return False
         block_class = await classified(exchange, content)
         self.kept.append(self._result(fetched_at, exchange, content, block_class))
         self._since = time.monotonic()
-        self._json_from = len(self._page.json_responses)
+        self._json_from = json_to
         return True
 
     def _result(
         self, fetched_at: datetime, exchange: Exchange, content: Content, block_class: BlockClass
     ) -> FetchResult:
+        # A document a click or a script navigated to was asked for under its own URL.
         return fetch_result(
-            url=self._url,
+            url=self._url if self.url == self._at else self.url,
             method="browser",
             policy=self._page.policy,
             engine_version=self._engine_version,

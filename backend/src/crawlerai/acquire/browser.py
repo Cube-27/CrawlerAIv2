@@ -275,13 +275,19 @@ async def _navigate(
     return Rendered(page, frame, response, policy, json_responses)
 
 
-async def read_state(rendered: Rendered, *, url: str | None = None, json_from: int = 0) -> tuple[Exchange, Content]:
+async def read_state(
+    rendered: Rendered, *, url: str | None = None, json: tuple[int, int | None] = (0, None)
+) -> tuple[Exchange, Content]:
     """The document the page shows now, as an exchange and its content: the first document, or where a navigation
     ended (one it started itself, or a browser action's), under `url` when given (the response's URL otherwise), with
-    the JSON bodies loaded from the `json_from`-th on. Raises `Failed` for a body past the policy's caps."""
+    the bodies of the JSON responses in the `json` slice (all of them by default). Raises `Failed` for a body past the
+    policy's caps, or a response the browser no longer holds."""
     policy = rendered.policy
     response = rendered.frame.latest or rendered.response
-    sent, received = await asyncio.gather(response.request.headers_array(), response.headers_array())
+    try:
+        sent, received = await asyncio.gather(response.request.headers_array(), response.headers_array())
+    except PlaywrightError as e:
+        raise Failed("no_response", None) from e
     exchange = Exchange(
         url=url or response.url,
         status=response.status,
@@ -291,7 +297,7 @@ async def read_state(rendered: Rendered, *, url: str | None = None, json_from: i
     body, raw_body, network, wire_size = await asyncio.gather(
         _rendered(rendered.page, exchange),
         _raw_body(response),
-        _json_bodies(rendered.json_responses[json_from:]),
+        _json_bodies(rendered.json_responses[slice(*json)]),
         _wire_size(response, exchange),
     )
     # The browser hands over bodies after content decoding; `wire_size` counts the body as it arrived, before. Both

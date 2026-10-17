@@ -89,12 +89,18 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   };
 }
 
-/** `browser_actions`, only for a listing (owner #52), with the members that are set. */
+/** Whether browser actions apply (owner #52): a listing fetched now in a browser, so not with the HTTP method or a
+ * positive max age, which the server refuses with them. */
+export function browserActionsApply(options: ScrapeOptions, kind: PageKind | null): boolean {
+  return kind === "listing" && options.methodHint !== "http" && !(options.maxAge > 0);
+}
+
+/** `browser_actions`, only where they apply, with the members that are set. */
 function browserActions(
   options: ScrapeOptions,
   kind: PageKind | null,
 ): { browser_actions?: { records?: number; hint?: PagingHint } } {
-  if (!options.browserActions || kind !== "listing") return {};
+  if (!options.browserActions || !browserActionsApply(options, kind)) return {};
   return {
     browser_actions: {
       ...optionalNumber("records", options.records),

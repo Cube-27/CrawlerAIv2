@@ -300,7 +300,18 @@ def test_a_pager_of_ordinal_links_in_nav_is_clicked_page_by_page_to_its_end(brow
     fetched = browser.run("/seg/page-1.html", BrowserActions(records=100))
 
     assert _summary(fetched) == ("pagination", "end", 4, 40)
-    assert browser.gated == [None, None, None]  # three clicks; page 4 links to no page 5
+    # Three clicks on hyperlinks, each gated by its target first; page 4 links to no page 5.
+    pages = [browser.server.url(f"/seg/page-{n}.html") for n in (2, 3, 4)]
+    assert browser.gated == pages
+    # Each kept state is recorded under the URL it was asked for, not the listing's first one.
+    assert [page.bundle.manifest.url for page in fetched.pages] == [browser.server.url("/seg/page-1.html"), *pages]
+
+
+def test_a_pager_link_the_gate_refuses_is_not_clicked(browser: Browser) -> None:
+    fetched = browser.run("/seg/page-1.html", BrowserActions(records=100), refuse="page-2")
+
+    assert _summary(fetched) == (None, "not_admitted", 1, 10)
+    assert [page.bundle.manifest.final_url for page in fetched.pages] == [browser.server.url("/seg/page-1.html")]
 
 
 def test_rel_next_with_opaque_cursors_runs_to_the_end_of_the_list(browser: Browser) -> None:

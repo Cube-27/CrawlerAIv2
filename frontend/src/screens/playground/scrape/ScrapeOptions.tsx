@@ -1,7 +1,7 @@
 import type { PageKind, PagingHint } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
 import { FetchMethodRow, FieldsRow, LlmCallsRow, MetadataRow, PageKindRow } from "../rows";
-import { DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
+import { browserActionsApply, DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
 
 /** Scrape's options (SPEC-14 §4.2): page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
  * fields (§4.10) and a listing's browser actions (owner #52). */
@@ -74,7 +74,7 @@ export function ScrapeOptions({
       <FieldsRow options={options} onChange={onChange} />
       <BrowserActionsRows
         options={options}
-        isListing={(hasSchema ? schemaPageKind : options.pageKind) === "listing"}
+        applies={browserActionsApply(options, hasSchema ? schemaPageKind : options.pageKind)}
         onChange={onChange}
       />
     </OptionsPanel>
@@ -92,21 +92,21 @@ const HINTS: readonly (readonly [HintChoice, string])[] = [
   ["scroll", "Scroll"],
 ];
 
-/** `browser_actions` (owner #52): only a listing's, so for another page kind the rows stay in place, disabled, and
- * nothing is sent (the layout never moves when the page kind changes). */
+/** `browser_actions` (owner #52): where they do not apply (`browserActionsApply`) the rows stay in place, disabled,
+ * and nothing is sent (the layout never moves when another option changes). */
 function BrowserActionsRows({
   options,
-  isListing,
+  applies,
   onChange,
-}: Readonly<{ options: Options; isListing: boolean; onChange: (options: Options) => void }>) {
-  const off = !isListing || !options.browserActions;
+}: Readonly<{ options: Options; applies: boolean; onChange: (options: Options) => void }>) {
+  const off = !applies || !options.browserActions;
   return (
     <>
       <SwitchRow
         label="Browser actions"
-        help="For a listing: scroll and click its paging controls in a browser to collect more rows."
+        help="For a listing fetched now in a browser (not HTTP, max age empty or 0): scroll and click its paging controls to collect more rows."
         isSelected={options.browserActions}
-        isDisabled={!isListing}
+        isDisabled={!applies}
         onChange={(browserActions) => {
           onChange({ ...options, browserActions });
         }}

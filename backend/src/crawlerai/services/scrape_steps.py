@@ -324,13 +324,14 @@ async def store_page_record(
     config: ActiveConfig | None,
     margins: DriftMargins | None,
     caller_supplied: bool = True,
+    page_url: str | None = None,
 ) -> Stored:
     """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
     (`partial`, ARCHITECTURE §10), and a crawl-discovered one only complete records (else `no_match`, §23); none when
     resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied detail page without a
     record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
     page with a record counts toward its progressive state. A page `config` ran on joins the config's drift window
-    (SPEC-08 §4.9)."""
+    (SPEC-08 §4.9). `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
         task,
@@ -341,6 +342,7 @@ async def store_page_record(
         caller_supplied=caller_supplied,
         write_records=store_records,
         config=config,
+        page_url=page_url,
     )
     if config is not None:
         await record_page(conn, config, extraction, margins=margins, job_id=task.job_id)

@@ -24,6 +24,7 @@ canonical URL that reached its page within that many seconds is read again inste
 import asyncio
 import os
 import socket
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
@@ -341,7 +342,7 @@ async def _run(
     policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
     attempts: list[AttemptRecord] = []
     check = _offer_check(work, request, config)
-    more: tuple[FetchResult, ...] = ()
+    further: tuple[FetchResult, ...] = ()
     report: ActionsReport | None = None
     page: FetchResult | str
     if recent is not None:
@@ -350,7 +351,7 @@ async def _run(
         paged = await paged_fetch(
             engine, fetching, request.url, host, policy, site, attempts, request.browser_actions, request.timeout_s
         )
-        page, more, report = _pages(paged)
+        page, further, report = _pages(paged)
     else:
         page = await polite_fetch(
             engine, fetching, request.url, host, policy, site, attempts, recipe=recipe, needs_render=check
@@ -360,13 +361,13 @@ async def _run(
     derived = _NOTHING
     if isinstance(page, FetchResult) and page.block_class == "ok":
         derived = await _derive(engine, work, request, task, (page, parsed_page(page.bundle, check)), config)
-    extra = await _extract_more(work, task, derived, config, more)
+    extra = await _extract_more(work, task, derived, config, further)
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
-            stored_more = await _store_more(conn, fetching.store, task, site.id, derived, extra, work.margins)
-            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, stored_more)
+            more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
+            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
             members = _fetch_members(page, capture_id)
         else:
             outcome = "blocked"
@@ -419,6 +420,15 @@ async def _extract_more(
     return extracted
 
 
+@dataclass(frozen=True)
+class _More:
+    """A listing's further kept states as stored: each record with the extraction it came from, and whether any
+    state's extraction failed."""
+
+    records: tuple[tuple[StoredRecord, ExtractionResult], ...] = ()
+    failed: bool = False
+
+
 async def _store_more(
     conn: AsyncConnection,
     store: ObjectStore,
@@ -427,11 +437,13 @@ async def _store_more(
     derived: _Derived,
     extracted: list[_Extracted],
     margins: DriftMargins | None,
-) -> tuple[StoredRecord, ...]:
-    """Store each further kept state: its capture, its extraction and its records, under the scrape's task."""
+) -> _More:
+    """Store each further kept state: its capture, its extraction and its records, under the scrape's task, each
+    under the canonical URL of the document it read (a row without its own URL is keyed by its page and position)."""
     if derived.schema is None:
-        return ()
-    stored: list[StoredRecord] = []
+        return _More()
+    records: list[tuple[StoredRecord, ExtractionResult]] = []
+    failed = False
     for page, extraction, config in extracted:
         capture_id = await new_capture(conn, store, site_id, page)
         kept = await store_page_record(
@@ -443,9 +455,11 @@ async def _store_more(
             schema=derived.schema,
             config=config,
             margins=margins,
+            page_url=canonicalize(page.bundle.manifest.final_url),
         )
-        stored.extend(kept.records)
-    return tuple(stored)
+        failed = failed or kept.outcome == "failed"
+        records.extend((record, extraction) for record in kept.records)
+    return _More(tuple(records), failed)
 
 
 def _offer_check(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> OfferCheck | None:
@@ -604,11 +618,12 @@ async def _finish(
     capture_id: CaptureId,
     derived: _Derived,
     margins: DriftMargins | None,
-    more: tuple[StoredRecord, ...] = (),
+    more: Callable[[], Awaitable[_More]] | None = None,
 ) -> tuple[PageOutcome, list[ScrapedRecord] | None]:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
-    the page's run of an active config in its drift window. `more` are the records of a listing's further kept
-    states (owner #52), stored already: the answer lists every record once."""
+    the page's run of an active config in its drift window. `more` stores a listing's further kept states (owner
+    #52), once the page's own extraction did not fail: the answer lists every record once, and a further state whose
+    extraction failed makes the outcome `partial`."""
     outcome = BLOCK_OUTCOMES[result.block_class]
     if outcome == "failed":
         error = result.attempts[-1].error or outcome
@@ -631,11 +646,14 @@ async def _finish(
     if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
         return "failed", None
+    further = _More() if more is None else await more()
     # A detail page's one record, or a listing's one per row (none when it listed nothing, SPEC-05 §4.10).
-    kept = {record.id: record for record in (*stored.records, *more)}
-    outcome = records_outcome(tuple(kept.values()))
+    kept = {record.id: (record, extraction) for record in stored.records} | {r.id: (r, e) for r, e in further.records}
+    outcome = records_outcome(tuple(record for record, _ in kept.values()))
+    if further.failed:
+        outcome = "partial"
     await complete_task(conn, task, outcome, capture_id=capture_id)
-    return outcome, [_scraped(record, extraction) for record in kept.values()]
+    return outcome, [_scraped(record, of) for record, of in kept.values()]
 
 
 def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:

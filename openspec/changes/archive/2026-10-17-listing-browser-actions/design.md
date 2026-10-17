@@ -100,7 +100,9 @@
 - Date: 2026-10-17 · Change/PR: listing-browser-actions (#241) · Status: decided
 - Decision: a state is kept before an action that replaces the items (a page turn, or after a growth dropped items)
   and once at the end, when it shows an item no kept state holds. Each is stored as its own capture with its own
-  extraction and records; `capture_id` and the formats are the first state's; the answer lists records once by id.
+  extraction and records, keyed by its own URL, when `records` is asked and the first state's extraction did not fail;
+  `capture_id` and the formats are the first state's; the answer lists records once by id, each with its own state's
+  confidence, and a further state whose extraction failed makes the outcome `partial`.
 - Alternatives: merging documents into one capture (locators would no longer read back, SPEC-05 §4.3).
 - Why: every record stays replayable from the document it came from (G7).
 - Reversible: yes.
@@ -119,7 +121,8 @@
 - Date: 2026-10-17 · Change/PR: listing-browser-actions (#241) · Status: decided
 - Decision: a click Playwright cannot deliver in 4 s stops the run with `click_intercepted` (no JavaScript click
   fallback, no overlay dismissal); a control click that changes the URL is undone; each action waits for the site's
-  rate, and a navigation is admitted only on the listing's host when robots.txt allows it (else `not_admitted`).
+  rate, and a navigation is admitted only on the listing's host when robots.txt allows it (else `not_admitted`): a
+  link's URL before it is followed or its control clicked, a page a script navigated to once it shows (then left).
 - Alternatives: the probe's `el.click()` fallback (works around an overlay, which owner #52 rules out).
 - Why: owner #52; SPEC-02 §4.6.
 - Reversible: yes.
