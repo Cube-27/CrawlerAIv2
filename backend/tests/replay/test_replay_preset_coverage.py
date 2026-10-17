@@ -86,8 +86,8 @@ def test_each_optional_product_property_the_page_states_publishes_by_its_path() 
     }
     assert published.get("additional_images") == IMAGES
     assert published.get("condition") == "RefurbishedCondition"
-    assert published.get("product_id") == {"scheme": "custom", "value": "isbn-less-42"}
-    assert published.get("mpn") == {"scheme": "mpn", "value": "MPN-77"}
+    assert published.get("product_id") == "isbn-less-42"
+    assert published.get("mpn") == "MPN-77"
     assert (published.get("rating"), published.get("review_count")) == ("4.5", 128)
 
 
@@ -145,15 +145,15 @@ def test_variant_rows_carry_the_id_size_colour_and_gtin_each_variant_states() ->
     picked = [{k: row.get(k) for k in ("variant_id", "size", "color", "gtin")} for row in rows if isinstance(row, dict)]
     assert picked == [
         {
-            "variant_id": {"scheme": "custom", "value": "v0"},
+            "variant_id": "v0",
             "size": "S",
             "color": "Teal",
-            "gtin": {"scheme": "gtin", "value": "4006381333931"},
+            "gtin": "4006381333931",
         },
         {
-            "variant_id": {"scheme": "custom", "value": "v1"},
+            "variant_id": "v1",
             "size": "M",
             "color": "Teal",
-            "gtin": {"scheme": "gtin", "value": "4006381333948"},
+            "gtin": "4006381333948",
         },
     ]

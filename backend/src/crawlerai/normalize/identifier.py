@@ -1,4 +1,5 @@
-"""Identifier normalizer (SPEC-04 §4.4, ARCHITECTURE §9): `{scheme, value}`, the scheme being the field's declared one.
+"""Identifier normalizer (SPEC-04 §4.4, ARCHITECTURE §9): the identifier as a string. The scheme is the field's declared
+one, so the value does not repeat it.
 
 Accepts a string, or a non-negative JSON integer read as its decimal digits (JSON-LD publishers write schema.org Text
 values such as `gtin13` unquoted). Any other JSON value is `Invalid("not_a_string")`.
@@ -50,7 +51,7 @@ def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
         case _:
             result = _opaque(trimmed)
     if isinstance(result, str):
-        return Ok({"scheme": spec.scheme, "value": result})
+        return Ok(result)
     return result
 
 
@@ -107,17 +108,14 @@ def _isbn10_check_passes(value: str) -> bool:
     return total % 11 == 0
 
 
-def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
+def key(value: JsonValue, spec: FieldSpec) -> Hashable:
     """Equality as a key (SPEC-04 §4.5): exact, except that GTINs compare in the GS1 14-digit form (D-0287)."""
-    gtin = _gtin14(value)
+    gtin = _gtin14(value) if spec.scheme == "gtin" else None
     return raw_key(value) if gtin is None else ("gtin", gtin)
 
 
-def _gtin14(value: JsonValue) -> str | None:
+def _gtin14(digits: JsonValue) -> str | None:
     # GS1 General Specifications §3.3.2: GTIN-8, -12 and -13 are compared as GTIN-14 by padding with leading zeros.
-    if not isinstance(value, dict) or value.keys() != {"scheme", "value"} or value["scheme"] != "gtin":
-        return None
-    digits = value["value"]
     if not (isinstance(digits, str) and digits.isascii() and digits.isdigit() and len(digits) in _GTIN_LENGTHS):
         return None
     return digits.zfill(14)

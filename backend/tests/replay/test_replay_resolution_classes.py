@@ -129,7 +129,7 @@ def test_two_blocks_of_one_node_id_publish_as_one_product() -> None:
         "title": ("published", None, "Widget One"),
         "price": ("published", None, {"amount": "14.00", "currency": "EUR"}),
         "availability": ("published", None, "InStock"),
-        "sku": ("published", None, {"scheme": "sku", "value": "W-1"}),
+        "sku": ("published", None, "W-1"),
     }
 
 

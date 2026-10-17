@@ -88,7 +88,7 @@ def _skus(outcome: FieldOutcome) -> list[JsonValue]:
 
 
 def _sku(value: str) -> JsonValue:
-    return {"scheme": "sku", "value": value}
+    return value
 
 
 def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
@@ -274,8 +274,8 @@ def test_rows_of_one_sku_with_their_own_gtins_are_two_variants() -> None:
     assert outcome.status == "published"
     assert outcome.value == [
         {
-            "sku": {"scheme": "sku", "value": "W-11"},
-            "gtin": {"scheme": "gtin", "value": gtin},
+            "sku": "W-11",
+            "gtin": gtin,
             "price": {"amount": price, "currency": "EUR"},
             "availability": "InStock",
         }
@@ -292,8 +292,8 @@ def test_variants_that_state_only_a_gtin_sub_property_are_keyed_by_it() -> None:
     outcome = _variants(_group(first, second))
 
     assert [row["gtin"] for row in _rows(outcome)] == [
-        {"scheme": "gtin", "value": "4006381333931"},
-        {"scheme": "gtin", "value": "9780306406157"},
+        "4006381333931",
+        "9780306406157",
     ]
 
 

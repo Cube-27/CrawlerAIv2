@@ -141,7 +141,7 @@ def test_a_product_page_publishes_its_structured_values() -> None:
     assert published == {
         "title": ("Widget One", "structured", "jsonld"),
         "price": (PRICE, "structured", "jsonld"),
-        "sku": ({"scheme": "sku", "value": "W-1"}, "structured", "jsonld"),
+        "sku": ("W-1", "structured", "jsonld"),
     }
     # No calibration was fitted, so every field is uncalibrated and the record has no confidence (§4.9).
     assert not any(o.calibrated for o in result.entity.values())

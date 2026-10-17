@@ -60,7 +60,7 @@ PAGE_URL = "https://shop.example.test/p/1"
 
 
 def sku(value: str) -> JsonValue:
-    return {"scheme": "sku", "value": value}
+    return value
 
 
 def eur(amount: str) -> JsonValue:

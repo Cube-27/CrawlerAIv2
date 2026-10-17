@@ -103,7 +103,7 @@ def test_a_single_variant_publishes_its_offer_and_identifier_at_the_top_level() 
     result = _resolve(_group(_variant(VARIANT_URLS[0], "10.00", sku="W-11")))
 
     assert _value(result["price"]) == {"amount": "10.00", "currency": "EUR"}
-    assert _value(result["sku"]) == {"scheme": "sku", "value": "W-11"}
+    assert _value(result["sku"]) == "W-11"
 
 
 def test_an_identifier_that_varies_stays_out_of_the_top_level_even_when_the_url_names_a_variant() -> None:
@@ -121,7 +121,7 @@ def test_an_identifier_fills_only_when_every_variant_agrees() -> None:
     one_missing = _group(_variant(VARIANT_URLS[0], "10.00", gtin="4006381333931"), _variant(VARIANT_URLS[1], "12.00"))
 
     result = _resolve(agreeing)
-    assert _value(result["gtin"]) == {"scheme": "gtin", "value": "4006381333931"}
+    assert _value(result["gtin"]) == "4006381333931"
     assert _why(_resolve(agreeing, fill=False)["gtin"]) == ("missing", "not_owned")
     assert _why(result["sku"]) == ("missing", "not_owned")  # the variants disagree
     assert _why(_resolve(one_missing)["gtin"]) == ("missing", "not_owned")
@@ -132,5 +132,5 @@ def test_variant_fill_never_replaces_the_group_s_own_value_or_fills_another_fiel
     nameless = _group(_variant(VARIANT_URLS[0], "10.00"))
     del nameless["name"]
 
-    assert _value(_resolve(document, VARIANT_URLS[0])["sku"]) == {"scheme": "sku", "value": "W-1"}
+    assert _value(_resolve(document, VARIANT_URLS[0])["sku"]) == "W-1"
     assert _why(_resolve(nameless, VARIANT_URLS[0])["title"]) == ("missing", "not_owned")

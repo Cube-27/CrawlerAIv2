@@ -41,16 +41,10 @@ function range(value: JsonObject): string {
   );
 }
 
-// SPEC-04 §4.4: identifier is `{scheme, value}`; the scheme is the field's own, so the value alone is shown.
-function identifier(value: JsonObject): string {
-  return part(value.value) ?? "";
-}
-
 const OBJECT_FORMATS: Partial<Record<ScalarFieldType, (value: JsonObject) => string>> = {
   money,
   location,
   range,
-  identifier,
 };
 
 function formatValue(value: unknown, spec: FieldTypeSpec): string {

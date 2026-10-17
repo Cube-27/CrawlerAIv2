@@ -68,7 +68,7 @@ def test_a_two_cell_table_row_whose_header_names_a_field_gives_its_value() -> No
 
     assert found == {
         "brand": [("Example Brand", "dom:/html[1]/body[1]/table[1]/tbody[1]/tr[1]/td[1]")],
-        "sku": [({"scheme": "sku", "value": "W-100"}, "dom:/html[1]/body[1]/table[1]/tbody[1]/tr[2]/td[1]")],
+        "sku": [("W-100", "dom:/html[1]/body[1]/table[1]/tbody[1]/tr[2]/td[1]")],
         "availability": [("InStock", "dom:/html[1]/body[1]/table[1]/tbody[1]/tr[3]/td[2]")],
     }
 

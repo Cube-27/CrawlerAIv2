@@ -179,8 +179,8 @@ def test_disagreeing_exact_candidates_are_a_conflict() -> None:
 def test_exact_values_agree_by_the_types_equality() -> None:
     # GTIN-13 and GTIN-14 of one item are the same value (SPEC-04 §4.5, GS1).
     spec = FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin", description="d", schema_org="Product.gtin")
-    short = _candidate("gtin", {"scheme": "gtin", "value": "4006381333931"})
-    padded = _candidate("gtin", {"scheme": "gtin", "value": "04006381333931"}, PAGE, "og")
+    short = _candidate("gtin", "4006381333931")
+    padded = _candidate("gtin", "04006381333931", PAGE, "og")
 
     assert _prefer(_schema(gtin=spec), short, padded)["gtin"] == Chosen(short, (padded,), (), (short, padded))
 

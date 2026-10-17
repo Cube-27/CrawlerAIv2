@@ -106,7 +106,7 @@ describe("FieldValue", () => {
       "remote",
     ],
     ["date", { type: "date" }, "2026-03-04", "2026-03-04"],
-    ["identifier", { type: "identifier" }, { scheme: "sku", value: "AB-12" }, "AB-12"],
+    ["identifier", { type: "identifier" }, "AB-12", "AB-12"],
     [
       "range",
       { type: "range" },
