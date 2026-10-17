@@ -22,6 +22,6 @@ permissions:
 
 jobs:
   review:
-    uses: Cube-27/.github/.github/workflows/claude-review.yml@85e575bb7acfd181dc7ade7e7474fabf8557399f
+    uses: Cube-27/.github/.github/workflows/claude-review.yml@3c3530d4e1b1fe9e811c346d3edfe94687c8ec9c
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
