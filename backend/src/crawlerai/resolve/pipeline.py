@@ -284,11 +284,11 @@ class _Page:
         collected = collect_page(page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters)
         config = _Config.run(source.config, page, schema, ctx)
         canonical = canonical_link(page, manifest.final_url)
-        graph = EntityGraph.of((*collected.entities, *config.rows), data.vocabulary)
+        page_urls = canonical_urls((manifest.url, manifest.final_url, canonical), ctx)
+        graph = EntityGraph.of((*collected.entities, *config.rows), data.vocabulary, page_urls)
         primary = primary_types(schema, data.vocabulary)
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
-        page_urls = canonical_urls((manifest.url, manifest.final_url, canonical), ctx)
         return cls(page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts, page_urls)
 
     @property
@@ -421,7 +421,7 @@ class _Listing:
         candidates, with the item URLs of their repeated item blocks (`row_links`, §8.6), and the page fields resolve
         again with the reply's."""
         page = self.page
-        graph = EntityGraph.of((*page.graph.entities.values(), *reply.rows), page.data.vocabulary)
+        graph = EntityGraph.of((*page.graph.entities.values(), *reply.rows), page.data.vocabulary, page.page_urls)
         page = replace(page, graph=graph)
         links = row_links(page.page, page.schema, page.ctx, reply.rows, reply.candidates)
         candidates = (*self.candidates, *reply.candidates, *links)

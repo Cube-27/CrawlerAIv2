@@ -17,10 +17,9 @@ from urllib.parse import urlsplit
 
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary, parse_paths
-from crawlerai.normalize.dispatch import equal
 from crawlerai.normalize.url import canonical_url as canonical_form
-from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph, names_any
+from crawlerai.schemas.types import SchemaDef
 
 # schema.org: an ItemList (with its ListItems) lists things, so a thing in it is one of many, not the page's own.
 LISTS = ("ItemList", "ListItem")
@@ -36,7 +35,6 @@ _NOT_THE_SUBJECT = RELATIONS | {VARIANT, "isVariantOf"}
 _MICRODATA = "microdata:"
 _POSITION = re.compile(r"\[\d+\]")
 _MIN_REPEATED = 3
-_URL = FieldSpec(type=FieldType.URL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +73,7 @@ def select_target(
     if len(candidates) == 1:
         return candidates[0]
     page_urls = [url for url in (request_url, final_url, canonical_url) if url is not None]
-    named = [e for e in candidates if _names_any(e, page_urls)]
+    named = [e for e in candidates if names_any(e, page_urls)]
     for settled in _tie_breaks(graph, candidates, named, page_urls):
         if len(settled) == 1:
             return settled[0]
@@ -97,11 +95,6 @@ def _tie_breaks(
 
 def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:
     return any(graph.is_a(entity, type_) for type_ in primary)
-
-
-def _names_any(entity: Entity, page_urls: list[str]) -> bool:
-    # URL equality is the url type's (SPEC-04 §4.5): equal after canonicalization.
-    return any(equal(own, url, _URL) for own in entity.urls for url in page_urls)
 
 
 def _own(candidates: list[Entity], page_urls: list[str]) -> list[Entity]:
