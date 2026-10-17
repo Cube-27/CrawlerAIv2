@@ -16,7 +16,15 @@ from crawlerai.db.models import ExtractionMode, SourceKind
 
 # ARCHITECTURE §10 evidence buckets.
 Evidence = Literal[
-    "adapter", "structured", "agreed", "dom", "config_corroborated", "config_uncorroborated", "llm_grounded", "derived"
+    "adapter",
+    "structured",
+    "agreed",
+    "dom",
+    "network",
+    "config_corroborated",
+    "config_uncorroborated",
+    "llm_grounded",
+    "derived",
 ]
 FieldStatus = Literal["published", "missing", "conflict", "abstained"]
 # SPEC-05 §4.8: the derivations core has, each a named function in `resolve/derive.py`.

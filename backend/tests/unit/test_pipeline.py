@@ -40,7 +40,14 @@ from crawlerai.resolve.pipeline import (
 from crawlerai.resolve.preference import PRECEDENCE_FILE, PRECEDENCE_TYPES, load_precedence
 from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.storage.capture_bundle import (
+    CaptureBundle,
+    CaptureManifest,
+    Headers,
+    NetworkBody,
+    network_file,
+    sha256_hex,
+)
 
 # The `parses` fixture (tests/unit/conftest.py): parser constructions by name, each with `calls` and `inputs`.
 Parses = Mapping[str, Any]
@@ -749,3 +756,64 @@ def test_a_role_c_row_takes_the_item_url_of_the_one_repeated_item_block_holding_
         ("dom", "dom:/html[1]/body[1]/ul[1]/li[2]/h3[1]/a[1]"),
     ]
     assert result.outcome == "extracted"
+
+
+# --- listing rows from captured calls (Appendix A #57) ---
+
+
+def _network_listing(*items: Mapping[str, Any]) -> CaptureBundle:
+    """A rendered listing showing each item's link and price, and the call it loaded them with."""
+    cards = "".join(f'<li><a href="{i["href"]}">{i["href"]}</a> <span>{i["price"]}</span></li>' for i in items)
+    raw = f'<html lang="en"><body><h1>All widgets</h1><ul>{cards}</ul></body></html>'.encode()
+    data = json.dumps({"results": list(items)}).encode()
+    entry = NetworkBody(
+        url="https://api.example.test/widgets?page=1",
+        status=200,
+        content_type="application/json",
+        sha256=sha256_hex(data),
+        file=network_file(0),
+        method="GET",
+    )
+    bundle = _bundle(raw.decode(), method="browser", url=LISTING_URL)
+    manifest = bundle.manifest.model_copy(update={"network_bodies": (entry,)})
+    return CaptureBundle(manifest=manifest, body=bundle.body, network=(data,))
+
+
+NETWORK_ITEMS = [
+    {"name": f"Widget {n}", "href": f"https://shop.example.test/p/{n}", "price": f"€{n}.50"} for n in (1, 2, 3)
+]
+
+
+def test_a_listing_without_structured_rows_takes_the_rows_of_its_captured_call() -> None:
+    result = _extract(_network_listing(*NETWORK_ITEMS), LISTING, data=COMMITTED)
+
+    assert _row_values(result) == [
+        {"url": f"https://shop.example.test/p/{n}", "price": {"amount": f"{n}.50", "currency": "EUR"}}
+        for n in (1, 2, 3)
+    ]
+    assert {(row["price"].evidence, row["price"].source_kind) for row in result.rows} == {("network", "xhr")}
+    assert [row["url"].locator for row in result.rows] == [f"xhr:0:$['results'][{i}]['href']" for i in range(3)]
+    # The titles are text, admitted by equality only: every row lacks its required title.
+    assert result.outcome == "partial"
+
+
+def test_rows_of_a_call_that_leave_a_record_incomplete_go_to_role_c_whose_rows_replace_them() -> None:
+    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+    result = _extract(_network_listing(*NETWORK_ITEMS), LISTING, role_c=role_c, data=COMMITTED)
+
+    assert [r.row_fields for r in role_c.listing_requests] == [("title", "url", "price")]
+    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}, {"title": "Widget 2"}]
+
+
+def test_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
+    result = _extract(_network_listing(*NETWORK_ITEMS), LISTING, role_c=FakeRoleC(), data=COMMITTED)
+
+    assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3)]
+
+
+def test_complete_rows_of_a_call_do_not_call_role_c() -> None:
+    role_c = FakeRoleC()
+    schema = _schema("listing", url=LISTING.fields["url"], price=LISTING.fields["price"])
+    result = _extract(_network_listing(*NETWORK_ITEMS), schema, role_c=role_c, data=COMMITTED)
+
+    assert (role_c.listing_requests, result.outcome, len(result.rows)) == ([], "extracted", 3)

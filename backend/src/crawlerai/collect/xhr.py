@@ -5,10 +5,11 @@ Each body is one document, read as `network_json` reads it (RFC 8259 §8.1, a gu
 JSON is skipped with a diagnostic. Values are admitted by `admission`; locators are `xhr:<n>:<path>`, `n` the body's
 index in the bundle.
 
-On a listing, the calls of the page's best rows endpoint (`network_match.row_series`) give rows. Each row field takes
-the path, relative to a row, whose values the admission rule admits in the most rows, at least `MIN_ITEMS` of them; a
-path proved so on the page is read in every row of the series through the API recipe row reader (`collect.api`), as a
-recipe's map is. Those calls are then read as rows only, not admitted value by value as well.
+On a listing, the calls of one rows endpoint (`network_match.row_series`) give rows: the first series, best first, in
+which some row field is proved. A row field takes the path, relative to a row, whose values the admission rule admits
+in the most rows, at least `MIN_ITEMS` of them; a path proved so on the page is read in every row of the series
+through the API recipe row reader (`collect.api`), as a recipe's map is. Those calls are then read as rows only, not
+admitted value by value as well.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -33,10 +34,10 @@ class XhrCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted:
         diagnostics: list[str] = []
         documents = network_documents(page, diagnostics)
-        series = row_series(data_calls(page)) if schema.page_kind == "listing" else ()
-        fields = _row_map(series, page, schema, ctx, field_anchors(others, "xhr", schema))
-        if not fields:
+        found = _proved(page, schema, ctx, others) if schema.page_kind == "listing" else None
+        if found is None:
             return admit("xhr", documents, diagnostics, page, schema, ctx, others)
+        series, fields = found
         read = [read_rows("xhr", str(d.call.index), _query(d), fields, d.call.document, schema, ctx) for d in series]
         listed = frozenset(d.call.index for d in series)
         admitted = admit("xhr", _aligned(documents, len(page.network), listed), diagnostics, page, schema, ctx, others)
@@ -75,6 +76,17 @@ def _query(data: DataCall) -> str:
     if data.rows is None:  # `row_series` keeps only calls with rows
         raise ValueError("a call of a row series has a row query")
     return data.rows
+
+
+def _proved(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]
+) -> tuple[tuple[DataCall, ...], dict[str, str]] | None:
+    """The first row series in which some row field is proved, with its map."""
+    anchors = field_anchors(others, "xhr", schema)
+    for series in row_series(data_calls(page)):
+        if fields := _row_map(series, page, schema, ctx, anchors):
+            return series, fields
+    return None
 
 
 def _row_map(

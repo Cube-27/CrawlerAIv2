@@ -25,7 +25,7 @@ from typing import Final, Literal
 from pydantic import JsonValue
 
 from crawlerai.collect import json_doc
-from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
 from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
@@ -37,6 +37,10 @@ Scalar = str | int | float
 
 # The source kinds whose JSON is read through a map: an API recipe's capture and a captured network call.
 MappedKind = Literal["api", "xhr"]
+# The type of a row each reads: a recipe's rows are a list's items (schema.org ListItem, as a config's are); a call's
+# are the object items of one of its arrays (`collect.base.ARRAY_ROW`), whose being the page's rows is resolution's
+# question, asked only where structured data and the config give none.
+_ROW_TYPES: Final[dict[MappedKind, str]] = {"api": ROW_KIND, "xhr": ARRAY_ROW}
 
 # §4.2: a money field joins the amount and currency paths with `+`; each part starts at the root `$` (RFC 9535 §2.2).
 _JOIN: Final = re.compile(r"\+(?=\$)")
@@ -112,8 +116,9 @@ def read_rows(
     schema: SchemaDef,
     ctx: Context,
 ) -> Executed:
-    """The rows `query` selects in `document`, each a root entity `<kind>:<address>:<row path>`, with the `fields` of
-    the map (paths relative to the row) read from it; values are located as `<kind>:<address>:<path>`."""
+    """The rows `query` selects in `document`, each a root entity `<kind>:<address>:<row path>` (`_ROW_TYPES`), with
+    the `fields` of the map (paths relative to the row) read from it; values are located as
+    `<kind>:<address>:<path>`."""
     reading = _Reading(kind, address, schema, ctx)
     entities, candidates = reading.rows(query, fields, document)
     return Executed(rows=tuple(entities), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
@@ -150,6 +155,6 @@ class _Reading:
             # A row is a JSON object (RFC 8259 §4); an item of another kind holds no fields.
             if isinstance(row, dict):
                 owner = f"{self.kind}:{self.address}:{path}"
-                entities.append(Entity(id=owner, types=(ROW_KIND,), urls=(), parent=None))
+                entities.append(Entity(id=owner, types=(_ROW_TYPES[self.kind],), urls=(), parent=None))
                 candidates.extend(self.candidates(fields, row, path, owner))
         return entities, candidates

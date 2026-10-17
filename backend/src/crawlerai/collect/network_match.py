@@ -132,14 +132,14 @@ def data_calls(page: ParsedPage) -> list[DataCall]:
     return sorted(found, key=lambda data: (-data.row_hits, -data.visible))
 
 
-def row_series(calls: Sequence[DataCall]) -> tuple[DataCall, ...]:
-    """The calls of the best rows call's endpoint whose rows sit at the same query, in capture order: the pages of one
-    listing a page loaded (a first batch, then more on scrolling). Empty when no call has rows."""
-    best = next((data for data in calls if data.rows is not None), None)
-    if best is None:
-        return ()
-    series = [d for d in calls if d.rows == best.rows and d.call.endpoint == best.call.endpoint]
-    return tuple(sorted(series, key=lambda data: data.call.index))
+def row_series(calls: Sequence[DataCall]) -> list[tuple[DataCall, ...]]:
+    """The calls with rows grouped by endpoint and row query, each group in capture order: the pages of one listing a
+    page loaded (a first batch, then more on scrolling). Groups come in the order of their best call in `calls`."""
+    groups: dict[tuple[EndpointKey, str], list[DataCall]] = {}
+    for data in calls:
+        if data.rows is not None:
+            groups.setdefault((data.call.endpoint, data.rows), []).append(data)
+    return [tuple(sorted(group, key=lambda data: data.call.index)) for group in groups.values()]
 
 
 def _rows(document: JsonValue, page: ParsedPage, memo: dict[str, bool]) -> tuple[str | None, int]:

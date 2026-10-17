@@ -248,3 +248,15 @@ def test_a_candidate_request_carries_the_headers_the_browser_sent() -> None:
     (best,) = discover([lamp, CHAIR], SCHEMA)
 
     assert [request.headers for request in best.requests] == [sent, ()]
+
+
+def test_a_body_behind_a_guard_prefix_is_read_as_the_json_after_it() -> None:
+    def guarded(slug: str, title: str, amount: str) -> Body:
+        return Body(f"{API}/products/{slug}", b")]}'\n" + _product(slug, title, amount).data)
+
+    lamp = _sample("lamp-1", _values("Desk Lamp", "19.5"), [guarded("lamp-1", "Desk Lamp", "19.5")])
+    chair = _sample("chair-2", _values("Oak Chair", "120.0"), [guarded("chair-2", "Oak Chair", "120.0")])
+
+    (candidate,) = discover([lamp, chair], SCHEMA)
+
+    assert candidate.map == {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}

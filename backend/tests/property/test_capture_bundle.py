@@ -26,6 +26,7 @@ from crawlerai.storage.capture_bundle import (
     decode,
     dev_eval_capture_key,
     encode,
+    network_json,
 )
 
 _CAPTURE_ID = uuid.UUID("0192f0c8-7b1e-7000-8000-000000000001")
@@ -125,6 +126,9 @@ def bundles(draw: st.DrawFn) -> CaptureBundle:
                 content_type=draw(st.none() | _text),
                 sha256=_sha(data),
                 file=f"network/{i + 1:04d}.json",
+                response_headers=draw(st.none() | _headers),
+                resource_type=draw(st.none() | st.sampled_from(["fetch", "xhr", "document"])),
+                action=draw(st.none() | st.integers(0, 50)),
             )
             for i, data in enumerate(network)
         ),
@@ -190,12 +194,57 @@ def test_network_entries_written_before_requests_were_recorded_still_decode() ->
     manifest = json.loads(members["manifest.json"])
     for entry in manifest["network_bodies"]:
         del entry["method"], entry["request_body"]
+        del entry["response_headers"], entry["resource_type"], entry["action"]
     members["manifest.json"] = json.dumps(manifest).encode()
 
     decoded = decode(_tar_zst(members))
 
     assert [(e.method, e.request_body) for e in decoded.manifest.network_bodies] == [(None, None)]
+    assert [(e.response_headers, e.resource_type, e.action) for e in decoded.manifest.network_bodies] == [
+        (None, None, None)
+    ]
     assert decoded == bundle
+
+
+# RFC 8259 JSON texts holding an object or an array: what a page loads as data.
+_containers = st.one_of(st.lists(_json, max_size=3), st.dictionaries(_text, _json, max_size=3))
+# Guard prefixes: short, and holding no object or array opener.
+_guards = st.text(
+    alphabet=st.characters(blacklist_categories=("Cs",), blacklist_characters="{["), min_size=1, max_size=16
+).filter(lambda text: text.strip(" \t\n\r") != "")
+
+
+@given(_containers)
+def test_network_json_reads_a_json_text_as_written(value: object) -> None:
+    assert network_json(json.dumps(value).encode()) == value
+
+
+@given(_containers, _guards)
+def test_network_json_strips_a_short_guard_prefix_before_an_object_or_array(value: object, guard: str) -> None:
+    data = (guard + json.dumps(value)).encode()
+
+    assert network_json(data) == value
+
+
+def test_network_json_ignores_a_byte_order_mark() -> None:
+    assert network_json(b"\xef\xbb\xbf" + b'{"a": 1}') == {"a": 1}
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"x" * 17 + b'{"a": 1}',  # a prefix too long to be a guard
+        b'while(1);"text"',  # a scalar after a prefix
+        b"NaN",  # RFC 8259 §6: no NaN
+        b'{"a": Infinity}',
+        b"<html>{}</html>",
+        b"\xff{}",  # not UTF-8 (RFC 8259 §8.1)
+        b"plain text",
+    ],
+)
+def test_network_json_refuses_what_is_no_json_text(data: bytes) -> None:
+    with pytest.raises(ValueError, match=r"."):
+        network_json(data)
 
 
 def test_bundle_rejects_a_raw_body_on_a_non_browser_capture() -> None:

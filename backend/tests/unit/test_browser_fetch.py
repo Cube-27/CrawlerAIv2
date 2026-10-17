@@ -56,6 +56,29 @@ _SEARCH = b"""<html><body><p id="done"></p><script>
 fetch('/api/search', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{"q": "lamp"}'})
   .then(r => r.json()).then(() => { document.getElementById('done').textContent = 'searched'; });
 </script></body></html>"""
+# Data loaded as JSON under other labels: behind a guard prefix, as text/plain, and as an XMLHttpRequest; beside a
+# text/plain body that is no JSON and a stylesheet fetched with fetch() (its body is not data).
+_SNIFFED = b"""<html><body><p id="done"></p><script>
+(async () => {
+  await fetch('/api/guarded');
+  await fetch('/api/plain-json');
+  await fetch('/api/note');
+  await fetch('/style.css');
+  await new Promise(done => {
+    const x = new XMLHttpRequest(); x.onload = done; x.open('GET', '/api/linked'); x.send();
+  });
+  document.getElementById('done').textContent = 'loaded';
+})();
+</script></body></html>"""
+_GUARDED = b")]}'\n" + json.dumps({"items": [{"name": "Guarded item"}]}).encode()
+# Six bodies of 1.9 MB each: past 10 MB in all at the sixth.
+_HEAVY = b"""<html><body><p id="done"></p><script>
+(async () => {
+  for (let i = 0; i < 6; i++) await fetch('/api/heavy/' + i);
+  document.getElementById('done').textContent = 'loaded';
+})();
+</script></body></html>"""
+_HEAVY_BODY = b'{"pad": "' + b"x" * 1_900_000 + b'"}'
 _BUSY = b"""<html><body><p>Polling page</p><p id="tick"></p><script>
 let n = 0;
 setInterval(() => { fetch('/api/n/0'); document.getElementById('tick').textContent = String(n++); }, 100);
@@ -108,6 +131,8 @@ class Server:
 def _reply_for(server: Server, path: str) -> Reply:
     if path in server.routes:
         return server.routes[path]
+    if path.startswith("/api/heavy/"):
+        return Reply(content_type=_JSON, body=_HEAVY_BODY)
     if path.startswith("/api/n/"):
         return Reply(content_type=_JSON, body=json.dumps({"n": int(path.rsplit("/", 1)[1])}).encode())
     return Reply(404, body=b"<html><body>not here</body></html>")
@@ -153,6 +178,15 @@ def server() -> Iterator[Server]:
             "/many": Reply(body=_MANY),
             "/search": Reply(body=_SEARCH),
             "/api/search": Reply(content_type=_JSON, body=b'{"hits": []}'),
+            "/sniffed": Reply(body=_SNIFFED),
+            "/api/guarded": Reply(content_type="text/plain; charset=utf-8", body=_GUARDED),
+            "/api/plain-json": Reply(content_type="text/plain", body=b'[{"id": 1}, {"id": 2}]'),
+            "/api/linked": Reply(
+                content_type="application/vnd.example+json",
+                body=b'{"page": 1}',
+                headers=(("Link", '</api/linked?page=2>; rel="next"'), ("Set-Cookie", "session=s2")),
+            ),
+            "/heavy": Reply(body=_HEAVY),
             "/busy": Reply(body=_BUSY),
             "/still": Reply(body=_STILL),
             "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
@@ -306,6 +340,34 @@ def test_capture_records_the_method_body_and_headers_of_the_request_behind_each_
     sent = {name.lower(): value for name, value in entry.request_headers or ()}
     assert (sent["content-type"], sent["referer"]) == ("application/json", server.url("/search"))
     assert decode(encode(result.bundle)) == result.bundle
+
+
+def test_json_is_kept_by_its_label_or_its_bytes_with_the_response_headers_and_resource_type(
+    browser: Browser, server: Server
+) -> None:
+    result = browser.fetch(server.url("/sniffed"))
+
+    assert b"loaded" in result.bundle.body
+    entries = result.bundle.manifest.network_bodies
+    assert [(e.url, e.resource_type, e.action) for e in entries] == [
+        (server.url("/api/guarded"), "fetch", 0),
+        (server.url("/api/plain-json"), "fetch", 0),
+        (server.url("/api/linked"), "xhr", 0),
+    ]
+    # Kept as received; the guard prefix is stripped when the body is read (`network_json`).
+    assert result.bundle.network[0] == _GUARDED
+    received = dict(entries[2].response_headers or ())
+    assert received["Link"] == '</api/linked?page=2>; rel="next"'
+    # Credentials are not recorded (RFC 6265 §4).
+    assert "set-cookie" not in {name.lower() for name in received}
+    assert decode(encode(result.bundle)) == result.bundle
+
+
+def test_inv30_json_bodies_stop_at_ten_megabytes_per_page(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/heavy"), FetchPolicy(browser_timeout_s=20))
+
+    assert b"loaded" in result.bundle.body
+    assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url(f"/api/heavy/{i}") for i in range(5)]
 
 
 def test_redirects_are_followed_within_the_page_host(browser: Browser, server: Server) -> None:
