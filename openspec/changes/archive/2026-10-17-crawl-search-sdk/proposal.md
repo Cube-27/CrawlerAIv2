@@ -23,6 +23,6 @@ for a robust, widely usable crawler product with features beyond the backlog.
 
 - Capabilities: [jobs](../../specs/jobs/spec.md), [rest-api](../../specs/rest-api/spec.md),
   [frontend](../../specs/frontend/spec.md) (deltas in `specs/`).
-- Design: `design/overview.md` §22 ("Web search" admitted) and owner decision #61.
+- Design: `design/overview.md` §22 ("Web search" admitted) and owner decision #62.
 - Files: `backend/src/crawlerai/crawl/`, `search/`, `services/search.py`, `api/routers/search.py`, `mcp_server/`,
   `db/` (baseline migration, `url_task.score`), `frontend/src/screens/playground/`, `sdk/`, `.github/workflows/ci.yml`.

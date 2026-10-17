@@ -27,7 +27,7 @@
 
 ### D-1442 — Web search is admitted; the provider is the operator's
 - Date: 2026-10-17 · Change/PR: crawl-search-sdk (#261) · Status: decided (owner-delegated 2026-10-17)
-- Decision: §22 "Web search" is admitted (owner decision #61). `CRAWLERAI_SEARCH_SEARXNG_URL` names a SearXNG
+- Decision: §22 "Web search" is admitted (owner decision #62). `CRAWLERAI_SEARCH_SEARXNG_URL` names a SearXNG
   instance (JSON API, paged up to 5 pages) or `CRAWLERAI_SEARCH_URL_TEMPLATE` a URL with `{query}` and `{limit}`; with
   neither, `POST /v1/search` is 503 `search_unavailable`. The provider's own endpoint is trusted (it may be on a
   private network) and asked without redirects, cookies or a page's headers; result URLs are the web's, so each is
