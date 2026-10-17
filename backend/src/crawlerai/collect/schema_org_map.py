@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 
 from pydantic import JsonValue, ValidationError
 
-from crawlerai.collect.base import Candidate
+from crawlerai.collect.base import Candidate, Entity
 from crawlerai.content.text import fragment_text
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.db.models import SourceKind
@@ -41,6 +41,18 @@ _IDENTIFIER = "identifier"
 # schema.org namespaces: https is current, http the earlier one; the vocabulary treats both as the same terms.
 NAMESPACES = ("https://schema.org/", "http://schema.org/")
 _URL = FieldSpec(type=FieldType.URL)
+# schema.org `productGroupID`: "a textual identifier for a ProductGroup", so it identifies the group as `identifier`
+# values identify an item; `inProductGroupWithID`: "the productGroupID for a ProductGroup that this product
+# isVariantOf".
+_GROUP_ID = "productGroupID"
+_IN_GROUP = "inProductGroupWithID"
+# schema.org ListItem: an item in a list; its `item` is "An entity represented by an entry in a list" (range Thing).
+# An entry stating no `item` stands for the thing it lists with its own Thing properties (`name`, `url`), so a
+# listing's row fields read them (`resolve.listing`).
+ENTRY = "ListItem"
+_ITEM = "item"
+# JSON-LD 1.1 §4.5.1: a blank node identifier is scoped to its document, so it identifies nothing across blocks.
+_BLANK = "_:"
 
 
 def schema_term(iri: str) -> str | None:
@@ -281,7 +293,8 @@ def field_candidates(
         as_list = spec.type is FieldType.LIST
         if spec.type is FieldType.IDENTIFIER:
             paths = _with_sub_properties(paths, vocabulary, spec.scheme)
-        for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
+        entries = schema.page_kind == "listing" and spec.scope == "row"
+        for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list, entries=entries):
             if selected.url and _holds_text(spec):
                 continue
             read = _fragment_read(selected.raw, spec)
@@ -348,22 +361,27 @@ def _ending_in(path: MappedPath, prop: str) -> MappedPath:
 
 
 def _selections(
-    entities: Sequence[Typed], paths: Sequence[MappedPath], vocabulary: Vocabulary, *, as_list: bool
+    entities: Sequence[Typed], paths: Sequence[MappedPath], vocabulary: Vocabulary, *, as_list: bool, entries: bool
 ) -> Iterator[tuple[str, Selected]]:
-    """What each alternative reaches on each entity of its root type, by entity id. The same value of one entity that
-    two alternatives reach is one selection (SPEC-13 §4.1): its locator names it. One alternative's selections are
-    all kept, as a path's are."""
+    """What each alternative reaches on each entity of its root type, by entity id, and with `entries` (a listing's
+    row field) on each list entry without an item (`ENTRY`). The same value of one entity that two alternatives reach
+    is one selection (SPEC-13 §4.1): its locator names it. One alternative's selections are all kept, as a path's
+    are."""
     earlier: set[tuple[str, str]] = set()
     for path in paths:
         reached: set[tuple[str, str]] = set()
         for entity in entities:
-            if not any(vocabulary.is_a(t, path.root) for t in entity.types):
+            if not (any(vocabulary.is_a(t, path.root) for t in entity.types) or (entries and _bare_entry(entity))):
                 continue
             for selected in select(entity.node, path, as_list=as_list):
                 if (entity.id, selected.locator) not in earlier:
                     reached.add((entity.id, selected.locator))
                     yield entity.id, selected
         earlier |= reached
+
+
+def _bare_entry(entity: Typed) -> bool:
+    return ENTRY in entity.types and not entity.node.values(_ITEM)
 
 
 def candidate(
@@ -433,3 +451,39 @@ def _page_names(node: Node) -> list[JsonValue]:
     if node.node_id is not None and not urlsplit(node.node_id).fragment:
         names.append(node.node_id)
     return names
+
+
+def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | None, via: str | None) -> Entity:
+    """The entity of a node: its URLs (`entity_urls`), its own URLs (`item_urls`), what identifies it (`identity`) and
+    the product groups it names (`group_ids`)."""
+    return Entity(
+        id=typed.id,
+        types=typed.types,
+        urls=entity_urls(typed.node, ctx),
+        parent=parent,
+        via=via,
+        identity=identity(typed.node, vocabulary),
+        item_urls=item_urls(typed.node, ctx),
+        group_ids=tuple(dict.fromkeys(_scalar_texts(typed.node, _IN_GROUP))),
+    )
+
+
+def identity(node: Node, vocabulary: Vocabulary) -> tuple[tuple[str, str], ...]:
+    """What identifies a node, as (property, value) pairs: its IRI (`@id`, `itemid`) unless it is a blank node, each
+    scalar value of its identifier properties (`identifier` and its `rdfs:subPropertyOf` descendants: `sku`, `gtin13`),
+    and a ProductGroup's `productGroupID`."""
+    found: list[tuple[str, str]] = []
+    node_id = node.node_id
+    if node_id is not None and not node_id.startswith(_BLANK):
+        found.append(("@id", node_id))
+    for prop in sorted(vocabulary.identifiers | {_GROUP_ID}):
+        found.extend((prop, text) for text in _scalar_texts(node, prop))
+    return tuple(dict.fromkeys(found))
+
+
+def _scalar_texts(node: Node, prop: str) -> Iterator[str]:
+    """The non-blank scalar values of `prop` on the node, as text; a node value (a `PropertyValue`) is no scalar."""
+    for value in node.values(prop):
+        raw = value.raw
+        if value.node is None and raw is not None and not isinstance(raw, (dict, list)) and (text := str(raw).strip()):
+            yield text

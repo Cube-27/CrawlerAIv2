@@ -18,11 +18,10 @@ from urllib.parse import urlsplit
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary, parse_paths
 from crawlerai.normalize.url import canonical_url as canonical_form
-from crawlerai.resolve.ownership import OFFER, VARIANT, EntityGraph, names_any
+from crawlerai.resolve.identity import LISTS, VARIANT
+from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
 from crawlerai.schemas.types import SchemaDef
 
-# schema.org: an ItemList (with its ListItems) lists things, so a thing in it is one of many, not the page's own.
-LISTS = ("ItemList", "ListItem")
 # schema.org relation properties of a Product: a thing that is the value of one is another thing than its holder.
 RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
 # A primary entity's variants are members of it (`VARIANT`, schema.org `hasVariant`), not other things the page is

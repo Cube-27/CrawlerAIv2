@@ -24,13 +24,13 @@ from urllib.parse import urljoin, urlsplit
 from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
-from crawlerai.collect.base import CollectResult, Entity, descends
+from crawlerai.collect.base import CollectResult, descends
 from crawlerai.collect.schema_org_map import (
     NAMESPACES,
     Typed,
     Value,
     Vocabulary,
-    entity_urls,
+    entity,
     field_candidates,
     schema_term,
 )
@@ -134,10 +134,7 @@ class MicrodataCollector:
             typed, schema, ctx, vocabulary=self.vocabulary, source_kind="microdata", diagnostics=diagnostics
         )
         return CollectResult(
-            entities=tuple(
-                Entity(id=t.id, types=t.types, urls=entity_urls(t.node, ctx), parent=parents[t.id], via=vias[t.id])
-                for t in typed
-            ),
+            entities=tuple(entity(t, ctx, self.vocabulary, parent=parents[t.id], via=vias[t.id]) for t in typed),
             candidates=tuple(candidates),
             diagnostics=tuple(diagnostics),
         )

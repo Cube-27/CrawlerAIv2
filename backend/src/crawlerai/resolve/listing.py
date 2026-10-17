@@ -7,54 +7,54 @@ are at least three and the page URLs single none of them out as the page's own (
 is what a detail page looks like. Each row resolves its row-scoped fields like a detail target; page-scoped fields
 resolve against the page entity.
 
-A page often states its items in two syntaxes (JSON-LD and microdata). A row another collector's earlier row shares a
-URL with is that item again, not another row (schema.org `url` and `@id` name the item), and is left out; a URL that
-names the page names no item. Rows of one collector are never merged here: the records keep a URL listed twice once.
+A page often states its items in two syntaxes (JSON-LD and microdata): the entity graph has already merged them into
+one entity (`resolve.identity`), so the item is one row with the values of both.
+
+A list may state its entries as ListItems with their own `name` and `url` and no `item`: schema.org types `item` as a
+Thing and gives a ListItem a Thing's properties, so an entry without an item stands for the thing it lists. When the
+page lists no entity of a primary type and has too few top-level ones, the entries the collectors read as items
+(`schema_org_map.field_candidates`: a listing's row fields) are the rows. A BreadcrumbList's entries are never rows:
+schema.org defines it as "a chain of linked Web pages" leading to the current page, its navigation, not its items.
 """
 
-from collections.abc import Sequence
 from typing import Final
 
 from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect.base import Entity
-from crawlerai.resolve.intent import LISTS, AmbiguousTarget, is_primary
+from crawlerai.collect.schema_org_map import ENTRY
+from crawlerai.resolve.identity import LISTS
+from crawlerai.resolve.intent import AmbiguousTarget, is_primary
 from crawlerai.resolve.ownership import EntityGraph
 
 # SPEC-05 §4.7: without an ItemList, at least this many top-level primary entities make a listing's rows; the same
 # count of repeated items makes a page show a listing's grid (`acquire.items`).
 MIN_TOP_LEVEL_ROWS: Final = MIN_ITEMS
+# schema.org BreadcrumbList: "an ItemList consisting of a chain of linked Web pages ... typically ending with the
+# current page".
+_TRAIL: Final = "BreadcrumbList"
 
 
 def listing_rows(
-    graph: EntityGraph, primary: frozenset[str], target: Entity | AmbiguousTarget, page_urls: Sequence[str]
+    graph: EntityGraph,
+    primary: frozenset[str],
+    target: Entity | AmbiguousTarget,
+    holders: frozenset[str] = frozenset(),
 ) -> tuple[Entity, ...]:
-    """The rows (module docstring), in collector order. `target` is intent's answer for the page (§4.6); `page_urls`
-    are the request, final and canonical URLs, canonicalized."""
+    """The rows (module docstring), in collector order. `target` is intent's answer for the page (§4.6); `holders` are
+    the entities holding a candidate of a row field."""
     primaries = [entity for entity in graph.entities.values() if is_primary(graph, entity, primary)]
     rows = [entity for entity in primaries if _listed(graph, entity, primary)]
     top_level = [entity for entity in primaries if entity.parent is None]
     if not rows and isinstance(target, AmbiguousTarget) and len(top_level) >= MIN_TOP_LEVEL_ROWS:
         rows = top_level
-    return _one_per_item(rows, frozenset(page_urls))
+    if not rows:
+        rows = [entity for entity in graph.entities.values() if entity.id in holders and _entry(graph, entity)]
+    return tuple(rows)
 
 
-def _one_per_item(rows: Sequence[Entity], page_urls: frozenset[str]) -> tuple[Entity, ...]:
-    """The rows without those another collector's earlier row shares an item URL with. `Entity.urls` are canonical."""
-    collectors: dict[str, set[str]] = {}  # the collectors of the kept rows, by item URL
-    kept: list[Entity] = []
-    for row in rows:
-        collector, urls = _collector(row), set(row.urls) - page_urls
-        if any(collectors.get(url, {collector}) != {collector} for url in urls):
-            continue
-        kept.append(row)
-        for url in urls:
-            collectors.setdefault(url, set()).add(collector)
-    return tuple(kept)
-
-
-def _collector(entity: Entity) -> str:
-    # An entity id starts with its collector's locator scheme (`jsonld:`, `microdata:`, SPEC-05 §4.3).
-    return entity.id.partition(":")[0]
+def _entry(graph: EntityGraph, entity: Entity) -> bool:
+    """Whether the entity is a list's entry (schema.org ListItem) outside a breadcrumb trail."""
+    return graph.is_a(entity, ENTRY) and not any(graph.is_a(a, _TRAIL) for a in graph.ancestors(entity))
 
 
 def _listed(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:

@@ -19,7 +19,8 @@ from crawlerai.collect.schema_org_map import MappedPath, parse_paths
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.resolve.evidence import TAU_OPTIONAL, TAU_REQUIRED, Calibration, assess
-from crawlerai.resolve.intent import LISTS, RELATIONS
+from crawlerai.resolve.identity import LISTS
+from crawlerai.resolve.intent import RELATIONS
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
 from crawlerai.resolve.preference import Orders, PageFacts, Resolver
 from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
