@@ -87,12 +87,14 @@ class Session:
 @dataclass
 class Web:
     """Answers each URL from `pages` as (status, body) over HTTP; anything else is a 404. A URL in `raising` makes
-    the HTTP rung raise. The browser answers the same pages; a fetch of a URL in `crashing` kills its session."""
+    the HTTP rung raise. The browser answers the same pages, or a URL's page in `renders`; a fetch of a URL in
+    `crashing` kills its session."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, tuple[int, bytes]] = field(default_factory=dict)
     raising: set[str] = field(default_factory=set)
     crashing: set[str] = field(default_factory=set)
+    renders: dict[str, bytes] = field(default_factory=dict)
     browser_fetches: list[tuple[int, str]] = field(default_factory=list)
     sessions: int = 0
 
@@ -115,6 +117,8 @@ class Web:
         if url in self.crashing:
             session.connected = False
             return self.fetch_result(url, 0, b"", block_class="error", error="browser crashed", method="browser")
+        if url in self.renders:
+            return self.fetch_result(url, 200, self.renders[url], method="browser")
         return self.answer(url, "browser")
 
 
@@ -400,6 +404,28 @@ async def test_a_listing_page_keeps_a_record_per_row_and_one_without_rows_is_par
     assert (summary.outcomes.extracted, summary.outcomes.partial) == (1, 1)
     assert isinstance(results, RecordPage)
     assert sorted(str(r.fields["title"].value) for r in results.items) == ["Blue kettle", "Green kettle", "Red kettle"]
+    # Owner #54: the listing without rows at HTTP is rendered once, to no better effect; the one with rows is not.
+    assert [url for _, url in web.browser_fetches] == [empty]
+
+
+async def test_a_listing_whose_rows_only_a_render_holds_keeps_the_renders_rows(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
+) -> None:
+    # Owner #54: the HTTP page lists links that are not its items; the render's ItemList gives the rows.
+    url = f"{own_origin}/kettles"
+    related = "".join(f'<li><a href="{own_origin}/blog/{n}">Post {n}</a></li>' for n in range(1, 4))
+    web.pages[url] = (200, f"<!doctype html><html><body><ul>{related}</ul></body></html>".encode())
+    web.renders[url] = listing_page(own_origin, ["Blue kettle", "Red kettle"])
+    schema = await listing_schema(engine, schema_name)
+    request = _batch([url], "records", schema={"id": str(schema.id)}, page_kind="listing")
+    submitted = await submit_batch(engine, fetching.connector, request, data=engine_data)
+
+    await _run(engine, fetching, engine_data, submitted.job_id)
+
+    results = await _results(engine, fetching, submitted.job_id)
+    assert isinstance(results, RecordPage)
+    assert sorted(str(r.fields["title"].value) for r in results.items) == ["Blue kettle", "Red kettle"]
+    assert [fetched for _, fetched in web.browser_fetches] == [url]
 
 
 # INV-28: settings pinned at submit.

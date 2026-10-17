@@ -130,4 +130,3 @@ Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md` §5). Keep t
 | D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | needs-owner (owner 2026-10-16: not now) |
 | D-0784 | Investigate: an "absent" field status so role C stops asking | needs-owner (owner 2026-10-16: not now) |
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | needs-owner |
-| D-1245 | A listing without rows at HTTP whose body holds other repeated blocks is not rendered | needs-owner |

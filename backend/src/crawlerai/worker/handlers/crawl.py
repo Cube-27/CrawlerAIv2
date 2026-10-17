@@ -94,7 +94,9 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     # A page whose links the crawl reads is fetched itself: an API recipe's JSON has none (SPEC-09 §4.8).
     reads_links = task.depth < crawl.request.max_depth or task.page_kind is None
     served = None if reads_links else crawl.records
-    page = await fetch_page(conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served)
+    page = await fetch_page(
+        conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served, llm=crawl.llm
+    )
     result, found = (page.task_result, ()) if isinstance(page, Ended) else await _visit(conn, crawl, page)
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
     # task commits: a cancel, which locks that row, never waits for the reading (up to `SITEMAP_TIMEOUT_S`).

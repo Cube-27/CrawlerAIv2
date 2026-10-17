@@ -47,6 +47,7 @@ from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import SchemaUnusable
 from crawlerai.storage.fs import FsStore
+from tests.db.conftest import listing_page, listing_schema
 
 pytestmark = pytest.mark.anyio
 
@@ -232,6 +233,44 @@ async def test_a_detail_page_whose_offer_only_a_render_holds_is_read_from_the_br
     assert result.records is not None
     (record,) = result.records
     assert record.fields["price"].value == {"amount": "19.90", "currency": "EUR"}
+
+
+async def test_a_listing_whose_rows_only_a_render_holds_is_read_from_the_browser(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # Owner #54: the HTTP page holds repeated links that are not its items (related posts) and no rows; its scripts
+    # would render the grid. Role C reads the HTTP page once (no provider here); the render's rows are kept.
+    url = f"{own_origin}/c/kettles"
+    related = "".join(f'<li><a href="{own_origin}/blog/{n}">Post {n}</a></li>' for n in range(1, 4))
+    template = f"<!doctype html><html><head><title>Kettles</title></head><body><ul>{related}</ul></body></html>"
+    web.pages[url] = (200, template.encode(), "ok")
+    rendered: list[str] = []
+
+    async def browser(target: str, policy: FetchPolicy) -> FetchResult:
+        rendered.append(target)
+        return fetch_result(target, 200, listing_page(own_origin, ["Blue kettle", "Red kettle"]), method="browser")
+
+    rendering = Fetching(Rungs(http=web.http, browser=browser), fetching.connector, fetching.store, HostLimiter())
+    schema = await listing_schema(engine, schema_name)
+    scraped = request(url, "records", schema={"id": str(schema.id)}, page_kind="listing")
+
+    result = await scrape(engine, rendering, scraped, data=engine_data)
+
+    assert result.fetch is not None
+    assert (result.outcome, result.fetch.method, rendered) == ("extracted", "browser", [url])
+    assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
+    assert result.records is not None
+    assert [record.fields["title"].value for record in result.records] == ["Blue kettle", "Red kettle"]
+    # The kept capture's extraction is the check's: one extraction is stored, from the render.
+    async with engine.connect() as conn:
+        stored = (await conn.execute(select(func.count()).select_from(Extraction))).scalar_one()
+    assert stored == 1
 
 
 async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(

@@ -68,7 +68,8 @@ ANSWER = {
 @dataclass
 class Web:
     """Answers each URL from `pages` over HTTP, and the storefront endpoint with `answer` and, when `platform`, the
-    platform's version header; the browser is never used."""
+    platform's version header. The browser renders a page as it is served (`rendered` lists the URLs): a listing page
+    the page rungs fetch gives no rows, so it is rendered once (owner #54)."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, bytes] = field(default_factory=dict)
@@ -77,6 +78,7 @@ class Web:
     status: int = 200
     fetched: list[str] = field(default_factory=list)
     requested: list[str] = field(default_factory=list)
+    rendered: list[str] = field(default_factory=list)
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.fetched.append(url)
@@ -85,7 +87,10 @@ class Web:
         return self.fetch_result(url, 200, self.pages[url])
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("these pages never need a browser")
+        self.rendered.append(url)
+        if url not in self.pages:
+            return self.fetch_result(url, 404, b"gone", block_class="not_found", method="browser")
+        return self.fetch_result(url, 200, self.pages[url], method="browser")
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request.url)
@@ -163,7 +168,8 @@ async def test_a_collection_url_with_a_query_its_canonical_drops_is_served_over_
 
     assert result.fetch is not None
     assert (result.outcome, result.fetch.method, web.page_fetches()) == ("extracted", "api", [url])
-    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("api", 200)]
+    # The page gives no rows, so it is rendered once (owner #54) before the adapter serves its canonical URL.
+    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("browser", 200), ("api", 200)]
     assert result.records is not None
     assert [record.fields["title"].value for record in result.records] == ["Desk Lamp"]
 
@@ -183,7 +189,11 @@ async def test_a_page_of_a_host_that_is_not_the_platform_is_fetched_as_a_page_an
     assert second.fetch is not None
     assert (first.fetch.method, second.fetch.method) == ("http", "http")
     assert (len(web.requested), web.page_fetches()) == (1, [url, url])
-    assert [(a.method, a.error) for a in first.fetch.attempts] == [("api", "not_platform"), ("http", None)]
+    assert [(a.method, a.error) for a in first.fetch.attempts] == [
+        ("api", "not_platform"),
+        ("http", None),
+        ("browser", None),  # a listing without rows, rendered once to no better effect (owner #54)
+    ]
 
 
 @pytest.mark.parametrize("status", [429, 502])
@@ -210,7 +220,11 @@ async def test_an_endpoint_that_cannot_answer_now_leaves_the_page_to_the_page_ru
         "http",
         "ok",
     )  # no price on the page
-    assert [(a.method, a.status, a.error) for a in first.fetch.attempts] == [("api", status, None), ("http", 200, None)]
+    assert [(a.method, a.status, a.error) for a in first.fetch.attempts] == [
+        ("api", status, None),
+        ("http", 200, None),
+        ("browser", 200, None),  # a listing without rows, rendered once to no better effect (owner #54)
+    ]
     assert (len(web.requested), web.page_fetches()) == (2, [url, url])
     assert second.fetch is not None
 
