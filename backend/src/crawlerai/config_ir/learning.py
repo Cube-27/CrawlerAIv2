@@ -27,7 +27,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -60,6 +60,7 @@ from crawlerai.db.models import (
     ProgressiveState,
     Site,
 )
+from crawlerai.db.queue import stuck_running_jobs
 from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, document_digest
@@ -181,13 +182,7 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
 async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
     """End up to `batch` runs that started more than `LEARN_RUN_TIMEOUT` ago as failed runs, and return how many: their
     process died, and the state would otherwise stay `learning` (D-0624)."""
-    stale = (
-        select(Job.id)
-        .where(Job.kind == "learn", Job.status == "running", Job.started_at < func.now() - LEARN_RUN_TIMEOUT)
-        .limit(batch)
-        .with_for_update(skip_locked=True)
-    )
-    job_ids = (await conn.execute(stale)).scalars().all()
+    job_ids = await stuck_running_jobs(conn, kinds=("learn",), older_than=LEARN_RUN_TIMEOUT, batch=batch)
     for job_id in job_ids:
         await _abandon(conn, job_id, EXPIRED)
     return len(job_ids)

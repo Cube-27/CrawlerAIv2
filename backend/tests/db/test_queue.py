@@ -20,6 +20,7 @@ from crawlerai.db.queue import (
     fail_task,
     release_expired_leases,
     release_task,
+    stuck_running_jobs,
 )
 
 pytestmark = pytest.mark.anyio
@@ -442,3 +443,24 @@ async def test_a_job_left_running_without_tasks_for_a_lease_fails(conn: AsyncCon
     assert failed == 1
     assert await _job_state(conn, died_mapping) == ("failed", ["failed"])
     assert [(await _job_state(conn, job))[0] for job in (drafting, crawling, learning)] == ["running"] * 3
+
+
+async def test_the_shared_reaper_picks_running_jobs_of_its_kinds_older_than_its_age(conn: AsyncConnection) -> None:
+    old, recent = func.now() - timedelta(hours=2), func.now() - timedelta(minutes=1)
+    stale_learn = await _job(conn, kind="learn", started_at=old)
+    stale_map = await _job(conn, kind="map", started_at=old)
+    with_tasks = await _job(conn, kind="map", started_at=old)
+    await _tasks(conn, with_tasks, 1)
+    await _job(conn, kind="learn", started_at=recent)
+    await _job(conn, "completed", kind="learn", started_at=old)
+    await _job(conn, "queued", kind="learn")
+
+    learns = await stuck_running_jobs(conn, kinds=("learn",), older_than=timedelta(hours=1), batch=10)
+    taskless = await stuck_running_jobs(conn, kinds=("map",), older_than=timedelta(hours=1), batch=10, taskless=True)
+    maps = await stuck_running_jobs(conn, kinds=("map",), older_than=timedelta(hours=1), batch=10)
+    first = await stuck_running_jobs(conn, kinds=("map", "learn"), older_than=timedelta(hours=1), batch=1)
+
+    assert learns == [stale_learn]
+    assert taskless == [stale_map]
+    assert maps == sorted([stale_map, with_tasks])
+    assert first == [min(stale_learn, stale_map, with_tasks)]

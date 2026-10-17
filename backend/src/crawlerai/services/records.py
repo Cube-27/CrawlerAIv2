@@ -7,12 +7,13 @@ Every schema field is a member, published or not, with the §13.1 attributes (`v
 record's published value, unchanged (INV-27), and `None` for a field that did not publish.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
-from sqlalchemy import RowMapping, func, select
+from sqlalchemy import Row, RowMapping, ScalarSelect, Select, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.orm import aliased
 
 from crawlerai.db.models import (
     CaptureId,
@@ -25,6 +26,7 @@ from crawlerai.db.models import (
     Site,
     TaskRecord,
     UrlTask,
+    UrlTaskId,
 )
 from crawlerai.db.paging import keyset_page
 from crawlerai.resolve.records import FieldMeta, RecordContent, record_confidence
@@ -123,10 +125,6 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     """The page of records after `query.cursor` (the first page without one) that match its filters. Records are
     ordered by id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
     statement = select(*_COLUMNS).join(Extraction, Extraction.id == Record.extraction_id)
-    if query.job_id is not None:
-        # A job's records are those its tasks stand for: each stored, or found unchanged (SPEC-11 §4.2, §4.4).
-        of_job = select(TaskRecord.record_id).join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
-        statement = statement.where(Record.id.in_(of_job.where(UrlTask.job_id == query.job_id)))
     if query.site is not None:
         # Hosts compare without case (RFC 4343), and sites are stored lowercase.
         statement = statement.join(Site, Site.id == Record.site_id).where(Site.host == query.site.lower())
@@ -135,13 +133,48 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
     if query.changed_since is not None:
         await _committed(conn)
         statement = statement.where(Record.created_at >= query.changed_since)
-    rows, next_cursor = await keyset_page(
-        conn, statement, Record.id, after=query.cursor, limit=query.limit, descending=True
-    )
+    if query.job_id is None:
+        rows, next_cursor = await keyset_page(
+            conn, statement, Record.id, after=query.cursor, limit=query.limit, descending=True
+        )
+    else:
+        rows, next_cursor = await _job_page(conn, statement, query.job_id, query)
     page = [row._mapping for row in rows]
     schemas = {schema_id: await registry.get_by_id(conn, schema_id) for schema_id in {row["schema_id"] for row in page}}
     items = [_stored(row, schemas[row["schema_id"]]) for row in page]
     return RecordPage(items=items, next_cursor=next_cursor)
+
+
+async def _job_page(
+    conn: AsyncConnection, statement: Select[Any], job_id: JobId, query: RecordFilter
+) -> tuple[Sequence[Row[Any]], RecordId | None]:
+    """The page of the job's records (SPEC-11 §4.2, §4.4): those its tasks stand for, stored or found unchanged, each at
+    the first task of the job that stands for it, newest task first and, within a task, newest record first. The page
+    is read from the job's tasks by id (keyset, `ix_url_task_job_id_id`), so it never builds the job's whole set of
+    `task_record` rows; the cursor stays a record id, and stands where that record does in the job. A cursor of a
+    record the job has no task for gives an empty page."""
+    link, owner = aliased(TaskRecord), aliased(UrlTask)
+
+    def first_task(record: Any) -> ScalarSelect[UrlTaskId]:
+        of_record = select(link.url_task_id).join(owner, owner.id == link.url_task_id)
+        # No `min` of a uuid in PostgreSQL: the smallest id is the first of the order.
+        first = of_record.where(link.record_id == record, owner.job_id == job_id).order_by(link.url_task_id).limit(1)
+        return first.scalar_subquery()
+
+    statement = (
+        statement.join(TaskRecord, TaskRecord.record_id == Record.id)
+        .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+        .where(UrlTask.job_id == job_id, UrlTask.id == first_task(Record.id))
+    )
+    if query.cursor is not None:
+        position = (await conn.execute(select(first_task(query.cursor)))).scalar_one()
+        if position is None:
+            return [], None
+        statement = statement.where(tuple_(UrlTask.id, Record.id) < tuple_(position, query.cursor))
+    ordered = statement.order_by(UrlTask.id.desc(), Record.id.desc()).limit(query.limit + 1)
+    rows = (await conn.execute(ordered)).all()
+    page = rows[: query.limit]
+    return page, page[-1].id if len(rows) > query.limit else None
 
 
 async def _committed(conn: AsyncConnection) -> None:
