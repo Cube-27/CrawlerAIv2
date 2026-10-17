@@ -9,6 +9,9 @@ commit and delete the lines their PR closes; a follow-up that grows into work be
 
 - Data accuracy: SPEC-13 and SPEC-15 (Shopify adapter: collections; on by default with every adapter) are complete. Next: option (b),
   structural ownership of array rows, for checkable types inside related-item arrays.
+- Data sources, later (owner #53): discover the network/API calls a page makes for its data and read the data from
+  them, generically, as a learned layer (the way listing pagination was probed before #52). Not started; needs a probe
+  and the owner's admission like #52.
 - Open owner items: D-0783–D-0784 (investigate, owner 2026-10-16: not now: learned-config approval, an "absent"
   field status), D-0915 (SimHash at Hamming 0 misses some edits).
 
