@@ -110,12 +110,12 @@ def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
 
 def resource_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
     """The file an image_url value names, its scheme and query aside (`url.resource_key`: a query that varies how an
-    image is served), and a list of images' files as a multiset (a list is a set of values, in no significant order,
-    JSON-LD 1.1 §4.3.1); `None` for other types. A page URL's query often names a variant (SPEC-13), so url has
-    none."""
+    image is served), and a list of images' files as the set of the files it names: a list is a set of values, in no
+    significant order (JSON-LD 1.1 §4.3.1), and two renditions of one file in it name that file once. `None` for other
+    types. A page URL's query often names a variant (SPEC-13), so url has none."""
     if spec.type is FieldType.LIST and isinstance(value, list):
         keys = [resource_key(item, _item(spec)) for item in value]
-        return None if not keys or None in keys else ("resources", frozenset(Counter(keys).items()))
+        return None if not keys or None in keys else ("resources", frozenset(keys))
     return url.resource_key(value) if spec.type is FieldType.IMAGE_URL else None
 
 

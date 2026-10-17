@@ -82,7 +82,7 @@ def test_a_product_with_nested_items() -> None:
         f"microdata:{BODY}/div[1]/div[2]",
     )
     assert result.entities == (
-        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None),
+        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None, item_urls=(PAGE_URL,)),
         Entity(id=brand, types=("Brand",), urls=(), parent=product, via="brand"),
         Entity(id=offer, types=("Offer",), urls=(), parent=product, via="offers"),
     )
@@ -311,8 +311,8 @@ def test_rdfa_lite_nests_resources() -> None:
     )
     product, offer = f"microdata:{BODY}/div[1]", f"microdata:{BODY}/div[1]/div[1]"
     assert result.entities == (
-        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None),
-        Entity(id=offer, types=("Offer",), urls=(PAGE_URL,), parent=product, via="offers"),
+        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None, identity=(("@id", f"{PAGE_URL}#it"),)),
+        Entity(id=offer, types=("Offer",), urls=(PAGE_URL,), parent=product, via="offers", item_urls=(PAGE_URL,)),
     )
     assert _fields(result) == [
         ("title", product, "Widget 9"),

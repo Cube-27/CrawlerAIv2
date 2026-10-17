@@ -9,11 +9,8 @@ JSON-LD 1.1 §9.5) stands for the node defined with that `@id` anywhere on the p
 Entities and locators are addressed as `jsonld:<block>:<path>`, where the path is the RFC 9535 normalized path of
 the object in its block's JSON (`$['@graph'][1]`).
 
-Root nodes of one type that share an identity are one entity, the first of them (`_same_nodes`): the same `@id`
-resolved against the document base (JSON-LD 1.1 node map generation merges node objects with one `@id`; RFC 3986
-§5), or the same value of a schema.org identifier property (`identifier` and its sub-properties, such as `sku` and
-`gtin13`, identify the item). The later nodes' values and their nested nodes become the first's, so resolution sees
-one entity and applies its rules to all of them: agreeing values publish, Offers that disagree are a conflict.
+Each entity carries what identifies it (`schema_org_map.identity`); resolution merges the nodes of one identity, from
+this collector and the others (`resolve.identity`).
 """
 
 from collections import defaultdict
@@ -24,16 +21,15 @@ from urllib.parse import urljoin, urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.collect.base import CollectResult, Entity, descends
+from crawlerai.collect.base import CollectResult, descends
 from crawlerai.collect.json_doc import member, parse
 from crawlerai.collect.schema_org_map import (
     NAMESPACES,
     Typed,
     Value,
     Vocabulary,
+    entity,
     field_candidates,
-    item_urls,
-    offer_urls,
     schema_term,
 )
 from crawlerai.content.page import ParsedPage
@@ -186,34 +182,12 @@ class JsonLdCollector:
         entities = [found for found in graph.objects if found.types]
         parents, vias = _parents(entities, graph)
         typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
-        own = {t.id: item_urls(t.node, ctx) for t in typed}
-        roots = [found for found in entities if parents[found.id] is None]
-        same = _same_nodes(roots, graph, self.vocabulary, own)
-        diagnostics.extend(
-            f"jsonld: {node} is the node {first} (same @id or identifier)" for node, first in same.items()
-        )
         candidates = field_candidates(
             typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
         )
-        urls: dict[str, dict[str, None]] = {}
-        for t in typed:
-            # SPEC-05 §4.2: an entity's URLs are its own and its offers'; a merged node adds its members'.
-            urls.setdefault(same.get(t.id, t.id), {}).update(dict.fromkeys((*own[t.id], *offer_urls(t.node, ctx))))
         return CollectResult(
-            entities=tuple(
-                Entity(
-                    id=t.id,
-                    types=t.types,
-                    urls=tuple(urls[t.id]),
-                    parent=same.get(parent, parent) if (parent := parents[t.id]) is not None else None,
-                    via=vias[t.id],
-                )
-                for t in typed
-                if t.id not in same
-            ),
-            candidates=tuple(
-                c.model_copy(update={"entity_id": same[c.entity_id]}) if c.entity_id in same else c for c in candidates
-            ),
+            entities=tuple(entity(t, ctx, self.vocabulary, parent=parents[t.id], via=vias[t.id]) for t in typed),
+            candidates=tuple(candidates),
             diagnostics=tuple(diagnostics),
         )
 
@@ -308,63 +282,6 @@ def _term(holder: _Object, key: str) -> str | None:
     """The schema.org property a member key names: a full schema.org IRI anywhere, a bare term other than a keyword
     where schema.org is the vocabulary (JSON-LD 1.1 §4.1.2)."""
     return schema_term(key) or (key if holder.in_schema and not key.startswith("@") else None)
-
-
-def _same_nodes(
-    roots: Sequence[_Object], graph: _Graph, vocabulary: Vocabulary, urls: Mapping[str, tuple[str, ...]]
-) -> dict[str, str]:
-    """Each root node that shares an identity (`_identity`) with an earlier root node of the same most specific type,
-    mapped to the first node of its group, in document order. One `@id` is one node (JSON-LD). One identifier value
-    joins two groups only when their own URLs (`item_urls`) do not name two different items (schema.org `url`, "URL
-    of the item"): a listing's items may repeat an identifier across distinct items. An Offer's URL may name a
-    variant's page, so it does not count."""
-    groups = _Groups([frozenset(urls[found.id]) for found in roots])
-    first_with: dict[tuple[str, str, str], int] = {}
-    for i, found in enumerate(roots):
-        for prop, value in _identity(found, graph, vocabulary):
-            first = first_with.setdefault((found.types[0], prop, value), i)
-            groups.join(first, i, by_id=prop == "@id")
-    return {roots[i].id: roots[groups.find(i)].id for i in range(len(roots)) if groups.find(i) != i}
-
-
-@dataclass
-class _Groups:
-    """Disjoint sets of root nodes, each named by its first member, with the URLs its members state."""
-
-    urls: list[frozenset[str]]
-    parent: list[int] = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.parent = list(range(len(self.urls)))
-
-    def find(self, i: int) -> int:
-        while self.parent[i] != i:
-            self.parent[i] = self.parent[self.parent[i]]
-            i = self.parent[i]
-        return i
-
-    def join(self, i: int, j: int, *, by_id: bool) -> None:
-        a, b = sorted((self.find(i), self.find(j)))
-        if a == b or not (by_id or self._compatible(a, b)):
-            return
-        self.parent[b] = a
-        self.urls[a] |= self.urls[b]
-
-    def _compatible(self, a: int, b: int) -> bool:
-        return not (self.urls[a] and self.urls[b]) or bool(self.urls[a] & self.urls[b])
-
-
-def _identity(found: _Object, graph: _Graph, vocabulary: Vocabulary) -> Iterator[tuple[str, str]]:
-    """What identifies a node: its `@id` resolved against the base (a blank node is scoped to its block, JSON-LD 1.1
-    §4.5.1, so it identifies nothing across blocks), and each scalar value of its identifier properties."""
-    node_id = graph.resolve_id(found.data.get("@id"))
-    if node_id is not None and not node_id.startswith("_:"):
-        yield "@id", node_id
-    for key, written in found.data.items():
-        if (term := _term(found, key)) in vocabulary.identifiers:
-            for scalar in _scalars(written):
-                if text := str(scalar).strip():
-                    yield term, text
 
 
 def _parents(entities: Sequence[_Object], graph: _Graph) -> tuple[dict[str, str | None], dict[str, str | None]]:

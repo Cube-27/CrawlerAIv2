@@ -39,6 +39,13 @@ class Entity(_Model):
     # The schema.org property of the parent whose value holds this entity (`offers`, `isRelatedTo`); None for a root,
     # or when the source names no schema.org property. Intent reads it (§4.6 step 1).
     via: str | None = None
+    # What identifies the item (`schema_org_map.identity`): its IRI and its schema.org identifier values, as
+    # (property, value) pairs; resolution merges the entities that share one (`resolve.identity`).
+    identity: tuple[tuple[str, str], ...] = ()
+    # The canonical URLs naming the item itself (`schema_org_map.item_urls`), not its offers'.
+    item_urls: tuple[str, ...] = ()
+    # schema.org `inProductGroupWithID`: the `productGroupID` of the ProductGroup this product is a variant of.
+    group_ids: tuple[str, ...] = ()
 
 
 class Candidate(_Model):

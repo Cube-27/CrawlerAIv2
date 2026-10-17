@@ -43,6 +43,7 @@ _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 _STAGES = ("invalid", "ambiguous", "not_owned", "url_param")
 # GS1 GTIN and a seller's SKU identify one product, so a variant's identifies the variant (SPEC-13 §4.6, variant fill).
 _FILLED_SCHEMES = frozenset({"gtin", "sku"})
+_HTTPS = "https"  # RFC 9110 §4.2.2
 
 Orders = Mapping[FieldType, tuple[SourceKind, ...]]  # per precedence type, the source kinds, first wins
 Rejection = tuple[Candidate, str]  # a candidate that does not publish, with its reason
@@ -232,7 +233,7 @@ class Resolver:
         for c in kept:
             if c is chosen:
                 continue
-            if _equal(c, chosen, spec):
+            if _equal(c, chosen, spec) or _one_file([c, chosen], spec):
                 agreeing.append(c)
             else:
                 lower.append((c, "precedence"))
@@ -264,7 +265,7 @@ def _winner(
     and another kind names one of them."""
     winners = [c for c in kept if c.source_kind == kind]
     if _all_agree(winners, spec) or _one_file(winners, spec):
-        return next(c for c in choosable if c.source_kind == kind)
+        return _secure_first([c for c in choosable if c.source_kind == kind], spec)
     named = _named_member(spec, winners, kept, order)
     return named if named is not None and any(c is named for c in choosable) else None
 
@@ -288,7 +289,7 @@ def _named_member(
     for kind in _ranked_kinds(namers, order):
         named = _named_by(spec, members, [o for o in namers if o.source_kind == kind])
         if named:
-            return named[0] if _all_agree(named, spec) or _one_file(named, spec) else None
+            return _secure_first(named, spec) if _all_agree(named, spec) or _one_file(named, spec) else None
     return None
 
 
@@ -312,6 +313,20 @@ def _one_file(candidates: Sequence[Candidate], spec: FieldSpec) -> bool:
     image as the page states it more than once (`resource_key`), so they agree."""
     keys = {resource_key(_value(c), spec) for c in candidates}
     return len(keys) == 1 and None not in keys
+
+
+def _secure_first(candidates: Sequence[Candidate], spec: FieldSpec) -> Candidate:
+    """The first of candidates that agree or are renditions of one file whose URLs all use `https`, else the first: a
+    rendition over `http` beside its `https` twin names the same file (`resource_key`), and `https` reaches it over
+    TLS (RFC 9110 §4.2.2), so the page's secure statement of it publishes."""
+    if rule_type(spec) is not FieldType.IMAGE_URL:
+        return candidates[0]
+    return next((c for c in candidates if _secure(_value(c))), candidates[0])
+
+
+def _secure(value: JsonValue) -> bool:
+    items = value if isinstance(value, list) else [value]
+    return all(isinstance(item, str) and urlsplit(item).scheme == _HTTPS for item in items)
 
 
 def _all_rejected(

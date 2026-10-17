@@ -22,6 +22,7 @@
     { "@id": "schema:Brand", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
     { "@id": "schema:Organization", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Thing" } },
     { "@id": "schema:ItemList", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:BreadcrumbList", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:ItemList" } },
     { "@id": "schema:ListItem", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
     { "@id": "schema:JobPosting", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
     { "@id": "schema:DataType", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "rdfs:Class" } },

@@ -286,6 +286,12 @@ class _Page:
         canonical = canonical_link(page, manifest.final_url)
         page_urls = canonical_urls((manifest.url, manifest.final_url, canonical), ctx)
         graph = EntityGraph.of((*collected.entities, *config.rows), data.vocabulary, page_urls)
+        # The candidates of an entity merged into another item's are that item's (`resolve.identity`).
+        collected = replace(
+            collected,
+            candidates=graph.adopt(collected.candidates),
+            diagnostics=(*collected.diagnostics, *graph.merges()),
+        )
         primary = primary_types(schema, data.vocabulary)
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
@@ -397,7 +403,9 @@ class _Listing:
         candidates = (*page.candidates, *(() if found is None else (found,)))
         # SPEC-08 §4.8: the config's rows serve only where structured data gives none. Its row candidates belong to its
         # own row entities, so structured and config values never meet in one row.
-        rows = listing_rows(page.graph, page.primary, page.target, page.page_urls) or page.config.rows
+        row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
+        holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
+        rows = listing_rows(page.graph, page.primary, page.target, holders) or page.config.rows
         fields, resolved = page.resolve_listing(candidates, rows)
         next_pages = tuple(link.url for link in links)
         return cls(page, fields, resolved, next_pages, candidates, tuple(diagnostics))

@@ -9,21 +9,18 @@ never publishes.
 """
 
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import takewhile
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, CollectResult, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.normalize.dispatch import equal
+from crawlerai.resolve.identity import VARIANT, identify
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org: an Offer is the offer of an item (`offers` / `itemOffered`), so its price and availability are the
 # item's (§4.5: Offer values are owned by the Offer whose parent is the Product).
 OFFER = "Offer"
-# schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
-# not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
-# the atomic-offer rule. The variant's own values (its sku, its name) stay the variant's.
-VARIANT = "hasVariant"
 # schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant (SPEC-13
 # §4.3), so it is never a variant holder.
 AGGREGATE_OFFER = "AggregateOffer"
@@ -32,27 +29,44 @@ _URL = FieldSpec(type=FieldType.URL)
 
 @dataclass(frozen=True, slots=True)
 class EntityGraph:
-    """The page's entities from every collector, by id, with the page entity always among them."""
+    """The page's entities from every collector, by id, each item once (`resolve.identity`), with the page entity
+    always among them."""
 
     entities: Mapping[str, Entity]
     vocabulary: Vocabulary
     page_urls: tuple[str, ...] = ()  # the request, final and canonical URLs: what a row names to be the page's subject
+    aliases: Mapping[str, str] = field(default_factory=dict)  # a merged entity's id -> the entity it is part of
 
     @classmethod
     def of(cls, entities: Iterable[Entity], vocabulary: Vocabulary, page_urls: Sequence[str] = ()) -> "EntityGraph":
-        """Every collector's entities as one result: ids unique, parents resolved, a tree (`CollectResult`)."""
-        merged = list(entities)
-        if all(entity.id != PAGE for entity in merged):
-            merged.append(Entity(id=PAGE, types=(PAGE,), urls=(), parent=None))
-        result = CollectResult(entities=tuple(merged), candidates=())
-        return cls({entity.id: entity for entity in result.entities}, vocabulary, tuple(page_urls))
+        """Every collector's entities as one result: each item once, ids unique, parents resolved, a tree
+        (`CollectResult`)."""
+        found = list(entities)
+        if all(entity.id != PAGE for entity in found):
+            found.append(Entity(id=PAGE, types=(PAGE,), urls=(), parent=None))
+        checked = CollectResult(entities=tuple(found), candidates=())
+        identified = identify(checked.entities, vocabulary, page_urls)
+        result = CollectResult(entities=identified.entities, candidates=())
+        entities_by_id = {entity.id: entity for entity in result.entities}
+        return cls(entities_by_id, vocabulary, tuple(page_urls), identified.aliases)
+
+    def adopt(self, candidates: Iterable[Candidate]) -> tuple[Candidate, ...]:
+        """The candidates with those of a merged entity moved to the entity it is part of."""
+        return tuple(
+            c.model_copy(update={"entity_id": self.aliases[c.entity_id]}) if c.entity_id in self.aliases else c
+            for c in candidates
+        )
+
+    def merges(self) -> tuple[str, ...]:
+        """A diagnostic per merged entity."""
+        return tuple(f"identity: {alias} is the item {head}" for alias, head in self.aliases.items())
 
     @property
     def page(self) -> Entity:
         return self.entities[PAGE]
 
     def owner_of(self, candidate: Candidate) -> Entity:
-        return self.entities[candidate.entity_id]
+        return self.entities[self.aliases.get(candidate.entity_id, candidate.entity_id)]
 
     def ancestors(self, entity: Entity) -> Iterator[Entity]:
         """The entity's parent, its parent's parent, and so on to the root."""

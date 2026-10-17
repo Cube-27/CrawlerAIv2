@@ -207,3 +207,106 @@ def test_microdata_rows_with_prices_written_with_their_sign_publish_them() -> No
     assert [(row["title"].value, row["price"].value) for row in result.rows] == [
         (f"Widget {n}", {"amount": f"{n}299.50", "currency": "USD"}) for n in (1, 2, 3)
     ]
+
+
+_MICRODATA_PRODUCT = (
+    '<div itemscope itemtype="https://schema.org/Product"><h1 itemprop="name">Widget One</h1>'
+    '<meta itemprop="sku" content="W-1"><div itemprop="offers" itemscope itemtype="https://schema.org/Offer">'
+    '<meta itemprop="price" content="14.00"><meta itemprop="priceCurrency" content="EUR">'
+    '<link itemprop="availability" href="https://schema.org/InStock"></div></div>'
+)
+
+
+def test_one_product_in_json_ld_and_microdata_publishes_as_one_entity() -> None:
+    # The microdata item states the JSON-LD node's sku: one product, so its Offer is the product's and the two names
+    # agree, where two entities left the page without a target.
+    head = _jsonld(_product(name="Widget One", sku="W-1", image="https://cdn.example.test/w1.jpg"))
+
+    result = _extract(head, _MICRODATA_PRODUCT)
+
+    assert _outcomes(result, "title", "price", "availability") == {
+        "title": ("published", None, "Widget One"),
+        "price": ("published", None, {"amount": "14.00", "currency": "EUR"}),
+        "availability": ("published", None, "InStock"),
+    }
+    assert result.entity is not None
+    assert result.entity["title"].evidence == "agreed"
+
+
+def test_a_listing_item_in_two_syntaxes_is_one_row_with_the_values_of_both() -> None:
+    # JSON-LD lists the items by name and URL, microdata states the same items with their prices: one row per item,
+    # holding the price, and its name agreed by both syntaxes.
+    rows = [{"@type": "Product", "name": f"Widget {n}", "url": f"https://shop.example.test/item/{n}"} for n in (1, 2)]
+    items = [{"@type": "ListItem", "position": i + 1, "item": row} for i, row in enumerate(rows)]
+    head = _jsonld({"@context": "https://schema.org", "@type": "ItemList", "itemListElement": items})
+    card = (
+        '<li itemscope itemtype="https://schema.org/Product"><a itemprop="url" href="/item/{n}">'
+        '<span itemprop="name">Widget {n}</span></a><span itemprop="offers" itemscope '
+        'itemtype="https://schema.org/Offer"><meta itemprop="price" content="{n}.50">'
+        '<meta itemprop="priceCurrency" content="EUR"></span></li>'
+    )
+
+    result = _extract(head, "<ul>" + "".join(card.format(n=n) for n in (1, 2)) + "</ul>", LISTING)
+
+    assert [(row["title"].value, row["title"].evidence, row["price"].value) for row in result.rows] == [
+        (f"Widget {n}", "agreed", {"amount": f"{n}.50", "currency": "EUR"}) for n in (1, 2)
+    ]
+
+
+def test_standalone_variants_naming_their_group_s_id_are_its_variants() -> None:
+    # schema.org `inProductGroupWithID`: each Product is a variant of the ProductGroup with that `productGroupID`, so
+    # the group is the page's product, its variants are rows, and the properties it states for all of them publish.
+    group = {
+        "@context": "https://schema.org",
+        "@type": "ProductGroup",
+        "productGroupID": "G-1",
+        "name": "Widget",
+        "url": PAGE_URL,
+        "color": "Blue",
+        "audience": {"@type": "PeopleAudience", "suggestedGender": "unisex"},
+        "variesBy": "https://schema.org/size",
+    }
+    variants = [
+        _product(
+            name=f"Widget {size}",
+            sku=f"W-{size}",
+            size=size,
+            inProductGroupWithID="G-1",
+            offers=_offer("10.00", "https://schema.org/InStock"),
+        )
+        for size in ("S", "M")
+    ]
+
+    result = _extract(_jsonld(group, *variants))
+
+    assert _outcomes(result, "title", "color", "gender", "price") == {
+        "title": ("published", None, "Widget"),
+        "color": ("published", None, "Blue"),
+        "gender": ("published", None, "unisex"),
+        "price": ("published", None, {"amount": "10.00", "currency": "EUR"}),
+    }
+    assert result.entity is not None
+    published = result.entity["variants"]
+    assert published.status == "published"
+    assert [item.fields["sku"].value for item in published.items or ()] == ["W-S", "W-M"]
+
+
+def test_list_entries_stating_their_own_name_and_url_are_the_rows() -> None:
+    # schema.org: a ListItem without `item` stands for the thing it lists with its own name and url. The breadcrumb
+    # trail's entries are the page's navigation, never rows.
+    entries = [
+        {"@type": "ListItem", "position": n, "name": f"Widget {n}", "url": f"https://shop.example.test/p/{n}"}
+        for n in (1, 2)
+    ]
+    trail = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "url": "https://shop.example.test/"}],
+    }
+    head = _jsonld(trail, {"@context": "https://schema.org", "@type": "ItemList", "itemListElement": entries})
+
+    result = _extract(head, schema=LISTING)
+
+    assert [(row["title"].value, row["url"].value) for row in result.rows] == [
+        (f"Widget {n}", f"https://shop.example.test/p/{n}") for n in (1, 2)
+    ]
