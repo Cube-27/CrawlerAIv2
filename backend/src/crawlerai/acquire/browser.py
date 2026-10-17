@@ -120,6 +120,9 @@ _ERROR_STATUS = 400
 _INTERSTITIAL_SHARE = 0.4
 # A screenshot or PDF past this size is dropped rather than stored: the capture is kept without it.
 _ARTIFACT_MAX_BYTES = 25_000_000
+# Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
+# slow file is left out, it never turns a page that loaded into a timeout.
+_ARTIFACT_TIMEOUT_S = 30
 # Chromium's network error names (net/base/net_error_list.h) carry no URL.
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
@@ -178,7 +181,8 @@ async def fetch_browser(
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
         proxy = pool_endpoint(pool, url)
-        async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
+        extra_s = steps_budget_s(policy.steps) + (_ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
+        async with asyncio.timeout(policy.browser_timeout_s + extra_s):
             guarded = rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic)
             async with guarded as page:
                 steps = await _stepped(page)
@@ -242,14 +246,16 @@ def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:
 async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]:
     """The files `policy` asks of the rendered page, by artifact name: a PNG of the viewport or the whole page, and a
     PDF print (HTML Standard §6.6 print media). Reading changes nothing in the page (INV-42). A file the browser could
-    not make, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached its page."""
+    not make in `_ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached its
+    page."""
     files: dict[str, bytes] = {}
     try:
-        if policy.screenshot is not None:
-            files[SCREENSHOT] = await page.screenshot(type="png", full_page=policy.screenshot == "full_page")
-        if policy.pdf:
-            files[PDF] = await page.pdf(print_background=True)
-    except PlaywrightError:
+        async with asyncio.timeout(_ARTIFACT_TIMEOUT_S):
+            if policy.screenshot is not None:
+                files[SCREENSHOT] = await page.screenshot(type="png", full_page=policy.screenshot == "full_page")
+            if policy.pdf:
+                files[PDF] = await page.pdf(print_background=True)
+    except (PlaywrightError, TimeoutError):
         pass  # the files made so far are kept
     return {name: data for name, data in files.items() if len(data) <= _ARTIFACT_MAX_BYTES}
 

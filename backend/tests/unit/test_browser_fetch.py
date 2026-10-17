@@ -21,12 +21,15 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address, ip_address
+from typing import cast
 from urllib.parse import urlsplit
 
 import pytest
 from patchright.async_api import Error as PlaywrightError
+from patchright.async_api import Page
 
-from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire import browser as browser_module
+from crawlerai.acquire.browser import BrowserSession, capture_artifacts, fetch_browser, open_browser
 from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
@@ -750,6 +753,24 @@ def _png_size(data: bytes) -> tuple[int, int]:
 
 def test_no_file_is_made_of_the_page_unless_the_policy_asks() -> None:
     assert FetchPolicy().captures_page is False
+
+
+def test_a_file_the_browser_is_too_slow_to_make_is_left_out_and_the_others_stay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SlowPage:
+        async def screenshot(self, **_: object) -> bytes:
+            return b"png"
+
+        async def pdf(self, **_: object) -> bytes:
+            await asyncio.sleep(10)
+            return b"pdf"
+
+    monkeypatch.setattr(browser_module, "_ARTIFACT_TIMEOUT_S", 0.05)
+
+    files = asyncio.run(capture_artifacts(cast(Page, SlowPage()), FetchPolicy(screenshot="viewport", pdf=True)))
+
+    assert files == {"screenshot.png": b"png"}
 
 
 def test_a_viewport_screenshot_is_a_png_of_the_visible_area_and_leaves_the_bundle_as_it_was(

@@ -118,7 +118,7 @@ The testable invariants keep their IDs `INV-01`…`INV-45` and live as requireme
 (INV-03, INV-05, INV-09 and INV-18 in "Repo checks" above), each with what enforces it and whether that enforcement
 runs today. An invariant whose enforcement is not built yet is still binding: review applies it until the check
 exists. Invariants are never removed or renumbered; a superseded one keeps a requirement that says so. A change that
-adds one takes the next free ID (INV-45; check with `grep -rhoE "INV-[0-9]+" openspec/specs openspec/project.md |
+adds one takes the next free ID (INV-46; check with `grep -rhoE "INV-[0-9]+" openspec/specs openspec/project.md |
 sort -u | tail -1`) in its spec delta.
 
 ## Open owner items
