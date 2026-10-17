@@ -1,5 +1,6 @@
 """The adapter collector (SPEC-05 §4.5, SPEC-15 §4.4, ARCHITECTURE §8.1): a platform API's JSON, read as the schema.org
-nodes its adapter's shapes say it holds.
+nodes its adapter's shapes say it holds. Each entity carries its identity and item URLs as every structured collector's
+do (`schema_org_map.entity`), so resolution merges it with the page's own statement of the item (`resolve.identity`).
 
 An adapter capture's body is the JSON the platform's documented API serves for the page (SPEC-02 §4.9). Each object a
 shape reaches is an entity (`adapter:<name>:<normalized path>`, its kind the shape's type, its parent the enclosing
@@ -17,10 +18,10 @@ from functools import cache
 from pydantic import JsonValue
 
 from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Shape
-from crawlerai.collect.base import CollectResult, Entity
+from crawlerai.collect.base import CollectResult
 from crawlerai.collect.json_doc import ROOT, member, parse, select
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, entity_urls, field_candidates
+from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, entity, field_candidates
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
@@ -43,12 +44,13 @@ class AdapterCollector:
         nodes: list[_Node] = []
         for shape in self._adapter.shapes(self._match, document):
             nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
+        typed = [Typed(n.id, (n.shape.type,), n) for n in nodes]
         entities = tuple(
-            Entity(id=n.id, types=(n.shape.type,), urls=entity_urls(n, ctx), parent=n.parent, via=n.via) for n in nodes
+            entity(t, ctx, self._vocabulary, parent=n.parent, via=n.via) for t, n in zip(typed, nodes, strict=True)
         )
         diagnostics: list[str] = []
         candidates = field_candidates(
-            [Typed(n.id, (n.shape.type,), n) for n in nodes],
+            typed,
             self._rows_schema(schema),
             ctx,
             vocabulary=self._vocabulary,

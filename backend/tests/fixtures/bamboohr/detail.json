@@ -1,0 +1,15 @@
+{
+  "meta": {},
+  "result": {
+    "jobOpening": {
+      "jobOpeningShareUrl": "https://example-co.careers.example.test/careers/7",
+      "jobOpeningName": "Synthetic Engineer",
+      "employmentStatusLabel": "Full-Time",
+      "location": {"city": "Northtown", "state": "Exampleland", "postalCode": "00000", "addressCountry": "Exampleland"},
+      "description": "<p>Build things.</p>",
+      "compensation": "$100,000 - $150,000 a year",
+      "datePosted": "2026-09-30"
+    },
+    "formFields": {}
+  }
+}

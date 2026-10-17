@@ -1,0 +1,22 @@
+{
+  "jobRequisitions": [
+    {
+      "itemID": "5000000000001_1",
+      "requisitionTitle": "Synthetic Engineer",
+      "postDate": "2026-09-30T10:00:00.000-04:00",
+      "clientRequisitionID": "R-100",
+      "requisitionLocations": [{"nameCode": {"shortName": " Northtown, ZZ"}}, {"nameCode": {"shortName": " Eastport, ZZ"}}],
+      "payGradeRange": {"minimumRate": {"amountValue": 85000.0, "currencyCode": "USD"}, "maximumRate": {"amountValue": 115000.0, "currencyCode": "USD"}},
+      "customFieldGroup": {"stringFields": [{"stringValue": "555001", "nameCode": {"codeValue": "ExternalJobID"}}, {"nameCode": {"codeValue": "JobClass"}}]}
+    },
+    {
+      "itemID": "5000000000002_1",
+      "requisitionTitle": "Placeholder Analyst",
+      "postDate": "2026-09-29T10:00:00.000-04:00",
+      "clientRequisitionID": "R-101",
+      "requisitionLocations": [],
+      "customFieldGroup": {"stringFields": [{"stringValue": "555002", "nameCode": {"codeValue": "ExternalJobID"}}]}
+    }
+  ],
+  "meta": {}
+}

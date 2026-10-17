@@ -1,0 +1,29 @@
+{
+  "version": "https://example.test/feed/1.1",
+  "title": "Example Co",
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000c1",
+      "title": "Synthetic Engineer",
+      "url": "https://example-co.careers.example.test/jobs/101-synthetic-engineer",
+      "date_published": "2026-09-30T09:00:00+02:00",
+      "content_html": "<p>Build things.</p>",
+      "_jobposting": {
+        "@type": "JobPosting",
+        "identifier": {"@type": "PropertyValue", "name": "Example Co", "value": 101},
+        "hiringOrganization": {"@type": "Organization", "name": "Example Co"},
+        "jobLocation": [
+          {"@type": "Place", "address": {"@type": "PostalAddress", "streetAddress": "1 Example Way", "addressLocality": "Northtown", "postalCode": "00000", "addressCountry": "ZZ", "addressRegion": "Exampleland"}}
+        ]
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c2",
+      "title": "Placeholder Analyst",
+      "url": "https://example-co.careers.example.test/jobs/102-placeholder-analyst",
+      "date_published": "2026-09-29T09:00:00+02:00",
+      "content_html": "<p>Analyse things.</p>",
+      "_jobposting": {"@type": "JobPosting", "identifier": {"@type": "PropertyValue", "value": 102}}
+    }
+  ]
+}

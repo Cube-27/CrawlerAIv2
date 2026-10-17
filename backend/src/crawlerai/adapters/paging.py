@@ -17,7 +17,7 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
+from crawlerai.adapters.answer import with_body
 
 # The most rows one adapter list collects, whatever the request asks.
 MAX_ROWS: Final = 1000
@@ -64,9 +64,4 @@ async def fetch_pages(
         count += progress
     if len(answers) == 1:
         return kept
-    return _merged(kept, result, json.dumps(merge(answers), ensure_ascii=False).encode())
-
-
-def _merged(kept: FetchResult, first: FetchResult, body: bytes) -> FetchResult:
-    manifest = first.bundle.manifest.model_copy(update={"html_sha256": sha256_hex(body)})
-    return kept.model_copy(update={"bundle": CaptureBundle(manifest=manifest, body=body, network=())})
+    return with_body(kept, result, json.dumps(merge(answers), ensure_ascii=False).encode())

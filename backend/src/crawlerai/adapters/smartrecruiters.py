@@ -9,7 +9,6 @@ The company identifier is case-sensitive. A company's site is `/{company}` on th
 posting `/{company}/{id}[-{slug}]`, `id` its digits.
 """
 
-import json
 import re
 from collections.abc import Sequence
 from dataclasses import replace
@@ -19,9 +18,9 @@ from urllib.parse import quote, urlsplit
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, NOT_SERVED, PATH_SEGMENT, AdapterMatch, Shape
+from crawlerai.adapters.answer import serving
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
 from crawlerai.adapters.paging import fetch_pages
 
 API: Final = "https://api.smartrecruiters.com/v1/companies"
@@ -95,7 +94,7 @@ class SmartRecruiters:
             merge=_merge,
             rows=_rows,
         )
-        return _verdict(result)
+        return serving(result, _rows)
 
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         if match.page_kind == "detail":
@@ -133,11 +132,3 @@ def _next_page(base: str, url: str, answers: Sequence[JsonValue]) -> JsonRequest
 def _merge(answers: Sequence[JsonValue]) -> JsonValue:
     first = answers[0]
     return {**(first if isinstance(first, dict) else {}), "content": [p for a in answers for p in _content(a)]}
-
-
-def _verdict(result: FetchResult) -> FetchResult:
-    """`result`, or `NOT_SERVED` when the API answered without a posting: a company it holds none for (it answers
-    200 with an empty list for an unknown company)."""
-    if result.block_class != "ok":
-        return result
-    return result if _rows(json.loads(result.bundle.body)) else as_error(result, NOT_SERVED)
