@@ -6,7 +6,7 @@ A run reads the state's `LEARN_AFTER_PAGES` most recent extracted pages (`held_o
 proposes selectors without an LLM (§4.5), role A synthesizes the fields it left (§4.6), and the config is validated on
 the held-out pages (§4.7) and activated (§4.8), with the API recipe its pages' browser captures show their values came
 from when one is learned and validated (SPEC-09 §2, `api_recipe.learn`); when the site's project requires approval
-(D-1342), the validated config waits as `pending_approval` instead (`activation.store_pending`). Every other end is a
+(D-1342), the validated config waits as `pending_approval` instead (`store_pending`). Every other end is a
 failed run
 (`progressive.learning_failed`): validation refusing the config, an LLM failure (D-0588), a cancelled job, an error,
 the worker stopping (`SHUTDOWN`), or an operator's config activated while the run was in flight, which a run that

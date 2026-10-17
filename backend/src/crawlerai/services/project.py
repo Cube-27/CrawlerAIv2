@@ -4,7 +4,7 @@
 2026-10-16). It is read when a job checks its budget (`db.usage.budget_remaining`), so a change applies to running
 jobs too. `draft_call_cap` bounds the uncharged role S calls (field-name drafts) of each API key; null bounds none
 (D-1282, `crawlerai.llm.draft_cap`). `require_config_approval` makes a learned config wait for a person's approval
-before it serves (D-1342, `config_ir.activation.store_pending`); off, it activates once validated.
+before it serves (D-1342, `store_pending` in `config_ir.activation`); off, it activates once validated.
 """
 
 from pydantic import NonNegativeInt
