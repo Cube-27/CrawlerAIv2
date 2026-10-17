@@ -130,7 +130,7 @@ def test_a_record_of_another_schema_is_refused() -> None:
 
 
 _MONEY = FieldSpec(type=FieldType.MONEY, description="d")
-_EUR = {"amount": "9.50", "currency": "EUR"}
+_EUR: JsonValue = {"amount": "9.50", "currency": "EUR"}
 
 
 def test_a_clean_record_has_the_published_fields_in_name_order_and_leaves_out_the_rest() -> None:
