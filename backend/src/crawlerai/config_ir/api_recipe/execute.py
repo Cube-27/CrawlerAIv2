@@ -100,7 +100,7 @@ class RecipeRung:
     async def pages(
         self, url: str, policy: FetchPolicy, *, records: int, limit: int = MAX_PAGES, admit_next: Admit | None = None
     ) -> AsyncIterator[FetchResult]:
-        """The listing at `url`, one response per page its pagination names (`pagination.next_request`), until a
+        """The listing at `url`, one response per page its pagination names (`next_request` of `pagination.py`), until a
         response's `rows` select no object, the pagination names no next page (or one already requested), `records`
         rows were yielded, `limit` requests were sent, or `admit_next` refuses the next request (the site's rate,
         SPEC-02 §4.6). A response with no rows is not yielded; one that is not `ok` is yielded last."""

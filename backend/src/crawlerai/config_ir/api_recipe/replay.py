@@ -2,9 +2,9 @@
 SSRF guard, INV-16) and check that the response reproduces the page's published values through the recipe's map.
 
 Header minimization replays the sample pages; held-out validation replays the held-out ones the same way. A listing
-recipe (one with `pagination`) is replayed for its first two pages, the second built by its pagination as serving builds
-it (`pagination.next_request`), and each must give the rows the page's captured calls gave: the same rows in the same
-order, each mapped field's raw value equal (Appendix A #59).
+recipe (one with `pagination`) is replayed for its first two pages, the second built by its pagination as serving
+builds it (`next_request` of `pagination.py`), and each must give the rows the page's captured calls gave: the same
+rows in the same order, each mapped field's raw value equal (Appendix A #59).
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
