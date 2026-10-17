@@ -23,7 +23,7 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.db.models import Capture, Job, Site, UrlTask, UsageEvent
+from crawlerai.db.models import Capture, Job, Site, SiteFetchMethod, UrlTask, UsageEvent
 from crawlerai.llm.client import (
     BudgetExhausted,
     LLMRequest,
@@ -270,8 +270,13 @@ async def test_a_shell_over_http_is_fetched_again_in_the_browser(
     assert result.fetch.method == "browser"
     assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
     assert result.raw_html == PAGE.decode()
-    site = await _row(engine, select(Site.fetch_method).where(Site.host == urlsplit(url).hostname))
-    assert site.fetch_method == "browser"
+    memory = await _row(
+        engine,
+        select(SiteFetchMethod.page_kind, SiteFetchMethod.method)
+        .join(Site, Site.id == SiteFetchMethod.site_id)
+        .where(Site.host == urlsplit(url).hostname),
+    )
+    assert (memory.page_kind, memory.method) == ("detail", "browser")
 
 
 async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(

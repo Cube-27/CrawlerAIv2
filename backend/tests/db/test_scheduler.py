@@ -27,6 +27,7 @@ from crawlerai.db.models import (
     Project,
     SchemaDef,
     Site,
+    SiteFetchMethod,
     UrlTask,
     WebhookDelivery,
 )
@@ -219,11 +220,12 @@ async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
     async with engine.begin() as conn:
         site_id = (
             await conn.execute(
-                insert(Site)
-                .values(project_id=default_project, host="recheck.example.test", fetch_method="browser")
-                .returning(Site.id)
+                insert(Site).values(project_id=default_project, host="recheck.example.test").returning(Site.id)
             )
         ).scalar_one()
+        never_checked = func.now() - timedelta(days=30)
+        memory = {"site_id": site_id, "page_kind": "detail", "method": "browser", "checked_at": never_checked}
+        await conn.execute(insert(SiteFetchMethod).values(**memory))
         await conn.execute(
             insert(Capture).values(
                 site_id=site_id,
@@ -247,7 +249,8 @@ async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
 
     async def on_http() -> bool:
         async with engine.connect() as conn:
-            method = (await conn.execute(select(Site.fetch_method).where(Site.id == site_id))).scalar_one()
+            query = select(SiteFetchMethod.method).where(SiteFetchMethod.site_id == site_id)
+            method = (await conn.execute(query)).scalar_one()
             return bool(method == "http")
 
     try:
@@ -255,6 +258,7 @@ async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
     finally:
         async with engine.begin() as conn:
             await conn.execute(delete(Capture).where(Capture.site_id == site_id))
+            await conn.execute(delete(SiteFetchMethod).where(SiteFetchMethod.site_id == site_id))
             await conn.execute(delete(Site).where(Site.id == site_id))
 
     assert fetched == ["https://recheck.example.test/robots.txt", url]

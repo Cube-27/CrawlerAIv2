@@ -1,5 +1,5 @@
 """Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
-worked remembered in `site.fetch_method`.
+worked remembered per site and page kind in `site_fetch_method` (D-1380).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
 adapter does not serve it (SPEC-15 §4.6). A page whose own canonical link is its URL without the query, which an
@@ -19,7 +19,8 @@ from datetime import timedelta
 from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
@@ -39,7 +40,7 @@ from crawlerai.acquire.types import (
     policy_with_attempts,
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
-from crawlerai.db.models import FetchMethod, Site, SiteId
+from crawlerai.db.models import FetchMethod, PageKind, SiteFetchMethod, SiteId
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
 # Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
@@ -313,22 +314,45 @@ def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], dura
     return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts)
 
 
+def remembered_as(kind: PageKind | None) -> PageKind:
+    """The page kind whose remembered method a fetch of `kind` reads and writes (D-1380). A fetch with no page kind is
+    classified as a detail page is (`classify` applies the listing rule to listings only), so it shares the detail
+    pages' memory."""
+    return kind or "detail"
+
+
+async def remembered_method(conn: AsyncConnection, site_id: SiteId, kind: PageKind | None) -> FetchMethod:
+    """The method remembered for the site's pages of `kind` (`remembered_as`): `http` when none is (SPEC-02 §4.4)."""
+    query = select(SiteFetchMethod.method).where(
+        SiteFetchMethod.site_id == site_id, SiteFetchMethod.page_kind == remembered_as(kind)
+    )
+    method: FetchMethod | None = (await conn.execute(query)).scalar_one_or_none()
+    return method or "http"
+
+
 async def remember_fetch_method(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
-    """Set the site to `browser` when `result` kept a browser `ok` over an HTTP attempt of the same fetch: HTTP failed
-    (a shell or a block), or HTTP was `ok` but lacked what the caller reads (D-1260, owner #49, #54), so the site's
-    later fetches go straight to the browser instead of paying for both. In `auto`, a kept browser outcome follows an
-    HTTP attempt only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to
-    `http`, so `fetch_method_checked_at` starts its clock here. A browser `ok` that opened a site session leaves the
-    site on HTTP (D-1353): its later fetches pass over HTTP with the session's cookies, and when the session ends
-    the next refusal is solved in the browser again."""
+    """Remember `browser` for the site's pages of the kind `result` was fetched as when it kept a browser `ok` over an
+    HTTP attempt of the same fetch: HTTP failed (a shell or a block), or HTTP was `ok` but lacked what the caller reads
+    (D-1260, owner #49, #54), so the site's later fetches of that kind go straight to the browser instead of paying
+    for both; its other kind keeps its own memory (D-1380). In `auto`, a kept browser outcome follows an HTTP attempt
+    only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to `http`, so
+    `checked_at` starts its clock here. A browser `ok` that opened a site session leaves the kind on HTTP (D-1353): its
+    later fetches pass over HTTP with the session's cookies, and when the session ends the next refusal is solved in
+    the browser again."""
+    fetch_policy = result.bundle.manifest.fetch_policy
     # Only `auto` renders on evidence: a browser fetch asked for (`method_hint`) is no evidence about HTTP, even beside
     # an HTTP attempt of a recipe's page request.
-    by_evidence = result.bundle.manifest.fetch_policy.get("method_hint") == "auto"
+    by_evidence = fetch_policy.get("method_hint") == "auto"
     by_http = any(a.method == "http" for a in result.attempts)
     handed_off = any(a.site_session for a in result.attempts)
-    if result.method == "browser" and result.block_class == "ok" and by_evidence and by_http and not handed_off:
-        await conn.execute(
-            update(Site)
-            .where(Site.id == site_id, Site.fetch_method != "browser")
-            .values(fetch_method="browser", fetch_method_checked_at=func.now())
+    if result.method != "browser" or result.block_class != "ok" or not by_evidence or not by_http or handed_off:
+        return
+    row = {"site_id": site_id, "page_kind": remembered_as(fetched_as(fetch_policy)), "method": "browser"}
+    insert = pg_insert(SiteFetchMethod).values(**row, checked_at=func.now())
+    await conn.execute(
+        insert.on_conflict_do_update(
+            index_elements=[SiteFetchMethod.site_id, SiteFetchMethod.page_kind],
+            set_={"method": "browser", "checked_at": func.now()},
+            where=SiteFetchMethod.method != "browser",
         )
+    )
