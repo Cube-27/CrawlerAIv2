@@ -250,6 +250,7 @@ export function TextRow({
   name,
   value,
   placeholder,
+  isDisabled = false,
   onChange,
 }: Readonly<{
   label: string;
@@ -257,10 +258,17 @@ export function TextRow({
   name: string;
   value: string;
   placeholder: string;
+  isDisabled?: boolean;
   onChange: (value: string) => void;
 }>) {
   return (
-    <TextField className={WIDE_CELL} name={name} value={value} onChange={onChange}>
+    <TextField
+      className={WIDE_CELL}
+      name={name}
+      value={value}
+      isDisabled={isDisabled}
+      onChange={onChange}
+    >
       <CellLabel label={label} help={help} />
       <Input autoComplete="off" spellCheck={false} placeholder={placeholder} />
       <FieldError />

@@ -139,3 +139,13 @@ def test_a_query_orders_a_best_first_crawl_only() -> None:
     frontier = CrawlRequest.model_validate({**body, "strategy": "best_first", "keywords": ["Tea"]}).frontier()
 
     assert (frontier.strategy, frontier.wanted) == ("best_first", ("kettles", "tea"))
+
+
+def test_a_pdf_cannot_be_asked_over_http_and_chunking_needs_the_chunks_format() -> None:
+    http = {"url": URL, "formats": ["pdf"], "fetch": {"method_hint": "http"}}
+    chunking = {"url": URL, "formats": ["markdown"], "chunking": {}}
+
+    assert [message for _, message in _errors(http)] == [
+        "Value error, screenshot and pdf are made in the browser, so method_hint cannot be http"
+    ]
+    assert [message for _, message in _errors(chunking)] == ["Value error, chunking is the option of the chunks format"]

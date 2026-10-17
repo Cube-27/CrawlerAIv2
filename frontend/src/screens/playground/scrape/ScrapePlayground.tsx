@@ -5,7 +5,7 @@ import { useApiClient } from "../../../app/auth";
 import { useFieldsReview } from "../fields/useFieldsReview";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { ScrapeOutput } from "../output/ScrapeOutput";
-import { optionsChanged, pageKindErrors, requestPageKind } from "../pageRequest";
+import { optionsChanged, pageKindErrors, requestFormats, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobRunOutput } from "../run/JobRun";
@@ -101,6 +101,7 @@ export function ScrapePlayground() {
       options={
         <ScrapeOptions
           options={form.options}
+          formats={requestFormats(form)}
           hasSchema={form.schemaId !== ""}
           schemaPageKind={requestPageKind(form)}
           onChange={(options) => {

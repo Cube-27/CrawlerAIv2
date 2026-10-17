@@ -181,6 +181,25 @@
         "title": "ApiRecipe",
         "type": "object"
       },
+      "Artifact": {
+        "description": "A stored artifact as an answer names it: the URL the API serves it at, which needs the API's own key like any\nother route, and its media type.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "content_type"
+        ],
+        "title": "Artifact",
+        "type": "object"
+      },
       "AttemptRecord": {
         "additionalProperties": false,
         "description": "One rung tried. `status` is None when no response arrived (network error, timeout, SSRF rejection).",
@@ -348,6 +367,16 @@
               }
             ]
           },
+          "chunking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {
@@ -356,17 +385,32 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true
+              "respect_robots": true,
+              "screenshot": "viewport"
             }
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "formats": {
             "items": {
               "enum": [
                 "markdown",
+                "markdown_fit",
+                "chunks",
                 "html",
                 "raw_html",
                 "links",
                 "metadata",
+                "screenshot",
+                "pdf",
                 "records"
               ],
               "type": "string"
@@ -649,6 +693,77 @@
           "error"
         ],
         "title": "CapturedOut",
+        "type": "object"
+      },
+      "Chunk": {
+        "description": "One chunk of a page's markdown: its position, text, size in words and the headings above it.",
+        "properties": {
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Heading Path",
+            "type": "array"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "words": {
+            "title": "Words",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index",
+          "text",
+          "words",
+          "heading_path"
+        ],
+        "title": "Chunk",
+        "type": "object"
+      },
+      "ChunkOptions": {
+        "additionalProperties": false,
+        "description": "`chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the\nmarkdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only).",
+        "properties": {
+          "overlap": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Overlap",
+            "type": "integer"
+          },
+          "size": {
+            "default": 400,
+            "exclusiveMinimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "source": {
+            "default": "markdown",
+            "enum": [
+              "markdown",
+              "markdown_fit"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "heading",
+            "enum": [
+              "heading",
+              "sentence",
+              "token"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          }
+        },
+        "title": "ChunkOptions",
         "type": "object"
       },
       "ClickAction": {
@@ -1089,6 +1204,16 @@
               }
             ]
           },
+          "chunking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exclude": {
             "items": {
               "type": "string"
@@ -1105,17 +1230,32 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true
+              "respect_robots": true,
+              "screenshot": "viewport"
             }
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "formats": {
             "items": {
               "enum": [
                 "markdown",
+                "markdown_fit",
+                "chunks",
                 "html",
                 "raw_html",
                 "links",
                 "metadata",
+                "screenshot",
+                "pdf",
                 "records"
               ],
               "type": "string"
@@ -1553,7 +1693,8 @@
             "enum": [
               "json_records",
               "csv_records",
-              "markdown"
+              "markdown",
+              "jsonl"
             ],
             "title": "Format",
             "type": "string"
@@ -1619,7 +1760,8 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true
+              "respect_robots": true,
+              "screenshot": "viewport"
             }
           },
           "limit": {
@@ -1975,6 +2117,15 @@
               }
             ],
             "title": "Robots Override Reason"
+          },
+          "screenshot": {
+            "default": "viewport",
+            "enum": [
+              "viewport",
+              "full_page"
+            ],
+            "title": "Screenshot",
+            "type": "string"
           },
           "wait_for": {
             "anyOf": [
@@ -2588,6 +2739,38 @@
         "title": "FieldsDraft",
         "type": "object"
       },
+      "FitOptions": {
+        "additionalProperties": false,
+        "description": "`markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it.",
+        "properties": {
+          "max_blocks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Blocks"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          }
+        },
+        "title": "FitOptions",
+        "type": "object"
+      },
       "Health": {
         "additionalProperties": false,
         "properties": {
@@ -3082,7 +3265,7 @@
       },
       "JsonValue": {},
       "JsonValuesItem": {
-        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts.",
+        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;\n`screenshot` and `pdf` with `fetch`, for a capture that kept the file.",
         "properties": {
           "fetch": {
             "$ref": "#/components/schemas/FetchSummary"
@@ -3112,6 +3295,9 @@
             ],
             "title": "Outcome"
           },
+          "pdf": {
+            "$ref": "#/components/schemas/Artifact"
+          },
           "records": {
             "items": {
               "additionalProperties": {
@@ -3121,6 +3307,9 @@
             },
             "title": "Records",
             "type": "array"
+          },
+          "screenshot": {
+            "$ref": "#/components/schemas/Artifact"
           },
           "url": {
             "title": "Url",
@@ -3557,6 +3746,11 @@
             "title": "Limit",
             "type": "integer"
           },
+          "llms_txt": {
+            "default": false,
+            "title": "Llms Txt",
+            "type": "boolean"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -3580,6 +3774,10 @@
       },
       "MapResult": {
         "properties": {
+          "llms_txt": {
+            "title": "Llms Txt",
+            "type": "string"
+          },
           "sources": {
             "$ref": "#/components/schemas/MapSources"
           },
@@ -4118,6 +4316,13 @@
             ],
             "title": "Capture Id"
           },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/Chunk"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
           "fetch": {
             "$ref": "#/components/schemas/FetchSummary"
           },
@@ -4170,6 +4375,10 @@
             "title": "Markdown",
             "type": "string"
           },
+          "markdown_fit": {
+            "title": "Markdown Fit",
+            "type": "string"
+          },
           "metadata": {
             "$ref": "#/components/schemas/PageMetadata"
           },
@@ -4195,9 +4404,15 @@
             ],
             "title": "Outcome"
           },
+          "pdf": {
+            "$ref": "#/components/schemas/Artifact"
+          },
           "raw_html": {
             "title": "Raw Html",
             "type": "string"
+          },
+          "screenshot": {
+            "$ref": "#/components/schemas/Artifact"
           },
           "status": {
             "enum": [
@@ -5429,6 +5644,16 @@
               }
             ]
           },
+          "chunking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {
@@ -5437,17 +5662,32 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true
+              "respect_robots": true,
+              "screenshot": "viewport"
             }
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "formats": {
             "items": {
               "enum": [
                 "markdown",
+                "markdown_fit",
+                "chunks",
                 "html",
                 "raw_html",
                 "links",
                 "metadata",
+                "screenshot",
+                "pdf",
                 "records"
               ],
               "type": "string"
@@ -5545,6 +5785,13 @@
             ],
             "title": "Capture Id"
           },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/Chunk"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
           "fetch": {
             "anyOf": [
               {
@@ -5598,6 +5845,10 @@
             "title": "Markdown",
             "type": "string"
           },
+          "markdown_fit": {
+            "title": "Markdown Fit",
+            "type": "string"
+          },
           "metadata": {
             "$ref": "#/components/schemas/PageMetadata"
           },
@@ -5613,6 +5864,9 @@
             "title": "Outcome",
             "type": "string"
           },
+          "pdf": {
+            "$ref": "#/components/schemas/Artifact"
+          },
           "raw_html": {
             "title": "Raw Html",
             "type": "string"
@@ -5626,6 +5880,9 @@
           },
           "schema": {
             "$ref": "#/components/schemas/SchemaDef"
+          },
+          "screenshot": {
+            "$ref": "#/components/schemas/Artifact"
           },
           "url": {
             "title": "Url",
@@ -5882,7 +6139,8 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true
+              "respect_robots": true,
+              "screenshot": "viewport"
             }
           },
           "formats": {
@@ -5892,10 +6150,14 @@
             "items": {
               "enum": [
                 "markdown",
+                "markdown_fit",
+                "chunks",
                 "html",
                 "raw_html",
                 "links",
                 "metadata",
+                "screenshot",
+                "pdf",
                 "records"
               ],
               "type": "string"
@@ -6717,6 +6979,121 @@
         "summary": "Batch Scrape",
         "tags": [
           "batch"
+        ]
+      }
+    },
+    "/v1/captures/{capture_id}/artifacts/{name}": {
+      "get": {
+        "description": "The screenshot (`screenshot.png`) or PDF (`page.pdf`) the browser made of the capture's page, as the scrape,\nbatch or crawl that asked for it named it in its answer. 404: no such capture, its files expired with it, or it has\nno such file.",
+        "operationId": "get_artifact_v1_captures__capture_id__artifacts__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Capture Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file: a PNG for `screenshot.png`, a PDF for `page.pdf`."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Artifact",
+        "tags": [
+          "captures"
         ]
       }
     },
@@ -8994,6 +9371,234 @@
         ]
       }
     },
+    "/v1/jobs/{job_id}/llms-full.txt": {
+      "get": {
+        "description": "The job's pages as an `llms-full.txt`: the opening of `llms.txt`, then each page's Markdown under its title, up\nto 1000 pages. 409: no page.",
+        "operationId": "job_llms_full_txt_v1_jobs__job_id__llms_full_txt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Job Llms Full Txt",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}/llms.txt": {
+      "get": {
+        "description": "The job's pages as an `llms.txt` (llmstxt.org): the site's name and summary from its first page, then links to\nthe pages it reached, each with its title and description, in sections by the first segment of their paths. Made\nfrom the captures, for any job that reached pages (a crawl, batch or extract), up to 5000 pages. 409: no page.",
+        "operationId": "job_llms_txt_v1_jobs__job_id__llms_txt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Job Llms Txt",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/v1/jobs/{job_id}/request": {
       "get": {
         "description": "The request the job was submitted with, as the server validated and stored it (defaults filled in).",
@@ -9097,7 +9702,7 @@
     },
     "/v1/jobs/{job_id}/results": {
       "get": {
-        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached, and its fetch (the\nattempts made, as a scrape answers them). Any job\nanswers `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the\nschema's fields in name order, each its published value or null); `include=metadata`, accepted with `json_values`\nonly, adds a reached page's metadata while its capture is kept, and `include=fetch` its fetch. `csv_safe=true`,\naccepted with `csv_records` only, prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage\nreturn, so a spreadsheet shows it as text (OWASP CSV Injection); without it the export is the published values\nunchanged. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values`\nof a job without a schema.",
+        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records`, `markdown` or `jsonl` (JSON Lines) text in the schema's columns, or all of them as one file,\n`xlsx` (Excel) or `parquet` (Apache Parquet, 503 `format_unavailable` where pyarrow is not installed), which take no\n`cursor` or `limit`. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached, and its fetch (the\nattempts made, as a scrape answers them). Any job\nanswers `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the\nschema's fields in name order, each its published value or null); `include=metadata`, accepted with `json_values`\nonly, adds a reached page's metadata while its capture is kept, and `include=fetch` its fetch. `csv_safe=true`,\naccepted with `csv_records` only, prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage\nreturn, so a spreadsheet shows it as text (OWASP CSV Injection); without it the export is the published values\nunchanged. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values`\nof a job without a schema.",
         "operationId": "job_results_v1_jobs__job_id__results_get",
         "parameters": [
           {
@@ -9150,7 +9755,10 @@
                 "json_values",
                 "json_records",
                 "csv_records",
-                "markdown"
+                "markdown",
+                "jsonl",
+                "xlsx",
+                "parquet"
               ],
               "title": "Format",
               "type": "string"
@@ -9282,6 +9890,21 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "security": [

@@ -1,9 +1,10 @@
 import { AdvancedRows } from "../AdvancedRows";
-import type { PageKind, PagingHint } from "../../../api/scrape";
+import type { PageKind, PagingHint, ScrapeFormat } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
 import {
   FetchMethodRow,
   FieldsRow,
+  FormatRows,
   LlmCallsRow,
   MaxRowsRow,
   MetadataRow,
@@ -15,11 +16,13 @@ import { browserActionsApply, DEFAULT_OPTIONS, type ScrapeOptions as Options } f
  * fields (§4.10) and a listing's browser actions (owner #52). */
 export function ScrapeOptions({
   options,
+  formats,
   hasSchema,
   schemaPageKind,
   onChange,
 }: Readonly<{
   options: Options;
+  formats: readonly ScrapeFormat[];
   hasSchema: boolean;
   schemaPageKind: PageKind | null;
   onChange: (options: Options) => void;
@@ -86,6 +89,7 @@ export function ScrapeOptions({
         }}
       />
       <FieldsRow options={options} onChange={onChange} />
+      <FormatRows options={options} formats={formats} onChange={onChange} />
       <BrowserActionsRows
         options={options}
         applies={browserActionsApply(options, hasSchema ? schemaPageKind : options.pageKind)}

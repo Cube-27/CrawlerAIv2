@@ -1,7 +1,7 @@
 """`POST /v1/captures/{capture_id}/replay` (SPEC-07 §4.6): a stored capture through the current engine, for
 debugging; nothing is stored."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.database import database
@@ -12,6 +12,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import captures
 from crawlerai.services.captures import CaptureNotFound, NotReplayable
 from crawlerai.services.fetching import Fetching
+from crawlerai.storage.artifacts import ARTIFACT_TYPES
 
 router = APIRouter(
     prefix="/v1/captures",
@@ -36,3 +37,30 @@ async def replay_capture(capture_id: CaptureId, body: ReplayRequest, request: Re
     except NotReplayable as e:
         raise conflict(str(e)) from e
     return ReplayResult(records=made)
+
+
+@router.get(
+    "/{capture_id}/artifacts/{name}",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "The file: a PNG for `screenshot.png`, a PDF for `page.pdf`.",
+            "content": {
+                media_type: {"schema": {"type": "string", "format": "binary"}} for media_type in ARTIFACT_TYPES.values()
+            },
+        },
+        404: PROBLEM_RESPONSE,
+    },
+)
+async def get_artifact(capture_id: CaptureId, name: str, request: Request) -> Response:
+    """The screenshot (`screenshot.png`) or PDF (`page.pdf`) the browser made of the capture's page, as the scrape,
+    batch or crawl that asked for it named it in its answer. 404: no such capture, its files expired with it, or it has
+    no such file."""
+    fetching: Fetching = request.app.state.fetching
+    try:
+        data = await captures.artifact(database(request), fetching.store, capture_id, name)
+    except CaptureNotFound as e:
+        raise not_found(str(e)) from e
+    # A file of a captured page is served as itself and never sniffed into something else; it is private to the key.
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+    return Response(data, media_type=ARTIFACT_TYPES[name], headers=headers)

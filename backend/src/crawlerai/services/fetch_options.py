@@ -11,7 +11,7 @@ the one that stores an asynchronous job's request for its workers (`KEEP_SECRETS
 """
 
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from typing import Annotated, Final, Literal, Self
 
 from pydantic import (
@@ -32,6 +32,7 @@ from crawlerai.core.errors import Refusal
 from crawlerai.db.models import PageKind
 
 __all__ = [
+    "CAPTURE_FORMATS",
     "KEEP_SECRETS",
     "CacheMode",
     "FetchOptions",
@@ -45,6 +46,8 @@ __all__ = [
 KEEP_SECRETS: Final = "keep_secrets"
 # D-1435: reuse a stored capture as `max_age` allows (`default`), always fetch (`bypass`), or only serve a stored one.
 CacheMode = Literal["default", "bypass", "only"]
+# The formats made in the browser from the rendered page: a PNG of it and a PDF print (`FetchPolicy.screenshot`, `pdf`).
+CAPTURE_FORMATS: Final = frozenset({"screenshot", "pdf"})
 _MAX_PAIRS: Final = 50
 # RFC 9110 §5.1, §5.6.2: a field name is a token. §5.5: a field value holds no CR, LF or NUL.
 _TOKEN: Final = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
@@ -101,6 +104,7 @@ class FetchOptions(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     method_hint: Literal["auto", "http", "browser"] = "auto"
+    screenshot: Literal["viewport", "full_page"] = "viewport"  # the area a `screenshot` format shows
     respect_robots: bool = True
     robots_override_reason: str | None = None
     proxy_pool: str | None = None
@@ -174,11 +178,21 @@ def check_proxy_pool(options: FetchOptions, pools: Collection[str]) -> None:
 
 
 def fetch_policy(
-    options: FetchOptions, locale: str | None, site_pool: str | None, *, page_kind: PageKind | None = None
+    options: FetchOptions,
+    locale: str | None,
+    site_pool: str | None,
+    *,
+    page_kind: PageKind | None = None,
+    formats: Iterable[str] = (),
 ) -> FetchPolicy:
+    """The fetch policy of a page task. A screenshot or PDF among its `formats` is made in the browser, which then
+    fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`)."""
+    wanted = set(formats)
     return FetchPolicy(
         page_kind=page_kind,
-        method_hint="browser" if options.in_browser else options.method_hint,
+        method_hint="browser" if options.in_browser or CAPTURE_FORMATS & wanted else options.method_hint,
+        screenshot=options.screenshot if "screenshot" in wanted else None,
+        pdf="pdf" in wanted,
         proxy_pool=options.proxy_pool or site_pool,
         respect_robots=options.respect_robots,
         robots_override_reason=options.robots_override_reason,

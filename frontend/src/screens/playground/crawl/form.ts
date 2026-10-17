@@ -1,20 +1,26 @@
 import type { CrawlRequest, CrawlStrategy } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
-import type { MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
+import type { MethodHint, PageKind } from "../../../api/scrape";
 import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
+  DEFAULT_FORMAT_SETTINGS,
+  formatMembers,
+  storedFormatSettings,
+  type FormatSettings,
+} from "../formatOptions";
+import {
   asksForNothing,
   fieldsPageKindErrors,
-  hasSchema,
+  jobFormats,
   NO_ERRORS,
   NO_FORMAT,
   optionalNumber,
-  requestFormats,
   requestSchema,
   SCHEMA_AND_FIELDS,
   schemaPageKindErrors,
+  screenshotArea,
   webhook,
 } from "../pageRequest";
 import {
@@ -42,7 +48,7 @@ export interface RuleRow {
 /** Crawl's options panel (SPEC-14 §4.2): each is a `CrawlRequest` member, except `metadataInJson`, a view option.
  * `fields` are the names `schema.fields` drafts a schema from (§4.10). An empty limit (NaN) is left out, so the
  * server's default applies. */
-export interface CrawlOptions {
+export interface CrawlOptions extends FormatSettings {
   include: readonly string[];
   exclude: readonly string[];
   rules: readonly RuleRow[];
@@ -82,6 +88,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   maxRows: Number.NaN,
   advanced: DEFAULT_ADVANCED,
   webhookUrl: "",
+  ...DEFAULT_FORMAT_SETTINGS,
 };
 
 export interface CrawlFormState {
@@ -135,21 +142,16 @@ export function crawlErrors(form: CrawlFormState): Readonly<Record<string, strin
   );
 }
 
-/** The crawl's formats: `records` alone with a schema or field names (SPEC-10 §4.5), else the page formats and
- * `metadata`. Metadata in JSON still asks the results for each page's metadata, which they read from its capture. */
-function crawlFormats(form: CrawlFormState): ScrapeFormat[] {
-  return hasSchema(form) ? ["records"] : requestFormats(form);
-}
-
 /** The crawl request for `form`, or null when it can't be sent (`crawlErrors`). With a schema, every rule is for its
  * page kind. */
 export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
   if (crawlErrors(form) !== NO_ERRORS) return null;
   const { options } = form;
   const schemaKind = form.schemaPageKind;
+  const formats = jobFormats(form);
   return {
     url: form.url,
-    formats: crawlFormats(form),
+    formats,
     schema: requestSchema(form),
     page_kind_rules: setRules(options.rules).map(({ pattern, pageKind }) => ({
       pattern: pattern.trim(),
@@ -157,7 +159,13 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     })),
     include: [...options.include],
     exclude: [...options.exclude],
-    fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
+    fetch: fetchMember(
+      options.methodHint,
+      options.maxRows,
+      options.advanced,
+      screenshotArea(formats, options),
+    ),
+    ...formatMembers(formats, options),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),
     ...crawlStrategy(options),
@@ -222,6 +230,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),
       webhookUrl: webhookUrl(request),
+      ...storedFormatSettings(request),
     },
   };
 }

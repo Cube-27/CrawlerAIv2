@@ -5,14 +5,20 @@ import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { badUrlLine } from "./urls";
 import {
-  hasSchema,
+  DEFAULT_FORMAT_SETTINGS,
+  formatMembers,
+  storedFormatSettings,
+  type FormatSettings,
+} from "../formatOptions";
+import {
+  jobFormats,
   lines,
   llmBudget,
   NO_ERRORS,
   pageKindErrors,
-  requestFormats,
   requestPageKind,
   requestSchema,
+  screenshotArea,
   webhook,
 } from "../pageRequest";
 import {
@@ -31,7 +37,7 @@ import {
 /** Batch's options panel (SPEC-14 §4.2): each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format and the results' `include=metadata`. `fields` are the names
  * `schema.fields` drafts a schema from (§4.10). */
-export interface BatchOptions {
+export interface BatchOptions extends FormatSettings {
   pageKind: PageKind | null;
   metadataInJson: boolean;
   fields: readonly string[];
@@ -56,6 +62,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   maxRows: Number.NaN,
   advanced: DEFAULT_ADVANCED,
   llmCalls: Number.NaN,
+  ...DEFAULT_FORMAT_SETTINGS,
 };
 
 export interface BatchFormState {
@@ -92,12 +99,19 @@ export function batchErrors(form: BatchFormState): Readonly<Record<string, strin
  * outputs (SPEC-10 §4.5), so with a schema or field names it asks for `records` alone, as a crawl does (D-0980). */
 export function buildBatch(form: BatchFormState): BatchRequest | null {
   if (batchErrors(form) !== NO_ERRORS) return null;
+  const formats = jobFormats(form);
   return {
     urls: lines(form.urls),
-    formats: hasSchema(form) ? ["records"] : requestFormats(form),
+    formats,
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: fetchMember(form.options.methodHint, form.options.maxRows, form.options.advanced),
+    fetch: fetchMember(
+      form.options.methodHint,
+      form.options.maxRows,
+      form.options.advanced,
+      screenshotArea(formats, form.options),
+    ),
+    ...formatMembers(formats, form.options),
     ...llmBudget(form.options.llmCalls),
     ...webhook(form.options.webhookUrl),
   };
@@ -122,6 +136,7 @@ export function batchForm(request: StoredRequest): BatchFormState {
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),
       llmCalls: llmCalls(request),
+      ...storedFormatSettings(request),
     },
   };
 }

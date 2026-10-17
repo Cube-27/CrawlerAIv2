@@ -13,7 +13,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Literal, NamedTuple, get_args
+from typing import Any, Final, Literal, NamedTuple, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from sqlalchemy import RowMapping, func, select, update
@@ -23,6 +23,7 @@ from crawlerai.acquire.types import AttemptRecord
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.exporters.records import RecordFormat, clean_record, export_records
 from crawlerai.config_ir.progressive import StateKey, learning_failed
+from crawlerai.content.chunks import Chunk
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
@@ -54,16 +55,20 @@ from crawlerai.services.llm_costs import costs_of_jobs
 from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
 from crawlerai.services.scrape_steps import (
     FetchSummary,
+    FormatOptions,
     Formats,
     PageFormat,
     fetch_summary,
     format_member,
     page_formats,
 )
+from crawlerai.storage.artifacts import PDF, SCREENSHOT, Artifact, artifact_of, stored_names
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
-ResultFormat = Literal["json", "json_values", RecordFormat]
+# `xlsx` and `parquet` are files of the whole job (`services.exports`), the others pages of text or JSON.
+FILE_FORMATS: Final = ("xlsx", "parquet")
+ResultFormat = Literal["json", "json_values", RecordFormat, "xlsx", "parquet"]
 # The outcomes of a page that was reached and extracted, so its capture has metadata to show (`json_values`).
 _EXTRACTED: frozenset[TaskOutcome | None] = frozenset({"extracted", "partial"})
 
@@ -178,10 +183,14 @@ class PageOutput(BaseModel):
     final_url: str | None
     fetched_at: datetime | None
     markdown: str | None = format_member()
+    markdown_fit: str | None = format_member()
+    chunks: list[Chunk] | None = format_member()
     html: str | None = format_member()
     raw_html: str | None = format_member()
     links: list[str] | None = format_member()
     metadata: PageMetadata | None = format_member()
+    screenshot: Artifact | None = format_member()
+    pdf: Artifact | None = format_member()
     fetch: FetchSummary | None = format_member()  # a member once the task has a capture that kept its attempts
 
 
@@ -199,13 +208,16 @@ class JsonValuesItem(BaseModel):
     """A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
-    partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts."""
+    partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;
+    `screenshot` and `pdf` with `fetch`, for a capture that kept the file."""
 
     url: str
     outcome: TaskOutcome | None
     records: list[dict[str, JsonValue]]
     metadata: PageMetadata | None = format_member()
     fetch: FetchSummary | None = format_member()
+    screenshot: Artifact | None = format_member()
+    pdf: Artifact | None = format_member()
 
 
 class JsonValuesPage(BaseModel):
@@ -219,11 +231,14 @@ class JsonValuesPage(BaseModel):
     next_cursor: UrlTaskId | None
 
 
+_DEFAULT_LIMIT: Final = 50
+
+
 class ResultsQuery(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     cursor: uuid.UUID | None = None  # a record's id; a task's for page outputs and `json_values`
-    limit: int = Field(default=50, ge=1, le=MAX_PAGE)
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=MAX_PAGE)
     format: ResultFormat = "json"
     include: list[Literal["metadata", "fetch"]] = Field(default_factory=list)  # `json_values` only
     csv_safe: bool = False  # `csv_records` only: quote formula-like cells for spreadsheets (D-0879)
@@ -234,6 +249,8 @@ class ResultsQuery(BaseModel):
             raise ValueError("`include` is accepted only with format=json_values")
         if self.csv_safe and self.format != "csv_records":
             raise ValueError("`csv_safe` is accepted only with format=csv_records")
+        if self.format in FILE_FORMATS and (self.cursor is not None or self.limit != _DEFAULT_LIMIT):
+            raise ValueError(f"`cursor` and `limit` are not accepted with format={self.format}: it is one file")
         return self
 
 
@@ -356,6 +373,8 @@ async def job_results(
     answers `json` with its page outputs, made from the captures in `store`, and has nothing to export. Any job
     answers `json_values` with its tasks after `query.cursor`, oldest first. `adapters` names the platform adapter in a
     fetch summary; without it none is named."""
+    if query.format == "xlsx" or query.format == "parquet":
+        raise ValueError(f"format {query.format} is one file: read it with `services.exports.export_file`")
     job = (await conn.execute(select(Job.schema_id, Job.request).where(Job.id == job_id))).one_or_none()
     if job is None:
         raise JobNotFound(f"no job {job_id}")
@@ -364,13 +383,15 @@ async def job_results(
     if job.schema_id is None:
         if query.format != "json":
             raise NotExportable(f"job {job_id} has no schema, so it has no records to export")
-        return await _page_outputs(conn, store, job_id, job.request.get("formats", []), query, adapters)
+        return await _page_outputs(conn, store, job_id, job.request, query, adapters)
     cursor = None if query.cursor is None else RecordId(query.cursor)
     page = await list_records(conn, RecordFilter(job_id=job_id, cursor=cursor, limit=query.limit))
     if query.format == "json":
         return page
     schema = await registry.get_by_id(conn, job.schema_id)
-    content = export_records(query.format, schema, [_content(record) for record in page.items], csv_safe=query.csv_safe)
+    content = export_records(
+        query.format, schema, [record_content(record) for record in page.items], csv_safe=query.csv_safe
+    )
     return ExportPage(format=query.format, content=content, next_cursor=page.next_cursor)
 
 
@@ -423,12 +444,15 @@ async def _page_outputs(
     conn: AsyncConnection,
     store: ObjectStore,
     job_id: JobId,
-    formats: list[PageFormat],
+    request: dict[str, Any],
     query: ResultsQuery,
     adapters: Adapters | None,
 ) -> PageOutputPage:
+    """The page of the job's tasks with the formats and options its stored `request` asked for."""
+    formats: list[PageFormat] = request.get("formats", [])
+    options = FormatOptions.model_validate({name: request.get(name) for name in ("fit", "chunking")})
     rows, next_cursor = await _task_rows(conn, job_id, query)
-    items = [await _page_output(store, row, formats, adapters) for row in rows]
+    items = [await _page_output(store, row, formats, options, adapters) for row in rows]
     return PageOutputPage(items=items, next_cursor=next_cursor)
 
 
@@ -450,7 +474,7 @@ def _fetch_of(row: _TaskRow, adapters: Adapters | None) -> FetchSummary | None:
 
 
 async def _page_output(
-    store: ObjectStore, row: _TaskRow, formats: list[PageFormat], adapters: Adapters | None
+    store: ObjectStore, row: _TaskRow, formats: list[PageFormat], options: FormatOptions, adapters: Adapters | None
 ) -> PageOutput:
     output = PageOutput(
         task_id=row.id,
@@ -467,7 +491,7 @@ async def _page_output(
     # for its links, and is never extracted (ARCHITECTURE §13.2).
     if row.outcome != "extracted" or row.object_key is None or row.final_url is None:
         return output
-    made = await asyncio.to_thread(_formats_of, store, row.object_key, formats)
+    made = await asyncio.to_thread(_formats_of, store, row.object_key, formats, options)
     return output if made is None else output.model_copy(update=made)
 
 
@@ -519,6 +543,15 @@ async def _json_values_item(
         records=records,
         fetch=_fetch_of(row, adapters) if "fetch" in query.include else None,
     )
+    if "fetch" in query.include and row.object_key is not None and row.capture_id is not None:
+        kept = await asyncio.to_thread(stored_names, store, row.object_key)
+        item = item.model_copy(
+            update={
+                member: artifact_of(row.capture_id, name)
+                for member, name in (("screenshot", SCREENSHOT), ("pdf", PDF))
+                if name in kept
+            }
+        )
     if (
         "metadata" not in query.include
         or row.outcome not in _EXTRACTED
@@ -530,16 +563,20 @@ async def _json_values_item(
     return item if made is None else item.model_copy(update=made)
 
 
-def _formats_of(store: ObjectStore, object_key: str, formats: list[PageFormat]) -> Formats | None:
-    """The formats of the capture at `object_key`, from one parse of it (INV-26); None once its bundle is gone."""
+def _formats_of(
+    store: ObjectStore, object_key: str, formats: list[PageFormat], options: FormatOptions | None = None
+) -> Formats | None:
+    """The formats of the capture at `object_key`, from one parse of it (INV-26) and the files stored beside it; None
+    once its bundle is gone."""
     try:
         bundle = decode(store.get(object_key))
     except ObjectNotFound:
         return None
-    return page_formats(ParsedPage.of(bundle), bundle.manifest, formats)
+    return page_formats(ParsedPage.of(bundle), bundle.manifest, formats, options, stored_names(store, object_key))
 
 
-def _content(record: StoredRecord) -> RecordContent:
+def record_content(record: StoredRecord) -> RecordContent:
+    """A stored record as the exporters take it: its published values, and every field's status."""
     meta = {name: FieldMeta(**field.model_dump(exclude={"value"})) for name, field in record.fields.items()}
     data = {name: field.value for name, field in record.fields.items() if field.status == "published"}
     return RecordContent(data=data, field_meta=meta, complete=record.complete)

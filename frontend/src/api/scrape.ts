@@ -3,7 +3,17 @@ import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
-export type ScrapeFormat = "markdown" | "html" | "raw_html" | "links" | "metadata" | "records";
+export type ScrapeFormat =
+  | "markdown"
+  | "markdown_fit"
+  | "chunks"
+  | "html"
+  | "raw_html"
+  | "links"
+  | "metadata"
+  | "screenshot"
+  | "pdf"
+  | "records";
 export type PageKind = "detail" | "listing";
 export type MethodHint = "auto" | "http" | "browser";
 /** The paging mechanisms a listing's browser actions may be told to use (owner #52). */
@@ -31,7 +41,19 @@ export interface FetchMember {
   wait_for?: number | string;
   actions?: PageAction[];
   cache?: CacheMode;
+  screenshot?: ScreenshotArea;
 }
+/** The area a `screenshot` format shows: what the browser's window shows, or the whole page. */
+export type ScreenshotArea = Schemas["FetchOptions"]["screenshot"];
+/** `markdown_fit`'s options: a query that keeps the blocks relevant to it, and at most this many blocks. */
+export type FitOptions = Schemas["FitOptions"];
+/** `chunks`' options: how the markdown is split, the size of a chunk and the overlap, in words. */
+export type ChunkOptions = Schemas["ChunkOptions"];
+export type ChunkStrategy = ChunkOptions["strategy"];
+export type ChunkSource = ChunkOptions["source"];
+export type Chunk = Schemas["Chunk"];
+/** A file the browser made of the page, served by the API at its `url` (a path on the API's own origin). */
+export type Artifact = Schemas["Artifact"];
 
 /** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names
  * (SPEC-14 §4.10). */
@@ -56,6 +78,9 @@ export interface ScrapeRequest {
   budget?: { llm_calls: number };
   /** A listing's browser actions (owner #52): a soft row target and an optional mechanism. */
   browser_actions?: { records?: number; hint?: PagingHint };
+  /** `markdown_fit`'s and `chunks`' options: sent only with their format, with the members that are set. */
+  fit?: FitOptions;
+  chunking?: Partial<ChunkOptions>;
 }
 
 /** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by` (SPEC-07 §4.4). */

@@ -160,6 +160,7 @@ function PageDrawer({
       url={item.url}
       value={outputs ? (output ?? item) : pageJson(item.records, item.metadata)}
       fetch={(output ?? fetched?.items[offset])?.fetch}
+      artifacts={output ?? fetched?.items[offset]}
       position={row.id}
       onClose={onClose}
     />

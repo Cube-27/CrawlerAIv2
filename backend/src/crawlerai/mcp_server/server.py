@@ -23,9 +23,9 @@ from pydantic import ValidationError
 from crawlerai.config_ir.exporters.configs import ConfigFormat
 from crawlerai.core.errors import UNEXPECTED, Refusal
 from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, SchemaStatus
-from crawlerai.mcp_server.output import InvalidCursor, MarkdownCursor, markdown_page, tool_result
+from crawlerai.mcp_server.output import MAX_IMAGE_BYTES, InvalidCursor, MarkdownCursor, markdown_page, tool_result
 from crawlerai.schemas.types import Name
-from crawlerai.services import captures, configs, crawl, extract, jobs, schemas
+from crawlerai.services import captures, configs, crawl, exports, extract, jobs, schemas
 from crawlerai.services import map as map_service
 from crawlerai.services import scrape as scrape_service
 from crawlerai.services import search as search_service
@@ -39,6 +39,7 @@ from crawlerai.services.runtime import Runtime
 from crawlerai.services.schemas import NewSchema
 from crawlerai.services.scrape import ScrapeRequest
 from crawlerai.services.search import SearchRequest
+from crawlerai.storage.artifacts import SCREENSHOT
 
 log = logging.getLogger(__name__)
 
@@ -171,6 +172,16 @@ class _Tools:
         structured = {"job": summary.model_dump(mode="json"), "results": results.model_dump(mode="json")}
         return tool_result(structured, results.items if isinstance(results, RecordPage) else None)
 
+    async def llms_txt(self, ctx: AnyContext, job_id: JobId) -> CallToolResult:
+        """The `llms.txt` of the pages a job reached."""
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.connect() as conn:
+            try:
+                text = await exports.job_llms_txt(conn, runtime.fetching.store, job_id, full=False)
+            except (jobs.JobNotFound, jobs.NotExportable) as e:
+                raise ToolError(str(e)) from e
+        return tool_result({"job_id": str(job_id), "llms_txt": text})
+
     async def reject_config(self, ctx: AnyContext, config_id: ExtractionConfigId) -> CallToolResult:
         runtime = (await self._bind(ctx)).runtime
         async with runtime.database.begin() as conn:
@@ -191,7 +202,16 @@ async def _scrape(runtime: Runtime, request: ScrapeRequest) -> CallToolResult:
     structured = result.model_dump(mode="json", exclude={"markdown"})
     if result.markdown is not None and result.capture_id is not None:
         structured["markdown"], structured["next_cursor"] = markdown_page(result.capture_id, result.markdown, 0)
-    return tool_result(structured, result.records)
+    return tool_result(structured, result.records, await _screenshot(runtime, result))
+
+
+async def _screenshot(runtime: Runtime, result: scrape_service.ScrapeResult) -> bytes | None:
+    """The scrape's screenshot, to send as an image block; None without one, or past `MAX_IMAGE_BYTES` (its URL is in
+    the answer either way)."""
+    if result.screenshot is None or result.capture_id is None:
+        return None
+    image = await captures.artifact(runtime.database, runtime.fetching.store, result.capture_id, SCREENSHOT)
+    return image if len(image) <= MAX_IMAGE_BYTES else None
 
 
 async def _markdown_page(runtime: Runtime, at: MarkdownCursor) -> CallToolResult:
@@ -200,11 +220,14 @@ async def _markdown_page(runtime: Runtime, at: MarkdownCursor) -> CallToolResult
     return tool_result({"capture_id": str(at.capture_id), "markdown": text, "next_cursor": next_cursor})
 
 
-_SCRAPE = f"""Fetch one URL and return the requested `formats` (markdown, html, raw_html, links, metadata, records), as
-`POST /v1/scrape` does. `records` needs a `schema` (by id, inline, or a `prompt` to draft one) and a `page_kind`.
-Markdown comes in pages of at most 20,000 characters: pass a page's `next_cursor` as `cursor`, without `request`, for
-the next. Each record field has a `status` and `confidence`; a field whose status is not `published` has no value and
-reads "unknown" in the summary. {UNTRUSTED}"""
+_SCRAPE = f"""Fetch one URL and return the requested `formats` (markdown, markdown_fit, chunks, html, raw_html, links,
+metadata, screenshot, pdf, records), as `POST /v1/scrape` does. `records` needs a `schema` (by id, inline, or a `prompt`
+to draft one) and a `page_kind`. Markdown comes in pages of at most 20,000 characters: pass a page's `next_cursor` as
+`cursor`, without `request`, for the next. `markdown_fit` (the page's content pruned of boilerplate; `fit.query` keeps
+only the blocks relevant to a query) and `chunks` (`chunking`: strategy, size, overlap) come whole. `screenshot`
+and `pdf` are made in the browser and named by a URL; a screenshot also comes back as an image. Each record field has a
+`status` and `confidence`; a field whose status is not `published` has no value and reads "unknown" in the summary.
+{UNTRUSTED}"""
 _MAP = f"""Discover a site's URLs from its sitemaps and the start page's links, as `POST /v1/map` does: canonical, on
 the start URL's host or the `include` globs, less the `exclude` globs. {UNTRUSTED}"""
 _CRAWL_START = """Queue a crawl from `url`, as `POST /v1/crawl` does, and return its `job_id`. A page a
@@ -220,6 +243,9 @@ outputs for a job without a schema. Pass the `next_cursor` of `results` as `curs
 _EXTRACT = """Queue a job that extracts a record of `page_kind` from each of `urls`, as `POST /v1/extract` does; a
 URL with a `*` is a glob, expanded through a map of its host. Returns the `job_id` and the schema, a prompt's draft
 included. Follow it with `extract_status`."""
+_LLMS_TXT = f"""The `llms.txt` (llmstxt.org) of the pages a crawl, batch or extract job reached: the site's name and
+summary, then links to its pages with their titles and descriptions. The full text of the pages is `GET
+/v1/jobs/{{id}}/llms-full.txt` over REST. {UNTRUSTED}"""
 _TOOLS: Final = {
     "scrape": ("scrape", _SCRAPE, _FETCHES),
     "map": ("map", _MAP, _FETCHES),
@@ -228,6 +254,7 @@ _TOOLS: Final = {
     "crawl_status": ("status", _STATUS, _READ_ONLY),
     "extract": ("extract", _EXTRACT, _FETCHES),
     "extract_status": ("status", _STATUS, _READ_ONLY),
+    "llms_txt": ("llms_txt", _LLMS_TXT, _READ_ONLY),
     "list_schemas": (
         "list_schemas",
         "Every schema, by name; only `name` and those in `status` when given.",

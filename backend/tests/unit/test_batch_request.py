@@ -77,3 +77,24 @@ def test_has_no_browser_actions() -> None:
     body = {"urls": [URL], "formats": ["markdown"], "page_kind": "listing", "browser_actions": {}}
 
     assert _errors(body) == [(("browser_actions",), "Extra inputs are not permitted")]
+
+
+def test_a_screenshot_cannot_be_asked_over_http() -> None:
+    body = {"urls": [URL], "formats": ["pdf"], "fetch": {"method_hint": "http"}}
+
+    assert _errors(body) == [
+        ((), "Value error, screenshot and pdf are made in the browser, so method_hint cannot be http")
+    ]
+
+
+def test_fit_and_chunking_need_their_formats_and_are_stored_with_the_request() -> None:
+    assert _errors({"urls": [URL], "formats": ["markdown"], "fit": {"query": "x"}}) == [
+        ((), "Value error, fit is the option of the markdown_fit format")
+    ]
+    request = BatchScrapeRequest.model_validate(
+        {"urls": [URL], "formats": ["markdown_fit", "chunks"], "fit": {"query": "x"}, "chunking": {"size": 50}}
+    )
+
+    stored = request.model_dump(mode="json", by_alias=True)
+    assert (stored["fit"], stored["chunking"]["size"]) == ({"query": "x", "max_blocks": None}, 50)
+    assert BatchScrapeRequest.model_validate(stored) == request

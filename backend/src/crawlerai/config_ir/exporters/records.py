@@ -1,7 +1,8 @@
-"""Record exporters (SPEC-08 §4.11, ARCHITECTURE §12.2): a page of records as `json_records`, `csv_records` or
-`markdown`, for `GET /v1/jobs/{id}/results?format=` (SPEC-10 wires the endpoint).
+"""Record exporters (SPEC-08 §4.11, ARCHITECTURE §12.2): a page of records as `json_records`, `csv_records`, `markdown`
+or `jsonl` (JSON Lines: one row as a JSON object per line), for `GET /v1/jobs/{id}/results?format=` (SPEC-10 wires the
+endpoint). The binary formats, `xlsx` and `parquet`, read the same table (`files`).
 
-The three formats share one table: a column per schema field, holding the published value or nothing, then a
+The formats share one table (`table`): a column per schema field, holding the published value or nothing, then a
 `_status_<field>` column per field. Columns are in field-name order, so they depend on the schema alone and not on
 the order its fields were declared or stored in (JSONB does not keep key order). Schema names start with a
 lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. Values are serialized as
@@ -26,7 +27,7 @@ from pydantic import JsonValue
 from crawlerai.resolve.records import RecordContent
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 
-RecordFormat = Literal["json_records", "csv_records", "markdown"]
+RecordFormat = Literal["json_records", "csv_records", "markdown", "jsonl"]
 
 _STATUS_PREFIX = "_status_"
 # CommonMark 0.31 §2.4: any ASCII punctuation character may be backslash-escaped, and then renders literally.
@@ -45,14 +46,23 @@ def export_records(
 ) -> str:
     """`records`, all of `schema`, in `fmt`. A record whose fields are not the schema's is refused (`ValueError`).
     `csv_safe` (`csv_records` only, D-0879): a cell a spreadsheet would read as a formula starts with `'`."""
-    fields = sorted(schema.fields)
-    rows = [_row(fields, record) for record in records]
-    columns = [*fields, *(_STATUS_PREFIX + name for name in fields)]
+    columns, rows = table(schema, records)
     if fmt == "json_records":
         return _json(rows)
+    if fmt == "jsonl":
+        return "".join(_json(row) + "\n" for row in rows)
     if fmt == "csv_records":
         return _csv(columns, rows, safe=csv_safe)
     return _markdown(columns, rows)
+
+
+def table(schema: SchemaDocument, records: Sequence[RecordContent]) -> tuple[list[str], list[dict[str, JsonValue]]]:
+    """The columns and rows every export shares: a column per field of `schema` in name order, then a status column
+    each; one row per record, a column's value being the published value or None. A record whose fields are not the
+    schema's is refused (`ValueError`)."""
+    fields = sorted(schema.fields)
+    columns = [*fields, *(_STATUS_PREFIX + name for name in fields)]
+    return columns, [_row(fields, record) for record in records]
 
 
 def clean_record(schema: SchemaDocument, data: Mapping[str, JsonValue]) -> _Row:

@@ -33,16 +33,25 @@ export type MapResult = Schemas["MapResult"];
 /** The requests as the forms build them. The generated types mark every member with a default as required
  * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
  * it. */
-export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema"> & {
+export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema" | "chunking"> & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
+  chunking?: Partial<Schemas["ChunkOptions"]>;
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
-  "fetch" | "schema" | "limit" | "max_depth" | "strategy" | "allow_subdomains" | "allow_external"
+  | "fetch"
+  | "schema"
+  | "limit"
+  | "max_depth"
+  | "chunking"
+  | "strategy"
+  | "allow_subdomains"
+  | "allow_external"
 > & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
+  chunking?: Partial<Schemas["ChunkOptions"]>;
   limit?: number;
   max_depth?: number;
   strategy?: CrawlStrategy;
@@ -259,6 +268,41 @@ export async function exportJobPage(
   if (!("content" in page))
     throw new Error(`GET /v1/jobs/{id}/results answered format=${format} with JSON`);
   return { kind: "done", value: page };
+}
+
+/** The files of a job that one request makes whole: the workbook and the Parquet file, and the `llms.txt` pair. */
+export type JobFile = "xlsx" | "parquet" | "llms.txt" | "llms-full.txt";
+
+/** A job's one-file export or `llms.txt`, as the bytes the server made. Read through the same-origin client, which the
+ * UI's server gives the API key. */
+export async function exportJobFile(
+  client: ApiClient,
+  id: string,
+  file: JobFile,
+): Promise<ApiResult<Blob>> {
+  const path = { job_id: id };
+  const what = `Exporting the job as ${file}`;
+  if (file === "xlsx" || file === "parquet") {
+    return apiResult(
+      () =>
+        client.GET("/v1/jobs/{job_id}/results", {
+          params: { path, query: { format: file } },
+          parseAs: "blob",
+        }) as Promise<{ data?: Blob; error?: unknown; response: Response }>,
+      what,
+    );
+  }
+  const route =
+    file === "llms.txt" ? "/v1/jobs/{job_id}/llms.txt" : "/v1/jobs/{job_id}/llms-full.txt";
+  return apiResult(
+    () =>
+      client.GET(route, { params: { path }, parseAs: "blob" }) as Promise<{
+        data?: Blob;
+        error?: unknown;
+        response: Response;
+      }>,
+    what,
+  );
 }
 
 /** Queues a batch scrape; the answer is the new job's id. */

@@ -1,4 +1,4 @@
-import type { PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
+import type { PageKind, SchemaRef, ScrapeFormat, ScreenshotArea } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/formats";
 import type { PageFormat } from "./FormatSelect";
@@ -25,6 +25,14 @@ export function optionalNumber<K extends string>(
   const member: Partial<Record<K, number>> = {};
   if (!Number.isNaN(value)) member[key] = value;
   return member;
+}
+
+/** The area `settings` give a screenshot, for `fetchMember`, when `formats` has one. */
+export function screenshotArea(
+  formats: readonly ScrapeFormat[],
+  settings: { screenshot: ScreenshotArea },
+): ScreenshotArea | undefined {
+  return formats.includes("screenshot") ? settings.screenshot : undefined;
 }
 
 /** The optional `budget.llm_calls` member (SPEC-06 §4.8), left out while empty. */
@@ -79,6 +87,12 @@ export function requestFormats(form: FormatForm): ScrapeFormat[] {
     ...(form.options.metadataInJson ? ["metadata"] : []),
     ...(hasSchema(form) ? ["records"] : []),
   ]);
+}
+
+/** A batch's or crawl's formats: `records` alone with a schema or field names (SPEC-10 §4.5: its results are records
+ * or page outputs), else `requestFormats`. */
+export function jobFormats(form: FormatForm): ScrapeFormat[] {
+  return hasSchema(form) ? ["records"] : requestFormats(form);
 }
 
 /** Whether `form` asks for no format at all, which the server refuses (SPEC-07 §4.4). */

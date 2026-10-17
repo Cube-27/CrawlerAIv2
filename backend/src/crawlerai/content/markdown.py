@@ -21,7 +21,7 @@ each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, 
 """
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from copy import deepcopy
 from typing import NamedTuple
 
@@ -30,15 +30,11 @@ from lxml.html import HtmlElement
 
 from crawlerai.acquire.items import is_hyperlink, item_blocks
 from crawlerai.content.dom import document_base_url
+from crawlerai.content.md_blocks import FENCE, LIST_ITEM
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import NOT_RENDERED
 from crawlerai.db.models import PageKind
 
-# CommonMark §4.5: a fenced code block opens and closes with a run of three or more backticks or tildes.
-_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
-# CommonMark §5.2: a list item starts with a bullet (`-`, `+`, `*`) or an ordered marker (digits, then `.` or `)`),
-# then whitespace; its indentation is what nests it, and its content starts after that whitespace.
-_LIST_ITEM = re.compile(r"^([ \t]*(?:[-+*]|\d{1,9}[.)]))([ \t]+)")
 # Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
 # Standard §4.10), which a reader of the page uses rather than reads.
 # HTML Standard §3.2.5.2.5: the elements of phrasing content that mark up text inside a block.
@@ -49,13 +45,22 @@ _PHRASING = frozenset(
 _NOT_TEXT = NOT_RENDERED | {"button", "select", "input", "textarea", "option"}
 
 
-def markdown(page: ParsedPage, final_url: str, page_kind: PageKind | None = None) -> str:
+def markdown(
+    page: ParsedPage,
+    final_url: str,
+    page_kind: PageKind | None = None,
+    *,
+    prune: Callable[[HtmlElement], None] | None = None,
+) -> str:
     """The main content as Markdown, with its links and images, and a listing's items; `""` when there is none.
-    `page_kind` is the kind the capture was fetched as."""
+    `page_kind` is the kind the capture was fetched as. `prune`, when given, takes content out of the copy of the tree
+    that is read, after a listing's items were taken from it (`content.fit`)."""
     tree = _absolute(page, final_url)
     items = item_blocks(tree) if page_kind == "listing" else ()
     for item in items:
         item.drop_tree()  # lxml keeps the item's tail text in the tree
+    if prune is not None:
+        prune(tree)
     _wrap_inline_runs(tree)
     # A page with no repeated items is not an article either, so precision mode would keep only its prose blocks.
     recall = page_kind == "listing" and not items
@@ -171,7 +176,7 @@ def _tidy(text: str) -> str:
     fence: str | None = None
     items: list[int] = []  # the content columns of the list items open above, outermost first
     for line in text.splitlines():
-        opened = _FENCE.match(line)
+        opened = FENCE.match(line)
         if fence is None and opened is None:
             _add_text_line(lines, line, items)
             continue
@@ -190,7 +195,7 @@ def _add_text_line(lines: list[str], line: str, items: list[int]) -> None:
     is indented to exactly that column, so further layout indentation starts no code block inside it. Any other line
     loses its layout indentation and, unless it continues the paragraph right above (a lazy continuation line), closes
     every item. A blank line right after another is dropped."""
-    marker = _LIST_ITEM.match(line)
+    marker = LIST_ITEM.match(line)
     text = line.strip()
     indent = len(line) - len(line.lstrip())
     if marker is not None:

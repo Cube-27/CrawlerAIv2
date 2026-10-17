@@ -96,8 +96,8 @@ estimate, not billing. Refs: §17, ARCHITECTURE rev 11.
 ### Requirement: MCP tools
 The MCP server SHALL use the official `mcp` SDK and expose exactly `scrape`, `map`, `search`, `crawl_start`,
 `crawl_status`, `extract`, `extract_status`, `list_schemas`, `create_schema`, `get_site_config`, `export_config`,
-`reject_config`, each one service call; long jobs return a `job_id` at once and status tools page 10 results. No
-jobs-list or usage tool. (Previously: eleven tools, no `search`.) Refs: §13.3, D-0698, D-1391, D-1442.
+`reject_config`, `llms_txt`, each one service call; long jobs return a `job_id` at once and status tools page 10
+results. No jobs-list or usage tool. (Previously: twelve tools, no `llms_txt`.) Refs: §13.3, D-0698, D-1391, D-1442.
 #### Scenario: Tool list
 - **WHEN** a client lists the tools
 - **THEN** it gets exactly the twelve tools named above
@@ -161,3 +161,16 @@ counted in `skipped` (INV-16). Refs: §22, D-1442, D-1443.
 `sdk/python` and `sdk/typescript` SHALL wrap the API with typed requests and answers generated from
 `frontend/openapi.json`, job polling, the event stream and webhook signature verification; `sdk/openapi.sha256` MUST
 name the current document, which `tools/tests/test_sdk_digest.py` checks. Refs: D-1444.
+
+### Requirement: Output format members and artifacts endpoint
+Scrape, batch and crawl SHALL accept the formats `markdown_fit`, `chunks`, `screenshot` and `pdf`, with `fit`,
+`chunking` and `fetch.screenshot` options valid only with their format; an answer names a screenshot or PDF as
+`{url, content_type}`. `GET /v1/captures/{id}/artifacts/{name}` SHALL serve `screenshot.png` or `page.pdf` with
+`nosniff`, behind the API key, and 404 once the capture is gone. `GET /v1/jobs/{id}/results` SHALL take the formats
+`jsonl`, `xlsx` and `parquet` in the schema's columns (`xlsx` and `parquet` as one file, `parquet` 503
+`format_unavailable` without pyarrow), and `GET /v1/jobs/{id}/llms.txt` and `llms-full.txt` SHALL answer the llmstxt.org
+text of a job's pages (409 for none). The MCP `scrape` tool takes the new formats and returns a screenshot as an image
+block; a further tool, `llms_txt`, answers the file. Refs: D-1424, D-1425, D-1428.
+#### Scenario: Artifact served
+- **WHEN** a scrape asked for `screenshot` and its URL is fetched with the key
+- **THEN** it answers `image/png` bytes

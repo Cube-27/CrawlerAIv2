@@ -4,7 +4,7 @@ import { useSubmitBatch } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { BatchRequest } from "../../../api/jobs";
 import { useFieldsReview } from "../fields/useFieldsReview";
-import { hasSchema, optionsChanged, requestPageKind } from "../pageRequest";
+import { hasSchema, jobFormats, optionsChanged, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobModeOutput } from "../run/JobRun";
@@ -66,6 +66,7 @@ export function BatchPlayground() {
       options={
         <BatchOptions
           options={form.options}
+          formats={jobFormats(form)}
           hasSchema={form.schemaId !== ""}
           schemaPageKind={requestPageKind(form)}
           onChange={(options) => {

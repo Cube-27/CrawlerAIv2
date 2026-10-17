@@ -9,7 +9,7 @@ queue, a worker handler returns the result for the worker loop to settle.
 import asyncio
 import logging
 import math
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal, TypedDict
 from uuid import UUID
@@ -27,6 +27,8 @@ from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
+from crawlerai.content.chunks import Chunk, ChunkOptions, chunks
+from crawlerai.content.fit import FitOptions, markdown_fit
 from crawlerai.content.html import cleaned_html
 from crawlerai.content.links import links
 from crawlerai.content.markdown import markdown
@@ -61,15 +63,20 @@ from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
 from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services import schemas
+from crawlerai.services.fetch_options import CAPTURE_FORMATS as CAPTURE_FORMATS
 from crawlerai.services.fetch_options import FetchOptions as FetchOptions
 from crawlerai.services.fetch_options import fetch_policy as fetch_policy
 from crawlerai.services.schemas import NewSchema
+from crawlerai.storage.artifacts import PDF, SCREENSHOT, Artifact, artifact_of
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
 log = logging.getLogger(__name__)
 
-PageFormat = Literal["markdown", "html", "raw_html", "links", "metadata", "records"]
+PageFormat = Literal[
+    "markdown", "markdown_fit", "chunks", "html", "raw_html", "links", "metadata", "screenshot", "pdf", "records"
+]
+# The formats that are files the browser makes of the rendered page (`storage.artifacts`).
 
 
 # `url_task.outcome` as a page task reports it (SPEC-07 §4.4).
@@ -190,6 +197,22 @@ class SchemaFields(Input):
 
 # How a request names its schema: by id, inline, as a prompt or as field names to draft from.
 SchemaRequest = SchemaById | SchemaInline | SchemaPrompt | SchemaFields
+
+
+def check_formats(
+    formats: list[PageFormat], fetch: FetchOptions, fit: FitOptions | None, chunking: ChunkOptions | None
+) -> None:
+    """The options a request's formats take. Raises `ValueError`, for a request model's validator: a screenshot or PDF
+    is made in the browser, so `method_hint` cannot be `http`; `fit` and `chunking` are the options of `markdown_fit`
+    and `chunks`."""
+    if CAPTURE_FORMATS.intersection(formats) and fetch.method_hint == "http":
+        raise ValueError("screenshot and pdf are made in the browser, so method_hint cannot be http")
+    if CAPTURE_FORMATS.intersection(formats) and fetch.headers:
+        raise ValueError("headers are sent over HTTP only (INV-44), so they cannot go with screenshot or pdf")
+    if fit is not None and "markdown_fit" not in formats:
+        raise ValueError("fit is the option of the markdown_fit format")
+    if chunking is not None and "chunks" not in formats:
+        raise ValueError("chunking is the option of the chunks format")
 
 
 def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
@@ -529,19 +552,61 @@ def format_member(alias: str | None = None) -> Any:
 
 class Formats(TypedDict, total=False):
     markdown: str
+    markdown_fit: str
+    chunks: list[Chunk]
     html: str
     raw_html: str
     links: list[str]
     metadata: PageMetadata
+    screenshot: Artifact
+    pdf: Artifact
 
 
-def page_formats(page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat]) -> Formats:
-    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26) and its
-    capture's manifest: a format is a function of the capture alone (§15), the page kind it was fetched as included."""
+class FormatOptions(Input):
+    """The options of the formats that take any: `fit` (`markdown_fit`) and `chunking` (`chunks`)."""
+
+    fit: FitOptions | None = None
+    chunking: ChunkOptions | None = None
+
+
+def _markdown_formats(
+    page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat], options: FormatOptions
+) -> Formats:
+    """`markdown`, `markdown_fit` and `chunks`, which read the same markdown: each is made once."""
     formats: Formats = {}
-    final_url = manifest.final_url
+    final_url, kind = manifest.final_url, fetched_as(manifest.fetch_policy)
+    pieces = options.chunking or ChunkOptions()
+    chunked = "chunks" in requested
+    plain = fitted = ""
+    if "markdown" in requested or (chunked and pieces.source == "markdown"):
+        plain = markdown(page, final_url, kind)
+    if "markdown_fit" in requested or (chunked and pieces.source == "markdown_fit"):
+        fitted = markdown_fit(page, final_url, kind, options.fit)
     if "markdown" in requested:
-        formats["markdown"] = markdown(page, final_url, fetched_as(manifest.fetch_policy))
+        formats["markdown"] = plain
+    if "markdown_fit" in requested:
+        formats["markdown_fit"] = fitted
+    if chunked:
+        formats["chunks"] = chunks(plain if pieces.source == "markdown" else fitted, pieces)
+    return formats
+
+
+def page_formats(
+    page: ParsedPage,
+    manifest: CaptureManifest,
+    requested: list[PageFormat],
+    options: FormatOptions | None = None,
+    artifacts: Collection[str] = (),
+) -> Formats:
+    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26) and its
+    capture's manifest: a format is a function of the capture alone (§15), the page kind it was fetched as included.
+    `artifacts` names the files stored for the capture; a screenshot or PDF is a member only when it was made."""
+    formats = _markdown_formats(page, manifest, requested, options or FormatOptions())
+    if "screenshot" in requested and SCREENSHOT in artifacts:
+        formats["screenshot"] = artifact_of(manifest.capture_id, SCREENSHOT)
+    if "pdf" in requested and PDF in artifacts:
+        formats["pdf"] = artifact_of(manifest.capture_id, PDF)
+    final_url = manifest.final_url
     if "html" in requested:
         formats["html"] = cleaned_html(page)
     if "raw_html" in requested:

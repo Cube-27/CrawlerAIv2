@@ -31,3 +31,15 @@ export function saveExportPages(
     return filename;
   });
 }
+
+/** Saves `blob` as a file named `filename`, as `saveText` does for text. */
+export function saveBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 0);
+}

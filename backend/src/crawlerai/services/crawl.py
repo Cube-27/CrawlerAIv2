@@ -21,6 +21,8 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.content.chunks import ChunkOptions
+from crawlerai.content.fit import FitOptions
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.crawl.scoring import Strategy, query_terms
@@ -41,6 +43,7 @@ from crawlerai.services.scrape_steps import (
     SchemaFields,
     SchemaInline,
     absolute_http_url,
+    check_formats,
     check_records,
 )
 
@@ -75,6 +78,8 @@ class CrawlRequest(Input):
     locale: str | None = None
     budget: Budget | None = None
     webhook_url: str | None = None
+    fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
+    chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
 
     @model_validator(mode="before")
     @classmethod
@@ -105,6 +110,7 @@ class CrawlRequest(Input):
 
     @model_validator(mode="after")
     def _records_have_rules_of_the_schemas_kind(self) -> Self:
+        check_formats(self.formats, self.fetch, self.fit, self.chunking)
         if "records" not in self.formats:
             return self
         if len(set(self.formats)) > 1:

@@ -8,9 +8,10 @@ values are never stored, D-1432). A capture of a page with a click revealing con
 
 import asyncio
 import json
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy import ColumnElement, Row, cast, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import Capture, CaptureId, SiteId, UrlTask
+from crawlerai.storage.artifacts import PDF, SCREENSHOT, stored_names
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
@@ -26,6 +28,8 @@ __all__ = ["NOT_CACHED", "CaptureRow", "NotCached", "Recent", "recent_capture", 
 
 # The reason a fetch that may only read a stored capture (`cache: only`) found none.
 NOT_CACHED = "not_cached"
+# The artifacts that are the files of a format.
+_FILE_FORMATS: Final = {SCREENSHOT: "screenshot", PDF: "pdf"}
 
 
 class NotCached(Refusal):
@@ -34,10 +38,11 @@ class NotCached(Refusal):
 
 @dataclass(frozen=True)
 class Recent:
-    """A stored capture read again: its id, and the fetch that made it."""
+    """A stored capture read again: its id, the fetch that made it, and the names of the files stored beside it."""
 
     capture_id: CaptureId
     result: FetchResult
+    artifacts: frozenset[str] = frozenset()
 
 
 CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
@@ -84,13 +89,17 @@ def _jsonb(value: object) -> ColumnElement[Any]:
     return cast(literal(json.dumps(value)), JSONB)
 
 
-async def reread(store: ObjectStore, row: CaptureRow) -> Recent | None:
-    """The capture's bundle, with the attempts its row keeps (SPEC-02 §4.4); None when its bundle is gone."""
+async def reread(store: ObjectStore, row: CaptureRow, formats: Collection[str] = ()) -> Recent | None:
+    """The capture's bundle, with the attempts its row keeps (SPEC-02 §4.4) and the names of the files stored beside it;
+    None when its bundle is gone, or a screenshot or PDF among `formats` was not stored with it."""
     capture_id, object_key, duration_ms, fetch_policy = row
     try:
         blob = await asyncio.to_thread(store.get, object_key)
     except ObjectNotFound:
         return None
+    names = await asyncio.to_thread(stored_names, store, object_key)
+    if not {name for name, format in _FILE_FORMATS.items() if format in formats} <= names:
+        return None
     bundle = await asyncio.to_thread(decode, blob)
     attempts = tuple(AttemptRecord.model_validate(attempt) for attempt in fetch_policy["attempts"])
-    return Recent(capture_id, FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts))
+    return Recent(capture_id, FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts), names)

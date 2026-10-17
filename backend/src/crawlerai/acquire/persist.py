@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import FetchResult, policy_with_attempts
 from crawlerai.db.models import Capture, CaptureId, SiteId
+from crawlerai.storage.artifacts import artifact_key
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, encode
 
@@ -25,13 +26,16 @@ async def store_capture(
     *,
     expires_in: timedelta | None = CAPTURE_TTL,
 ) -> CaptureId:
-    """Write the bundle, then insert its row in `conn`'s transaction, so a row never names a missing bundle. A
+    """Write the bundle and the files the browser made of the page beside it (`storage.artifacts`), then insert its row
+    in `conn`'s transaction, so a row never names a missing bundle. A
     failure after the write leaves an unreferenced object under a fresh id, which nothing reads."""
     manifest = result.bundle.manifest
     key = capture_key(manifest.capture_id, manifest.fetched_at)
     # Encoding compresses the whole bundle and the store is synchronous (boto3): both run off the event loop.
     blob = await asyncio.to_thread(encode, result.bundle)
     await asyncio.to_thread(store.put, key, blob)
+    for name, data in result.artifacts.items():
+        await asyncio.to_thread(store.put, artifact_key(key, name), data)
     await conn.execute(
         insert(Capture).values(
             id=manifest.capture_id,

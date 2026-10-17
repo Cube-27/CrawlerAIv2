@@ -1,8 +1,16 @@
 import { AdvancedRows } from "../AdvancedRows";
-import type { PageKind } from "../../../api/scrape";
+import type { PageKind, ScrapeFormat } from "../../../api/scrape";
 import type { CrawlStrategy } from "../../../api/jobs";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow, TextRow } from "../OptionsPanel";
-import { FetchMethodRow, MaxRowsRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
+import {
+  FetchMethodRow,
+  MaxRowsRow,
+  FieldsRow,
+  FormatRows,
+  MetadataRow,
+  ScopeRows,
+  WebhookRow,
+} from "../rows";
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
 
@@ -17,11 +25,13 @@ const STRATEGIES: readonly (readonly [CrawlStrategy, string])[] = [
  * `schemaPageKind`. `CrawlRequest` has no `budget`: the project's LLM call limit (Settings) bounds a crawl. */
 export function CrawlOptions({
   options,
+  formats,
   schemaPageKind,
   rulesError,
   onChange,
 }: Readonly<{
   options: Options;
+  formats: readonly ScrapeFormat[];
   schemaPageKind: PageKind | null;
   rulesError: string | undefined;
   onChange: (options: Options) => void;
@@ -114,6 +124,7 @@ export function CrawlOptions({
         }}
       />
       <FieldsRow options={options} onChange={onChange} />
+      <FormatRows options={options} formats={formats} onChange={onChange} />
       <WebhookRow
         value={options.webhookUrl}
         onChange={(webhookUrl) => {

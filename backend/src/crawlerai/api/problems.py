@@ -48,6 +48,11 @@ def records_unavailable(detail: str) -> ProblemError:
     return ProblemError(503, "records_unavailable", "Records unavailable", f"{detail}: {fix}")
 
 
+def format_unavailable(detail: str) -> ProblemError:
+    """503: the library an export format needs is not installed in this deployment."""
+    return ProblemError(503, "format_unavailable", "Format unavailable", detail)
+
+
 def target_refused(reason: str) -> ProblemError:
     """422: the request names a target the API may not fetch (INV-16); `reason` is the SSRF guard's."""
     return ProblemError(422, "ssrf_rejected", "Target refused", reason)

@@ -1,5 +1,5 @@
-import { Label, Table, TextArea, TextField } from "@heroui/react";
-import type { PageMetadata, ScrapeResponse } from "../../../api/scrape";
+import { Label, Link, Table, TextArea, TextField, Typography } from "@heroui/react";
+import type { Artifact, Chunk, PageMetadata, ScrapeResponse } from "../../../api/scrape";
 import { FetchAttemptsTable } from "../../../components/FetchAttempts";
 
 /** A text format (markdown, html, raw_html) in a read-only text area, to read, scroll and copy as sent. */
@@ -111,5 +111,58 @@ export function UsageTable({ usage }: Readonly<{ usage: ScrapeResponse["usage"] 
         ["HTTP requests", String(usage.http_requests)],
       ]}
     />
+  );
+}
+
+/** A page's screenshot, shown as the API serves it: the UI's server attaches the API key to `/v1` (SPEC-12 §4.1), so the
+ * image loads from the artifact's URL. */
+export function ScreenshotView({ artifact }: Readonly<{ artifact: Artifact }>) {
+  return (
+    <a href={artifact.url} target="_blank" rel="noreferrer">
+      <img
+        src={artifact.url}
+        alt="Screenshot of the page"
+        className="max-w-full rounded-medium border border-divider object-contain"
+      />
+    </a>
+  );
+}
+
+/** A page's PDF print: opened by its URL in the browser's viewer. */
+export function PdfLink({ artifact }: Readonly<{ artifact: Artifact }>) {
+  return (
+    <Link href={artifact.url} target="_blank" rel="noreferrer">
+      Open the PDF
+    </Link>
+  );
+}
+
+/** The page's artifacts (screenshot, PDF) of a scrape or a job's page output. */
+export function ArtifactViews({
+  screenshot,
+  pdf,
+}: Readonly<{ screenshot?: Artifact | undefined; pdf?: Artifact | undefined }>) {
+  return (
+    <div className="flex flex-col gap-3">
+      {screenshot === undefined ? null : <ScreenshotView artifact={screenshot} />}
+      {pdf === undefined ? null : <PdfLink artifact={pdf} />}
+    </div>
+  );
+}
+
+/** The page's chunks (`chunks`), each with the headings above it and its size in words. */
+export function ChunksView({ chunks }: Readonly<{ chunks: readonly Chunk[] }>) {
+  return (
+    <div className="flex flex-col gap-3">
+      {chunks.map((chunk) => (
+        <div key={chunk.index} className="rounded-medium border border-divider p-3">
+          <Typography.Paragraph size="sm" color="muted">
+            #{chunk.index + 1} · {chunk.words} words
+            {chunk.heading_path.length === 0 ? "" : ` · ${chunk.heading_path.join(" > ")}`}
+          </Typography.Paragraph>
+          <Typography.Paragraph className="whitespace-pre-wrap">{chunk.text}</Typography.Paragraph>
+        </div>
+      ))}
+    </div>
   );
 }

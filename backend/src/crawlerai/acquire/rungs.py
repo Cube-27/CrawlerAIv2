@@ -126,7 +126,10 @@ async def acquire(
     manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no
     adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
     that adapter on its own turn (SPEC-15 §4.2); an HTTP `ok` page that would be rendered only for lacking what the
-    caller reads asks it before the render, which runs only when no adapter serves it (D-1388)."""
+    caller reads asks it before the render, which runs only when no adapter serves it (D-1388). A policy that captures
+    the page (`screenshot`, `pdf`) uses neither an adapter nor a recipe."""
+    if policy.captures_page:
+        send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
     # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
     # rate, which `admit_next` waits out (SPEC-15 §4.9). A recipe's may be the page's own (its HTML page request).
@@ -263,7 +266,7 @@ async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: Fe
     if retry.block_class != "ok" or sessions.open(url, policy.proxy_pool, export, identity(retry)) is None:
         return retry
     opened = tuple(a.model_copy(update={"site_session": True}) for a in retry.attempts)
-    return FetchResult(bundle=retry.bundle, duration_ms=retry.duration_ms, attempts=opened)
+    return retry.model_copy(update={"attempts": opened})
 
 
 async def _browser_may_help(result: FetchResult, needs_render: RenderCheck | None) -> bool:
@@ -305,7 +308,7 @@ async def _as_last_page(result: FetchResult) -> FetchResult:
     if unlisted != "ok":
         return result
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})
-    return FetchResult(bundle=bundle, duration_ms=result.duration_ms, attempts=result.attempts)
+    return result.model_copy(update={"bundle": bundle})
 
 
 async def _better(retry: FetchResult, result: FetchResult, needs_render: RenderCheck | None) -> bool:
@@ -338,7 +341,7 @@ def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], dura
     manifest = result.bundle.manifest
     fetch_policy = policy_with_attempts(manifest.fetch_policy, attempts)
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"fetch_policy": fetch_policy})})
-    return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts)
+    return result.model_copy(update={"bundle": bundle, "duration_ms": duration_ms, "attempts": attempts})
 
 
 def remembered_as(kind: PageKind | None) -> PageKind:

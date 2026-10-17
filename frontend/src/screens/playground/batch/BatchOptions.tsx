@@ -1,10 +1,11 @@
 import { AdvancedRows } from "../AdvancedRows";
-import type { PageKind } from "../../../api/scrape";
+import type { PageKind, ScrapeFormat } from "../../../api/scrape";
 import { OptionsPanel } from "../OptionsPanel";
 import {
   FetchMethodRow,
   MaxRowsRow,
   FieldsRow,
+  FormatRows,
   LlmCallsRow,
   MetadataRow,
   PageKindRow,
@@ -16,11 +17,13 @@ import { DEFAULT_BATCH_OPTIONS, type BatchOptions as Options } from "./form";
  * the webhook. */
 export function BatchOptions({
   options,
+  formats,
   hasSchema,
   schemaPageKind,
   onChange,
 }: Readonly<{
   options: Options;
+  formats: readonly ScrapeFormat[];
   hasSchema: boolean;
   schemaPageKind: PageKind | null;
   onChange: (options: Options) => void;
@@ -65,6 +68,7 @@ export function BatchOptions({
         }}
       />
       <FieldsRow options={options} onChange={onChange} />
+      <FormatRows options={options} formats={formats} onChange={onChange} />
       <WebhookRow
         value={options.webhookUrl}
         onChange={(webhookUrl) => {

@@ -9,7 +9,15 @@ import { RecordList } from "../../../components/RecordFields";
 import { Timestamp } from "../../../components/Timestamp";
 import { hasUncalibrated, UncalibratedBadge } from "../../../components/UncalibratedBadge";
 import { scrapeJson } from "./cleanJson";
-import { FetchView, LinksTable, MetadataTable, TextFormat, UsageTable } from "./FormatViews";
+import {
+  ArtifactViews,
+  ChunksView,
+  FetchView,
+  LinksTable,
+  MetadataTable,
+  TextFormat,
+  UsageTable,
+} from "./FormatViews";
 
 interface OutputTab {
   id: string;
@@ -62,6 +70,23 @@ function formatTabs(response: ScrapeResponse): OutputTab[] {
           id: "markdown",
           label: "Markdown",
           content: <TextFormat label="Markdown" text={response.markdown} />,
+        },
+    response.markdown_fit === undefined
+      ? null
+      : {
+          id: "markdown_fit",
+          label: "Markdown (fit)",
+          content: <TextFormat label="Markdown (fit)" text={response.markdown_fit} />,
+        },
+    response.chunks === undefined
+      ? null
+      : { id: "chunks", label: "Chunks", content: <ChunksView chunks={response.chunks} /> },
+    response.screenshot === undefined && response.pdf === undefined
+      ? null
+      : {
+          id: "capture",
+          label: response.screenshot === undefined ? "PDF" : "Screenshot",
+          content: <ArtifactViews screenshot={response.screenshot} pdf={response.pdf} />,
         },
     response.html === undefined
       ? null

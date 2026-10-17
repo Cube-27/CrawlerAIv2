@@ -32,6 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy
 from crawlerai.content.links import links
+from crawlerai.content.llms import LlmsPage, llms_txt
+from crawlerai.content.metadata import metadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.rules import Patterns, Scope, located
@@ -40,7 +42,14 @@ from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, check_target, site_rules
-from crawlerai.services.scrape_steps import DEFAULT_PROJECT, SiteRow, absolute_http_url, record_fetch_usage, site_row
+from crawlerai.services.scrape_steps import (
+    DEFAULT_PROJECT,
+    SiteRow,
+    absolute_http_url,
+    format_member,
+    record_fetch_usage,
+    site_row,
+)
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 TIMEOUT_S: Final = 60.0  # SPEC-10 §4.4
@@ -60,6 +69,7 @@ class MapRequest(BaseModel):
     limit: int = Field(default=MAX_LIMIT, ge=1, le=MAX_LIMIT)
     use_sitemaps: bool = True
     use_links: bool = True
+    llms_txt: bool = False  # also answer an `llms.txt` of the URLs found
 
     @field_validator("url")
     @classmethod
@@ -78,6 +88,10 @@ class MapResult(BaseModel):
     urls: list[str]
     sources: MapSources
     truncated: bool
+    # The `llms.txt` (llmstxt.org) of the URLs, a member only when asked for: the site's name and summary are the start
+    # page's title and description when it was reached, and each link is named by its URL's path (no page but the
+    # start page is fetched).
+    llms_txt: str | None = format_member()
 
 
 @dataclass
@@ -90,6 +104,7 @@ class _Found:
     sitemap: dict[str, None] = field(default_factory=dict)
     links: dict[str, None] = field(default_factory=dict)
     cut: bool = False
+    start_page: LlmsPage | None = None
 
     def add(self, source: Source, urls: Iterable[str]) -> None:
         for url in filter(self.scope.admits, urls):
@@ -132,7 +147,11 @@ async def map_urls(
         await _finish(engine, job_id, "failed", attempts, site.proxy_pool)
         raise
     await _finish(engine, job_id, "completed", attempts, site.proxy_pool)
-    return found.result()
+    result = found.result()
+    if request.llms_txt:
+        listed = llms_txt([LlmsPage(url) for url in result.urls], found.start_page)
+        result = result.model_copy(update={"llms_txt": listed})
+    return result
 
 
 async def _start(engine: AsyncEngine, request: MapRequest, host: str) -> tuple[JobId, SiteRow]:
@@ -178,6 +197,8 @@ async def _discover(
         async with engine.begin() as conn:
             site = await site_row(conn, host)
         polite = await _polite(engine, fetching, site, host, site_url, attempts)
+    if page is not None and page.block_class == "ok" and request.llms_txt:
+        found.start_page = await asyncio.to_thread(_start_page, page.bundle)
     if request.use_links and page is not None and page.block_class == "ok":
         # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
         found.add("links", await asyncio.to_thread(_page_links, page.bundle))
@@ -207,6 +228,12 @@ async def _read_sitemaps(polite: PoliteHttp, site_url: str, found: _Found) -> No
             if found.full:
                 break
     found.cut = found.cut or reader.cut
+
+
+def _start_page(bundle: CaptureBundle) -> LlmsPage:
+    """What the start page says about itself, for the `llms.txt`'s name and summary."""
+    found = metadata(ParsedPage.of(bundle), bundle.manifest.final_url)
+    return LlmsPage(bundle.manifest.final_url, found.title, found.description)
 
 
 def _page_links(bundle: CaptureBundle) -> tuple[str, ...]:

@@ -106,6 +106,23 @@ async def test_answers_the_urls_found_with_their_sources(client: httpx.AsyncClie
     }
 
 
+async def test_llms_txt_lists_the_urls_found_under_the_start_pages_name_and_summary(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str
+) -> None:
+    pages[f"{own_origin}/"] = (
+        200,
+        b'<html><head><title>Kettle shop</title><meta name="description" content="Kettles, sold."></head><body>'
+        b'<a href="/c/1">c</a><a href="/p/1">p</a></body></html>',
+    )
+
+    response = await _post(client, {"url": f"{own_origin}/", "llms_txt": True})
+
+    assert response.json()["llms_txt"] == (
+        f"# Kettle shop\n\n> Kettles, sold.\n\n## P\n\n- [1]({own_origin}/p/1)\n\n## C\n\n- [1]({own_origin}/c/1)\n"
+    )
+    assert "llms_txt" not in (await _post(client, {"url": f"{own_origin}/"})).json()
+
+
 async def test_a_private_target_is_an_ssrf_problem(client: httpx.AsyncClient) -> None:
     response = await _post(client, {"url": f"https://{PRIVATE_HOST}/"})
 

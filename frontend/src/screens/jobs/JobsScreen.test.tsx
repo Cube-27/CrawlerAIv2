@@ -314,6 +314,36 @@ describe("Job screen", () => {
     ]);
   });
 
+  it("saves the llms.txt and JSON Lines exports from the more-exports menu", async () => {
+    const saved = catchDownloads();
+    const calls = jobApi({
+      [`GET ${JOB}/llms.txt`]: () =>
+        new Response("# Example\n\n> A site\n", { headers: { "content-type": "text/plain" } }),
+      [`GET ${JOB}/results`]: ({ query }) => {
+        if (new URLSearchParams(query).get("format") !== "jsonl") return Response.json(records);
+        return Response.json({
+          format: "jsonl",
+          content: '{"title":"Blue kettle"}\n',
+          next_cursor: null,
+        });
+      },
+    });
+    await open(`/jobs/${JOB_ID}`, "Learn job");
+
+    await userEvent.click(screen.getByRole("button", { name: "More exports" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "llms.txt" }));
+    await screen.findByText(`Saved job-${JOB_ID}-llms.txt.`);
+    await userEvent.click(screen.getByRole("button", { name: "More exports" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "JSON Lines (.jsonl)" }));
+    await screen.findByText(`Saved job-${JOB_ID}.jsonl.`);
+
+    expect(await Promise.all(saved.map(async ({ name, text }) => [name, await text]))).toEqual([
+      [`job-${JOB_ID}-llms.txt`, "# Example\n\n> A site\n"],
+      [`job-${JOB_ID}.jsonl`, '{"title":"Blue kettle"}\n'],
+    ]);
+    expect(calls.some(({ query }) => query.includes("format=jsonl"))).toBe(true);
+  });
+
   it("cancels the job after confirmation and shows its new status", async () => {
     const calls = jobApi({
       [`DELETE ${JOB}`]: () => Response.json(job({ status: "cancelled" })),
