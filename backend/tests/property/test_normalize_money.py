@@ -364,3 +364,13 @@ def test_trailing_zeros_beyond_six_fraction_digits_are_not_precision() -> None:
     raw: JsonValue = {"price": "12.50000000", "priceCurrency": "EUR"}
 
     assert money.normalize(raw, MONEY, CTX) == Ok({"amount": "12.50000000", "currency": "EUR"})
+
+
+def test_a_minus_set_apart_from_the_amount_is_punctuation() -> None:
+    assert money.normalize("In stock - 25 EUR", MONEY, CTX) == money.normalize("In stock 25 EUR", MONEY, CTX)
+    assert isinstance(money.normalize("In stock - 25 EUR", MONEY, CTX), Ok)
+
+
+@pytest.mark.parametrize("raw", ["-25 EUR", "EUR -25", "\u221225 EUR"])
+def test_a_minus_against_the_amount_is_not_positive(raw: str) -> None:
+    assert money.normalize(raw, MONEY, CTX) == Invalid("not_positive")

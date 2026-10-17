@@ -89,7 +89,7 @@ def _text(given: str, ctx: Context, *, remote: bool = False) -> NormalizeResult:
     words = vocab.tokens(text or "")
     if text is None or not words:
         return Invalid("empty")
-    return Ok(_value(text, {}, remote or _says_remote(words, ctx)))
+    return Ok(_value(text, {}, remote or _says_remote(text, ctx)))
 
 
 def _telecommute(value: JsonValue) -> bool:
@@ -102,8 +102,11 @@ def _telecommute(value: JsonValue) -> bool:
     return isinstance(value, str) and value in _TELECOMMUTE
 
 
-def _says_remote(words: vocab.Tokens, ctx: Context) -> bool:
-    return bool(vocab.find_codes(vocab.type_vocabulary("remote") or {}, words, ctx))
+def _says_remote(text: str, ctx: Context) -> bool:
+    # A phrase is stated only as a whole clause ("Lakeside, Remote"): "not remote" has other words in its clause, and
+    # no standard lists the words that negate (C4, C7), so it states nothing (INV-37's rule, D-1272).
+    entries = vocab.entries_for(vocab.type_vocabulary("remote") or {}, vocab.context_languages(ctx))
+    return bool(vocab.clause_codes(text, entries))
 
 
 def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:

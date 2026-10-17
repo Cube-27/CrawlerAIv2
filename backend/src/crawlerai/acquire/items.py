@@ -35,12 +35,25 @@ def _tokens(value: str | None) -> tuple[str, ...]:
 
 
 def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
-    """The largest group of repeated items in the document `root`, in document order; empty when it shows none."""
-    largest: tuple[HtmlElement, ...] = ()
-    for items in item_groups(root):
-        if len(items) > len(largest):
-            largest = items
-    return largest
+    """The group of repeated items in the document `root` with the most structural evidence of being the page's items
+    (`_evidence`, then size), in document order; empty when it shows none."""
+    return max(item_groups(root), key=lambda items: (_evidence(items), len(items)), default=())
+
+
+def _evidence(items: tuple[HtmlElement, ...]) -> int:
+    """How much the items show beyond their link: each item scores one for holding an image and one for holding text
+    in two or more runs (a label and something besides it: a title and a price, a name and a description). A bare tag
+    cloud or pager, whose items are a link and its label, scores nothing however many they are, so it cannot outrank a
+    grid of items that show more (D-1277)."""
+    return sum(_holds_image(item) + _holds_several_texts(item) for item in items)
+
+
+def _holds_image(item: HtmlElement) -> bool:
+    return next(item.iter("img", "picture"), None) is not None
+
+
+def _holds_several_texts(item: HtmlElement) -> bool:
+    return sum(1 for text in item.itertext() if text.strip()) >= 2
 
 
 def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:

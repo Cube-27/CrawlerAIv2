@@ -19,6 +19,9 @@ from crawlerai.acquire.public_suffix import default_suffixes
 
 _SEPARATOR = re.compile(r"\s+[^\w\s]\s+")
 _WORD = re.compile(r"\w+")
+# Structural bound: the runs of n parts number n(n+1)/2, so only a name's first parts are combined; a site name of
+# more than this many separator-set-apart parts is a keyword list, not a name (D-1274).
+_MAX_PARTS = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,8 +64,10 @@ def fold(text: str) -> str:
 
 
 def _runs(name: str) -> Iterator[str]:
-    """Every run of consecutive separator segments of `name`, folded: the whole name and each part of it."""
-    parts = _SEPARATOR.split(name)
+    """Every run of consecutive separator segments of `name`, folded: the whole name and each part of it. Runs are
+    taken over the first `_MAX_PARTS` parts, so a long name costs a bounded number of runs."""
+    yield fold("".join(_SEPARATOR.split(name)))
+    parts = _SEPARATOR.split(name)[:_MAX_PARTS]
     for start in range(len(parts)):
         for end in range(start + 1, len(parts) + 1):
             yield fold("".join(parts[start:end]))

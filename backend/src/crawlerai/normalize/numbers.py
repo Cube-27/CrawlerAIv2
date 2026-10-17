@@ -57,8 +57,17 @@ def stated(raw: str) -> Stated | str:
 
 
 def negative(before: str) -> bool:
-    """Whether the text before a number holds a minus sign (`MINUS`), so the number may be negative."""
+    """Whether the text before a number holds a minus sign (`MINUS`) anywhere, so the number may be negative."""
     return any(minus in before for minus in MINUS)
+
+
+def negated(before: str) -> bool:
+    """Whether a minus sign (`MINUS`) in the text before a number touches it, so the number is negative.
+
+    CLDR number patterns write the minus sign against the digits (`-5`, `-$5`); a minus set apart by a space is
+    punctuation ("In stock - 5 left"), not a sign (D-1270)."""
+    last = max(before.rfind(minus) for minus in MINUS)
+    return last >= 0 and not any(c.isspace() for c in before[last + 1 :])
 
 
 def readings(written: str, locales: frozenset[str]) -> list[Decimal]:

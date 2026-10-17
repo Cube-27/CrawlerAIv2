@@ -126,3 +126,28 @@ def test_a_spec_of_another_type_is_a_programming_error() -> None:
 
     with pytest.raises(TypeError):
         count.normalize("5", spec, CTX)
+
+
+@pytest.mark.parametrize("text", ["In stock - 5 left", "Qty \u2013 5", "5 left - in stock"])
+def test_a_minus_set_apart_from_the_number_is_punctuation(text: str) -> None:
+    assert count.normalize(text, COUNT, EN) == Ok(5)
+
+
+def test_a_minus_against_the_number_still_negates_it() -> None:
+    assert count.normalize("Stock: -5", COUNT, EN) == Invalid("negative")
+    assert count.normalize("Stock: \u22125", COUNT, EN) == Invalid("negative")
+
+
+@pytest.mark.parametrize("unit_text", ["kg", "Kilograms", " km "])
+def test_a_measurement_unit_beside_c62_declines(unit_text: str) -> None:
+    raw: JsonValue = {"value": 5, "unitCode": "C62", "unitText": unit_text}
+
+    assert count.normalize(raw, COUNT, EN) == Invalid("unit")
+    assert count.normalize(raw, COUNT, CTX) == Invalid("unit")  # no page language: every language's units
+
+
+@pytest.mark.parametrize("unit_text", ["items", "pieces", "units in stock"])
+def test_a_unit_text_naming_no_measurement_unit_does_not_contradict_c62(unit_text: str) -> None:
+    raw: JsonValue = {"value": 5, "unitCode": "C62", "unitText": unit_text}
+
+    assert count.normalize(raw, COUNT, EN) == Ok(5)

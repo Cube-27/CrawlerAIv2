@@ -13,12 +13,17 @@ code is kept as written.
 
 trafilatura reads a listing's item grid as boilerplate (link-dense repeated blocks), so for a page fetched as a listing
 the items (`acquire.items.item_blocks`) are taken out of its copy of the tree and written as a Markdown list after the
-rest of the content (`_items`): each item's links, images and text, in document order. Other pages are unchanged.
+rest of the content (`_items`): each item's links, images and text, in document order. A listing page with no
+repeated items is read in recall mode, as precision mode keeps little of a page that is not an article (D-1276).
+
+trafilatura drops the space after an inline element that opens a `div`, `td` or `li`'s text ("**Warning!**This"), so
+each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, D-1275).
 """
 
 import re
 from collections.abc import Iterator
 from copy import deepcopy
+from typing import NamedTuple
 
 import trafilatura
 from lxml.html import HtmlElement
@@ -36,6 +41,11 @@ _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _LIST_ITEM = re.compile(r"^([ \t]*(?:[-+*]|\d{1,9}[.)]))([ \t]+)")
 # Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
 # Standard §4.10), which a reader of the page uses rather than reads.
+# HTML Standard §3.2.5.2.5: the elements of phrasing content that mark up text inside a block.
+_PHRASING = frozenset(
+    {*("a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark", "q", "s", "samp")}
+    | {*("small", "span", "strong", "sub", "sup", "time", "u", "var")}
+)
 _NOT_TEXT = NOT_RENDERED | {"button", "select", "input", "textarea", "option"}
 
 
@@ -46,8 +56,16 @@ def markdown(page: ParsedPage, final_url: str, page_kind: PageKind | None = None
     items = item_blocks(tree) if page_kind == "listing" else ()
     for item in items:
         item.drop_tree()  # lxml keeps the item's tail text in the tree
+    _wrap_inline_runs(tree)
+    # A page with no repeated items is not an article either, so precision mode would keep only its prose blocks.
+    recall = page_kind == "listing" and not items
     extracted = trafilatura.extract(
-        tree, output_format="markdown", include_links=True, include_images=True, favor_precision=True
+        tree,
+        output_format="markdown",
+        include_links=True,
+        include_images=True,
+        favor_precision=not recall,
+        favor_recall=recall,
     )
     listed = "\n".join(f"- {line}" for line in map(_item, items) if line)
     return _tidy("\n\n".join(part for part in (extracted, listed) if part))
@@ -60,6 +78,52 @@ def _absolute(page: ParsedPage, final_url: str) -> HtmlElement:
     tree = deepcopy(page.lxml_tree)
     tree.make_links_absolute(document_base_url(page, final_url), resolve_base_href=False, handle_failures="ignore")
     return tree
+
+
+def _wrap_inline_runs(tree: HtmlElement) -> None:
+    """Wraps each run of inline content (text and phrasing elements, HTML Standard §3.2.5.2.5) that holds an element,
+    in a `div`, `td` or `li`, in a `p`, which trafilatura reads with the spaces between its parts."""
+    for container in list(tree.iter("div", "td", "li")):
+        start = 0
+        while start < len(container) or start == 0:
+            run = _run_from(container, start)
+            if run.elements and _has_text(container, run):
+                _wrap(container, run)
+                start = run.start + 2  # past the `p` and the block child that ended the run
+            else:
+                start = run.end + 1
+
+
+class _Run(NamedTuple):
+    start: int
+    end: int  # index of the block child that ends the run, or the child count
+    elements: list[HtmlElement]
+
+
+def _run_from(container: HtmlElement, start: int) -> _Run:
+    end = start
+    while end < len(container) and container[end].tag in _PHRASING:
+        end += 1
+    return _Run(start, end, list(container[start:end]))
+
+
+def _has_text(container: HtmlElement, run: _Run) -> bool:
+    """Whether the run has text of its own, so the elements' spacing is in question (a run of elements only has
+    none)."""
+    texts = [container.text if run.start == 0 else container[run.start - 1].tail, *(e.tail for e in run.elements)]
+    return any(t and t.strip() for t in texts)
+
+
+def _wrap(container: HtmlElement, run: _Run) -> None:
+    paragraph = container.makeelement("p")
+    if run.start == 0:
+        paragraph.text, container.text = container.text, None
+    else:
+        previous = container[run.start - 1]
+        paragraph.text, previous.tail = previous.tail, None
+    for element in run.elements:
+        paragraph.append(element)  # moves the element with its tail
+    container.insert(run.start, paragraph)
 
 
 def _item(item: HtmlElement) -> str:

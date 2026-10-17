@@ -81,7 +81,45 @@ def test_markdown_of_a_page_not_fetched_as_a_listing_is_unchanged() -> None:
     trafilatura_only = markdown(page, FINAL_URL)
 
     assert markdown(page, FINAL_URL, page_kind="detail") == trafilatura_only
-    assert markdown(ParsedPage(ARTICLE), FINAL_URL, page_kind="listing") == markdown(ParsedPage(ARTICLE), FINAL_URL)
+
+
+_PROSE = "This sentence is long enough to count as text of the page, and it says nothing else of interest. "
+
+
+def test_a_listing_page_without_repeated_items_is_read_in_recall_mode() -> None:
+    page = ParsedPage(
+        "<html><body><main><h1>Chairs</h1>"
+        f"<p>{_PROSE * 3}</p>"
+        f'<div class="faq"><div>{_PROSE}</div></div>'
+        f'<div class="a"><span>Short note</span> <b>Delivery</b> takes three days after the order is placed.</div>'
+        "</main></body></html>"
+    )
+    expected = trafilatura.extract(
+        page.lxml_tree, output_format="markdown", include_links=True, include_images=True, favor_recall=True
+    )
+
+    assert markdown(page, FINAL_URL, page_kind="listing") == expected
+    assert markdown(page, FINAL_URL, page_kind="detail") != expected
+
+
+@pytest.mark.parametrize("container", ["div", "li"])
+def test_the_space_after_an_inline_element_opening_a_block_survives(container: str) -> None:
+    body = f"<{container}><strong>Warning!</strong> {_PROSE}</{container}>"
+    wrapped = f"<ul>{body}</ul>" if container == "li" else body
+    page = ParsedPage(f"<html><body><article><p>{_PROSE}</p>{wrapped}<p>{_PROSE}</p></article></body></html>")
+
+    made = markdown(page, FINAL_URL)
+
+    assert "**Warning!** This sentence" in made
+
+
+def test_inline_runs_after_a_block_child_keep_their_spaces() -> None:
+    page = ParsedPage(
+        f"<html><body><article><p>{_PROSE}</p><div><p>{_PROSE}</p><em>Note</em> {_PROSE}</div>"
+        f"<p>{_PROSE}</p></article></body></html>"
+    )
+
+    assert "*Note* This sentence" in markdown(page, FINAL_URL)
 
 
 def test_markdown_of_a_page_without_content_is_empty() -> None:

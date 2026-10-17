@@ -128,6 +128,28 @@ def stated_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
     return frozenset(opening).union(*(e.find(words) for e in entries))
 
 
+def clause_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
+    """The codes whose phrase is the whole of one clause of `text` (clauses as `first_clause` ends them), for a text
+    that lists several statements, such as the places of a location. A phrase with other words in its clause ("not
+    remote") states nothing, as in `stated_codes`; unlike it, a clause after the first counts (D-1272)."""
+    entries = list(entries)
+    clauses = {" ".join(tokens(clause)) for clause in _clauses(text)}
+    return frozenset(e.phrases[c] for e in entries for c in clauses if c in e.phrases)
+
+
+def _clauses(text: str) -> list[str]:
+    """The runs of letters, marks, spaces, dashes and connectors (`_continues`) between the other characters."""
+    clauses: list[str] = []
+    current: list[str] = []
+    for char in text:
+        if _continues(char):
+            current.append(char)
+        elif current:
+            clauses.append("".join(current))
+            current = []
+    return [*clauses, "".join(current)] if current else clauses
+
+
 def first_clause(text: str) -> str:
     """The text's first clause: from its first letter, through letters, marks, spaces, dashes and connectors (Unicode
     general categories L, M, Zs, Pd, Pc, UAX #44), up to the first other character: a punctuation mark, symbol, digit
