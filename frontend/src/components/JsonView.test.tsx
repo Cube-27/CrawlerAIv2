@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { catchDownloads } from "../test/downloads";
 import { JsonView } from "./JsonView";
-import { jsonTokens } from "./jsonTokens";
+import { jsonLines, jsonTokens } from "./jsonTokens";
 
 const ITEM = {
   url: "https://store.test/items/1",
@@ -91,5 +91,23 @@ describe("jsonTokens", () => {
       { kind: "number", text: "3", start: 42 },
       { kind: "literal", text: "false", start: 49 },
     ]);
+  });
+});
+
+describe("jsonLines", () => {
+  it("cuts text into lines of an indent and tokens, each token keeping its place in the text", () => {
+    const text = JSON.stringify({ a: [1, "x"] }, null, 2);
+
+    const lines = jsonLines(text);
+
+    expect(lines.map(({ indent }) => indent.length)).toEqual([0, 2, 4, 4, 2, 0]);
+    expect(lines.map(({ indent, tokens }) => indent + tokens.map((t) => t.text).join(""))).toEqual(
+      text.split("\n"),
+    );
+    expect(lines[2]?.tokens).toEqual([
+      { kind: "number", text: "1", start: 15 },
+      { kind: "plain", text: ",", start: 16 },
+    ]);
+    expect(text.slice(15, 17)).toBe("1,");
   });
 });

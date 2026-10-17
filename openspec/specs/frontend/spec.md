@@ -46,7 +46,7 @@ RFC 9457 problems SHALL render in `ProblemAlert`, button outcomes (including ref
 Job events SHALL be read with `fetch` streaming, resumed with `Last-Event-ID`, reconnecting at 1 s doubling to 30 s, treating 35 s of silence as dropped and stopping on a 4xx other than 429 (`frontend/src/api/events.ts`); end events re-read summary and results. Refs: D-0702, D-0750.
 
 ### Requirement: Playground modes and command bar
-The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map`, Extract `/extract` behind a link-tab mode switch, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between modes at desktop width (`frontend/src/screens/playground/`). Refs: Appendix A #38, #45, D-0817, D-1043.
+The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map`, Extract `/extract` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Refs: Appendix A #38, #45, #51, D-0817, D-1043, D-1213.
 #### Scenario: Back and forward
 - **WHEN** a user switches from Scrape to Crawl and presses back
 - **THEN** the URL returns to `/` and Scrape mode shows
@@ -64,7 +64,7 @@ A stored schema in Scrape SHALL add `records` and fix the page kind; Batch and C
 - **THEN** the request's `formats` is `["records"]`
 
 ### Requirement: Clean JSON output and run view
-Output SHALL be read as `json_values` items `{url, outcome, records, metadata?}` (endpoint owned by [jobs](../jobs/spec.md)) shown in `JsonView` first; a job run lives at `<route>?job=<id>` with status, Cancel, JSON/CSV exports, `RunProgress`, a `PagedTable` of items with per-row drawer, and a collapsed `ActivityFeed` worded in `activityText.ts`, where an unknown event shows its kind name. Refs: D-0825, D-0826, D-0829, D-0832, D-0879, D-0984.
+Output SHALL be read as `json_values` items `{url, outcome, records, metadata?}` (endpoint owned by [jobs](../jobs/spec.md)); `JsonView`, shown first with line numbers and indent guides, holds a page's one record as an object or its records as an array, metadata under `data` beside it when asked for; a job run lives at `<route>?job=<id>` with status, Cancel, JSON/CSV exports, `RunProgress`, a `PagedTable` of items with per-row drawer, and a collapsed `ActivityFeed` worded in `activityText.ts`, where an unknown event shows its kind name. Refs: #51, D-0825, D-0826, D-0829, D-0832, D-0879, D-0984, D-1211, D-1212.
 #### Scenario: Markdown-only crawl
 - **WHEN** a crawl ran with `formats: ["markdown"]`
 - **THEN** each row's drawer shows its markdown output and Export CSV is disabled

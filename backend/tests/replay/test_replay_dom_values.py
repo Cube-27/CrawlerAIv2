@@ -69,7 +69,7 @@ def test_a_page_without_structured_data_publishes_what_its_label_table_and_main_
     published = {n: (o.value, o.source_kind, o.evidence) for n, o in fields.items() if o.status == "published"}
     assert {n: published.get(n) for n in ("brand", "sku", "availability", "image_url")} == {
         "brand": ("Example Brand", "dom", "dom"),
-        "sku": ({"scheme": "sku", "value": "W-1"}, "dom", "dom"),
+        "sku": ("W-1", "dom", "dom"),
         "availability": ("InStock", "dom", "dom"),
         "image_url": ("https://shop.example.test/img/widget.jpg", "dom", "dom"),
     }

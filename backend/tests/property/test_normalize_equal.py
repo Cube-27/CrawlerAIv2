@@ -83,17 +83,16 @@ def test_a_gtin_equals_its_zero_padded_form(digits: str) -> None:
     # GS1 General Specifications §3.3.2: a GTIN compares in its 14-digit form, left-padded with zeros.
     value = digits + _gs1_check_digit(digits)
 
-    assert equal({"scheme": "gtin", "value": value}, {"scheme": "gtin", "value": value.zfill(14)}, gtin)
+    assert equal(value, value.zfill(14), gtin)
     other = value[:-1] + str((int(value[-1]) + 1) % 10)
-    assert not equal({"scheme": "gtin", "value": value}, {"scheme": "gtin", "value": other.zfill(14)}, gtin)
+    assert not equal(value, other.zfill(14), gtin)
 
 
 def test_other_identifiers_compare_exactly() -> None:
     sku = _spec(FieldType.IDENTIFIER, scheme="sku")
 
-    assert not equal({"scheme": "sku", "value": "0012"}, {"scheme": "sku", "value": "12"}, sku)
-    assert not equal({"scheme": "sku", "value": "ab"}, {"scheme": "sku", "value": "AB"}, sku)
-    assert not equal({"scheme": "sku", "value": "12"}, {"scheme": "mpn", "value": "12"}, sku)
+    assert not equal("0012", "12", sku)
+    assert not equal("ab", "AB", sku)
 
 
 def test_location_compares_country_and_casefolded_locality() -> None:
@@ -170,9 +169,9 @@ _NEAR: dict[FieldType, list[JsonValue]] = {
     FieldType.TEXT: ["a b", "a  b", " a b ", "a &amp; b", "a & b", "A b", "a\n\nb", "", 1],
     FieldType.URL: ["HTTPS://Example.test:443/a/./b#top", "https://example.test/a/b", "https://example.test/A", "/a"],
     FieldType.IDENTIFIER: [
-        {"scheme": "gtin", "value": "4006381333931"},
-        {"scheme": "gtin", "value": "04006381333931"},
-        {"scheme": "sku", "value": "4006381333931"},
+        "4006381333931",
+        "04006381333931",
+        "W-1",
     ],
     FieldType.MONEY: [
         {"amount": "19.9", "currency": "EUR"},

@@ -27,8 +27,8 @@
   --height-table-page: 72rem;
   /* The playground's command bar column (SPEC-14 §4.2): narrower than the content, centred under the mode switch. */
   --container-playground: 48rem;
-  /* The command bar's input box: a URL and its error line, or Batch's list of two lines and its count, so switching
-   * modes moves neither the toolbar nor the run button. */
+  /* The command bar's input box: a URL and its error line, so switching between the single-URL modes moves neither the
+   * toolbar nor the run button. Batch's ten-line list is taller (D-1213). */
   --height-playground-input: 5rem;
   /* The options popover: the command bar's width, less 1rem each side at phone width. */
   --width-options: min(var(--container-playground), 100vw - 2rem);
@@ -85,11 +85,16 @@
   --accent-foreground: oklch(0.99 0 0);
   --link: var(--accent);
 
-  /* JSON view tokens (SPEC-14 §4.3): one color per RFC 8259 value kind, plus object member names. */
-  --json-key: oklch(0.5 0.17 277);
-  --json-string: oklch(0.5 0.13 150);
-  --json-number: oklch(0.55 0.15 50);
-  --json-literal: oklch(0.52 0.17 330);
+  /* JSON view tokens (SPEC-14 §4.3): one color per RFC 8259 value kind, plus object member names, in the code editor
+   * palette readers know (VS Code's Light+ and Dark+ themes), with its editor background, line numbers and guides. */
+  --json-background: #ffffff;
+  --json-foreground: #1f1f1f;
+  --json-gutter: #6e7681;
+  --json-guide: #d3d3d3;
+  --json-key: #0451a5;
+  --json-string: #a31515;
+  --json-number: #098658;
+  --json-literal: #0000ff;
 }
 
 [data-theme="dark"] {
@@ -110,10 +115,14 @@
   --accent-foreground: oklch(0.99 0 0);
   --link: var(--accent);
 
-  --json-key: oklch(0.75 0.13 277);
-  --json-string: oklch(0.78 0.13 150);
-  --json-number: oklch(0.8 0.13 60);
-  --json-literal: oklch(0.76 0.14 330);
+  --json-background: #1e1e1e;
+  --json-foreground: #d4d4d4;
+  --json-gutter: #858585;
+  --json-guide: #404040;
+  --json-key: #9cdcfe;
+  --json-string: #ce9178;
+  --json-number: #b5cea8;
+  --json-literal: #569cd6;
 }
 
 @layer base {
@@ -279,10 +288,25 @@
   .code-view {
     @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 font-mono text-[0.8125rem] leading-5;
   }
-  /* JSON wraps its long lines (a URL, a description) inside the box rather than clipping them; code keeps its lines, as
-   * their numbers count them. */
+  /* JSON reads like a code editor: its lines are kept, numbered and scrolled sideways inside the box, as the numbers
+   * count them. */
   .json-view {
-    @apply break-words whitespace-pre-wrap;
+    @apply whitespace-pre;
+    counter-reset: json-line;
+    background-color: var(--json-background);
+    color: var(--json-foreground);
+  }
+  .json-line::before {
+    @apply me-4 inline-block w-8 text-end select-none;
+    color: var(--json-gutter);
+    counter-increment: json-line;
+    content: counter(json-line);
+  }
+  /* One vertical guide per two-space indent level, at the start of each level. */
+  .json-indent {
+    @apply inline-block h-5 align-top;
+    background-image: linear-gradient(to right, var(--json-guide) 1px, transparent 1px);
+    background-size: 2ch 100%;
   }
   .json-key {
     color: var(--json-key);

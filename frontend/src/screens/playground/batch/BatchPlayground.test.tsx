@@ -33,7 +33,7 @@ function job(overrides: Partial<JobSummary> = {}): JobSummary {
 const FIRST: JsonValuesItem = {
   url: "https://shop.test/items/1",
   outcome: "extracted",
-  records: [{ price: { amount: "19.90", currency: "EUR" }, title: "Blue mug" }],
+  records: [{ price: "19.90", currency: "EUR", title: "Blue mug" }],
 };
 const SECOND: JsonValuesItem = {
   url: "https://shop.test/items/2",
@@ -290,7 +290,7 @@ describe("batch playground: the run", () => {
     expect(within(drawer).getByText(FIRST.url)).toBeInTheDocument();
     expect(
       JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
-    ).toEqual(FIRST);
+    ).toEqual({ price: "19.90", currency: "EUR", title: "Blue mug" });
   });
 
   it("shows a page's outputs in the drawer when the batch has no schema", async () => {
@@ -358,7 +358,7 @@ describe("batch playground: the run", () => {
     await waitFor(() => {
       expect(
         JSON.parse(within(drawer).getByRole("region", { name: "Page JSON" }).textContent),
-      ).toEqual(done);
+      ).toEqual({ title: "Red mug" });
     });
   });
 

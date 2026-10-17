@@ -4,6 +4,7 @@ import { useJobResults, useJobValues } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { JsonValuesItem } from "../../../api/jobs";
 import { useCursorPages } from "../../../components/cursors";
+import { pageJson } from "../output/cleanJson";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
 import { PAGE_SIZE, PagedTable } from "../../../components/PagedTable";
 import { ItemDrawer } from "./ItemDrawer";
@@ -117,6 +118,12 @@ function PagesTable({
   );
 }
 
+/** The page output at `offset` in a read of `format=json`, once it holds page outputs (SPEC-10 §4.2); undefined
+ * until then, so the drawer keeps showing the item. */
+function pageOutput(results: ReturnType<typeof useJobResults>["data"], offset: number): unknown {
+  return results?.kind === "pages" ? results.page.items[offset] : undefined;
+}
+
 /** A batch's or crawl's pages (SPEC-14 §4.3), one row each in task order, from `results?format=json_values`; each
  * row's JSON opens in a drawer. With `outputs` (a job without a schema), the drawer shows the page's outputs, read
  * from `format=json` at the same cursor, whose pages hold the same tasks in the same order (SPEC-10 §4.2). The job's
@@ -165,7 +172,9 @@ export function ResultsTable({
         <ItemDrawer
           url={open.item.url}
           value={
-            pageOutputs?.kind === "pages" ? pageOutputs.page.items[open.id - first] : open.item
+            outputs
+              ? (pageOutput(pageOutputs, open.id - first) ?? open.item)
+              : pageJson(open.item.records, open.item.metadata)
           }
           position={open.id}
           onClose={() => {

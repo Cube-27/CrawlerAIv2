@@ -129,11 +129,56 @@ def test_a_record_of_another_schema_is_refused() -> None:
         export_records("csv_records", SCHEMA, records)
 
 
-def test_a_clean_record_has_the_schemas_fields_in_name_order_with_null_where_none_published() -> None:
-    record = clean_record(SCHEMA, {"price": {"amount": "9.50", "currency": "EUR"}})
-
-    assert list(record.items()) == [("price", {"amount": "9.50", "currency": "EUR"}), ("title", None)]
+_MONEY = FieldSpec(type=FieldType.MONEY, description="d")
+_EUR: JsonValue = {"amount": "9.50", "currency": "EUR"}
 
 
-def test_a_clean_record_leaves_out_a_value_of_no_schema_field() -> None:
-    assert clean_record(SCHEMA, {"title": "Lamp", "colour": "blue"}) == {"title": "Lamp", "price": None}
+def test_a_clean_record_has_the_published_fields_in_name_order_and_leaves_out_the_rest() -> None:
+    record = clean_record(SCHEMA, {"title": "Lamp", "price": "cheap", "colour": "blue"})
+
+    assert list(record.items()) == [("price", "cheap"), ("title", "Lamp")]
+    assert clean_record(SCHEMA, {"price": None}) == {}
+
+
+def test_a_clean_price_is_its_amount_beside_a_currency_field() -> None:
+    schema = SchemaDocument(name="thing", page_kind="detail", fields={"price": _MONEY, "title": _TEXT})
+
+    assert list(clean_record(schema, {"price": _EUR, "title": "Lamp"}).items()) == [
+        ("price", "9.50"),
+        ("currency", "EUR"),
+        ("title", "Lamp"),
+    ]
+
+
+def test_another_money_field_or_a_schema_currency_field_names_its_currency_after_the_field() -> None:
+    fields = {"price": _MONEY, "list_price": _MONEY, "currency": _TEXT}
+    schema = SchemaDocument(name="thing", page_kind="detail", fields=fields)
+
+    assert clean_record(schema, {"price": _EUR, "list_price": _EUR, "currency": "x"}) == {
+        "currency": "x",
+        "list_price": "9.50",
+        "list_price_currency": "EUR",
+        "price": "9.50",
+        "price_currency": "EUR",
+    }
+
+
+def test_a_money_value_is_written_whole_when_every_currency_key_names_a_schema_field() -> None:
+    fields = {"price": _MONEY, "currency": _TEXT, "price_currency": _TEXT}
+    schema = SchemaDocument(name="thing", page_kind="detail", fields=fields)
+
+    assert clean_record(schema, {"price": _EUR, "currency": "x", "price_currency": "y"}) == {
+        "currency": "x",
+        "price": {"amount": "9.50", "currency": "EUR"},
+        "price_currency": "y",
+    }
+
+
+def test_money_in_nested_rows_is_written_flat_and_their_nulls_left_out() -> None:
+    row = FieldSpec(type=FieldType.OBJECT, description="d", fields={"price": _MONEY, "sku": _TEXT})
+    variants = FieldSpec(type=FieldType.LIST, description="d", item=row)
+    schema = SchemaDocument(name="thing", page_kind="detail", fields={"variants": variants})
+
+    assert clean_record(schema, {"variants": [{"price": _EUR, "sku": None}, {"sku": "A-1"}]}) == {
+        "variants": [{"price": "9.50", "currency": "EUR"}, {"sku": "A-1"}]
+    }

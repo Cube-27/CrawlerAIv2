@@ -8,7 +8,7 @@ import { OutcomeLabel } from "../../../components/OutcomeLabel";
 import { RecordList } from "../../../components/RecordFields";
 import { StatusLabel } from "../../../components/StatusLabel";
 import { Timestamp } from "../../../components/Timestamp";
-import { hasUncalibrated, scrapeItem } from "./cleanJson";
+import { hasUncalibrated, scrapeJson } from "./cleanJson";
 import { FetchView, LinksTable, MetadataTable, TextFormat, UsageTable } from "./FormatViews";
 
 interface OutputTab {
@@ -20,10 +20,14 @@ interface OutputTab {
 /** The page's clean JSON (SPEC-14 §4.4), with one "uncalibrated" badge above it when a published field is. */
 function JsonTab({
   response,
+  fieldTypes,
   withMetadata,
-}: Readonly<{ response: ScrapeResponse; withMetadata: boolean }>) {
-  // One item per response: JsonView keeps its text and tokens while the item is the same object.
-  const item = useMemo(() => scrapeItem(response, withMetadata), [response, withMetadata]);
+}: Readonly<{ response: ScrapeResponse; fieldTypes: FieldTypes; withMetadata: boolean }>) {
+  // One value per response: JsonView keeps its text and tokens while the value is the same object.
+  const item = useMemo(
+    () => scrapeJson(response, fieldTypes, withMetadata),
+    [response, fieldTypes, withMetadata],
+  );
   return (
     <div className="flex flex-col gap-3">
       {hasUncalibrated(response.records ?? []) ? (
@@ -93,7 +97,7 @@ function outputTabs(
     {
       id: "json",
       label: "JSON",
-      content: <JsonTab response={response} withMetadata={withMetadata} />,
+      content: <JsonTab response={response} fieldTypes={fieldTypes} withMetadata={withMetadata} />,
     },
     {
       id: "table",

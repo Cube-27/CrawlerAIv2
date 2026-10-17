@@ -4,8 +4,8 @@ import { ReadOnlyContext } from "./readOnly";
 
 /** The command bar (SPEC-14 §4.2): one bordered surface with the mode's input on top and the toolbar under it: the
  * Options button and the tools on the left, the primary action on the right. The input sits in a box of at least
- * `min-h-playground-input`, which holds a URL and its error as well as Batch's list, so switching modes or showing an
- * error moves neither the toolbar nor the action. A read-only bar disables its input and tools (a disabled fieldset,
+ * `min-h-playground-input`, which holds a URL and its error, so switching between the single-URL modes or showing an
+ * error moves neither the toolbar nor the action; Batch's ten-line list is taller (D-1213). A read-only bar disables its input and tools (a disabled fieldset,
  * HTML §4.10.15); Options and the action stay usable. */
 export function CommandBar({
   input,

@@ -399,14 +399,14 @@ async def test_json_values_has_one_item_per_task_oldest_first_with_its_clean_rec
 
     page = await _json_values(world.engine, job_id)
 
-    # A clean record has the schema's fields in name order, null where none published, and no status.
+    # A clean record has the schema's published fields in name order, and no status.
     assert [(item.url, item.outcome, item.records) for item in page.items[:4]] == [
-        (detail, "partial", [{"colour": "blue", "title": None}]),
+        (detail, "partial", [{"colour": "blue"}]),
         (failed, "failed", []),
-        (listing, "extracted", [{"colour": "red", "title": "Kettle"}, {"colour": None, "title": "Mug"}]),
+        (listing, "extracted", [{"colour": "red", "title": "Kettle"}, {"title": "Mug"}]),
         (blocked, "blocked", []),
     ]
-    assert [list(record) for record in page.items[2].records] == [["colour", "title"]] * 2
+    assert list(page.items[2].records[0]) == ["colour", "title"]
     assert (len(page.items), page.items[4].outcome, page.items[4].records) == (5, None, [])
     assert (page.format, page.next_cursor) == ("json_values", None)
 
@@ -422,7 +422,7 @@ async def test_an_unchanged_page_shows_the_latest_record_of_its_entity(world: Wo
     page = await _json_values(world.engine, rerun)
 
     assert [(item.url, item.outcome, item.records) for item in page.items] == [
-        (url, "unchanged", [{"title": "Kettle 0", "colour": None}])
+        (url, "unchanged", [{"title": "Kettle 0"}])
     ]
 
 
@@ -690,7 +690,7 @@ async def test_json_values_carry_metadata_only_when_asked_and_the_capture_is_kep
     # Only an extracted or partial page whose capture is still kept has metadata; it is never null.
     assert ["metadata" in item for item in items] == [True, True, False, False, False]
     assert (items[0]["metadata"]["title"], items[0]["metadata"]["language"]) == ("Kettle", "en")
-    assert (items[0]["records"], asked.json()["format"]) == ([{"title": "Kettle", "colour": None}], "json_values")
+    assert (items[0]["records"], asked.json()["format"]) == ([{"title": "Kettle"}], "json_values")
 
 
 async def test_json_values_are_served_for_a_job_without_a_schema(client: httpx.AsyncClient, world: World) -> None:

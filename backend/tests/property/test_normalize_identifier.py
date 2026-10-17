@@ -65,14 +65,14 @@ def test_empty_or_whitespace_input_is_invalid(scheme: IdentifierScheme, raw: str
 def test_a_gtin_is_ok_with_a_correct_check_digit_and_invalid_with_one_digit_changed(
     value: str, at: int, delta: int
 ) -> None:
-    assert identifier.normalize(value, _spec("gtin"), CTX) == Ok({"scheme": "gtin", "value": value})
+    assert identifier.normalize(value, _spec("gtin"), CTX) == Ok(value)
     assert identifier.normalize(_perturb(value, at, delta), _spec("gtin"), CTX) == Invalid("check_digit")
 
 
 @pytest.mark.parametrize("raw", ["4006381333931", "96385074", "036000291452", "10012345678902"])
 def test_known_valid_gtins_of_each_length_are_ok(raw: str) -> None:
     # Check digits computed by hand from GS1 General Specifications §7.9.1.
-    assert identifier.normalize(raw, _spec("gtin"), CTX) == Ok({"scheme": "gtin", "value": raw})
+    assert identifier.normalize(raw, _spec("gtin"), CTX) == Ok(raw)
 
 
 @given(st.integers(min_value=1, max_value=20).filter(lambda n: n not in GTIN_LENGTHS).flatmap(_digits))
@@ -97,7 +97,7 @@ def test_an_isbn_is_ok_with_a_correct_checksum_and_invalid_with_one_digit_change
     # A change inside an ISBN-13's 978/979 prefix leaves the ISBN range before it breaks the checksum.
     reason = "prefix" if len(changed) == 13 and not changed.startswith(("978", "979")) else "check_digit"
 
-    assert identifier.normalize(value, _spec("isbn"), CTX) == Ok({"scheme": "isbn", "value": value})
+    assert identifier.normalize(value, _spec("isbn"), CTX) == Ok(value)
     assert identifier.normalize(changed, _spec("isbn"), CTX) == Invalid(reason)
 
 
@@ -112,7 +112,7 @@ def test_an_isbn_is_ok_with_a_correct_checksum_and_invalid_with_one_digit_change
 )
 def test_isbn_hyphens_spaces_and_prefix_are_dropped(raw: str, value: str) -> None:
     # ISO 2108: the parts of an ISBN are separated by hyphens or spaces, and a printed ISBN is preceded by "ISBN".
-    assert identifier.normalize(raw, _spec("isbn"), CTX) == Ok({"scheme": "isbn", "value": value})
+    assert identifier.normalize(raw, _spec("isbn"), CTX) == Ok(value)
 
 
 @pytest.mark.parametrize(
@@ -137,12 +137,12 @@ _opaque_values = st.text(alphabet=st.characters(exclude_categories=["Cs"]), min_
 
 @given(st.sampled_from(OPAQUE), _opaque_values, _whitespace)
 def test_an_opaque_identifier_is_kept_as_given_but_trimmed(scheme: IdentifierScheme, value: str, pad: str) -> None:
-    assert identifier.normalize(f"{pad}{value}{pad}", _spec(scheme), CTX) == Ok({"scheme": scheme, "value": value})
+    assert identifier.normalize(f"{pad}{value}{pad}", _spec(scheme), CTX) == Ok(value)
 
 
 @pytest.mark.parametrize("scheme", OPAQUE)
 def test_an_opaque_identifier_is_at_most_64_characters(scheme: IdentifierScheme) -> None:
-    assert identifier.normalize("a" * 64, _spec(scheme), CTX) == Ok({"scheme": scheme, "value": "a" * 64})
+    assert identifier.normalize("a" * 64, _spec(scheme), CTX) == Ok("a" * 64)
     assert identifier.normalize("a" * 65, _spec(scheme), CTX) == Invalid("too_long")
 
 
@@ -154,7 +154,7 @@ def test_input_with_a_lone_surrogate_is_invalid(scheme: IdentifierScheme, surrog
 @pytest.mark.parametrize(("scheme", "raw", "value"), [("gtin", 4006381333931, "4006381333931"), ("sku", 1234, "1234")])
 def test_a_json_integer_is_read_as_its_decimal_digits(scheme: IdentifierScheme, raw: int, value: str) -> None:
     # JSON-LD carries schema.org Text values such as `gtin13` as numbers when the publisher wrote them unquoted.
-    assert identifier.normalize(raw, _spec(scheme), CTX) == Ok({"scheme": scheme, "value": value})
+    assert identifier.normalize(raw, _spec(scheme), CTX) == Ok(value)
 
 
 @pytest.mark.parametrize("raw", [None, True, 1.5, -5, ["4006381333931"], {"@value": "4006381333931"}])
@@ -170,4 +170,4 @@ def test_a_spec_of_another_type_is_a_programming_error() -> None:
 
 
 def test_the_dispatcher_sends_identifiers_to_the_identifier_module() -> None:
-    assert normalize("4006381333931", _spec("gtin"), CTX) == Ok({"scheme": "gtin", "value": "4006381333931"})
+    assert normalize("4006381333931", _spec("gtin"), CTX) == Ok("4006381333931")

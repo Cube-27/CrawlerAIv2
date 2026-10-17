@@ -35,15 +35,13 @@ def sub(value: Any = None) -> dict[str, Any]:
 
 def row(sku: str | None, price: str | None = "10.00", url: str | None = None) -> dict[str, Any]:
     money = {"amount": price, "currency": "EUR"} if price is not None else None
-    return {
-        "fields": {"sku": sub({"scheme": "sku", "value": sku} if sku else None), "price": sub(money), "url": sub(url)}
-    }
+    return {"fields": {"sku": sub(sku if sku else None), "price": sub(money), "url": sub(url)}}
 
 
 VARIANTS: dict[str, Any] = {
     "absent": False,
     "rows": [row("W-11"), row("W-12", "12.00")],
-    "distractor_keys": [{"field": "sku", "value": {"scheme": "sku", "value": "X-7"}}],
+    "distractor_keys": [{"field": "sku", "value": "X-7"}],
 }
 
 DOC: dict[str, Any] = {
@@ -91,7 +89,7 @@ def test_a_complete_version_2_document_labels_every_row_field() -> None:
 
 
 def test_a_draft_may_leave_the_row_field_and_sub_fields_unlabeled() -> None:
-    partial = {"fields": {"sku": sub({"scheme": "sku", "value": "W-11"})}}
+    partial = {"fields": {"sku": sub("W-11")}}
     draft = with_list({"absent": False, "rows": [partial]}, status="draft", checker=None)
 
     assert list(parse_labels(draft, "detail", SPECS).lists["variants"].rows[0].fields) == ["sku"]
@@ -99,7 +97,7 @@ def test_a_draft_may_leave_the_row_field_and_sub_fields_unlabeled() -> None:
 
 
 def test_every_sub_field_of_a_complete_row_is_labeled() -> None:
-    partial = {"fields": {"sku": sub({"scheme": "sku", "value": "W-11"})}}
+    partial = {"fields": {"sku": sub("W-11")}}
 
     assert errors(with_list({"absent": False, "rows": [partial]})) == {
         LabelError("lists.variants.rows[0].fields.price", "not labeled; mark it absent if the page does not show it"),
@@ -143,7 +141,7 @@ def test_absent_and_rows_agree(variants: dict[str, Any], reason: str) -> None:
 
 def test_a_distractor_key_names_a_key_sub_field_and_no_row_s_key() -> None:
     price = {"field": "price", "value": {"amount": "10.00", "currency": "EUR"}}
-    own = {"field": "sku", "value": {"scheme": "sku", "value": "W-11"}}
+    own = {"field": "sku", "value": "W-11"}
 
     assert errors(with_list(VARIANTS | {"distractor_keys": [price, own]})) == {
         LabelError("lists.variants.distractor_keys[0]", "not a key sub-field of variants"),
