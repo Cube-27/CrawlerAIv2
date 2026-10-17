@@ -98,6 +98,7 @@ class Web:
     renders: dict[str, bytes] = field(default_factory=dict)
     browser_fetches: list[tuple[int, str]] = field(default_factory=list)
     http_fetches: list[tuple[str, FetchPolicy]] = field(default_factory=list)
+    policies: list[FetchPolicy] = field(default_factory=list)  # of the browser's fetches
     sessions: int = 0
 
     def answer(self, url: str, method: str = "http") -> FetchResult:
@@ -119,12 +120,15 @@ class Web:
         self, session: Session, url: str, policy: FetchPolicy, export: CookieExport | None = None
     ) -> FetchResult:
         self.browser_fetches.append((session.number, url))
+        self.policies.append(policy)
         if url in self.crashing:
             session.connected = False
             return self.fetch_result(url, 0, b"", block_class="error", error="browser crashed", method="browser")
         if url in self.renders:
             return self.fetch_result(url, 200, self.renders[url], method="browser")
-        return self.answer(url, "browser")
+        result = self.answer(url, "browser")
+        files = {**({"screenshot.png": b"png " + url.encode()} if policy.screenshot else {})}
+        return result.model_copy(update={"artifacts": files})
 
 
 @pytest.fixture
@@ -277,6 +281,30 @@ async def test_page_outputs_are_made_from_each_tasks_capture_and_paginate(
 
 
 @pytest.mark.usefixtures("site")
+@pytest.mark.usefixtures("site")
+async def test_a_screenshot_forces_the_browser_and_each_pages_file_is_stored_beside_its_capture(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red")]
+    for url, name in zip(urls, ("Blue kettle", "Red kettle"), strict=True):
+        web.pages[url] = (200, _page(name))
+    request = _batch(urls, "screenshot", "markdown_fit", fetch={"screenshot": "full_page"})
+    submitted = await submit_batch(engine, fetching.connector, request, data=None)
+
+    await _run(engine, fetching, None, submitted.job_id)
+
+    page = await _results(engine, fetching, submitted.job_id)
+    assert sorted(url for _, url in web.browser_fetches) == urls
+    assert {(p.method_hint, p.screenshot, p.pdf) for p in web.policies} == {("browser", "full_page", False)}
+    assert [item.screenshot.url for item in page.items if item.screenshot] == [
+        f"/v1/captures/{item.capture_id}/artifacts/screenshot.png" for item in page.items
+    ]
+    assert len(page.items) == 2
+    assert all("kettle" in (item.markdown_fit or "") for item in page.items)
+    files = [key for key in fetching.store.list("captures/") if key.endswith(".screenshot.png")]
+    assert sorted(fetching.store.get(key) for key in files) == [b"png " + url.encode() for url in urls]
+
+
 async def test_a_schema_without_the_records_format_is_ignored(
     engine: AsyncEngine,
     fetching: Fetching,

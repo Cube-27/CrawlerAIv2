@@ -228,11 +228,14 @@ class JsonValuesPage(BaseModel):
     next_cursor: UrlTaskId | None
 
 
+_DEFAULT_LIMIT: Final = 50
+
+
 class ResultsQuery(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     cursor: uuid.UUID | None = None  # a record's id; a task's for page outputs and `json_values`
-    limit: int = Field(default=50, ge=1, le=MAX_PAGE)
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=MAX_PAGE)
     format: ResultFormat = "json"
     include: list[Literal["metadata", "fetch"]] = Field(default_factory=list)  # `json_values` only
     csv_safe: bool = False  # `csv_records` only: quote formula-like cells for spreadsheets (D-0879)
@@ -243,7 +246,7 @@ class ResultsQuery(BaseModel):
             raise ValueError("`include` is accepted only with format=json_values")
         if self.csv_safe and self.format != "csv_records":
             raise ValueError("`csv_safe` is accepted only with format=csv_records")
-        if self.format in FILE_FORMATS and {"cursor", "limit"} & self.model_fields_set:
+        if self.format in FILE_FORMATS and (self.cursor is not None or self.limit != _DEFAULT_LIMIT):
             raise ValueError(f"`cursor` and `limit` are not accepted with format={self.format}: it is one file")
         return self
 

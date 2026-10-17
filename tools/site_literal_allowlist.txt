@@ -10,6 +10,7 @@ www.w3.org  # W3C specifications and namespaces
 .iana.org  # IANA registries, including the root-zone TLD list this scan uses
 .unicode.org  # Unicode and CLDR
 .sitemaps.org  # the Sitemaps protocol and its XML namespace (SPEC-10 §4.4)
+llmstxt.org  # the llms.txt proposal, whose format `content/llms.py` writes
 
 # Tooling hosts.
 github.com  # source hosting and GitHub Actions

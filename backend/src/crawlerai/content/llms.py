@@ -4,9 +4,10 @@ with an optional `: description`. `llms-full.txt` holds the pages' own Markdown 
 
 What the files say comes from the pages and their URLs only (C7): the name is the first page's title, else its host;
 the summary is that page's description; a link's name is its page's title, else the last segment of its URL's path,
-else the URL; its description is its page's description. A page goes in the section of the first segment of its path
-(RFC 3986 §3.3), named by that segment with `-` and `_` read as spaces; a page at the site's root level goes in
-`Pages`. Sections follow the order their first page came in, so the order of the pages decides the file.
+else the URL; its description is its page's description. The directory every page's path shares (RFC 3986 §3.3) is
+the site's root: a page goes in the section of the first segment of its path below it, named by that segment with `-`
+and `_` read as spaces, and a page directly in the root goes in `Pages`. Sections follow the order their first page
+came in, so the order of the pages decides the file.
 """
 
 import re
@@ -58,24 +59,39 @@ def _opening(first: LlmsPage | None) -> list[str]:
     return lines
 
 
+def _segments(url: str) -> list[str]:
+    return [segment for segment in urlsplit(url).path.split("/") if segment]
+
+
+def _directory(url: str) -> list[str]:
+    """The segments of the directory the URL's path is in: all for a path ending in `/`, else all but the last."""
+    segments = _segments(url)
+    return segments if urlsplit(url).path.endswith("/") else segments[:-1]
+
+
+def _shared(paths: Sequence[Sequence[str]]) -> int:
+    """How many leading segments every one of `paths` starts with."""
+    shared = 0
+    while paths and all(len(path) > shared and path[shared] == paths[0][shared] for path in paths):
+        shared += 1
+    return shared
+
+
 def _sections(pages: Sequence[LlmsPage]) -> dict[str, list[LlmsPage]]:
+    directories = [_directory(page.url) for page in pages]
+    shared = _shared(directories)
     sections: dict[str, list[LlmsPage]] = {}
     for page in pages:
-        sections.setdefault(_section(page.url), []).append(page)
+        below = _segments(page.url)[shared:]
+        title = _SEPARATORS.sub(" ", unquote(below[0])).strip().capitalize() if len(below) > 1 else ""
+        sections.setdefault(title or _ROOT_SECTION, []).append(page)
     return sections
-
-
-def _section(url: str) -> str:
-    segments = [segment for segment in urlsplit(url).path.split("/") if segment]
-    if len(segments) < 2:
-        return _ROOT_SECTION
-    return _SEPARATORS.sub(" ", unquote(segments[0])).strip().capitalize() or _ROOT_SECTION
 
 
 def _name(page: LlmsPage) -> str:
     if page.title:
         return _line(page.title)
-    segments = [segment for segment in urlsplit(page.url).path.split("/") if segment]
+    segments = _segments(page.url)
     return _line(unquote(segments[-1])) if segments else page.url
 
 

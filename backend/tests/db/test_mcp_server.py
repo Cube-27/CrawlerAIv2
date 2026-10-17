@@ -6,6 +6,7 @@ The app runs as the REST tests run it: real settings against the test database, 
 pages on RFC 2606 hosts with a stub resolver, so nothing leaves the process.
 """
 
+import base64
 import json
 import os
 import sys
@@ -19,7 +20,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_connected_server_and_client_session
-from mcp.types import CallToolResult, TextContent
+from mcp.types import CallToolResult, ImageContent, TextContent
 from pydantic import TypeAdapter
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -60,9 +61,11 @@ TOOLS = {
     "get_site_config",
     "export_config",
     "reject_config",
+    "llms_txt",
 }
 # The tools that answer with page content say that it is untrusted (§4.7).
-CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status"}
+CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status", "llms_txt"}
+PNG = b"\x89PNG\r\n\x1a\nsynthetic screenshot"
 TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
 PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 
@@ -89,8 +92,12 @@ def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[in
             url, status, body, (("Content-Type", "text/html"),), block_class="ok" if status == 200 else "not_found"
         )
 
+    async def browser(url: str, policy: FetchPolicy) -> FetchResult:
+        result = await http(url, policy)
+        return result.model_copy(update={"artifacts": {"screenshot.png": PNG} if policy.screenshot else {}})
+
     return Fetching(
-        Rungs(http=http, browser=http), SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter()
+        Rungs(http=http, browser=browser), SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter()
     )
 
 
@@ -223,6 +230,35 @@ async def test_scrape_records_read_unknown_for_a_field_without_a_published_value
         "- price: unknown [missing, confidence none]",
         '- title: "Blue kettle" [published, confidence none]',
     ]
+
+
+async def test_a_screenshot_is_named_by_its_url_and_comes_back_as_an_image(
+    session: ClientSession, pages: dict[str, tuple[int, bytes]], own_origin: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, _page("Blue kettle"))
+
+    result = await session.call_tool("scrape", {"request": {"url": url, "formats": ["screenshot"]}})
+
+    assert not result.isError, _texts(result)
+    capture_id = (result.structuredContent or {})["capture_id"]
+    assert (result.structuredContent or {})["screenshot"][
+        "url"
+    ] == f"/v1/captures/{capture_id}/artifacts/screenshot.png"
+    (image,) = [block for block in result.content if isinstance(block, ImageContent)]
+    assert (image.mimeType, base64.b64decode(image.data)) == ("image/png", PNG)
+
+
+async def test_llms_txt_is_the_pages_a_job_reached(
+    session: ClientSession, pages: dict[str, tuple[int, bytes]], own_origin: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, _page("Blue kettle"))
+    scraped = await _call(session, "scrape", request={"url": url, "formats": ["markdown"]})
+
+    result = await _call(session, "llms_txt", job_id=scraped["job_id"])
+
+    assert result["llms_txt"] == f"# Blue kettle\n\n## Pages\n\n- [Blue kettle]({url})\n"
 
 
 async def test_scrape_of_a_private_target_is_an_error_result(session: ClientSession) -> None:

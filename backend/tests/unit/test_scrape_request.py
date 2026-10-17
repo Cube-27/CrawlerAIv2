@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from crawlerai.content.chunks import ChunkOptions
 from crawlerai.services.scrape import ScrapeRequest
 from crawlerai.services.scrape_steps import SchemaFields, SchemaPrompt
 
@@ -29,6 +30,7 @@ def test_takes_the_documented_defaults() -> None:
         "max_age": 0,
         "fetch": {
             "method_hint": "auto",
+            "screenshot": "viewport",
             "respect_robots": True,
             "robots_override_reason": None,
             "proxy_pool": None,
@@ -43,6 +45,8 @@ def test_takes_the_documented_defaults() -> None:
         "timeout_s": 60.0,
         "budget": None,
         "browser_actions": None,
+        "fit": None,
+        "chunking": None,
     }
 
 
@@ -69,7 +73,7 @@ def test_takes_a_row_target_for_the_adapters_lists() -> None:
 
 def test_refuses_no_format_and_unknown_formats() -> None:
     assert _errors({"url": URL, "formats": []}) == [("formats",)]
-    assert _errors({"url": URL, "formats": ["pdf"]}) == [("formats", "0")]
+    assert _errors({"url": URL, "formats": ["docx"]}) == [("formats", "0")]
 
 
 INLINE = {
@@ -180,3 +184,41 @@ def test_takes_a_hint_and_a_row_target() -> None:
 
     assert request.browser_actions is not None
     assert (request.browser_actions.records, request.browser_actions.hint) == (30, "scroll")
+
+
+def test_a_screenshot_or_pdf_cannot_be_asked_over_http() -> None:
+    body = {"url": URL, "formats": ["screenshot"], "fetch": {"method_hint": "http"}}
+
+    assert _messages(body) == ["Value error, screenshot and pdf are made in the browser, so method_hint cannot be http"]
+    assert _messages({**body, "formats": ["pdf"]}) == _messages(body)
+    assert ScrapeRequest.model_validate({**body, "fetch": {"method_hint": "browser"}}).fetch.method_hint == "browser"
+
+
+def test_fit_and_chunking_need_their_formats() -> None:
+    assert _messages({"url": URL, "formats": ["markdown"], "fit": {"query": "x"}}) == [
+        "Value error, fit is the option of the markdown_fit format"
+    ]
+    assert _messages({"url": URL, "formats": ["markdown"], "chunking": {}}) == [
+        "Value error, chunking is the option of the chunks format"
+    ]
+    both = {"url": URL, "formats": ["markdown_fit", "chunks"], "fit": {"query": "x"}, "chunking": {"size": 9}}
+    assert ScrapeRequest.model_validate(both).chunking == ChunkOptions(size=9)
+
+
+def test_chunking_overlap_must_be_smaller_than_size() -> None:
+    body = {"url": URL, "formats": ["chunks"], "chunking": {"size": 4, "overlap": 4}}
+
+    assert _messages(body) == ["Value error, overlap must be smaller than size"]
+
+
+def test_browser_actions_cannot_ask_a_screenshot() -> None:
+    body = {
+        "url": URL,
+        "formats": ["screenshot"],
+        "page_kind": "listing",
+        "browser_actions": {"records": 5},
+    }
+
+    assert _messages(body) == [
+        "Value error, screenshot and pdf are of the page as first rendered, so browser_actions cannot ask them"
+    ]

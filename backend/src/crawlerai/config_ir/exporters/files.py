@@ -59,8 +59,7 @@ def _xlsx_cell(sheet: Any, value: JsonValue) -> Any:
     """The value as a cell: a text cell for any string, so no value is read as a formula."""
     if value is None or isinstance(value, bool | int | float):
         return value
-    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, allow_nan=False)
-    cleaned = ILLEGAL_CHARACTERS_RE.sub("", text)[:_XLSX_CELL_MAX]
+    cleaned = ILLEGAL_CHARACTERS_RE.sub("", _text(value) or "")[:_XLSX_CELL_MAX]
     cell = WriteOnlyCell(sheet, value=cleaned)
     cell.data_type = "s"
     return cell

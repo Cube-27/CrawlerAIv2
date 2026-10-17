@@ -121,6 +121,15 @@ _REFUSAL_PAGE = (
 )
 
 
+# A page three times taller than the browser's viewport, with enough text not to be a shell.
+_TALL = (
+    b'<html><body><nav><a href="/">Home</a></nav><p>'
+    + b"A paragraph of the tall page that is long enough to be read as content. " * 6
+    + b"</p>"
+    b'<div style="height: 3000px; background: #ccd"></div><p>The end of the tall page.</p></body></html>'
+)
+
+
 @dataclass(frozen=True)
 class Reply:
     status: int = 200
@@ -187,6 +196,7 @@ def server() -> Iterator[Server]:
             "/api/note": Reply(content_type="text/plain", body=b"plain text"),
             "/style.css": Reply(content_type="text/css", body=b"p { color: black }"),
             "/api/big": Reply(content_type=_JSON, body=b"[" + b"0," * 1_100_000 + b"0]"),
+            "/tall": Reply(body=_TALL),
             "/many": Reply(body=_MANY),
             "/search": Reply(body=_SEARCH),
             "/api/search": Reply(content_type=_JSON, body=b'{"hits": []}'),
@@ -730,3 +740,45 @@ def test_the_page_and_its_worker_present_chromiums_own_identity(browser: Browser
     chrome_major = re.search(r"Chrome/(\d+)\.", agent)
     assert chrome_major is not None
     assert brands["Chromium"] == chrome_major.group(1)
+
+
+def _png_size(data: bytes) -> tuple[int, int]:
+    """The width and height in the IHDR chunk (W3C PNG Third Edition §11.2.2)."""
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+
+
+def test_no_file_is_made_of_the_page_unless_the_policy_asks() -> None:
+    assert FetchPolicy().captures_page is False
+
+
+def test_a_viewport_screenshot_is_a_png_of_the_visible_area_and_leaves_the_bundle_as_it_was(
+    browser: Browser, server: Server
+) -> None:
+    result = browser.fetch(server.url("/tall"), FetchPolicy(browser_timeout_s=10, screenshot="viewport"))
+
+    assert list(result.artifacts) == ["screenshot.png"]
+    assert _png_size(result.artifacts["screenshot.png"]) == (1280, 720)
+    assert decode(encode(result.bundle)) == result.bundle
+    assert result.bundle.manifest.fetch_policy["screenshot"] == "viewport"
+
+
+def test_a_full_page_screenshot_is_as_tall_as_the_page(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/tall"), FetchPolicy(browser_timeout_s=10, screenshot="full_page"))
+
+    width, height = _png_size(result.artifacts["screenshot.png"])
+    assert width <= 1280  # less the scroll bar the tall page makes
+    assert height > 3000
+
+
+def test_a_pdf_is_a_print_of_the_page(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/tall"), FetchPolicy(browser_timeout_s=10, pdf=True))
+
+    assert list(result.artifacts) == ["page.pdf"]
+    assert result.artifacts["page.pdf"].startswith(b"%PDF-")
+
+
+def test_a_page_that_was_not_reached_has_no_files(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/missing"), FetchPolicy(browser_timeout_s=10, screenshot="viewport", pdf=True))
+
+    assert (result.block_class, result.artifacts) == ("not_found", {})
