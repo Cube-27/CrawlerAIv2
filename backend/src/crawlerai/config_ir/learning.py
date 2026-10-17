@@ -36,7 +36,7 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate, store_pending
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
-from crawlerai.config_ir.api_recipe.replay import Replay
+from crawlerai.config_ir.api_recipe.replay import Render, Replay
 from crawlerai.config_ir.api_recipe.validate import attach
 from crawlerai.config_ir.held_out import StoredPage, load_pages
 from crawlerai.config_ir.induction import Induction, SamplePage, induce
@@ -128,10 +128,11 @@ async def run_learn_job(
     vocabulary: Vocabulary,
     max_chars: int,
     replay: Replay | None,
+    render: Render | None = None,
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
-    learns no API recipe."""
+    learns no API recipe; `render` renders the pages whose captures hold no calls to learn a recipe from."""
     try:
         async with engine.begin() as conn:
             run = await _start(conn, job_id)
@@ -145,7 +146,7 @@ async def run_learn_job(
         # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
-        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, replay)
+        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, replay, render)
         async with engine.begin() as conn:
             return await _finish(conn, run, validated)
     except LLMFailure as e:
@@ -230,7 +231,12 @@ REASON_CHARS: Final = 200
 
 
 async def _learned(
-    client: LLMClient, run: _Run, vocabulary: Vocabulary, max_chars: int, replay: Replay | None
+    client: LLMClient,
+    run: _Run,
+    vocabulary: Vocabulary,
+    max_chars: int,
+    replay: Replay | None,
+    render: Render | None,
 ) -> Validated:
     """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
     sample, held_out = split(run.schema, run.pages)
@@ -244,7 +250,7 @@ async def _learned(
     # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
     if validated.ir is None or replay is None:
         return validated
-    recipe = await learn_recipe(client, sample, held_out, run.schema, replay, job_id=run.job_id)
+    recipe = await learn_recipe(client, sample, held_out, run.schema, replay, job_id=run.job_id, render=render)
     return attach(validated, recipe)
 
 

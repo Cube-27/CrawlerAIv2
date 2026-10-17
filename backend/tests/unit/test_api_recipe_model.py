@@ -192,3 +192,18 @@ def test_a_map_entry_reads_one_scalar_or_its_joined_parts(path: str, expected: o
     document: JsonValue = {"data": data}
 
     assert read_map(path, document) == expected
+
+
+def test_a_listing_recipe_names_the_calls_its_endpoint_makes() -> None:
+    recipe = ApiRecipe.model_validate(_recipe(url="https://api.example.test/v1/{slug}/items?hl={lang}"))
+    detail = ApiRecipe.model_validate(_recipe(pagination=None))
+
+    learned = recipe.learned_calls
+    assert learned is not None
+    assert (learned.method, learned.origin, learned.segments) == (
+        "GET",
+        "https://api.example.test",
+        ("v1", None, "items"),
+    )
+    assert (learned.rows, learned.map) == ("$['data']['items'][*]", recipe.map)
+    assert detail.learned_calls is None

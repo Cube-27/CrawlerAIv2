@@ -18,13 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire.browser_tab import Drive, fetch_listing
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
 from crawlerai.core.data import fetch_data
@@ -48,6 +49,7 @@ from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetching import Fetching, learning_replay
+from crawlerai.services.scrape_paging import learning_render
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
@@ -89,6 +91,13 @@ async def _work() -> None:
             url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools, export=export
         )
 
+    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
+        # A learning run's listing renders only (`learning_render`): rare, so a browser is launched per render.
+        async with open_browser() as session:
+            return await fetch_listing(
+                url, policy, drive, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
+            )
+
     impersonate = rung_impersonation(settings)
     sessions = SiteSessions()  # this worker's site sessions (INV-29's exception), in memory only
     http = partial(
@@ -121,6 +130,7 @@ async def _work() -> None:
                 json=json,
                 sessions=sessions,
                 exporting=browser.fetch,
+                listing=listing,
             )
             store = open_store(settings.object_store)
             fetching = Fetching(rungs, connector, store, HostLimiter())
@@ -139,6 +149,7 @@ async def _work() -> None:
                     vocabulary=data.vocabulary,
                     max_chars=settings.llm_a_max_chars,
                     replay=learning_replay(engine, fetching),
+                    render=learning_render(engine, fetching),
                 )
                 work.append(learner)
             await asyncio.gather(*work)

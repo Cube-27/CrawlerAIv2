@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from crawlerai.collect.admission import Admitted
 from crawlerai.collect.base import Candidate
+from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -153,3 +154,37 @@ def test_a_detail_page_reads_no_rows() -> None:
     result = XhrCollector().collect(page, SCHEMA, CTX, ())
 
     assert result.rows == ()
+
+
+def _learned(origin: str = "https://api.example.test", rows: str = "$['items'][*]") -> LearnedCalls:
+    return LearnedCalls(
+        method="GET",
+        origin=origin,
+        segments=("products",),
+        rows=rows,
+        map={"title": "$['name']", "price": "$['price']"},
+    )
+
+
+def test_a_learned_listing_recipe_s_map_reads_its_endpoint_s_calls_with_text_fields() -> None:
+    # Appendix A #59: learning proved the title path by equality with published row values, so text is read too.
+    call = _call(0, "https://api.example.test/products?page=3", {"items": _products(_PRICES)})
+    page = _listing_page(call, shown=[f"Lamp model {i}" for i in range(4)])
+
+    result = XhrCollector(_learned()).collect(page, LISTING, CTX, ())
+
+    titles = [(c.entity_id, c.raw) for c in result.candidates if c.field == "title"]
+    assert titles == [(f"xhr:0:$['items'][{i}]", f"Lamp model {i}") for i in range(4)]
+    assert len([c for c in result.candidates if c.field == "price"]) == 4
+
+
+def test_calls_of_another_endpoint_are_proved_on_the_page_as_without_a_recipe() -> None:
+    call = _call(0, "https://api.example.test/products?page=1", {"total": 4, "items": _products(_PRICES)})
+    shown = [f"Lamp model {i} {price}" for i, price in enumerate(_PRICES[:3])] + ["Lamp model 3"]
+    page = _listing_page(call, shown=shown)
+
+    for other in (_learned(origin="https://cdn.example.test"), _learned(rows="$['data'][*]")):
+        result = XhrCollector(other).collect(page, LISTING, CTX, ())
+
+        assert [c for c in result.candidates if c.field == "title"] == []
+        assert len([c for c in result.candidates if c.field == "price"]) == 4

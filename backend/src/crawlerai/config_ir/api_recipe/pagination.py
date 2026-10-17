@@ -78,18 +78,16 @@ def _link(calls: Sequence[Call], rows: str) -> Pagination | None:
 
 
 def _next_url(calls: Sequence[Call], rows: str) -> Pagination | None:
-    paths: list[str] | None = None
-    for before, after in _pairs(calls):
+    def targets(before: Call, after: Call) -> list[str] | None:
         if before.entry.request_body != after.entry.request_body:
             return None
-        here = [
+        return [
             path
             for path, value in json_doc.scalars(before.document)
             if isinstance(value, str) and urljoin(before.entry.url, value) == after.entry.url
         ]
-        paths = here if paths is None else [path for path in paths if path in here]
-        if not paths:
-            return None
+
+    paths = _shared_paths(calls, targets)
     return None if not paths else NextUrlPagination(kind="next_url", next=paths[0], rows=rows)
 
 
@@ -119,18 +117,31 @@ def _cursor(calls: Sequence[Call], rows: str) -> Pagination | None:
     slot = _varying(calls)
     if slot is None:
         return None
-    paths: list[str] | None = None
-    for before, after in _pairs(calls):
-        value = _values(after).get(slot)
+
+    def holders(before: Call, after: Call) -> list[str] | None:
+        value = _text(_values(after).get(slot))
         if value is None:
             return None
-        here = [path for path, leaf in json_doc.scalars(before.document) if _text(leaf) == _text(value)]
+        return [path for path, leaf in json_doc.scalars(before.document) if _text(leaf) == value]
+
+    paths = _shared_paths(calls, holders)
+    return (
+        None if not paths else CursorPagination(kind="cursor", where=slot[0], name=slot[1], cursor=paths[0], rows=rows)
+    )
+
+
+def _shared_paths(calls: Sequence[Call], found: Callable[[Call, Call], list[str] | None]) -> list[str]:
+    """The response paths `found` gives for every pair of successive calls (None: the pair rules the kind out), in the
+    first response's document order."""
+    paths: list[str] | None = None
+    for before, after in _pairs(calls):
+        here = found(before, after)
+        if here is None:
+            return []
         paths = here if paths is None else [path for path in paths if path in here]
         if not paths:
-            return None
-    if not paths:
-        return None
-    return CursorPagination(kind="cursor", where=slot[0], name=slot[1], cursor=paths[0], rows=rows)
+            return []
+    return paths or []
 
 
 _KINDS: Final[tuple[Callable[[Sequence[Call], str], Pagination | None], ...]] = (_link, _next_url, _param, _cursor)

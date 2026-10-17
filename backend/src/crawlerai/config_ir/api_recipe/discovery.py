@@ -77,7 +77,7 @@ def endpoint_request(bundle: CaptureBundle, endpoint: EndpointCandidate) -> Capt
 
 
 @dataclass(frozen=True)
-class _Reading:
+class Reading:
     """A value a body offers a field: the map path that gives it and the raw value."""
 
     path: str
@@ -85,7 +85,7 @@ class _Reading:
 
 
 # The readings of a body that normalize as one field's type, each with its normalized value.
-_Normalized = list[tuple[_Reading, JsonValue]]
+Normalized = list[tuple[Reading, JsonValue]]
 
 
 @dataclass(frozen=True)
@@ -141,9 +141,9 @@ def _scored(
     schema: SchemaDef,
     required: frozenset[str],
 ) -> _Body:
-    leaves = [_Reading(path, raw) for path, raw in json_doc.scalars(document)]
+    leaves = [Reading(path, raw) for path, raw in json_doc.scalars(document)]
     # Each leaf is normalized once per field: for equality with the published value and for the visible-type count.
-    typed = {name: _normalized(leaves, spec, sample.ctx) for name, spec in schema.fields.items()}
+    typed = {name: normalized(leaves, spec, sample.ctx) for name, spec in schema.fields.items()}
     hits = _field_hits(typed, document, sample, schema)
     matched = required & hits.keys()
     others = [name for name in schema.fields if name not in matched]
@@ -154,33 +154,33 @@ def _scored(
 
 
 def _field_hits(
-    typed: Mapping[str, _Normalized], document: JsonValue, sample: DiscoverySample, schema: SchemaDef
+    typed: Mapping[str, Normalized], document: JsonValue, sample: DiscoverySample, schema: SchemaDef
 ) -> dict[str, dict[str, None]]:
     """Each published field's map paths in the body; money also reads joined member pairs."""
     money = any(spec.type is FieldType.MONEY for spec in schema.fields.values())
-    pairs = list(_member_pairs(document)) if money else []
+    pairs = list(member_pairs(document)) if money else []
     hits: dict[str, dict[str, None]] = {}
     for name, spec in schema.fields.items():
         if name not in sample.values:
             continue
-        joined = _normalized(pairs, spec, sample.ctx) if spec.type is FieldType.MONEY else []
+        joined = normalized(pairs, spec, sample.ctx) if spec.type is FieldType.MONEY else []
         if paths := _hits(typed[name] + joined, sample.values[name], spec):
             hits[name] = paths
     return hits
 
 
-def _normalized(readings: list[_Reading], spec: FieldSpec, ctx: Context) -> _Normalized:
+def normalized(readings: list[Reading], spec: FieldSpec, ctx: Context) -> Normalized:
     return [
         (reading, result.value) for reading in readings if isinstance(result := normalize(reading.raw, spec, ctx), Ok)
     ]
 
 
-def _hits(readings: _Normalized, value: JsonValue, spec: FieldSpec) -> dict[str, None]:
+def _hits(readings: Normalized, value: JsonValue, spec: FieldSpec) -> dict[str, None]:
     """The map paths, in document order, whose reading is `equal` to `value`."""
     return dict.fromkeys(reading.path for reading, normalized in readings if equal(normalized, value, spec))
 
 
-def _member_pairs(document: JsonValue) -> Iterator[_Reading]:
+def member_pairs(document: JsonValue) -> Iterator[Reading]:
     """The ordered pairs of scalar members of one object that may join into one money value (`+`, §4.2), in
     document order: one member holds a digit and the other none.
 
@@ -195,12 +195,12 @@ def _member_pairs(document: JsonValue) -> Iterator[_Reading]:
             yield from _amount_pairs(members)
 
 
-def _amount_pairs(members: list[tuple[str, Scalar]]) -> Iterator[_Reading]:
+def _amount_pairs(members: list[tuple[str, Scalar]]) -> Iterator[Reading]:
     amounts = [member for member in members if _has_digit(member[1])]
     plain = [member for member in members if not _has_digit(member[1])]
     for first, a in members:
         for second, b in plain if _has_digit(a) else amounts:
-            yield _Reading(f"{first}+{second}", joined_raw([a, b]))
+            yield Reading(f"{first}+{second}", joined_raw([a, b]))
 
 
 def _has_digit(value: Scalar) -> bool:
