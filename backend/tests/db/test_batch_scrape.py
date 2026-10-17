@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
@@ -112,7 +113,9 @@ class Web:
         self.sessions += 1
         yield Session(self.sessions)
 
-    async def in_browser(self, session: Session, url: str, policy: FetchPolicy) -> FetchResult:
+    async def in_browser(
+        self, session: Session, url: str, policy: FetchPolicy, export: CookieExport | None = None
+    ) -> FetchResult:
         self.browser_fetches.append((session.number, url))
         if url in self.crashing:
             session.connected = False
