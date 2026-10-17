@@ -51,6 +51,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("webhook_secret", sa.Text(), nullable=False),
+        sa.Column("draft_calls", sa.BigInteger(), server_default=sa.text("0"), nullable=False),
+        sa.CheckConstraint("draft_calls >= 0", name=op.f("ck_api_key_draft_calls_non_negative")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_api_key")),
         sa.UniqueConstraint("hashed_key", name=op.f("uq_api_key_hashed_key")),
     )
@@ -71,7 +73,9 @@ def upgrade() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("llm_call_cap", sa.Integer(), nullable=True),
+        sa.Column("draft_call_cap", sa.Integer(), nullable=True),
         sa.CheckConstraint("llm_call_cap >= 0", name=op.f("ck_project_llm_call_cap_non_negative")),
+        sa.CheckConstraint("draft_call_cap >= 0", name=op.f("ck_project_draft_call_cap_non_negative")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_project")),
         sa.UniqueConstraint("name", name=op.f("uq_project_name")),
     )
@@ -115,6 +119,7 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cancel_requested", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("api_key_id", sa.Uuid(), nullable=True),
+        sa.Column("start_location", sa.Text(), nullable=True),
         sa.CheckConstraint(
             "kind IN ('scrape', 'batch_scrape', 'map', 'crawl', 'extract', 'learn')", name=op.f("ck_job_kind")
         ),
@@ -125,6 +130,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["project_id"], ["project.id"], name=op.f("fk_job_project_id_project")),
         sa.ForeignKeyConstraint(["schema_id"], ["schema_def.id"], name=op.f("fk_job_schema_id_schema_def")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_job")),
+    )
+    op.create_index(
+        op.f("ix_job_started_at"),
+        "job",
+        ["started_at"],
+        unique=False,
+        postgresql_where=sa.text("status = 'running'"),
     )
     op.create_table(
         "site",
@@ -246,26 +258,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_job_event")),
     )
     op.create_index(op.f("ix_job_event_job_id_id"), "job_event", ["job_id", "id"], unique=False)
-    op.create_table(
-        "url_state",
-        sa.Column("site_id", sa.Uuid(), nullable=False),
-        sa.Column("canonical_url", sa.Text(), nullable=False),
-        sa.Column("etag", sa.Text(), nullable=True),
-        sa.Column("last_modified", sa.Text(), nullable=True),
-        sa.Column("content_fingerprint", sa.Text(), nullable=True),
-        sa.Column("record_fingerprint", sa.Text(), nullable=True),
-        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("last_changed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("missing_runs", sa.Integer(), server_default=sa.text("0"), nullable=False),
-        sa.Column("gone_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_seen_job_id", sa.Uuid(), nullable=True),
-        sa.CheckConstraint("missing_runs >= 0", name=op.f("ck_url_state_missing_runs_non_negative")),
-        sa.ForeignKeyConstraint(
-            ["last_seen_job_id"], ["job.id"], name=op.f("fk_url_state_last_seen_job_id_job"), ondelete="SET NULL"
-        ),
-        sa.ForeignKeyConstraint(["site_id"], ["site.id"], name=op.f("fk_url_state_site_id_site")),
-        sa.PrimaryKeyConstraint("site_id", "canonical_url", name=op.f("pk_url_state")),
-    )
     op.create_table(
         "usage_event",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -419,10 +411,41 @@ def upgrade() -> None:
         postgresql_where=sa.text("status IN ('queued', 'claimed')"),
     )
     op.create_index(
+        op.f("ix_url_task_job_id_status_outcome"), "url_task", ["job_id", "status", "outcome"], unique=False
+    )
+    op.create_index(op.f("ix_url_task_job_id_id"), "url_task", ["job_id", "id"], unique=False)
+    op.create_index(
         op.f("ix_url_task_status_next_attempt_at_priority"),
         "url_task",
         ["status", "next_attempt_at", "priority"],
         unique=False,
+    )
+    op.create_table(
+        "url_state",
+        sa.Column("site_id", sa.Uuid(), nullable=False),
+        sa.Column("canonical_url", sa.Text(), nullable=False),
+        sa.Column("etag", sa.Text(), nullable=True),
+        sa.Column("last_modified", sa.Text(), nullable=True),
+        sa.Column("content_fingerprint", sa.Text(), nullable=True),
+        sa.Column("record_fingerprint", sa.Text(), nullable=True),
+        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_changed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("missing_runs", sa.Integer(), server_default=sa.text("0"), nullable=False),
+        sa.Column("gone_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_seen_job_id", sa.Uuid(), nullable=True),
+        sa.Column("standing_task_id", sa.Uuid(), nullable=True),
+        sa.CheckConstraint("missing_runs >= 0", name=op.f("ck_url_state_missing_runs_non_negative")),
+        sa.ForeignKeyConstraint(
+            ["last_seen_job_id"], ["job.id"], name=op.f("fk_url_state_last_seen_job_id_job"), ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["site_id"], ["site.id"], name=op.f("fk_url_state_site_id_site")),
+        sa.ForeignKeyConstraint(
+            ["standing_task_id"],
+            ["url_task.id"],
+            name=op.f("fk_url_state_standing_task_id_url_task"),
+            ondelete="SET NULL",
+        ),
+        sa.PrimaryKeyConstraint("site_id", "canonical_url", name=op.f("pk_url_state")),
     )
     op.create_table(
         "extraction",
@@ -557,12 +580,12 @@ def downgrade() -> None:
         "record",
         "candidate",
         "extraction",
+        "url_state",
         "url_task",
         "progressive_state",
         "eval_page",
         "webhook_delivery",
         "usage_event",
-        "url_state",
         "job_event",
         "extraction_config",
         "capture",

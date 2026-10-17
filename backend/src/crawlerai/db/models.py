@@ -146,7 +146,10 @@ def version_positive() -> CheckConstraint:
 
 class Project(Base):
     __tablename__ = "project"
-    __table_args__ = (CheckConstraint("llm_call_cap >= 0", name="llm_call_cap_non_negative"),)
+    __table_args__ = (
+        CheckConstraint("llm_call_cap >= 0", name="llm_call_cap_non_negative"),
+        CheckConstraint("draft_call_cap >= 0", name="draft_call_cap_non_negative"),
+    )
 
     id: Mapped[ProjectId] = mapped_column(primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(Text, unique=True)
@@ -154,10 +157,13 @@ class Project(Base):
     # The most LLM calls a job of the project may make when its request sets no `budget.llm_calls`; NULL: no cap
     # (owner, 2026-10-16).
     llm_call_cap: Mapped[int | None] = mapped_column(Integer)
+    # The most uncharged role S calls (field-name drafts) one API key may make, in all; NULL: no cap (D-1282).
+    draft_call_cap: Mapped[int | None] = mapped_column(Integer)
 
 
 class ApiKey(Base):
     __tablename__ = "api_key"
+    __table_args__ = (CheckConstraint("draft_calls >= 0", name="draft_calls_non_negative"),)
 
     id: Mapped[ApiKeyId] = mapped_column(primary_key=True, default=uuid7)
     hashed_key: Mapped[str] = mapped_column(Text, unique=True)
@@ -166,6 +172,8 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = created_at_column()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     webhook_secret: Mapped[str] = mapped_column(Text)
+    # The uncharged role S calls the key has made (`llm.drafts.take_draft_call`); `project.draft_call_cap` bounds it.
+    draft_calls: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
 
 
 class Site(Base):
@@ -319,6 +327,9 @@ class UrlState(Base):
     gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The crawl whose listing last held the URL (SPEC-11 §4.5); NULL while no listing has.
     last_seen_job_id: Mapped[JobId | None] = mapped_column(ForeignKey("job.id", ondelete=_SET_NULL))
+    # The task whose records a listing page last stood for after extracting it (`recurring.state.standing_listing`):
+    # the page's standing record, as that task's `task_record` rows. NULL for a detail page, found by its entity.
+    standing_task_id: Mapped[UrlTaskId | None] = mapped_column(ForeignKey("url_task.id", ondelete=_SET_NULL))
 
 
 class Job(Base):
@@ -326,6 +337,8 @@ class Job(Base):
     __table_args__ = (
         CheckConstraint(one_of("kind", JobKind), name="kind"),
         CheckConstraint(one_of("status", JobStatus), name="status"),
+        # The scheduler's reapers look only at running jobs, oldest start first (`db.queue.reap_stuck_jobs`).
+        Index(None, "started_at", postgresql_where=text("status = 'running'")),
     )
 
     id: Mapped[JobId] = mapped_column(primary_key=True, default=uuid7)
@@ -346,6 +359,9 @@ class Job(Base):
     # The key that submitted the job: its `webhook_secret` signs the job's webhook (SPEC-10 §4.2). NULL for a job no
     # key submitted (a learning run).
     api_key_id: Mapped[ApiKeyId | None] = mapped_column(ForeignKey(ApiKey.id))
+    # A crawl: where its start page is, canonical, after the site's own redirects (`crawl.rules.located`). The start
+    # task writes it: it gives the scope's host and the one URL already fetched. NULL before then, and for other kinds.
+    start_location: Mapped[str | None] = mapped_column(Text)
 
 
 class UrlTask(Base):
@@ -362,6 +378,10 @@ class UrlTask(Base):
         UniqueConstraint("job_id", "canonical_url"),
         # Settling a job first asks whether any of its tasks is still open (`crawlerai.db.queue`).
         Index(None, "job_id", postgresql_where=text("status IN ('queued', 'claimed')")),
+        # A job's settled tasks by outcome, for the listing of a large crawl (`services.jobs`).
+        Index(None, "job_id", "status", "outcome"),
+        # A job's tasks in id order, which its results and its records page by (keyset, `db.paging`).
+        Index(None, "job_id", "id"),
     )
 
     id: Mapped[UrlTaskId] = mapped_column(primary_key=True, default=uuid7)
