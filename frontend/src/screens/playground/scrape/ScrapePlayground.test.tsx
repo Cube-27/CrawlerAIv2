@@ -354,24 +354,26 @@ describe("scrape playground: the request", () => {
     expect(posted(calls)).toMatchObject({ url: "https://localhost:8000/a" });
   });
 
-  it("sends nothing and opens the options, saying why, when a schema's records are for no page kind it can ask for", async () => {
+  it("asks for a listing schema's records, for listing pages", async () => {
     const listing = { ...itemSchema, status: "active", page_kind: "listing" };
-    const calls = stubScrape({ "GET /v1/schemas": () => Response.json({ items: [listing] }) });
+    const calls = stubScrape({
+      "GET /v1/schemas": () => Response.json({ items: [listing] }),
+      "POST /v1/scrape": () => Response.json(withRecords),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(listing),
+    });
     await openScrape();
     await fillRecordsByIdForm();
 
     await submit();
 
-    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-    expect(screen.getByRole("dialog", { name: "Options" })).toBeInTheDocument();
-    expect(screen.getByText("Records of listing pages are not available yet.")).toBeInTheDocument();
-    await userEvent.click(selectTrigger(/Page kind/));
-    for (const kind of ["Detail", "Listing"]) {
-      expect(await screen.findByRole("option", { name: kind })).toHaveAttribute(
-        "aria-disabled",
-        "true",
-      );
-    }
+    await screen.findByRole("tab", { name: "JSON" });
+    expect(posted(calls)).toEqual({
+      url: "https://store.test/items/1",
+      formats: ["markdown", "records"],
+      schema: { id: SCHEMA_ID },
+      page_kind: "listing",
+      fetch: { method_hint: "auto" },
+    });
   });
 
   it("offers only the chosen schema's page kind", async () => {
@@ -388,7 +390,7 @@ describe("scrape playground: the request", () => {
     );
   });
 
-  it("drops the page kind a previous schema set when the next one has none for its records", async () => {
+  it("follows the next schema's page kind when the schema changes", async () => {
     const listing = {
       ...itemSchema,
       id: "0f9e8d7c-6b5a-4f3e-9d2c-1b0a9f8e7d6c",
@@ -396,7 +398,7 @@ describe("scrape playground: the request", () => {
       status: "active",
       page_kind: "listing",
     };
-    const calls = stubScrape({
+    stubScrape({
       "GET /v1/schemas": () =>
         Response.json({
           items: [{ ...itemSchema, status: "active", page_kind: "detail" }, listing],
@@ -405,11 +407,14 @@ describe("scrape playground: the request", () => {
     await openScrape();
     await fillRecordsByIdForm();
     await pick(/Schema/, "item_listing");
+    await openOptions();
 
-    await submit();
-
-    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-    expect(screen.getByRole("dialog", { name: "Options" })).toBeInTheDocument();
+    expect(selectTrigger(/Page kind/)).toHaveTextContent("Listing");
+    await userEvent.click(selectTrigger(/Page kind/));
+    expect(await screen.findByRole("option", { name: "Detail" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 });
 

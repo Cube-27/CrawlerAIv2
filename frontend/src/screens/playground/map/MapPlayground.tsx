@@ -12,23 +12,26 @@ import { usePageForm } from "../usePageForm";
 import { buildMap, DEFAULT_MAP_OPTIONS, INITIAL_MAP, mapForm } from "./form";
 import { MapOptions } from "./MapOptions";
 import { MapOutput } from "./MapOutput";
+import { useMapRun } from "./mapRun";
 
 /** A map's request always can be sent: the server validates its URL and globs. */
 const sendable = () => NO_ERRORS;
 
-/** A past map's output: `POST /v1/map` answers its URLs at once, and its job keeps only the request. */
+/** A past map's output opened from its job: `POST /v1/map` answers its URLs at once, its job keeps only the request,
+ * and the URLs stay only in the history entry of the tab that ran it. */
 const NOT_KEPT: OutputState = {
   kind: "done",
   content: (
     <EmptyView title="A map's URLs are not kept">
-      This run's request is above. Choose Edit and re-run to map the site again.
+      They stay only in the browser tab that ran the map. This run's request is above. Choose Edit
+      and re-run to map the site again.
     </EmptyView>
   ),
 };
 
 /** The Map playground at `/map` (SPEC-14 §4.2): a URL and its scope (`POST /v1/map`, answered at once), then the URLs
- * found as a table of links; before any run, the recent maps. Map takes no format or schema, so the toolbar has Options
- * only. */
+ * found as a table of links, kept in the run's history entry (`useMapRun`); before any run, the recent maps. Map takes
+ * no format or schema, so the toolbar has Options only. */
 export function MapPlayground() {
   const map = useMapUrls();
   const problem = problemOf(map.error);
@@ -37,13 +40,15 @@ export function MapPlayground() {
     problem,
     sendable,
   );
-  const { jobId, onEdit, clear } = useShownJob(mapForm, setForm);
+  const { jobId, onEdit } = useShownJob(mapForm, setForm);
+  const { run, key, keep } = useMapRun(setForm);
   const request = buildMap({ ...form, url: requestUrl(form.url) });
 
   let state: OutputState | null = null;
   if (map.isPending) state = { kind: "pending", label: "Mapping the site" };
   else if (problem !== null) state = { kind: "failed", problem };
-  else if (map.isSuccess) state = { kind: "done", content: <MapOutput result={map.data} /> };
+  else if (run !== null)
+    state = { kind: "done", content: <MapOutput key={key} result={run.result} /> };
   else if (jobId !== null) state = NOT_KEPT;
 
   return (
@@ -51,8 +56,13 @@ export function MapPlayground() {
       mode="map"
       validationErrors={validationErrors}
       onSubmit={() => {
-        clear();
-        map.mutate(request);
+        map.mutate(request, {
+          onSuccess: (result) => {
+            keep(form, result);
+            // The answer lives in its entry now; the entry it was asked from shows what it showed before.
+            map.reset();
+          },
+        });
       }}
       onEdit={onEdit}
       request={request}

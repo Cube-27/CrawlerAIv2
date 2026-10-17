@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { MapResult } from "../../../api/jobs";
@@ -98,6 +98,63 @@ describe("map playground", () => {
     expect(screen.getByText("A map's URLs are not kept")).toBeInTheDocument();
     const options = await openOptions();
     expect(options.getByRole("switch", { name: "Use links" })).not.toBeChecked();
+  });
+
+  it("keeps a map's request and URLs in its history entry, so back shows them again and back once more does not", async () => {
+    const calls = mapApi({ urls: URLS, sources: { sitemap: 25, links: 0 }, truncated: false });
+    const router = await openPlayground("/map");
+    const options = await openOptions();
+    await fill(options.getByRole("textbox", { name: "Page limit" }), "100");
+    await closeOptions();
+    await map();
+    await screen.findByRole("grid", { name: "Links" });
+    await userEvent.click(screen.getByRole("checkbox", { name: `Select ${URLS[0] ?? ""}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Scrape as batch" }));
+    await screen.findByRole("textbox", { name: "URLs" });
+
+    await act(() => router.navigate(-1));
+
+    const grid = await screen.findByRole("grid", { name: "Links" });
+    expect(shownUrls(grid)).toEqual(URLS.slice(0, 20));
+    expect(router.state.location.pathname).toBe("/map");
+    expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("shop.test");
+    expect((await openOptions()).getByRole("textbox", { name: "Page limit" })).toHaveValue("100");
+    await closeOptions();
+    expect(calls.filter(({ method }) => method === "POST")).toHaveLength(1);
+
+    await act(() => router.navigate(-1));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("grid", { name: "Links" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("gives each map entry its own selection and page, and back then forward restores the entry's form", async () => {
+    const few = URLS.slice(0, 3);
+    let answer: MapResult = { urls: few, sources: { sitemap: 3, links: 0 }, truncated: false };
+    stubApi({ "POST /v1/map": () => Response.json(answer) });
+    const router = await openPlayground("/map");
+    await map();
+    await screen.findByText("3 URLs: 3 from sitemaps, 0 from links.");
+    answer = { urls: URLS, sources: { sitemap: 25, links: 0 }, truncated: false };
+    await userEvent.click(screen.getByRole("button", { name: "Map" }));
+    await screen.findByText("25 URLs: 25 from sitemaps, 0 from links.");
+    await userEvent.click(screen.getByRole("checkbox", { name: `Select ${URLS[0] ?? ""}` }));
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+
+    await act(() => router.navigate(-1));
+
+    const grid = await screen.findByRole("grid", { name: "Links" });
+    expect(screen.getByText("3 URLs: 3 from sitemaps, 0 from links.")).toBeInTheDocument();
+    expect(shownUrls(grid)).toEqual(few);
+    expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+
+    await act(() => router.navigate(-1));
+    await fill(screen.getByRole("textbox", { name: "URL" }), "/other");
+    await act(() => router.navigate(1));
+
+    await screen.findByText("3 URLs: 3 from sitemaps, 0 from links.");
+    expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("shop.test");
   });
 
   it("opens the URLs selected on any page as a batch", async () => {

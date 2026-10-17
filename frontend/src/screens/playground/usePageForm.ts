@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { fieldErrors, type Problem } from "../../api/problem";
 import { NO_ERRORS } from "./pageRequest";
 
-/** The request members the command bar itself holds (the URL, the URL list, Format), not the options panel. */
-const BAR_FIELDS: ReadonlySet<string> = new Set(["url", "urls", "formats"]);
+/** The request members the command bar itself holds (the URL, the URL list, Format, Extract's Schema), not the options
+ * panel. */
+const BAR_FIELDS: ReadonlySet<string> = new Set(["url", "urls", "formats", "schema"]);
 
 /** The state of a mode's form: the form, whether its options panel is open, and its errors: the server's `problem` by
  * field, then why the form can't be sent (`errorsOf`, `NO_ERRORS` when it can) once a send was refused. */

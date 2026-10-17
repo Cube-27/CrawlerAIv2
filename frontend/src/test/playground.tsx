@@ -7,10 +7,12 @@ import type { Call } from "./api";
 
 /** Steps the playground tests share: open a mode, set its toolbar and options, read what it posted. */
 
-/** Renders the app at `path` (a playground mode's route) and waits for the playground. */
+/** Renders the app at `path` (a playground mode's route), waits for the playground, and returns its router. */
 export async function openPlayground(path: string) {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  render(<RouterProvider router={router} />);
   await screen.findByRole("heading", { level: 1, name: "Playground" });
+  return router;
 }
 
 /** The trigger of the Select named by `name`; its help icon has the name too. */

@@ -1,21 +1,18 @@
 import type { PageKind } from "../../../api/scrape";
-import { NumberRow, OptionsPanel, SelectRow, TagListRow, TextAreaRow } from "../OptionsPanel";
+import { NumberRow, OptionsPanel, TagListRow, TextAreaRow } from "../OptionsPanel";
 import { FetchMethodRow, FieldsRow, LlmCallsRow, PageKindRow, WebhookRow } from "../rows";
 import { DEFAULT_EXTRACT_OPTIONS, type ExtractOptions as Options, type SchemaSource } from "./form";
-
-const SCHEMA_SOURCES: readonly (readonly [SchemaSource, string])[] = [
-  ["id", "Stored schema"],
-  ["inline", "Inline JSON"],
-  ["prompt", "From a prompt"],
-  ["fields", "From field names"],
-];
 
 type Change = (options: Options) => void;
 
 /** The inline schema's JSON, the prompt or the field names, for the source that has one. */
-function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange: Change }>) {
-  if (options.schemaSource === "fields") return <FieldsRow options={options} onChange={onChange} />;
-  if (options.schemaSource === "inline")
+function SourceRow({
+  source,
+  options,
+  onChange,
+}: Readonly<{ source: SchemaSource; options: Options; onChange: Change }>) {
+  if (source === "fields") return <FieldsRow options={options} onChange={onChange} />;
+  if (source === "inline")
     return (
       <TextAreaRow
         label="Schema JSON"
@@ -28,7 +25,7 @@ function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange:
         }}
       />
     );
-  if (options.schemaSource === "prompt")
+  if (source === "prompt")
     return (
       <TextAreaRow
         label="Prompt"
@@ -44,19 +41,21 @@ function SourceRow({ options, onChange }: Readonly<{ options: Options; onChange:
   return null;
 }
 
-/** Extract's options (SPEC-14 §4.2): more URLs or globs, the schema's source and page kind; page limit, fetch method,
- * the LLM call limit and the webhook; then the source's JSON, prompt or field names. A stored schema's page kind is
- * its own, `schemaPageKind`. */
+/** Extract's options (SPEC-14 §4.2): more URLs or globs and the page kind; page limit, fetch method, the LLM call
+ * limit and the webhook; then the JSON, prompt or field names of the toolbar's schema `source`. A stored schema's page
+ * kind is its own, `schemaPageKind`. */
 export function ExtractOptions({
+  source,
   options,
   schemaPageKind,
   onChange,
 }: Readonly<{
+  source: SchemaSource;
   options: Options;
   schemaPageKind: PageKind | null;
   onChange: Change;
 }>) {
-  const stored = options.schemaSource === "id";
+  const stored = source === "id";
   return (
     <OptionsPanel
       onReset={() => {
@@ -71,16 +70,6 @@ export function ExtractOptions({
         placeholder="https://example.com/items/*"
         onChange={(urls) => {
           onChange({ ...options, urls });
-        }}
-      />
-      <SelectRow<SchemaSource>
-        label="Schema source"
-        help="A stored schema (the toolbar's Schema), a SchemaDef as JSON, or a schema drafted from a prompt or from field names."
-        name="schema"
-        options={SCHEMA_SOURCES}
-        value={options.schemaSource}
-        onChange={(schemaSource) => {
-          onChange({ ...options, schemaSource });
         }}
       />
       <PageKindRow
@@ -121,7 +110,7 @@ export function ExtractOptions({
           onChange({ ...options, webhookUrl });
         }}
       />
-      <SourceRow options={options} onChange={onChange} />
+      <SourceRow source={source} options={options} onChange={onChange} />
     </OptionsPanel>
   );
 }

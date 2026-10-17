@@ -23,8 +23,8 @@ import {
   type StoredRequest,
 } from "../run/storedRequest";
 
-/** Where an extract's schema comes from (SPEC-10 §4.6): a stored one (the toolbar's Schema), inline JSON, or a draft
- * from a prompt or from field names (SPEC-14 §4.10). */
+/** Where an extract's schema comes from (SPEC-10 §4.6), chosen in the toolbar's Schema: a stored one, inline JSON, or
+ * a draft from a prompt or from field names (SPEC-14 §4.10). */
 export type SchemaSource = "id" | "inline" | "prompt" | "fields";
 
 /** Extract's options panel (SPEC-14 §4.2): each is an `ExtractRequest` member. An empty limit (NaN) or text is left
@@ -32,7 +32,6 @@ export type SchemaSource = "id" | "inline" | "prompt" | "fields";
 export interface ExtractOptions {
   /** The URLs and globs after the bar's. */
   urls: readonly string[];
-  schemaSource: SchemaSource;
   /** A SchemaDef as JSON text, for `inline`. */
   inlineSchema: string;
   prompt: string;
@@ -49,7 +48,6 @@ export interface ExtractOptions {
 
 export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   urls: [],
-  schemaSource: "id",
   inlineSchema: "",
   prompt: "",
   fields: [],
@@ -61,8 +59,11 @@ export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   webhookUrl: "",
 };
 
+/** `schemaSource` and the stored `schemaId` are the toolbar's Schema; the source's JSON, prompt or names are
+ * options. */
 export interface ExtractFormState {
   url: string;
+  schemaSource: SchemaSource;
   schemaId: string;
   schemaPageKind: SchemaPageKind | null;
   options: ExtractOptions;
@@ -70,12 +71,13 @@ export interface ExtractFormState {
 
 export const INITIAL_EXTRACT: ExtractFormState = {
   url: "",
+  schemaSource: "id",
   schemaId: "",
   schemaPageKind: null,
   options: DEFAULT_EXTRACT_OPTIONS,
 };
 
-const NO_SCHEMA = { schema: "Choose a stored schema in the toolbar, or another source." };
+const NO_SCHEMA = { schema: "Choose a schema." };
 const NOT_JSON = { inline_schema: "Enter a SchemaDef as a JSON object." };
 const NO_PROMPT = { prompt: "Describe the fields to extract." };
 const NO_FIELDS = { fields: "Add the names of the fields to extract." };
@@ -83,13 +85,13 @@ const NO_PAGE_KIND = { page_kind: "Choose the page kind of the records." };
 
 /** The page kind the request names: the stored schema's, else the one chosen. */
 function extractPageKind(form: ExtractFormState): PageKind | null {
-  return form.options.schemaSource === "id" ? form.schemaPageKind : form.options.pageKind;
+  return form.schemaSource === "id" ? form.schemaPageKind : form.options.pageKind;
 }
 
 /** The request's schema, or null while it is incomplete. */
 function extractSchema(form: ExtractFormState): SchemaRef | null {
   const { options } = form;
-  switch (options.schemaSource) {
+  switch (form.schemaSource) {
     case "id":
       return form.schemaId === "" ? null : { id: form.schemaId };
     case "prompt":
@@ -101,7 +103,7 @@ function extractSchema(form: ExtractFormState): SchemaRef | null {
       return inline === null ? null : { inline };
     }
     default: {
-      const exhaustive: never = options.schemaSource;
+      const exhaustive: never = form.schemaSource;
       return exhaustive;
     }
   }
@@ -114,12 +116,12 @@ const SOURCE_ERRORS: Readonly<Record<SchemaSource, Readonly<Record<string, strin
   fields: NO_FIELDS,
 };
 
-/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind the server takes
- * records of (SPEC-10 §4.6, SPEC-07 §4.4). */
+/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind (SPEC-10 §4.6,
+ * SPEC-07 §4.4). */
 export function extractErrors(form: ExtractFormState): Readonly<Record<string, string>> {
-  if (extractSchema(form) === null) return SOURCE_ERRORS[form.options.schemaSource];
+  if (extractSchema(form) === null) return SOURCE_ERRORS[form.schemaSource];
   const kind = extractPageKind(form);
-  if (form.options.schemaSource !== "id" && kind === null) return NO_PAGE_KIND;
+  if (form.schemaSource !== "id" && kind === null) return NO_PAGE_KIND;
   return schemaPageKindErrors(kind) ?? NO_ERRORS;
 }
 
@@ -152,11 +154,11 @@ export function extractForm(request: StoredRequest): ExtractFormState {
   const kind = pageKind(request);
   return {
     url,
+    schemaSource,
     schemaId: id,
     schemaPageKind: id === "" ? null : kind,
     options: {
       urls,
-      schemaSource,
       inlineSchema:
         schemaSource === "inline" ? JSON.stringify(member(schema, "inline"), null, 2) : "",
       prompt: text(schema, "prompt"),

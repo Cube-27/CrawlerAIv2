@@ -3,10 +3,6 @@ import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/formats";
 import type { PageFormat } from "./FormatSelect";
 
-/** The page kinds whose records the server refuses, for a scrape and a batch scrape alike: SPEC-07 §4.4 and D-0502
- * leave listing records out (`check_records`). */
-const NO_RECORDS_PAGE_KINDS: ReadonlySet<PageKind> = new Set(["listing"]);
-
 /** The non-blank lines of `text`, trimmed: a list entered one entry per line. */
 export function lines(text: string): string[] {
   return text
@@ -90,42 +86,36 @@ export function asksForNothing(form: FormatForm): boolean {
   return requestFormats(form).length === 0;
 }
 
-/** The page kind the request names. A stored schema's records are for its own page kind only, and not for one the
- * server refuses records of (SPEC-07 §4.4), so with a schema it is that kind, or null when there is none. */
+/** The page kind the request names. A stored schema's records are for its own page kind only (SPEC-07 §4.4,
+ * `check_records`), so with a schema it is that kind, or null when there is none. */
 export function requestPageKind(form: PageKindForm): PageKind | null {
-  if (form.schemaId === "") return form.options.pageKind;
-  const kind = form.schemaPageKind;
-  return kind === null || NO_RECORDS_PAGE_KINDS.has(kind) ? null : kind;
+  return form.schemaId === "" ? form.options.pageKind : form.schemaPageKind;
 }
 
 export const NO_ERRORS: Readonly<Record<string, string>> = {};
 export const NO_FORMAT = { formats: "Choose a format, Metadata in JSON, a schema or fields." };
 const NO_SCHEMA_PAGE_KIND = { page_kind: "The schema names no page kind, which its records need." };
-const NO_LISTING_RECORDS = { page_kind: "Records of listing pages are not available yet." };
 export const SCHEMA_AND_FIELDS = { fields: "Use the stored schema or fields, not both." };
 const NO_FIELDS_PAGE_KIND = { page_kind: "Choose the page kind the fields are read from." };
 
-/** Why a stored schema's records can't be asked for: it names no page kind, or one the server refuses records of;
- * null when they can. */
+/** Why a stored schema's records can't be asked for: it names no page kind; null when they can. */
 export function schemaPageKindErrors(
   schemaPageKind: SchemaPageKind | null,
 ): Readonly<Record<string, string>> | null {
-  if (schemaPageKind === null) return NO_SCHEMA_PAGE_KIND;
-  return NO_RECORDS_PAGE_KINDS.has(schemaPageKind) ? NO_LISTING_RECORDS : null;
+  return schemaPageKind === null ? NO_SCHEMA_PAGE_KIND : null;
 }
 
-/** Why field names can't be drafted for pages of `pageKind`: none is chosen, or the server refuses its records; null
- * when they can. */
+/** Why field names can't be drafted: no page kind is chosen; null when one is. */
 export function fieldsPageKindErrors(
   pageKind: PageKind | null,
 ): Readonly<Record<string, string>> | null {
-  return pageKind === null ? NO_FIELDS_PAGE_KIND : schemaPageKindErrors(pageKind);
+  return pageKind === null ? NO_FIELDS_PAGE_KIND : null;
 }
 
 /** Why `form` can't be sent, by field: it asks for no format; it names a stored schema and fields; its schema's
- * records are for no page kind it can ask for (its page kind is none, or one the server refuses records of); or its
- * fields have no such page kind. Derived from the current form, so a change anywhere that fixes it clears it; each
- * answer is one constant, so the errors change only when the reason does. */
+ * records are for no page kind (the schema names none); or its fields have no page kind. Derived from the current
+ * form, so a change anywhere that fixes it clears it; each answer is one constant, so the errors change only when the
+ * reason does. */
 export function pageKindErrors(form: PageKindForm): Readonly<Record<string, string>> {
   if (asksForNothing(form)) return NO_FORMAT;
   const hasFields = form.options.fields.length > 0;
