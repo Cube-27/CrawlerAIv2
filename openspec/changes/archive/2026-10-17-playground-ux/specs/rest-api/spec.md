@@ -2,10 +2,10 @@
 
 ### Requirement: Schema, config, record and replay endpoints
 `/v1/schemas` SHALL offer create, list, get, replace and retire (presets, retired schemas and taken names are 409) and
-`/v1/schemas/draft`; config endpoints expose [learning-configs](../learning-configs/spec.md), with
+`/v1/schemas/draft`; config endpoints expose [learning-configs](../../../../../specs/learning-configs/spec.md), with
 `POST /v1/configs/{id}/approve` and `POST /v1/configs/{id}/reject` (each 409 unless the config is the latest version
 and `pending_approval`); `GET /v1/records` pages newest first by
-keyset cursor (≤ 200) with `changed_since` (see [jobs](../jobs/spec.md)), and with `job_id` by the job's tasks, newest
+keyset cursor (≤ 200) with `changed_since` (see [jobs](../../../../../specs/jobs/spec.md)), and with `job_id` by the job's tasks, newest
 task first, a record once; `POST /v1/captures/{id}/replay` runs the current engine cold and persists nothing.
 (Previously: no reject endpoint.) Refs: §13.1, §15, D-0396, D-0523, D-0950, D-1280, D-1342, D-1391.
 

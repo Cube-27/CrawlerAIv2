@@ -38,7 +38,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
-  render: measure how often. Descriptions are the main section only (D-1308). `fetch.max_rows` is not in the playground.
+  render: measure how often. Descriptions are the main section only (D-1308).
 - ATS adapters (#251): Workable's per-job endpoint is not built; Teamtailor and Personio serve lists only (a job page
   takes the page rungs: a shape cannot pick one item of a feed). UKG's list is refused by the host's robots.txt, so it
   serves only on an operator override (D-1334). Not read: UKG `FullTime`, BambooHR pay as text (`baseSalary` is mapped
@@ -58,8 +58,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Absent fields (#252): a config-mode page missing an absent required field is still `partial`; listings never get
   `absent` fields (D-1347); a field the previous config covered was not asked of role C on its pages, yet a run reading
   them may list it absent when another field made a call (D-1341). Measure on dev once LLM keys exist.
-- Config approval (#252): there is no reject endpoint or MCP tool; a waiting config is replaced by a forced run or an
-  operator correction (D-1342).
 - Acquisition hardening (#244): pages behind a challenge that does not clear headless stay `blocked` after the 40%
   interstitial wait (5 real 403 challenge pages waited ~20 s each and stayed blocked in the live check); measure the
   share that clears on a dev run before lowering `_INTERSTITIAL_SHARE` (D-1262). A 429 challenge page gets no browser
@@ -78,13 +76,14 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   backoff (30 s); the queue could import the politeness constant (D-1263).
 - ATS adapters (#226): UKG Pro (UltiPro), ADP, Rippling and Paycom are not built yet; Workday and Oracle Recruiting serve each list's first page only (20 and 25 rows), and Workday sites on a tenant's own domain are not detected.
 - Crawl: only the start page's redirect target is kept out of the frontier (D-1285); another page whose URL redirects is still fetched again as its target's task. Deduplicating by final URL needs each task's final URL stored (jobs-crawl-perf #246).
-- Role S cap: `project.draft_call_cap` counts a key's calls in all, with no window, and the Settings screen has no field for it (it sends the loaded value back); add a window or a field if the cap is used (D-1282) [#246].
+- Role S cap: `project.draft_call_cap` counts a key's calls in all, with no window; add a window if the cap is used (D-1282) [#246].
 - Recurring: a listing page whose text has no words has no content fingerprint, so it is always extracted; `url_state.record_fingerprint` is unused and could go (D-1283) [#246].
+- Playground (#257): at phone width a toolbar select's error line, in a `w-64` column, can sit over the tool wrapped under it (Format's over Schema); a reserved line would move the layout whenever none shows, so measure on a phone before changing it (D-1397).
+- Fetch trail (#257): a task robots.txt kept from its page has no capture, so its drawer has no attempts and `last_error` (`robots`) is shown nowhere; the `network` evidence label was checked in component tests only, since no public page of the live check published a value of a captured call.
+- Config approval (#257): a rejected config's cold state learns again after 8 more pages (D-1391); a way to stop learning one site (pause) is not built.
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
-- Playground: the toolbar's Format shows its error line under it in the flow, so a refused send without a format moves the action and the output down; hang it as the toolbar's Schema now does (D-1214) [#238].
-- Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
 - Shopify product pages take the page path; joining the adapter's answer to the page's collectors needs a capture holding both and a measure of cross-source conflicts (D-1118) [#224].
 - Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
