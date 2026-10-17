@@ -41,7 +41,7 @@ NEW = "<html><body><h2 class='heading'>A lamp</h2></body></html>"
 IR: dict[str, Any] = {
     "ir_version": "1",
     "site": "shop.example.test",
-    "schema": {"name": "synthetic"},
+    "schema": {"name": "synthetic", "digest": "0" * 64},
     "page_kind": "detail",
     "fetch": {"method": "http"},
     "fields": {

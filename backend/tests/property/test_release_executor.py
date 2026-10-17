@@ -75,7 +75,7 @@ def _ir(page_kind: str, fields: dict[str, Any], listing: dict[str, Any] | None =
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic"},
+            "schema": {"name": "synthetic", "digest": "0" * 64},
             "page_kind": page_kind,
             "fetch": {"method": "http"},
             "fields": {name: {"steps": steps, "status": "uncorroborated"} for name, steps in fields.items()},

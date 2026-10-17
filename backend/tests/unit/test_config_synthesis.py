@@ -46,7 +46,7 @@ def _ir(page_kind: str = "detail", fields: dict[str, Any] | None = None) -> Extr
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic"},
+            "schema": {"name": "synthetic", "digest": "0" * 64},
             "page_kind": page_kind,
             "fetch": {"method": "http"},
             "fields": fields or {},

@@ -79,7 +79,7 @@ def _ir(**update: Any) -> dict[str, Any]:
     return {
         "ir_version": "1",
         "site": "shop.example.test",
-        "schema": {"name": "synthetic"},
+        "schema": {"name": "synthetic", "digest": "0" * 64},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"xpath": "//h1"}], "status": "corroborated"}},

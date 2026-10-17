@@ -412,7 +412,7 @@ def test_without_a_config_snapshot_the_page_replays_cold() -> None:
 IR: dict[str, JsonValue] = {
     "ir_version": "1",
     "site": "shop.example.com",
-    "schema": {"name": SCHEMA.name},
+    "schema": {"name": SCHEMA.name, "digest": "0" * 64},
     "page_kind": "detail",
     "fetch": {"method": "http"},
     "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},
