@@ -187,6 +187,9 @@ async def test_dev_captures_land_in_the_main_store_as_unlabeled_pages(env: Env, 
     async with aclosing(get_store("dev", env.settings)) as store:
         pages = await store.list_pages(schema_name=SCHEMA)
         bundles = [await store.get_bundle(o.capture_id) for o in captured]
+        # What `import-labels` skips when run again (D-1460).
+        assert isinstance(store, DevEvalStore)
+        assert await store.page_urls() == {server.url("/p/1"), server.url("/p/2")}
     assert pages == [
         EvalPageRow(
             id=o.page_id,

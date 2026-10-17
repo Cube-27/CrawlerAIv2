@@ -21,7 +21,7 @@ from crawlerai.db.models import PageKind
 from crawlerai.eval.labels import FieldLabel, LabelRow, Labels
 from crawlerai.llm.client import LLMClient, LLMFailure
 from crawlerai.llm.roles import c_extract
-from crawlerai.normalize.base import Ok
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.schemas.types import FieldSpec
 from crawlerai.storage.capture_bundle import CaptureBundle
 
@@ -32,9 +32,8 @@ async def prefill(
     """The draft labels role C reads from the captured page. Raises the client's `LLMFailure` when the call gives
     no valid reply: a pre-fill without values is not a draft worth storing."""
     fields = {name: spec for name, spec in fields.items() if not spec.row_mapped}
-    page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
+    page, ctx = await parsed_with_context(bundle)
     text = page.cleaned_text.text
-    ctx = with_stated_currencies(page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at), page)
     rows: tuple[str, ...] = ()
     row_fields = {name: spec for name, spec in fields.items() if spec.scope == "row"}
     if page_kind == "detail" or not row_fields:
@@ -59,6 +58,13 @@ async def prefill(
         fields=by_owner.get(PAGE, {}),
         rows=tuple(LabelRow(fields=by_owner[row]) for row in rows if by_owner.get(row)),
     )
+
+
+async def parsed_with_context(bundle: CaptureBundle) -> tuple[ParsedPage, Context]:
+    """The captured page parsed, and the normalizers' context it states (locales, currencies), as the pipeline reads
+    them: what a label value is normalized in."""
+    page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
+    return page, with_stated_currencies(page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at), page)
 
 
 def _labels_by_owner(candidates: tuple[Candidate, ...]) -> dict[str, dict[str, FieldLabel]]:

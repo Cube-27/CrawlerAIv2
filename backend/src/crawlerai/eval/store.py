@@ -376,6 +376,13 @@ class DevEvalStore(_SqlEvalStore):
             .where(page.split == self._split)
         )
 
+    async def page_urls(self) -> set[str]:
+        """The URLs of this split's pages' captures, as they were requested."""
+        page = self._page.c
+        query = select(Capture.url).distinct().join(self._page, page.capture_id == Capture.id)
+        async with self._engine.connect() as conn:
+            return set((await conn.execute(query.where(page.split == self._split))).scalars())
+
     async def put_capture(self, bundle: CaptureBundle, category: EvalCategory) -> CaptureId:
         """`category` is kept on the page (`put_page`); the main database records sites without one."""
         key = dev_eval_capture_key(bundle.manifest.capture_id)

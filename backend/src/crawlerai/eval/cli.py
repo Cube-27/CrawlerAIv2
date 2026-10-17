@@ -29,12 +29,15 @@ from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, Robots, robots_url, snapshot_of
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaDef, SchemaId, Split
+from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaId, Split
+from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.eval.store import EvalPageRow, EvalStore, PrivateCredentialsMissing, get_store
+from crawlerai.schemas.registry import list_schemas
+from crawlerai.schemas.types import SchemaDef as Schema
 
 _CATEGORIES: dict[str, EvalCategory] = {category: category for category in get_args(EvalCategory)}
 _SCHEMES = frozenset({"http", "https"})  # RFC 9110 §4.2: the URI schemes a page is fetched over
@@ -107,7 +110,7 @@ def parse_site_list(text: str, pages_per_site: int) -> SiteList:
         if category is None:
             errors.append(f"line {n}: the category is not one of {', '.join(sorted(_CATEGORIES))}")
             continue
-        host = _host(url)
+        host = http_host(url)
         if host is None:
             errors.append(f"line {n}: not an http or https URL with a host")
             continue
@@ -126,12 +129,12 @@ def parse_site_list(text: str, pages_per_site: int) -> SiteList:
 
 
 def check_urls(urls: Sequence[str]) -> None:
-    bad = [str(n) for n, url in enumerate(urls, start=1) if _host(url) is None]
+    bad = [str(n) for n, url in enumerate(urls, start=1) if http_host(url) is None]
     if bad:
         raise EvalCliError(f"not an http or https URL with a host: URL {', '.join(bad)}")
 
 
-def _host(url: str) -> str | None:
+def http_host(url: str) -> str | None:
     try:
         parts = urlsplit(url)
         host = parts.hostname
@@ -144,7 +147,7 @@ def check_hosts(requests: Sequence[PageRequest], taken: Mapping[Split, Set[str]]
     """Refuse every request when a host of the input has pages in another split: a site sits in one split only, fresh
     being sites nobody has seen and hidden sites absent from dev (ARCHITECTURE §16.1). The refusal gives counts, never
     a host or a line, so it names no hidden or fresh site (C1)."""
-    hosts = {host for request in requests if (host := _host(request.url)) is not None}
+    hosts = {host for request in requests if (host := http_host(request.url)) is not None}
     overlaps = {split: hosts & taken[split] for split in sorted(taken)}
     refused = set[str]().union(*overlaps.values())
     if refused:
@@ -186,18 +189,37 @@ async def resolve_schemas(database_url: str, names: set[str]) -> dict[str, Schem
         async with engine.connect() as conn:
             rows = (
                 await conn.execute(
-                    select(SchemaDef.id, SchemaDef.name, SchemaDef.page_kind).where(
-                        SchemaDef.name.in_(names), SchemaDef.status == "active"
+                    select(SchemaRow.id, SchemaRow.name, SchemaRow.page_kind).where(
+                        SchemaRow.name.in_(names), SchemaRow.status == "active"
                     )
                 )
             ).all()
     finally:
         await engine.dispose()
-    schemas = {row.name: SchemaRef(row.id, row.name, row.page_kind) for row in rows}
-    missing = sorted(names - schemas.keys())
-    if missing:
+    _check_found(names, {row.name for row in rows})
+    return {row.name: SchemaRef(row.id, row.name, row.page_kind) for row in rows}
+
+
+def _check_found(names: set[str], found: set[str]) -> None:
+    if missing := sorted(names - found):
         raise EvalCliError(f"no active schema named {', '.join(missing)}")
-    return schemas
+
+
+async def active_schemas(database_url: str, names: set[str] | None = None) -> dict[str, Schema]:
+    """The active schemas of the main database's `schema_def` by name, as documents the engine runs: those named in
+    `names`, or every one."""
+    engine = create_async_engine(database_url)
+    try:
+        async with engine.connect() as conn:
+            if names is None:
+                return {schema.name: schema for schema in await list_schemas(conn, status="active")}
+            found = [
+                schema for name in sorted(names) for schema in await list_schemas(conn, name=name, status="active")
+            ]
+    finally:
+        await engine.dispose()
+    _check_found(names, {schema.name for schema in found})
+    return {schema.name: schema for schema in found}
 
 
 async def capture_pages(
@@ -229,25 +251,27 @@ async def capture_pages(
         while (wait := limiter.admit(host, interval(None, rules.crawl_delay))).total_seconds() > 0:
             await sleep(wait.total_seconds())
         result = await fetch(request.url)
-        schema = schemas[request.schema_name]
-        capture_id = await store.put_capture(result.bundle, request.category)
-        page_id = await store.put_page(
-            EvalPageRow(
-                capture_id=capture_id,
-                split=store.split,
-                schema_id=schema.id,
-                schema_name=schema.name,
-                page_kind=schema.page_kind,
-                category=request.category,
-            )
-        )
-        manifest = result.bundle.manifest
-        outcomes.append(
-            Captured(
-                request.n, capture_id, page_id, manifest.status_code, manifest.block_class, result.attempts[-1].error
-            )
-        )
+        outcomes.append(await store_page(store, schemas[request.schema_name], request, result))
     return outcomes
+
+
+async def store_page(store: EvalStore, schema: SchemaRef, request: PageRequest, result: FetchResult) -> Captured:
+    """Store a fetched page as an eval capture and an unlabeled eval page of `store`'s split, whatever its outcome."""
+    capture_id = await store.put_capture(result.bundle, request.category)
+    page_id = await store.put_page(
+        EvalPageRow(
+            capture_id=capture_id,
+            split=store.split,
+            schema_id=schema.id,
+            schema_name=schema.name,
+            page_kind=schema.page_kind,
+            category=request.category,
+        )
+    )
+    manifest = result.bundle.manifest
+    return Captured(
+        request.n, capture_id, page_id, manifest.status_code, manifest.block_class, result.attempts[-1].error
+    )
 
 
 async def run_capture(
