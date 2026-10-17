@@ -58,6 +58,7 @@ candidates (Appendix A #37, #46).
 | — | [ce1 extraction fixes](2026-10-16-ce1-extraction/proposal.md) ([tasks](2026-10-16-ce1-extraction/tasks.md), [decisions](2026-10-16-ce1-extraction/design.md)) | §8.1, §8.2, §9, §10, Appendix A #48 | 05, 13 | L1 | tasks 1.1–1.9 (#227) |
 | — | [Browser waits and client-rendered offers](2026-10-16-ce1-acquisition/proposal.md) ([tasks](2026-10-16-ce1-acquisition/tasks.md), [decisions](2026-10-16-ce1-acquisition/design.md)) | §7.1 | 02 | L1 (acquisition) | tasks 1.1–3.1 (#228) |
 | — | [Browser parity with Patchright's documented setup](2026-10-16-browser-parity/proposal.md) ([tasks](2026-10-16-browser-parity/tasks.md), [decisions](2026-10-16-browser-parity/design.md)) | §7.1, Appendix A #50 | 02 | L1 (acquisition) | tasks 1.1–1.4 (#229) |
+| — | [Playground follow-ups](2026-10-17-playground-followups/proposal.md) ([tasks](2026-10-17-playground-followups/tasks.md), [decisions](2026-10-17-playground-followups/design.md)) | §13.1, Appendix A #38 | 12, 14 | L1 (frontend) | tasks 1–4 (#238) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.

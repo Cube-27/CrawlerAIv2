@@ -46,7 +46,7 @@ RFC 9457 problems SHALL render in `ProblemAlert`, button outcomes (including ref
 Job events SHALL be read with `fetch` streaming, resumed with `Last-Event-ID`, reconnecting at 1 s doubling to 30 s, treating 35 s of silence as dropped and stopping on a 4xx other than 429 (`frontend/src/api/events.ts`); end events re-read summary and results. Refs: D-0702, D-0750.
 
 ### Requirement: Playground modes and command bar
-The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map`, Extract `/extract` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Refs: Appendix A #38, #45, #51, D-0817, D-1043, D-1213.
+The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map`, Extract `/extract` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width, and at phone width puts Get code and the primary button on the row under the input; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Refs: Appendix A #38, #45, #51, D-0817, D-1043, D-1213, D-1216.
 #### Scenario: Back and forward
 - **WHEN** a user switches from Scrape to Crawl and presses back
 - **THEN** the URL returns to `/` and Scrape mode shows
@@ -58,7 +58,7 @@ A URL without a scheme SHALL be sent with `https://` prepended (RFC 3986 §3); B
 - **THEN** the request's `url` is `https://example.com:8080/p`
 
 ### Requirement: Schema, fields and format rules per mode
-A stored schema in Scrape SHALL add `records` and fix the page kind; Batch and Crawl with a schema or field names send `formats: ["records"]`; fields (1–50 names, `[a-z][a-z0-9_]{0,63}`) and a stored schema are never sent together, and a fields run first shows the `POST /v1/schemas/draft` result for confirmation. Drafting is owned by [schemas](../schemas/spec.md). Refs: Appendix A #41, D-0752, D-0818, D-0925, D-0980.
+A stored schema in Scrape SHALL add `records` and fix the page kind, of either page kind; Batch and Crawl with a schema or field names send `formats: ["records"]`; Extract's toolbar Schema chooses its source (a stored schema, inline JSON, a prompt or field names) and reports a missing one there; fields (1–50 names, `[a-z][a-z0-9_]{0,63}`) and a stored schema are never sent together, and a fields run first shows the `POST /v1/schemas/draft` result for confirmation. Drafting is owned by [schemas](../schemas/spec.md). Refs: Appendix A #41, D-0752, D-0818, D-0925, D-0980, D-1214, D-1217.
 #### Scenario: Batch with a schema
 - **WHEN** a batch is started with a stored schema
 - **THEN** the request's `formats` is `["records"]`
@@ -70,7 +70,7 @@ Output SHALL be read as `json_values` items `{url, outcome, records, metadata?}`
 - **THEN** each row's drawer shows its markdown output and Export CSV is disabled
 
 ### Requirement: Recent runs, job routing and re-run
-Each mode SHALL list its last 10 jobs before a run; `/jobs/:id` redirects to the kind's mode route with `?job=` (except `learn`, which keeps its page); a shown run is read-only from `GET /v1/jobs/{id}/request` until "Edit and re-run", which starts a new job. Map or Crawl selections open Batch via navigation state. Refs: D-0855, D-0856, D-0861, D-0976.
+Each mode SHALL list its last 10 jobs before a run; `/jobs/:id` redirects to the kind's mode route with `?job=` (except `learn`, which keeps its page); a shown run is read-only from `GET /v1/jobs/{id}/request` until "Edit and re-run", which starts a new job. A map's request and URLs live in its browser history entry, so back and reload show them. Map or Crawl selections open Batch via navigation state. Refs: D-0855, D-0856, D-0861, D-0976, D-1215.
 #### Scenario: Old job link
 - **WHEN** `/jobs/<id>` is opened for an `extract` job
 - **THEN** the UI redirects to `/extract?job=<id>`
