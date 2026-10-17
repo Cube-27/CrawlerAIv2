@@ -9,6 +9,8 @@ import { ExtractPlayground } from "../screens/playground/extract/ExtractPlaygrou
 import { SearchPlayground } from "../screens/playground/search/SearchPlayground";
 import { MapPlayground } from "../screens/playground/map/MapPlayground";
 import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground";
+import { ScheduleScreen } from "../screens/schedules/ScheduleScreen";
+import { SchedulesScreen } from "../screens/schedules/SchedulesScreen";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
 import { SiteScreen } from "../screens/sites/SiteScreen";
@@ -53,6 +55,8 @@ export const routes: RouteObject[] = [
           { path: "jobs", element: <JobsScreen /> },
           // A job a mode runs redirects to its run there; a `learn` job keeps its page (SPEC-14 §4.8).
           { path: "jobs/:id", element: <JobScreen /> },
+          { path: "schedules", element: <SchedulesScreen /> },
+          { path: "schedules/:id", element: <ScheduleScreen /> },
           // SPEC-03 §4.10: the eval API takes the same API key as everything else. The shell lists these routes
           // when `/healthz` reports `eval_ui`.
           { path: "labeling", element: <LabelingList /> },

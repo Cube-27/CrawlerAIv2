@@ -20,6 +20,9 @@ import {
   requestSchema,
   screenshotArea,
   webhook,
+  NO_WEBHOOK,
+  withWebhookErrors,
+  type WebhookSettings,
 } from "../pageRequest";
 import {
   llmCalls,
@@ -30,7 +33,7 @@ import {
   schemaFields,
   schemaId,
   texts,
-  webhookUrl,
+  webhookSettings,
   type StoredRequest,
 } from "../run/storedRequest";
 
@@ -41,8 +44,8 @@ export interface BatchOptions extends FormatSettings {
   pageKind: PageKind | null;
   metadataInJson: boolean;
   fields: readonly string[];
-  /** Empty: no webhook. */
-  webhookUrl: string;
+  /** An empty URL: no webhook. */
+  webhook: WebhookSettings;
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
@@ -56,7 +59,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   pageKind: null,
   metadataInJson: false,
   fields: [],
-  webhookUrl: "",
+  webhook: NO_WEBHOOK,
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
@@ -92,7 +95,7 @@ export function initialBatch(urls: string): BatchFormState {
 export function batchErrors(form: BatchFormState): Readonly<Record<string, string>> {
   const bad = badUrlLine(form.urls);
   if (bad !== null) return { urls: `Line ${String(bad.line)} is not a web address: ${bad.text}` };
-  return pageKindErrors(form);
+  return withWebhookErrors(pageKindErrors(form), form.options.webhook);
 }
 
 /** The batch request for `form`, or null when it can't be sent (`batchErrors`). A batch's results are records or page
@@ -113,7 +116,7 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
     ),
     ...formatMembers(formats, form.options),
     ...llmBudget(form.options.llmCalls),
-    ...webhook(form.options.webhookUrl),
+    ...webhook(form.options.webhook),
   };
 }
 
@@ -131,7 +134,7 @@ export function batchForm(request: StoredRequest): BatchFormState {
       pageKind: id === "" ? kind : null,
       metadataInJson,
       fields: schemaFields(request),
-      webhookUrl: webhookUrl(request),
+      webhook: webhookSettings(request),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),

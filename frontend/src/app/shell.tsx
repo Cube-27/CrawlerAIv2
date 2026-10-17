@@ -3,6 +3,7 @@ import {
   Database,
   Gear,
   Globe,
+  Clock,
   Layers,
   ListUl,
   Moon,
@@ -39,6 +40,7 @@ const DATA: NavGroup = {
   title: "Data",
   entries: [
     { href: "/jobs", label: "Jobs", icon: Thunderbolt },
+    { href: "/schedules", label: "Schedules", icon: Clock },
     { href: "/records", label: "Records", icon: Database },
     { href: "/schemas", label: "Schemas", icon: Layers },
     { href: "/sites", label: "Sites", icon: Globe },

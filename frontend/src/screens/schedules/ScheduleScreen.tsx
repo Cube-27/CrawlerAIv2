@@ -1,0 +1,78 @@
+import { Typography } from "@heroui/react";
+import type { ReactNode } from "react";
+import { useNavigate, useParams } from "react-router";
+import { problemOf } from "../../api/hooks/query";
+import { useSchedule } from "../../api/hooks/schedules";
+import type { Schedule } from "../../api/schedules";
+import { JsonView } from "../../components/JsonView";
+import { LoadingView } from "../../components/LoadingView";
+import { PageHeader } from "../../components/PageHeader";
+import { ProblemAlert } from "../../components/ProblemAlert";
+import { Timestamp } from "../../components/Timestamp";
+import { JobPages } from "../jobs/JobTable";
+import { KIND_LABELS } from "../jobs/kinds";
+import { cadenceText } from "./cadence";
+import { LastRun, ScheduleState } from "./SchedulesScreen";
+import { ScheduleActions } from "./ScheduleActions";
+
+function Facts({ schedule }: Readonly<{ schedule: Schedule }>) {
+  const facts: [string, ReactNode][] = [
+    ["Kind", KIND_LABELS[schedule.kind]],
+    ["Runs", cadenceText(schedule)],
+    [
+      "Next run",
+      schedule.paused ? "Paused" : <Timestamp key="next" value={schedule.next_run_at} />,
+    ],
+    ["Last run", <LastRun key="last" schedule={schedule} />],
+    ["Created", <Timestamp key="created" value={schedule.created_at} />],
+  ];
+  return (
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
+      {facts.map(([term, value]) => (
+        <div key={term} className="contents">
+          <dt className="text-muted">{term}</dt>
+          <dd className="min-w-0 break-words">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** A schedule (D-1418): its cadence and last run, its actions, the request each run submits, and its jobs, newest
+ * first (`GET /v1/jobs?schedule_id=`). */
+export function ScheduleScreen() {
+  const { id = "" } = useParams();
+  const navigate = useNavigate();
+  const query = useSchedule(id);
+  const problem = problemOf(query.error);
+  const schedule = query.data;
+  return (
+    <section className="flex flex-col gap-stack">
+      <PageHeader
+        title={schedule?.name ?? "Schedule"}
+        actions={
+          schedule === undefined ? undefined : (
+            <ScheduleActions schedule={schedule} onDeleted={() => void navigate("/schedules")} />
+          )
+        }
+      >
+        {schedule === undefined ? null : <ScheduleState paused={schedule.paused} />}
+      </PageHeader>
+      {query.isPending ? <LoadingView label="Loading the schedule" /> : null}
+      {problem === null ? null : <ProblemAlert problem={problem} />}
+      {schedule === undefined ? null : (
+        <>
+          <Facts schedule={schedule} />
+          <Typography.Heading level={2}>Request</Typography.Heading>
+          <JsonView
+            label="Request JSON"
+            value={schedule.request}
+            filename={`schedule-${schedule.id}.json`}
+          />
+          <Typography.Heading level={2}>Runs</Typography.Heading>
+          <JobPages filters={{ kind: null, status: null, scheduleId: schedule.id }} />
+        </>
+      )}
+    </section>
+  );
+}

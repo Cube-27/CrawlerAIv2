@@ -7,7 +7,7 @@ import {
   FieldsRow,
   LlmCallsRow,
   PageKindRow,
-  WebhookRow,
+  WebhookRows,
 } from "../rows";
 import { DEFAULT_EXTRACT_OPTIONS, type ExtractOptions as Options, type SchemaSource } from "./form";
 
@@ -118,10 +118,10 @@ export function ExtractOptions({
           onChange({ ...options, llmCalls });
         }}
       />
-      <WebhookRow
-        value={options.webhookUrl}
-        onChange={(webhookUrl) => {
-          onChange({ ...options, webhookUrl });
+      <WebhookRows
+        value={options.webhook}
+        onChange={(webhook) => {
+          onChange({ ...options, webhook });
         }}
       />
       <SourceRow source={source} options={options} onChange={onChange} />

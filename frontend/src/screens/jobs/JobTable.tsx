@@ -86,6 +86,11 @@ function JobPageContent({
   first,
 }: Readonly<{ jobs: readonly JobSummary[]; filters: JobFilters; first: boolean }>) {
   if (jobs.length > 0 || !first) return <JobRows label="Jobs" jobs={jobs} columns={JOB_COLUMNS} />;
+  if (filters.scheduleId != null) {
+    return (
+      <EmptyView title="No runs yet">The schedule's runs are listed here as they start.</EmptyView>
+    );
+  }
   if (filters.kind !== null || filters.status !== null) {
     return (
       <EmptyView title="No job matches these filters">Choose another kind or status.</EmptyView>
@@ -95,7 +100,7 @@ function JobPageContent({
 }
 
 /** One page of the jobs that pass `filters`. */
-function JobPages({ filters }: Readonly<{ filters: JobFilters }>) {
+export function JobPages({ filters }: Readonly<{ filters: JobFilters }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
   const jobs = useJobs({ filters, cursor, limit: PAGE_SIZE });
   return (

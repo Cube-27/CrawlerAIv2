@@ -56,6 +56,7 @@ describe("app shell", () => {
       "Crawl",
       "Search",
       "Jobs",
+      "Schedules",
       "Records",
       "Schemas",
       "Sites",

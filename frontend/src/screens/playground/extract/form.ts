@@ -9,6 +9,9 @@ import {
   optionalNumber,
   schemaPageKindErrors,
   webhook,
+  NO_WEBHOOK,
+  withWebhookErrors,
+  type WebhookSettings,
 } from "../pageRequest";
 import {
   count,
@@ -21,7 +24,7 @@ import {
   schemaId,
   text,
   texts,
-  webhookUrl,
+  webhookSettings,
   type StoredRequest,
 } from "../run/storedRequest";
 
@@ -48,8 +51,8 @@ export interface ExtractOptions {
   /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
   advanced: AdvancedFetch;
   llmCalls: number;
-  /** Empty: no webhook. */
-  webhookUrl: string;
+  /** An empty URL: no webhook. */
+  webhook: WebhookSettings;
 }
 
 export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
@@ -64,7 +67,7 @@ export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   maxRows: Number.NaN,
   advanced: DEFAULT_ADVANCED,
   llmCalls: Number.NaN,
-  webhookUrl: "",
+  webhook: NO_WEBHOOK,
 };
 
 /** `schemaSource` and the stored `schemaId` are the toolbar's Schema; the source's JSON, prompt or names are
@@ -127,6 +130,10 @@ const SOURCE_ERRORS: Readonly<Record<SchemaSource, Readonly<Record<string, strin
 /** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind (SPEC-10 §4.6,
  * SPEC-07 §4.4). */
 export function extractErrors(form: ExtractFormState): Readonly<Record<string, string>> {
+  return withWebhookErrors(requestErrors(form), form.options.webhook);
+}
+
+function requestErrors(form: ExtractFormState): Readonly<Record<string, string>> {
   if (extractSchema(form) === null) return SOURCE_ERRORS[form.schemaSource];
   const kind = extractPageKind(form);
   if (form.schemaSource !== "id" && kind === null) return NO_PAGE_KIND;
@@ -137,7 +144,7 @@ export function extractErrors(form: ExtractFormState): Readonly<Record<string, s
 export function buildExtract(form: ExtractFormState): ExtractRequest | null {
   const schema = extractSchema(form);
   const kind = extractPageKind(form);
-  if (schema === null || kind === null || schemaPageKindErrors(kind) !== null) return null;
+  if (schema === null || kind === null || extractErrors(form) !== NO_ERRORS) return null;
   const { options } = form;
   return {
     urls: [form.url, ...options.urls],
@@ -146,7 +153,7 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
     fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
     ...optionalNumber("limit", options.limit),
     ...llmBudget(options.llmCalls),
-    ...webhook(options.webhookUrl),
+    ...webhook(options.webhook),
   };
 }
 
@@ -177,7 +184,7 @@ export function extractForm(request: StoredRequest): ExtractFormState {
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),
       llmCalls: llmCalls(request),
-      webhookUrl: webhookUrl(request),
+      webhook: webhookSettings(request),
     },
   };
 }

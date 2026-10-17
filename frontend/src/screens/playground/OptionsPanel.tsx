@@ -1,6 +1,8 @@
 import {
   Badge,
   Button,
+  Checkbox,
+  CheckboxGroup,
   FieldError,
   Input,
   Label,
@@ -299,6 +301,52 @@ export function TextAreaRow({
       <TextArea rows={4} spellCheck={false} placeholder={placeholder} />
       <FieldError />
     </TextField>
+  );
+}
+
+/** Any of `options`, as checkboxes across the grid. `name` is the request member a server error names. */
+export function CheckboxesRow<K extends string>({
+  label,
+  help,
+  name,
+  options,
+  values,
+  isDisabled = false,
+  onChange,
+}: Readonly<{
+  label: string;
+  help: string;
+  name: string;
+  options: readonly (readonly [K, string])[];
+  values: readonly K[];
+  isDisabled?: boolean;
+  onChange: (values: K[]) => void;
+}>) {
+  return (
+    <CheckboxGroup
+      className={FULL_CELL}
+      name={name}
+      value={[...values]}
+      isDisabled={isDisabled}
+      onChange={(next: string[]) => {
+        onChange(options.map(([option]) => option).filter((option) => next.includes(option)));
+      }}
+    >
+      <CellLabel label={label} help={help} />
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {options.map(([option, text]) => (
+          <Checkbox key={option} value={option}>
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              <Label>{text}</Label>
+            </Checkbox.Content>
+          </Checkbox>
+        ))}
+      </div>
+      <FieldError />
+    </CheckboxGroup>
   );
 }
 

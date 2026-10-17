@@ -9,7 +9,7 @@ import {
   LlmCallsRow,
   MetadataRow,
   PageKindRow,
-  WebhookRow,
+  WebhookRows,
 } from "../rows";
 import { DEFAULT_BATCH_OPTIONS, type BatchOptions as Options } from "./form";
 
@@ -69,10 +69,10 @@ export function BatchOptions({
       />
       <FieldsRow options={options} onChange={onChange} />
       <FormatRows options={options} formats={formats} onChange={onChange} />
-      <WebhookRow
-        value={options.webhookUrl}
-        onChange={(webhookUrl) => {
-          onChange({ ...options, webhookUrl });
+      <WebhookRows
+        value={options.webhook}
+        onChange={(webhook) => {
+          onChange({ ...options, webhook });
         }}
       />
       <AdvancedRows
