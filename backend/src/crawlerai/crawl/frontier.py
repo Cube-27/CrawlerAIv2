@@ -35,16 +35,18 @@ def discovered(page: ParsedPage, final_url: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Frontier:
     """Which URLs a crawl takes (`scope` on the start URL's site), the page kind `rules` give them, and how deep and
-    how many it goes."""
+    how many it goes. `fetched` is a URL the crawl's start page was fetched at after a redirect: its page is the
+    start task's, so it is never a task of its own (D-1285)."""
 
     scope: Scope
     rules: tuple[PageKindRule, ...]
     max_depth: int
     limit: int
+    fetched: str | None = None
 
     def admits(self, url: str) -> bool:
         """Whether the crawl takes `url`, in canonical form."""
-        return on_site(url, self.scope.host) and self.scope.admits(url)
+        return url != self.fetched and on_site(url, self.scope.host) and self.scope.admits(url)
 
     def task_row(self, job_id: JobId, url: str, depth: int, parent: UrlTaskId | None) -> dict[str, object]:
         """The `url_task` row of `url`, in canonical form, for the job."""

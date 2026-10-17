@@ -33,6 +33,7 @@ from crawlerai.crawl.rules import PageKindRule, Scope
 from crawlerai.db import queue
 from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
 from crawlerai.db.queue import MAX_ATTEMPTS
+from crawlerai.db.usage import budget_remaining
 from crawlerai.llm.client import LLMClient, MeteredClient, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT, close_run
@@ -190,6 +191,25 @@ async def test_a_submitted_crawl_is_a_queued_job_with_the_start_urls_task(
     root = found[f"{own_origin}/"]
     assert (root.depth, root.parent_task_id, root.page_kind) == (0, None, "listing")
     assert (job.kind, job.status, job.counts.queued) == ("crawl", "queued", 1)
+
+
+async def test_a_crawls_own_budget_bounds_its_llm_calls_before_the_projects_cap(
+    engine: AsyncEngine, fetching: Fetching, own_origin: str
+) -> None:
+    async with engine.begin() as conn:
+        await conn.execute(update(Project).values(llm_call_cap=7))
+    try:
+        capped = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/"), data=None)
+        budgeted = await submit_crawl(
+            engine, fetching.connector, crawl(f"{own_origin}/", budget={"llm_calls": 2}), data=None
+        )
+        async with engine.connect() as conn:
+            remaining = [await budget_remaining(conn, job.job_id, "llm_calls") for job in (capped, budgeted)]
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(update(Project).values(llm_call_cap=None))
+
+    assert remaining == [7, 2]
 
 
 @pytest.mark.parametrize("member", ["url", "webhook_url"])
@@ -409,8 +429,8 @@ async def test_the_crawl_follows_the_start_page_s_redirect_to_another_host(
     web.pages |= {
         f"{www_origin}/robots.txt": robots(f"Sitemap: {www_origin}/products.xml", "Disallow: /private/"),
         f"{www_origin}/products.xml": urlset(f"{www_origin}/p/1", f"{own_origin}/p/9"),
-        f"{www_origin}/": page("/c/kettles", f"{own_origin}/c/old"),
-        f"{www_origin}/c/kettles": page("/p/2", "/private/3"),
+        f"{www_origin}/": page("/c/kettles", f"{own_origin}/c/old", f"{www_origin}/"),
+        f"{www_origin}/c/kettles": page("/p/2", "/private/3", "/"),
         f"{www_origin}/p/1": page(product="Blue kettle"),
         f"{www_origin}/p/2": page(product="Red kettle"),
     }
@@ -426,6 +446,28 @@ async def test_the_crawl_follows_the_start_page_s_redirect_to_another_host(
         f"{www_origin}/p/2": "extracted",
         f"{www_origin}/private/3": "blocked",
     }
+    # The page the start URL redirected to is the start task's, though it and its descendants link to it: no task of
+    # its own, never requested at its own URL. Where it is, is stored on the job for the tasks that follow (D-1285).
+    assert f"{www_origin}/" not in web.fetched
+    async with engine.connect() as conn:
+        stored = (await conn.execute(select(Job.start_location).where(Job.id == submitted.job_id))).scalar_one()
+    assert stored == f"{www_origin}/"
+
+
+async def test_a_crawl_that_is_not_redirected_stores_its_start_url_as_where_it_is(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    web.pages[f"{own_origin}/"] = page("/p/1")
+    web.pages[f"{own_origin}/p/1"] = page(product="Blue kettle")
+    submitted = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/"), data=None)
+    before = await summary(engine, submitted.job_id)
+
+    await run(engine, fetching, None, submitted.job_id)
+
+    async with engine.connect() as conn:
+        stored = (await conn.execute(select(Job.start_location).where(Job.id == submitted.job_id))).scalar_one()
+    assert (before.status, stored) == ("queued", f"{own_origin}/")
+    assert set(await tasks(engine, submitted.job_id)) == {f"{own_origin}/", f"{own_origin}/p/1"}
 
 
 async def test_a_retried_start_page_reads_the_sitemaps_once_on_its_last_attempt(
@@ -658,6 +700,19 @@ async def test_enqueueing_takes_new_urls_in_scope_once_in_order(conn: AsyncConne
         ("https://shop.example.test/p/2", "detail", 1),
         ("https://shop.example.test/c/1", None, 1),
     ]
+
+
+async def test_a_page_already_fetched_after_a_redirect_is_never_a_task_of_its_own(
+    conn: AsyncConnection, job: JobId
+) -> None:
+    fetched = Frontier(Scope("www.shop.example.test"), (), 3, 10, fetched="https://www.shop.example.test/")
+    urls = ["https://www.shop.example.test/", "https://www.shop.example.test/c/1"]
+
+    added = await fetched.enqueue(conn, job, urls, depth=1, parent=None)
+
+    assert added == 1
+    assert [url for url, _, _ in await _urls(conn, job)] == ["https://shop.example.test/", urls[1]]
+    assert fetched.admits(urls[0]) is False
 
 
 async def test_the_limit_counts_every_task_of_the_job(conn: AsyncConnection, job: JobId) -> None:
