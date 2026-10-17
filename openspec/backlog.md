@@ -38,17 +38,17 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment
   (`page-2.html`) is not a +1 integer link, so such pages turn by their pager only. Measure on dev before changing.
 - ce1 extraction (#227): `js_state` admission stores thousands of duplicate price candidates on a page with a large state blob (6,561 on one); deduplicating them needs a provenance decision (which locator stays).
-- Browser waits (#228): a client-rendered detail page is rendered on every fetch (HTTP stays `ok`, so the site's
-  remembered method stays `http`); remembering it needs a decision. Pages behind a challenge that does not clear
-  itself headless stay `blocked` (§22).
 - Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
-- Tough-site run (#225): a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
-- Listing render (#242): a recurring job's render check extracts a listing (role C included) before the unchanged-content test, so an unchanged listing without structured rows pays a role C call on each fetch; judging the content first needs the standing record's fingerprint in the check. Measure on the next dev run how many listings the render reaches (owner #54).
-- Browser parity (#229): with Patchright's documented setup the 4 dev interstitial rows (403 challenge documents) still
-  end `blocked`; two of them never navigate on within the 18 s wait and two are not judged interstitial by structure.
-  The wait adds about 18 s to each structureless 403 (the blocked pages too); measure on the dev run and lower
-  `_INTERSTITIAL_SHARE` if nothing clears.
-- Tough-site run (#225): 429 and 503 at HTTP are not retried in the browser (SPEC-02 §4.6 backoff, `rungs.slow_down`): kept as designed.
+- Acquisition hardening (#244): pages behind a challenge that does not clear headless stay `blocked` after the 40%
+  interstitial wait (5 real 403 challenge pages waited ~20 s each and stayed blocked in the live check); measure the
+  share that clears on a dev run before lowering `_INTERSTITIAL_SHARE` (D-1262). A 429 challenge page gets no browser
+  attempt by design (D-1263).
+- Acquisition hardening (#244): `site.fetch_method` is per site, so one page kind's render (a listing's) sends the
+  site's other kinds to the browser too until the weekly re-check; a per-kind memory needs a column (D-1260).
+- Acquisition hardening (#244): no rung records `proxy_bytes` usage (the usage resource exists); a learning run's
+  recipe replays use the default policy, so no proxy pool (D-1264).
+- Acquisition hardening (#244): `db.queue.BACKOFF_BASE` and `acquire.politeness.BACKOFF_MIN` are both SPEC-02's first
+  backoff (30 s); the queue could import the politeness constant (D-1263).
 - ATS adapters (#226): UKG Pro (UltiPro), ADP, Rippling and Paycom are not built yet; Workday and Oracle Recruiting serve each list's first page only (20 and 25 rows), and Workday sites on a tenant's own domain are not detected.
 - Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
 - Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
@@ -57,7 +57,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
 - Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
-- Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64].
 - Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
 - Playground: the toolbar's Format shows its error line under it in the flow, so a refused send without a format moves the action and the output down; hang it as the toolbar's Schema now does (D-1214) [#238].
 - Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].

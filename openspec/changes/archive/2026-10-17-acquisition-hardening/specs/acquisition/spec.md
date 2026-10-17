@@ -54,9 +54,9 @@ D-1200, D-1201, owner #50, D-1206, owner #52, D-1262, D-1264, D-1265.
 - **THEN** the browser rung does not wait for a navigation
 
 ### Requirement: Proxy pools
-A site's `proxy_pool` SHALL be used from `CRAWLERAI_PROXY_POOLS` over a CONNECT tunnel by every rung (`acquire/tunnel.py`
-for the JSON rung and the browser's guard); an unknown pool MUST end `error`/`proxy_pool_unknown` sending nothing, and
-credentials never appear in errors. (Previously: the JSON rung used no pool.) Refs: §7.1, D-0282, D-0286, D-1264.
+A site's `proxy_pool` SHALL be used from `CRAWLERAI_PROXY_POOLS` over a CONNECT tunnel by every rung
+(`acquire/tunnel.py` for the JSON rung and the browser's guard); an unknown pool MUST end `error`/`proxy_pool_unknown`
+sending nothing, and credentials never appear in errors. (Previously: the JSON rung used no pool.) Refs: §7.1, D-0282, D-0286, D-1264.
 
 ### Requirement: Per-site rate and backoff
 The system SHALL space requests to a host by `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`,
