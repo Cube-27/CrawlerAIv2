@@ -13,12 +13,13 @@ import pytest
 
 from crawlerai import cli
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
 from crawlerai.core.data import DataReport
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.proxy import ProxyEndpoint
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
 from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.db.queue import LEASE_BATCH
 from crawlerai.recurring.listing_diff import close_run
@@ -127,8 +128,8 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     assert (fetch.func, fetch.args) == (fetch_http, ())
     assert fetch.keywords == {
         "engine_version": ENGINE_VERSION,
-        "impersonate": AcquireSettings().impersonate,
-        "pools": {"dc": ProxyEndpoint("proxy.example.com", 3128)},
+        "impersonate": rung_impersonation(AcquireSettings()),
+        "pools": {"dc": ProxyPool((ProxyEndpoint("proxy.example.com", 3128),))},
     }
     [post] = posts  # webhooks go through the SSRF guard (SPEC-10 §4.2)
     assert isinstance(post, partial)

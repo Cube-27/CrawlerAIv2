@@ -725,6 +725,8 @@ export interface components {
              * @enum {string}
              */
             block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            /** Challenge */
+            challenge?: string | null;
             /** Duration Ms */
             duration_ms: number;
             /** Error */

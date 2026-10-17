@@ -1,4 +1,5 @@
-"""Politeness (SPEC-02 §4.6): the request interval, Retry-After and per-host admission."""
+"""Politeness (SPEC-02 §4.6): the request interval, Retry-After, per-host admission and its adaptive spacing
+(D-1327)."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -8,7 +9,17 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.politeness import BACKOFF_MIN, HostLimiter, asked_pause, interval, refuse, retry_after
+from crawlerai.acquire.politeness import (
+    BACKOFF_MAX,
+    BACKOFF_MIN,
+    RECOVERY_FACTOR,
+    RECOVERY_RUN,
+    HostLimiter,
+    asked_pause,
+    interval,
+    refuse,
+    retry_after,
+)
 from crawlerai.acquire.types import AttemptRecord
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
@@ -170,3 +181,93 @@ def test_admitted_requests_to_a_host_are_never_closer_than_the_interval(gaps: li
 
     assert admitted[0] == 1000.0 + gaps[0]
     assert all(later - earlier >= interval_s - 1e-6 for earlier, later in pairwise(admitted))
+
+
+# --- adaptive spacing (D-1327) -----------------------------------------------------------------------------------
+
+_HOST = "a.example.test"
+_SECOND = timedelta(seconds=1)
+
+
+def _answer(status: int, block_class: str = "ok", challenge: str | None = None) -> AttemptRecord:
+    return AttemptRecord.model_validate(
+        {"method": "http", "status": status, "block_class": block_class, "duration_ms": 1, "challenge": challenge}
+    )
+
+
+def test_a_slow_down_doubles_the_spacing_and_the_next_turn_comes_that_much_later() -> None:
+    clock = Clock()
+    limiter = HostLimiter(clock)
+    assert limiter.admit(_HOST, _SECOND) == timedelta(0)
+
+    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])
+    limiter.observe(_HOST, _SECOND, [_answer(503, "blocked")])
+    clock.now += 1
+    assert limiter.admit(_HOST, _SECOND) == timedelta(0)
+
+    assert limiter.spacing(_HOST, _SECOND) == 4 * _SECOND
+    assert limiter.admit(_HOST, _SECOND) == 4 * _SECOND
+    assert limiter.spacing("b.example.test", _SECOND) == _SECOND  # per host
+
+
+def test_a_challenge_slows_the_host_as_a_slow_down_does() -> None:
+    limiter = HostLimiter(Clock())
+
+    limiter.observe(_HOST, _SECOND, [_answer(403, "blocked", challenge="structural")])
+
+    assert limiter.spacing(_HOST, _SECOND) == 2 * _SECOND
+
+
+def test_a_plain_refusal_or_error_leaves_the_spacing_as_it_is() -> None:
+    limiter = HostLimiter(Clock())
+
+    limiter.observe(_HOST, _SECOND, [_answer(403, "blocked"), _answer(500, "error"), _answer(404, "not_found")])
+
+    assert limiter.spacing(_HOST, _SECOND) == _SECOND
+
+
+def test_the_spacing_never_passes_the_longest_backoff() -> None:
+    limiter = HostLimiter(Clock())
+
+    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")] * 30)
+
+    assert limiter.spacing(_HOST, _SECOND) == BACKOFF_MAX
+
+
+def test_a_run_of_ok_answers_shrinks_the_spacing_back_to_the_interval_and_no_further() -> None:
+    limiter = HostLimiter(Clock())
+    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])  # 2 s
+
+    limiter.observe(_HOST, _SECOND, [_answer(200)] * (RECOVERY_RUN - 1))
+    assert limiter.spacing(_HOST, _SECOND) == 2 * _SECOND
+    limiter.observe(_HOST, _SECOND, [_answer(200)])
+    assert limiter.spacing(_HOST, _SECOND) == 2 * _SECOND * RECOVERY_FACTOR
+
+    limiter.observe(_HOST, _SECOND, [_answer(200)] * RECOVERY_RUN * 20)
+    assert limiter.spacing(_HOST, _SECOND) == _SECOND
+
+
+def test_a_slow_down_inside_a_run_of_ok_answers_starts_the_run_again() -> None:
+    limiter = HostLimiter(Clock())
+    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])
+
+    limiter.observe(_HOST, _SECOND, [_answer(200)] * (RECOVERY_RUN - 1) + [_answer(429, "blocked")])
+    limiter.observe(_HOST, _SECOND, [_answer(200)] * (RECOVERY_RUN - 1))
+
+    assert limiter.spacing(_HOST, _SECOND) == 4 * _SECOND
+
+
+@given(
+    answers=st.lists(st.sampled_from([200, 429, 503, 403]), max_size=200),
+    interval_s=st.floats(min_value=0, max_value=1200, allow_nan=False),
+)
+def test_the_spacing_stays_between_the_interval_and_the_longest_backoff(answers: list[int], interval_s: float) -> None:
+    limiter = HostLimiter(Clock())
+    gap = timedelta(seconds=interval_s)
+
+    for status in answers:
+        limiter.observe(_HOST, gap, [_answer(status, "ok" if status == 200 else "blocked")])
+
+    spacing = limiter.spacing(_HOST, gap)
+    assert spacing >= gap
+    assert spacing <= max(BACKOFF_MAX, gap)

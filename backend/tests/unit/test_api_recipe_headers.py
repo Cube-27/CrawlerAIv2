@@ -30,6 +30,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.stand_in import IMPERSONATE
 
 SCHEMA = SchemaDef(
     id=SchemaId(uuid7()),
@@ -153,7 +154,9 @@ def _spec(endpoint: str) -> RequestSpec:
 
 
 async def _replay(request: JsonRequest) -> FetchResult:
-    return await fetch_json(request, FetchPolicy(timeout_s=5), engine_version="test", connector=PinToLoopback())
+    return await fetch_json(
+        request, FetchPolicy(timeout_s=5), engine_version="test", impersonate=IMPERSONATE, connector=PinToLoopback()
+    )
 
 
 def _minimize(port: int, mode: str, extra: Extra = _no_extra) -> Proven | NotLearnable:

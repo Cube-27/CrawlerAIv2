@@ -285,6 +285,23 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
 
 
+async def test_after_a_slow_down_the_sites_pages_come_at_twice_the_interval(conn: AsyncConnection, web: Web) -> None:
+    # D-1327: once the asked pause is over, the host's spacing stays doubled until a run of `ok` answers shrinks it.
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (429, b"", (("Retry-After", "5"),))
+    web.pages[f"{ORIGIN}/item/2"] = (200, PAGE, ())
+    first, second, third = await _tasks(conn, "/item/1", "/item/2", "/item/3")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    await _polite(conn, first, site_id, FetchPolicy(), web, limiter)
+    clock.now += 5
+    assert isinstance(await _polite(conn, second, site_id, FetchPolicy(), web, limiter), FetchResult)
+    clock.now += 1
+
+    assert await _polite(conn, third, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=1))
+
+
 async def test_a_further_request_of_the_fetch_takes_a_turn_at_the_sites_rate(conn: AsyncConnection, web: Web) -> None:
     site_id = await _site(conn)
     web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())

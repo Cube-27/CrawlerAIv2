@@ -12,14 +12,10 @@ import os
 import socket
 import subprocess
 import sys
-import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from ipaddress import IPv4Address, ip_address
+from collections.abc import Iterator
+from ipaddress import IPv4Address
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 
@@ -27,97 +23,22 @@ from crawlerai import cli
 from crawlerai.acquire import cookies
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.public_suffix import PublicSuffixes
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
+from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.cli import main
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.storage.capture_bundle import decode, encode
+from tests.local_server import LoopbackConnector, Reply, Server, serving
 
-_LOOPBACK = IPv4Address("127.0.0.1")
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
 _PAGE = f"<html><body><h1>Catalogue</h1>{_LINKS}</body></html>".encode()
 _SHELL = b'<html><body><div id="root"></div><script>start()</script></body></html>'
 
 
-@dataclass(frozen=True)
-class Reply:
-    status: int = 200
-    headers: Sequence[tuple[str, str]] = ()
-    body: bytes = b""
-    delay_s: float = 0.0  # sleep after the headers, before the body
-
-
-@dataclass
-class Server:
-    port: int
-    routes: dict[str, Callable[[str], Reply]] = field(default_factory=dict)
-    requests: list[tuple[str, list[tuple[str, str]]]] = field(default_factory=list)  # (host + path, headers)
-
-    def url(self, path: str, host: str = "shop.example.test") -> str:
-        return f"http://{host}:{self.port}{path}"
-
-    def route(self, path: str, reply: Reply | Callable[[str], Reply]) -> None:
-        self.routes[path] = reply if callable(reply) else (lambda _host: reply)
-
-
 @pytest.fixture
 def server() -> Iterator[Server]:
-    state: list[Server] = []
-
-    class Handler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-
-        def do_GET(self) -> None:
-            srv = state[0]
-            host = self.headers.get("Host", "").rsplit(":", 1)[0]
-            srv.requests.append((host + self.path, list(self.headers.items())))
-            reply = srv.routes[self.path](host) if self.path in srv.routes else Reply(404, body=b"no route")
-            self.send_response(reply.status)
-            for name, value in reply.headers:
-                self.send_header(name, value)
-            self.send_header("Content-Length", str(len(reply.body)))
-            self.end_headers()
-            self.wfile.flush()
-            time.sleep(reply.delay_s)
-            self.wfile.write(reply.body)
-
-        def log_message(self, format: str, *args: object) -> None:
-            pass
-
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    httpd.daemon_threads = True
-    state.append(Server(port=httpd.server_address[1]))
-    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
-    thread.start()
-    yield state[0]
-    httpd.shutdown()
-    httpd.server_close()
-
-
-class LoopbackConnector(SafeConnector):
-    """Admits `.test` hosts on the local server's port, pinned to `pins[host]` (127.0.0.1 by default); everything
-    else goes through the real guard."""
-
-    def __init__(
-        self, port: int, dns: dict[str, str], pins: dict[str, IPAddress] | None = None, dns_delay_s: float = 0.0
-    ) -> None:
-        async def resolve(host: str) -> list[IPAddress]:
-            await asyncio.sleep(dns_delay_s)
-            if host not in dns:
-                raise OSError("no such host")
-            return [ip_address(dns[host])]
-
-        super().__init__(resolve)
-        self._port = port
-        self._pins = pins or {}
-
-    async def check(self, url: str) -> Target:
-        parts = urlsplit(url)
-        if parts.hostname and parts.hostname.endswith(".test") and parts.port == self._port:
-            ip = self._pins.get(parts.hostname, _LOOPBACK)
-            return Target(url=url, host=parts.hostname, port=self._port, ip=ip)
-        return await super().check(url)
+    yield from serving()
 
 
 _DNS = {"internal.example.com": "10.0.0.1", "public.example.com": "93.184.215.14"}
@@ -192,6 +113,18 @@ def test_the_manifest_records_the_headers_sent_and_received(server: Server) -> N
 def test_the_final_response_is_classified(server: Server, reply: Reply, expected: tuple[int, str, None]) -> None:
     server.route("/p", reply)
     assert outcome(fetch(server, server.url("/p"))) == expected
+
+
+def test_a_refusal_standing_in_for_the_page_is_labelled_a_challenge_and_stays_blocked(server: Server) -> None:
+    # D-1326: the generic structural signal (a 403 document that can navigate on and is no page of the site); the label
+    # changes no class (INV-24). An `ok` page carries none.
+    server.route("/p", html(b"<html><body><script>location.reload()</script></body></html>", 403))
+    server.route("/ok", html(_PAGE))
+
+    refused, kept = fetch(server, server.url("/p")), fetch(server, server.url("/ok"))
+
+    assert (refused.block_class, refused.attempts[0].challenge) == ("blocked", "structural")
+    assert (kept.block_class, kept.attempts[0].challenge) == ("ok", None)
 
 
 def test_a_page_fetched_as_a_listing_is_classified_as_one(server: Server) -> None:

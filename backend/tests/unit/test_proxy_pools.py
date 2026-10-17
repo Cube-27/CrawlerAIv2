@@ -17,6 +17,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from socketserver import BaseRequestHandler, TCPServer, ThreadingTCPServer
@@ -31,7 +32,7 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.tunnel import open_tunnel
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.proxy import PoolMode, ProxyEndpoint, ProxyPool, pool_endpoint
-from crawlerai.core.proxy_health import QUARANTINE_AFTER, QUARANTINE_MIN, PoolHealth
+from crawlerai.core.proxy_health import QUARANTINE_AFTER, QUARANTINE_MIN, PoolHealth, quarantine
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, AcquireSettings
 
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
@@ -406,6 +407,29 @@ def test_a_pool_whose_every_endpoint_is_quarantined_still_sends_through_one() ->
 
     # Never direct: the endpoint that recovers first (the shorter quarantine began earlier).
     assert pool.pick("shop.example.test") == first
+
+
+@pytest.mark.parametrize(
+    ("failures", "minutes"),
+    [
+        (QUARANTINE_AFTER, 1),
+        (QUARANTINE_AFTER + 1, 2),
+        (QUARANTINE_AFTER + 4, 16),
+        (QUARANTINE_AFTER + 5, 30),
+        (99, 30),
+    ],
+)
+def test_the_quarantine_doubles_with_each_further_failure_up_to_thirty_minutes(failures: int, minutes: int) -> None:
+    assert quarantine(failures) == timedelta(minutes=minutes)
+
+
+def test_one_success_ends_an_endpoints_run_of_failures() -> None:
+    endpoint = ProxyEndpoint("127.0.0.1", 1)
+    pool = ProxyPool((endpoint,), "rotate", PoolHealth(clock=lambda: 0.0))
+    for healthy in [False] * (QUARANTINE_AFTER - 1) + [True] + [False] * (QUARANTINE_AFTER - 1):
+        pool.report(endpoint, healthy=healthy)
+
+    assert pool.health.available(endpoint) is True
 
 
 @pytest.mark.parametrize("mode", ["rotate", "sticky"])
