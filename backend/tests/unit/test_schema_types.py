@@ -165,7 +165,7 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
     }
     assert presets["job_detail"].fields["locations"].item.type is FieldType.LOCATION  # type: ignore[union-attr]
     assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.url"  # D-0015
-    for listing, optional in (("commerce_listing", "price"), ("job_listing", "location")):
+    for listing, optional in (("commerce_listing", "price"), ("job_listing", "locations")):
         fields = presets[listing].fields
         assert _core(presets[listing]) == {"title": "text", "url": "url"}
         assert sorted(fields) == sorted(["title", "url", optional, "next_page_url"])

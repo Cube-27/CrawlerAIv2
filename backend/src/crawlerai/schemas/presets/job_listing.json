@@ -14,9 +14,12 @@
       "description": "URL of the job page the row links to",
       "schema_org": "JobPosting.url"
     },
-    "location": {
-      "type": "location",
-      "description": "Place where the job is based, when the row shows one",
+    "locations": {
+      "type": "list",
+      "item": {
+        "type": "location"
+      },
+      "description": "Places where the job is based, when the row shows them",
       "schema_org": "JobPosting.jobLocation"
     },
     "next_page_url": {

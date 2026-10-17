@@ -268,10 +268,10 @@ def test_every_listing_row_carries_its_jobs_url_under_the_career_site_root() -> 
     assert candidates == {
         (row.format(0), "title"): "Synthetic Data Engineer",
         (row.format(0), "url"): f"{ROOT}/job/Northtown/Synthetic-Data-Engineer_R-0001",
-        (row.format(0), "location"): "Northtown",
+        (row.format(0), "locations"): ["Northtown"],
         (row.format(1), "title"): "Example Support Analyst",
         (row.format(1), "url"): f"{ROOT}/job/Southville/Example-Support-Analyst_R-0002",
-        (row.format(1), "location"): "2 Locations",
+        (row.format(1), "locations"): ["2 Locations"],
         (row.format(2), "title"): "Placeholder Designer",
         (row.format(2), "url"): f"{ROOT}/job/Remote/Placeholder-Designer_R-0003",
     }

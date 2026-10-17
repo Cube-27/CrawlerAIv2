@@ -39,6 +39,7 @@ from crawlerai.resolve.pipeline import (
 )
 from crawlerai.resolve.preference import PRECEDENCE_FILE, PRECEDENCE_TYPES, load_precedence
 from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
+from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import (
     CaptureBundle,
@@ -480,6 +481,40 @@ def test_an_api_capture_from_another_endpoint_of_a_detected_page_is_not_the_adap
     result = _extract(bundle, JOB, data=data)
     assert (result.candidates, _statuses(result)) == ((), {"title": ("missing", "no_candidates")})
     assert result.diagnostics == ("adapter: no active adapter reads this api capture",)
+
+
+class BoardAdapter(FakeAdapter):
+    """A board whose API keeps each posting's primary place apart from its further ones."""
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="t", page_kind="listing") if "/jobs/" in url else None
+
+    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+        posting = Shape(
+            type="JobPosting",
+            at=("jobs", "*"),
+            properties={"title": ("title",), "url": ("url",), "jobLocation": ("place",)},
+            also={"jobLocation": (("more", "*"),)},
+        )
+        return (Shape(type="ItemList", nodes={"itemListElement": (posting,)}),)
+
+
+def test_a_job_listing_row_publishes_every_place_its_posting_states() -> None:
+    # D-1477: `job_listing.locations` is a list, so a posting's primary and further places publish together.
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([BoardAdapter()], active=["synthetic"]))
+    jobs = [
+        {"title": "Engineer", "url": f"{JOB_URL}/a", "place": "Northtown", "more": ["Eastport", "Southville"]},
+        {"title": "Analyst", "url": f"{JOB_URL}/b", "place": "Eastport", "more": []},
+    ]
+    bundle = _bundle(json.dumps({"jobs": jobs}), method="api", url=JOB_URL, final_url=JOB_API)
+    preset = next(p for p in load_presets() if p.name == "job_listing")
+    schema = SchemaDef(**preset.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
+
+    result = _extract(bundle, schema, data=data)
+
+    places = [[place["text"] for place in row["locations"].value] for row in result.rows]
+    assert [row["locations"].status for row in result.rows] == ["published", "published"]
+    assert places == [["Northtown", "Eastport", "Southville"], ["Eastport"]]
 
 
 # --- cold listings (§4.7 "Listings", §8.6) ---
