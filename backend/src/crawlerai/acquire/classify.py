@@ -13,6 +13,7 @@ browser is the last rung, and its page is extracted whatever its links.
 """
 
 import json
+from urllib.parse import urljoin, urlsplit
 
 from lxml import etree
 from lxml import html as lxml_html
@@ -47,6 +48,15 @@ _MICRODATA = "[itemscope]:not([itemprop])"
 _JSON_LD = "application/ld+json"
 _ITEM_LIST = "ItemList"
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
+# D-1206: a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
+# not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725).
+INTERSTITIAL_STATUS = frozenset({403, 429, 503})
+# HTML Standard §4.2.5.3: the `refresh` pragma (`meta http-equiv`, an ASCII case-insensitive keyword), and §7.11.1:
+# the `Refresh` header, which the same declarative refresh steps read. Either makes the document navigate on.
+_REFRESH = "refresh"
+# HTML Standard §4.12.1: `script` elements; script is the only other way a document navigates itself (the `Location`
+# interface, §7.2.4, or a form it submits, §4.10.21).
+_SCRIPT = "script"
 
 
 def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
@@ -74,6 +84,43 @@ def lacks_site_structure(body: bytes) -> bool:
     """Whether an HTML body is no site page by its structure alone, whatever its status: a shell, or a document that
     links nowhere (the rules `classify` applies to a 2xx page)."""
     return _no_site_page(LexborHTMLParser(body)) is not None
+
+
+def interstitial(status: int, headers: HeaderList, body: bytes, url: str) -> bool:
+    """Whether a refusal at `url` is a document standing in for the page until it navigates on (D-1206, D-1262): its
+    status is one a page's own script may lift (`INTERSTITIAL_STATUS`), it can navigate itself (a refresh, or a
+    script) and it is no page of the site by structure: it declares a refresh, it lacks site structure
+    (`lacks_site_structure`), or no hyperlink leads to another page of its own host. A document with neither a refresh
+    nor a script can never replace itself, so waiting on it is time lost."""
+    if status not in INTERSTITIAL_STATUS or not _is_html(headers):
+        return False
+    tree = LexborHTMLParser(body)
+    refresh = _refreshes(tree, headers)
+    if not refresh and tree.css_first(_SCRIPT) is None:
+        return False
+    return refresh or _no_site_page(tree) is not None or not _links_within(tree, url)
+
+
+def _refreshes(tree: LexborHTMLParser, headers: HeaderList) -> bool:
+    if any(name.lower() == _REFRESH for name, _ in headers):
+        return True
+    return any((meta.attributes.get("http-equiv") or "").strip().lower() == _REFRESH for meta in tree.css("meta"))
+
+
+def _links_within(tree: LexborHTMLParser, url: str) -> bool:
+    """Whether a hyperlink leads to another page of `url`'s host (RFC 3986 §5 reference resolution, the host compared
+    case-insensitively, §6.2.2.1): a site's pages link to each other (HTML Standard §4.6), a page standing in for one
+    links nowhere on the site, or only to itself."""
+    here = urlsplit(url)
+    for link in tree.css(_HYPERLINKS):
+        try:
+            target = urlsplit(urljoin(url, link.attributes.get("href") or ""))
+        except ValueError:  # an authority no URL parser reads (RFC 3986 §3.2.2) leads nowhere
+            continue
+        elsewhere = (target.path or "/", target.query) != (here.path or "/", here.query)
+        if target.scheme in ("http", "https") and target.hostname == here.hostname and elsewhere:
+            return True
+    return False
 
 
 def _no_site_page(tree: LexborHTMLParser) -> BlockClass | None:

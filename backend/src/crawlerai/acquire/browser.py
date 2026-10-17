@@ -20,7 +20,7 @@ from patchright.async_api import Browser, Frame, Page, Request, Response, async_
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.classify import classify, lacks_site_structure
+from crawlerai.acquire.classify import INTERSTITIAL_STATUS, classify, interstitial
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.socks_guard import SocksGuard
@@ -79,11 +79,9 @@ _REDIRECTION = range(300, 400)
 # RFC 9110 §15.5, §15.6: a 4xx or 5xx document. Its network going idle does not end the wait (D-1201): such a page may
 # still replace itself, and is read once its content is quiet.
 _ERROR_STATUS = 400
-# D-1206: a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
-# not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725). Such a document that is
-# no site page by structure (`lacks_site_structure`) is an interstitial: the wait for the main frame to navigate on
-# lasts up to this share of `browser_timeout_s`, not the 2 s DOM quiet. Nothing is clicked or typed.
-_INTERSTITIAL_STATUS = frozenset({403, 429, 503})
+# D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
+# on lasts up to this share of `browser_timeout_s`, not the 2 s DOM quiet, and ends as soon as a navigation commits.
+# Nothing is clicked or typed.
 _INTERSTITIAL_SHARE = 0.4
 # Chromium's network error names (net/base/net_error_list.h) carry no URL.
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
@@ -219,6 +217,7 @@ class _MainFrame:
         self.pending = False
         self.latest: Response | None = None
         self.commits = 0
+        self._committed = asyncio.Event()
 
     def _ours(self, request: Request) -> bool:
         return request.is_navigation_request() and request.frame == self._page.main_frame
@@ -238,6 +237,15 @@ class _MainFrame:
     def on_navigated(self, frame: Frame) -> None:
         if frame == self._page.main_frame:
             self.commits += 1
+            self._committed.set()
+
+    async def next_commit(self) -> None:
+        """Returns once the main frame commits a navigation after this call."""
+        shown = self.commits
+        self._committed.clear()  # no callback runs before the wait: the event loop is not yielded to in between
+        while self.commits == shown:
+            await self._committed.wait()
+            self._committed.clear()
 
 
 async def _navigate(
@@ -294,16 +302,17 @@ async def read_state(
         request_headers=recorded(_header_list(sent)),
         response_headers=recorded(_header_list(received)),
     )
-    body, raw_body, network, wire_size = await asyncio.gather(
+    # D-1265: the size the body arrived with is read before any body, so a body over `max_body_bytes` never enters
+    # this process. The browser hands over bodies after content decoding, in full (Playwright has no streaming read):
+    # the decompressed cap is checked once they are read, and bounds what is stored.
+    if await _wire_size(response, exchange) > policy.max_body_bytes:
+        raise Failed("body_cap", exchange)
+    body, raw_body, network = await asyncio.gather(
         _rendered(rendered.page, exchange),
         _raw_body(response),
         _json_bodies(rendered.json_responses[slice(*json)]),
-        _wire_size(response, exchange),
     )
-    # The browser hands over bodies after content decoding; `wire_size` counts the body as it arrived, before. Both
-    # caps bound what is stored, not memory: the browser has no streaming read, so the bodies are read in full first.
-    decoded = max(len(body), len(raw_body or b""))
-    if wire_size > policy.max_body_bytes or decoded > policy.max_decompressed_bytes:
+    if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)
     return exchange, Content(body=body, raw_body=raw_body, network=network)
 
@@ -330,24 +339,24 @@ async def _settle(page: Page, frame: _MainFrame, deadline: float, *, interstitia
 
 async def _interstitial(page: Page, frame: _MainFrame) -> bool:
     shown = frame.latest
-    if shown is None or shown.status not in _INTERSTITIAL_STATUS:
+    if shown is None or shown.status not in INTERSTITIAL_STATUS:
         return False
     try:
         body = (await page.content()).encode()
     except PlaywrightError:
         return False  # the document is being replaced: the waits that follow see the next one
     # classify's rules parse HTML synchronously; a thread keeps the event loop free.
-    return await asyncio.to_thread(lacks_site_structure, body)
+    return await asyncio.to_thread(interstitial, shown.status, tuple(shown.headers.items()), body, shown.url)
 
 
 async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool:
     """Whether the main frame committed another navigation and its document loaded before `deadline`. The commit, not
     the response: until then the frame still shows the interstitial, whose `load` has fired."""
-    shown = frame.commits
-    while frame.commits == shown:
-        if time.monotonic() >= deadline:
-            return False
-        await asyncio.sleep(_POLL_S)
+    try:
+        async with asyncio.timeout(max(0.0, deadline - time.monotonic())):
+            await frame.next_commit()
+    except TimeoutError:
+        return False
     with contextlib.suppress(PlaywrightTimeout):
         await page.wait_for_load_state("load", timeout=_ms_until(deadline))
     return True
@@ -397,6 +406,18 @@ async def _wire_size(response: Response, exchange: Exchange) -> int:
         raise Failed("network_error", exchange) from e
 
 
+async def _json_size(response: Response) -> int:
+    """A JSON body's size before it is read: its `Content-Length` (RFC 9110 §8.6), else its size on the wire (D-1265);
+    0 when the browser no longer holds the request, whose body then can't be read either."""
+    declared = response.headers.get("content-length", "")
+    if declared.isdigit():
+        return int(declared)
+    try:
+        return (await response.request.sizes())["responseBodySize"]
+    except PlaywrightError:
+        return 0
+
+
 def _is_json(response: Response) -> bool:
     # JSON media types: `application/json` (RFC 8259 §11) and the `+json` structured syntax suffix (RFC 6839 §3.1).
     return "json" in response.headers.get("content-type", "").lower()
@@ -407,8 +428,7 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
     for response in responses:
         if len(captured) == _JSON_BODIES_MAX:
             break
-        declared = response.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > _JSON_BODY_MAX_BYTES:
+        if await _json_size(response) > _JSON_BODY_MAX_BYTES:
             continue
         try:
             data = await response.body()

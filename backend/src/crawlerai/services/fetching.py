@@ -7,12 +7,14 @@ page's (SPEC-09 §4.8), as a learning run's recipe replays are (§4.6, §4.7).
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timedelta
+from typing import Final
 from urllib.parse import urlsplit
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, interval, slowed_down
+from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, asked_pause, interval, slowed_down
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
@@ -23,9 +25,12 @@ from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
-from crawlerai.db.queue import BACKOFF_BASE
 from crawlerai.services.scrape_steps import SiteRow, site_row
 from crawlerai.storage.base import ObjectStore
+
+# D-1263: the longest pause a site asked for that a service waits out in place before its one further request: the
+# caller is waiting for the answer.
+SLOW_DOWN_WAIT_MAX: Final = timedelta(minutes=1)
 
 
 @dataclass(frozen=True)
@@ -107,10 +112,21 @@ def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord]) ->
     return fetch
 
 
-async def admitted(limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None) -> bool:
+async def admitted(
+    limiter: HostLimiter,
+    host: str,
+    crawl_delay_ms: int | None,
+    robots: Robots | None,
+    *,
+    after: timedelta = timedelta(0),
+) -> bool:
     """Wait until the site's rate admits a request (SPEC-02 §4.6), and answer True. The caller is waiting anyway, so
-    the service waits in place, within its timeout, where a worker would postpone the task."""
-    return await limiter.wait(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay))
+    the service waits in place, within its timeout, where a worker would postpone the task. A pause the site asked
+    for (`after`, `Admit`) is waited out in place only up to `SLOW_DOWN_WAIT_MAX`; a longer one answers False."""
+    gap = interval(crawl_delay_ms, None if robots is None else robots.crawl_delay)
+    if after:
+        return await limiter.wait(host, gap, SLOW_DOWN_WAIT_MAX, after=after)
+    return await limiter.wait(host, gap)
 
 
 # The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy
@@ -237,8 +253,7 @@ async def _polite_json(
     slowed = slowed_down(result.attempts)
     if slowed is not None:
         # SPEC-02 §4.6: the pause asked for, else the first backoff.
-        asked = BACKOFF_BASE if slowed.retry_after is None else slowed.retry_after
-        limiter.pause(host, min(asked, BACKOFF_MAX))
+        limiter.pause(host, min(asked_pause(slowed), BACKOFF_MAX))
     return result
 
 

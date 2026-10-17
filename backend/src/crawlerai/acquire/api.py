@@ -3,12 +3,15 @@
 The same guarantees as the HTTP fetch (§4.5, §4.7): redirects are followed by hand through the SSRF guard, each
 request connects only to the address the guard checked, bodies are capped, and every failure becomes an `error`
 outcome with a short reason that never contains the URL. The capture is recorded under the page the JSON stands for.
+
+Through a proxy pool, every request goes through a CONNECT tunnel (`acquire.tunnel`), as in the other rungs: the guard
+still checks each hop's host, and the proxy resolves it, so the request names the host instead of the checked address.
 """
 
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from http.cookiejar import CookieJar, DefaultCookiePolicy
@@ -23,7 +26,9 @@ from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target
+from crawlerai.acquire.tunnel import tunnelled_transport
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = ["JsonFetcher", "JsonRequest", "fetch_json"]
@@ -62,19 +67,26 @@ async def fetch_json(
     engine_version: str,
     connector: SafeConnector | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    pools: Mapping[str, ProxyEndpoint] | None = None,
 ) -> FetchResult:
-    """`transport` replaces httpx's network transport (tests)."""
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `transport`
+    replaces httpx's network transport (tests)."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     error: str | None = None
     last: Exchange | None = None
     body = b""
     try:
+        proxy = pool_endpoint(policy.proxy_pool, pools)
+        if proxy is not None and transport is None:
+            transport = tunnelled_transport(proxy)
         async with asyncio.timeout(policy.timeout_s):
-            last, body = await _follow(request, policy, connector or SafeConnector(), transport)
+            last, body = await _follow(request, policy, connector or SafeConnector(), transport, pinned=proxy is None)
         block_class, error = await asyncio.to_thread(_outcome, last.status, body)
     except _Failed as failed:
         error, block_class, last = failed.error, "error", failed.last
+    except UnknownProxyPool as unknown:
+        error, block_class = str(unknown), "error"
     except TimeoutError:
         error, block_class = "timeout", "error"
     return fetch_result(
@@ -105,19 +117,25 @@ def _outcome(status: int, body: bytes) -> tuple[BlockClass, str | None]:
 
 
 async def _follow(
-    request: JsonRequest, policy: FetchPolicy, connector: SafeConnector, transport: httpx.AsyncBaseTransport | None
+    request: JsonRequest,
+    policy: FetchPolicy,
+    connector: SafeConnector,
+    transport: httpx.AsyncBaseTransport | None,
+    *,
+    pinned: bool,
 ) -> tuple[Exchange, bytes]:
+    """The last exchange and its body, every hop sent to its checked address when `pinned`, else to its host's name
+    (through a proxy, which resolves it)."""
     target = await _checked(connector.check(request.url), None)
     # Cookies live for this fetch only (INV-29), matched on each hop's host name, not by httpx's jar (`_NO_COOKIES`).
     cookies = await FetchCookies.new()
-    # `trust_env=False` ignores proxy environment variables: a proxy resolves the host itself, which would bypass the
-    # checked address.
+    # `trust_env=False` ignores proxy environment variables: proxies come only from the pools.
     async with httpx.AsyncClient(
         transport=transport, trust_env=False, timeout=policy.timeout_s, cookies=_NO_COOKIES
     ) as client:
         hops = 0
         while True:
-            exchange, response = await _send(client, target, cookies, request)
+            exchange, response = await _send(client, target, cookies, request, pinned=pinned)
             try:
                 location = redirect_location(exchange.status, exchange.response_headers)
                 if location is None:
@@ -147,7 +165,7 @@ async def _checked(check: Awaitable[Target], last: Exchange | None) -> Target:
 
 
 async def _send(
-    client: httpx.AsyncClient, target: Target, cookies: FetchCookies, json_request: JsonRequest
+    client: httpx.AsyncClient, target: Target, cookies: FetchCookies, json_request: JsonRequest, *, pinned: bool
 ) -> tuple[Exchange, httpx.Response]:
     url = httpx.URL(target.url)
     # The request goes to the checked address; the Host header (RFC 9110 §7.2) and the TLS server name (RFC 6066 §3,
@@ -161,7 +179,7 @@ async def _send(
         headers["Cookie"] = cookie
     request = client.build_request(
         json_request.method,
-        url.copy_with(host=str(target.ip)),
+        url.copy_with(host=str(target.ip)) if pinned else url,
         headers=headers,
         content=json_request.body,  # httpx encodes text as UTF-8
         extensions={"sni_hostname": target.host},

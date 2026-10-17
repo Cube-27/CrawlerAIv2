@@ -2,7 +2,7 @@
 
 import pytest
 
-from crawlerai.acquire.classify import classify, lacks_site_structure
+from crawlerai.acquire.classify import classify, interstitial, lacks_site_structure
 from crawlerai.acquire.types import BlockClass
 from crawlerai.db.models import PageKind
 
@@ -244,3 +244,43 @@ def test_site_structure_is_judged_by_the_2xx_rules_whatever_the_status(body: byt
     # The browser reads it on a 403/429/503 document (D-1206), where `classify` answers by status alone.
     assert lacks_site_structure(body) is expected
     assert lacks_site_structure(body) is (classify(200, _HTML, body) != "ok")
+
+
+# --- D-1262: a refusal that stands in for the page until it navigates on ----------------------------------------------
+
+_AT = "https://shop.example.test/item/1"
+_SCRIPT = "<script>void 0</script>"
+# A refusal with text and links enough to pass the shell rule, whose links all lead off the site or back to the page.
+_OFF_SITE = (
+    "<html><body><p>"
+    + "Checking the connection. " * 20
+    + "</p>"
+    + "".join(f'<a href="https://help.example.org/{i}">Help {i}</a>' for i in range(6))
+    + '<a href="/item/1">Retry</a><a href="#top">Top</a>'
+    + "</body></html>"
+)
+
+
+@pytest.mark.parametrize(
+    ("status", "headers", "body", "expected"),
+    [
+        pytest.param(403, _HTML, _EMPTY_APP, True, id="script-shell"),
+        pytest.param(503, _HTML, _page(400, 0, _SCRIPT), True, id="script-linkless"),
+        pytest.param(429, _HTML, _OFF_SITE.replace("</body>", _SCRIPT + "</body>").encode(), True, id="no-site-link"),
+        pytest.param(
+            403, _HTML, _page(400, 20, '<meta http-equiv="Refresh" content="5">'), True, id="meta-refresh-with-links"
+        ),
+        pytest.param(403, (*_HTML, ("refresh", "3")), _page(10, 0), True, id="refresh-header"),
+        pytest.param(403, _HTML, _page(10, 0), False, id="static-no-script"),
+        pytest.param(403, _HTML, _OFF_SITE.encode(), False, id="static-off-site"),
+        pytest.param(403, _HTML, _page(400, 20, _SCRIPT), False, id="site-page-with-script"),
+        pytest.param(401, _HTML, _EMPTY_APP, False, id="asks-for-credentials"),
+        pytest.param(451, _HTML, _EMPTY_APP, False, id="legal-refusal"),
+        pytest.param(200, _HTML, _EMPTY_APP, False, id="not-a-refusal"),
+        pytest.param(403, _JSON, _EMPTY_APP, False, id="not-html"),
+    ],
+)
+def test_an_interstitial_is_a_refusal_that_can_navigate_and_is_no_page_of_the_site(
+    status: int, headers: tuple[tuple[str, str], ...], body: bytes, expected: bool
+) -> None:
+    assert interstitial(status, headers, body, _AT) is expected

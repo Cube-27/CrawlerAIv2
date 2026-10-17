@@ -8,7 +8,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.politeness import HostLimiter, interval, retry_after
+from crawlerai.acquire.politeness import BACKOFF_MIN, HostLimiter, asked_pause, interval, refuse, retry_after
+from crawlerai.acquire.types import AttemptRecord
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
@@ -90,6 +91,54 @@ def test_a_wait_in_place_past_its_bound_is_refused_and_takes_no_turn() -> None:
     # The refused wait took no turn: the next request goes as the pause ends.
     assert asyncio.run(limiter.wait("a.example.test", timedelta(seconds=1), minute)) is True
     assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(seconds=1)
+
+
+def test_a_wait_after_a_pause_the_site_asked_for_goes_no_sooner_and_holds_the_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = Clock()
+    limiter = HostLimiter(clock)
+    slept: list[float] = []
+
+    async def sleep(seconds: float) -> None:  # time passes on the clock, not in the test
+        slept.append(seconds)
+        clock.now += seconds
+
+    monkeypatch.setattr("crawlerai.acquire.politeness.asyncio.sleep", sleep)
+    start = clock.now
+
+    admitted = asyncio.run(
+        limiter.wait("a.example.test", timedelta(seconds=1), timedelta(minutes=1), after=BACKOFF_MIN)
+    )
+
+    assert admitted is True
+    assert clock.now - start == pytest.approx(30)
+    # The request it admitted took the host's turn: the next one waits the interval.
+    assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(seconds=1)
+
+
+def test_a_pause_longer_than_the_bound_is_refused_without_waiting() -> None:
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    refused = asyncio.run(
+        limiter.wait("a.example.test", timedelta(seconds=1), timedelta(minutes=1), after=timedelta(hours=1))
+    )
+
+    assert refused is False
+    assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(0)  # left to the caller's backoff
+
+
+@pytest.mark.parametrize(("asked", "expected"), [(timedelta(seconds=9), timedelta(seconds=9)), (None, BACKOFF_MIN)])
+def test_the_pause_a_slow_down_asks_for_is_its_retry_after_else_the_first_backoff(
+    asked: timedelta | None, expected: timedelta
+) -> None:
+    attempt = AttemptRecord(method="http", status=503, block_class="blocked", duration_ms=1, retry_after=asked)
+    assert asked_pause(attempt) == expected
+
+
+def test_a_refusing_admission_refuses_after_a_pause_too() -> None:
+    assert asyncio.run(refuse(after=timedelta(seconds=5))) is False
 
 
 def test_a_pause_holds_the_host_and_a_shorter_one_does_not_cut_it() -> None:

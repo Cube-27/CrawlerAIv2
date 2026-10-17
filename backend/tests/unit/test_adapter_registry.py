@@ -8,7 +8,7 @@ The adapters are stubs that detect one synthetic host; no network.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 import pytest
@@ -177,7 +177,7 @@ def test_a_page_its_adapter_does_not_serve_is_fetched_by_the_page_rungs(answer: 
     rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
     admitted: list[bool] = []
 
-    async def admit_next() -> bool:
+    async def admit_next(*, after: timedelta = timedelta(0)) -> bool:
         admitted.append(True)
         return True
 
@@ -191,7 +191,7 @@ def test_a_page_its_adapter_does_not_serve_is_fetched_by_the_page_rungs(answer: 
 
 
 def _admit(answer: bool, asked: list[bool]) -> Admit:
-    async def admit_next() -> bool:
+    async def admit_next(*, after: timedelta = timedelta(0)) -> bool:
         asked.append(answer)
         return answer
 

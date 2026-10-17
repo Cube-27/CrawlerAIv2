@@ -10,8 +10,10 @@ served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recip
 also takes the validators a page last answered with (SPEC-11 §4.2).
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Protocol
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -21,13 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.browser_tab import ListingRung
-from crawlerai.acquire.politeness import SLOW_DOWN, Admit
+from crawlerai.acquire.classify import classify, interstitial
+from crawlerai.acquire.politeness import SLOW_DOWN, Admit, asked_pause
 from crawlerai.acquire.types import (
     AttemptRecord,
     BlockClass,
     FetchPolicy,
     FetchResult,
     Validators,
+    fetched_as,
     policy_with_attempts,
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
@@ -50,6 +54,7 @@ class ConditionalRung(Protocol):
 
 
 _NOT_MODIFIED = 304
+_UNAVAILABLE = 503  # RFC 9110 §15.6.4
 # ARCHITECTURE §7.1: the HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 
@@ -193,27 +198,61 @@ async def _page(
     admit_next: Admit | None,
     needs_render: RenderCheck | None,
 ) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
-    """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration."""
+    """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
+    page kept for want of a browser outcome is the fetch's last page (`_as_last_page`)."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     if method == "http" and rungs.conditional is not None:
         result = await rungs.conditional(url, policy, validators=validators)
     else:
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
-    if not retried or not await _admitted(admit_next):
-        return result, result.attempts, result.duration_ms
+    if not retried or not await _admitted(admit_next, after=_paused_by(result)):
+        return await _as_last_page(result), result.attempts, result.duration_ms
     retry = await rungs.browser(url, policy)
-    kept = retry if await _better(retry, result, needs_render) else result
+    kept = retry if await _better(retry, result, needs_render) else await _as_last_page(result)
     return kept, result.attempts + retry.attempts, result.duration_ms + retry.duration_ms
 
 
 async def _browser_may_help(result: FetchResult, needs_render: RenderCheck | None) -> bool:
-    if _browser_may_pass(result):
+    if _browser_may_pass(result) or await _interstitial_unavailable(result):
         return True
     # RFC 9110 §15.4.5: a 304 has no content, so there is nothing to check.
     if result.block_class != "ok" or result.bundle.manifest.status_code == _NOT_MODIFIED or needs_render is None:
         return False
     return await needs_render(result)
+
+
+async def _interstitial_unavailable(result: FetchResult) -> bool:
+    """D-1263: a 503 (RFC 9110 §15.6.4) whose document stands in for the page until its script or refresh navigates
+    on (`classify.interstitial`): the browser may pass it, once the site's pause is over (`_paused_by`). A 429 asks
+    for fewer requests and nothing else, so it gets no browser attempt."""
+    manifest = result.bundle.manifest
+    if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
+        return False
+    body = result.bundle.body
+    return await asyncio.to_thread(
+        interstitial, manifest.status_code, manifest.headers.response, body, manifest.final_url
+    )
+
+
+def _paused_by(result: FetchResult) -> timedelta:
+    """The pause a slow-down `result` asks for before the browser attempt (SPEC-02 §4.6); none for another result."""
+    return asked_pause(result.attempts[-1]) if slow_down(result) else timedelta(0)
+
+
+async def _as_last_page(result: FetchResult) -> FetchResult:
+    """D-1261: an HTTP page kept with no browser outcome is the last page of the fetch, which is extracted whatever its
+    links, as the browser's is (`browser.classified`): a listing shell by the listing rule alone (a page with site
+    structure but no repeated items, `classify`) becomes `ok`, so the rows role C reads from it are kept. Its attempt
+    keeps the class HTTP gave it."""
+    manifest = result.bundle.manifest
+    if result.block_class != "shell" or manifest.method != "http" or fetched_as(manifest.fetch_policy) != "listing":
+        return result
+    unlisted = await asyncio.to_thread(classify, manifest.status_code, manifest.headers.response, result.bundle.body)
+    if unlisted != "ok":
+        return result
+    bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})
+    return FetchResult(bundle=bundle, duration_ms=result.duration_ms, attempts=result.attempts)
 
 
 async def _better(retry: FetchResult, result: FetchResult, needs_render: RenderCheck | None) -> bool:
@@ -224,9 +263,12 @@ async def _better(retry: FetchResult, result: FetchResult, needs_render: RenderC
     return result.block_class != "ok" or needs_render is None or not await needs_render(retry)
 
 
-async def _admitted(admit_next: Admit | None) -> bool:
-    """Whether a further request of the fetch may go: `admit_next` waits for its turn, or refuses one too far off."""
-    return admit_next is None or await admit_next()
+async def _admitted(admit_next: Admit | None, *, after: timedelta = timedelta(0)) -> bool:
+    """Whether a further request of the fetch may go: `admit_next` waits for its turn, after the pause `after` the site
+    asked for, or refuses one too far off. Without `admit_next` nothing is waited for (a caller that keeps no rate)."""
+    if admit_next is None:
+        return True
+    return await (admit_next(after=after) if after else admit_next())
 
 
 def _browser_may_pass(result: FetchResult) -> bool:
@@ -247,10 +289,16 @@ def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], dura
 
 
 async def remember_fetch_method(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
-    """Set the site to `browser` when `result` shows HTTP failing and the browser passing. Only the re-check
-    (`crawlerai.scheduler.recheck`) sets it back to `http`, so `fetch_method_checked_at` starts its clock here."""
-    http_failed = any(a.method == "http" and a.block_class in _BROWSER_EVIDENCE for a in result.attempts)
-    if result.method == "browser" and result.block_class == "ok" and http_failed:
+    """Set the site to `browser` when `result` kept a browser `ok` over an HTTP attempt of the same fetch: HTTP failed
+    (a shell or a block), or HTTP was `ok` but lacked what the caller reads (D-1260, owner #49, #54), so the site's
+    later fetches go straight to the browser instead of paying for both. In `auto`, a kept browser outcome follows an
+    HTTP attempt only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to
+    `http`, so `fetch_method_checked_at` starts its clock here."""
+    # Only `auto` renders on evidence: a browser fetch asked for (`method_hint`) is no evidence about HTTP, even beside
+    # an HTTP attempt of a recipe's page request.
+    by_evidence = result.bundle.manifest.fetch_policy.get("method_hint") == "auto"
+    by_http = any(a.method == "http" for a in result.attempts)
+    if result.method == "browser" and result.block_class == "ok" and by_evidence and by_http:
         await conn.execute(
             update(Site)
             .where(Site.id == site_id, Site.fetch_method != "browser")

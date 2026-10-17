@@ -3,9 +3,9 @@
 The order: robots.txt (unless the job's operator override says otherwise), then the site's rate, then the fetch.
 A wait for the page's first request never sleeps in the worker: the task goes back to the queue, and the worker moves
 on to other sites. A further request the fetch makes, the browser retry, waits in place for its turn: the first
-request is spent, and postponing would send it again. A turn more than `WAIT_MAX` away is not waited for, since the
-task's claim would lapse (`LEASE`) and another worker send the first request again; the fetch keeps the outcome it
-has.
+request is spent, and postponing would send it again. After a 503 interstitial, that turn comes no sooner than the
+pause the site asked for (`Admit`). A turn more than `WAIT_MAX` away is not waited for, since the task's claim would
+lapse (`LEASE`) and another worker send the first request again; the fetch keeps the outcome it has.
 """
 
 from collections.abc import Awaitable, Callable
