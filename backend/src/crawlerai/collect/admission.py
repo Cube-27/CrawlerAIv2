@@ -12,10 +12,18 @@ each field's normalizer, the only filter, and becomes a candidate only when:
   location and other opaque types admit by equality only: any visible string normalizes as text or as a location's
   text, so visibility alone says nothing of which field a leaf is (owner, accuracy Q2 option a).
 
+A visible value inside an array row is owned by that row, not by the page (owner, accuracy Q2 option b, Appendix A
+#55): an object item of a JSON array holding two or more objects is one of a set of items (related products,
+recommendations, the variants of one), and which of them, if any, is the page's subject is resolution's question
+(`resolve.ownership`). The row's entity carries the URLs written in its scope, the row up to its nested rows, as
+SPEC-13 §4.3 scopes a row, so resolution can tell a row naming the page from another page's item. One object in an
+array is its holder's only item, as an object member is, and stays in its holder.
+
 A field with candidates from other kinds admits values only by equality ("leaves are considered only for fields still
 lacking a candidate or for agreement checks"), so a value both equal and visible is not independent.
 """
 
+import re
 from collections.abc import Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
@@ -23,12 +31,13 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
-from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.json_doc import scalars
+from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
+from crawlerai.collect.json_doc import ROOT, is_scalar, member
 from crawlerai.collect.locator import format_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import checkable, equal, equality_key, normalize
+from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 StateKind = Literal["js_state", "xhr"]
@@ -36,11 +45,12 @@ StateKind = Literal["js_state", "xhr"]
 
 class Admitted(BaseModel):
     """The candidates a `js_state` or `xhr` collector admitted. They name the entities of the candidates they equal,
-    or `page`, so they carry no entities of their own."""
+    `page`, or the array row holding a visible value: `entities` are those rows, each with its enclosing rows."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     candidates: tuple[Candidate, ...]
+    entities: tuple[Entity, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
 
@@ -111,25 +121,117 @@ def admit(
     # What a value admits depends on the value alone, so a value repeated across the documents is read once.
     readings: dict[tuple[type, str | int | float], tuple[_Reading, ...]] = {}
     candidates: list[Candidate] = []
-    for document in documents:
-        for path, raw in scalars(document.data):
-            key = (type(raw), raw)
+    rows = _Rows(kind, ctx)
+    for index, document in enumerate(documents):
+        for leaf in _leaves(document.data):
+            rows.see(index, leaf)
+            key = (type(leaf.value), leaf.value)
             if key not in readings:
-                readings[key] = tuple(_readings(raw, page, schema, ctx, anchors))
-            locator = format_locator(kind, document.address, path)
+                readings[key] = tuple(_readings(leaf.value, page, schema, ctx, anchors))
+            locator = format_locator(kind, document.address, leaf.path)
             candidates.extend(
                 Candidate(
                     field=reading.field,
-                    entity_id=reading.owner,
+                    # Only a visible value is independent; one admitted by equality keeps its anchor's owner.
+                    entity_id=rows.owner(index, leaf) if reading.independent else reading.owner,
                     source_kind=kind,
-                    raw=raw,
+                    raw=leaf.value,
                     normalized=reading.normalized,
                     locator=locator,
                     independent=reading.independent,
                 )
                 for reading in readings[key]
             )
-    return Admitted(candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+    return Admitted(candidates=tuple(candidates), entities=rows.entities(), diagnostics=tuple(diagnostics))
+
+
+@dataclass(frozen=True, slots=True)
+class _Leaf:
+    """A string or number of a document, its normalized path, and the paths of the array rows holding it, outermost
+    first."""
+
+    path: str
+    value: str | int | float
+    rows: tuple[str, ...]
+
+
+def _leaves(document: JsonValue) -> Iterator[_Leaf]:
+    """Every string and number in `document` (as `json_doc.scalars`) with the rows holding it. Iterative, as
+    `json_doc.nodes`."""
+    stack: list[tuple[str, JsonValue, tuple[str, ...]]] = [(ROOT, document, ())]
+    while stack:
+        path, value, rows = stack.pop()
+        if is_scalar(value):
+            yield _Leaf(path, value, rows)
+        else:
+            stack.extend(reversed(_children(path, value, rows)))
+
+
+def _children(path: str, value: JsonValue, rows: tuple[str, ...]) -> list[tuple[str, JsonValue, tuple[str, ...]]]:
+    if isinstance(value, dict):
+        return [(member(path, key), child, rows) for key, child in value.items()]
+    if not isinstance(value, list):
+        return []
+    # An array of two or more objects is a set of items, each object one row; one object is its holder's own item.
+    items = sum(isinstance(child, dict) for child in value) >= _MIN_ROWS
+    children: list[tuple[str, JsonValue, tuple[str, ...]]] = []
+    for i, child in enumerate(value):
+        item = f"{path}[{i}]"
+        children.append((item, child, (*rows, item) if items and isinstance(child, dict) else rows))
+    return children
+
+
+_MIN_ROWS = 2
+
+
+class _Rows:
+    """The array rows of one collector's documents: the URLs written in each row's scope, and the entities of the rows
+    that own a value."""
+
+    def __init__(self, kind: StateKind, ctx: Context) -> None:
+        self._kind = kind
+        self._ctx = ctx
+        self._urls: dict[tuple[int, str], list[str]] = {}
+        self._owners: dict[tuple[int, str], str | None] = {}  # each owning row and its enclosing rows, with its parent
+
+    def see(self, index: int, leaf: _Leaf) -> None:
+        """Note `leaf` as one of its innermost row's URLs when it is written as one (`_WRITTEN_URL`)."""
+        if leaf.rows and isinstance(leaf.value, str) and _WRITTEN_URL.match(leaf.value):
+            self._urls.setdefault((index, leaf.rows[-1]), []).append(leaf.value)
+
+    def owner(self, index: int, leaf: _Leaf) -> str:
+        """The entity owning a visible value: its innermost row, else the page."""
+        parent: str | None = None
+        for row in leaf.rows:
+            self._owners.setdefault((index, row), parent)
+            parent = self._id(index, row)
+        return parent or PAGE
+
+    def entities(self) -> tuple[Entity, ...]:
+        return tuple(
+            Entity(
+                id=self._id(index, row),
+                types=(ARRAY_ROW,),
+                urls=self._canonical(self._urls.get((index, row), ())),
+                parent=parent or PAGE,
+            )
+            for (index, row), parent in self._owners.items()
+        )
+
+    def _id(self, index: int, row: str) -> str:
+        # Unique per collector: the document's position among its documents (a script can hold several), and the path.
+        return f"{self._kind}:{index}:{row}"
+
+    def _canonical(self, written: Sequence[str]) -> tuple[str, ...]:
+        # RFC 3986 §5.2: a relative reference resolves against the document base URL (HTML Standard); an absolute URL
+        # is its own target. A string that does not canonicalize names nothing.
+        found = (canonical_url(raw, self._ctx.base_url) for raw in written)
+        return tuple(dict.fromkeys(url for url in found if url is not None))
+
+
+# The start of an http(s) URL (RFC 3986 §3.1, scheme case-insensitive) or of a path-absolute or network-path reference
+# (§4.2); which of them name a document is `canonical_url`'s, asked only for the rows that own a value.
+_WRITTEN_URL = re.compile(r"(?:https?:)?/", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)

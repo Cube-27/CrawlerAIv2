@@ -71,7 +71,7 @@ def collect_page(
         if (a := _isolated(c, partial(c.collect, page, schema, ctx, others), diagnostics)) is not None
     ]
     return Collected(
-        entities=entities,
+        entities=entities + tuple(entity for result in admitted for entity in result.entities),
         candidates=others + tuple(candidate for result in admitted for candidate in result.candidates),
         diagnostics=(
             *(d for result in results for d in result.diagnostics),
