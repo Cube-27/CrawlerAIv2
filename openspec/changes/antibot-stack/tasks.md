@@ -2,20 +2,20 @@
 
 ## 1. B1: one client, adaptive rate, pools, labels
 
-- [ ] 1.1 Owner decision #58 and the §22 edit admitting the anti-bot measures chosen (no CAPTCHA solving, no real
-  Chrome); acquisition spec delta
-- [ ] 1.2 `acquire/curl_client.py`: one curl_cffi session builder, guard (pinned or CONNECT tunnel), caps, reasons,
+- [x] 1.1 Owner decision #58 and the §22 edit admitting the anti-bot measures chosen (no CAPTCHA solving, no real
+  Chrome); acquisition spec delta (#249)
+- [x] 1.2 `acquire/curl_client.py`: one curl_cffi session builder, guard (pinned or CONNECT tunnel), caps, reasons,
   cookies and redirects, used by `fetch_http` and `fetch_json`; `fetch_json` ported from httpx; the httpx tunnel
-  transport removed
-- [ ] 1.3 JSON calls: per-request headers merged into the impersonation defaults, Fetch Metadata, `Referer`, `Origin`,
-  `Priority` and a `fetch()`'s header order
-- [ ] 1.4 Startup check: the impersonation target against the installed Patchright Chromium major (warn, nearest
-  profile when unset)
-- [ ] 1.5 Per-host adaptive rate in `politeness.py`, fed by the worker and the services
-- [ ] 1.6 Proxy pools of several endpoints, `rotate`/`sticky`, per-endpoint health quarantine; INV-16 tests over every
-  endpoint
-- [ ] 1.7 `acquire/challenge.py` structural signal, `adapters/challenges.py` vendor signatures, `AttemptRecord.challenge`
-  and per-label counts
+  transport removed (#249)
+- [x] 1.3 JSON calls: per-request headers merged into the impersonation defaults, Fetch Metadata, `Referer`, `Origin`,
+  `Priority` and a `fetch()`'s header order (#249)
+- [x] 1.4 Startup check: the impersonation target against the installed Patchright Chromium major (warn, nearest
+  profile when unset) (#249)
+- [x] 1.5 Per-host adaptive rate in `politeness.py`, fed by the worker and the services (#249)
+- [x] 1.6 Proxy pools of several endpoints, `rotate`/`sticky`, per-endpoint health quarantine; INV-16 tests over every
+  endpoint (#249)
+- [x] 1.7 `acquire/challenge.py` structural signal, `adapters/challenges.py` vendor signatures, `AttemptRecord.challenge`
+  and per-label counts (#249)
 
 ## 2. B2: site session cookie handoff
 
