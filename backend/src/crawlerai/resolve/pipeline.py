@@ -418,7 +418,7 @@ class _Listing:
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         rows = listing_rows(page.graph, page.primary, page.target, holders) or page.config.rows
         # Appendix A #59: the rows of the page's captured calls serve where neither gives any; beside them, a call row
-        # fills the row of its item and extends the listing (`resolve.call_rows`).
+        # fills the row of its item and extends the listing (`resolve/call_rows.py`).
         network = not rows and bool(page.collected.rows)
         if rows:
             call = (page.collected.rows, page.candidates, page.page, page.ctx.base_url)

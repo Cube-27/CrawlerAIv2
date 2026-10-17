@@ -5,7 +5,7 @@ that was not reached ends with; and extracting and storing a reached page's reco
 A listing whose records the job reads, on a site whose pinned config has a listing recipe (one with pagination,
 Appendix A #59), is served by the recipe page after page (`RecipeRung.pages`) up to the job's page bound
 (`listing_pages`); the first page is the task's capture and record, and each further page is stored under the task as a
-listing's further kept state is (`scrape_steps.store_further`). When the recipe does not serve the first page, the page
+listing's further kept state is (`store_further`). When the recipe does not serve the first page, the page
 is fetched by the rungs as any page is.
 
 Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The

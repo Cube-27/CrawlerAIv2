@@ -8,7 +8,7 @@ index in the bundle.
 On a listing, the calls of one rows endpoint (`network_match.row_series`) give rows: the first series, best first, in
 which some row field is proved. A row field takes the path, relative to a row, whose values the admission rule admits in
 the most rows, at least `MIN_ITEMS` of them; for a url field, a value that is the target of a hyperlink of one of the
-page's repeated item blocks (`item_links.group_links`; HTML Standard §4.6.1: a hyperlink states the document it leads
+page's repeated item blocks (`group_links`; HTML Standard §4.6.1: a hyperlink states the document it leads
 to) counts as admitted too, so a call whose items the page links to proves its item URL path even when the field's other
 candidates name other items (a load-more's later batch); a path proved so on the page is read in every row of the series
 through the API recipe row reader (`collect.api`), as a recipe's map is. Those calls are then read as rows only, not
