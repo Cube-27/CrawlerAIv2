@@ -10,6 +10,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from ipaddress import IPv4Address, IPv6Address, ip_address
+from typing import Any
 
 import httpx
 import pytest
@@ -228,7 +229,7 @@ def test_a_url_it_does_not_detect_is_refused() -> None:
 def test_a_locale_prefixed_collection_is_asked_in_its_language(locale: str, language: str) -> None:
     # D-1386: the subfolder's language subtag (RFC 5646 §2.2.1) is the query's `@inContext(language:)`.
     page = f"https://{SHOP}/{locale}/collections/widgets"
-    sent: list[JsonValue] = []
+    sent: list[dict[str, Any]] = []
     answer: JsonValue = {
         "data": {
             "shop": ONE_CURRENCY,
@@ -245,7 +246,6 @@ def test_a_locale_prefixed_collection_is_asked_in_its_language(locale: str, lang
 
     assert ADAPTER.detect(page) == AdapterMatch(SHOP, "listing", "widgets")
     [body] = sent
-    assert isinstance(body, dict)
     assert body["variables"] == {"handle": "widgets", "language": language}
     assert "@inContext(language: $language)" in body["query"]
     assert (result.block_class, result.attempts[-1].error) == ("ok", None)
