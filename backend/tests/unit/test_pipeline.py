@@ -758,7 +758,7 @@ def test_a_role_c_row_takes_the_item_url_of_the_one_repeated_item_block_holding_
     assert result.outcome == "extracted"
 
 
-# --- listing rows from captured calls (Appendix A #57) ---
+# --- listing rows from captured calls (Appendix A #58) ---
 
 
 def _network_listing(*items: Mapping[str, Any]) -> CaptureBundle:

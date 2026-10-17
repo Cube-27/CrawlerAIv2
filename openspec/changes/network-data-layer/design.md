@@ -1,6 +1,6 @@
 # Design: network-data-layer
 
-The network data-source layer (Appendix A #57): a browser capture's fetch/XMLHttpRequest calls read as a data source,
+The network data-source layer (Appendix A #58): a browser capture's fetch/XMLHttpRequest calls read as a data source,
 generically, beside structured data and the DOM. Batch A1 (tasks 1-2) captures the calls and reads them at run time;
 batch A2 (tasks 3) learns listing recipes with pagination from call series, in a second PR of this change.
 
@@ -19,7 +19,7 @@ batch A2 (tasks 3) learns listing recipes with pagination from call series, in a
 Status: decided (owner-delegated 2026-10-17). The owner's rule #53 names "identifying a page's network/API calls the way
 crawl engineers do" as the next generic layer; under the delegation of 2026-10-17 it is admitted from §22 as one
 layer: capture, a shared reader, run-time listing rows, an evidence bucket, and (A2) listing recipes with pagination.
-Recorded as Appendix A #57 and a §22 row. CAPTCHA, logins, typing and real Chrome stay out (owner #50, #52).
+Recorded as Appendix A #58 and a §22 row. CAPTCHA, logins, typing and real Chrome stay out (owner #50, #52).
 
 ### D-1311 What the browser keeps
 Status: decided (owner-delegated 2026-10-17). Responses whose request destination is fetch/XMLHttpRequest or a

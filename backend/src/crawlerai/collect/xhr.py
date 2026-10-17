@@ -1,4 +1,4 @@
-"""The captured network JSON collector (SPEC-05 §4.5, ARCHITECTURE §8.1, Appendix A #57): the bodies a browser capture
+"""The captured network JSON collector (SPEC-05 §4.5, ARCHITECTURE §8.1, Appendix A #58): the bodies a browser capture
 kept.
 
 Each body is one document, read as `network_json` reads it (RFC 8259 §8.1, a guard prefix stripped); a body that is not

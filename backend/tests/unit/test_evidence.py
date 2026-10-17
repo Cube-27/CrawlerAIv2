@@ -108,7 +108,7 @@ def test_a_lone_state_value_has_no_bucket_and_abstains() -> None:
 
 
 def test_a_lone_value_of_a_captured_call_takes_the_network_bucket() -> None:
-    # Appendix A #57: the network data-source layer's values are measured in a bucket of their own.
+    # Appendix A #58: the network data-source layer's values are measured in a bucket of their own.
     outcome = _assess(_chosen(_candidate("xhr")))
     assert (outcome.status, outcome.evidence) == ("published", "network")
 

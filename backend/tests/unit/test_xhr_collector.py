@@ -73,7 +73,7 @@ def test_a_body_that_is_not_utf8_json_is_skipped_with_a_diagnostic_and_keeps_its
     assert [d.split(":", 2)[:2] for d in result.diagnostics] == [["xhr", "0"], ["xhr", "1"]]
 
 
-# --- listing rows from captured calls (Appendix A #57) ---
+# --- listing rows from captured calls (Appendix A #58) ---
 
 LISTING = SchemaDef(
     id=SchemaId(uuid7()),

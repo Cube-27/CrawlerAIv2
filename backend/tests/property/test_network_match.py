@@ -1,4 +1,4 @@
-"""Captured network calls as a data source (Appendix A #57): which calls are readable, how they group into endpoints,
+"""Captured network calls as a data source (Appendix A #58): which calls are readable, how they group into endpoints,
 and which array of a call holds the rows a page shows. Synthetic pages and bodies under RFC 2606 names (C9)."""
 
 import hashlib
