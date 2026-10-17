@@ -66,7 +66,7 @@ _SNIFFED = b"""<html><body><p id="done"></p><script>
   await fetch('/api/empty');
   await fetch('/style.css');
   await new Promise(done => {
-    const x = new XMLHttpRequest(); x.onload = done; x.open('GET', '/api/linked'); x.send();
+    const x = new XMLHttpRequest(); x.onload = done; x['open']('GET', '/api/linked'); x.send();
   });
   document.getElementById('done').textContent = 'loaded';
 })();
