@@ -93,11 +93,9 @@ class CrawlRequest(Input):
 
     def frontier(self, located: str | None = None) -> Frontier:
         """The crawl's frontier, on the host of `located`, where the start page is after the site's own redirects to a
-        host of the same site (RFC 9110 §15.4; D-0991), else on the start URL's. A `located` that is not the start URL
-        is a page already fetched, which the frontier never adds again."""
+        host of the same site (RFC 9110 §15.4; D-0991), else on the start URL's."""
         scope = Scope(urlsplit(located or self.start).hostname or "", tuple(self.include), tuple(self.exclude))
-        fetched = located if located != self.start else None
-        return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit, fetched)
+        return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit)
 
 
 class CrawlSubmitted(BaseModel):

@@ -5,14 +5,15 @@ A page contributes its links (SPEC-07 §4.5) and its next-page candidates (SPEC-
 (`crawl.canonical`). The crawl takes those its request's scope admits (`crawl.rules.Scope`), and never one off the start
 page's host and its subdomains, whatever an `include` glob matches (D-0037): every page fetched is on the site the
 caller named, on the host the site's own redirect of the start URL put it, when that host is on the same site (D-0991).
-A URL is enqueued once per job (`url_task` UNIQUE (`job_id`, `canonical_url`)), at its parent's depth plus one, up to
+A URL is enqueued once per job (`url_task` UNIQUE (`job_id`, `canonical_url`)), and never when a task of the job was
+already fetched at it after a redirect (`url_task.final_url`, D-1382), at its parent's depth plus one, up to
 `max_depth`, until the job has `limit` tasks; its page kind is the first matching page-kind rule's. Patterns come from
 requests; this module names no host (INV-03)."""
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import Text, any_, bindparam, func, select
+from sqlalchemy import Text, any_, bindparam, func, select, union
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -35,18 +36,16 @@ def discovered(page: ParsedPage, final_url: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Frontier:
     """Which URLs a crawl takes (`scope` on the start URL's site), the page kind `rules` give them, and how deep and
-    how many it goes. `fetched` is a URL the crawl's start page was fetched at after a redirect: its page is the
-    start task's, so it is never a task of its own (D-1285)."""
+    how many it goes."""
 
     scope: Scope
     rules: tuple[PageKindRule, ...]
     max_depth: int
     limit: int
-    fetched: str | None = None
 
     def admits(self, url: str) -> bool:
-        """Whether the crawl takes `url`, in canonical form."""
-        return url != self.fetched and on_site(url, self.scope.host) and self.scope.admits(url)
+        """Whether the crawl's scope takes `url`, in canonical form."""
+        return on_site(url, self.scope.host) and self.scope.admits(url)
 
     def task_row(self, job_id: JobId, url: str, depth: int, parent: UrlTaskId | None) -> dict[str, object]:
         """The `url_task` row of `url`, in canonical form, for the job."""
@@ -59,8 +58,9 @@ class Frontier:
         self, conn: AsyncConnection, job_id: JobId, urls: Iterable[str], *, depth: int, parent: UrlTaskId | None
     ) -> int:
         """Add the URLs of `urls` the crawl takes and the job has no task for yet, in order, as queued tasks at
-        `depth`, until the job has `limit` tasks; none past `max_depth` or once the job's cancel was requested. Returns
-        how many were added."""
+        `depth`, until the job has `limit` tasks; none past `max_depth` or once the job's cancel was requested. A URL a
+        task was fetched at after a redirect is that task's page, never a task of its own (D-1382). Returns how many
+        were added."""
         taken = list(dict.fromkeys(filter(self.admits, urls)))
         if depth > self.max_depth or not taken:
             return 0
@@ -75,7 +75,10 @@ class Frontier:
         if room <= 0:
             return 0
         listed = bindparam("listed", taken, type_=ARRAY(Text))
-        known = select(UrlTask.canonical_url).where(UrlTask.job_id == job_id, UrlTask.canonical_url == any_(listed))
+        known = union(
+            select(UrlTask.canonical_url).where(UrlTask.job_id == job_id, UrlTask.canonical_url == any_(listed)),
+            select(UrlTask.final_url).where(UrlTask.job_id == job_id, UrlTask.final_url == any_(listed)),
+        )
         existing = set((await conn.execute(known)).scalars())
         new = [url for url in taken if url not in existing][:room]
         if new:
