@@ -5,8 +5,8 @@
 A reached page contributes its links and next-page candidates at its depth plus one. The scope is on the host the start
 page is on: when the site redirects the start URL to another host of the same site (its `www.` subdomain, or back), the
 crawl follows it there (D-0991). The start task stores where its page is on the job (`job.start_location`), the way
-every other task reads it, and the URL it was redirected to is never a task of its own: that page is the start task's
-(D-1285).
+every other task reads it. Every task stores where its page was fetched (`url_task.final_url`), and the URL a task was
+redirected to is never a task of its own: that page is the redirected task's (D-1285, D-1382).
 
 The start URL's task also reads the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else
 `/sitemap.xml`) and adds their URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that
@@ -37,9 +37,10 @@ from crawlerai.crawl.frontier import Frontier, discovered
 from crawlerai.crawl.rules import located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Job
+from crawlerai.db.models import Job, UrlTask
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
@@ -99,6 +100,8 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     page = await fetch_page(
         conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served, llm=crawl.llm
     )
+    if not isinstance(page, Ended):
+        await _record_final_url(conn, task, page)
     result, found = (page.task_result, ()) if isinstance(page, Ended) else await _visit(conn, crawl, page)
     is_start = task.canonical_url == crawl.request.start
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
@@ -115,6 +118,12 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     await frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
     await frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
     return result
+
+
+async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
+    """Store where the task's page was fetched, in canonical form, before the task adds any URL (D-1382)."""
+    final_url = canonicalize(page.result.bundle.manifest.final_url)
+    await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(final_url=final_url))
 
 
 async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | Ended) -> str:
