@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, asked_pause, interval, slowed_down
+from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, asked_pause, interval, page_requests, slowed_down
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
@@ -130,10 +130,18 @@ async def admitted(
 
 
 def observed(
-    limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None, result: FetchResult
+    limiter: HostLimiter,
+    host: str,
+    crawl_delay_ms: int | None,
+    robots: Robots | None,
+    result: FetchResult,
+    *,
+    page: bool = False,
 ) -> None:
-    """Adapt the host's rate to the answers of `result` (D-1327, `HostLimiter.observe`)."""
-    limiter.observe(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay), result.attempts)
+    """Adapt the host's rate to the answers of `result` (D-1327, `HostLimiter.observe`); for a `page` fetch, to its
+    requests to the page's host only (`page_requests`): its API requests were observed on their endpoint's host."""
+    attempts = page_requests(result.attempts) if page else result.attempts
+    limiter.observe(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay), attempts)
 
 
 # The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy

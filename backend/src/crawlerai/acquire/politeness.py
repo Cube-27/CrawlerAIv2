@@ -54,6 +54,12 @@ def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:
     return next((a for a in reversed(tuple(attempts)) if a.status in SLOW_DOWN), None)
 
 
+def page_requests(attempts: Iterable[AttemptRecord]) -> tuple[AttemptRecord, ...]:
+    """The attempts of a page fetch that went to the page's host: an adapter's or recipe's API request (method `api`)
+    goes to its endpoint, whose host's rate it is admitted at and adapts (D-1327)."""
+    return tuple(attempt for attempt in attempts if attempt.method != "api")
+
+
 def interval(crawl_delay_ms: int | None, robots_delay: timedelta | None) -> timedelta:
     """The time between two requests to a site: the site's own setting, else the default, and never shorter than the
     `Crawl-delay` its robots.txt asks for (`None` when robots are not consulted)."""

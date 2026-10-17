@@ -82,7 +82,8 @@ B2 (the site session cookie handoff) is its second.
   429, a 503 or a challenge label doubles the spacing, up to `BACKOFF_MAX` (15 min). After 20 `ok` answers in a row it
   shrinks by 10%, never below the site's interval and robots `Crawl-delay`. `Retry-After` pauses work as before.
 - The worker (`fetch_politely`) and the services (scrape, sitemap reads, recipe and adapter requests) report what they
-  fetched. The state is per process, like the limiter's. 20 and 10% are unmeasured starting points.
+  fetched. Each request is observed once, on its own host: a page fetch reports only its requests to the page's host
+  (`page_requests`), because its API requests were already observed on their endpoint's host (`_polite_json`). The state is per process, like the limiter's. 20 and 10% are unmeasured starting points.
 
 ### D-1328: B2 in a second PR
 - Date: 2026-10-17 · Change/PR: antibot-stack (#249) · Status: decided (owner-delegated 2026-10-17)
