@@ -1,5 +1,6 @@
-"""The Shopify adapter (SPEC-15 §4.2 to §4.5): detect storefront collection URLs, ask the Storefront API for their
-collection, and tell the platform's answer from any other. Product pages take the page path (D-1118).
+"""The Shopify adapter (SPEC-15 §4.2 to §4.5): detect storefront collection URLs, locale-prefixed ones too, ask the
+Storefront API for their collection, page through its cursor, and tell the platform's answer from any other. Product
+pages take the page path (D-1118).
 
 Shopify is a multi-tenant platform, not a site (C6, C9). Shops and answers are synthetic (`example.test` hosts,
 invented handles and products, C3).
@@ -57,7 +58,9 @@ def test_a_product_page_is_left_to_the_page_path(handle: str, query: str) -> Non
         f"https://{SHOP}/collections/..",
         f"https://{SHOP}/collections/widgets.atom",  # another representation of the collection, not its page
         f"https://{SHOP}/collections/%C3%A9t%C3%A9",  # a percent-encoded handle is left to the generic path
-        f"https://{SHOP}/fr/collections/widgets",  # a locale-prefixed page
+        f"https://{SHOP}/english/collections/widgets",  # not a locale subfolder
+        f"https://{SHOP}/fr/products/widget",
+        f"https://{SHOP}/fr/collections",
         f"https://{SHOP}/collections/widgets?sort_by=price",
         f"https://{SHOP}/pages/about",
         f"ftp://{SHOP}/collections/widgets",
@@ -219,3 +222,87 @@ def test_a_url_it_does_not_detect_is_refused() -> None:
     fetch = ADAPTER.fetch(f"https://{SHOP}/pages/about", FetchPolicy(), _send(_platform({})))
     with pytest.raises(ValueError, match="not a storefront URL"):
         asyncio.run(fetch)
+
+
+@pytest.mark.parametrize(("locale", "language"), [("fr", "FR"), ("en-ca", "EN"), ("pt-BR", "PT")])
+def test_a_locale_prefixed_collection_is_asked_in_its_language(locale: str, language: str) -> None:
+    # D-1386: the subfolder's language subtag (RFC 5646 §2.2.1) is the query's `@inContext(language:)`.
+    page = f"https://{SHOP}/{locale}/collections/widgets"
+    sent: list[JsonValue] = []
+    answer: JsonValue = {
+        "data": {
+            "shop": ONE_CURRENCY,
+            "localization": {"language": {"isoCode": language}},
+            "collection": {"products": {"nodes": []}},
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return _platform(answer)(request)
+
+    result = _fetch(page, handler)
+
+    assert ADAPTER.detect(page) == AdapterMatch(SHOP, "listing", "widgets")
+    [body] = sent
+    assert isinstance(body, dict)
+    assert body["variables"] == {"handle": "widgets", "language": language}
+    assert "@inContext(language: $language)" in body["query"]
+    assert (result.block_class, result.attempts[-1].error) == ("ok", None)
+
+
+def test_a_locale_prefixed_collection_the_shop_answers_in_another_language_is_not_served() -> None:
+    # A shop that does not publish the language answers in its default one, which the page does not show.
+    answer: JsonValue = {
+        "data": {
+            "shop": ONE_CURRENCY,
+            "localization": {"language": {"isoCode": "EN"}},
+            "collection": {"products": {"nodes": []}},
+        }
+    }
+
+    result = _fetch(f"https://{SHOP}/fr/collections/widgets", _platform(answer))
+
+    assert _error(result) == ("error", NOT_SERVED, b"")
+
+
+def _products_page(names: list[str], cursor: str | None) -> JsonValue:
+    nodes: list[JsonValue] = [{"id": f"gid://synthetic/Product/{name}", "title": name} for name in names]
+    info: JsonValue = {"hasNextPage": cursor is not None, "endCursor": cursor}
+    return {"data": {"shop": ONE_CURRENCY, "collection": {"products": {"pageInfo": info, "nodes": nodes}}}}
+
+
+def _paged(pages: dict[str | None, JsonValue], sent: list[str | None]) -> Handler:
+    """Answers each request with the page its `after` variable names (None: the first)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        after = json.loads(request.content)["variables"].get("after")
+        sent.append(after)
+        return _platform(pages[after])(request)
+
+    return handler
+
+
+def test_a_collection_of_several_pages_is_read_through_its_cursor_into_one_answer() -> None:
+    # D-1385: the connection's `endCursor` asks the next page while `hasNextPage` holds.
+    pages = {None: _products_page(["a", "b"], "c1"), "c1": _products_page(["c"], "c2"), "c2": _products_page([], None)}
+    sent: list[str | None] = []
+
+    result = _fetch(PAGE, _paged(pages, sent))
+
+    answer = json.loads(result.bundle.body)
+    assert sent == [None, "c1", "c2"]
+    assert [node["title"] for node in answer["data"]["collection"]["products"]["nodes"]] == ["a", "b", "c"]
+    assert answer["data"]["shop"] == ONE_CURRENCY
+    assert [attempt.method for attempt in result.attempts] == ["api", "api", "api"]
+    assert (result.block_class, result.bundle.manifest.url) == ("ok", PAGE)
+
+
+def test_the_cursor_is_not_followed_past_the_rows_the_request_asks_for() -> None:
+    pages = {None: _products_page(["a", "b"], "c1"), "c1": _products_page(["c"], None)}
+    sent: list[str | None] = []
+
+    result = asyncio.run(ADAPTER.fetch(PAGE, FetchPolicy(max_rows=2), _send(_paged(pages, sent))))
+
+    assert sent == [None]
+    assert len(json.loads(result.bundle.body)["data"]["collection"]["products"]["nodes"]) == 2
