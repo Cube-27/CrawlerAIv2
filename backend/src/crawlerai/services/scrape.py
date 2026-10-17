@@ -49,11 +49,11 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
 from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
 from crawlerai.llm.roles.s_schema import draft_schema
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult

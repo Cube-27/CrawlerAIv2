@@ -35,7 +35,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.jobs import record_event
 from crawlerai.db.models import (
     Job,
@@ -51,6 +50,7 @@ from crawlerai.db.models import (
     UrlState,
     UrlTask,
 )
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.records import row_url_fields
 from crawlerai.schemas import registry
 

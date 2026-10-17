@@ -34,12 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.errors import Refusal
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, insert_job, insert_tasks, job_pins

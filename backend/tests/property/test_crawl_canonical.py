@@ -7,7 +7,7 @@ from random import Random
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.crawl.canonical import canonicalize
+from crawlerai.normalize.url_key import canonicalize
 
 _name = st.text(alphabet="abcxyzé%2B+_-.~", min_size=1, max_size=4)
 _value = st.text(alphabet="0123456789abc=/%20+", max_size=4)

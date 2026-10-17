@@ -19,9 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.rules import PageKindRule, Scope, on_site, page_kind_for
 from crawlerai.db.models import Job, JobId, UrlTask, UrlTaskId
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pagination import next_page_candidates
 
 

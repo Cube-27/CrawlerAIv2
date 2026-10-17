@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import (
     ApiKeyId,
     ExtractionConfig,
@@ -34,6 +33,7 @@ from crawlerai.db.models import (
     UrlTask,
 )
 from crawlerai.llm.client import NO_LLM, LLMClient
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import check_targets

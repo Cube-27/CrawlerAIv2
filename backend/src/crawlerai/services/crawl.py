@@ -20,11 +20,11 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.db.models import ApiKeyId, JobId, UrlTask
 from crawlerai.llm.client import NO_LLM, LLMClient
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.batch import insert_job, records_schema
 from crawlerai.services.fetching import check_targets
