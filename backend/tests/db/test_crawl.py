@@ -816,3 +816,19 @@ async def test_a_full_scored_frontier_replaces_its_weakest_task_by_a_better_cand
     urls = (await conn.execute(select(UrlTask.url).where(UrlTask.job_id == job))).scalars().all()
     assert (added, refused) == (3, 0)
     assert sorted(urls) == sorted([f"{base}/", f"{base}/shallow0", *(f"{base}/deep{n}" for n in range(3))])
+
+
+async def test_a_leased_task_defers_only_to_a_better_candidate_that_is_due(conn: AsyncConnection, job: JobId) -> None:
+    frontier = Frontier(Scope("shop.example.test"), (), 5, 10, "best_first", wanted=("kettle",))
+    base = "https://shop.example.test"
+    await frontier.enqueue(conn, job, [f"{base}/low"], depth=1, parent=None, inherited=0.0)
+    await frontier.enqueue(conn, job, [f"{base}/high"], depth=1, parent=None, inherited=1.0)
+    later = UrlTask.canonical_url == f"{base}/high"
+    await conn.execute(update(UrlTask).where(later).values(next_attempt_at=func.now() + timedelta(hours=1)))
+    [leased] = [task for task in await queue.claim_tasks(conn, "w", 5) if task.canonical_url == f"{base}/low"]
+
+    waiting = await frontier.outranked(conn, leased)
+    await conn.execute(update(UrlTask).where(later).values(next_attempt_at=func.now()))
+    due = await frontier.outranked(conn, leased)
+
+    assert (waiting, due) == (False, True)

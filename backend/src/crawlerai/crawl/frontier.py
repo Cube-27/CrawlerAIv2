@@ -189,9 +189,8 @@ class Frontier:
     async def spent_before(self, conn: AsyncConnection, task: ClaimedTask) -> int:
         """How many of a scored crawl's pages are spent before `task`: the tasks finished, and those leased that rank
         ahead of it (the order of the lease: score, then id). A worker runs the tasks it leased together one after the
-        other, best first, so those behind `task` have not started. The job's row lock makes the count and what follows
-        it one step, as in `enqueue`."""
-        await conn.execute(select(Job.id).where(Job.id == task.job_id).with_for_update(key_share=True))
+        other, best first, so those behind `task` have not started. A plain count, with no lock: it runs before the
+        page is fetched, and a lock would be held until the task commits."""
         if task.score is None:
             ahead = or_(UrlTask.score.is_not(None), UrlTask.id < task.id)
         else:
@@ -212,13 +211,20 @@ class Frontier:
         if task.score is None:
             return False
         better = select(UrlTask.id).where(
-            UrlTask.job_id == task.job_id, UrlTask.status == "queued", UrlTask.score > task.score
+            UrlTask.job_id == task.job_id,
+            UrlTask.status == "queued",
+            UrlTask.next_attempt_at <= func.now(),  # one a claim would skip (backoff, host delay) outranks nothing
+            UrlTask.score > task.score,
         )
         return (await conn.execute(select(better.exists()))).scalar_one()
 
     async def close_if_spent(self, conn: AsyncConnection, task: ClaimedTask) -> None:
         """Once `task` has spent the last of a scored crawl's `limit` pages, cancel its queued candidates: the best were
         leased first."""
-        if self.strategy != "bfs" and await self.spent_before(conn, task) + 1 >= self.limit:
+        if self.strategy == "bfs":
+            return
+        # The job's row lock makes the count and the cancel one step, as in `enqueue`.
+        await conn.execute(select(Job.id).where(Job.id == task.job_id).with_for_update(key_share=True))
+        if await self.spent_before(conn, task) + 1 >= self.limit:
             queued = (UrlTask.job_id == task.job_id, UrlTask.status == "queued")
             await conn.execute(update(UrlTask).where(*queued).values(status="cancelled"))
