@@ -19,7 +19,7 @@ Every rule reads the document's structure (C2), never its words (C4):
   rounds without growth rule it out.
 - **The control after the items** (`load_more`, `show_more`): the visible, enabled controls after the last item, in
   the group's container or the elements after it (up to three ancestors out), outside the items, the site's chrome
-  (`acquire.items.in_chrome`) and forms (a form's controls submit or edit it: HTML Standard §4.10.3); the first three
+  (`in_chrome` in `acquire/items.py`) and forms (a form's controls submit or edit it: HTML Standard §4.10.3); the first three
   are tried in order. A click that changes the URL left the listing, so it is undone. Growth with no data request since
   the click is `show_more`, else `load_more`; either hint uses this mechanism.
 

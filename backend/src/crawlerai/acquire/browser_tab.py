@@ -56,7 +56,7 @@ _ELEMENT_JS: Final = """([path, tag]) => {
 }"""
 # The rendered area of each named element in CSS pixels (CSSOM View `getBoundingClientRect`); 0 when the path names no
 # element of that tag or the element is not rendered visible (CSS 2.1 §11.2 `visibility`, `display: none` has no box).
-_AREAS_JS: Final = """(elements) => elements.map(([path, tag]) => {
+_AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
   const node = document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
   if (node === null || node.nodeType !== Node.ELEMENT_NODE || node.localName !== tag) return 0;
   if (getComputedStyle(node).visibility !== 'visible') return 0;

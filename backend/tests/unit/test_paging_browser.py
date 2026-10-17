@@ -76,7 +76,7 @@ _AJAX = _page(
 async function show(n) {
   const items = await (await fetch('/api/ajax?page=' + n)).json();
   if (n > 1) await new Promise(r => setTimeout(r, 600));
-  document.getElementById('grid').innerHTML = items.map(i =>
+  document.getElementById('grid').innerHTML = Array.from(items, i =>
     '<li class="card"><a href="/item/' + i + '">Thing ' + i + '</a><p>Words about thing ' + i + '.</p></li>').join('');
   let pager = '';
   for (let p = 1; p <= 6; p++) pager += '<button' + (p === n ? ' aria-current="page"' : '') + ' data-p="' + p + '">'
@@ -94,7 +94,7 @@ let next = 0;
 async function more() {
   const items = await (await fetch('/api/more?from=' + next)).json();
   await new Promise(r => setTimeout(r, 400));
-  document.getElementById('grid').insertAdjacentHTML('beforeend', items.map(i =>
+  document.getElementById('grid').insertAdjacentHTML('beforeend', Array.from(items, i =>
     '<li class="card"><a href="/item/' + i + '">Thing ' + i + '</a><p>Words about thing ' + i + '.</p></li>').join(''));
   next += items.length;
   if (next >= 50) document.getElementById('more').remove();
@@ -121,7 +121,7 @@ async function more() {
   busy = true;
   const items = await (await fetch('/api/more?from=' + next + '&size=8')).json();
   await new Promise(r => setTimeout(r, 300));
-  document.getElementById('grid').insertAdjacentHTML('beforeend', items.map(i =>
+  document.getElementById('grid').insertAdjacentHTML('beforeend', Array.from(items, i =>
     '<li class="card"><a href="/item/' + i + '">Thing ' + i + '</a><p>Words about thing ' + i + '.</p></li>').join(''));
   next += items.length;
   busy = false;
