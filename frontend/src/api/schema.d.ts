@@ -2310,7 +2310,7 @@ export interface components {
             /** Dropped */
             dropped?: components["schemas"]["DroppedRowMeta"][] | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "dom" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "dom" | "network" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Items */
             items?: components["schemas"]["RowMeta"][] | null;
             /** Locator */
@@ -2686,7 +2686,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "dom" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "dom" | "network" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Locator */
             locator: string | null;
             /** Reason */
