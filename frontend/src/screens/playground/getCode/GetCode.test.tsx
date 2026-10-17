@@ -85,8 +85,8 @@ const CASES: Readonly<Record<string, ModeCase>> = {
     stub: () => runApi({ submit: "POST /v1/extract", jobId: JOB_ID, kind: "extract" }),
     fillForm: async () => {
       await typeUrl("https://shop.test/items/1");
+      await pick(/Schema$/, "From a prompt");
       const options = await openOptions();
-      await pick(/Schema source/, "From a prompt");
       await fill(options.getByRole("textbox", { name: "Prompt" }), AWKWARD);
       await pick(/Page kind/, "Detail");
       await closeOptions();
