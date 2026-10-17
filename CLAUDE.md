@@ -30,6 +30,18 @@ repositories (C1, C12).
 
 ## 2. Hard rules
 
+**Universal architecture, not site fixes (owner, 2026-10-17, #53).** The goal is one crawler that works on any site
+through its generic layers. The target is not every field of every schema on every site; it is to get closer to that
+by improving the architecture in `openspec/design/` and the capability specs.
+- A bug fix repairs the layer whose rule failed, for the whole class of pages, inside that architecture. If it would
+  need a site-specific step, a new layer or a change to the agreed design, stop and log it (§4–§5) instead.
+- Data the page does not state (in structured data, data it loads, or visible content) stays unpublished. Don't
+  infer, enrich or special-case a site to fill it.
+- New sources of data (the page's network/API calls, further embedded-state forms, browser actions) arrive as whole
+  generic layers, one at a time, when the owner admits them, never as a workaround for one site.
+- Write the smallest change that does this: no speculative abstractions, options or layers, and no second path for
+  logic that already has one (C8).
+
 The contract C1–C13 in `openspec/project.md` is binding: breaking a rule is a defect, even when it fixes a site.
 How it applies day to day:
 
