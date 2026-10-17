@@ -142,7 +142,7 @@ class Tab(Protocol):
         ...
 
     async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
-        """The JSON bodies of the page's latest data responses (as many as a capture keeps at most), as a kept state holds them."""
+        """The JSON bodies of the page's latest data responses, as many as a capture keeps at most."""
         ...
 
 
