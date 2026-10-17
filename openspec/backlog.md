@@ -32,22 +32,13 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
-- QA sweep (#263): a 200 anti-bot interstitial (an HTTP and a browser render both `ok`, no links, no structured data,
-  a title that is not the page's) is kept as the product page, publishing only `url`, and role C finds nothing in it:
-  telling it from a page needs a structural rule (a detail page with no link, no structured data and no offer evidence)
-  that is an acquisition rule for the owner (#53), or a vendor signature in `adapters/challenges.py` that only labels.
-- QA sweep (#263): `markdown` and `html` of an `api` capture still read the JSON answer as HTML (a description's links
-  render as `<api>/\"https:/...` targets); decide what those formats are for a JSON body (empty, or the answer's text
-  values) alongside D-1450.
-- QA sweep (#263): a listing with no rows answers `records: []` with nothing saying why (no role C, or role C read
-  none); a page field it did resolve (`next_page_url`) is dropped with it. Consider a page-level reason.
-- QA sweep (#263): an HTTP `error` attempt (`network_error: curl 92`, an HTTP/2 stream a bot filter resets) ends the
-  scrape `failed` with no browser attempt; check whether the ladder should try the browser after a network error.
-- QA sweep (#263): a single-valued `location` publishes `conflict`/`disagree` for every posting that states several
-  locations (96 of 167 on one Ashby board) although the adapter's `also` marks the primary one; owner question whether
-  the primary location publishes or the field becomes a list.
-- QA sweep (#263): with role C on, a client-rendered collection page gave 3 rows (of dozens shown) and a hosted career
-  page whose API host's robots.txt disallows the adapter gave 0; measure role C's row recall on dev listings.
+- Sweep fixes 2 (#266): role C rows of a listing whose items repeat their values (colour variants: same title and
+  price) get no item URL (`collect/item_links.py` places a row by its values: 53 of 55 rows `not_owned` on one
+  collection page); place a row by the node paths of its grounded spans instead. Role C reads at most
+  `16384 // (row fields x 96)` items per call (56 for three row fields; one page shows 146): measure whether a second
+  call over the rest is worth it. A hosted career page whose API host's robots.txt disallows the adapter still gives
+  0 rows (`no_rows: none_listed`). Listing role C requests changed (D-1478), so recorded dev replays of listings need
+  re-recording. The playground does not show the scrape's `page` member (D-1476).
 - Draft dev baseline (#264, #267): money's locale set reads every alternate link's `hreflang`, so `$` on a page tagged
   with one territory is ambiguous when its alternates name others; reading only the alternates that link to the page
   itself (D-1482) is right but publishes prices on role C rows that carry no URL, lowering listing money precision:

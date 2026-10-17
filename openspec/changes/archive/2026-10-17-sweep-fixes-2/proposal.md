@@ -28,8 +28,8 @@ The owner delegated the decisions (2026-10-17).
 
 ## Impact
 
-- Capabilities: [acquisition](../../specs/acquisition/spec.md), [extraction](../../specs/extraction/spec.md),
-  [llm](../../specs/llm/spec.md), [rest-api](../../specs/rest-api/spec.md), [schemas](../../specs/schemas/spec.md)
+- Capabilities: [acquisition](../../../specs/acquisition/spec.md), [extraction](../../../specs/extraction/spec.md),
+  [llm](../../../specs/llm/spec.md), [rest-api](../../../specs/rest-api/spec.md), [schemas](../../../specs/schemas/spec.md)
   (deltas in `specs/`); owner decision row in `openspec/design/owner-decisions.md`.
 - Files: `backend/src/crawlerai/adapters/challenges.py`, `acquire/{challenge,classify,http,browser,rungs}.py`,
   `content/{markdown,fit,html}.py`, `content/item_text.py` (new), `llm/roles/c_extract.py`, `config_ir/role_c.py`,
