@@ -189,12 +189,12 @@ def _row(i: int) -> dict[str, object]:
 
 
 class _CallRowsTab(_ScrollTab):
-    """A listing whose items hold no link: each scroll's call answers `batch` rows, which the page shows as text."""
+    """A listing whose items hold no link: each scroll's call answers `batch` rows, which the page shows as text. Its
+    one kept state holds every call."""
 
     def __init__(self, total: int, batch: int) -> None:
         super().__init__(total, batch, None)
-        self.loaded = 0  # the calls answered so far; the first loaded the first batch
-        self.since = 0  # the first call of the state not kept yet
+        self.loaded = 0  # the calls answered after the first, which loaded the first batch
 
     async def html(self) -> str:
         cards = "".join(f'<li class="card"><p>{_row(i)["title"]}</p></li>' for i in range(self.shown))
@@ -204,13 +204,9 @@ class _CallRowsTab(_ScrollTab):
         await super().scroll()
         self.loaded = -(-self.shown // self.batch)
 
-    async def keep(self) -> bool:
-        self.since = self.loaded
-        return await super().keep()
-
     async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
         found = []
-        for call in range(self.since, max(self.loaded, 1)):
+        for call in range(max(self.loaded, 1)):
             rows = [_row(i) for i in range(call * self.batch, min(self.total, (call + 1) * self.batch))]
             body = json.dumps({"data": {"items": rows}}).encode()
             entry = NetworkBody(
@@ -235,6 +231,7 @@ def test_a_scroll_listing_without_item_links_is_counted_by_its_call_rows(calls: 
 
     report = asyncio.run(collect(tab, BrowserActions(records=records), _open, time.monotonic() + 60, caps))
 
+    assert len(tab.states) == 1
     if records <= min(total, batch):
         assert (report.stop, report.items) == ("records", min(total, batch))
     elif total <= batch:

@@ -26,6 +26,7 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.browser import (
     DATA_REQUESTS,
+    JSON_BODIES_MAX,
     BrowserSession,
     Failed,
     Rendered,
@@ -141,7 +142,7 @@ class Tab(Protocol):
         ...
 
     async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
-        """The JSON bodies of the data responses since the state kept last, as a kept state would hold them."""
+        """The JSON bodies of the page's latest data responses (as many as a capture keeps at most), as a kept state holds them."""
         ...
 
 
@@ -163,7 +164,7 @@ class _PatchrightTab:
         self.kept: list[FetchResult] = []
         # Each kept state's start: the time its attempt is counted from and its first data response, for `discard`.
         self._starts: list[tuple[float, int]] = []
-        self._bodies: dict[int, tuple[NetworkBody, bytes] | None] = {}  # the data responses read so far, by index
+        self._bodies: dict[int, tuple[NetworkBody, bytes] | None] = {}  # the latest data responses read, by index
         page.page.on("request", self._on_request)
 
     def _on_request(self, request: Request) -> None:
@@ -265,14 +266,13 @@ class _PatchrightTab:
 
     async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
         responses = self._page.calls.responses
-        # A body before the start of the state kept last is never asked for again (`discard` goes back one state).
-        floor = self._starts[-1][1] if self._starts else 0
-        for index in [index for index in self._bodies if index < floor]:
+        first = max(0, len(responses) - JSON_BODIES_MAX)
+        for index in [index for index in self._bodies if index < first]:
             del self._bodies[index]
-        for index in range(self._calls_from, len(responses)):
+        for index in range(first, len(responses)):
             if index not in self._bodies:
                 self._bodies[index] = next(iter(await json_bodies([responses[index]])), None)
-        found = (self._bodies[index] for index in range(self._calls_from, len(responses)))
+        found = (self._bodies[index] for index in range(first, len(responses)))
         return tuple(body for body in found if body is not None)
 
     def _result(

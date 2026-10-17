@@ -38,6 +38,7 @@ from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_fi
 
 __all__ = [
     "DATA_REQUESTS",
+    "JSON_BODIES_MAX",
     "BrowserSession",
     "DataCalls",
     "Failed",
@@ -66,7 +67,7 @@ _PROXY_ALL_LOOPBACK = "<-loopback>"
 # SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page; INV-30 (Appendix A #59): at most
 # 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
-_JSON_BODIES_MAX = 50
+JSON_BODIES_MAX = 50
 _JSON_PAGE_MAX_BYTES = 10_000_000
 # Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
 # carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Scripts, styles, images and fonts
@@ -528,7 +529,7 @@ async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[Netw
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
     for response, action in responses:
-        if len(captured) == _JSON_BODIES_MAX:
+        if len(captured) == JSON_BODIES_MAX:
             break
         data = await _json_body(response)
         if data is None or total + len(data) > _JSON_PAGE_MAX_BYTES:

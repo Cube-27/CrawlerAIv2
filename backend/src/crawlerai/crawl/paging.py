@@ -7,8 +7,8 @@ Every rule reads the document's structure (C2), never its words (C4):
   the largest rendered area, not the most members, since a sidebar's link list may outnumber a product grid. An
   item's identity is its first hyperlink (HTML Standard §4.6.1) that no other item of the group links to, else its
   first one: items may share a link (a company's, a posting's several locations). A page that shows no linked items
-  counts the rows of its calls instead: the rows of the first series of the data calls since the state kept last
-  (`collect.network_match`: rows whose own strings the page shows), each named by its JSON text (RFC 8259, members
+  counts the rows of its calls instead: the rows of the first series of the page's latest data calls (`Tab.calls`;
+  `collect.network_match`: rows whose own strings the page shows), each named by its JSON text (RFC 8259, members
   sorted), so a scroll listing whose items hold no link keeps loading. Only one of the two is counted, so an item that
   a call loaded and the page links to counts once.
 - **Next pages by link.** `resolve.pagination`: `rel=next` (HTML Standard §4.6.7), then the link whose URL is the

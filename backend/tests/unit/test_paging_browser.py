@@ -143,6 +143,47 @@ new IntersectionObserver(entries => { if (entries[0].isIntersecting && next > 0)
 more();
 </script>"""
 )
+# A virtualised list: reaching the end loads 8 more items, 48 in all, and the document keeps only the last 16.
+_VIRTUAL = _page(
+    """<ul class="grid" id="grid"></ul><div id="end"></div><script>
+let next = 0, busy = false;
+async function more() {
+  if (busy || next >= 48) return;
+  busy = true;
+  const items = await (await fetch('/api/more?from=' + next + '&size=8')).json();
+  await new Promise(r => setTimeout(r, 300));
+  const grid = document.getElementById('grid');
+  grid.insertAdjacentHTML('beforeend', Array.from(items, i =>
+    '<li class="card"><a href="/item/' + i + '">Thing ' + i + '</a><p>Words about thing ' + i + '.</p></li>').join(''));
+  while (grid.children.length > 16) grid.firstElementChild.remove();
+  next += items.length;
+  busy = false;
+}
+new IntersectionObserver(entries => { if (entries[0].isIntersecting && next > 0) more(); })
+  .observe(document.getElementById('end'));
+more();
+</script>"""
+)
+# Infinite scroll whose items hold no link: each call answers 8 rows as JSON, shown as text, 40 in all. The site's one
+# link is in its header (a page linking nowhere on its site is no site page, `acquire.classify`).
+_TEXT_ROWS = _page(
+    """<header><a href="/elsewhere">Home</a></header><ul class="grid" id="grid"></ul><div id="end"></div><script>
+let next = 0, busy = false;
+async function more() {
+  if (busy || next >= 40) return;
+  busy = true;
+  const answer = await (await fetch('/api/rows?from=' + next)).json();
+  await new Promise(r => setTimeout(r, 300));
+  document.getElementById('grid').insertAdjacentHTML('beforeend', Array.from(answer.items, row =>
+    '<li class="card"><p>' + row.title + '</p><p>Rank ' + row.rank + '</p></li>').join(''));
+  next += answer.items.length;
+  busy = false;
+}
+new IntersectionObserver(entries => { if (entries[0].isIntersecting && next > 0) more(); })
+  .observe(document.getElementById('end'));
+more();
+</script>"""
+)
 # Twelve items, a link to another document after them, and nothing that pages.
 _STILL = _page(f'<ul class="grid">{_cards(0, 12)}</ul><a href="/elsewhere">Elsewhere</a>')
 # A fixed layer over the whole viewport takes every click.
@@ -155,6 +196,8 @@ _ROUTES: dict[str, bytes] = {
     "/load-more": _LOAD_MORE,
     "/show-more": _SHOW_MORE,
     "/scroll": _SCROLL,
+    "/virtual": _VIRTUAL,
+    "/text-rows": _TEXT_ROWS,
     "/still": _STILL,
     "/elsewhere": _page("<p>Another document.</p>"),
     "/overlay": _OVERLAY,
@@ -165,6 +208,10 @@ def _api(path: str, query: dict[str, list[str]]) -> bytes:
     if path == "/api/ajax":
         page = int(query["page"][0])
         return json.dumps(list(range((page - 1) * 6, page * 6))).encode()
+    if path == "/api/rows":
+        start = int(query["from"][0])
+        rows = [{"title": f"Entry number {i} of the list", "rank": i} for i in range(start, min(start + 8, 40))]
+        return json.dumps({"items": rows}).encode()
     start, size = int(query["from"][0]), int(query.get("size", ["10"])[0])
     return json.dumps(list(range(start, min(start + size, 50)))).encode()
 
@@ -408,6 +455,25 @@ def test_infinite_scroll_grows_one_document_to_the_target(browser: Browser) -> N
     assert (report.mechanism, report.stop, report.pages) == ("scroll", "records", 1)
     assert 30 <= report.items <= 40
     assert len(_items(fetched)[0]) == report.items
+
+
+def test_a_virtualised_list_keeps_a_state_per_batch_so_every_item_is_kept(browser: Browser) -> None:
+    fetched = browser.run("/virtual", BrowserActions(records=100, hint="scroll"))
+
+    report = fetched.report
+    assert report is not None
+    assert (report.mechanism, report.stop, report.items) == ("scroll", "end", 48)
+    kept = set().union(*_items(fetched))
+    assert kept == {f"/item/{i}".encode() for i in range(48)}
+    assert report.pages == len(fetched.pages) > 1
+
+
+def test_a_scroll_listing_whose_items_hold_no_link_loads_by_its_call_rows(browser: Browser) -> None:
+    fetched = browser.run("/text-rows", BrowserActions(records=100))
+
+    assert _summary(fetched) == ("scroll", "end", 1, 40)
+    # The one kept state holds every call that loaded its rows.
+    assert len(fetched.pages[0].bundle.network) == 5
 
 
 def test_a_listing_without_paging_stops_with_no_mechanism_after_undoing_a_click_that_left(browser: Browser) -> None:
