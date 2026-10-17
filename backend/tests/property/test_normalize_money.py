@@ -14,7 +14,7 @@ import pytest
 from babel import Locale
 from babel.localedata import locale_identifiers
 from babel.numbers import format_currency, list_currencies
-from hypothesis import given
+from hypothesis import assume, given
 from hypothesis import strategies as st
 from price_parser import Price
 from pydantic import JsonValue
@@ -219,10 +219,8 @@ def test_locales_that_disagree_on_the_decimal_separator_decline() -> None:
 
 @given(st.sampled_from(_CODES), st.decimals(max_value=0, places=2, allow_nan=False, allow_infinity=False))
 def test_a_structured_amount_that_is_not_positive_is_invalid(code: str, amount: Decimal) -> None:
-    assert money.normalize({"price": str(amount), "priceCurrency": code}, MONEY, CTX) in (
-        Invalid("not_positive"),
-        Invalid("unparsable_amount"),  # a negative string is not schema.org `price` syntax
-    )
+    # A negative string is not schema.org `price` syntax: the text reader reads it, and declines its minus.
+    assert money.normalize({"price": str(amount), "priceCurrency": code}, MONEY, CTX) == Invalid("not_positive")
     assert money.normalize({"amount": float(amount), "currency": code}, MONEY, CTX) == Invalid("not_positive")
 
 
@@ -263,17 +261,76 @@ def test_a_json_value_that_is_neither_text_nor_an_object_is_invalid(raw: JsonVal
         ({"price": "12.50"}, "no_currency"),
         ({"price": "12.50", "priceCurrency": "eur"}, "unknown_currency"),
         ({"price": "12.50", "priceCurrency": "XYZ"}, "unknown_currency"),
-        ({"price": "1,234.50", "priceCurrency": "EUR"}, "unparsable_amount"),
-        ({"price": "€12.50", "priceCurrency": "EUR"}, "unparsable_amount"),
+        ({"price": "€12.50", "priceCurrency": "USD"}, "currency_conflict"),
+        ({"price": "12.50 €", "priceCurrency": "USD"}, "currency_conflict"),
+        ({"price": "$10 - $20", "priceCurrency": "USD"}, "range"),
+        ({"price": "Free", "priceCurrency": "EUR"}, "no_amount"),
         ({"price": True, "priceCurrency": "EUR"}, "unparsable_amount"),
         ({"price": float("nan"), "priceCurrency": "EUR"}, "unparsable_amount"),
         ({"price": "1000000000000", "priceCurrency": "EUR"}, "out_of_range"),
         ({"price": "0.0000001", "priceCurrency": "EUR"}, "out_of_range"),
-        ({"price": "1e3", "priceCurrency": "EUR"}, "unparsable_amount"),
+        ({"price": "1e3", "priceCurrency": "EUR"}, "range"),
     ],
 )
 def test_a_structured_value_outside_schema_org_price_syntax_is_invalid(raw: JsonValue, reason: str) -> None:
     assert money.normalize(raw, MONEY, CTX) == Invalid(reason)
+
+
+# CLDR symbols written without digits or number symbols, each with a currency it stands for somewhere.
+_SYMBOL_CODES = sorted(
+    (symbol, code)
+    for symbol, codes in _symbols().items()
+    if not any(c.isdigit() or c in ".,'\u2019" or c.isspace() for c in symbol)
+    for code in codes
+)
+
+
+@given(st.sampled_from(_SYMBOL_CODES), st.integers(min_value=1, max_value=999), st.booleans())
+def test_a_structured_price_written_with_a_sign_of_its_currency_reads_in_that_currency(
+    symbol_code: tuple[str, str], amount: int, sign_first: bool
+) -> None:
+    symbol, code = symbol_code
+    written = f"{symbol}{amount}" if sign_first else f"{amount} {symbol}"
+
+    result = money.normalize({"price": written, "priceCurrency": code}, MONEY, CTX)
+
+    assert result == Ok({"amount": str(amount), "currency": code})
+
+
+@given(st.sampled_from(_SYMBOL_CODES), st.sampled_from(_CODES), st.integers(min_value=1, max_value=999))
+def test_a_structured_price_whose_sign_cannot_denote_its_currency_is_invalid(
+    symbol_code: tuple[str, str], stated: str, amount: int
+) -> None:
+    symbol, _ = symbol_code
+    assume(stated not in _symbols()[symbol] and symbol != stated)
+
+    result = money.normalize({"price": f"{symbol}{amount}", "priceCurrency": stated}, MONEY, CTX)
+
+    assert isinstance(result, Invalid)
+
+
+@pytest.mark.parametrize(
+    ("price", "tag", "amount"),
+    [("$1,295.99", "en-US", "1295.99"), ("1.295,99", "de-DE", "1295.99"), ("1,295.99", "en", "1295.99")],
+)
+def test_a_structured_price_with_grouping_reads_in_the_page_locale(price: str, tag: str, amount: str) -> None:
+    ctx = Context(captured_at=AT, html_lang=tag)
+
+    assert money.normalize({"price": price, "priceCurrency": "USD"}, MONEY, ctx) == Ok(
+        {"amount": amount, "currency": "USD"}
+    )
+
+
+def test_a_structured_price_the_locales_read_differently_is_ambiguous() -> None:
+    ctx = Context(captured_at=AT, hreflang=("en-US", "de-DE"))
+
+    result = money.normalize({"price": "1.295", "priceCurrency": "EUR"}, MONEY, ctx)
+
+    # `1.295` is schema.org's own syntax (a decimal point), read as written; a grouped form is read in the locales.
+    assert result == Ok({"amount": "1.295", "currency": "EUR"})
+    assert money.normalize({"price": "€1,295", "priceCurrency": "EUR"}, MONEY, ctx) == Ambiguous(
+        "decimal_separator", ({"amount": "1.295", "currency": "EUR"}, {"amount": "1295", "currency": "EUR"})
+    )
 
 
 @given(
