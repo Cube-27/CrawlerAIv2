@@ -10,7 +10,10 @@ import { problem, stubApi } from "../../test/api";
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const REPORT = "GET /v1/usage/llm";
 const SETTINGS = "GET /v1/project/settings";
-const NO_CAP = { [SETTINGS]: () => Response.json({ llm_call_cap: null, draft_call_cap: null }) };
+const NO_CAP = {
+  [SETTINGS]: () =>
+    Response.json({ llm_call_cap: null, draft_call_cap: null, require_config_approval: false }),
+};
 
 function usage(overrides: Partial<LlmUsage> = {}): LlmUsage {
   return {
@@ -185,7 +188,8 @@ describe("Settings screen", () => {
 
   it("shows the project's LLM call limit and saves a new one", async () => {
     const calls = stubApi({
-      [SETTINGS]: () => Response.json({ llm_call_cap: 25, draft_call_cap: 4 }),
+      [SETTINGS]: () =>
+        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
       [REPORT]: () => Response.json(empty),
       "PATCH /v1/project/settings": ({ body }) => Response.json(body),
     });
@@ -196,14 +200,17 @@ describe("Settings screen", () => {
     await userEvent.type(field, "40");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("Saved the LLM call limit.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved the limits.")).toBeInTheDocument();
     const saves = calls.filter(({ method }) => method === "PATCH").map(({ body }) => body);
-    expect(saves).toEqual([{ llm_call_cap: 40, draft_call_cap: 4 }]);
+    expect(saves).toEqual([
+      { llm_call_cap: 40, draft_call_cap: 4, require_config_approval: false },
+    ]);
   });
 
   it("saves an empty LLM call limit as no limit", async () => {
     const calls = stubApi({
-      [SETTINGS]: () => Response.json({ llm_call_cap: 25, draft_call_cap: 4 }),
+      [SETTINGS]: () =>
+        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
       [REPORT]: () => Response.json(empty),
       "PATCH /v1/project/settings": ({ body }) => Response.json(body),
     });
@@ -213,9 +220,28 @@ describe("Settings screen", () => {
     await userEvent.clear(field);
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await screen.findByText("Saved the LLM call limit.");
+    await screen.findByText("Saved the limits.");
     expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
-      { llm_call_cap: null, draft_call_cap: 4 },
+      { llm_call_cap: null, draft_call_cap: 4, require_config_approval: false },
+    ]);
+  });
+
+  it("turns on the approval of learned configs", async () => {
+    const calls = stubApi({
+      [SETTINGS]: () =>
+        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
+      [REPORT]: () => Response.json(empty),
+      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
+    });
+    await openSettings();
+    await savedLimit("25");
+
+    await userEvent.click(screen.getByRole("switch", { name: "Approve learned configs" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Saved the limits.");
+    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
+      { llm_call_cap: 25, draft_call_cap: 4, require_config_approval: true },
     ]);
   });
 });

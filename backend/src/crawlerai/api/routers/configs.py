@@ -1,5 +1,6 @@
-"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/export` and `/v1/sites/{host}/learn` (SPEC-08
-§4.10, ARCHITECTURE §13.1): a site's configs, operator corrections (C5), exports and forced learning. The rules are
+"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/approve`, `/v1/configs/{id}/export` and
+`/v1/sites/{host}/learn` (SPEC-08 §4.10, ARCHITECTURE §13.1): a site's configs, operator corrections (C5), approval of
+learned configs (D-1342), exports and forced learning. The rules are
 the configs service's; this router translates HTTP to it and its errors to problems."""
 
 from collections.abc import AsyncIterator
@@ -80,6 +81,15 @@ async def correct_config(config_id: ExtractionConfigId, body: Correction, reques
     fetching: Fetching = request.app.state.fetching
     async with _transaction(request) as conn:
         return await configs.correct(conn, fetching.store, data.vocabulary, config_id, body)
+
+
+@router.post("/configs/{config_id}/approve", responses=_CHANGES)
+async def approve_config(config_id: ExtractionConfigId, request: Request) -> ConfigDetail:
+    """Approves a learned config waiting as `pending_approval` (the project's `require_config_approval`): it becomes the
+    active config of its site, schema and page kind, and the version active before is `suspended`. 409 for a config
+    in any other status."""
+    async with _transaction(request) as conn:
+        return await configs.approve_config(conn, config_id)
 
 
 @router.post("/configs/{config_id}/export", responses=_NOT_FOUND)

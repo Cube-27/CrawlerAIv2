@@ -218,12 +218,12 @@ def test_script_code_that_is_not_an_assignment_of_json_is_not_state(script: str)
 @pytest.mark.parametrize(
     "script",
     [
-        'window.a = {"cost": "€5.00"}; window.b = {"was": "€5.00"};',
-        'var n = 1; var f = x => x; window.a = {"cost": "€5.00"}; window.b = {"was": "€5.00"};',
+        'window.a = {"cost": "€5.00"}; window.b = {"was": "€6.00"};',
+        'var n = 1; var f = x => x; window.a = {"cost": "€5.00"}; window.b = {"was": "€6.00"};',
     ],
 )
 def test_every_assignment_of_json_in_a_script_is_read_in_order(script: str) -> None:
-    assert [c.locator for c in _collect(_page(script, body="€5.00")).candidates] == [
+    assert [c.locator for c in _collect(_page(script, body="€5.00 €6.00")).candidates] == [
         f"js_state:{SCRIPT}:$['cost']",
         f"js_state:{SCRIPT}:$['was']",
     ]
@@ -336,3 +336,63 @@ def test_rows_of_two_documents_in_one_script_are_two_entities() -> None:
 
     assert [c.entity_id for c in result.candidates] == ["js_state:0:$[0]", "js_state:1:$[0]"]
     assert [e.id for e in result.entities] == ["js_state:0:$[0]", "js_state:1:$[0]"]
+
+
+# One value repeated under many paths (D-1343): one candidate per field, normalized value and owner.
+
+
+def test_a_value_repeated_under_many_paths_is_one_candidate_with_the_shortest_locator() -> None:
+    copies: JsonValue = {"cache": {"a": {"b": {"cost": "€19.99"}}, "c": {"cost": "19.99 EUR"}}, "cost": "€19.99"}
+
+    result = _collect(_state(copies, body="Now €19.99"))
+
+    prices = [c for c in result.candidates if c.field == "price"]
+    assert [(c.locator, c.entity_id, c.independent) for c in prices] == [(f"js_state:{SCRIPT}:$['cost']", PAGE, True)]
+
+
+def test_repeats_of_one_value_owned_by_different_entities_stay_apart() -> None:
+    document: JsonValue = {"items": [{"cost": "€5.00"}, {"cost": "€5.00"}], "again": {"cost": "€5.00"}}
+
+    result = _collect(_state(document, body="€5.00"))
+
+    assert [c.entity_id for c in result.candidates if c.field == "price"] == [f"{ROWS}[0]", f"{ROWS}[1]", PAGE]
+
+
+def test_different_values_of_one_field_are_each_kept() -> None:
+    result = _collect(_state({"a": "€5.00", "b": "€6.00", "c": "€5.00"}, body="€5.00 €6.00"))
+
+    assert [c.raw for c in result.candidates if c.field == "price"] == ["€5.00", "€6.00"]
+
+
+# A related item alone in its array (D-1345): a lone object naming a document of its own is a row.
+LONE = "js_state:0:$['related'][0]"
+
+
+def test_a_lone_object_naming_another_document_is_a_row() -> None:
+    document: JsonValue = {"related": [{"url": "https://other.example.test/p/2", "cost": "€5.00"}]}
+
+    result = _collect(_state(document, body="Also €5.00"))
+
+    assert _prices(_state(document, body="Also €5.00")) == [(LONE, True)]
+    assert result.entities == (
+        Entity(id=LONE, types=(ARRAY_ROW,), urls=("https://other.example.test/p/2",), parent=PAGE),
+    )
+
+
+def test_a_lone_object_naming_the_page_is_a_row_that_names_the_page() -> None:
+    result = _collect(_state({"related": [{"link": {"href": "/p/1"}, "cost": "€19.99"}]}, body="€19.99"))
+
+    assert result.entities == (Entity(id=LONE, types=(ARRAY_ROW,), urls=(PAGE_URL,), parent=PAGE),)
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"cost": "€19.99"},
+        {"cost": "€19.99", "image": "https://cdn.example.test/1.jpg", "video": "/v/1.mp4"},
+        {"cost": "€19.99", "gallery": [{"u": "/p/9"}, {"u": "/p/8"}]},
+    ],
+    ids=["no-url", "media-only", "url-only-in-a-nested-array"],
+)
+def test_a_lone_object_naming_no_document_of_its_own_stays_in_its_holder(item: JsonValue) -> None:
+    assert _prices(_state({"related": [item]}, body="€19.99")) == [(PAGE, True)]

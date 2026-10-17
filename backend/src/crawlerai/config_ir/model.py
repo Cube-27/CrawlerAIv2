@@ -234,6 +234,13 @@ class FieldSteps(_Model):
     yield_: Ratio | None = Field(default=None, alias="yield")
     validity: Ratio | None = None
 
+    @model_validator(mode="after")
+    def _has_steps_to_run(self) -> Self:
+        # An absent field has no steps: the config lists it in `absent` (`config_ir.absent`).
+        if self.status == "absent":
+            raise ValueError("a field with steps is not absent")
+        return self
+
 
 class ListingSpec(_Model):
     """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next
@@ -270,3 +277,12 @@ class ExtractionConfigIR(_Model):
     # The recipe held-out validation accepted (SPEC-09 §4.7), served by the acquisition's API rung (§7.1).
     api_recipe: ApiRecipe | None = None
     provenance: Provenance
+    # The required fields the learning pages never stated, which role C is not asked for (`config_ir.absent`, D-1341).
+    absent: list[Name] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _absent_fields_have_no_steps(self) -> Self:
+        listed = self.listing.fields if self.listing is not None else {}
+        if any(name in self.fields or name in listed for name in self.absent):
+            raise ValueError("an absent field has no steps")
+        return self

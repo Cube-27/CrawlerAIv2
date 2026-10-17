@@ -77,7 +77,11 @@ def _steps(xpath: str, status: FieldStatus = "uncorroborated") -> dict[str, Any]
 
 
 def _config(
-    fields: Mapping[str, dict[str, Any]], *, page_kind: PageKind = "detail", listing: dict[str, Any] | None = None
+    fields: Mapping[str, dict[str, Any]],
+    *,
+    page_kind: PageKind = "detail",
+    listing: dict[str, Any] | None = None,
+    absent: tuple[str, ...] = (),
 ) -> EngineExecutor:
     document = {
         "ir_version": "1",
@@ -93,6 +97,7 @@ def _config(
             "learned_at": "2026-10-01T00:00:00Z",
             "engine_version": "test",
         },
+        "absent": list(absent),
     }
     return EngineExecutor(ExtractionConfigIR.model_validate(document), VOCABULARY)
 
@@ -228,6 +233,40 @@ def test_a_covered_required_field_the_config_misses_stays_missing() -> None:
     assert role_c.requests == []
     assert result.entity is not None
     assert (result.entity["price"].status, result.outcome) == ("missing", "partial")
+
+
+# Absent fields (D-1341): required fields the learning pages never stated.
+
+
+def test_an_absent_field_is_not_asked_of_role_c_and_is_missing_as_absent() -> None:
+    role_c = FakeRoleC()
+    config = _config({"title": _steps("normalize-space(//h1)")}, absent=("price",))
+
+    result = _extract(_html(), config, role_c=role_c)
+
+    # The optional sku alone never makes role C run.
+    assert (role_c.requests, result.llm_calls) == ([], ())
+    assert result.entity is not None
+    price = result.entity["price"]
+    assert (price.status, price.reason, result.outcome) == ("missing", "absent", "partial")
+
+
+def test_role_c_still_asks_for_the_other_missing_fields_beside_an_absent_one() -> None:
+    role_c = FakeRoleC()
+
+    _extract(_html(), _config({}, absent=("price",)), role_c=role_c)
+
+    (request,) = role_c.requests
+    assert request.missing == ("title", "sku")
+
+
+def test_an_absent_field_a_page_states_publishes() -> None:
+    offer = {"@type": "Offer", "price": "19.90", "priceCurrency": "EUR"}
+    config = _config({"title": _steps("normalize-space(//h1)")}, absent=("price",))
+
+    result = _extract(_html({"@type": "Product", "name": "Widget One", "offers": offer}), config)
+
+    assert _published(result)["price"] == (PRICE, "structured")
 
 
 def test_role_c_is_asked_only_for_the_fields_the_config_does_not_cover() -> None:

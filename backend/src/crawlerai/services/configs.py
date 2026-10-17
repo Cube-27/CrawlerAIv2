@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir import corrections
-from crawlerai.config_ir.activation import store_correction
+from crawlerai.config_ir.activation import NotPending, approve, store_correction
 from crawlerai.config_ir.corrections import Correction
 from crawlerai.config_ir.exporters.configs import ConfigExport, ConfigFormat, export_config
 from crawlerai.config_ir.held_out import load_captures, load_held_out
@@ -146,6 +146,18 @@ async def correct(
     # Both executors run on every page: CPU work, so a thread keeps the event loop serving meanwhile.
     validated = await asyncio.to_thread(validate, corrected, schema, held_out, vocabulary)
     return await get(conn, await store_correction(conn, key, corrected, validated, correction.operated()))
+
+
+async def approve_config(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
+    """Approve the config `config_id`, waiting as `pending_approval` (D-1342): it becomes its site's active config for
+    its schema and page kind; the version active before is `suspended`."""
+    row = await _row(conn, config_id)
+    try:
+        await approve(conn, StateKey(row["site_id"], row["schema_id"], row["page_kind"]), config_id)
+    except NotPending as e:
+        detail = f"config {config_id} is {row['status']}, not the latest version waiting for approval"
+        raise ConfigConflict(detail) from e
+    return await get(conn, config_id)
 
 
 async def export(

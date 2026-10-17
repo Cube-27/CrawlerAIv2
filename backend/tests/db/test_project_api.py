@@ -1,5 +1,5 @@
 """`GET`/`PATCH /v1/project/settings`: the project's LLM call cap and its cap on a key's uncharged role S calls, null
-for none (owner, 2026-10-16; D-1282)."""
+for none (owner, 2026-10-16; D-1282), and whether learned configs wait for approval, off until set (D-1342)."""
 
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -37,34 +37,45 @@ async def client(
         yield client
     async with engine.begin() as conn:
         await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-        await conn.execute(update(Project).values(llm_call_cap=None, draft_call_cap=None))
+        await conn.execute(
+            update(Project).values(llm_call_cap=None, draft_call_cap=None, require_config_approval=False)
+        )
 
 
 async def test_the_caps_are_none_until_set_and_can_be_cleared(client: httpx.AsyncClient) -> None:
     before = await client.get("/v1/project/settings")
-    capped = await client.patch("/v1/project/settings", json={"llm_call_cap": 25, "draft_call_cap": 4})
+    capped = await client.patch("/v1/project/settings", json={**NONE, "llm_call_cap": 25, "draft_call_cap": 4})
     read = await client.get("/v1/project/settings")
-    cleared = await client.patch("/v1/project/settings", json={"llm_call_cap": None, "draft_call_cap": None})
+    cleared = await client.patch("/v1/project/settings", json=NONE)
 
     assert [(r.status_code, r.json()) for r in (before, capped, read)] == [
-        (200, {"llm_call_cap": None, "draft_call_cap": None}),
-        (200, {"llm_call_cap": 25, "draft_call_cap": 4}),
-        (200, {"llm_call_cap": 25, "draft_call_cap": 4}),
+        (200, NONE),
+        (200, {**NONE, "llm_call_cap": 25, "draft_call_cap": 4}),
+        (200, {**NONE, "llm_call_cap": 25, "draft_call_cap": 4}),
     ]
-    assert (cleared.status_code, (await client.get("/v1/project/settings")).json()) == (
+    assert (cleared.status_code, (await client.get("/v1/project/settings")).json()) == (200, NONE)
+
+
+NONE = {"llm_call_cap": None, "draft_call_cap": None, "require_config_approval": False}
+
+
+async def test_config_approval_is_off_until_set(client: httpx.AsyncClient) -> None:
+    on = await client.patch("/v1/project/settings", json={**NONE, "require_config_approval": True})
+
+    assert (on.status_code, (await client.get("/v1/project/settings")).json()) == (
         200,
-        {"llm_call_cap": None, "draft_call_cap": None},
+        {**NONE, "require_config_approval": True},
     )
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        {"llm_call_cap": -1, "draft_call_cap": None},
-        {"llm_call_cap": None, "draft_call_cap": -1},
-        {"llm_call_cap": None},
+        {**NONE, "llm_call_cap": -1},
+        {**NONE, "draft_call_cap": -1},
+        {"llm_call_cap": None, "draft_call_cap": None},
         {},
-        {"llm_call_cap": 3, "draft_call_cap": None, "other": 1},
+        {**NONE, "other": 1},
     ],
 )
 async def test_an_invalid_cap_is_refused(client: httpx.AsyncClient, body: dict[str, object]) -> None:

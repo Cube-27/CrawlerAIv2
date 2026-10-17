@@ -1,5 +1,6 @@
-"""The content fingerprint (SPEC-11 §4.3, §6): a pure SimHash-64 over word 3-grams of visible text, blind to
-whitespace layout and to nonce-like tokens, close for a one-word edit and far for another text."""
+"""The content fingerprint (SPEC-11 §4.3, §6): the exact digest of the visible words, which every edit changes, and a
+pure SimHash-64 over their 3-grams, close for a one-word edit and far for another text; both blind to whitespace layout
+and to nonce-like tokens."""
 
 import string
 from hashlib import blake2b
@@ -7,8 +8,7 @@ from hashlib import blake2b
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.recurring.simhash import BITS, hamming, simhash64, words
-from crawlerai.recurring.state import UNCHANGED_BITS
+from crawlerai.recurring.simhash import BITS, content_digest, content_fingerprint, hamming, simhash64, words
 
 # Unicode White_Space characters `str.split` splits on: space, tab, LF, CR, VT, FF, no-break, em and ideographic space.
 _SPACES = "".join(map(chr, (0x20, 0x09, 0x0A, 0x0D, 0x0B, 0x0C, 0xA0, 0x2003, 0x3000)))
@@ -81,18 +81,35 @@ def _fingerprint_of(prose: list[str]) -> int:
     return fingerprint
 
 
-def test_a_one_word_edit_of_a_500_word_text_is_mostly_a_change() -> None:
+def test_every_one_word_edit_of_a_500_word_text_is_a_change() -> None:
     distances = []
     for seed in range(100):
         prose = _prose(seed)
         edited = list(prose)
         edited[_blake2b64(str(seed)) % len(prose)] = "kettle"
         distances.append(hamming(_fingerprint_of(prose), _fingerprint_of(edited)))
+        # Only an equal digest is unchanged (§4.3, D-1340): every edit is seen.
+        assert content_digest(" ".join(prose)) != content_digest(" ".join(edited))
 
-    # A one-word edit changes 3 of 498 shingles, and a bit flips only where its vote total was that close to zero.
-    # Only an equal fingerprint is unchanged (§4.3, D-0665), so most edits are seen; some flip no bit at all.
-    assert sum(distance > UNCHANGED_BITS for distance in distances) >= 85
+    # SimHash alone would miss some (D-0915): a one-word edit changes 3 of 498 shingles, and a bit flips only where its
+    # vote total was that close to zero.
     assert min(distances) == 0
+
+
+@given(_text, st.lists(_space, min_size=1), _nonce)
+def test_the_digest_ignores_whitespace_and_nonces_as_simhash_does(
+    tokens: list[str], spaces: list[str], nonce: str
+) -> None:
+    spaced = "".join(token + spaces[i % len(spaces)] for i, token in enumerate(tokens))
+    with_nonces = [part for token in tokens for part in (token, nonce)]
+
+    assert content_digest(spaced) == content_digest(" ".join(tokens)) == content_digest(" ".join(with_nonces))
+    assert content_fingerprint(spaced) == content_fingerprint(" ".join(tokens))
+
+
+def test_a_text_without_words_has_no_digest() -> None:
+    assert content_digest(" \n ") is None
+    assert content_fingerprint("AbCdEfGhIjKlMnOpQrStUv_-12") is None
 
 
 def test_another_text_is_far() -> None:

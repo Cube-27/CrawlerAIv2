@@ -66,7 +66,9 @@ SCHEMA = Schema.model_validate(
 )
 
 
-async def _active_config(conn: AsyncConnection) -> tuple[StateKey, ExtractionConfigId, JobId]:
+async def _active_config(
+    conn: AsyncConnection, ir: dict[str, Any] = IR, field_status: dict[str, str] | None = None
+) -> tuple[StateKey, ExtractionConfigId, JobId]:
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     host = f"shop-{uuid.uuid4().hex[:12]}.example.test"
     site_id = (await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))).scalar_one()
@@ -76,11 +78,11 @@ async def _active_config(conn: AsyncConnection) -> tuple[StateKey, ExtractionCon
     ).scalar_one()
     key = StateKey(site_id=site_id, schema_id=schema_id, page_kind="detail")
     await request_learning(conn, key)
-    config = {**key.columns(), "version": 1, "ir": IR, "origin": "induced", "status": "active"}
+    config = {**key.columns(), "version": 1, "ir": ir, "origin": "induced", "status": "active"}
     config_id = (
         await conn.execute(
             insert(ExtractionConfig)
-            .values(**config, field_status={"title": "corroborated"})
+            .values(**config, field_status=field_status or {"title": "corroborated"})
             .returning(ExtractionConfig.id)
         )
     ).scalar_one()
@@ -163,3 +165,33 @@ async def test_a_config_that_is_not_active_records_nothing(conn: AsyncConnection
     for _ in range(5):
         assert await _run(conn, other, job_id, NEW) == []
     assert (await _config(conn, other)).drift_window == {}
+
+
+# A field the config lists as absent (D-1341).
+ABSENT_IR = {**IR, "absent": ["price"]}
+ABSENT_STATUS = {"title": "corroborated", "price": "absent"}
+
+
+async def test_a_page_publishing_an_absent_field_re_tests_it(conn: AsyncConnection) -> None:
+    key, config_id, job_id = await _active_config(conn, ABSENT_IR, ABSENT_STATUS)
+
+    assert await _run(conn, config_id, job_id, OLD, published=["title", "price"]) == []
+
+    config = await _config(conn, config_id)
+    assert (config.ir["absent"], config.field_status) == ([], {"title": "corroborated"})
+    [event] = (await conn.execute(select(JobEvent).where(JobEvent.job_id == job_id))).all()
+    assert (event.kind, event.payload) == ("absent_stated", {"config_id": str(config_id), "field": "price"})
+    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.id)
+    requests: list[dict[str, Any]] = list((await conn.execute(learn)).scalars())
+    assert [request["force"] for request in requests] == [False, True]
+
+
+async def test_a_page_not_publishing_an_absent_field_leaves_it_absent(conn: AsyncConnection) -> None:
+    key, config_id, job_id = await _active_config(conn, ABSENT_IR, ABSENT_STATUS)
+
+    assert await _run(conn, config_id, job_id, OLD, published=["title"]) == []
+
+    config = await _config(conn, config_id)
+    assert (config.ir["absent"], config.field_status) == (["price"], ABSENT_STATUS)
+    learn = select(Job.id).where(Job.kind == "learn", Job.schema_id == key.schema_id)
+    assert len((await conn.execute(learn)).all()) == 1

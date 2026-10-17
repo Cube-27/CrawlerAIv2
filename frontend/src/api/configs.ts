@@ -55,6 +55,14 @@ export function correctConfig(
   );
 }
 
+/** Approves a learned config waiting as `pending_approval` (D-1342): it becomes the active version. */
+export function approveConfig(client: ApiClient, id: string): Promise<ApiResult<ConfigDetail>> {
+  return apiResult(
+    () => client.POST("/v1/configs/{config_id}/approve", { params: { path: { config_id: id } } }),
+    "Approving the config",
+  );
+}
+
 export function exportConfig(
   client: ApiClient,
   id: string,

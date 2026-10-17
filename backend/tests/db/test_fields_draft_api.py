@@ -270,7 +270,7 @@ async def draft_cap(api: Api, engine: AsyncEngine) -> AsyncIterator[Callable[[in
     """Sets the project's `draft_call_cap` through its settings, and clears it afterwards."""
 
     async def set_cap(cap: int | None) -> None:
-        body = {"llm_call_cap": None, "draft_call_cap": cap}
+        body = {"llm_call_cap": None, "draft_call_cap": cap, "require_config_approval": False}
         assert (await api.http.patch("/v1/project/settings", json=body)).status_code == 200
 
     yield set_cap

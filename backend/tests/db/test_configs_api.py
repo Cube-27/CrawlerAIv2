@@ -22,6 +22,7 @@ from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.config_ir.held_out import load_held_out
+from crawlerai.config_ir.progressive import relearn_schema
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
@@ -84,6 +85,7 @@ def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, An
             "learned_at": "2026-10-01T00:00:00Z",
             "engine_version": "test",
         },
+        "absent": [],
     }
 
 
@@ -285,9 +287,92 @@ async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: Worl
         await client.get(f"/v1/configs/{config_id}"),
         await client.put(f"/v1/configs/{config_id}", json={"confirm": ["title"]}),
         await client.post(f"/v1/sites/{world.host}/learn", json={"schema_id": str(world.schema.id)}),
+        await client.post(f"/v1/configs/{config_id}/approve"),
     ]
 
-    assert [r.status_code for r in responses] == [401, 401, 401, 401]
+    assert [r.status_code for r in responses] == [401, 401, 401, 401, 401]
+
+
+# Approval (D-1342).
+
+
+async def test_approving_a_pending_config_makes_it_the_active_one(client: httpx.AsyncClient, world: World) -> None:
+    first = await world.active_config(H2)
+    key = {"site_id": world.site_id, "schema_id": world.schema.id, "page_kind": "detail"}
+    async with world.engine.begin() as conn:
+        pending = insert(ExtractionConfig).values(
+            **key, version=2, status="pending_approval", ir=_ir(world.host, world.schema, H1), origin="induced"
+        )
+        second: ExtractionConfigId = (await conn.execute(pending.returning(ExtractionConfig.id))).scalar_one()
+
+    approved = await client.post(f"/v1/configs/{second}/approve")
+    again = await client.post(f"/v1/configs/{second}/approve")
+    old = await client.post(f"/v1/configs/{first}/approve")
+
+    assert (approved.status_code, approved.json()["status"]) == (200, "active")
+    assert await world.configs() == [(1, "suspended", "induced"), (2, "active", "induced")]
+    assert ((await world.state()).mode, (await world.state()).active_config_id) == ("active", second)
+    assert [(r.status_code, r.json()["detail"]) for r in (again, old)] == [
+        (409, f"config {second} is active, not the latest version waiting for approval"),
+        (409, f"config {first} is suspended, not the latest version waiting for approval"),
+    ]
+
+
+async def _pending(world: World, version: int) -> ExtractionConfigId:
+    key = {"site_id": world.site_id, "schema_id": world.schema.id, "page_kind": "detail"}
+    async with world.engine.begin() as conn:
+        pending = insert(ExtractionConfig).values(
+            **key, version=version, status="pending_approval", ir=_ir(world.host, world.schema, H1), origin="induced"
+        )
+        config_id: ExtractionConfigId = (await conn.execute(pending.returning(ExtractionConfig.id))).scalar_one()
+    return config_id
+
+
+async def test_a_correction_of_a_waiting_config_replaces_it(client: httpx.AsyncClient, world: World) -> None:
+    await _pages(world, 3)
+    await world.active_config(H2)
+    waiting = await _pending(world, 2)
+
+    corrected = await client.put(f"/v1/configs/{waiting}", json={"fields": {"title": {"steps": [H1]}}})
+    approved = await client.post(f"/v1/configs/{waiting}/approve")
+
+    assert (corrected.status_code, corrected.json()["status"]) == (200, "active")
+    assert await world.configs() == [
+        (1, "suspended", "induced"),
+        (2, "suspended", "induced"),
+        (3, "active", "operator"),
+    ]
+    assert approved.status_code == 409
+
+
+async def test_a_waiting_config_older_than_the_latest_version_is_not_approved(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    await world.active_config(H2)
+    waiting = await _pending(world, 2)
+    key = {"site_id": world.site_id, "schema_id": world.schema.id, "page_kind": "detail"}
+    async with world.engine.begin() as conn:
+        draft = {"version": 3, "status": "draft", "ir": _ir(world.host, world.schema, H1), "origin": "operator"}
+        await conn.execute(insert(ExtractionConfig).values(**key, **draft))
+
+    approved = await client.post(f"/v1/configs/{waiting}/approve")
+
+    assert approved.status_code == 409
+    assert await world.configs() == [
+        (1, "active", "induced"),
+        (2, "pending_approval", "induced"),
+        (3, "draft", "operator"),
+    ]
+
+
+async def test_a_schema_edit_suspends_a_waiting_config(world: World) -> None:
+    await world.active_config(H2)
+    await _pending(world, 2)
+
+    async with world.engine.begin() as conn:
+        await relearn_schema(conn, world.schema.id)
+
+    assert await world.configs() == [(1, "suspended", "induced"), (2, "suspended", "induced")]
 
 
 # Corrections.

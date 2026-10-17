@@ -63,7 +63,10 @@ def correct(
     provenance = ir.provenance.model_copy(
         update={"origin": "operator", "validated_on": [], "learned_at": at, "engine_version": engine_version}
     )
-    corrected_ir = ir.model_copy(update={"fields": _unmeasured(page), "listing": listing, "provenance": provenance})
+    # A field given steps is no longer absent (D-1341): the operator found where the site states it.
+    absent = [name for name in ir.absent if correction.fields.get(name) is None]
+    update = {"fields": _unmeasured(page), "listing": listing, "provenance": provenance, "absent": absent}
+    corrected_ir = ir.model_copy(update=update)
     # `model_copy` skips validation; the round trip runs the IR's validators on the corrected document.
     return ExtractionConfigIR.model_validate(corrected_ir.model_dump(by_alias=True))
 

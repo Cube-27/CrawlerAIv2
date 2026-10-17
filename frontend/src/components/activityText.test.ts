@@ -44,7 +44,17 @@ const LINES: readonly [string, object, string | null][] = [
     { config_id: "c1", field: "price", pages: 20, yield: 0.1, validity: 0.5 },
     "Paused price in this site's config: its output changed.",
   ],
+  [
+    "absent_stated",
+    { config_id: "c1", field: "sku" },
+    "Found sku, which this site's config listed as absent: relearning.",
+  ],
   ["learning_started", {}, "Learning this site's config…"],
+  [
+    "learning_finished",
+    { config_id: "c1", reason: "pending_approval", report: null },
+    "Learned this site's config; it waits for approval.",
+  ],
   [
     "learning_finished",
     { config_id: "c1", reason: "learned", report: null },

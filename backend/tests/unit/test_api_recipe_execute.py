@@ -26,12 +26,12 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.base import PAGE
 from crawlerai.config_ir.api_recipe.binding import resolve, with_query_value
-from crawlerai.config_ir.api_recipe.execute import RecipeRung, recipe_collector
+from crawlerai.config_ir.api_recipe.execute import RecipeExecutor, RecipeRung, recipe_collector
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, Pagination, Proof
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, PageKind, SchemaId
+from crawlerai.db.models import CaptureId, FieldStatus, PageKind, SchemaId
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import IMPERSONATE, handler_transport
@@ -379,3 +379,12 @@ def test_setting_a_query_value_keeps_the_other_items_as_written() -> None:
     url = with_query_value(f"{ENDPOINT}/lamps?q=a%20b&offset=4&x", "offset", "6")
 
     assert url == f"{ENDPOINT}/lamps?q=a%20b&x&offset=6"
+
+
+def test_a_recipes_executor_keeps_the_configs_absent_fields() -> None:
+    # D-1341: an absent field is no recipe's, and role C is not asked for it on the recipe's pages either.
+    status: dict[str, FieldStatus] = {"title": "corroborated", "brand": "uncorroborated", "sku": "absent"}
+
+    executor = RecipeExecutor.of(DETAIL_RECIPE, "r1", status)
+
+    assert {name: s for name, s in executor.field_status.items() if name not in DETAIL_RECIPE.map} == {"sku": "absent"}

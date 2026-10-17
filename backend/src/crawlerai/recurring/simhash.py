@@ -1,5 +1,11 @@
-"""The content fingerprint of a page (SPEC-11 §4.3, ARCHITECTURE §14): a 64-bit SimHash of its visible text, so that a
-page whose text barely moved between runs is `unchanged` and is not extracted again.
+"""The content fingerprint of a page (SPEC-11 §4.3, ARCHITECTURE §14): the exact digest of its visible words, so that a
+page whose text did not change between runs is `unchanged` and is not extracted again, and a 64-bit SimHash of them,
+which says how far a changed page moved.
+
+Only an equal digest is unchanged (owner #40, D-1340): SimHash flips a bit only where a vote total was near zero, so an
+equal SimHash does not bound the change (a one-word edit of a 500-word text keeps it on about 1 in 10 texts, D-0915).
+Both read the same words (`words`), so both ignore what changes on every load without the page changing: nonce-like
+tokens and whitespace.
 
 SimHash (Charikar, "Similarity estimation techniques from rounding algorithms", STOC 2002) sums, bit by bit, the
 ±1 votes of a hash of each feature; near-identical texts get fingerprints a few bits apart. The features are word
@@ -8,9 +14,10 @@ unlike Python's `hash`.
 """
 
 import re
+from dataclasses import dataclass
 from hashlib import blake2b
 
-__all__ = ["BITS", "hamming", "simhash64", "words"]
+__all__ = ["BITS", "ContentFingerprint", "content_digest", "content_fingerprint", "hamming", "simhash64", "words"]
 
 BITS = 64
 _SHINGLE = 3
@@ -22,6 +29,34 @@ _NONCE = re.compile(r"[A-Za-z0-9_-]{16,}")
 def words(text: str) -> list[str]:
     """The text's words, split on whitespace (`str.split`: Unicode White_Space), without nonce-like tokens."""
     return [word for word in text.split() if not _NONCE.fullmatch(word)]
+
+
+@dataclass(frozen=True, slots=True)
+class ContentFingerprint:
+    """A page's visible text as `recurring.state.record_content` compares it: the exact digest of its words, and their
+    SimHash."""
+
+    digest: str
+    simhash: int
+
+
+def content_fingerprint(text: str) -> ContentFingerprint | None:
+    """`text`'s digest and SimHash; None for a text without words: it has nothing to fingerprint."""
+    digest, simhash = content_digest(text), simhash64(text)
+    return None if digest is None or simhash is None else ContentFingerprint(digest, simhash)
+
+
+def content_digest(text: str) -> str | None:
+    """The BLAKE2b digest (RFC 7693, 16 bytes, as lower-case hex) of `text`'s words joined by one space: equal exactly
+    when the words are, whatever the whitespace between them. None for a text without words, as `simhash64`."""
+    tokens = words(text)
+    if not tokens:
+        return None
+    return blake2b(" ".join(tokens).encode(), digest_size=_DIGEST_BYTES).hexdigest()
+
+
+# 128 bits: two different texts of one URL share a digest with a probability of about 2^-128.
+_DIGEST_BYTES = 16
 
 
 def simhash64(text: str) -> int | None:

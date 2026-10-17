@@ -5,7 +5,9 @@ A run reads the state's `LEARN_AFTER_PAGES` most recent extracted pages (`held_o
 `SAMPLE_PAGES` with the most published required values are the learning sample, and the rest are held out. Induction
 proposes selectors without an LLM (§4.5), role A synthesizes the fields it left (§4.6), and the config is validated on
 the held-out pages (§4.7) and activated (§4.8), with the API recipe its pages' browser captures show their values came
-from when one is learned and validated (SPEC-09 §2, `api_recipe.learn`). Every other end is a failed run
+from when one is learned and validated (SPEC-09 §2, `api_recipe.learn`); when the site's project requires approval
+(D-1342), the validated config waits as `pending_approval` instead (`store_pending`). Every other end is a
+failed run
 (`progressive.learning_failed`): validation refusing the config, an LLM failure (D-0588), a cancelled job, an error,
 the worker stopping (`SHUTDOWN`), or an operator's config activated while the run was in flight, which a run that
 started before it does not replace. A job that cannot start, its request naming no state included, and a run still
@@ -31,7 +33,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.activation import activate
+from crawlerai.config_ir.absent import ABSENT, absent_fields
+from crawlerai.config_ir.activation import activate, store_pending
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
 from crawlerai.config_ir.api_recipe.replay import Replay
 from crawlerai.config_ir.api_recipe.validate import attach
@@ -58,6 +61,7 @@ from crawlerai.db.models import (
     JobId,
     JobStatus,
     ProgressiveState,
+    Project,
     Site,
 )
 from crawlerai.db.queue import stuck_running_jobs
@@ -80,6 +84,8 @@ LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
 # How many expired runs one scheduler turn ends; a full batch runs again at once (`scheduler.loop`).
 EXPIRE_BATCH: Final = 100
 EXPIRED: Final = "expired"
+# The reason a completed run reports when its config waits for approval (D-1342).
+PENDING: Final = "pending_approval"
 # The reason of a run cancelled because its worker stops (`run_learner`).
 SHUTDOWN: Final = "shutdown"
 
@@ -228,7 +234,10 @@ async def _learned(
 ) -> Validated:
     """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
     sample, held_out = split(run.schema, run.pages)
-    ir, unlearned = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars)
+    absent = absent_fields(run.schema, run.pages)
+    ir, unlearned = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars, absent)
+    # A field no page stated has no value to learn a step from; the config lists it instead (D-1341).
+    ir = ir.model_copy(update={"absent": [name for name in absent if name in unlearned]})
     held_out_pages = [page.held_out for page in held_out]
     validated = await asyncio.to_thread(validate, ir, run.schema, held_out_pages, vocabulary)
     validated = with_unlearned(validated, unlearned)
@@ -240,18 +249,27 @@ async def _learned(
 
 
 async def _learn(
-    client: LLMClient, run: _Run, sample: list[SamplePage], vocabulary: Vocabulary, max_chars: int
+    client: LLMClient,
+    run: _Run,
+    sample: list[SamplePage],
+    vocabulary: Vocabulary,
+    max_chars: int,
+    absent: Sequence[str],
 ) -> tuple[ExtractionConfigIR, dict[str, str]]:
     """The config induction and synthesis learn from the sample, and why each other schema field got no steps: the
-    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics."""
+    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics. Synthesis does not
+    try an `absent` field: no page states a value its selectors could find."""
     schema, row_fields = learnable(run.schema)
     induction = await asyncio.to_thread(induce, schema, sample, vocabulary)
     ir = _induced(run, induction)
     # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
     reasons = {name: reason for name, reason in induction.to_synthesize.items() if name not in induction.mapped}
-    if sample and reasons:
+    for name in set(absent).intersection(reasons):
+        reasons[name] = ABSENT
+    tried = [name for name, reason in reasons.items() if reason != ABSENT]
+    if sample and tried:
         synthesis = await synthesize(
-            client, ir, schema, sample, list(reasons), vocabulary, max_chars=max_chars, job_id=run.job_id
+            client, ir, schema, sample, tried, vocabulary, max_chars=max_chars, job_id=run.job_id
         )
         ir = synthesis.ir
         for name, diagnostics in synthesis.unresolved.items():
@@ -306,9 +324,20 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
         return await _fail(conn, run, validated.report.refused or "refused", validated.report)
     if await _operator_since(conn, run):
         return await _fail(conn, run, "operator_config", validated.report)
+    if await _requires_approval(conn, run):
+        config_id = await store_pending(conn, run.key, validated)
+        await _end(conn, run.job_id, "completed", config_id=config_id, reason=PENDING, report=validated.report)
+        return Learned(config_id, PENDING)
     config_id = await activate(conn, run.key, validated)
     await _end(conn, run.job_id, "completed", config_id=config_id, reason=None, report=validated.report)
     return Learned(config_id)
+
+
+async def _requires_approval(conn: AsyncConnection, run: _Run) -> bool:
+    """Whether the site's project makes a learned config wait for approval (D-1342)."""
+    project = select(Site.project_id).where(Site.id == run.key.site_id).scalar_subquery()
+    query = select(Project.require_config_approval).where(Project.id == project)
+    return bool((await conn.execute(query)).scalar_one())
 
 
 async def _operator_since(conn: AsyncConnection, run: _Run) -> bool:

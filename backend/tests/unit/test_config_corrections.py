@@ -79,6 +79,16 @@ def test_a_field_the_config_lacks_gets_the_operators_steps() -> None:
     assert list(corrected["fields"]) == ["title", "brand", "subtitle"]
 
 
+def test_a_field_given_steps_is_no_longer_absent() -> None:
+    # D-1341: the operator found where the site states the field the learning pages never showed.
+    ir = BASE.model_copy(update={"absent": ["subtitle"]})
+
+    corrected = _correct({"fields": {"subtitle": {"steps": [H2]}}}, ir)
+
+    assert (corrected["absent"], corrected["fields"]["subtitle"]["status"]) == ([], "operator")
+    assert _correct({"confirm": ["brand"]}, ir)["absent"] == ["subtitle"]
+
+
 def test_a_null_field_is_removed() -> None:
     assert list(_correct({"fields": {"brand": None}})["fields"]) == ["title"]
 

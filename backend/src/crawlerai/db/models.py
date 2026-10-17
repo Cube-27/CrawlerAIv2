@@ -68,10 +68,11 @@ NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
 SourceKind = Literal[
     "adapter", "api", "jsonld", "microdata", "og", "js_state", "xhr", "config", "llm", "derived", "dom"
 ]
-ConfigStatus = Literal["draft", "active", "suspended"]
+# `pending_approval`: a learned config waiting for a person to approve it (`project.require_config_approval`, D-1342).
+ConfigStatus = Literal["draft", "active", "suspended", "pending_approval"]
 ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
 # `extraction_config.field_status` values (ARCHITECTURE §6, §8.3 step 4).
-FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
+FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended", "absent"]
 ProgressiveMode = Literal["cold", "learning", "active"]
 # What `usage_event` counts (SPEC-01 §4.6), each in whole units: calls, tokens, seconds, bytes, requests.
 UsageResource = Literal[
@@ -159,6 +160,8 @@ class Project(Base):
     llm_call_cap: Mapped[int | None] = mapped_column(Integer)
     # The most uncharged role S calls (field-name drafts) one API key may make, in all; NULL: no cap (D-1282).
     draft_call_cap: Mapped[int | None] = mapped_column(Integer)
+    # Whether a learned config waits for approval before it serves (D-1342); off: it activates once validated.
+    require_config_approval: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class ApiKey(Base):
@@ -319,6 +322,9 @@ class UrlState(Base):
     etag: Mapped[str | None] = mapped_column(Text)
     # The header value as received: If-Modified-Since sends it back unchanged (RFC 9110 §13.1.3).
     last_modified: Mapped[str | None] = mapped_column(Text)
+    # The page's visible text (`recurring.simhash`): the exact digest of its words, which alone decides `unchanged`
+    # (D-1340), and their SimHash as 16 hex digits, which says how far a change moved.
+    content_digest: Mapped[str | None] = mapped_column(Text)
     content_fingerprint: Mapped[str | None] = mapped_column(Text)
     record_fingerprint: Mapped[str | None] = mapped_column(Text)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

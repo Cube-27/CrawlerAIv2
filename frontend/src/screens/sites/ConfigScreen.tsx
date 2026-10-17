@@ -1,7 +1,7 @@
-import { Chip, Link, Tabs } from "@heroui/react";
+import { Button, Chip, Link, Tabs } from "@heroui/react";
 import { useParams } from "react-router";
 import type { ConfigDetail } from "../../api/configs";
-import { useConfig, useSiteConfigs } from "../../api/hooks/configs";
+import { useApproveConfig, useConfig, useSiteConfigs } from "../../api/hooks/configs";
 import { problemOf } from "../../api/hooks/query";
 import { useSchema } from "../../api/hooks/schemas";
 import { ConfigStatusLabel } from "../../components/ConfigStatusLabel";
@@ -71,13 +71,34 @@ function ConfigTabs({ config }: Readonly<{ config: ConfigDetail }>) {
   );
 }
 
+/** Approves a learned config that waits for approval (D-1342); shown only on such a config. */
+function ApproveButton({ approve }: Readonly<{ approve: ReturnType<typeof useApproveConfig> }>) {
+  return (
+    <Button
+      isPending={approve.isPending}
+      onPress={() => {
+        approve.mutate();
+      }}
+    >
+      Approve
+    </Button>
+  );
+}
+
 function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
   const learning = useLearn({ site: config.site, schemaId: config.schema_id });
-  const learnProblem = problemOf(learning.learn.error);
+  const approve = useApproveConfig(config.id);
+  const learnProblem = problemOf(learning.learn.error) ?? problemOf(approve.error);
   const schemaLabel = useSchemaLabel();
+  const actions = (
+    <>
+      {config.status === "pending_approval" ? <ApproveButton approve={approve} /> : null}
+      <LearnButtons {...learning} />
+    </>
+  );
   return (
     <section className="flex flex-col gap-stack">
-      <PageHeader title={config.site} actions={<LearnButtons {...learning} />}>
+      <PageHeader title={config.site} actions={actions}>
         <Chip>v{config.version}</Chip>
         <Chip>{config.origin}</Chip>
         <ConfigStatusLabel status={config.status} />
@@ -97,7 +118,8 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
 }
 
 /** One config version (SPEC-12 §4.3): its fields' steps, status, yield and validity, its validation report, the
- * correction form, export with the release report, and the other versions; "Learn now" in the header. */
+ * correction form, export with the release report, and the other versions; "Learn now" in the header, and "Approve"
+ * on a learned config waiting for approval (D-1342). */
 export function ConfigScreen() {
   const { id = "" } = useParams();
   const config = useConfig(id);

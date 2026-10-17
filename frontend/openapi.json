@@ -625,7 +625,8 @@
                 "corroborated",
                 "uncorroborated",
                 "operator",
-                "suspended"
+                "suspended",
+                "absent"
               ],
               "type": "string"
             },
@@ -671,7 +672,8 @@
             "enum": [
               "draft",
               "active",
-              "suspended"
+              "suspended",
+              "pending_approval"
             ],
             "title": "Status",
             "type": "string"
@@ -768,7 +770,8 @@
                 "corroborated",
                 "uncorroborated",
                 "operator",
-                "suspended"
+                "suspended",
+                "absent"
               ],
               "type": "string"
             },
@@ -811,7 +814,8 @@
             "enum": [
               "draft",
               "active",
-              "suspended"
+              "suspended",
+              "pending_approval"
             ],
             "title": "Status",
             "type": "string"
@@ -1576,6 +1580,14 @@
       "ExtractionConfigIR": {
         "additionalProperties": false,
         "properties": {
+          "absent": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "title": "Absent",
+            "type": "array"
+          },
           "api_recipe": {
             "anyOf": [
               {
@@ -1872,7 +1884,8 @@
                   "corroborated",
                   "uncorroborated",
                   "operator",
-                  "suspended"
+                  "suspended",
+                  "absent"
                 ],
                 "type": "string"
               },
@@ -2178,7 +2191,8 @@
               "corroborated",
               "uncorroborated",
               "operator",
-              "suspended"
+              "suspended",
+              "absent"
             ],
             "title": "Status",
             "type": "string"
@@ -4187,7 +4201,7 @@
       },
       "ProjectSettings": {
         "additionalProperties": false,
-        "description": "`llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.\n`draft_call_cap`: the most uncharged role S calls (field-name drafts) one API key may make, in all; null: no cap.",
+        "description": "`llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.\n`draft_call_cap`: the most uncharged role S calls (field-name drafts) one API key may make, in all; null: no cap.\n`require_config_approval`: whether a learned config waits for approval (`POST /v1/configs/{id}/approve`) before it\nserves.",
         "properties": {
           "draft_call_cap": {
             "anyOf": [
@@ -4212,11 +4226,16 @@
               }
             ],
             "title": "Llm Call Cap"
+          },
+          "require_config_approval": {
+            "title": "Require Config Approval",
+            "type": "boolean"
           }
         },
         "required": [
           "llm_call_cap",
-          "draft_call_cap"
+          "draft_call_cap",
+          "require_config_approval"
         ],
         "title": "ProjectSettings",
         "type": "object"
@@ -6288,6 +6307,120 @@
         ]
       }
     },
+    "/v1/configs/{config_id}/approve": {
+      "post": {
+        "description": "Approves a learned config waiting as `pending_approval` (the project's `require_config_approval`): it becomes the\nactive config of its site, schema and page kind, and the version active before is `suspended`. 409 for a config\nin any other status.",
+        "operationId": "approve_config_v1_configs__config_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Config",
+        "tags": [
+          "configs"
+        ]
+      }
+    },
     "/v1/configs/{config_id}/export": {
       "post": {
         "description": "The config as `json` (the IR as stored) or `platform_draft` (`draft: true` until the platform's format is known),\nand the release check on the pages the config was validated on: a field the independent release executor does not\nreproduce on every such page with an engine value while there are fewer than 10, or on 95% from 10 on, is\n`manual`.",
@@ -8345,7 +8478,7 @@
     },
     "/v1/project/settings": {
       "get": {
-        "description": "The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no\n`budget.llm_calls`, and `draft_call_cap` the uncharged field-name drafts of each API key; null bounds none.",
+        "description": "The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no\n`budget.llm_calls`, and `draft_call_cap` the uncharged field-name drafts of each API key; null bounds none.\n`require_config_approval` makes a learned config wait for approval before it serves.",
         "operationId": "get_project_settings_v1_project_settings_get",
         "responses": {
           "200": {
@@ -8415,7 +8548,7 @@
         ]
       },
       "patch": {
-        "description": "Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call, and a new\n`draft_call_cap` from a key's next draft.",
+        "description": "Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call, and a new\n`draft_call_cap` from a key's next draft; `require_config_approval` from the next learning run's end.",
         "operationId": "patch_project_settings_v1_project_settings_patch",
         "requestBody": {
           "content": {

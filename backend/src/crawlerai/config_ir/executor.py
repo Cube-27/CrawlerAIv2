@@ -86,11 +86,12 @@ class EngineExecutor:
     @property
     def field_status(self) -> Mapping[str, FieldStatus]:
         listed = self.ir.listing.fields if self.ir.listing is not None else {}
-        return {
+        running: dict[str, FieldStatus] = {
             name: steps.status
             for name, steps in (*self.ir.fields.items(), *listed.items())
             if steps.status != "suspended"
         }
+        return {**running, **dict.fromkeys(self.ir.absent, "absent")}
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         self._check(schema)

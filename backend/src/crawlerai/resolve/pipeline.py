@@ -22,7 +22,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Final, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -63,6 +63,8 @@ from crawlerai.storage.capture_bundle import CaptureBundle
 
 log = logging.getLogger(__name__)
 _FAILED = "extraction failed"
+# The reason of a `missing` field the active config lists as absent (`config_ir.absent`, D-1341).
+ABSENT: Final = "absent"
 
 # D-0486: without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
 # decline as `unranked` rather than follow an unmeasured order (C7). The repo commits SPEC-05 §4.7's order (D-0444).
@@ -209,6 +211,7 @@ async def extract_page(
                 return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
+    fields = _absent(fields, page.config.absent)
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -234,14 +237,16 @@ class _Source:
 
 @dataclass(frozen=True, slots=True)
 class _Config:
-    """What the active config proposed for the page. `covered`: the fields it runs, which role C is not asked for
-    (§8.4); `corroborated`: those whose values take the `config_corroborated` bucket (§10)."""
+    """What the active config proposed for the page. `covered`: the fields it runs or lists as absent, which role C is
+    not asked for (§8.4, D-1341); `corroborated`: those whose values take the `config_corroborated` bucket (§10);
+    `absent`: those the site's pages do not state (`config_ir.absent`)."""
 
     rows: tuple[Entity, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     diagnostics: tuple[str, ...] = ()
     covered: frozenset[str] = frozenset()
     corroborated: frozenset[str] = frozenset()
+    absent: frozenset[str] = frozenset()
 
     @classmethod
     def run(cls, config: ConfigExecutor | None, page: ParsedPage, schema: SchemaDef, ctx: Context) -> "_Config":
@@ -255,6 +260,7 @@ class _Config:
             diagnostics=executed.diagnostics,
             covered=frozenset(status),
             corroborated=frozenset(name for name, s in status.items() if s == "corroborated"),
+            absent=frozenset(name for name, s in status.items() if s == "absent"),
         )
 
 
@@ -530,6 +536,17 @@ def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple
 
 def _holds_objects(spec: FieldSpec) -> bool:
     return spec.type is FieldType.OBJECT or (spec.item is not None and spec.item.type is FieldType.OBJECT)
+
+
+def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
+    """The fields with each `missing` one the config lists as absent saying so (D-1341): the site's pages do not state
+    it, so role C was not asked for it."""
+    return {
+        name: outcome.model_copy(update={"reason": ABSENT})
+        if name in absent and outcome.status == "missing"
+        else outcome
+        for name, outcome in fields.items()
+    }
 
 
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:

@@ -14,6 +14,7 @@ const FIELD_STATUSES: readonly FieldConfigStatus[] = [
   "uncorroborated",
   "operator",
   "suspended",
+  "absent",
 ];
 
 /** Names a config's schema by the schemas the API lists; "—" until they are read. */
@@ -83,12 +84,18 @@ export function ConfigFieldsTable({ config }: Readonly<{ config: ConfigDetail }>
     steps,
   }));
   const { listing } = config.ir;
+  const absent = config.ir.absent ?? [];
   return (
     <div className="flex flex-col gap-3">
       <Typography.Paragraph>Fetch method: {config.ir.fetch.method}</Typography.Paragraph>
       {listing == null ? null : (
         <Typography.Paragraph>
           Rows: <LocatorText locator={stepText(listing.row)} />
+        </Typography.Paragraph>
+      )}
+      {absent.length === 0 ? null : (
+        <Typography.Paragraph>
+          Absent (no page of the site states them, so the LLM is not asked): {absent.join(", ")}
         </Typography.Paragraph>
       )}
       <Table>

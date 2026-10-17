@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -253,6 +253,39 @@ describe("config screen: reading a version", () => {
     expect(rowsOf(fields.getByRole("grid", { name: "Config fields" }))).toEqual([
       "titlecorroboratedxpath: //h11.001.00",
       "priceuncorroboratedjsonld: $.offers.price0.500.25",
+    ]);
+  });
+
+  it("names the fields the config lists as absent", async () => {
+    configApi({
+      [`GET /v1/configs/${V2_ID}`]: json({ ...detail, ir: { ...detail.ir, absent: ["sku"] } }),
+    });
+    await open(`/configs/${V2_ID}`, HOST);
+
+    const fields = await openTab("Fields");
+    expect(
+      fields.getByText("Absent (no page of the site states them, so the LLM is not asked): sku"),
+    ).toBeInTheDocument();
+  });
+
+  it("approves a learned config waiting for approval, and offers no approval otherwise", async () => {
+    let current: ConfigDetail = { ...detail, status: "pending_approval" };
+    const calls = configApi({
+      [`GET /v1/configs/${V2_ID}`]: () => Response.json(current),
+      [`POST /v1/configs/${V2_ID}/approve`]: () => {
+        current = { ...current, status: "active" };
+        return Response.json(current);
+      },
+    });
+    await open(`/configs/${V2_ID}`, HOST);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    });
+    expect(calls.filter(({ method }) => method === "POST").map(({ path }) => path)).toEqual([
+      `/v1/configs/${V2_ID}/approve`,
     ]);
   });
 

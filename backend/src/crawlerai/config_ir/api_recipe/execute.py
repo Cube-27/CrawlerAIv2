@@ -50,7 +50,8 @@ class RecipeExecutor:
 
     @classmethod
     def of(cls, recipe: ApiRecipe, recipe_id: str, config_status: Mapping[str, FieldStatus]) -> "RecipeExecutor":
-        status = {name: s for name, s in config_status.items() if name in recipe.map}
+        # An absent field (D-1341) is no recipe's either, and role C is not asked for it on a recipe's pages.
+        status = {name: s for name, s in config_status.items() if name in recipe.map or s == "absent"}
         return cls(recipe, recipe_collector(recipe, recipe_id), status)
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:

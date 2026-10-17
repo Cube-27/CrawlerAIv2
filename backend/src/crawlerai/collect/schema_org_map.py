@@ -46,6 +46,8 @@ _URL = FieldSpec(type=FieldType.URL)
 # isVariantOf".
 _GROUP_ID = "productGroupID"
 _IN_GROUP = "inProductGroupWithID"
+# schema.org `isVariantOf`: "Indicates the kind of product that this is a variant of", a ProductGroup or ProductModel.
+_VARIANT_OF = "isVariantOf"
 # schema.org ListItem: an item in a list; its `item` is "An entity represented by an entry in a list" (range Thing).
 # An entry stating no `item` stands for the thing it lists with its own Thing properties (`name`, `url`), so a
 # listing's row fields read them (`resolve.listing`).
@@ -455,7 +457,7 @@ def _page_names(node: Node) -> list[JsonValue]:
 
 def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | None, via: str | None) -> Entity:
     """The entity of a node: its URLs (`entity_urls`), its own URLs (`item_urls`), what identifies it (`identity`) and
-    the product groups it names (`group_ids`)."""
+    the product groups it names (`group_ids`, `variant_of`)."""
     return Entity(
         id=typed.id,
         types=typed.types,
@@ -465,6 +467,7 @@ def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | 
         identity=identity(typed.node, vocabulary),
         item_urls=item_urls(typed.node, ctx),
         group_ids=tuple(dict.fromkeys(_scalar_texts(typed.node, _IN_GROUP))),
+        variant_of=tuple(dict.fromkeys(_node_iris(typed.node, _VARIANT_OF))),
     )
 
 
@@ -479,6 +482,15 @@ def identity(node: Node, vocabulary: Vocabulary) -> tuple[tuple[str, str], ...]:
     for prop in sorted(vocabulary.identifiers | {_GROUP_ID}):
         found.extend((prop, text) for text in _scalar_texts(node, prop))
     return tuple(dict.fromkeys(found))
+
+
+def _node_iris(node: Node, prop: str) -> Iterator[str]:
+    """The IRIs of the nodes `prop` names on the node (a JSON-LD `{"@id": ...}` reference included); a blank node has
+    none that names it beyond the page."""
+    for value in node.values(prop):
+        node_id = value.node.node_id if value.node is not None else None
+        if node_id is not None and not node_id.startswith(_BLANK):
+            yield node_id
 
 
 def _scalar_texts(node: Node, prop: str) -> Iterator[str]:

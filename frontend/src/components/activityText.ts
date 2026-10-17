@@ -69,10 +69,24 @@ function driftSuspended(data: JsonObject): string | null {
   return field === null ? null : `Paused ${field} in this site's config: its output changed.`;
 }
 
+// `learning_finished.reason` of a config that waits for approval (D-1342).
+const PENDING_APPROVAL = "pending_approval";
+
 function learningFinished(data: JsonObject): string | null {
-  if (text(data, "config_id") !== null) return "Learned this site's config.";
+  if (text(data, "config_id") !== null) {
+    return text(data, "reason") === PENDING_APPROVAL
+      ? "Learned this site's config; it waits for approval."
+      : "Learned this site's config.";
+  }
   const reason = text(data, "reason");
   return reason === null ? null : `Learning ended without a config: ${reason}.`;
+}
+
+function absentStated(data: JsonObject): string | null {
+  const field = text(data, "field");
+  return field === null
+    ? null
+    : `Found ${field}, which this site's config listed as absent: relearning.`;
 }
 
 type Line = (data: JsonObject) => string | null;
@@ -83,6 +97,7 @@ const LINES: Readonly<Record<string, Line>> = {
   task_abstained: abstained,
   task_failed: taskFailed,
   drift_suspended: driftSuspended,
+  absent_stated: absentStated,
   learning_started: () => "Learning this site's config…",
   learning_finished: learningFinished,
   completed: () => "Run finished.",

@@ -127,11 +127,15 @@ def published_of(
 @dataclass(frozen=True, slots=True)
 class StoredPage:
     """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`), and its capture, whose
-    network bodies API discovery reads (SPEC-09 §4.3)."""
+    network bodies API discovery reads (SPEC-09 §4.3). `stated`: the fields any source gave a valid value for, published
+    or not; `asked_llm`: whether its extraction called the LLM (role C, on a detail page's gaps). Learning reads both
+    for the fields the site never states (`config_ir.absent`)."""
 
     held_out: HeldOutPage
     sample: SamplePage
     bundle: CaptureBundle
+    stated: frozenset[str] = frozenset()
+    asked_llm: bool = False
 
 
 async def load_held_out(
@@ -169,6 +173,7 @@ async def _pages(
     ids = [extraction_id for _, _, extraction_id in extractions]
     records = await _records(conn, ids, schema)
     candidates = await _candidates(conn, ids)
+    llm_calls = await _llm_calls(conn, ids)
     # The bundles are independent reads; fetch them together.
     loaded = await asyncio.gather(*(_parsed(store, object_key) for _, object_key, _ in extractions))
     pages: list[StoredPage] = []
@@ -184,9 +189,16 @@ async def _pages(
                 HeldOutPage(capture_id, page, ctx, facts, rows),
                 SamplePage(page, ctx, published, published_rows),
                 bundle,
+                stated=frozenset(c.field for c in candidates[extraction_id]),
+                asked_llm=llm_calls.get(extraction_id, 0) > 0,
             )
         )
     return pages
+
+
+async def _llm_calls(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dict[ExtractionId, int]:
+    query = select(Extraction.id, Extraction.llm_calls).where(Extraction.id.in_(ids))
+    return {row.id: row.llm_calls for row in await conn.execute(query)}
 
 
 async def _extractions(

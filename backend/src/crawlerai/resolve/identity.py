@@ -16,7 +16,9 @@ takes every member's URLs, identity and children, and their candidates (`EntityG
 
 A standalone Product whose `inProductGroupWithID` is the `productGroupID` of one standalone ProductGroup on the page is
 that group's variant, as `hasVariant` would state it (schema.org: "the productGroupID for a ProductGroup that this
-product isVariantOf").
+product isVariantOf"). So is a root Product that names its group by `isVariantOf` (D-1344), by the group's IRI or by
+holding it: a held group stands beside the Product as a root first, so the Product joins the group's member it is, or
+else becomes a member.
 """
 
 from collections import defaultdict
@@ -38,6 +40,8 @@ VARIANT: Final = "hasVariant"
 _GROUP: Final = "ProductGroup"
 _PRODUCT: Final = "Product"
 _GROUP_ID: Final = "productGroupID"  # `schema_org_map.identity`
+# schema.org `isVariantOf`: "Indicates the kind of product that this is a variant of", the inverse of `hasVariant`.
+_VARIANT_OF: Final = "isVariantOf"
 _IRI: Final = "@id"
 _URL: Final = "url"
 
@@ -52,6 +56,7 @@ class Identified:
 
 def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequence[str]) -> Identified:
     """The entities with the entities of one item merged, then standalone variants placed in their group."""
+    entities, variant_of = _detached_groups(entities, vocabulary)
     by_id = {e.id: e for e in entities}
     eligible = [e for e in entities if _eligible(e, by_id, vocabulary)]
     pages = frozenset(page_urls)
@@ -62,7 +67,32 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
                 sets.join(i, j, by_iri=prop == _IRI)
     aliases, groups = sets.aliases(), sets.groups()
     merged = [_merged(e, groups.get(e.id, ()), aliases) for e in entities if e.id not in aliases]
-    return Identified(tuple(_grouped(merged, vocabulary)), aliases)
+    named = {aliases.get(p, p): aliases.get(g, g) for p, g in variant_of.items()}
+    return Identified(tuple(_grouped(merged, vocabulary, named)), aliases)
+
+
+def _detached_groups(entities: Sequence[Entity], vocabulary: Vocabulary) -> tuple[list[Entity], dict[str, str]]:
+    """The entities with each ProductGroup a root Product names by `isVariantOf` standing beside it as a root, and the
+    Products by the group they named (D-1344). schema.org `isVariantOf` is the inverse of `hasVariant`: the Product is
+    one of the group's variants, not the holder of the group, so it is related as a standalone Product beside its
+    group is, by its identity (one of the group's members) or else as the group's `hasVariant` member (`_grouped`)."""
+    by_id = {e.id: e for e in entities}
+    variant_of: dict[str, str] = {}
+    detached: list[Entity] = []
+    for e in entities:
+        holder = by_id.get(e.parent) if e.parent is not None else None
+        if e.via == _VARIANT_OF and holder is not None and _inverts(e, holder, vocabulary):
+            variant_of.setdefault(holder.id, e.id)
+            e = e.model_copy(update={"parent": None, "via": None})
+        detached.append(e)
+    return detached, variant_of
+
+
+def _inverts(group: Entity, holder: Entity, vocabulary: Vocabulary) -> bool:
+    """Whether `holder`, a root Product, names `group`, a ProductGroup, by `isVariantOf`: only a root, the page's own
+    product, as `_grouped` places root Products only."""
+    is_product = _is_a(holder, _PRODUCT, vocabulary) and not _is_a(holder, _GROUP, vocabulary)
+    return holder.parent is None and is_product and _is_a(group, _GROUP, vocabulary)
 
 
 def _eligible(entity: Entity, by_id: Mapping[str, Entity], vocabulary: Vocabulary) -> bool:
@@ -204,6 +234,7 @@ def _merged(entity: Entity, members: Sequence[Entity], aliases: Mapping[str, str
             "identity": _union(m.identity for m in members),
             "item_urls": _union(m.item_urls for m in members),
             "group_ids": _union(m.group_ids for m in members),
+            "variant_of": _union(m.variant_of for m in members),
         }
     )
 
@@ -212,23 +243,28 @@ def _union[T](parts: Iterator[tuple[T, ...]]) -> tuple[T, ...]:
     return tuple(dict.fromkeys(item for part in parts for item in part))
 
 
-def _grouped(entities: Sequence[Entity], vocabulary: Vocabulary) -> Iterator[Entity]:
-    """The entities with each root Product naming one standalone group's `productGroupID` placed in that group."""
-    groups = _groups(entities, vocabulary)
+def _grouped(entities: Sequence[Entity], vocabulary: Vocabulary, variant_of: Mapping[str, str]) -> Iterator[Entity]:
+    """The entities with each root Product naming one standalone group placed in that group: by its `productGroupID`,
+    by its IRI in `isVariantOf`, or as the group `isVariantOf` held (`variant_of`)."""
+    by_group_id, by_iri = _groups(entities, vocabulary)
     for e in entities:
-        named = {g for value in e.group_ids for g in groups.get(value, ())} - {e.id}
+        named = {g for value in e.group_ids for g in by_group_id.get(value, ())}
+        named |= {g for iri in e.variant_of for g in by_iri.get(iri, ())}
+        named = {variant_of[e.id]} if e.id in variant_of else named - {e.id}
         if len(named) == 1 and e.parent is None and _is_a(e, _PRODUCT, vocabulary) and not _is_a(e, _GROUP, vocabulary):
             yield e.model_copy(update={"parent": named.pop(), "via": VARIANT})
         else:
             yield e
 
 
-def _groups(entities: Sequence[Entity], vocabulary: Vocabulary) -> dict[str, set[str]]:
-    """The standalone ProductGroups' ids by their `productGroupID` values."""
+def _groups(entities: Sequence[Entity], vocabulary: Vocabulary) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """The standalone ProductGroups' ids by their `productGroupID` values, and by their IRIs."""
     by_id = {e.id: e for e in entities}
-    groups: defaultdict[str, set[str]] = defaultdict(set)
+    by_group_id: defaultdict[str, set[str]] = defaultdict(set)
+    by_iri: defaultdict[str, set[str]] = defaultdict(set)
     for e in entities:
         if _is_a(e, _GROUP, vocabulary) and _standalone(e, by_id, vocabulary):
-            for value in (value for prop, value in e.identity if prop == _GROUP_ID):
-                groups[value].add(e.id)
-    return groups
+            for prop, value in e.identity:
+                if prop in (_GROUP_ID, _IRI):
+                    (by_group_id if prop == _GROUP_ID else by_iri)[value].add(e.id)
+    return by_group_id, by_iri

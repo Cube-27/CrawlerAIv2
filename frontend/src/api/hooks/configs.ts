@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "../../app/auth";
 import {
+  approveConfig,
   correctConfig,
   exportConfig,
   getConfig,
@@ -40,6 +41,19 @@ export function useCorrectConfig(id: string) {
     // The answer is the new version: opening it needs no read. The other versions' statuses may have changed.
     onSuccess: (saved) => {
       queryClient.setQueryData([...CONFIGS, "one", saved.id], saved);
+      return queryClient.invalidateQueries({ queryKey: CONFIGS });
+    },
+  });
+}
+
+/** The answer is the approved version; the version active before it is suspended, so every config is read again. */
+export function useApproveConfig(id: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(approveConfig(client, id)),
+    onSuccess: (approved) => {
+      queryClient.setQueryData([...CONFIGS, "one", approved.id], approved);
       return queryClient.invalidateQueries({ queryKey: CONFIGS });
     },
   });
