@@ -17,6 +17,7 @@ from urllib.parse import quote, unquote, urlsplit
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import json_doc
+from crawlerai.collect.network_match import url_shape
 from crawlerai.config_ir.api_recipe.model import (
     PAGE_DATA_KINDS,
     PLACEHOLDER,
@@ -180,19 +181,6 @@ class _Url(NamedTuple):
         segments = parts.path[1:].split("/") if parts.path else []
         return cls(f"{parts.scheme}://{parts.netloc}", parts.path, segments, query)
 
-    @property
-    def shape(self) -> "UrlShape":
-        return self.origin, bool(self.path), len(self.segments), tuple(name for name, _ in self.query)
-
-
-# What the endpoint URLs of the sample requests share for binding to template them: the origin, whether there is a
-# path, its segment count, and the query names in order.
-UrlShape = tuple[str, bool, int, tuple[str, ...]]
-
-
-def url_shape(url: str) -> UrlShape:
-    return _Url.split(url).shape
-
 
 # --- deterministic binding -------------------------------------------------------------------------------------------
 
@@ -244,7 +232,8 @@ class _Binding:
     def _url_template(self) -> str:
         urls = [_Url.split(sample.request.url) for sample in self.samples]
         first = urls[0]
-        if any(url.shape != first.shape for url in urls):
+        # The endpoint URL shape (`network_match.url_shape`) is what binding templates: only its parts may vary.
+        if len({url_shape(sample.request.url) for sample in self.samples}) > 1:
             raise _Unbound("the endpoint URL's host, path length or query names differ between sample pages")
         segments = [
             _placeholder_or(self._param([unquote(url.segments[i]) for url in urls], f"path segment {i}"), literal)
