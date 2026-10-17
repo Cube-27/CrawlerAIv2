@@ -276,11 +276,15 @@ def test_a_structured_value_outside_schema_org_price_syntax_is_invalid(raw: Json
     assert money.normalize(raw, MONEY, CTX) == Invalid(reason)
 
 
-# CLDR symbols written without digits or number symbols, each with a currency it stands for somewhere.
+# CLDR symbols written without digits or number symbols, each with a currency it stands for somewhere. A symbol of
+# format characters only (Unicode Cf, a zero-width space) is not written on a page (`money._signs_by_length`), and a
+# symbol that is an ISO 4217 code names that currency (`_ISO_CODES`).
 _SYMBOL_CODES = sorted(
     (symbol, code)
     for symbol, codes in _symbols().items()
-    if not any(c.isdigit() or c in ".,'\u2019" or c.isspace() for c in symbol)
+    if symbol not in _ISO_CODES
+    and any(unicodedata.category(c) != "Cf" for c in symbol)
+    and not any(c.isdigit() or c in ".,'\u2019" or c.isspace() for c in symbol)
     for code in codes
 )
 
