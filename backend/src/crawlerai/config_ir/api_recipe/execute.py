@@ -6,31 +6,42 @@ parameters from the page URL (fetching the HTML page first only when a binder re
 `requires_page_fetch`), sends the recipe's request through the SSRF guard (INV-16) and answers a
 `FetchResult(method='api')` whose body is the JSON. A page the recipe cannot serve is an `error` result, and `acquire`
 fetches it the configured way (§4.10); when the rung fetched the HTML page to bind and reached it, that page is the
-result instead, so it is not fetched twice. A listing's pages come from `pages`, which sets the recipe's pagination
-parameter to `start`, `start + step`, ... until a response's `rows` select nothing or the caller's limit is reached:
-this is how infinite scroll is served (§8.6). `recipe_collector` reads what the rung fetched.
+result instead, so it is not fetched twice. A listing's pages come from `pages`, which follows the recipe's pagination
+(`pagination.py`: a page number or offset, a cursor, a next URL or an RFC 8288 `next` link, in the query or the JSON
+body) until a response's `rows` select nothing or the caller's records target is reached: this is how infinite scroll
+is served (§8.6). `recipe_collector` reads what the rung fetched.
 """
 
 import asyncio
 import time
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Final
+
+from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, fetch_result
+from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import ApiCollector
 from crawlerai.collect.config import Executed
-from crawlerai.config_ir.api_recipe.binding import PageData, page_data, with_query_value
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Pagination
+from crawlerai.collect.network_match import LearnedCalls
+from crawlerai.config_ir.api_recipe.binding import PageData, page_data
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.config_ir.api_recipe.replay import request_for
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
+
+# A listing served by its recipe sends at most this many page requests (SPEC-09 §4.8): the records target ends it
+# sooner, and a pagination that never ends (a cursor that comes back) is cut here.
+MAX_PAGES: Final = 50
 
 
 def recipe_collector(recipe: ApiRecipe, recipe_id: str) -> ApiCollector:
@@ -53,6 +64,10 @@ class RecipeExecutor:
         # An absent field (D-1341) is no recipe's either, and role C is not asked for it on a recipe's pages.
         status = {name: s for name, s in config_status.items() if name in recipe.map or s == "absent"}
         return cls(recipe, recipe_collector(recipe, recipe_id), status)
+
+    @property
+    def learned_calls(self) -> LearnedCalls | None:
+        return None  # it reads the recipe's own `api` captures, which hold no calls
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         return self.collector.collect(page, schema, ctx)
@@ -82,10 +97,13 @@ class RecipeRung:
         # A fetch whose policy names the browser falls back to the browser, not to the HTML page fetched to bind.
         return _after(page, result, fallback=policy.method_hint != "browser")
 
-    async def pages(self, url: str, policy: FetchPolicy, limit: int) -> AsyncIterator[FetchResult]:
-        """The listing at `url`, one response per value of the pagination parameter, at most `limit` requests. A
-        response whose `rows` select nothing ends the listing and is not yielded; one that is not `ok` is yielded
-        last."""
+    async def pages(
+        self, url: str, policy: FetchPolicy, *, records: int, limit: int = MAX_PAGES, admit_next: Admit | None = None
+    ) -> AsyncIterator[FetchResult]:
+        """The listing at `url`, one response per page its pagination names (`pagination.next_request`), until a
+        response's `rows` select no object, the pagination names no next page (or one already requested), `records`
+        rows were yielded, `limit` requests were sent, or `admit_next` refuses the next request (the site's rate,
+        SPEC-02 §4.6). A response with no rows is not yielded; one that is not `ok` is yielded last."""
         pagination = self.recipe.pagination
         if pagination is None:
             raise ValueError("a recipe without pagination serves one response per page")
@@ -93,22 +111,33 @@ class RecipeRung:
         if isinstance(bound, FetchResult):
             yield bound
             return
-        request, page = bound
+        bound_request, page = bound
+        request = None if bound_request is None else first_request(pagination, bound_request)
         if request is None:
             yield _after(page, self._unserved(url, policy, "unbound_parameter"))
             return
-        for n in range(limit):
-            value = str(pagination.start + n * pagination.step)
-            paged = replace(request, url=with_query_value(request.url, pagination.name, value))
-            result = _after(page, await self.fetch_json(paged, policy))
+        sent: set[tuple[str, str | None]] = set()
+        rows = 0
+        for number in range(limit):
+            sent.add((request.url, request.body))
+            result = _after(page, await self.fetch_json(request, policy))
             page = None  # the HTML page is fetched once, and counted with the first response
             if result.block_class != "ok":
                 yield result
                 return
             # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
-            if not await asyncio.to_thread(_has_rows, result, pagination):
+            document, count = await asyncio.to_thread(_rows, result, pagination.rows)
+            if not count:
                 return
             yield result
+            rows += count
+            headers = result.bundle.manifest.headers.response
+            following = next_request(pagination, request, number + 1, document, headers)
+            if rows >= records or following is None or (following.url, following.body) in sent:
+                return
+            if admit_next is not None and not await admit_next():
+                return
+            request = following
 
     async def _request(
         self, url: str, policy: FetchPolicy
@@ -163,10 +192,16 @@ def _page_data(page: FetchResult) -> PageData:
     return page_data(ParsedPage.of(page.bundle))
 
 
-def _has_rows(result: FetchResult, pagination: Pagination) -> bool:
+def _rows(result: FetchResult, query: str) -> tuple[JsonValue, int]:
+    """The response's JSON and how many rows `query` selects in it."""
     try:
         document = json_doc.parse(result.bundle.body.decode("utf-8"))
     except ValueError:  # not UTF-8 JSON (RFC 8259 §8.1): the collector reads no rows from it either
-        return False
-    # The collector reads only rows that are JSON objects (RFC 8259 §4, `collect.api`): other items are no rows.
-    return any(isinstance(row, dict) for _, row in json_doc.select(pagination.rows, document))
+        return None, 0
+    return document, row_count(query, document)
+
+
+def row_count(query: str, document: JsonValue) -> int:
+    """How many rows `query` selects in `document`: the collector reads only rows that are JSON objects (RFC 8259 §4,
+    `collect.api`), so other items are no rows."""
+    return sum(isinstance(row, dict) for _, row in json_doc.select(query, document))

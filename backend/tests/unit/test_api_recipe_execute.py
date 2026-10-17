@@ -10,7 +10,7 @@ import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from ipaddress import ip_address
 
@@ -21,13 +21,23 @@ from hypothesis import strategies as st
 
 from crawlerai.acquire.api import JsonFetcher, fetch_json
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
+from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.base import PAGE
 from crawlerai.config_ir.api_recipe.binding import resolve, with_query_value
 from crawlerai.config_ir.api_recipe.execute import RecipeExecutor, RecipeRung, recipe_collector
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, Pagination, Proof
+from crawlerai.config_ir.api_recipe.model import (
+    ApiRecipe,
+    Binder,
+    CursorPagination,
+    LinkPagination,
+    NextUrlPagination,
+    Pagination,
+    ParamPagination,
+    Proof,
+)
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.ids import uuid7
@@ -282,7 +292,7 @@ ITEMS = [f"Lamp {n}" for n in range(5)]
 LISTING_RECIPE = ApiRecipe(
     method="GET",
     url=f"{ENDPOINT}/lamps?sort=new&offset=99",
-    pagination=Pagination(kind="param", name="offset", start=0, step=2, rows="$['items'][*]"),
+    pagination=ParamPagination(kind="param", where="query", name="offset", start=0, step=2, rows="$['items'][*]"),
     map={"title": "$['name']"},
     proof=PROOF,
 )
@@ -296,7 +306,9 @@ def _offsets(request: httpx.Request) -> httpx.Response:
 
 def _pages(api: StandIn, limit: int) -> list[FetchResult]:
     async def run() -> list[FetchResult]:
-        return [page async for page in _rung(LISTING_RECIPE, api).pages(f"{SITE}/lamps", POLICY, limit)]
+        return [
+            page async for page in _rung(LISTING_RECIPE, api).pages(f"{SITE}/lamps", POLICY, records=100, limit=limit)
+        ]
 
     return asyncio.run(run())
 
@@ -352,7 +364,7 @@ def test_a_response_whose_rows_hold_no_object_ends_the_listing() -> None:
 
 
 def test_a_recipe_without_pagination_has_no_pages() -> None:
-    pages = _rung(DETAIL_RECIPE, StandIn(_products)).pages(SITE, POLICY, 3)
+    pages = _rung(DETAIL_RECIPE, StandIn(_products)).pages(SITE, POLICY, records=3)
 
     async def first() -> FetchResult:
         return await anext(pages)
@@ -360,6 +372,103 @@ def test_a_recipe_without_pagination_has_no_pages() -> None:
     coroutine = first()
     with pytest.raises(ValueError, match="without pagination"):
         asyncio.run(coroutine)
+
+
+def _listing(pagination: Pagination, *, method: str = "GET", body: str | None = None) -> ApiRecipe:
+    return ApiRecipe.model_validate(
+        {
+            "method": method,
+            "url": f"{ENDPOINT}/lamps?sort=new",
+            "body": None if body is None else {"template": body},
+            "pagination": pagination.model_dump(),
+            "map": {"title": "$['name']"},
+            "proof": PROOF.model_dump(mode="json"),
+        }
+    )
+
+
+def _run(recipe: ApiRecipe, api: StandIn, records: int = 100, admit: Admit | None = None) -> list[FetchResult]:
+    async def run() -> list[FetchResult]:
+        rung = _rung(recipe, api)
+        return [page async for page in rung.pages(f"{SITE}/lamps", POLICY, records=records, admit_next=admit)]
+
+    return asyncio.run(run())
+
+
+def _batch(start: int) -> list[dict[str, str]]:
+    return [{"name": name} for name in ITEMS[start : start + 2]]
+
+
+def test_a_graphql_cursor_in_the_post_body_is_taken_from_each_answer() -> None:
+    def graphql(request: httpx.Request) -> httpx.Response:
+        after = json.loads(request.content)["variables"]["after"]
+        start = 0 if after is None else int(after.removeprefix("c"))
+        end = None if start + 2 >= len(ITEMS) else f"c{start + 2}"
+        return httpx.Response(200, json={"data": {"items": _batch(start), "page": {"end": end}}})
+
+    paging = CursorPagination(
+        kind="cursor",
+        where="body",
+        name="$['variables']['after']",
+        cursor="$['data']['page']['end']",
+        rows="$['data']['items'][*]",
+    )
+    body = '{"query":"lamps","variables":{"after":null,"first":2}}'
+    api = StandIn(graphql)
+
+    pages = _run(_listing(paging, method="POST", body=body), api)
+
+    assert [json.loads(r.content)["variables"]["after"] for r in api.requests] == [None, "c2", "c4"]
+    assert all(json.loads(r.content)["variables"]["first"] == 2 for r in api.requests)
+    assert len(pages) == 3
+
+
+def test_a_next_url_and_a_link_header_are_followed_on_the_endpoint_s_origin() -> None:
+    def linked(request: httpx.Request) -> httpx.Response:
+        start = int(request.url.params.get("from", "0"))
+        follow = f"/v1/lamps?sort=new&from={start + 2}" if start + 2 < len(ITEMS) else None
+        headers = {} if follow is None else {"Link": f'<{follow}>; rel="next"'}
+        return httpx.Response(200, json={"items": _batch(start), "next": follow}, headers=headers)
+
+    for paging in (
+        NextUrlPagination(kind="next_url", next="$['next']", rows="$['items'][*]"),
+        LinkPagination(kind="link", rows="$['items'][*]"),
+    ):
+        api = StandIn(linked)
+
+        pages = _run(_listing(paging), api)
+
+        assert [r.url.params.get("from") for r in api.requests] == [None, "2", "4"], paging.kind
+        assert len(pages) == 3
+
+
+def test_the_records_target_and_the_site_s_rate_end_the_listing() -> None:
+    paging = ParamPagination(kind="param", where="query", name="offset", start=0, step=2, rows="$['items'][*]")
+    api = StandIn(_offsets)
+
+    assert len(_run(_listing(paging), api, records=3)) == 2
+    assert [r.url.params["offset"] for r in api.requests] == ["0", "2"]
+
+    turns: list[bool] = []
+
+    async def refuse_second(*, after: timedelta = timedelta(0)) -> bool:
+        turns.append(True)
+        return len(turns) < 2
+
+    refused = StandIn(_offsets)
+    assert len(_run(_listing(paging), refused, admit=refuse_second)) == 2
+    assert [r.url.params["offset"] for r in refused.requests] == ["0", "2"]
+
+
+def test_a_cursor_that_comes_back_ends_the_listing() -> None:
+    def looping(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": _batch(0), "end": "same"})
+
+    paging = CursorPagination(kind="cursor", where="query", name="after", cursor="$['end']", rows="$['items'][*]")
+    api = StandIn(looping)
+
+    assert len(_run(_listing(paging), api)) == 2
+    assert [r.url.params.get("after") for r in api.requests] == [None, "same"]
 
 
 _QUERY_TEXT = st.text(st.characters(codec="utf-8", exclude_categories=["Cs"]), min_size=1, max_size=12)
