@@ -5,8 +5,10 @@ import { ReadOnlyContext } from "./readOnly";
 /** The command bar (SPEC-14 §4.2): one bordered surface with the mode's input on top and the toolbar under it: the
  * Options button and the tools on the left, the primary action on the right. The input sits in a box of at least
  * `min-h-playground-input`, which holds a URL and its error, so switching between the single-URL modes or showing an
- * error moves neither the toolbar nor the action; Batch's ten-line list is taller (D-1213). A read-only bar disables its input and tools (a disabled fieldset,
- * HTML §4.10.15); Options and the action stay usable. */
+ * error moves neither the toolbar nor the action; Batch's ten-line list is taller (D-1213). At phone width the action
+ * row comes first under the input, so tools that wrap to more lines in one mode than another (Map has Options alone)
+ * never move it (D-1216). A read-only bar disables its input and tools (a disabled fieldset, HTML §4.10.15); Options
+ * and the action stay usable. */
 export function CommandBar({
   input,
   options,
@@ -21,12 +23,16 @@ export function CommandBar({
           {input}
         </fieldset>
         {/* At least as tall as a select, so a mode without one (Map) keeps the action where the others have it. */}
-        <div className="flex min-h-10 flex-wrap items-center gap-2">
-          {options}
-          <fieldset disabled={readOnly} className="contents">
-            {tools}
-          </fieldset>
-          <div className="ms-auto flex items-center gap-2">{action}</div>
+        <div className="flex min-h-10 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
+            {options}
+            <fieldset disabled={readOnly} className="contents">
+              {tools}
+            </fieldset>
+          </div>
+          <div className="order-first flex items-center justify-end gap-2 sm:order-none sm:ms-auto">
+            {action}
+          </div>
         </div>
       </Card.Content>
     </Card>
