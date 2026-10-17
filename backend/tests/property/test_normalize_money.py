@@ -265,6 +265,7 @@ def test_a_json_value_that_is_neither_text_nor_an_object_is_invalid(raw: JsonVal
         ({"price": "12.50 €", "priceCurrency": "USD"}, "currency_conflict"),
         ({"price": "$10 - $20", "priceCurrency": "USD"}, "range"),
         ({"price": "Free", "priceCurrency": "EUR"}, "no_amount"),
+        ({"amount": "$12.50", "currency": "USD"}, "unparsable_amount"),  # the normalized form is digits only
         ({"price": True, "priceCurrency": "EUR"}, "unparsable_amount"),
         ({"price": float("nan"), "priceCurrency": "EUR"}, "unparsable_amount"),
         ({"price": "1000000000000", "priceCurrency": "EUR"}, "out_of_range"),

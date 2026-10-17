@@ -7,11 +7,12 @@ hyperlink) hold each item's own link. A row's block is the one block whose text 
 (D-1122, D-1242); among several, the one where most of them are an element's whole text, when one is. A block no
 other row has as its block gives the row's fields that are the item's own schema.org `url` the one document its
 hyperlinks (HTML Standard §4.6.1) lead to other than the page, or else the one document its hyperlinks labelled with
-a row value lead to (§4.5.1: an `a` element's content labels its link; D-1243). The rows are looked for in every
-group of repeated items, and the group that places most rows is theirs (D-1244). Block text is read as the cleaned
-text shows it (`content.text`: non-rendered elements left out, an ellipsis cut completed by its `title`; D-1241).
-A row in no block or in several, a block two rows have, or a block whose links lead to several documents with none
-labelled by the row gives no candidate: the rule declines rather than guesses (C7).
+a row value (their whole text is one) lead to (§4.5.1: an `a` element's content labels its link; D-1243). The rows
+are looked for in every group of repeated items, and the group that places most rows is theirs (D-1244). Block text
+is read as the cleaned text shows it (`content.text`: hidden and non-rendered elements left out, NFC, an ellipsis cut
+completed by its `title`; D-1241). A row in no block or in several, a block two rows have, or a block whose links
+lead to several documents with none labelled by the row gives no candidate: the rule declines rather than guesses
+(C7).
 """
 
 from collections.abc import Iterable, Iterator, Sequence
@@ -24,8 +25,9 @@ from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, parse_paths
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import NOT_RENDERED, completed, xpath_step
+from crawlerai.content.text import completed, hidden, xpath_step
 from crawlerai.normalize.base import Context
+from crawlerai.normalize.text import compose
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -126,18 +128,21 @@ def _grounded_values(row: Entity, candidates: Sequence[Candidate]) -> list[str]:
 
 
 def _squeezed(text: str) -> str:
-    """`text` without white space: the cleaned text and the DOM's text place it differently between elements."""
-    return "".join(text.split())
+    """`text` without white space, in the cleaned text's Unicode form (`compose`, NFC): the cleaned text and the DOM's
+    text place white space differently between elements."""
+    return "".join(compose(text).split())
 
 
 def _shown_texts(root: HtmlElement) -> dict[HtmlElement, str]:
     """Each element's text under `root` as the cleaned text shows it, white space dropped: elements the HTML Standard
-    does not render are left out, and an element whose text is its `title` cut short reads as that title
-    (`content.text.completed`, D-1154). Children are read before their parents, without recursion."""
+    does not render or the page hides (`content.text.hidden`) are left out, and an element whose text is its `title`
+    cut short reads as that title (`content.text.completed`, D-1154). Children are read before their parents, without
+    recursion."""
     texts: dict[HtmlElement, str] = {}
     for element in reversed(list(root.iter())):
         tag = element.tag
-        if not isinstance(tag, str) or tag in NOT_RENDERED:  # a comment or processing instruction, or not rendered
+        # A comment or processing instruction, or an element the cleaned text hides with its subtree.
+        if not isinstance(tag, str) or hidden(tag, dict(element.attrib)):
             continue
         own = _squeezed(element.text or "") + "".join(
             texts.get(child, "") + _squeezed(child.tail or "") for child in element
@@ -151,10 +156,10 @@ def _shown_texts(root: HtmlElement) -> dict[HtmlElement, str]:
 def _one_link(block: _Block, values: list[str], base: str | None, here: str | None) -> tuple[str, str] | None:
     """The `href` and XPath of the block's first hyperlink to the one document its hyperlinks lead to, other than this
     page (`canonical_url`: http(s), without the fragment); when they lead to several, of the one document its
-    hyperlinks labelled with a row value lead to; None when there is no such one document."""
+    hyperlinks whose whole text is a row value lead to; None when there is no such one document."""
     targets = _targets(_hyperlinks(block.element), base, here)
     if len(targets) > 1:
-        labelled = (a for a in _hyperlinks(block.element) if any(v in block.texts.get(a, "") for v in values))
+        labelled = (a for a in _hyperlinks(block.element) if block.texts.get(a) in values)
         targets = _targets(labelled, base, here)
     if len(targets) != 1:
         return None

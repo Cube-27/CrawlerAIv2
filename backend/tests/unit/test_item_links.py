@@ -177,3 +177,31 @@ def test_only_a_field_that_is_the_items_own_url_takes_the_link() -> None:
 
 def test_a_page_without_repeated_items_gives_no_link() -> None:
     assert _links([_card("Widget 1", "/p/1")], ["Widget 1"]) == {}
+
+
+def test_hidden_text_is_not_the_blocks() -> None:
+    # The cleaned text leaves out `hidden`, `aria-hidden` and `display: none` subtrees, so role C cannot ground there.
+    hidden = '<span hidden>Widget 2</span><span aria-hidden="true">Widget 2</span><i style="display:none">Widget 2</i>'
+    cards = [
+        f'<div class="card"><a href="/p/1">Widget 1</a>{hidden}</div>',
+        _card("Widget 2", "/p/2"),
+        _card("W", "/p/3"),
+    ]
+
+    assert _links(cards, ["Widget 2"]) == {"llm:rows[0]": ("url", "https://shop.example.test/p/2")}
+
+
+def test_a_decomposed_title_matches_its_composed_grounding() -> None:
+    # The cleaned text is NFC (`normalize.text.compose`); the page may write the title decomposed (NFD).
+    cards = [_card("Café table", "/p/1"), _card("Chair", "/p/2"), _card("Lamp", "/p/3")]
+
+    assert _links(cards, ["Café table"]) == {"llm:rows[0]": ("url", "https://shop.example.test/p/1")}
+
+
+def test_a_link_whose_text_only_holds_a_row_value_does_not_label_it() -> None:
+    # The row's value "Ann 2" is in the author link's text "Ann 2 Lee", but only a link whose whole text is a row
+    # value labels the item; the edition link carries none, so the card names no item link.
+    card = '<div class="card"><span>Ann {n}</span> <a href="/p/{n}">Edition</a> <a href="/a/{n}">Ann {n} Lee</a></div>'
+    cards = [card.format(n=n) for n in (1, 2, 3)]
+
+    assert _links(cards, ["Ann 2"]) == {}

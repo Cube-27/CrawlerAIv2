@@ -59,7 +59,7 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
         value = number
     elif isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(stripped := amount.strip()):
         value = Decimal(stripped)
-    elif isinstance(amount, str):
+    elif isinstance(amount, str) and amount_key == "price":
         # schema.org `priceCurrency` states the currency of a `price` the page wrote as display text (a sign,
         # grouping), so the text reader reads it with that currency stated (CLDR symbols and number symbols).
         return _text(amount, ctx, stated=currency)

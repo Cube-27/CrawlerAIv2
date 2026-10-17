@@ -228,6 +228,11 @@ def shown(node: LexborNode) -> bool:
     return not _invisible(visibility, inherited=False)
 
 
+def hidden(tag: str, attributes: _Attributes) -> bool:
+    """Whether an element with `tag` and `attributes` is not rendered, with its whole subtree (`_hidden`)."""
+    return _hidden(tag, attributes, _declarations(attributes))
+
+
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.

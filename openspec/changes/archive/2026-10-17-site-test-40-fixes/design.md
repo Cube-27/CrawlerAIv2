@@ -68,7 +68,8 @@ Every URL that published before is unchanged. Each new one was checked against i
 - Decision: a structured `price` string outside schema.org's digits form (`$295.99`, `1,295.99`) is read by the money
   text reader with the stated `priceCurrency`. A sign it writes must be able to denote that currency (else
   `currency_conflict`), a text without a sign is in that currency, and the amount is read in the page locales
-  (`Ambiguous` when they read it differently). Schema.org's digits form is read as before.
+  (`Ambiguous` when they read it differently). Schema.org's digits form is read as before, and the normalized
+  `amount` + `currency` form stays digits only.
 - Alternatives: keep declining (117 rows of one listing priced in microdata lost their price); strip the sign only
   (would accept a sign naming another currency).
 - Why: schema.org `priceCurrency` states the currency, and CLDR reads the rest, as it does for page text. No value is
@@ -77,8 +78,8 @@ Every URL that published before is unchanged. Each new one was checked against i
 
 ### D-1241 — A repeated item block's text as the cleaned text shows it
 - Date: 2026-10-17 · Change/PR: site-test-40-fixes (#240) · Status: decided
-- Decision: `row_links` reads each block's text, and each element's, as `content.text` renders it. Non-rendered
-  elements (`NOT_RENDERED`) are left out, and an element whose text is its `title` cut short with an ellipsis reads
+- Decision: `row_links` reads each block's text, and each element's, as `content.text` renders it. Hidden and
+  non-rendered elements (`content.text.hidden`) are left out, text is NFC (`compose`), and an element whose text is its `title` cut short with an ellipsis reads
   as that title (`content.text.completed`, shared with the cleaned text, D-1154).
 - Why: role C grounds values in the cleaned text, which completes the cut. Matching against the raw DOM text lost
   every row with a cut title (10 of 20 on one listing).
@@ -97,7 +98,8 @@ Every URL that published before is unchanged. Each new one was checked against i
 ### D-1243 — A card linking several documents gives the one labelled by its row
 - Date: 2026-10-17 · Change/PR: site-test-40-fixes (#240) · Status: decided · Amends D-1122
 - Decision: when a block's hyperlinks lead to several documents, the row takes the one document reached by the
-  hyperlinks whose text (as shown) holds a row value; none when such links reach no document or several.
+  hyperlinks whose whole text (as shown) is a row value; none when such links reach no document or several. A link
+  whose text only contains a row value ("Ann 2 Lee" for "Ann 2") does not label it.
 - Alternatives: keep declining (D-1122: a card linking two documents says nothing about which is the item's).
 - Why: HTML Standard §4.5.1: an `a` element's content labels its link, so a link labelled with the item's title
   names the item. Author and "editions" links carry no row value. 50 rows of one listing gained their link.
