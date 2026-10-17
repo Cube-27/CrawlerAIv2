@@ -71,4 +71,5 @@ async def record_page(
     served (`ActiveConfig.drifts`)."""
     if not config.drifts or result.outcome not in ("extracted", "partial"):
         return []
-    return await record_run(conn, config.id, result.candidates, margins=margins, job_id=job_id)
+    published = [name for name, outcome in (result.entity or {}).items() if outcome.status == "published"]
+    return await record_run(conn, config.id, result.candidates, margins=margins, job_id=job_id, published=published)

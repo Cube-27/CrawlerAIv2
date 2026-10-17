@@ -71,7 +71,7 @@ SourceKind = Literal[
 ConfigStatus = Literal["draft", "active", "suspended"]
 ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
 # `extraction_config.field_status` values (ARCHITECTURE §6, §8.3 step 4).
-FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended"]
+FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended", "absent"]
 ProgressiveMode = Literal["cold", "learning", "active"]
 # What `usage_event` counts (SPEC-01 §4.6), each in whole units: calls, tokens, seconds, bytes, requests.
 UsageResource = Literal[

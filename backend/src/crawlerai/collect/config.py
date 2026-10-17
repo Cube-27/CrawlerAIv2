@@ -49,9 +49,9 @@ class ConfigExecutor(Protocol):
 
     @property
     def field_status(self) -> Mapping[str, FieldStatus]:
-        """The status of each field it runs (`suspended` fields do not run, §8.3): resolution reads it for the
-        `config_corroborated` / `config_uncorroborated` bucket (§10), and the pipeline for the fields role C may
-        still fill (§8.4)."""
+        """The status of each field it runs (`suspended` fields do not run, §8.3), and of each field it lists as
+        `absent` (D-1341): resolution reads it for the `config_corroborated` / `config_uncorroborated` bucket (§10), and
+        the pipeline for the fields role C may still fill (§8.4)."""
         ...
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed: ...

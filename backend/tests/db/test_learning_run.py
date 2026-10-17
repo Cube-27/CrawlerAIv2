@@ -12,7 +12,7 @@ the values, and a stand-in API (`tests.stand_in`) answers the run's replays (SPE
 import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -58,6 +58,7 @@ from crawlerai.normalize.base import Ok
 from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, ListingGapReply, ListingGapRequest
 from crawlerai.resolve.task import Stored, extract_task
+from crawlerai.resolve.types import LLMCallRecord
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef, SchemaDocument
 from crawlerai.services import schemas as schemas_service
@@ -327,6 +328,46 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
             await conn.execute(select(Record.mode).where(Record.extraction_id == stored.extraction_id))
         ).scalar_one()
     assert (extraction.mode, extraction.config_version, extraction.llm_calls, record_mode) == ("config", 1, 0, "config")
+
+
+class AskedRoleC(TextRoleC):
+    """`TextRoleC` whose every call is an answered, charged LLM call, as a provider's is."""
+
+    async def detail(self, request: GapRequest) -> GapReply:
+        reply = await super().detail(request)
+        call = LLMCallRecord(
+            prompt_kind="c_extract_detail", provider="p", model="m", request_hash="0" * 64, tokens_in=1, tokens_out=1
+        )
+        return GapReply(reply.candidates, (call,))
+
+
+async def test_a_required_field_no_page_states_is_learned_as_absent_and_not_asked_again(site: LearnSite) -> None:
+    # D-1341: the sku is required, no source on any of the 8 pages states it, and role C was asked on each.
+    document = _document(f"{site.schema.name}_sku")
+    sku = FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="d", required=True, schema_org="Product.sku")
+    document = document.model_copy(update={"fields": {**document.fields, "sku": sku}})
+    async with site.engine.begin() as conn:
+        schema = await registry.create(conn, document, "user")
+        site = replace(site, schema=schema)
+        await conn.execute(insert(ProgressiveState).values(**site.key.columns()))
+    role_c = AskedRoleC()
+    for n in range(1, 9):
+        assert (await site.extract(n, role_c)).outcome == "partial"
+    await _forced(site)
+
+    _, learned = await site.learn(RoleA(PRICE_REPLY))
+
+    assert learned is not None
+    assert learned.config_id is not None
+    async with site.engine.connect() as conn:
+        config = (await conn.execute(select(ExtractionConfig).where(ExtractionConfig.id == learned.config_id))).one()
+    assert (config.ir["absent"], config.field_status["sku"]) == (["sku"], "absent")
+    assert config.validation_report["fields"]["sku"]["dropped"] == "not_learned: absent"
+    role_c = AskedRoleC()
+    stored = await site.extract(9, role_c)
+    assert stored.result.entity is not None
+    sku_outcome = stored.result.entity["sku"]
+    assert (role_c.calls, sku_outcome.status, sku_outcome.reason) == (0, "missing", "absent")
 
 
 async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_with_why(site: LearnSite) -> None:

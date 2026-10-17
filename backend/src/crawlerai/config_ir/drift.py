@@ -13,7 +13,7 @@ obtained: until labels exist, SPEC-08 §4.9's values, stamped "spec default, unf
 nothing is suspended (C7: no default margin); windows are still recorded.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -36,6 +36,8 @@ WINDOW_PAGES: Final = 50
 MIN_WINDOW_PAGES: Final = 3
 MARGINS_FILE: Final = "drift_margins.json"
 DRIFT_SUSPENDED: Final = "drift_suspended"
+# A config page published a field its config lists as absent (D-1341).
+ABSENT_STATED: Final = "absent_stated"
 
 
 class DriftMargins(BaseModel):
@@ -165,9 +167,12 @@ async def record_run(
     *,
     margins: DriftMargins | None,
     job_id: JobId,
+    published: Collection[str] = (),
 ) -> list[Drifted]:
     """Add one page's run of the active config `config_id`, the `config` candidates it proposed, to its window,
-    suspend the fields that drifted, and return them. A config that is no longer active records nothing."""
+    suspend the fields that drifted, and return them. A field the config lists as absent that the page `published`
+    leaves the list (D-1341): the site states it after all. Either starts a forced learning run. A config that is no
+    longer active records nothing."""
     config = (
         await conn.execute(
             select(ExtractionConfig)
@@ -180,19 +185,31 @@ async def record_run(
     ir = ExtractionConfigIR.model_validate(config.ir)
     window = extend(_load_window(config.drift_window), observe(ir, candidates))
     found = drifted(ir, window, margins) if margins is not None else []
+    stated = [name for name in ir.absent if name in published]
     values: dict[str, object] = {"drift_window": _dump_window(window)}
-    if found:
-        names = [d.field for d in found]
-        values["ir"] = suspend(ir, names).model_dump(mode="json")
-        values["field_status"] = {**config.field_status, **dict.fromkeys(names, "suspended")}
+    if found or stated:
+        values |= _changed(ir, config.field_status, [d.field for d in found], stated)
     await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == config_id).values(**values))
-    if found:
-        validated = {name: steps for name, steps, _ in _running(ir)}
-        for measured in found:
-            await record_event(conn, job_id, DRIFT_SUSPENDED, _event(config_id, measured, validated[measured.field]))
-        key = StateKey(config.site_id, config.schema_id, config.page_kind)
-        await request_learning(conn, key, force=True)
+    validated = {name: steps for name, steps, _ in _running(ir)}
+    for measured in found:
+        await record_event(conn, job_id, DRIFT_SUSPENDED, _event(config_id, measured, validated[measured.field]))
+    for name in stated:
+        await record_event(conn, job_id, ABSENT_STATED, {"config_id": str(config_id), "field": name})
+    if found or stated:
+        await request_learning(conn, StateKey(config.site_id, config.schema_id, config.page_kind), force=True)
     return found
+
+
+def _changed(
+    ir: ExtractionConfigIR, field_status: Mapping[str, object], suspended: Sequence[str], stated: Sequence[str]
+) -> dict[str, object]:
+    """The config's IR and field statuses with the fields `suspended`, and the fields `stated` no longer absent."""
+    changed = suspend(ir, suspended).model_copy(update={"absent": [n for n in ir.absent if n not in stated]})
+    status = {name: s for name, s in field_status.items() if name not in stated}
+    return {
+        "ir": changed.model_dump(mode="json", by_alias=True),
+        "field_status": {**status, **dict.fromkeys(suspended, "suspended")},
+    }
 
 
 def _event(config_id: ExtractionConfigId, measured: Drifted, steps: FieldSteps) -> dict[str, object]:

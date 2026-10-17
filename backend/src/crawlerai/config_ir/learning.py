@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
 from crawlerai.config_ir.api_recipe.replay import Replay
@@ -228,7 +229,10 @@ async def _learned(
 ) -> Validated:
     """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
     sample, held_out = split(run.schema, run.pages)
-    ir, unlearned = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars)
+    absent = absent_fields(run.schema, run.pages)
+    ir, unlearned = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars, absent)
+    # A field no page stated has no value to learn a step from; the config lists it instead (D-1341).
+    ir = ir.model_copy(update={"absent": [name for name in absent if name in unlearned]})
     held_out_pages = [page.held_out for page in held_out]
     validated = await asyncio.to_thread(validate, ir, run.schema, held_out_pages, vocabulary)
     validated = with_unlearned(validated, unlearned)
@@ -240,18 +244,27 @@ async def _learned(
 
 
 async def _learn(
-    client: LLMClient, run: _Run, sample: list[SamplePage], vocabulary: Vocabulary, max_chars: int
+    client: LLMClient,
+    run: _Run,
+    sample: list[SamplePage],
+    vocabulary: Vocabulary,
+    max_chars: int,
+    absent: Sequence[str],
 ) -> tuple[ExtractionConfigIR, dict[str, str]]:
     """The config induction and synthesis learn from the sample, and why each other schema field got no steps: the
-    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics."""
+    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics. Synthesis does not
+    try an `absent` field: no page states a value its selectors could find."""
     schema, row_fields = learnable(run.schema)
     induction = await asyncio.to_thread(induce, schema, sample, vocabulary)
     ir = _induced(run, induction)
     # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
     reasons = {name: reason for name, reason in induction.to_synthesize.items() if name not in induction.mapped}
-    if sample and reasons:
+    for name in set(absent).intersection(reasons):
+        reasons[name] = ABSENT
+    tried = [name for name, reason in reasons.items() if reason != ABSENT]
+    if sample and tried:
         synthesis = await synthesize(
-            client, ir, schema, sample, list(reasons), vocabulary, max_chars=max_chars, job_id=run.job_id
+            client, ir, schema, sample, tried, vocabulary, max_chars=max_chars, job_id=run.job_id
         )
         ir = synthesis.ir
         for name, diagnostics in synthesis.unresolved.items():
