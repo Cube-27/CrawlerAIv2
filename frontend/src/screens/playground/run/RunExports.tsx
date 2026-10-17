@@ -3,6 +3,7 @@ import { ArrowDownToLine } from "@gravity-ui/icons";
 import { useExportJob, useExportJobJson } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import { saveExportPages, saveJson } from "../../../app/download";
+import { MoreExports } from "../../../components/MoreExports";
 
 // RFC 4180 §3: CSV's media type.
 const CSV = { extension: "csv", type: "text/csv" };
@@ -65,6 +66,7 @@ export function RunExports({
         <ArrowDownToLine aria-hidden="true" />
         Export CSV
       </Button>
+      <MoreExports jobId={jobId} withoutRecords={outputs} isDisabled={busy} />
     </div>
   );
 }

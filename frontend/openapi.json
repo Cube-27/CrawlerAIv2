@@ -3082,7 +3082,7 @@
       },
       "JsonValue": {},
       "JsonValuesItem": {
-        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts.",
+        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;\n`screenshot` and `pdf` with `fetch`, for a capture that kept the file.",
         "properties": {
           "fetch": {
             "$ref": "#/components/schemas/FetchSummary"
@@ -3112,6 +3112,9 @@
             ],
             "title": "Outcome"
           },
+          "pdf": {
+            "$ref": "#/components/schemas/Artifact"
+          },
           "records": {
             "items": {
               "additionalProperties": {
@@ -3121,6 +3124,9 @@
             },
             "title": "Records",
             "type": "array"
+          },
+          "screenshot": {
+            "$ref": "#/components/schemas/Artifact"
           },
           "url": {
             "title": "Url",

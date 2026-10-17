@@ -5,6 +5,7 @@ import {
   exportJobOutputs,
   exportJobPage,
   exportJobValues,
+  exportJobFile,
   getJob,
   getJobRequest,
   listJobs,
@@ -19,6 +20,7 @@ import {
   type CrawlRequest,
   type ExtractRequest,
   type ExportFormat,
+  type JobFile,
   type ValuesPage,
   type ExportPage,
   type JobFilters,
@@ -134,6 +136,12 @@ export function useExportJob(id: string) {
       return pages;
     },
   });
+}
+
+/** The job as one file (`exportJobFile`). */
+export function useExportJobFile(id: string) {
+  const client = useApiClient();
+  return useMutation({ mutationFn: (file: JobFile) => unwrap(exportJobFile(client, id, file)) });
 }
 
 /** A new job: nothing read before shows it, so nothing is read again. */

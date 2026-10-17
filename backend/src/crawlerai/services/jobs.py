@@ -62,7 +62,7 @@ from crawlerai.services.scrape_steps import (
     format_member,
     page_formats,
 )
-from crawlerai.storage.artifacts import Artifact, stored_names
+from crawlerai.storage.artifacts import PDF, SCREENSHOT, Artifact, artifact_of, stored_names
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
@@ -208,13 +208,16 @@ class JsonValuesItem(BaseModel):
     """A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
-    partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts."""
+    partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;
+    `screenshot` and `pdf` with `fetch`, for a capture that kept the file."""
 
     url: str
     outcome: TaskOutcome | None
     records: list[dict[str, JsonValue]]
     metadata: PageMetadata | None = format_member()
     fetch: FetchSummary | None = format_member()
+    screenshot: Artifact | None = format_member()
+    pdf: Artifact | None = format_member()
 
 
 class JsonValuesPage(BaseModel):
@@ -540,6 +543,15 @@ async def _json_values_item(
         records=records,
         fetch=_fetch_of(row, adapters) if "fetch" in query.include else None,
     )
+    if "fetch" in query.include and row.object_key is not None and row.capture_id is not None:
+        kept = await asyncio.to_thread(stored_names, store, row.object_key)
+        item = item.model_copy(
+            update={
+                member: artifact_of(row.capture_id, name)
+                for member, name in (("screenshot", SCREENSHOT), ("pdf", PDF))
+                if name in kept
+            }
+        )
     if (
         "metadata" not in query.include
         or row.outcome not in _EXTRACTED

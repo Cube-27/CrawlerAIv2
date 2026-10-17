@@ -566,6 +566,44 @@ describe("scrape playground: JSON output", () => {
     ]);
   });
 
+  it("shows the screenshot, fit markdown and chunks the response carries", async () => {
+    const screenshot = {
+      url: "/v1/captures/c1/artifacts/screenshot.png",
+      content_type: "image/png",
+    };
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({
+            screenshot,
+            markdown_fit: "# Fit",
+            chunks: [{ index: 0, text: "Intro text", words: 2, heading_path: ["Guide", "Intro"] }],
+          }),
+        ),
+    });
+    await openScrape();
+    await typeUrl();
+
+    await submit();
+
+    const tabs = within(await screen.findByRole("tablist", { name: "Scrape output" }));
+    expect(tabs.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "JSON",
+      "Table",
+      "Markdown (fit)",
+      "Chunks",
+      "Screenshot",
+      "Usage",
+    ]);
+    const shot = await openTab("Screenshot");
+    expect(shot.getByRole("img", { name: "Screenshot of the page" })).toHaveAttribute(
+      "src",
+      screenshot.url,
+    );
+    const chunks = await openTab("Chunks");
+    expect(chunks.getByText("#1 · 2 words · Guide > Intro")).toBeInTheDocument();
+  });
+
   it("adds the page's metadata to the JSON with Metadata in JSON", async () => {
     const metadata = {
       title: "Blue mug",

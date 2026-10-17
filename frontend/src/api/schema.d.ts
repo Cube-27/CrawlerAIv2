@@ -1872,17 +1872,20 @@ export interface components {
          * @description A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
          *     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
          *     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
-         *     partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts.
+         *     partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;
+         *     `screenshot` and `pdf` with `fetch`, for a capture that kept the file.
          */
         JsonValuesItem: {
             fetch?: components["schemas"]["FetchSummary"];
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
             outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
+            pdf?: components["schemas"]["Artifact"];
             /** Records */
             records: {
                 [key: string]: components["schemas"]["JsonValue"];
             }[];
+            screenshot?: components["schemas"]["Artifact"];
             /** Url */
             url: string;
         };

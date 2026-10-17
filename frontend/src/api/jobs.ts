@@ -263,6 +263,41 @@ export async function exportJobPage(
   return { kind: "done", value: page };
 }
 
+/** The files of a job that one request makes whole: the workbook and the Parquet file, and the `llms.txt` pair. */
+export type JobFile = "xlsx" | "parquet" | "llms.txt" | "llms-full.txt";
+
+/** A job's one-file export or `llms.txt`, as the bytes the server made. Read through the same-origin client, which the
+ * UI's server gives the API key. */
+export async function exportJobFile(
+  client: ApiClient,
+  id: string,
+  file: JobFile,
+): Promise<ApiResult<Blob>> {
+  const path = { job_id: id };
+  const what = `Exporting the job as ${file}`;
+  if (file === "xlsx" || file === "parquet") {
+    return apiResult(
+      () =>
+        client.GET("/v1/jobs/{job_id}/results", {
+          params: { path, query: { format: file } },
+          parseAs: "blob",
+        }) as Promise<{ data?: Blob; error?: unknown; response: Response }>,
+      what,
+    );
+  }
+  const route =
+    file === "llms.txt" ? "/v1/jobs/{job_id}/llms.txt" : "/v1/jobs/{job_id}/llms-full.txt";
+  return apiResult(
+    () =>
+      client.GET(route, { params: { path }, parseAs: "blob" }) as Promise<{
+        data?: Blob;
+        error?: unknown;
+        response: Response;
+      }>,
+    what,
+  );
+}
+
 /** Queues a batch scrape; the answer is the new job's id. */
 export async function submitBatch(
   client: ApiClient,
