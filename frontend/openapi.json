@@ -6352,7 +6352,7 @@
         "type": "object"
       },
       "ScrapeResult": {
-        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`\ndoes (SPEC-02 \u00a74.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC\n9309 \u00a72.3.1.4); None for a page that was fetched. `schema` is the draft of a `schema.prompt`.",
+        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`\ndoes (SPEC-02 \u00a74.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC\n9309 \u00a72.3.1.4); for a fetched listing whose extraction gave no rows, `no_rows: <cause>` (`resolve.pipeline.no_rows`,\nD-1475); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`.",
         "properties": {
           "browser_actions": {
             "$ref": "#/components/schemas/ActionsReport"
@@ -6447,6 +6447,13 @@
             ],
             "title": "Outcome",
             "type": "string"
+          },
+          "page": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordField"
+            },
+            "title": "Page",
+            "type": "object"
           },
           "pdf": {
             "$ref": "#/components/schemas/Artifact"
